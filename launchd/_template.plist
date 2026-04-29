@@ -22,8 +22,10 @@ __JAVA_BLOCK__
     <string>__HOME__</string>
     <key>HERMES_HOME</key>
     <string>__HERMES_HOME__</string>
+    <key>WORKSPACE_ROOT</key>
+    <string>__WORKSPACE_ROOT__</string>
     <key>LUMINIK_WORKSPACE</key>
-    <string>__LUMINIK_WORKSPACE__</string>
+    <string>__WORKSPACE_ROOT__</string>
   </dict>
   <key>WorkingDirectory</key>
   <string>__HOME__</string>
