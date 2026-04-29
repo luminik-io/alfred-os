@@ -102,10 +102,10 @@ render_one() {
 
   python3 - "$TEMPLATE" "$out" \
       "$label" "$script" "$schedule_block" "$path_value" "$java_block" \
-      "$hermes_bin" "$HERMES_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" <<'PY'
+      "$hermes_bin" "$HERMES_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" <<'PY'
 import sys
 template_path, out_path, label, script, schedule_block, path_value, java_block, \
-    hermes_bin, hermes_home, workspace_root, home_dir, log_stem = sys.argv[1:]
+    hermes_bin, hermes_home, workspace_root, home_dir, log_stem, gh_org = sys.argv[1:]
 with open(template_path) as f:
     txt = f.read()
 mapping = {
@@ -117,6 +117,10 @@ mapping = {
     "__HERMES_BIN__": hermes_bin,
     "__HERMES_HOME__": hermes_home,
     "__WORKSPACE_ROOT__": workspace_root,
+    "__GH_ORG_BLOCK__": (
+        f'    <key>GH_ORG</key>\n    <string>{gh_org}</string>'
+        if gh_org else ""
+    ),
     "__HOME__": home_dir,
     "__LOG_STEM__": log_stem,
 }
