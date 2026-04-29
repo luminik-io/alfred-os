@@ -17,8 +17,9 @@ set -uo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 : "${HERMES_HOME:=$HOME/.hermes}"
-: "${LUMINIK_WORKSPACE:=$HOME/Claude_Workspace}"
-export HERMES_HOME LUMINIK_WORKSPACE HERMES_DOCTOR=1
+: "${LUMINIK_WORKSPACE:=$HOME/Workspace}"
+: "${WORKSPACE_ROOT:=$LUMINIK_WORKSPACE}"
+export HERMES_HOME WORKSPACE_ROOT LUMINIK_WORKSPACE HERMES_DOCTOR=1
 
 # Mirror what launchd plists put on PATH so doctor.sh matches cron-time
 # conditions even when invoked from a non-login subshell. fnm init is
@@ -49,7 +50,7 @@ fi
 
 echo "doctor: checking agents under $BIN_DIR"
 echo "        HERMES_HOME=$HERMES_HOME"
-echo "        LUMINIK_WORKSPACE=$LUMINIK_WORKSPACE"
+echo "        WORKSPACE_ROOT=$WORKSPACE_ROOT"
 echo
 
 pass=0
