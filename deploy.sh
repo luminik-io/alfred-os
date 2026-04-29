@@ -48,12 +48,9 @@ if [ -f "$HERMES_BIN/hermes-claude" ]; then
   echo "[pennyworth/deploy] linked hermes-claude → $LOCAL_BIN/hermes-claude"
 fi
 
-# doctor.sh too — it's a tool the operator runs by hand or invokes via
-# their own deploy.sh wrapper. Make it discoverable on PATH.
-if [ -f "$HERMES_BIN/doctor.sh" ]; then
-  ln -sfn "$HERMES_BIN/doctor.sh" "$LOCAL_BIN/pennyworth-doctor"
-  echo "[pennyworth/deploy] linked doctor.sh → $LOCAL_BIN/pennyworth-doctor"
-fi
+# doctor.sh ships into HERMES_BIN via the bin/ copy loop above. Consumer
+# repos can wrap it with their own env defaults; pennyworth itself does
+# NOT install a user-facing symlink — that's the consumer's choice.
 
 echo "[pennyworth/deploy] framework deployed. Consumer-side deploy can now"
 echo "[pennyworth/deploy] copy its own bin/<codename>.py and render plists"
