@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>__LABEL__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HERMES_BIN__/__SCRIPT__</string>
+  </array>
+__SCHEDULE_BLOCK__
+  <key>StandardOutPath</key>
+  <string>/tmp/__LOG_STEM__.stdout</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/__LOG_STEM__.stderr</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+__JAVA_BLOCK__
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>HERMES_HOME</key>
+    <string>__HERMES_HOME__</string>
+    <key>LUMINIK_WORKSPACE</key>
+    <string>__LUMINIK_WORKSPACE__</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>__HOME__</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
