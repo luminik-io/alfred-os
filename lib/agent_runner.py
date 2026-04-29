@@ -1,5 +1,5 @@
 """
-claude-fleet — shared library for cron-driven Claude Code agents.
+pennyworth — shared library for cron-driven Claude Code agents.
 
 Provides the primitives every codename agent needs:
 
