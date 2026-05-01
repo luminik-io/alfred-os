@@ -39,11 +39,12 @@ Each firing is a fresh subprocess in its own git worktree. Spend is tracked per 
 - `bin/doctor.sh` — exercises every agent's preflight under `HERMES_DOCTOR=1`. Reports pass/fail across the whole fleet without burning a Claude turn or making side effects.
 - `launchd/_template.plist` + `launchd/render.sh` — render concrete plists from a template + per-agent config (TSV format documented in `launchd/agents.conf.example`).
 - `deploy.sh` — copy `lib/`, `bin/` into `${HERMES_HOME}/{lib,bin}/`. Symlinks `hermes-claude` and `pennyworth-doctor` onto `~/.local/bin`.
-- `examples/` — two reference codename agents you can read and copy.
+- `examples/` — reference codename agents + an operator-facing label-state CLI + a pre-push git hook you can drop into your fleet.
 - `docs/` + top-level docs:
   - [`ARCHITECTURE.md`](ARCHITECTURE.md) — design rationale: codename pattern, plan-review gate, worktree-per-firing, IAM-per-agent.
   - [`BOOTSTRAP.md`](BOOTSTRAP.md) — fresh-fork setup walkthrough.
   - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to propose a new codename, change a primitive, run the tests.
+  - [`docs/STATE_MACHINE.md`](docs/STATE_MACHINE.md) — issue claim lifecycle (`agent:in-flight` → `agent:pr-open` → `agent:done`) + race resolution + stale sweep.
 
 ## Quick start
 
