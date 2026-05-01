@@ -211,7 +211,13 @@ def gh_json(cmd: list[str], default: Any = None) -> Any:
         return default
 
 
-def slack_post(text: str) -> bool:
+SLACK_SEVERITY_INFO = "info"
+SLACK_SEVERITY_WARN = "warn"
+SLACK_SEVERITY_ALERT = "alert"
+_SLACK_SEVERITIES = {SLACK_SEVERITY_INFO, SLACK_SEVERITY_WARN, SLACK_SEVERITY_ALERT}
+
+
+def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
     """Post to a Slack webhook. Returns True on confirmed POST.
 
     Webhook URL resolution, in order:
@@ -226,6 +232,24 @@ def slack_post(text: str) -> bool:
        ``SLACK_WEBHOOK_SECRET_REGION`` (default ``us-east-1``). Optional;
        lets you keep the URL out of plain env if you've already wired AWS.
 
+    Severity routing (``severity=`` keyword, default ``info``):
+
+      ``info``   Posted as-is. The bulk of fleet telemetry — agent shipped,
+                 merged, swept, no-op. Threading-by-day is deferred until
+                 a bot token integration ships (incoming webhooks cannot
+                 post threaded replies — that requires
+                 ``chat.postMessage`` with a ``xoxb-`` token + ``thread_ts``).
+      ``warn``   Prefixed with ⚠️ if not already. Use for: rate-limit hit
+                 on one provider, max-turns hit, soft-failure, salvaged
+                 partial work.
+      ``alert``  Prefixed with 🚨 and appends ``<!here>`` so channel
+                 members get pinged. Use sparingly: production drift,
+                 fleet-wide rate-limit, doctor failure on a load-bearing
+                 agent, security signal.
+
+    Unknown severity values are coerced to ``info``. Existing callers
+    that don't pass ``severity=`` keep their previous behaviour exactly.
+
     Returns False on empty text, missing webhook, or any HTTP error.
     Callers that need at-least-once semantics read the return value; pure
     fire-and-forget callers ignore it.
@@ -233,6 +257,16 @@ def slack_post(text: str) -> bool:
     text = (text or "").strip()
     if not text:
         return False
+    if severity not in _SLACK_SEVERITIES:
+        severity = SLACK_SEVERITY_INFO
+    if severity == SLACK_SEVERITY_WARN:
+        if not text.startswith(("⚠️", "❌", "⏸️")):
+            text = f"⚠️  {text}"
+    elif severity == SLACK_SEVERITY_ALERT:
+        if not text.startswith("🚨"):
+            text = f"🚨 {text}"
+        if "<!here>" not in text and "<!channel>" not in text:
+            text = f"{text}\n<!here>"
     # Slack truncates at 3500 chars
     if len(text) > 3500:
         text = text[:3500] + "\n...[truncated]"
@@ -908,6 +942,351 @@ def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool:
         "--body", body,
     ], timeout=30)
     return res.returncode == 0
+
+
+# ---------- Issue claim state machine ----------
+#
+# Cooperative cross-actor coordination via GitHub labels + structured
+# comments. Designed to prevent duplicate work between any pair of
+# (agent, agent) or (agent, operator) actors who might both want to act
+# on the same issue.
+#
+# Race-resistant in the cooperative case (host launchctl already
+# serializes per-codename firings via with_lock) and auditable in the
+# rare contested case via the claim/release comment trail.
+#
+# Lifecycle labels (mutually exclusive — at most one at a time per issue):
+#   agent:in-flight   - Some agent is actively working it (claim_issue sets)
+#   agent:pr-open     - A PR exists (release_issue transitions to)
+#   agent:done        - Closed/shipped (set externally on merge)
+#
+# Sticky modifiers (orthogonal):
+#   do-not-pickup     - Operator override; agents skip this issue
+#   needs:human-scope - Escalated; not eligible for autonomous pickup
+#
+# Claim comments — HTML comments, machine-parseable, posted alongside
+# the label change so the audit log survives even if the label is later
+# stripped or replaced manually:
+#   <!-- agent-claim:codename=<name> firing_id=<id> ts=<iso8601> -->
+#   <!-- agent-release:codename=<name> firing_id=<id> outcome=<str> ts=<iso8601> -->
+#
+# Stale-claim sweep: a separate cleanup runner reads claim comments and
+# force-releases any in-flight claim that has no matching release after
+# a configurable age. This is the belt-and-suspenders that recovers from
+# a runner crashing between claim and release.
+
+CLAIM_COMMENT_PREFIX = "<!-- agent-claim:"
+RELEASE_COMMENT_PREFIX = "<!-- agent-release:"
+PAUSED_REPOS_FILE = STATE_ROOT / "paused-repos.json"
+
+# Framework-provided labels for the state machine. claim_issue ensures
+# these exist on the target repo on first call. Operators don't need to
+# extend STANDARD_LABELS for the lifecycle to work — it's self-contained.
+LIFECYCLE_LABELS: list[tuple[str, str, str]] = [
+    ("agent:in-flight", "e11d21",
+     "An agent is actively working this issue. Set before worktree, cleared on exit."),
+    ("agent:pr-open", "fbca04",
+     "A PR exists for this issue. Set by release_issue on success."),
+    ("agent:done", "0e8a16",
+     "Issue shipped. Set externally on PR merge."),
+    ("do-not-pickup", "5319e7",
+     "Operator override: agents must not claim this issue."),
+    ("needs:human-scope", "e99695",
+     "Issue requires manual scoping; not eligible for autonomous pickup."),
+]
+
+
+def is_repo_paused(repo_slug: str) -> bool:
+    """Operator-override: is this repo currently paused?
+
+    Reads ``${HERMES_HOME}/state/paused-repos.json`` (JSON of shape
+    ``{"paused": ["repo-slug", ...]}``). Missing or unparseable file is
+    treated as "no repos paused" (fail-open). Pausing a repo causes every
+    consumer's pick_* helper to skip it without disturbing cross-repo work.
+    """
+    if not PAUSED_REPOS_FILE.exists():
+        return False
+    try:
+        data = json.loads(PAUSED_REPOS_FILE.read_text())
+    except (json.JSONDecodeError, ValueError, OSError):
+        return False
+    return repo_slug in (data.get("paused", []) or [])
+
+
+def list_paused_repos() -> list[str]:
+    if not PAUSED_REPOS_FILE.exists():
+        return []
+    try:
+        return list(json.loads(PAUSED_REPOS_FILE.read_text()).get("paused", []) or [])
+    except (json.JSONDecodeError, ValueError, OSError):
+        return []
+
+
+def set_repo_paused(repo_slug: str, paused: bool) -> list[str]:
+    """Add or remove a repo from the paused list. Returns the new full list."""
+    PAUSED_REPOS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    current = set(list_paused_repos())
+    if paused:
+        current.add(repo_slug)
+    else:
+        current.discard(repo_slug)
+    out = sorted(current)
+    PAUSED_REPOS_FILE.write_text(json.dumps({"paused": out}, indent=2))
+    return out
+
+
+def _parse_claim_comment(body: str) -> dict:
+    """Parse 'codename=X firing_id=Y outcome=Z ts=W' from a claim/release comment body."""
+    out: dict = {}
+    payload = body.strip()
+    for prefix in (CLAIM_COMMENT_PREFIX, RELEASE_COMMENT_PREFIX):
+        if payload.startswith(prefix):
+            payload = payload[len(prefix):]
+            break
+    if payload.endswith("-->"):
+        payload = payload[:-3]
+    for part in payload.split():
+        if "=" in part:
+            k, _, v = part.partition("=")
+            out[k.strip()] = v.strip()
+    return out
+
+
+def _issue_state(repo_slug: str, num: int) -> dict:
+    """One-shot fetch of labels + comments + state, used by claim/release/sweep."""
+    return gh_json([
+        "gh", "issue", "view", str(num), "-R", _full_repo(repo_slug),
+        "--json", "labels,state,comments,number",
+    ], default={"labels": [], "state": "OPEN", "comments": [], "number": num})
+
+
+def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> bool:
+    """Atomic-ish claim. Returns True if the claim succeeded, False if blocked.
+
+    Refusal reasons (returns False):
+      - The repo is paused via ``set_repo_paused``.
+      - The issue is closed.
+      - The issue carries any of: ``agent:in-flight``, ``agent:pr-open``,
+        ``do-not-pickup``, ``needs:human-scope``.
+      - Race: another claim comment with an earlier ``createdAt`` exists
+        with no matching release comment. We back out cleanly (remove our
+        own claim, post a ``race-yielded`` release comment) so the
+        earlier claimant keeps the issue.
+
+    Side effects on success:
+      - Removes ``agent:implement`` label.
+      - Adds ``agent:in-flight`` label.
+      - Posts a structured claim comment with ``codename`` and
+        ``firing_id`` for the audit trail.
+    """
+    if is_repo_paused(repo_slug):
+        return False
+    state = _issue_state(repo_slug, num)
+    if state.get("state") != "OPEN":
+        return False
+    labels = {l["name"] for l in state.get("labels", [])}
+    blockers = labels & {"agent:in-flight", "agent:pr-open",
+                         "do-not-pickup", "needs:human-scope"}
+    if blockers:
+        return False
+    # First-call setup: make sure the lifecycle labels exist on this repo.
+    # ensure_labels is process-cached, so the second+ calls are a no-op.
+    ensure_labels(repo_slug, LIFECYCLE_LABELS)
+    if not gh_issue_edit(repo_slug, num, add_labels=["agent:in-flight"],
+                         remove_labels=["agent:implement"]):
+        return False
+    claim_body = (f"{CLAIM_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
+                  f"ts={now_iso()} -->")
+    gh_issue_comment(repo_slug, num, claim_body)
+    contested_by = _detect_contested_claim(
+        repo_slug, num, codename=codename, firing_id=firing_id,
+    )
+    if contested_by is not None:
+        gh_issue_edit(repo_slug, num,
+                      add_labels=["agent:implement"],
+                      remove_labels=["agent:in-flight"])
+        gh_issue_comment(
+            repo_slug, num,
+            f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
+            f"outcome=race-yielded-to={contested_by} ts={now_iso()} -->",
+        )
+        return False
+    return True
+
+
+def release_issue(repo_slug: str, num: int, *, codename: str, firing_id: str,
+                  outcome: str = "success",
+                  transition_to: Optional[str] = None,
+                  pr_url: Optional[str] = None) -> bool:
+    """Release a claim. Optionally transition to a follow-up state label.
+
+    Args:
+        outcome: free-form string recorded in the release comment for the
+            audit trail. Conventional values: ``success``, ``failure``,
+            ``partial``, ``no-commit``, ``rate-limit``, ``max-turns``,
+            ``already-implemented``, ``race-yielded``, ``stale-swept``.
+        transition_to: optional successor label, e.g. ``agent:pr-open``,
+            ``agent:done``. ``None`` returns the issue to the
+            ``agent:implement`` queue so it can be re-picked.
+        pr_url: optional URL recorded in the release comment for traceability.
+    """
+    add: list[str] = []
+    remove = ["agent:in-flight"]
+    if transition_to:
+        add.append(transition_to)
+    else:
+        add.append("agent:implement")
+    gh_issue_edit(repo_slug, num, add_labels=add, remove_labels=remove)
+    pr_part = f" pr={pr_url}" if pr_url else ""
+    gh_issue_comment(
+        repo_slug, num,
+        f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
+        f"outcome={outcome}{pr_part} ts={now_iso()} -->",
+    )
+    return True
+
+
+def _detect_contested_claim(repo_slug: str, num: int, *,
+                            codename: str, firing_id: str) -> Optional[str]:
+    """Return the contesting claimant's ``"codename:firing_id"`` if we lost a
+    race, else None. Reads recent comments and finds any unreleased claim
+    whose ``createdAt`` is earlier than ours.
+    """
+    state = _issue_state(repo_slug, num)
+    comments = state.get("comments", [])
+    claims: dict[tuple, str] = {}
+    releases: set[tuple] = set()
+    for c in comments[-50:]:
+        body = (c.get("body") or "").strip()
+        created = c.get("createdAt") or ""
+        if body.startswith(CLAIM_COMMENT_PREFIX):
+            meta = _parse_claim_comment(body)
+            key = (meta.get("codename"), meta.get("firing_id"))
+            if key not in claims:
+                claims[key] = created
+        elif body.startswith(RELEASE_COMMENT_PREFIX):
+            meta = _parse_claim_comment(body)
+            releases.add((meta.get("codename"), meta.get("firing_id")))
+    own_key = (codename, firing_id)
+    own_ts = claims.get(own_key, "")
+    if not own_ts:
+        return None
+    for key, ts in claims.items():
+        if key == own_key or key in releases:
+            continue
+        if ts and ts < own_ts:
+            return f"{key[0]}:{key[1]}"
+    return None
+
+
+def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
+    """List in-flight issues whose latest unreleased claim is older than
+    ``max_age_hours``. Returns dicts with number / title / codename /
+    firing_id / age_hours. The caller decides whether to force-release.
+    """
+    issues = gh_json([
+        "gh", "issue", "list", "-R", _full_repo(repo_slug),
+        "--label", "agent:in-flight", "--state", "open",
+        "--json", "number,title", "--limit", "100",
+    ], default=[])
+    cutoff = datetime.now(timezone.utc).timestamp() - max_age_hours * 3600
+    stale: list[dict] = []
+    for issue in issues:
+        num = issue["number"]
+        state = _issue_state(repo_slug, num)
+        comments = state.get("comments", [])
+        latest_claim_ts: Optional[str] = None
+        latest_claim_meta: Optional[dict] = None
+        releases: set[tuple] = set()
+        for c in comments:
+            body = (c.get("body") or "").strip()
+            if body.startswith(CLAIM_COMMENT_PREFIX):
+                meta = _parse_claim_comment(body)
+                latest_claim_ts = c.get("createdAt") or latest_claim_ts
+                latest_claim_meta = meta
+            elif body.startswith(RELEASE_COMMENT_PREFIX):
+                meta = _parse_claim_comment(body)
+                releases.add((meta.get("codename"), meta.get("firing_id")))
+        if not latest_claim_meta or not latest_claim_ts:
+            stale.append({
+                "repo": repo_slug, "number": num, "title": issue.get("title", ""),
+                "codename": "?", "firing_id": "?", "age_hours": float("inf"),
+            })
+            continue
+        key = (latest_claim_meta.get("codename"), latest_claim_meta.get("firing_id"))
+        if key in releases:
+            stale.append({
+                "repo": repo_slug, "number": num, "title": issue.get("title", ""),
+                "codename": key[0] or "?", "firing_id": key[1] or "?",
+                "age_hours": 0.0, "label_drift": True,
+            })
+            continue
+        try:
+            ts = datetime.strptime(
+                latest_claim_ts.replace("Z", "+0000"),
+                "%Y-%m-%dT%H:%M:%S%z",
+            ).timestamp()
+        except (ValueError, AttributeError):
+            continue
+        if ts < cutoff:
+            stale.append({
+                "repo": repo_slug, "number": num, "title": issue.get("title", ""),
+                "codename": key[0] or "?", "firing_id": key[1] or "?",
+                "age_hours": (datetime.now(timezone.utc).timestamp() - ts) / 3600,
+            })
+    return stale
+
+
+def force_release_stale_claim(repo_slug: str, num: int, *, sweep_id: str) -> bool:
+    """Forcibly release a stale claim. Restores ``agent:implement`` so the
+    queue picks it up. Records ``outcome=stale-swept`` in the release comment.
+    """
+    gh_issue_edit(repo_slug, num,
+                  add_labels=["agent:implement"],
+                  remove_labels=["agent:in-flight"])
+    gh_issue_comment(
+        repo_slug, num,
+        f"{RELEASE_COMMENT_PREFIX}codename=cleanup firing_id={sweep_id} "
+        f"outcome=stale-swept ts={now_iso()} -->",
+    )
+    return True
+
+
+def issue_dedup_check(repo_slug: str, num: int) -> dict:
+    """Return a structured dedup status for an issue. Used by operator-side
+    CLI helpers and pre-push hooks to decide whether claiming or pushing
+    an issue-referencing branch would race an in-flight agent.
+    """
+    state = _issue_state(repo_slug, num)
+    labels = [l["name"] for l in state.get("labels", [])]
+    comments = state.get("comments", [])
+    latest_claim: Optional[dict] = None
+    for c in reversed(comments[-50:]):
+        body = (c.get("body") or "").strip()
+        if body.startswith(CLAIM_COMMENT_PREFIX):
+            latest_claim = _parse_claim_comment(body)
+            latest_claim["createdAt"] = c.get("createdAt", "")
+            break
+    return {
+        "repo": repo_slug,
+        "number": num,
+        "state": state.get("state"),
+        "labels": labels,
+        "in_flight": "agent:in-flight" in labels,
+        "pr_open": "agent:pr-open" in labels,
+        "do_not_pickup": "do-not-pickup" in labels,
+        "needs_human_scope": "needs:human-scope" in labels,
+        "claimable": (
+            state.get("state") == "OPEN"
+            and "agent:in-flight" not in labels
+            and "agent:pr-open" not in labels
+            and "do-not-pickup" not in labels
+            and "needs:human-scope" not in labels
+            and not is_repo_paused(repo_slug)
+        ),
+        "latest_claim": latest_claim,
+        "repo_paused": is_repo_paused(repo_slug),
+    }
 
 
 # ---------- Top-level entry point ----------
