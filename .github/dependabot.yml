@@ -1,0 +1,58 @@
+version: 2
+updates:
+  # Python deps (pyproject.toml)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Oslo"
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "agent:authored"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Oslo"
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "agent:authored"
+    commit-message:
+      prefix: "chore(actions)"
+      include: "scope"
+
+  # Astro Starlight site
+  - package-ecosystem: "npm"
+    directory: "/site"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Oslo"
+    open-pull-requests-limit: 5
+    labels:
+      - "deps"
+      - "site"
+      - "agent:authored"
+    commit-message:
+      prefix: "chore(site)"
+      include: "scope"
+    groups:
+      astro:
+        patterns:
+          - "astro*"
+          - "@astrojs/*"
+      starlight:
+        patterns:
+          - "@astrojs/starlight*"

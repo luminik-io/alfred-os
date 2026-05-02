@@ -1,0 +1,58 @@
+name: Feature request
+description: Propose a new framework primitive, helper, or doc
+title: "[feature] "
+labels: ["enhancement", "needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Pennyworth is deliberately small. Read [`CONTRIBUTING.md`](https://github.com/luminik-io/pennyworth/blob/main/CONTRIBUTING.md) and [`ROADMAP.md`](https://github.com/luminik-io/pennyworth/blob/main/ROADMAP.md) before opening — features that broaden scope (multi-tenant, hosted, web UI, vector DB) get politely declined.
+
+        Strong feature requests describe the use case first, the proposed solution second.
+
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: What are you trying to do? Be concrete. "I'm building a fleet that..." is a strong opener.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: How are you working around the absence today? "Not possible" is a valid answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        What would the API or doc look like?
+        - For a new primitive: function signature + 5-line use example.
+        - For a new doc: outline.
+        - For a new example agent: which codename, what gap it fills.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you think about? Why is the proposal better?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      description: Confirm the request fits pennyworth's design constraints.
+      options:
+        - label: My use case is single-operator. (Pennyworth is not multi-tenant.)
+          required: true
+        - label: I'm willing to write the PR (or fund someone to write it). The framework is weekend-maintained.
+          required: false
