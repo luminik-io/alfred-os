@@ -4,31 +4,86 @@ Notable changes to alfred-os. Format: [Keep a Changelog](https://keepachangelog.
 
 ## [Unreleased]
 
+Pivot from "extracted framework substrate" to "complete engineering agent fleet". The default install now ships 12 working agents the operator configures via an interactive `alfred init` wizard.
+
 ### Added
 
-- **Issue claim state machine**: `claim_issue` / `release_issue` / `find_stale_claims` / `force_release_stale_claim` / `is_repo_paused` / `set_repo_paused` / `list_paused_repos` / `issue_dedup_check`. Lifecycle labels `agent:in-flight` / `agent:pr-open` / `agent:done` plus operator-override `do-not-pickup`. Full doc at `docs/STATE_MACHINE.md`.
+#### Engineering agents (`bin/`)
+
+- **lucius** (feature dev): picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body, pushes a PR labelled `agent:authored`.
+- **drake** (planner): files new `agent:implement` issues from specs / roadmap / code-reality grep. Caps per-firing + rolling-24h.
+- **bane** (test coverage): picks the lowest-coverage actively-changed file, writes tests, opens a PR.
+- **rasalghul** (PR review): multi-axis review on every fresh PR. Posts as comment.
+- **nightwing** (review-fix): lands fixes for P0 / P1 reviewer comments on `agent:authored` PRs.
+- **robin** (bug triage): classifies severity, asks for repro info, hands off to lucius. Local touched-issues ledger prevents re-triage.
+- **huntress** (post-deploy smoke): runs Playwright tests against `ALFRED_HUNTRESS_TARGET_URL`. Optional ECS staging-readiness pre-check + S3 screenshot upload.
+- **gordon** (deploy health): daily ECS task-def vs `main` HEAD diff + top-N Sentry issues. Quiet on healthy days.
+- **automerge**: squash-merges clean `agent:authored` PRs (CI green, no unresolved P0 reviewer comments, latest review ends "Ship-ready: yes").
+- **agent-cleanup**: daily housekeeping (worktrees, stuck locks, stale `agent:in-flight` claims via `force_release_stale_claim`).
+- **code-map-refresh**: cross-repo contract scan. Writes `${HERMES_HOME}/state/code-map.json` for other agents.
+- **agent-morning-brief**: daily Slack post — yesterday's PRs, in-flight work, doctor status.
+- **fleet-recap.sh**: 07:30 + 22:00 Slack digest (per-agent firings / cost / success rate).
+
+Every codename is operator-customisable at install time. Default Batman names; runtime codename via `AGENT_CODENAME` env (set by the launchd plist). Repo lists, AWS profiles, ECS clusters, Sentry orgs all env-driven.
+
+#### Engineering-agent prompts (`prompts/`)
+
+9 role-based prompts loaded by `agent_runner.load_prompt()` with `${VAR}` substitution: `feature-dev.md`, `planner.md`, `test-coverage.md`, `code-review.md`, `review-fix.md`, `bug-triage.md`, `ecs-monitor.md`, `post-deploy-smoke.md`, `cross-repo-coordinator.md`. 1989 lines total. Cross-codename refs use `${FEATURE_DEV_CODENAME}` / `${CODE_REVIEW_CODENAME}` etc. so renaming any agent stays consistent end-to-end.
+
+#### Substrate (`lib/agent_runner.py`)
+
+- **Issue claim state machine**: `claim_issue` / `release_issue` / `find_stale_claims` / `force_release_stale_claim` / `is_repo_paused` / `set_repo_paused` / `list_paused_repos` / `issue_dedup_check`. Lifecycle labels `agent:in-flight` / `agent:pr-open` / `agent:done` plus operator-override `do-not-pickup`. Full doc at `docs/STATE_MACHINE.md` (with Mermaid stateDiagram).
 - **Slack severity routing**: `slack_post(text, severity="info" | "warn" | "alert")`. `info` is back-compat default; `warn` prefixes ⚠️; `alert` prefixes 🚨 + appends `<!here>`.
-- **Fresh-machine bootstrap**: `install.sh` (idempotent, brew + npm + dirs + shell rc), `INSTALL.md` (TL;DR + step-by-step), `.alfredrc.example` (operator config template).
-- **Setup walkthroughs**: `docs/SLACK_SETUP.md`, `docs/AWS_SETUP.md`, `docs/CLAUDE_CODE.md`, `docs/SKILLS.md`, `docs/LINUX.md`.
-- **Tutorial**: `docs/TUTORIAL.md` builds the `Echo` reference agent end-to-end in 30 minutes.
-- **Operator-facing CLI example**: `examples/bin/label_state.py` (`claim` / `release` / `dedup-check` / `status-issue` / `repo` / `sweep-claims`).
-- **Pre-push git hook**: `examples/git-hooks/pre-push` blocks pushes that would race an in-flight agent.
-- **Docs site**: Astro Starlight at `site/`, deployed to GitHub Pages on push to main.
-- **CI**: `pytest` + `ruff` + `mypy` + `shellcheck` on every PR.
-- **Release automation**: tag-driven GitHub release with auto-extracted changelog notes.
-- **Project hygiene**: `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, issue templates, PR template, `dependabot.yml`, `pyproject.toml` (ruff + mypy), `.pre-commit-config.yaml`.
-- **`Formula/alfred-os.rb`**: Homebrew formula skeleton.
-- **`ROADMAP.md`**: shipped / in-flight / out-of-scope.
+- **`claude_invoke_streaming()` + `transcript_path()`**: streaming-API-compatible signatures (currently delegate to plain `claude_invoke`; the per-firing JSONL transcript writer ships in v0.2).
+- **`TRANSCRIPTS_ROOT` + `PROMPTS_ROOT`** module constants.
+
+#### Operator surface
+
+- **`alfred init`** (`bin/alfred-init.py`): interactive 13-step wizard. Walks Slack-app creation with real test-post; AWS / env-var storage choice; multi-select agent enable; per-role codename prompt with Batman defaults; per-agent repo selection from `gh repo list`; per-agent special prompts (Huntress staging URL, Gordon ECS cluster); generates `agents.conf` + `~/.alfredrc` with banner-marked block; runs `deploy.sh` + `bin/doctor.sh`; smoke-test post. 27 tests covering helpers + doctor sentinel + non-interactive mode.
+- **`bin/alfred-label-state.py`** (operator CLI): `claim` / `release` / `dedup-check` / `status-issue` / `repo {pause,resume,list}` / `sweep-claims`.
+- **`examples/git-hooks/pre-push`**: refuses pushes that race in-flight agents.
+- **`install.sh`**: idempotent fresh-machine bootstrap (brew + npm + dirs + shell rc).
+
+#### Documentation
+
+- `INSTALL.md` (TL;DR + step-by-step) + `BOOTSTRAP.md` (deeper operations guide).
+- `docs/AGENTS.md`: codename topology with Batman defaults, customisation story, fleet-map Mermaid diagram, codename-wiring Mermaid diagram, anti-patterns, "adding a new codename" walkthrough.
+- `docs/STATE_MACHINE.md`: lifecycle Mermaid stateDiagram + race-resolution + stale-sweep + operator overrides.
+- `ARCHITECTURE.md`: per-firing flow Mermaid sequenceDiagram + design rationale.
+- `docs/SLACK_SETUP.md`, `docs/AWS_SETUP.md`, `docs/CLAUDE_CODE.md`, `docs/SKILLS.md`, `docs/LINUX.md`, `docs/TUTORIAL.md`.
+- Astro Starlight site at `site/`: 16 pages (getting-started / concepts / guides / reference / about), deployed to GitHub Pages on push to main. URL env-overridable.
+
+#### Project hygiene
+
+- CI: `pytest` (3.11 / 3.12 / 3.13) + `ruff check` + `ruff format --check` + `mypy lib/` + `shellcheck` + `python-syntax` + `scrub-check` (refuses known-private patterns).
+- Release automation: tag → GitHub release with auto-extracted changelog notes + brew-formula sha256 echoed to logs.
+- `Formula/alfred-os.rb`: Homebrew formula skeleton.
+- `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, issue templates, PR template, `dependabot.yml`, `pyproject.toml` (ruff + mypy), `.pre-commit-config.yaml`.
 
 ### Changed
 
-- `STANDARD_LABELS` now includes the lifecycle labels; consumers no longer need to extend it for the state machine to work.
+- Repository renamed `luminik-io/pennyworth` → `luminik-io/alfred-os`. GitHub redirects in place. All env vars `PENNYWORTH_*` → `ALFRED_*` / `ALFRED_OS_*`. Operator config file `~/.pennyworthrc` → `~/.alfredrc`. Operator commands `pennyworth-*` → `alfred-*`.
+- `STANDARD_LABELS` includes the lifecycle labels; consumers no longer need to extend it for the state machine to work.
+- Per-repo configuration loaded from `~/.alfredrc.d/<codename>.toml` via stdlib `tomllib` (was PyYAML; PyYAML is not stdlib and shouldn't be required for a fresh install).
+- Doctor mode runs before env-config IDLE checks across all 12 agents — `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred init`.
+- All docs voice-swept: removed audience-marketing intros, outcome-fantasy framing, hire/replace framing, LLM filler vocab, marketing emoji, sign-offs, vanity stats, em-dashes. ~210 lines of marketing prose deleted across 39 files; technical content preserved.
 
-### Deferred
+### Removed
 
-- **Threading for `info`-tier Slack posts**: requires bot token (`xoxb-…`) + `chat.postMessage` with `thread_ts`. Webhooks cannot thread.
-- **Channel topic updates**: same constraint; needs bot token.
-- **Linux support**: `launchd` is macOS-only. Interim cron and hand-rolled systemd-user instructions live in `docs/LINUX.md`.
+- `MORNING.md` operator-brief file (now lives in PR descriptions / chat, not the tree).
+- `uv.lock` from version control (auto-generated; consumers run their own `uv sync` against `pyproject.toml`).
+- `sso-check-10` / `sso-check-22` from the default `agents.conf`. Operator-convenience reminders, not engineering. Mentioned in `docs/AWS_SETUP.md` for operators who use AWS SSO interactively.
+
+### Deferred (v0.2)
+
+- **Bot token integration** (`xoxb-…`): unlocks `slack_set_channel_topic()`, `chat.postMessage` with `thread_ts` for daily-thread routing of `info`-tier messages, reactions API. Webhooks cannot do these.
+- **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues, same work."
+- **`claim_pr` / `release_pr`**: extend the state machine to PR-level work (review-fix agents racing the same PR).
+- **`render-systemd.sh`**: first-class Linux scheduling.
+- **Spend dashboards**: weekly recap rendered from per-agent spend files.
+- **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
+- **MCP server bundling**: expose `claim_issue` / `release_issue` / `slack_post(severity)` as MCP tools.
+- **Real per-firing JSONL transcripts**: `claude_invoke_streaming` currently delegates to `claude_invoke`. The streaming impl with transcript file at `${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl` ships when `alfred logs --firing <id>` does.
 
 ## [0.1.0] - 2026-05-02
 
