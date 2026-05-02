@@ -1,0 +1,112 @@
+---
+title: Pennyworth
+description: Cron-driven Claude Code agent fleet for solo founders. One Mac, one operator, code shipping while you sleep.
+template: splash
+hero:
+  tagline: One Mac. One operator. A fleet of narrow-specialist agents shipping code while you sleep.
+  actions:
+    - text: Install (30 min)
+      link: /pennyworth/getting-started/install/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/luminik-io/pennyworth
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+## Why pennyworth exists
+
+Most agentic frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. That's the wrong shape for an *unattended* engineering team.
+
+- **Long-running loops** have no natural failure isolation. One bad run trashes the others.
+- **In-memory state** can't survive an OS reboot. macOS restarts every few weeks.
+- **Chat-first interfaces** force the operator to be the bottleneck. The whole point is to *not* be one.
+
+Pennyworth picks a different shape: every agent is a **fresh subprocess in its own git worktree**, dispatched by **`launchd`**, isolated by **per-agent IAM**, bounded by **per-day spend caps** with a **fleet-wide rate-limit poison pill**.
+
+```
+launchd plist (every N min)
+   │
+   ▼
+${HERMES_HOME}/bin/<codename>.py     ~150-300 lines per agent
+   │
+   ▼
+agent_runner module                  lock + preflight + spend + claude_invoke + gh + slack
+   │
+   ▼
+claude -p '<prompt>' --max-turns N   the actual LLM work, in a fresh subprocess
+   │
+   ▼
+slack_post('<result>', severity=...)  report to your fleet's Slack channel
+```
+
+## What you get
+
+<CardGrid stagger>
+  <Card title="Cron-driven, not loop-driven" icon="rocket">
+    Every firing is a `launchd` event. No long-running process; no in-memory state to lose on reboot. The OS is the orchestrator.
+  </Card>
+  <Card title="Per-firing git worktree isolation" icon="puzzle">
+    Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.
+  </Card>
+  <Card title="Per-agent IAM" icon="approve-check-circle">
+    Every cron-spawned agent gets its own scoped IAM identity. The operator's SSO is never used by cron.
+  </Card>
+  <Card title="Fleet-wide rate-limit poison pill" icon="warning">
+    When any agent hits Anthropic's cap, every other agent silently skips for an hour. No stampede.
+  </Card>
+  <Card title="Issue claim state machine" icon="document">
+    `agent:in-flight` → `agent:pr-open` → `agent:done`. Race-resistant cooperative coordination via GitHub labels + structured comments.
+  </Card>
+  <Card title="Operator overrides" icon="setting">
+    `do-not-pickup` to manually claim an issue. Repo pause/resume to safely refactor without racing the fleet.
+  </Card>
+</CardGrid>
+
+## Who it's for
+
+You're a solo founder, indie hacker, or small-team CTO who wants their backlog to *physically move* overnight. You have a Mac that's always on. You've already paid for Claude Pro or Max. You'd rather your engineering team be **a fleet of narrow specialists you wrote in 200 lines each** than a $30k/yr senior who just left.
+
+You're **not** building a multi-tenant SaaS, hosted orchestrator, or chat-first agent UX. Pennyworth is deliberately small.
+
+## What's deliberately out of scope
+
+<CardGrid>
+  <Card title="Multi-tenant" icon="error">Single operator, one Mac, one config.</Card>
+  <Card title="Web UI" icon="error">Slack is the human surface.</Card>
+  <Card title="Long-running loops" icon="error">Cron is the orchestrator.</Card>
+  <Card title="LLM routing" icon="error">Claude Code already handles model picking.</Card>
+  <Card title="Browser runtimes" icon="error">If you need Playwright, install it in your codename script.</Card>
+  <Card title="Vector DBs" icon="error">A doc-shaped memory layer is your choice, not the framework's.</Card>
+</CardGrid>
+
+## Quick start
+
+<LinkCard
+  title="Install in 30 minutes"
+  description="Fresh-Mac setup: install.sh handles brew + npm + dirs + shell rc + auth checks."
+  href="/pennyworth/getting-started/install/"
+/>
+
+<LinkCard
+  title="Build your first agent"
+  description="The Echo tutorial: pick → claim → invoke → act → release → report. The shape every richer codename inherits."
+  href="/pennyworth/getting-started/tutorial/"
+/>
+
+<LinkCard
+  title="Read the architecture"
+  description="Why cron, why worktrees, why per-agent IAM. The design constraints that make pennyworth opinionated."
+  href="/pennyworth/concepts/architecture/"
+/>
+
+## Status
+
+Pennyworth is at **v0.1.0** — initial public extraction from a fleet that has been running unattended for several months. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
+
+Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design constraints get reviewed; PRs that broaden scope get politely declined. Read [Contributing](/pennyworth/about/contributing/) before opening.
+
+License: [MIT](https://github.com/luminik-io/pennyworth/blob/main/LICENSE).
