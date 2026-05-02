@@ -88,6 +88,8 @@ WORKTREE_ROOT = HERMES_HOME / "worktrees"
 WORKTREES_ROOT = WORKTREE_ROOT  # plural alias matching docs / launchd discussion
 LIB_DIR = HERMES_HOME / "lib"
 BIN_DIR = HERMES_HOME / "bin"
+TRANSCRIPTS_ROOT = STATE_ROOT / "transcripts"
+PROMPTS_ROOT = HERMES_HOME / "prompts"
 
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"
@@ -889,6 +891,55 @@ def claude_invoke(prompt: str, *, workdir: Path, allowed_tools: str,
         )
 
     return _build_claude_result(raw, fallback_text=res.stderr or "")
+
+
+def claude_invoke_streaming(prompt: str, *, workdir: Path, allowed_tools: str,
+                             agent: str, firing_id: str,
+                             max_turns: Optional[int] = None,
+                             timeout: int = 1200,
+                             resume_session: Optional[str] = None,
+                             model: Optional[str] = None) -> ClaudeResult:
+    """Streaming counterpart of :func:`claude_invoke`. Same return shape.
+
+    The full implementation in the alfred reference fleet pipes
+    ``--output-format stream-json`` through a parser that writes a
+    per-firing JSONL transcript to
+    ``${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``
+    so post-hoc tool / skill aggregation works (``alfred logs <agent>
+    --firing <id>``).
+
+    The OSS framework currently delegates to plain :func:`claude_invoke`
+    for simplicity. Behaviour: identical ``ClaudeResult`` (turns, cost,
+    session_id, result_text). Side effect: no transcript file produced.
+
+    The ``agent`` and ``firing_id`` keyword arguments are accepted (so
+    callers don't have to change when streaming lands) but currently
+    unused. ``max_turns=None`` is mapped to a hard ceiling of 200 to
+    match the reference fleet's per-firing safety bound.
+    """
+    if max_turns is None:
+        max_turns = 200
+    return claude_invoke(
+        prompt,
+        workdir=workdir,
+        allowed_tools=allowed_tools,
+        max_turns=max_turns,
+        timeout=timeout,
+        resume_session=resume_session,
+        model=model,
+    )
+
+
+def transcript_path(agent: str, firing_id: str) -> Path:
+    """Resolve the transcript file path for an (agent, firing_id) pair.
+
+    Convention: ``${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``.
+    Currently no transcripts are written (see :func:`claude_invoke_streaming`),
+    but the path resolver ships now so consumer agents and ``alfred logs``
+    don't need to change when streaming lands.
+    """
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    return TRANSCRIPTS_ROOT / agent / month / f"{firing_id}.jsonl"
 
 
 # ---------- gh CLI helpers ----------

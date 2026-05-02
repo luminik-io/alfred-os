@@ -73,11 +73,6 @@ def yesterday_prs() -> list[dict]:
 
 
 def main() -> int:
-    if not AGENTS or not WATCH_REPOS:
-        print(f"[{AGENT.upper()}-IDLE] no agents/repos configured "
-              "(set ALFRED_MORNING_BRIEF_AGENTS and ALFRED_MORNING_BRIEF_REPOS)")
-        return 0
-
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -85,6 +80,11 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
+        return 0
+
+    if not AGENTS or not WATCH_REPOS:
+        print(f"[{AGENT.upper()}-IDLE] no agents/repos configured "
+              "(set ALFRED_MORNING_BRIEF_AGENTS and ALFRED_MORNING_BRIEF_REPOS)")
         return 0
 
     yday = yesterday_str()

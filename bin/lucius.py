@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-import yaml  # type: ignore
+import tomllib
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
 from agent_runner import (  # noqa: E402
@@ -53,7 +53,7 @@ DAILY_TURN_CAP = int(os.environ.get("ALFRED_LUCIUS_TURN_CAP", "5000"))
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
     """Load per-repo pre-push commands from ${HOME}/.alfredrc.d/<codename>.yaml.
 
-    YAML format:
+    TOML format:
         pre_push:
           backend: ./gradlew check
           frontend: npm run lint && npx tsc --noEmit
@@ -69,9 +69,9 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
     user_cfg: dict[str, str] = {}
     if cfg_path.exists():
         try:
-            data = yaml.safe_load(cfg_path.read_text()) or {}
+            data = tomllib.loads(cfg_path.read_text())
             user_cfg = dict(data.get("pre_push", {}) or {})
-        except (OSError, yaml.YAMLError):
+        except (OSError, tomllib.TOMLDecodeError):
             user_cfg = {}
 
     out: dict[str, str] = {}
@@ -193,10 +193,6 @@ If you hit an error you cannot resolve:
 def main() -> int:
     with_lock(AGENT)
 
-    if not LUCIUS_REPOS:
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_LUCIUS_REPOS)")
-        return 0
-
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -204,6 +200,10 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
+        return 0
+
+    if not LUCIUS_REPOS:
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_LUCIUS_REPOS)")
         return 0
 
     # Per-firing event log — every meaningful step gets a record so a Slack

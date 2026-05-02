@@ -257,10 +257,6 @@ def is_mergeable(repo: str, pr_num: int, pr_author: str = "") -> tuple[bool, str
 def main() -> int:
     with_lock(AGENT)
 
-    if not WATCH_REPOS:
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_AUTOMERGE_REPOS)")
-        return 0
-
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -268,6 +264,10 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
+        return 0
+
+    if not WATCH_REPOS:
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_AUTOMERGE_REPOS)")
         return 0
 
     spend = SpendState(AGENT)

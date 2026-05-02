@@ -72,14 +72,6 @@ def _aws(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
 def main() -> int:
     with_lock(AGENT)
 
-    if not TARGET_URL:
-        print(f"[{AGENT.upper()}-IDLE] no target URL configured (set ALFRED_HUNTRESS_TARGET_URL)")
-        return 0
-    if not HUNTRESS_DIR.is_dir():
-        print(f"[{AGENT.upper()}-IDLE] tests dir {HUNTRESS_DIR} not found "
-              "(operator: drop Playwright tests there)")
-        return 0
-
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -87,6 +79,14 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
+        return 0
+
+    if not TARGET_URL:
+        print(f"[{AGENT.upper()}-IDLE] no target URL configured (set ALFRED_HUNTRESS_TARGET_URL)")
+        return 0
+    if not HUNTRESS_DIR.is_dir():
+        print(f"[{AGENT.upper()}-IDLE] tests dir {HUNTRESS_DIR} not found "
+              "(operator: drop Playwright tests there)")
         return 0
 
     events = EventLog(agent=AGENT)
