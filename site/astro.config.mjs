@@ -17,10 +17,9 @@ export default defineConfig({
       description:
         "Cron-driven Claude Code agent fleet for solo founders. " +
         "One Mac, one operator, code shipping while you sleep.",
-      logo: {
-        // Operator: drop a real logo into site/src/assets/ and reference it here.
-        // Until then Starlight renders the project title in the top bar.
-      },
+      // logo: {
+      //   src: './src/assets/logo.svg',  // operator: drop a real logo here
+      // },
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/luminik-io/alfred-os" },
       ],
