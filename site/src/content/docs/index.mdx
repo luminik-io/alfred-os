@@ -1,9 +1,9 @@
 ---
 title: Alfred-OS
-description: Cron-driven Claude Code agent fleet for solo founders. One Mac, one operator, code shipping while you sleep.
+description: Cron-driven Claude Code agent fleet for one operator, one Mac.
 template: splash
 hero:
-  tagline: One Mac. One operator. A fleet of narrow-specialist agents shipping code while you sleep.
+  tagline: A framework for cron-driven Claude Code agents on a single Mac.
   actions:
     - text: Install (30 min)
       link: /alfred-os/getting-started/install/
@@ -17,36 +17,36 @@ hero:
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-## Why alfred-os exists
+## Design notes
 
-Most agentic frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. That's the wrong shape for an *unattended* engineering team.
+Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work.
 
-- **Long-running loops** have no natural failure isolation. One bad run trashes the others.
+- **Long-running loops** have no failure isolation. One bad run trashes the others.
 - **In-memory state** can't survive an OS reboot. macOS restarts every few weeks.
-- **Chat-first interfaces** force the operator to be the bottleneck. The whole point is to *not* be one.
+- **Chat-first interfaces** put the operator on the critical path.
 
-Alfred-OS picks a different shape: every agent is a **fresh subprocess in its own git worktree**, dispatched by **`launchd`**, isolated by **per-agent IAM**, bounded by **per-day spend caps** with a **fleet-wide rate-limit poison pill**.
+Alfred-OS's shape: each agent is a fresh subprocess in its own git worktree, dispatched by `launchd`, isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
 
 ```
 launchd plist (every N min)
    │
    ▼
-${HERMES_HOME}/bin/<codename>.py     ~150-300 lines per agent
+${HERMES_HOME}/bin/<codename>.py     one file per agent
    │
    ▼
 agent_runner module                  lock + preflight + spend + claude_invoke + gh + slack
    │
    ▼
-claude -p '<prompt>' --max-turns N   the actual LLM work, in a fresh subprocess
+claude -p '<prompt>' --max-turns N   the LLM work, in a fresh subprocess
    │
    ▼
-slack_post('<result>', severity=...)  report to your fleet's Slack channel
+slack_post('<result>', severity=...) report to the fleet's Slack channel
 ```
 
 ## What you get
 
 <CardGrid stagger>
-  <Card title="Cron-driven, not loop-driven" icon="rocket">
+  <Card title="Cron-driven dispatch" icon="rocket">
     Every firing is a `launchd` event. No long-running process; no in-memory state to lose on reboot. The OS is the orchestrator.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
@@ -62,17 +62,11 @@ slack_post('<result>', severity=...)  report to your fleet's Slack channel
     `agent:in-flight` → `agent:pr-open` → `agent:done`. Race-resistant cooperative coordination via GitHub labels + structured comments.
   </Card>
   <Card title="Operator overrides" icon="setting">
-    `do-not-pickup` to manually claim an issue. Repo pause/resume to safely refactor without racing the fleet.
+    `do-not-pickup` to manually claim an issue. Repo pause/resume to refactor without racing the fleet.
   </Card>
 </CardGrid>
 
-## Who it's for
-
-You're a solo founder, indie hacker, or small-team CTO who wants their backlog to *physically move* overnight. You have a Mac that's always on. You've already paid for Claude Pro or Max. You'd rather your engineering team be **a fleet of narrow specialists you wrote in 200 lines each** than a $30k/yr senior who just left.
-
-You're **not** building a multi-tenant SaaS, hosted orchestrator, or chat-first agent UX. Alfred-OS is deliberately small.
-
-## What's deliberately out of scope
+## Out of scope
 
 <CardGrid>
   <Card title="Multi-tenant" icon="error">Single operator, one Mac, one config.</Card>
@@ -105,7 +99,7 @@ You're **not** building a multi-tenant SaaS, hosted orchestrator, or chat-first 
 
 ## Status
 
-Alfred-OS is at **v0.1.0** — initial public extraction from a fleet that has been running unattended for several months. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
+Alfred-OS is at v0.1.0. Initial public extraction from a fleet that has been running unattended for several months. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
 
 Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design constraints get reviewed; PRs that broaden scope get politely declined. Read [Contributing](/alfred-os/about/contributing/) before opening.
 

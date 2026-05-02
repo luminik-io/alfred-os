@@ -11,7 +11,7 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 
 | Var | Used by | Default | Notes |
 |---|---|---|---|
-| `GH_ORG` | `agent_runner._full_repo` (every gh helper) | (none — raises) | Bare repo slugs (`backend`) get resolved to `<GH_ORG>/<slug>`. |
+| `GH_ORG` | `agent_runner._full_repo` (every gh helper) | (none: raises) | Bare repo slugs (`backend`) get resolved to `<GH_ORG>/<slug>`. |
 
 ## Recommended
 
@@ -44,7 +44,7 @@ Resolution order: env → 7-day disk cache at `$HERMES_HOME/state/slack-webhook.
 
 | Var | Used by | Default |
 |---|---|---|
-| `AWS_PROFILE` | per-agent runner sets explicitly before `aws ...` calls | (none — must be set) |
+| `AWS_PROFILE` | per-agent runner sets explicitly before `aws ...` calls | (none: must be set) |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN` | stripped before `aws ...` calls in agents that need pure-profile auth | (operator's SSO leakage) |
 
 ## Doctor
@@ -92,4 +92,4 @@ Override these to deploy under a custom domain (e.g. `ALFRED_OS_SITE_URL=https:/
 
 ## Reading the source
 
-For ground truth, the path-resolution block at the top of [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py) is the canonical contract — every other config file (`install.sh`, `_template.plist`, `agents.conf`) renders into the same env-var shape.
+The path-resolution block at the top of [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py) is the canonical contract. Every other config file (`install.sh`, `_template.plist`, `agents.conf`) renders into the same env-var shape.

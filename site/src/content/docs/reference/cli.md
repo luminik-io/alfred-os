@@ -17,7 +17,7 @@ Env overrides: `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`, `HERMES_HOME`, `WORK
 
 ## `alfred-deploy`
 
-Sync `lib/` and `bin/` into `$HERMES_HOME`, render launchd plists from `launchd/_template.plist` + `launchd/agents.conf`, install them under `~/Library/LaunchAgents/`, bootstrap each one. Idempotent. Honours pause markers — agents in `$HERMES_HOME/state/_paused/` stay paused.
+Sync `lib/` and `bin/` into `$HERMES_HOME`, render launchd plists from `launchd/_template.plist` + `launchd/agents.conf`, install them under `~/Library/LaunchAgents/`, bootstrap each one. Idempotent. Honours pause markers: agents in `$HERMES_HOME/state/_paused/` stay paused.
 
 ```sh
 alfred-deploy
@@ -86,4 +86,4 @@ Override per-push: `git push --no-verify`. Override globally: `LABEL_STATE_SKIP_
 
 ## Convention
 
-Every operator-facing binary is doctor-mode aware — invoking it under `HERMES_DOCTOR=1` emits the `[<NAME>-DOCTOR-OK]` sentinel and exits 0 without side effects. So `alfred-doctor` works correctly across the whole `bin/` directory regardless of whether a particular file is an agent runner or an operator helper.
+Every operator-facing binary is doctor-mode aware. Invoking it under `HERMES_DOCTOR=1` emits the `[<NAME>-DOCTOR-OK]` sentinel and exits 0 without side effects. `alfred-doctor` works correctly across the whole `bin/` directory regardless of whether a particular file is an agent runner or an operator helper.

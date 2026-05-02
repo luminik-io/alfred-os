@@ -13,34 +13,34 @@
 
 ## Response time
 
-This is a weekend-maintained project. Realistic expectations:
+Weekend-maintained project. Realistic expectations:
 
 - **Critical security issues**: acknowledged within 72 hours.
 - **Bugs with reproducer**: triaged within a week.
 - **Feature requests**: read but rarely actioned unless aligned with the roadmap (see [`ROADMAP.md`](ROADMAP.md) and the design constraints in [`CONTRIBUTING.md`](CONTRIBUTING.md)).
-- **Questions**: best-effort; the docs are maintained as the canonical answer source.
+- **Questions**: best-effort. The docs are the canonical answer source.
 
-## What's out of scope for support
+## Out of scope for support
 
-- **Multi-tenant deployments.** Alfred-OS is single-operator by design. We don't support shared-fleet topologies.
-- **Hosted SaaS.** This is a framework, not a service. We won't run agents for you.
+- **Multi-tenant deployments.** Alfred-OS is single-operator by design.
+- **Hosted SaaS.** Framework, not a service. We won't run agents for you.
 - **Linux fleets.** First-class Linux support is on the roadmap but not shipped. See [`docs/LINUX.md`](docs/LINUX.md) for interim cron / systemd patterns.
-- **Custom Claude Code installs.** If `npm install -g @anthropic-ai/claude-code` doesn't work for you, talk to Anthropic; the CLI is theirs.
-- **Per-fleet skill sets.** [`docs/SKILLS.md`](docs/SKILLS.md) recommends a starter set; what your fleet actually needs is yours to decide.
-- **AWS account setup, IAM policy authoring beyond the templates we ship.** Templates in [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md) cover the common patterns; deeper AWS work is consultancy territory, not framework support.
+- **Custom Claude Code installs.** If `npm install -g @anthropic-ai/claude-code` doesn't work for you, talk to Anthropic. The CLI is theirs.
+- **Per-fleet skill sets.** [`docs/SKILLS.md`](docs/SKILLS.md) recommends a starter set. What your fleet actually needs is yours to decide.
+- **AWS account setup, IAM policy authoring beyond the templates we ship.** Templates in [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md) cover the common patterns. Deeper AWS work is consultancy territory.
 
-## Getting unstuck quickly
+## Getting unstuck
 
-The fastest path when something doesn't work:
+Fastest path:
 
-1. **`bash bin/doctor.sh`** — preflight every agent. Most config issues surface here.
-2. **`tail -f /tmp/<your-fleet>.<agent>.std{out,err}`** — per-agent logs from launchd.
-3. **`cat $HERMES_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`** — current-day spend + last error subtype.
-4. **`gh issue view <N> -R <repo> --json comments`** — check claim/release comment trail (often reveals "why didn't my agent pick this up").
-5. **Re-read [`INSTALL.md`](INSTALL.md) "Troubleshooting"** — covers the top 6 install/auth gotchas.
+1. **`bash bin/doctor.sh`**: preflight every agent. Most config issues surface here.
+2. **`tail -f /tmp/<your-fleet>.<agent>.std{out,err}`**: per-agent logs from launchd.
+3. **`cat $HERMES_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`**: current-day spend + last error subtype.
+4. **`gh issue view <N> -R <repo> --json comments`**: claim/release comment trail. Often reveals "why didn't my agent pick this up".
+5. **Re-read [`INSTALL.md`](INSTALL.md) "Troubleshooting"**: top install/auth gotchas.
 
-If those don't resolve it, file an issue with the output of all five.
+If none of that resolves it, file an issue with the output of all five.
 
 ## Maintainer time
 
-Alfred-OS is maintained by a solo founder on weekends. PR review is best-effort, may take 1-3 weeks for non-urgent changes. If you need faster turnaround for a serious bug, label the issue `severity:p0` and explain the impact — those get prioritised.
+Solo founder on weekends. PR review is best-effort, 1-3 weeks for non-urgent changes. If you need faster turnaround for a serious bug, label the issue `severity:p0` and explain the impact.

@@ -1,13 +1,13 @@
 ---
 title: Codename pattern
-description: Why narrow-specialist agents named after a fictional cast — the design forcing function.
+description: Narrow-specialist agents named after a fictional cast.
 ---
 
-Alfred-OS expects you to write **one agent script per narrow specialist**, name them after a coherent fictional cast, and have them coordinate via labels + GitHub state, not in-process calls.
+Alfred-OS expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels + GitHub state, not in-process calls.
 
 ## What "narrow specialist" means
 
-A codename agent is **one job**, expressed in 150-300 lines:
+One codename agent, one job, 150-300 lines:
 
 | Codename (Batman cast) | Single job |
 |---|---|
@@ -22,12 +22,12 @@ A codename agent is **one job**, expressed in 150-300 lines:
 | **Alfred** | Cross-repo coordinator for features that span multiple repos. |
 | **Bat-Signal** | Slack notifier for the other agents. |
 
-What the pattern is *not*:
+What the pattern is not:
 
 - Not "one agent does everything". A single Lucius doing feature dev + tests + review + triage + smoke would be unmaintainable, prompt-engineering hell.
-- Not "the smallest possible unit of work per agent". You don't want a separate codename for "create branch", "commit", "push" — that's surgery for the sake of it.
+- Not "the smallest possible unit of work per agent". A separate codename for "create branch", "commit", "push" is surgery for the sake of it.
 
-The right granularity is **one human role**. If you'd hire a junior to do this job and review their work, it's a codename.
+The right granularity is one human role. If you'd hire a junior to do this job and review their work, it's a codename.
 
 ## Why a fictional cast
 
@@ -44,25 +44,25 @@ Codenames show up in:
 - Worktree paths (`~/.hermes/worktrees/eng-lucius-backend-303-...`)
 - Logs (`/tmp/my.fleet.lucius.stdout`)
 
-If your cast is "agent-1 / agent-2 / agent-3" or "feature-dev / test-coverage / review", scanning the firehose becomes laborious. A coherent fictional cast — anything from Batman to Greek mythology to The Wire — makes "Lucius failed on #303" instantly readable.
+If your cast is "agent-1 / agent-2 / agent-3" or "feature-dev / test-coverage / review", scanning the firehose becomes laborious. A coherent fictional cast (Batman, Greek mythology, The Wire) makes "Lucius failed on #303" instantly readable.
 
 ### Design forcing function
 
-"What does *Bane* do?" is a sharper question than "what does the test agent do?". Naming the role after a *character* — who has a personality, a domain, a relationship to other characters — forces you to decide:
+"What does Bane do?" is a sharper question than "what does the test agent do?". Naming the role after a character (with a personality, a domain, relationships to other characters) forces you to decide:
 
-- What's Bane's scope? (Brute-force test coverage on changed files. Not unit-test design philosophy.)
-- What does Bane never do? (Never modifies non-test files. Never opens an architecture issue.)
-- How does Bane interact with the others? (Bane's PRs go through Ra's al Ghul like any other PR. Bane consumes from the same `agent:implement` queue Lucius does, but only files labelled `test-coverage`.)
+- What's Bane's scope? Brute-force test coverage on changed files. Not unit-test design philosophy.
+- What does Bane never do? Never modifies non-test files. Never opens an architecture issue.
+- How does Bane interact with the others? Bane's PRs go through Ra's al Ghul like any other PR. Bane consumes from the same `agent:implement` queue Lucius does, but only files labelled `test-coverage`.
 
-Without the codename, "the test agent" tends to creep — "well, while it's there, it could also lint... and run a security scan... and...". With the codename, the answer is "no, that's not Bane. Bane writes tests."
+Without the codename, "the test agent" tends to creep: "well, while it's there, it could also lint... and run a security scan...". With the codename, the answer is "no, that's not Bane. Bane writes tests."
 
 ## Pick your own cast
 
 The reference fleet uses Batman side-characters because the operator likes Batman. Pick anything coherent:
 
-- **Greek pantheon** — Athena (planner), Hephaestus (feature dev), Hermes (notifier), Asclepius (deploy health).
-- **The Wire** — Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
-- **Tolkien** — Aragorn, Legolas, Gimli, Gandalf — but careful about lore consistency (Gandalf shouldn't review Frodo's PR).
+- **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Hermes (notifier), Asclepius (deploy health).
+- **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
+- **Tolkien**: Aragorn, Legolas, Gimli, Gandalf. Watch lore consistency (Gandalf shouldn't review Frodo's PR).
 - **Your favourite anime, novel, podcast, board game.** All work.
 
 Constraints:
@@ -82,14 +82,12 @@ Each codename has:
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/alfred-os/guides/aws/).
 - **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
 
-Read [the tutorial](/alfred-os/getting-started/tutorial/) for an end-to-end build of one codename. Read the reference fleet's [`agents/engineering/CLAUDE.md`](https://github.com/luminik-io/alfred/blob/main/agents/engineering/CLAUDE.md) for a complete cast in production.
+[Tutorial](/alfred-os/getting-started/tutorial/) for an end-to-end build of one codename. The reference fleet's [`agents/engineering/CLAUDE.md`](https://github.com/luminik-io/alfred/blob/main/agents/engineering/CLAUDE.md) for a complete cast in production.
 
 ## Anti-patterns
 
-These don't end well:
-
-- **Generic codenames** — "agent-1", "feature-bot", "the planner". The cast disappears as a forcing function; the prompts get bloated.
-- **Code-named-after-tools** — "lucius-grpc", "bane-pytest". Couples the codename to the implementation; can't refactor the tool without renaming the role.
-- **Cross-cast mixing** — Lucius (Batman) + Hermes (Greek) + Bunk (The Wire). Looks chaotic in Slack.
-- **One codename per repo** instead of per role — "backend-bot", "frontend-bot". Loses the role-as-narrow-specialist forcing function.
-- **Codename as adjective** — "smart-lucius", "fast-lucius". The codename IS the specialist; modifiers don't add anything.
+- **Generic codenames**: "agent-1", "feature-bot", "the planner". The cast disappears as a forcing function; prompts bloat.
+- **Code-named-after-tools**: "lucius-grpc", "bane-pytest". Couples the codename to the implementation; can't refactor the tool without renaming the role.
+- **Cross-cast mixing**: Lucius (Batman) + Hermes (Greek) + Bunk (The Wire). Chaotic in Slack.
+- **One codename per repo** instead of per role: "backend-bot", "frontend-bot". Loses the role-as-narrow-specialist forcing function.
+- **Codename as adjective**: "smart-lucius", "fast-lucius". The codename is the specialist; modifiers don't add anything.

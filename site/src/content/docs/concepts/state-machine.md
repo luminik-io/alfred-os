@@ -1,23 +1,23 @@
 ---
 title: Issue claim state machine
-description: How alfred-os prevents two actors (any agent, any operator) from doing the same work twice on the same GitHub issue.
+description: How alfred-os prevents two actors from doing the same work twice on the same GitHub issue.
 ---
 
-The full doc lives at [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md). This page is the executive summary.
+Full doc at [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md). This page is the executive summary.
 
 ## The problem
 
 Two actors can race on the same issue:
 
-- Two agent firings (rare — `with_lock` serializes per codename, but cross-codename collisions exist).
+- Two agent firings (rare; `with_lock` serializes per codename, but cross-codename collisions exist).
 - One agent + the operator pushing a manual branch.
 - Two operators if you ever expand beyond solo (out of scope today, but the design accommodates it).
 
-Without a coordination primitive, you get **duplicate work**. The reference fleet hit this on day one of full autonomy: Lucius shipped a quick PR for issue #303 at 09:22; the operator opened a careful PR for the same issue at 11:30, neither aware of the other.
+Without a coordination primitive, you get duplicate work. The reference fleet hit this on day one of full autonomy: Lucius shipped a quick PR for issue #303 at 09:22; the operator opened a careful PR for the same issue at 11:30, neither aware of the other.
 
 ## The mechanism
 
-State carried entirely on **GitHub labels + structured HTML comments**. No shared database, no shared filesystem, no Slack lock. GitHub is the synchronisation point.
+State carried entirely on GitHub labels + structured HTML comments. No shared database, no shared filesystem, no Slack lock. GitHub is the synchronisation point.
 
 ### Lifecycle labels (mutually exclusive)
 
@@ -32,7 +32,7 @@ State carried entirely on **GitHub labels + structured HTML comments**. No share
 
 | Label | Meaning |
 |---|---|
-| `do-not-pickup` | Operator override — agents skip this issue |
+| `do-not-pickup` | Operator override; agents skip this issue |
 | `needs:human-scope` | Issue is too vague; not eligible for autonomous pickup |
 
 ### Claim comments
@@ -85,7 +85,7 @@ alfred-label-state repo pause <repo>
 alfred-label-state repo resume <repo>
 ```
 
-The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/alfred-os/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically: if you push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
+The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/alfred-os/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically. Push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
 
 Override per-push: `git push --no-verify`.
 Override globally: `LABEL_STATE_SKIP_DEDUP_CHECK=1` in your shell rc.

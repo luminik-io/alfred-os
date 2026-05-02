@@ -1,8 +1,8 @@
 # Issue claim state machine
 
-Cooperative cross-actor coordination for the agent fleet — the primitive that prevents two actors (any agent, any operator) from doing the same work twice on the same GitHub issue.
+Cooperative cross-actor coordination for the agent fleet: the primitive that prevents two actors (any agent, any operator) from doing the same work twice on the same GitHub issue.
 
-The state machine is implemented entirely on GitHub: labels carry the lifecycle state, structured HTML comments carry the audit trail. No shared database, no shared filesystem, no Slack lock — alfred-os is single-host but the contract works the same way if you ever spread the fleet across machines, because GitHub is the synchronisation point.
+The state machine is implemented entirely on GitHub: labels carry the lifecycle state, structured HTML comments carry the audit trail. No shared database, no shared filesystem, no Slack lock: alfred-os is single-host but the contract works the same way if you ever spread the fleet across machines, because GitHub is the synchronisation point.
 
 ## Lifecycle
 
@@ -84,8 +84,8 @@ Wire it into your fleet's daily cleanup runner. The shipped `examples/bin/label_
 
 Two ways to take an issue manually without racing an agent:
 
-1. **`label-state claim <repo>#<N>`** — adds `do-not-pickup`. Agents skip it. Reverse with `label-state release <repo>#<N>`.
-2. **`label-state repo pause <repo>`** — adds the repo to the pause list. Every consumer's `pick_*` helper skips paused repos. Reverse with `label-state repo resume <repo>`.
+1. **`label-state claim <repo>#<N>`**: adds `do-not-pickup`. Agents skip it. Reverse with `label-state release <repo>#<N>`.
+2. **`label-state repo pause <repo>`**: adds the repo to the pause list. Every consumer's `pick_*` helper skips paused repos. Reverse with `label-state repo resume <repo>`.
 
 The pre-push hook in `examples/git-hooks/pre-push` enforces this symmetrically: if you push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
 
