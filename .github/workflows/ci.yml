@@ -23,6 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
       - name: ruff check
         run: uv run --with 'ruff>=0.6' ruff check .
       - name: ruff format check
@@ -42,6 +43,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -117,6 +119,7 @@ jobs:
             # the migration history).
             if grep -RIn -E "$pat" \
               --exclude-dir=.git \
+              --exclude-dir=.github \
               --exclude-dir=site/node_modules \
               --exclude-dir=infra/agents/launchd/_generated \
               --exclude=CHANGELOG.md \
