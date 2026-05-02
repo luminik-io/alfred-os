@@ -4,6 +4,10 @@ End-to-end setup for someone consuming pennyworth as the framework for their own
 
 The fleet expects to run on a single, always-on macOS host. A Mac Mini works well; an old laptop with the lid kept open works too. This is not a server-class deployment.
 
+> **Looking for a faster start?** [`INSTALL.md`](INSTALL.md) is the from-zero TL;DR (about 30 minutes, mostly automated by `install.sh`). Use BOOTSTRAP for the deeper operations walkthrough that includes per-agent IAM, hermes-agent integration, and troubleshooting.
+
+> **Looking for the rendered docs?** Browse [https://luminik-io.github.io/pennyworth](https://luminik-io.github.io/pennyworth) for the same content with search, dark mode, and cross-linking.
+
 ## Prerequisites
 
 | Tool | Why | Install |
@@ -37,7 +41,7 @@ export WORKSPACE_ROOT="$HOME/code"   # parent dir of your forked product repos
 
 `WORKSPACE_ROOT` is the parent directory of your canonical product checkouts. Lucius and Bane look here for repo CLAUDE.md files and grep targets before they invoke `claude -p`.
 
-A companion PR parametrizes the hardcoded `/Users/batman/...` paths to consume these two variables. Until that lands, search the repo for `/Users/batman` and adjust to your home directory. The companion change is tracked in PR `chore/oss-paths`.
+All paths in the framework are env-driven via `HERMES_HOME` and `WORKSPACE_ROOT` — no source edits needed. (The earlier note about a `chore/oss-paths` companion PR is no longer relevant; the parametrisation has shipped.)
 
 ## 2. AWS setup - one IAM user per cron
 
@@ -84,22 +88,32 @@ The `env -u` calls strip any operator SSO leakage; `AWS_PROFILE` then forces the
 
 ## 3. Slack webhook
 
-Create a Slack incoming webhook for the channel where the fleet should report (we use `#your-fleet-channel`). Store it in AWS Secrets Manager so the cron can fetch it without hardcoding:
+Create a Slack incoming webhook for the channel where the fleet should report (we use `#your-fleet-channel`). The framework's `slack_post()` resolves the URL via env → 7-day disk cache → AWS Secrets Manager — pick whichever you want.
+
+**Simplest** (env var):
 
 ```sh
-aws secretsmanager create-secret \
-  --name slack/staging/internal-webhook-url \
+echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.pennyworthrc
+```
+
+**Recommended for prod** (AWS Secrets Manager, default secret ID `alfred/slack-webhook`):
+
+```sh
+aws --profile <admin-profile> secretsmanager create-secret \
+  --name alfred/slack-webhook \
   --secret-string "https://hooks.slack.com/services/T.../B.../..." \
   --region us-east-1
 ```
 
-The runtime caches the webhook at `~/.hermes/state/slack-webhook.cache` with a 7-day TTL, so a slow Secrets Manager call (or a temporarily expired SSO session) does not stall every Slack post. See `slack_post()` in `infra/agents/lib/agent_runner.py`.
+Override `SLACK_WEBHOOK_SECRET_ID` in `~/.pennyworthrc` if you keep secrets under a different prefix.
+
+The runtime caches the webhook at `$HERMES_HOME/state/slack-webhook.cache` with a 7-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner.py`](lib/agent_runner.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
 
 ## 4. Hermes-agent (cron + canon + ACP)
 
 pennyworth-driven fleets typically use [hermes-agent](https://github.com/NousResearch/hermes-agent) for three things:
 
-- **cron** - the higher-level scheduling layer. The launchd plists in `infra/agents/launchd/` are the runtime, but the prompts in `agents/<dept>/prompts/` are inlined into Hermes cron entries via `hermes cron edit` so they can be re-synced from a single source.
+- **cron** - the higher-level scheduling layer. The launchd plists in `launchd/` are the runtime, but the prompts in `agents/<dept>/prompts/` are inlined into Hermes cron entries via `hermes cron edit` so they can be re-synced from a single source.
 - **canon** - shared writing-style and voice rules pulled in by every agent prompt.
 - **ACP** (Agent Control Protocol) - the `#your-fleet-channel` Slack thread response surface (yes/no buttons, structured replies). Used by the personal-assistant and content departments more than engineering.
 
@@ -115,7 +129,7 @@ Engineering agents in this repo run via launchd and do **not** require Hermes fo
 ## 5. Deploy
 
 ```sh
-bash infra/agents/deploy.sh
+bash deploy.sh
 ```
 
 Expected output:
@@ -143,7 +157,7 @@ The script copies `lib/agent_runner.py` to `$HERMES_HOME/lib`, every regular fil
 Before firing any agent, sanity-check that every agent's preflight passes on this host:
 
 ```sh
-bash infra/agents/doctor.sh
+bash bin/doctor.sh
 ```
 
 Expected output:
@@ -207,7 +221,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
 
 ## 8. Troubleshooting
 
-**`claude: command not found` in the launchd log.** The plist's `PATH` does not include the fnm-managed Node bin. Either add it to the plist's `EnvironmentVariables` block, or symlink `claude` to a known location. The shipped plists use `/Users/batman/.local/share/fnm/aliases/default/bin` - replace with your fnm path.
+**`claude: command not found` in the launchd log.** The plist's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Either add it to the plist's `EnvironmentVariables` block (the template's `__PATH__` token is rendered from your shell PATH at deploy time), or set `CLAUDE_BIN=<absolute-path>` in `~/.pennyworthrc` so `agent_runner.claude_invoke` uses it directly. `which claude` shows the path.
 
 **Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id slack/staging/internal-webhook-url --region us-east-1` against the agent's profile (`AWS_PROFILE=huntress-cron`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.hermes/state/slack-webhook.cache`.
 
