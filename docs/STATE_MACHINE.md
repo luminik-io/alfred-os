@@ -4,6 +4,35 @@ Cooperative cross-actor coordination for the agent fleet — the primitive that 
 
 The state machine is implemented entirely on GitHub: labels carry the lifecycle state, structured HTML comments carry the audit trail. No shared database, no shared filesystem, no Slack lock — alfred-os is single-host but the contract works the same way if you ever spread the fleet across machines, because GitHub is the synchronisation point.
 
+## Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> agent_implement : drake / human files
+
+    agent_implement : agent:implement
+    agent_implement --> agent_in_flight : claim_issue()<br/>(adds in-flight label, posts claim comment)
+    agent_implement --> needs_human_scope : 3+ failed attempts
+
+    agent_in_flight : agent:in-flight
+    agent_in_flight --> agent_implement : release_issue(transition_to=None)<br/>max-turns / no-commit / failure
+    agent_in_flight --> agent_pr_open : release_issue(transition_to=agent:pr-open)<br/>PR opened successfully
+    agent_in_flight --> agent_implement : stale-claim sweep<br/>(>4h with no release)
+    agent_in_flight --> race_yield : earlier claim detected
+    race_yield --> agent_implement : yield + post race-yielded comment
+
+    agent_pr_open : agent:pr-open
+    agent_pr_open --> agent_done : automerge / human merge<br/>(PR closes the issue)
+    agent_pr_open --> agent_implement : PR closed without merge
+
+    agent_done : agent:done
+    needs_human_scope : needs:human-scope
+    do_not_pickup : do-not-pickup<br/><i>(sticky, orthogonal)</i>
+
+    agent_done --> [*]
+    needs_human_scope --> [*]
+```
+
 ## Lifecycle labels
 
 | Label | Meaning | Set by | Cleared by |
