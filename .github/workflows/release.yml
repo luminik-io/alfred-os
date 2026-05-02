@@ -77,4 +77,4 @@ jobs:
           curl -fsSL "$tarball_url" -o /tmp/src.tar.gz
           sha256=$(shasum -a 256 /tmp/src.tar.gz | awk '{print $1}')
           echo "::notice::sha256: $sha256"
-          echo "Update Formula/pennyworth.rb with this sha256 then push to your tap."
+          echo "Update Formula/alfred-os.rb with this sha256 then push to your tap."

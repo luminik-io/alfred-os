@@ -2,18 +2,18 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
-// Pennyworth site config.
+// Alfred-OS site config.
 //
-// Default URL assumes deployment to luminik-io.github.io/pennyworth (project
-// pages). When a dedicated org and CNAME exist (pennyworth.dev or similar),
+// Default URL assumes deployment to luminik-io.github.io/alfred-os (project
+// pages). When a dedicated org and CNAME exist (alfred-os.dev or similar),
 // override `site` and clear `base`.
 export default defineConfig({
-  site: process.env.PENNYWORTH_SITE_URL ?? "https://luminik-io.github.io",
-  base: process.env.PENNYWORTH_SITE_BASE ?? "/pennyworth",
+  site: process.env.ALFRED_OS_SITE_URL ?? "https://luminik-io.github.io",
+  base: process.env.ALFRED_OS_SITE_BASE ?? "/alfred-os",
   trailingSlash: "ignore",
   integrations: [
     starlight({
-      title: "Pennyworth",
+      title: "Alfred-OS",
       description:
         "Cron-driven Claude Code agent fleet for solo founders. " +
         "One Mac, one operator, code shipping while you sleep.",
@@ -22,11 +22,11 @@ export default defineConfig({
         // Until then Starlight renders the project title in the top bar.
       },
       social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/luminik-io/pennyworth" },
+        { icon: "github", label: "GitHub", href: "https://github.com/luminik-io/alfred-os" },
       ],
       editLink: {
         baseUrl:
-          "https://github.com/luminik-io/pennyworth/edit/main/site/",
+          "https://github.com/luminik-io/alfred-os/edit/main/site/",
       },
       lastUpdated: true,
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 4 },
@@ -41,7 +41,7 @@ export default defineConfig({
           attrs: {
             property: "og:image",
             content:
-              "https://opengraph.githubassets.com/1/luminik-io/pennyworth",
+              "https://opengraph.githubassets.com/1/luminik-io/alfred-os",
           },
         },
         {
@@ -56,7 +56,7 @@ export default defineConfig({
         {
           label: "Getting started",
           items: [
-            { label: "What is pennyworth?", slug: "" },
+            { label: "What is alfred-os?", slug: "" },
             { label: "Install", slug: "getting-started/install" },
             { label: "Your first agent", slug: "getting-started/tutorial" },
           ],

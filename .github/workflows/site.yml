@@ -43,8 +43,8 @@ jobs:
       - name: Build site
         working-directory: site
         env:
-          PENNYWORTH_SITE_URL: ${{ vars.PENNYWORTH_SITE_URL || 'https://luminik-io.github.io' }}
-          PENNYWORTH_SITE_BASE: ${{ vars.PENNYWORTH_SITE_BASE || '/pennyworth' }}
+          ALFRED_OS_SITE_URL: ${{ vars.ALFRED_OS_SITE_URL || 'https://luminik-io.github.io' }}
+          ALFRED_OS_SITE_BASE: ${{ vars.ALFRED_OS_SITE_BASE || '/alfred-os' }}
         run: npm run build
 
       - name: Upload Pages artifact

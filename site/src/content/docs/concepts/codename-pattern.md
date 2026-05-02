@@ -3,7 +3,7 @@ title: Codename pattern
 description: Why narrow-specialist agents named after a fictional cast — the design forcing function.
 ---
 
-Pennyworth expects you to write **one agent script per narrow specialist**, name them after a coherent fictional cast, and have them coordinate via labels + GitHub state, not in-process calls.
+Alfred-OS expects you to write **one agent script per narrow specialist**, name them after a coherent fictional cast, and have them coordinate via labels + GitHub state, not in-process calls.
 
 ## What "narrow specialist" means
 
@@ -79,10 +79,10 @@ Each codename has:
 - **A bin script**: `bin/<codename>.py`. Imports from `agent_runner`. ~150-300 lines.
 - **A launchd entry**: one line in `launchd/agents.conf` (label, script, schedule, java flag).
 - **(Optional) A prompt file**: `agents/<dept>/prompts/<codename>.md`. Long-form context the runner inlines into `claude -p`.
-- **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/pennyworth/guides/aws/).
+- **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/alfred-os/guides/aws/).
 - **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
 
-Read [the tutorial](/pennyworth/getting-started/tutorial/) for an end-to-end build of one codename. Read the reference fleet's [`agents/engineering/CLAUDE.md`](https://github.com/luminik-io/alfred/blob/main/agents/engineering/CLAUDE.md) for a complete cast in production.
+Read [the tutorial](/alfred-os/getting-started/tutorial/) for an end-to-end build of one codename. Read the reference fleet's [`agents/engineering/CLAUDE.md`](https://github.com/luminik-io/alfred/blob/main/agents/engineering/CLAUDE.md) for a complete cast in production.
 
 ## Anti-patterns
 

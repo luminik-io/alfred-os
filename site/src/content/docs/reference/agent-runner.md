@@ -3,7 +3,7 @@ title: agent_runner API reference
 description: Every public primitive in lib/agent_runner.py — function signatures, semantics, return shapes.
 ---
 
-The framework substrate. Every codename agent imports from this module. Source: [`lib/agent_runner.py`](https://github.com/luminik-io/pennyworth/blob/main/lib/agent_runner.py).
+The framework substrate. Every codename agent imports from this module. Source: [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py).
 
 Categorised by what the operator-facing primitive does. For deep semantics, read the source's docstrings — they're the authoritative reference.
 
@@ -117,7 +117,7 @@ def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool
 
 ## Issue claim state machine
 
-See [State machine](/pennyworth/concepts/state-machine/) for design.
+See [State machine](/alfred-os/concepts/state-machine/) for design.
 
 ```python
 def claim_issue(repo_slug: str, num: int, *,
@@ -220,4 +220,4 @@ Substitutes `${ENV_VAR}` from the environment (and any `extra_vars`). Unset vars
 - Every primitive that writes operator-visible state (Slack, gh, files) is idempotent or near-idempotent.
 - Every primitive that depends on the host shell uses `subprocess.run` (via `run()`), never `shell=True`.
 
-For implementation details, the [source file](https://github.com/luminik-io/pennyworth/blob/main/lib/agent_runner.py) is exhaustively commented. Module-level docstring at the top documents the env-var contract every consumer agent inherits.
+For implementation details, the [source file](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py) is exhaustively commented. Module-level docstring at the top documents the env-var contract every consumer agent inherits.

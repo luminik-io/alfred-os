@@ -162,7 +162,7 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation — pennyworth uses Astro, not mkdocs. /site is the Astro
+# mkdocs documentation — alfred-os uses Astro, not mkdocs. /site is the Astro
 # Starlight project; build artefacts inside it are gitignored via site/.gitignore.
 # (Do not re-add /site here — that breaks the docs build.)
 

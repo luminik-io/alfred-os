@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# pennyworth — fresh-machine bootstrap.
+# alfred-os — fresh-machine bootstrap.
 #
 # What this script does (idempotent — safe to re-run):
 #   1. Checks macOS (the framework currently runs on launchd; Linux users
 #      should follow docs/LINUX.md when it lands).
 #   2. Installs Homebrew if missing.
-#   3. Installs the CLI tools every pennyworth fleet needs: python@3.11, git,
+#   3. Installs the CLI tools every alfred-os fleet needs: python@3.11, git,
 #      gh, jq, awscli, uv (fast Python runner used by the test suite).
 #   4. Installs Claude Code (the @anthropic-ai/claude-code CLI) via npm.
 #   5. Creates $HERMES_HOME and $WORKSPACE_ROOT if missing.
-#   6. Drops a starter ~/.pennyworthrc from .pennyworthrc.example and
+#   6. Drops a starter ~/.alfredrc from .alfredrc.example and
 #      prompts for the values it cannot infer.
 #   7. Appends HERMES_HOME + WORKSPACE_ROOT exports to your shell rc so
 #      every new shell sees them (skipped if already present).
@@ -26,7 +26,7 @@
 #     should pull the trigger after reading what's about to load.
 #   - Touch any pre-existing ~/.hermes content if you already have one.
 #
-# Non-interactive mode: set PENNYWORTH_NONINTERACTIVE=1 and the script
+# Non-interactive mode: set ALFRED_NONINTERACTIVE=1 and the script
 # uses defaults for every prompt. Set GH_ORG / OPERATOR_NAME /
 # OPERATOR_EMAIL in the env to override the defaults non-interactively.
 
@@ -55,9 +55,9 @@ note()  { printf "${C_DIM}     %s${C_OFF}\n" "$*"; }
 # --------------------------------------------------------------------------
 # Argument parsing
 # --------------------------------------------------------------------------
-NONINTERACTIVE="${PENNYWORTH_NONINTERACTIVE:-}"
-SKIP_NPM="${PENNYWORTH_SKIP_NPM:-}"
-SKIP_BREW="${PENNYWORTH_SKIP_BREW:-}"
+NONINTERACTIVE="${ALFRED_NONINTERACTIVE:-}"
+SKIP_NPM="${ALFRED_SKIP_NPM:-}"
+SKIP_BREW="${ALFRED_SKIP_BREW:-}"
 
 usage() {
   cat <<EOF
@@ -70,9 +70,9 @@ Environment overrides:
   HERMES_HOME     Runtime root (default: \$HOME/.hermes)
   WORKSPACE_ROOT  Where you check out repos (default: \$HOME/code)
 
-  PENNYWORTH_NONINTERACTIVE=1   Same as --non-interactive
-  PENNYWORTH_SKIP_NPM=1         Skip Claude Code install via npm
-  PENNYWORTH_SKIP_BREW=1        Skip Homebrew package install
+  ALFRED_NONINTERACTIVE=1   Same as --non-interactive
+  ALFRED_SKIP_NPM=1         Skip Claude Code install via npm
+  ALFRED_SKIP_BREW=1        Skip Homebrew package install
 EOF
 }
 
@@ -107,10 +107,10 @@ ask() {
 # --------------------------------------------------------------------------
 step "Checking host"
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  warn "Pennyworth currently runs on macOS only (launchd-based scheduling)."
+  warn "Alfred-OS currently runs on macOS only (launchd-based scheduling)."
   warn "Linux support requires a systemd port; tracked but not yet shipped."
-  warn "If you want to proceed anyway, set PENNYWORTH_FORCE_LINUX=1."
-  if [[ "${PENNYWORTH_FORCE_LINUX:-}" != "1" ]]; then
+  warn "If you want to proceed anyway, set ALFRED_FORCE_LINUX=1."
+  if [[ "${ALFRED_FORCE_LINUX:-}" != "1" ]]; then
     die "Refusing to install on non-macOS host. See docs/LINUX.md (when it lands)."
   fi
 fi
@@ -201,13 +201,13 @@ fi
 # --------------------------------------------------------------------------
 # 6. Operator config
 # --------------------------------------------------------------------------
-step "Operator config (~/.pennyworthrc)"
-RC_FILE="$HOME/.pennyworthrc"
+step "Operator config (~/.alfredrc)"
+RC_FILE="$HOME/.alfredrc"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE="$SCRIPT_DIR/.pennyworthrc.example"
+TEMPLATE="$SCRIPT_DIR/.alfredrc.example"
 
 if [[ ! -f "$TEMPLATE" ]]; then
-  warn "$.pennyworthrc.example not found in this clone; skipping operator config seeding."
+  warn "$.alfredrc.example not found in this clone; skipping operator config seeding."
 elif [[ -f "$RC_FILE" ]]; then
   ok "$RC_FILE already exists; not overwriting"
 else
@@ -240,18 +240,18 @@ case "${SHELL:-}" in
 esac
 
 # shellcheck disable=SC2016
-APPEND_BLOCK='# pennyworth — added by install.sh
-[[ -f ~/.pennyworthrc ]] && {
+APPEND_BLOCK='# alfred-os — added by install.sh
+[[ -f ~/.alfredrc ]] && {
   set -a
-  source ~/.pennyworthrc
+  source ~/.alfredrc
   set +a
 }'
 
 if [[ ! -f "$SHELL_RC" ]]; then
   printf '%s\n' "$APPEND_BLOCK" > "$SHELL_RC"
-  ok "created $SHELL_RC with pennyworth source line"
-elif grep -qF "pennyworth — added by install.sh" "$SHELL_RC"; then
-  ok "$SHELL_RC already sources ~/.pennyworthrc"
+  ok "created $SHELL_RC with alfred-os source line"
+elif grep -qF "alfred-os — added by install.sh" "$SHELL_RC"; then
+  ok "$SHELL_RC already sources ~/.alfredrc"
 else
   printf '\n%s\n' "$APPEND_BLOCK" >> "$SHELL_RC"
   ok "appended source-block to $SHELL_RC"
@@ -304,5 +304,5 @@ Next steps (run them in this order):
      then ${C_BLUE}BOOTSTRAP.md${C_OFF} for the deeper-dive operations guide.
 
 If anything in this script went sideways, please open an issue at
-https://github.com/luminik-io/pennyworth/issues with the output.
+https://github.com/luminik-io/alfred-os/issues with the output.
 EOF

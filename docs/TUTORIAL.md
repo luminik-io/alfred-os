@@ -22,7 +22,7 @@ Echo needs a repo to operate on. For the tutorial, use any repo you own where yo
 export ECHO_REPO_SLUG=myorg/sandbox-repo
 ```
 
-Add to `~/.pennyworthrc` so it persists.
+Add to `~/.alfredrc` so it persists.
 
 ## Step 2: prepare a test issue
 
@@ -48,7 +48,7 @@ Save as `bin/echo.py` in your fleet repo:
 
 ```python
 #!/usr/bin/env python3
-"""Echo - the simplest useful pennyworth agent. Summarises issues."""
+"""Echo - the simplest useful alfred-os agent. Summarises issues."""
 from __future__ import annotations
 
 import os

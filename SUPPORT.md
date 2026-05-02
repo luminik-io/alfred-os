@@ -5,9 +5,9 @@
 | You want | Channel |
 |---|---|
 | **Help getting started** | Read [`INSTALL.md`](INSTALL.md) → [`docs/TUTORIAL.md`](docs/TUTORIAL.md) → [`BOOTSTRAP.md`](BOOTSTRAP.md). Most setup questions are answered there. |
-| **Bug report** | [Open an issue](https://github.com/luminik-io/pennyworth/issues/new?template=bug.yml) using the bug template. Include: pennyworth version, macOS version, the exact command, full output. |
-| **Feature request** | [Open an issue](https://github.com/luminik-io/pennyworth/issues/new?template=feature.yml) using the feature template. Be specific about the use case before the proposed solution. |
-| **Question / discussion** | [Open an issue](https://github.com/luminik-io/pennyworth/issues/new?template=question.yml) with the `question` label, OR use [GitHub Discussions](https://github.com/luminik-io/pennyworth/discussions) when enabled. |
+| **Bug report** | [Open an issue](https://github.com/luminik-io/alfred-os/issues/new?template=bug.yml) using the bug template. Include: alfred-os version, macOS version, the exact command, full output. |
+| **Feature request** | [Open an issue](https://github.com/luminik-io/alfred-os/issues/new?template=feature.yml) using the feature template. Be specific about the use case before the proposed solution. |
+| **Question / discussion** | [Open an issue](https://github.com/luminik-io/alfred-os/issues/new?template=question.yml) with the `question` label, OR use [GitHub Discussions](https://github.com/luminik-io/alfred-os/discussions) when enabled. |
 | **Security vulnerability** | Do **not** open a public issue. See [`SECURITY.md`](SECURITY.md) for the private-disclosure process. |
 | **Code contribution** | Read [`CONTRIBUTING.md`](CONTRIBUTING.md), open a draft PR. |
 
@@ -22,7 +22,7 @@ This is a weekend-maintained project. Realistic expectations:
 
 ## What's out of scope for support
 
-- **Multi-tenant deployments.** Pennyworth is single-operator by design. We don't support shared-fleet topologies.
+- **Multi-tenant deployments.** Alfred-OS is single-operator by design. We don't support shared-fleet topologies.
 - **Hosted SaaS.** This is a framework, not a service. We won't run agents for you.
 - **Linux fleets.** First-class Linux support is on the roadmap but not shipped. See [`docs/LINUX.md`](docs/LINUX.md) for interim cron / systemd patterns.
 - **Custom Claude Code installs.** If `npm install -g @anthropic-ai/claude-code` doesn't work for you, talk to Anthropic; the CLI is theirs.
@@ -43,4 +43,4 @@ If those don't resolve it, file an issue with the output of all five.
 
 ## Maintainer time
 
-Pennyworth is maintained by a solo founder on weekends. PR review is best-effort, may take 1-3 weeks for non-urgent changes. If you need faster turnaround for a serious bug, label the issue `severity:p0` and explain the impact — those get prioritised.
+Alfred-OS is maintained by a solo founder on weekends. PR review is best-effort, may take 1-3 weeks for non-urgent changes. If you need faster turnaround for a serious bug, label the issue `severity:p0` and explain the impact — those get prioritised.

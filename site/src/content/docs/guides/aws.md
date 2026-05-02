@@ -3,11 +3,11 @@ title: AWS
 description: IAM-per-agent, Secrets Manager naming, scoped policy templates.
 ---
 
-Pennyworth uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sentry tokens, third-party API keys) and **per-agent IAM** (one scoped IAM identity per cron-spawned agent).
+Alfred-OS uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sentry tokens, third-party API keys) and **per-agent IAM** (one scoped IAM identity per cron-spawned agent).
 
-If you don't need either, skip this — put `SLACK_WEBHOOK_URL` in `~/.pennyworthrc` directly. The framework runs fine without an AWS account.
+If you don't need either, skip this — put `SLACK_WEBHOOK_URL` in `~/.alfredrc` directly. The framework runs fine without an AWS account.
 
-The full guide lives at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/AWS_SETUP.md). The highlights:
+The full guide lives at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md). The highlights:
 
 ## Why per-agent IAM
 
@@ -27,7 +27,7 @@ AWS_ADMIN_PROFILE="<your-admin>"
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-user \
   --user-name huntress-cron \
-  --tags Key=purpose,Value=pennyworth-agent
+  --tags Key=purpose,Value=alfred-os-agent
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-access-key \
   --user-name huntress-cron --output json > /tmp/keys.json
@@ -54,7 +54,7 @@ aws --profile "$AWS_ADMIN_PROFILE" iam put-user-policy \
   --policy-document file:///tmp/policy.json
 ```
 
-Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/AWS_SETUP.md#2-attach-a-scoped-inline-policy).
+Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md#2-attach-a-scoped-inline-policy).
 
 ## Secret naming convention
 
@@ -66,11 +66,11 @@ Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [
 | `alfred/sentry-dsn-agents` | Sentry DSN agent runners post events to |
 | `alfred/sentry-api-token` | Sentry API token for query operations |
 
-Note the secret ID prefix `alfred/` is a convention from the reference fleet — adjust to your fleet's naming if you prefer (e.g. `myfleet/slack-webhook`). Override `SLACK_WEBHOOK_SECRET_ID` in `~/.pennyworthrc` to match.
+Note the secret ID prefix `alfred/` is a convention from the reference fleet — adjust to your fleet's naming if you prefer (e.g. `myfleet/slack-webhook`). Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` to match.
 
 ## Key rotation
 
-Every 90 days minimum. Mint new key → update `~/.aws/credentials` → verify with `aws sts get-caller-identity` → delete old key. See the runbook in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/AWS_SETUP.md#5-rotate-keys).
+Every 90 days minimum. Mint new key → update `~/.aws/credentials` → verify with `aws sts get-caller-identity` → delete old key. See the runbook in [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md#5-rotate-keys).
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 # Claude Code
 
-Pennyworth runs every agent as a `claude -p` subprocess. The framework is the harness; Claude Code is the brain. This doc covers installation, Pro-vs-Max sizing, authentication, and the multi-account swap pattern (`hermes-claude`).
+Alfred-OS runs every agent as a `claude -p` subprocess. The framework is the harness; Claude Code is the brain. This doc covers installation, Pro-vs-Max sizing, authentication, and the multi-account swap pattern (`hermes-claude`).
 
 ## What "Claude Code" is
 
@@ -9,7 +9,7 @@ The official Anthropic CLI for Claude. Two surfaces:
 - `claude` — interactive REPL. Used once during install for auth.
 - `claude -p '<prompt>'` — non-interactive single-prompt invocation. **This is what every agent uses.** Returns a structured JSON result the framework parses (turns, cost, success/failure subtype, session id for resume).
 
-Pennyworth doesn't talk to the Anthropic API directly. It shells out to `claude`. That's deliberate — the CLI handles model selection, billing, rate-limit signalling, retries, MCP plumbing. Re-implementing any of that is out of scope.
+Alfred-OS doesn't talk to the Anthropic API directly. It shells out to `claude`. That's deliberate — the CLI handles model selection, billing, rate-limit signalling, retries, MCP plumbing. Re-implementing any of that is out of scope.
 
 ## Install
 
@@ -101,7 +101,7 @@ hermes-claude primary
 
 ## CLAUDE_BIN env var
 
-If `claude` isn't on the PATH that launchd inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.pennyworthrc`:
+If `claude` isn't on the PATH that launchd inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`:
 
 ```sh
 CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
@@ -116,7 +116,7 @@ which claude
 
 ## Cost vs token-API mental model
 
-A common misconception: pennyworth must be expensive because it runs many model calls. In practice, a Max-subscription fleet shipping 10-20 PRs a day costs $100/mo flat — same as if you only used Claude Code interactively for 1 hour a day.
+A common misconception: alfred-os must be expensive because it runs many model calls. In practice, a Max-subscription fleet shipping 10-20 PRs a day costs $100/mo flat — same as if you only used Claude Code interactively for 1 hour a day.
 
 The subscription model **does not pass through token costs**. The fleet is bounded by the weekly turn quota, not by USD-per-token. The framework's per-day spend caps in `SpendState` are **safety rails against runaway loops** (e.g. if a prompt accidentally enters a 500-turn while-loop), not bill-tracking — there is no incremental bill.
 
@@ -129,7 +129,7 @@ Claude Code supports installable skills (small markdown + script bundles that ex
 ## Troubleshooting
 
 **`claude: command not found` from a launchd-spawned agent.**
-The plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.pennyworthrc` (sourced by launchd via the agent's environment), or symlink `claude` to `/usr/local/bin/`.
+The plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc` (sourced by launchd via the agent's environment), or symlink `claude` to `/usr/local/bin/`.
 
 **`error_rate_limit` immediately on every firing.**
 You've blown the weekly cap. `cat $HERMES_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `hermes-claude swap`, or upgrade to Max.

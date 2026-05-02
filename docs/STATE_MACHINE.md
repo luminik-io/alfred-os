@@ -2,7 +2,7 @@
 
 Cooperative cross-actor coordination for the agent fleet — the primitive that prevents two actors (any agent, any operator) from doing the same work twice on the same GitHub issue.
 
-The state machine is implemented entirely on GitHub: labels carry the lifecycle state, structured HTML comments carry the audit trail. No shared database, no shared filesystem, no Slack lock — pennyworth is single-host but the contract works the same way if you ever spread the fleet across machines, because GitHub is the synchronisation point.
+The state machine is implemented entirely on GitHub: labels carry the lifecycle state, structured HTML comments carry the audit trail. No shared database, no shared filesystem, no Slack lock — alfred-os is single-host but the contract works the same way if you ever spread the fleet across machines, because GitHub is the synchronisation point.
 
 ## Lifecycle labels
 

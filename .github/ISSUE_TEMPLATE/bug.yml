@@ -8,12 +8,12 @@ body:
       value: |
         Thanks for taking the time to file a bug. The more concrete you are, the faster we can fix it.
 
-        **Before filing:** check [`docs/TUTORIAL.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/TUTORIAL.md) "Common stumbles" and [`INSTALL.md`](https://github.com/luminik-io/pennyworth/blob/main/INSTALL.md) "Troubleshooting" — most install/config issues are answered there.
+        **Before filing:** check [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md) "Common stumbles" and [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md) "Troubleshooting" — most install/config issues are answered there.
 
   - type: input
     id: version
     attributes:
-      label: pennyworth version
+      label: alfred-os version
       description: Output of `cat VERSION` from your clone.
       placeholder: "0.1.0"
     validations:

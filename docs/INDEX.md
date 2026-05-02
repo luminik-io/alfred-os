@@ -1,7 +1,7 @@
-# pennyworth — docs index
+# alfred-os — docs index
 
 Top-level docs (one level up):
-- [`README.md`](../README.md) — what pennyworth is, quick start, codename pattern, status
+- [`README.md`](../README.md) — what alfred-os is, quick start, codename pattern, status
 - [`ARCHITECTURE.md`](../ARCHITECTURE.md) — design rationale: why cron, why worktrees, why per-agent IAM
 - [`BOOTSTRAP.md`](../BOOTSTRAP.md) — fresh-fork setup walkthrough
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — PR criteria, codename proposals, prompt-change flow

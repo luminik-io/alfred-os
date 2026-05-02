@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Echo — issue summariser. Reference codename agent showing the full
-pennyworth lifecycle: pick → claim → invoke claude → act → release →
+alfred-os lifecycle: pick → claim → invoke claude → act → release →
 report.
 
 This is the agent built end-to-end in docs/TUTORIAL.md. Copy to

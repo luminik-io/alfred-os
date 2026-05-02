@@ -3,21 +3,21 @@ title: Contributing
 description: How to propose changes, the design constraints we hold, the PR review flow.
 ---
 
-The full guide lives at [`CONTRIBUTING.md`](https://github.com/luminik-io/pennyworth/blob/main/CONTRIBUTING.md). The shape:
+The full guide lives at [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md). The shape:
 
 ## Read first
 
-- [Architecture](/pennyworth/concepts/architecture/) — the design rationale.
-- [Roadmap](/pennyworth/about/roadmap/) — what's in flight and what's deliberately out.
-- The constraints in [Architecture → "What this rules out"](/pennyworth/concepts/architecture/#what-this-rules-out).
+- [Architecture](/alfred-os/concepts/architecture/) — the design rationale.
+- [Roadmap](/alfred-os/about/roadmap/) — what's in flight and what's deliberately out.
+- The constraints in [Architecture → "What this rules out"](/alfred-os/concepts/architecture/#what-this-rules-out).
 
 PRs that fit get reviewed. PRs that broaden scope get politely declined.
 
 ## Local dev
 
 ```sh
-git clone https://github.com/luminik-io/pennyworth.git
-cd pennyworth
+git clone https://github.com/luminik-io/alfred-os.git
+cd alfred-os
 uv run --with pytest pytest tests/         # 35 tests, ~2s
 uv run --with 'ruff>=0.6' ruff check .
 uv run --with 'mypy>=1.10' mypy lib/
@@ -33,7 +33,7 @@ pre-commit install
 ## What we accept
 
 - **Bug fixes** — always welcome. File the bug first if you didn't.
-- **Test coverage** — always welcome. Pennyworth aims for 100% on `agent_runner.py` over time.
+- **Test coverage** — always welcome. Alfred-OS aims for 100% on `agent_runner.py` over time.
 - **Doc fixes / clarifications** — always welcome.
 - **New examples** under `examples/bin/` — welcome if they show a useful pattern not already covered.
 - **In-flight roadmap items** — welcome if you've sketched the design in the related issue first.
@@ -54,11 +54,11 @@ pre-commit install
 - One topic per PR. Stack PRs for related changes.
 - Update `CHANGELOG.md` under `[Unreleased]` for any user-visible change.
 - Update `docs/` and `site/` for any operator-visible change.
-- The PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](https://github.com/luminik-io/pennyworth/blob/main/.github/PULL_REQUEST_TEMPLATE.md) has the verification checklist.
+- The PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](https://github.com/luminik-io/alfred-os/blob/main/.github/PULL_REQUEST_TEMPLATE.md) has the verification checklist.
 
 ## Codename proposals
 
-If you want to propose a new codename for the reference fleet (`luminik-io/alfred`), open the issue *there*, not here. Pennyworth is the framework; codenames are fleet-specific.
+If you want to propose a new codename for the reference fleet (`luminik-io/alfred`), open the issue *there*, not here. Alfred-OS is the framework; codenames are fleet-specific.
 
 If you want to propose a new *example* codename for `examples/bin/` here, open a feature request issue with the codename + role + 100-line sketch. We'll respond with the design call before you write the PR.
 

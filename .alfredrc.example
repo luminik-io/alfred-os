@@ -1,10 +1,10 @@
-# pennyworth operator config — example.
+# alfred-os operator config — example.
 #
-# Copy to ~/.pennyworthrc (already done by install.sh on a fresh setup),
+# Copy to ~/.alfredrc (already done by install.sh on a fresh setup),
 # fill in the values, and your shell rc will source it on every new session.
 #
 # This file is sourced as KEY=VALUE pairs. No shell expansion, no quoting
-# tricks — keep values simple. install.sh's ~/.pennyworthrc loader is
+# tricks — keep values simple. install.sh's ~/.alfredrc loader is
 # tolerant of multi-word values like ACP_ARGS=--acp --stdio.
 
 # ----------------------------------------------------------------------

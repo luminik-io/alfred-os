@@ -1,6 +1,6 @@
 # Contributing
 
-pennyworth is the framework behind one operator's production fleet. PRs are welcome, but the maintainer's bar is "does this make pennyworth a better framework for narrow-specialist cron-driven Claude Code agents" — not "does this support every adjacent use case." If a change adds configurability at the cost of more moving parts, expect it to be declined.
+alfred-os is the framework behind one operator's production fleet. PRs are welcome, but the maintainer's bar is "does this make alfred-os a better framework for narrow-specialist cron-driven Claude Code agents" — not "does this support every adjacent use case." If a change adds configurability at the cost of more moving parts, expect it to be declined.
 
 ## Proposing a new codename agent
 

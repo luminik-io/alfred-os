@@ -1,11 +1,11 @@
 [project]
-name = "pennyworth"
+name = "alfred-os"
 version = "0.1.0"
 description = "A small framework for running a fleet of narrow-specialist Claude Code agents on a single Mac, dispatched by cron, isolated by git worktree."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-  { name = "Pennyworth contributors" },
+  { name = "Alfred-OS contributors" },
 ]
 requires-python = ">=3.11"
 keywords = ["claude-code", "agents", "cron", "launchd", "automation"]
@@ -32,10 +32,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://luminik-io.github.io/pennyworth"
-Repository = "https://github.com/luminik-io/pennyworth"
-Issues = "https://github.com/luminik-io/pennyworth/issues"
-Changelog = "https://github.com/luminik-io/pennyworth/blob/main/CHANGELOG.md"
+Homepage = "https://luminik-io.github.io/alfred-os"
+Repository = "https://github.com/luminik-io/alfred-os"
+Issues = "https://github.com/luminik-io/alfred-os/issues"
+Changelog = "https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,9 +1,9 @@
 ---
 title: Issue claim state machine
-description: How pennyworth prevents two actors (any agent, any operator) from doing the same work twice on the same GitHub issue.
+description: How alfred-os prevents two actors (any agent, any operator) from doing the same work twice on the same GitHub issue.
 ---
 
-The full doc lives at [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/STATE_MACHINE.md). This page is the executive summary.
+The full doc lives at [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md). This page is the executive summary.
 
 ## The problem
 
@@ -65,7 +65,7 @@ The loser exits the firing without burning a Claude turn on duplicate work. The 
 
 A runner crashing between `claim_issue` and `release_issue` would normally leave an issue blocked indefinitely. `find_stale_claims()` reads claim comments and surfaces any in-flight claim with no matching release after `max_age_hours` (default 4). `force_release_stale_claim()` then transitions the issue back to `agent:implement` so the queue picks it up again.
 
-Wire it into your fleet's daily cleanup runner. The shipped CLI exposes this as `pennyworth-label-state sweep-claims [--max-age-hours N] [--dry-run]`.
+Wire it into your fleet's daily cleanup runner. The shipped CLI exposes this as `alfred-label-state sweep-claims [--max-age-hours N] [--dry-run]`.
 
 ## Operator overrides
 
@@ -73,19 +73,19 @@ Two ways to take an issue manually without racing an agent:
 
 ```sh
 # Mark a single issue do-not-pickup
-pennyworth-label-state claim <repo>#<N>
+alfred-label-state claim <repo>#<N>
 # ... do your work ...
-pennyworth-label-state release <repo>#<N>
+alfred-label-state release <repo>#<N>
 ```
 
 ```sh
 # Take a whole repo offline from the fleet
-pennyworth-label-state repo pause <repo>
+alfred-label-state repo pause <repo>
 # ... refactor in peace ...
-pennyworth-label-state repo resume <repo>
+alfred-label-state repo resume <repo>
 ```
 
-The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/pennyworth/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically: if you push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
+The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/alfred-os/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically: if you push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
 
 Override per-push: `git push --no-verify`.
 Override globally: `LABEL_STATE_SKIP_DEDUP_CHECK=1` in your shell rc.
@@ -117,4 +117,4 @@ RELEASE_COMMENT_PREFIX: str
 PAUSED_REPOS_FILE: Path
 ```
 
-See [agent_runner API reference](/pennyworth/reference/agent-runner/) for the full module surface.
+See [agent_runner API reference](/alfred-os/reference/agent-runner/) for the full module surface.

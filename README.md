@@ -1,7 +1,7 @@
-# pennyworth
+# alfred-os
 
-[![CI](https://github.com/luminik-io/pennyworth/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/pennyworth/actions/workflows/ci.yml)
-[![Site](https://github.com/luminik-io/pennyworth/actions/workflows/site.yml/badge.svg)](https://luminik-io.github.io/pennyworth/)
+[![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
+[![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://luminik-io.github.io/alfred-os/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Made with Claude Code](https://img.shields.io/badge/Made%20with-Claude%20Code-D97757)](https://docs.claude.com/en/docs/claude-code)
 ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
@@ -11,7 +11,7 @@
 
 A small framework for running cron-driven Claude Code agents on a single Mac, dispatched by `launchd`, isolated by per-firing git worktrees, scoped by per-agent IAM, and bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
 
-🌐 **Docs site**: https://luminik-io.github.io/pennyworth
+🌐 **Docs site**: https://luminik-io.github.io/alfred-os
 📦 **Reference fleet** (full production application): [`luminik-io/alfred`](https://github.com/luminik-io/alfred)
 🛠 **Built for**: solo founders, indie hackers, small-team CTOs
 
@@ -25,7 +25,7 @@ Most agentic frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume
 - In-memory state can't survive an OS reboot. macOS restarts every few weeks.
 - Chat-first interfaces force the operator to be the bottleneck. The whole point is to *not* be one.
 
-Pennyworth picks a different shape:
+Alfred-OS picks a different shape:
 
 ```
 launchd plist (every N min)
@@ -48,10 +48,10 @@ Each firing is a fresh subprocess in its own git worktree. Spend is tracked per 
 ## Quick start (30 minutes from a fresh Mac)
 
 ```sh
-git clone https://github.com/luminik-io/pennyworth.git ~/code/pennyworth
-cd ~/code/pennyworth
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
 bash install.sh
-exec $SHELL                       # pick up ~/.pennyworthrc
+exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 bash deploy.sh && bash bin/doctor.sh
@@ -74,7 +74,7 @@ Full setup walkthrough including AWS IAM-per-agent, Slack webhook, and your firs
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference — pick / claim / claude / act / release / report. |
 | [`examples/bin/label_state.py`](examples/bin/label_state.py) | Operator CLI for the issue claim state machine. |
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
-| [`Formula/pennyworth.rb`](Formula/pennyworth.rb) | Homebrew formula — `brew install luminik-io/tap/pennyworth` (when the tap is published). |
+| [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula — `brew install luminik-io/tap/alfred-os` (when the tap is published). |
 | [`site/`](site/) | Astro Starlight docs site, deployed to GitHub Pages. |
 
 ## Documentation
@@ -92,7 +92,7 @@ Full setup walkthrough including AWS IAM-per-agent, Slack webhook, and your firs
 - 📘 [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - 🛡 [Security](SECURITY.md) — private-disclosure process.
 
-Or browse the rendered version at https://luminik-io.github.io/pennyworth/.
+Or browse the rendered version at https://luminik-io.github.io/alfred-os/.
 
 ## Codename pattern
 
@@ -100,21 +100,21 @@ The framework expects you to write one agent script per **narrow specialist**, n
 
 The cast matters for two reasons. First, the codenames appear in PR titles, Slack messages, and commit-trailer metadata — a coherent cast makes scanning your fleet's channel legible. Second, narrow scopes per codename are a forcing function for design quality. "What does *Bane* do?" is a sharper question than "what does the test agent do?".
 
-See [Architecture → Codename pattern](https://luminik-io.github.io/pennyworth/concepts/codename-pattern/) for more.
+See [Architecture → Codename pattern](https://luminik-io.github.io/alfred-os/concepts/codename-pattern/) for more.
 
-## What pennyworth deliberately does NOT do
+## What alfred-os deliberately does NOT do
 
 - ❌ Multi-tenant. Single operator, one Mac, one config.
 - ❌ A web UI. Slack is the human surface.
 - ❌ Long-running orchestration loops. Cron is the orchestrator.
-- ❌ LLM routing / model selection at the framework layer (Claude Code already handles model picking; pennyworth invokes the CLI).
+- ❌ LLM routing / model selection at the framework layer (Claude Code already handles model picking; alfred-os invokes the CLI).
 - ❌ Browser automation runtimes. If your fleet needs a browser, install Playwright in your codename agent's bin script.
-- ❌ Vector databases for memory. The reference fleet uses a doc-shaped memory layer (gbrain). Pennyworth doesn't ship one — that's a per-fleet decision.
-- ❌ Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing in pennyworth.
+- ❌ Vector databases for memory. The reference fleet uses a doc-shaped memory layer (gbrain). Alfred-OS doesn't ship one — that's a per-fleet decision.
+- ❌ Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing in alfred-os.
 
 ## Status
 
-**v0.1.0** — initial public extraction from a fleet that has been running unattended for several months. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make pennyworth multi-tenant.
+**v0.1.0** — initial public extraction from a fleet that has been running unattended for several months. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
 
 Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design constraints (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed; PRs that broaden scope get politely declined.
 
@@ -122,6 +122,6 @@ Maintained on weekends. Issues triaged on a best-effort basis. PRs that match th
 
 MIT. See [`LICENSE`](LICENSE).
 
-## Why "pennyworth"
+## Why "alfred-os"
 
-Alfred Pennyworth is Bruce Wayne's butler — the one who keeps the cave running while the mission is in flight. The reference fleet is named `alfred`, the codenames are bat-themed, and the framework that lets the cave function is *pennyworth*.
+Alfred Alfred-OS is Bruce Wayne's butler — the one who keeps the cave running while the mission is in flight. The reference fleet is named `alfred`, the codenames are bat-themed, and the framework that lets the cave function is *alfred-os*.

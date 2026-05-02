@@ -1,6 +1,6 @@
 # Linux support
 
-**Short answer: not yet.** Pennyworth's scheduling layer is `launchd`, which is macOS-only. The framework code itself (`agent_runner.py`, the helper scripts) is Python and Bash and runs fine on Linux — but without a scheduling layer that mirrors `launchd`'s per-user agent semantics, the fleet isn't actually a fleet.
+**Short answer: not yet.** Alfred-OS's scheduling layer is `launchd`, which is macOS-only. The framework code itself (`agent_runner.py`, the helper scripts) is Python and Bash and runs fine on Linux — but without a scheduling layer that mirrors `launchd`'s per-user agent semantics, the fleet isn't actually a fleet.
 
 ## Why launchd specifically
 
@@ -29,9 +29,9 @@ If you want to read the code, write your own agents, run the test suite, or use 
 
 - `launchd/render.sh` — generates `.plist` files. Linux doesn't have plists.
 - `deploy.sh` — calls `launchctl bootstrap`. Will fail with command-not-found.
-- The `install.sh` macOS check — refuses to run unless you set `PENNYWORTH_FORCE_LINUX=1`.
+- The `install.sh` macOS check — refuses to run unless you set `ALFRED_FORCE_LINUX=1`.
 
-## How to run pennyworth-shaped agents on Linux today
+## How to run alfred-os-shaped agents on Linux today
 
 Until the systemd port lands, you have two options:
 
@@ -51,26 +51,26 @@ You lose the per-agent stdout/stderr separation and the `_paused/` marker patter
 Drop a unit + timer per agent in `~/.config/systemd/user/`:
 
 ```ini
-# ~/.config/systemd/user/pennyworth-lucius.service
+# ~/.config/systemd/user/alfred-os-lucius.service
 [Unit]
-Description=pennyworth Lucius (feature-dev agent)
+Description=alfred-os Lucius (feature-dev agent)
 
 [Service]
 Type=oneshot
-EnvironmentFile=%h/.pennyworthrc
+EnvironmentFile=%h/.alfredrc
 ExecStart=/usr/bin/env python3 %h/.hermes/bin/lucius.py
 StandardOutput=append:%h/.hermes/logs/lucius.stdout
 StandardError=append:%h/.hermes/logs/lucius.stderr
 ```
 
 ```ini
-# ~/.config/systemd/user/pennyworth-lucius.timer
+# ~/.config/systemd/user/alfred-os-lucius.timer
 [Unit]
-Description=pennyworth Lucius timer
+Description=alfred-os Lucius timer
 
 [Timer]
 OnUnitActiveSec=20min
-Unit=pennyworth-lucius.service
+Unit=alfred-os-lucius.service
 
 [Install]
 WantedBy=timers.target
@@ -80,20 +80,20 @@ Enable + start:
 
 ```sh
 systemctl --user daemon-reload
-systemctl --user enable --now pennyworth-lucius.timer
+systemctl --user enable --now alfred-os-lucius.timer
 ```
 
 Pause:
 
 ```sh
-systemctl --user disable --now pennyworth-lucius.timer
+systemctl --user disable --now alfred-os-lucius.timer
 ```
 
 Status:
 
 ```sh
 systemctl --user list-timers
-journalctl --user -u pennyworth-lucius -n 50
+journalctl --user -u alfred-os-lucius -n 50
 ```
 
 This is what a `systemd/render.sh` would generate. Until that ships, you're hand-rolling.
@@ -119,6 +119,6 @@ The bigger gotcha on WSL2 is path mapping: `WORKSPACE_ROOT` should be a `~/code`
 
 ## What about Docker?
 
-Pennyworth is not container-friendly today. The launchd/systemd assumption means you'd need to host the scheduler outside the container and shell into it for each firing — at which point you've reimplemented `launchctl kickstart` poorly. A "pennyworth in a container" pattern would need the framework to expose its own minimal scheduler and abandon the host-scheduler dependency. Not on the roadmap.
+Alfred-OS is not container-friendly today. The launchd/systemd assumption means you'd need to host the scheduler outside the container and shell into it for each firing — at which point you've reimplemented `launchctl kickstart` poorly. A "alfred-os in a container" pattern would need the framework to expose its own minimal scheduler and abandon the host-scheduler dependency. Not on the roadmap.
 
 If you want to run agents *inside* containers (e.g. a per-firing Docker image with isolated tooling), that's compatible — write your codename's `bin/<name>.py` to `docker run --rm ... claude -p ...` instead of calling `claude` directly. The framework doesn't care what shell you wrap around the LLM call.

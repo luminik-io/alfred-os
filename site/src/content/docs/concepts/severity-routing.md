@@ -68,15 +68,15 @@ Today's `slack_post` uses an **incoming webhook**. Webhooks have two limits:
 - **Cannot post threaded replies** (no `thread_ts`).
 - **Cannot update the channel topic** (read-only on channel state).
 
-When pennyworth ships bot-token integration (`xoxb-…`), two follow-ups land:
+When alfred-os ships bot-token integration (`xoxb-…`), two follow-ups land:
 
 1. **Daily-thread routing for `info`-tier**. The `fleet-recap-morning` cron posts an anchor message at 07:30; every `info` post during the day goes as a threaded reply under it. Main-channel timeline shrinks to one anchor + the day's `warn` and `alert` events.
 2. **Channel topic from fleet state**. `slack_set_channel_topic()` renders e.g. `Lucius: 17 ✅ / 3 ❌ today · Drake: 8 ok · 0 paused repos`. Glanceable status without opening a dashboard.
 
-Both tracked in [Roadmap](/pennyworth/about/roadmap/) under "in-flight."
+Both tracked in [Roadmap](/alfred-os/about/roadmap/) under "in-flight."
 
 ## See also
 
-- [Slack setup](/pennyworth/guides/slack/) — webhook creation, AWS storage, optional bot-token path.
-- [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/SLACK_SETUP.md) — the full guide.
-- [`agent_runner.slack_post`](https://github.com/luminik-io/pennyworth/blob/main/lib/agent_runner.py) — the source.
+- [Slack setup](/alfred-os/guides/slack/) — webhook creation, AWS storage, optional bot-token path.
+- [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md) — the full guide.
+- [`agent_runner.slack_post`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py) — the source.

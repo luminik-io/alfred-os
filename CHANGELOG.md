@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to pennyworth will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to alfred-os will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -8,7 +8,7 @@ All notable changes to pennyworth will be documented here. Format follows [Keep 
 
 - **Issue claim state machine** — `claim_issue` / `release_issue` / `find_stale_claims` / `force_release_stale_claim` / `is_repo_paused` / `set_repo_paused` / `list_paused_repos` / `issue_dedup_check`. Lifecycle labels `agent:in-flight` / `agent:pr-open` / `agent:done` plus operator-override `do-not-pickup`. Full doc at `docs/STATE_MACHINE.md`.
 - **Slack severity routing** — `slack_post(text, severity="info" | "warn" | "alert")`. `info` is back-compat default; `warn` prefixes ⚠️; `alert` prefixes 🚨 + appends `<!here>`.
-- **Fresh-machine bootstrap** — `install.sh` (idempotent, brew + npm + dirs + shell rc), `INSTALL.md` (TL;DR + step-by-step), `.pennyworthrc.example` (operator config template).
+- **Fresh-machine bootstrap** — `install.sh` (idempotent, brew + npm + dirs + shell rc), `INSTALL.md` (TL;DR + step-by-step), `.alfredrc.example` (operator config template).
 - **Setup walkthroughs** — `docs/SLACK_SETUP.md`, `docs/AWS_SETUP.md`, `docs/CLAUDE_CODE.md`, `docs/SKILLS.md`, `docs/LINUX.md`.
 - **Tutorial** — `docs/TUTORIAL.md` builds the `Echo` reference agent end-to-end in 30 minutes.
 - **Operator-facing CLI example** — `examples/bin/label_state.py` (`claim` / `release` / `dedup-check` / `status-issue` / `repo` / `sweep-claims`).
@@ -17,7 +17,7 @@ All notable changes to pennyworth will be documented here. Format follows [Keep 
 - **CI** — `pytest` + `ruff` + `mypy` + `shellcheck` on every PR.
 - **Release automation** — tag-driven GitHub release with auto-extracted changelog notes.
 - **Project hygiene** — `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, issue templates, PR template, `dependabot.yml`, `pyproject.toml` (ruff + mypy), `.pre-commit-config.yaml`.
-- **`Formula/pennyworth.rb`** — Homebrew formula skeleton.
+- **`Formula/alfred-os.rb`** — Homebrew formula skeleton.
 - **`ROADMAP.md`** — shipped / in-flight / out-of-scope.
 
 ### Changed
@@ -45,5 +45,5 @@ Initial extraction from [`luminik-io/alfred`](https://github.com/luminik-io/alfr
 - `tests/test_agent_runner.py` — 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Unreleased]: https://github.com/luminik-io/pennyworth/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/luminik-io/pennyworth/releases/tag/v0.1.0
+[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/luminik-io/alfred-os/releases/tag/v0.1.0
