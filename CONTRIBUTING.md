@@ -59,4 +59,4 @@ No formal test suite. The runtime is short enough to read end-to-end. Production
 
 ## OSS-readiness pass
 
-Open thread. State of the cleanup is tracked on the `chore/oss-docs` and `chore/oss-paths` branches. If you spot something that needs fixing (a hardcoded `/Users/operator` path, a doc that points at a private URL, a stale TODO), open a small PR rather than asking. Drive-by fixes are the easiest contribution to land.
+Open thread. State of the cleanup is tracked. If you spot something that needs fixing (a hardcoded host-specific path, a doc that points at a private URL, a stale TODO), open a small PR rather than asking. Drive-by fixes are the easiest contribution to land.

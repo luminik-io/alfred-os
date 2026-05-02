@@ -1773,7 +1773,7 @@ class _FiringContext:
         emit("firing_start", agent=self.agent)
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    def __exit__(self, exc_type, exc, tb) -> None:
         if exc is not None:
             emit("error", agent=self.agent, error=f"{exc_type.__name__}: {exc}")
             emit(
@@ -1784,7 +1784,7 @@ class _FiringContext:
                 cost_usd=self._cost_usd,
                 reason=exc_type.__name__,
             )
-            return False  # don't suppress
+            return  # propagate; do not suppress
         emit(
             "firing_end",
             agent=self.agent,
@@ -1793,7 +1793,6 @@ class _FiringContext:
             cost_usd=self._cost_usd,
             **self._extra,
         )
-        return False
 
 
 def emit_firing(agent: str) -> _FiringContext:

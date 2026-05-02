@@ -114,3 +114,11 @@ filterwarnings = [
   "error",
   "ignore::DeprecationWarning:dateutil.*",
 ]
+[[tool.mypy.overrides]]
+# Optional brain integration — modules live in the operator's private
+# fleet, not in alfred-os. The agent_runner functions that import these
+# are guarded by _shared_agent_available() and degrade silently when the
+# brain isn't mounted. Tell mypy to ignore the missing imports.
+module = ["memory_reflect", "recall", "guardrail", "context_budget", "event_stream"]
+ignore_missing_imports = true
+
