@@ -15,6 +15,7 @@ the secret fetch and the screenshot upload. Without it the default
 credential chain applies. ALFRED_HUNTRESS_S3_BUCKET, when set, receives
 test-failed PNG screenshots for inclusion in Slack failure messages.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,17 +27,26 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    HERMES_HOME, WORKSPACE,
-    EventLog, PreflightFailed, PreflightSpec,
-    SpendState, doctor_mode, preflight, run, slack_post, with_lock,
+from agent_runner import (
+    HERMES_HOME,
+    WORKSPACE,
+    EventLog,
+    PreflightFailed,
+    PreflightSpec,
+    SpendState,
+    doctor_mode,
+    preflight,
+    run,
+    slack_post,
+    with_lock,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "huntress")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
-HUNTRESS_DIR = Path(os.environ.get("ALFRED_HUNTRESS_TESTS_DIR",
-                                   str(HERMES_HOME / "tests" / "huntress")))
+HUNTRESS_DIR = Path(
+    os.environ.get("ALFRED_HUNTRESS_TESTS_DIR", str(HERMES_HOME / "tests" / "huntress"))
+)
 TARGET_URL = os.environ.get("ALFRED_HUNTRESS_TARGET_URL", "")
 AWS_PROFILE = os.environ.get("ALFRED_HUNTRESS_AWS_PROFILE", "")
 SECRET_ID = os.environ.get("ALFRED_HUNTRESS_SECRET_ID", "alfred/huntress/test-account")
@@ -44,11 +54,11 @@ REGION = os.environ.get("AWS_REGION", "us-east-1")
 S3_BUCKET = os.environ.get("ALFRED_HUNTRESS_S3_BUCKET", "")
 ECS_CLUSTER = os.environ.get("ALFRED_HUNTRESS_ECS_CLUSTER", "")
 ECS_SERVICES = [
-    s.strip()
-    for s in os.environ.get("ALFRED_HUNTRESS_ECS_SERVICES", "").split(",")
-    if s.strip()
+    s.strip() for s in os.environ.get("ALFRED_HUNTRESS_ECS_SERVICES", "").split(",") if s.strip()
 ]
-DEPLOY_REF_REPO = os.environ.get("ALFRED_HUNTRESS_DEPLOY_REF_REPO", "")  # local dir under WORKSPACE for SHA reporting
+DEPLOY_REF_REPO = os.environ.get(
+    "ALFRED_HUNTRESS_DEPLOY_REF_REPO", ""
+)  # local dir under WORKSPACE for SHA reporting
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
@@ -59,13 +69,25 @@ PREFLIGHT = PreflightSpec(
 
 def _aws(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     """Run aws with stripped env (force the dedicated profile, ignore inherited keys)."""
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
-                        "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k
+        not in (
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_SECURITY_TOKEN",
+        )
+    }
     if AWS_PROFILE:
         env["AWS_PROFILE"] = AWS_PROFILE
     return subprocess.run(
-        ["aws"] + args, env=env, capture_output=True, text=True, timeout=timeout,
+        ["aws", *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
     )
 
 
@@ -85,8 +107,10 @@ def main() -> int:
         print(f"[{AGENT.upper()}-IDLE] no target URL configured (set ALFRED_HUNTRESS_TARGET_URL)")
         return 0
     if not HUNTRESS_DIR.is_dir():
-        print(f"[{AGENT.upper()}-IDLE] tests dir {HUNTRESS_DIR} not found "
-              "(operator: drop Playwright tests there)")
+        print(
+            f"[{AGENT.upper()}-IDLE] tests dir {HUNTRESS_DIR} not found "
+            "(operator: drop Playwright tests there)"
+        )
         return 0
 
     events = EventLog(agent=AGENT)
@@ -96,12 +120,22 @@ def main() -> int:
 
     # 1. Optional: staging health via ECS describe-services
     if ECS_CLUSTER and ECS_SERVICES:
-        svc = _aws([
-            "ecs", "describe-services", "--region", REGION, "--cluster", ECS_CLUSTER,
-            "--services", *ECS_SERVICES,
-            "--query", "services[].{name:serviceName,running:runningCount,desired:desiredCount}",
-            "--output", "json",
-        ])
+        svc = _aws(
+            [
+                "ecs",
+                "describe-services",
+                "--region",
+                REGION,
+                "--cluster",
+                ECS_CLUSTER,
+                "--services",
+                *ECS_SERVICES,
+                "--query",
+                "services[].{name:serviceName,running:runningCount,desired:desiredCount}",
+                "--output",
+                "json",
+            ]
+        )
         try:
             services = json.loads(svc.stdout) if svc.stdout else []
         except json.JSONDecodeError:
@@ -109,28 +143,44 @@ def main() -> int:
         events.emit("staging_health_checked", services_status=services)
         if not services:
             msg = f"[{AGENT.upper()}-STAGING-NOT-READY] could not query ECS services"
-            print(msg); slack_post(msg)
+            print(msg)
+            slack_post(msg)
             events.emit("firing_complete", outcome="blocked-no-ecs")
             return 0
         for s in services:
             if s.get("running") != s.get("desired"):
                 msg = f"[{AGENT.upper()}-STAGING-NOT-READY] {s['name']} running={s['running']} desired={s['desired']}"
-                print(msg); slack_post(msg)
-                events.emit("firing_complete", outcome="blocked-staging-not-ready",
-                            service=s.get("name"))
+                print(msg)
+                slack_post(msg)
+                events.emit(
+                    "firing_complete", outcome="blocked-staging-not-ready", service=s.get("name")
+                )
                 return 0
 
     # 2. Fetch test account
     email = ""
     password = ""
     if SECRET_ID:
-        sec = _aws([
-            "secretsmanager", "get-secret-value", "--secret-id", SECRET_ID,
-            "--region", REGION, "--query", "SecretString", "--output", "text",
-        ])
+        sec = _aws(
+            [
+                "secretsmanager",
+                "get-secret-value",
+                "--secret-id",
+                SECRET_ID,
+                "--region",
+                REGION,
+                "--query",
+                "SecretString",
+                "--output",
+                "text",
+            ]
+        )
         if sec.returncode != 0:
-            msg = f"[{AGENT.upper()}-BLOCKED] cannot fetch test account secret: {sec.stderr.strip()}"
-            print(msg); slack_post(msg)
+            msg = (
+                f"[{AGENT.upper()}-BLOCKED] cannot fetch test account secret: {sec.stderr.strip()}"
+            )
+            print(msg)
+            slack_post(msg)
             events.emit("firing_complete", outcome="blocked-secret-fetch")
             return 0
         try:
@@ -139,7 +189,8 @@ def main() -> int:
             password = creds["password"]
         except (json.JSONDecodeError, KeyError) as e:
             msg = f"[{AGENT.upper()}-BLOCKED] malformed test account secret: {e}"
-            print(msg); slack_post(msg)
+            print(msg)
+            slack_post(msg)
             events.emit("firing_complete", outcome="blocked-bad-secret")
             return 0
 
@@ -159,7 +210,11 @@ def main() -> int:
     pw_started = time.time()
     pw = subprocess.run(
         ["npx", "playwright", "test", "--reporter=json"],
-        cwd=str(HUNTRESS_DIR), env=pw_env, capture_output=True, text=True, timeout=600,
+        cwd=str(HUNTRESS_DIR),
+        env=pw_env,
+        capture_output=True,
+        text=True,
+        timeout=600,
     )
     pw_duration_ms = int((time.time() - pw_started) * 1000)
     (run_dir / "stdout.json").write_text(pw.stdout or "")
@@ -224,11 +279,15 @@ def main() -> int:
         if stdout_tail.strip() and not (pw.stdout or "").lstrip().startswith("{"):
             msg_lines.append(f"  Stdout tail:\n```\n{stdout_tail[-600:]}\n```")
         msg = "\n".join(msg_lines)
-        print(msg); slack_post(msg)
-        events.emit("firing_complete", outcome="blocked-unparseable",
-                    stderr_bytes=len(pw.stderr or ""),
-                    stdout_bytes=len(pw.stdout or ""),
-                    run_dir=str(run_dir))
+        print(msg)
+        slack_post(msg)
+        events.emit(
+            "firing_complete",
+            outcome="blocked-unparseable",
+            stderr_bytes=len(pw.stderr or ""),
+            stdout_bytes=len(pw.stdout or ""),
+            run_dir=str(run_dir),
+        )
         return 0
 
     # Optional screenshot upload to S3
@@ -238,28 +297,40 @@ def main() -> int:
         for png in pngs:
             rel = png.parent.name
             s3_key = f"{AGENT}-failures/{ts}/{rel}.png"
-            cp = _aws([
-                "s3", "cp", str(png), f"s3://{S3_BUCKET}/{s3_key}",
-            ], timeout=30)
+            cp = _aws(
+                [
+                    "s3",
+                    "cp",
+                    str(png),
+                    f"s3://{S3_BUCKET}/{s3_key}",
+                ],
+                timeout=30,
+            )
             if cp.returncode != 0:
                 continue
-            presigned = _aws([
-                "s3", "presign", f"s3://{S3_BUCKET}/{s3_key}", "--expires-in", "3600",
-            ], timeout=15).stdout.strip()
+            presigned = _aws(
+                [
+                    "s3",
+                    "presign",
+                    f"s3://{S3_BUCKET}/{s3_key}",
+                    "--expires-in",
+                    "3600",
+                ],
+                timeout=15,
+            ).stdout.strip()
             slack_lines.append(f"❌ {AGENT.title()}: {rel} ({presigned})")
 
     # "Drift" = selector / routing change rather than a backend regression.
-    is_drift = (
-        "TimeoutError" in (pw.stderr or "")
-        or any("TimeoutError" in e for e in failed_errors)
+    is_drift = "TimeoutError" in (pw.stderr or "") or any(
+        "TimeoutError" in e for e in failed_errors
     )
 
     # Optional: report deploy SHA when a reference repo is configured
     deploy_sha = "unknown"
     if DEPLOY_REF_REPO:
         sha = run(
-            ["git", "-C", str(WORKSPACE / DEPLOY_REF_REPO),
-             "rev-parse", "--short", "origin/main"], timeout=10,
+            ["git", "-C", str(WORKSPACE / DEPLOY_REF_REPO), "rev-parse", "--short", "origin/main"],
+            timeout=10,
         ).stdout.strip()
         if sha:
             deploy_sha = sha
@@ -275,9 +346,14 @@ def main() -> int:
             + f"\nReal regression at deploy SHA {deploy_sha}. Manual investigation required."
             + f"\nFull logs: `{run_dir}/`"
         )
-        print(msg); slack_post(msg)
-        events.emit("firing_complete", outcome="regression",
-                    failed_count=len(failed_titles), deploy_sha=deploy_sha)
+        print(msg)
+        slack_post(msg)
+        events.emit(
+            "firing_complete",
+            outcome="regression",
+            failed_count=len(failed_titles),
+            deploy_sha=deploy_sha,
+        )
         return 0
 
     msg = (
@@ -286,9 +362,11 @@ def main() -> int:
         + f"\nLikely selector drift (TimeoutError on click). Deploy SHA {deploy_sha}."
         + f"\nFull logs: `{run_dir}/`"
     )
-    print(msg); slack_post(msg)
-    events.emit("firing_complete", outcome="drift",
-                failed_count=len(failed_titles), deploy_sha=deploy_sha)
+    print(msg)
+    slack_post(msg)
+    events.emit(
+        "firing_complete", outcome="drift", failed_count=len(failed_titles), deploy_sha=deploy_sha
+    )
     return 0
 
 

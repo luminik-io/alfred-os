@@ -23,19 +23,28 @@ Configuration:
                                  mark a P0 comment as resolved
   ALFRED_AUTOMERGE_MIN_AGE_MIN  minimum PR age before auto-merge (default: 30)
 """
+
 from __future__ import annotations
 
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
+from agent_runner import (
     GH_ORG,
-    PreflightFailed, PreflightSpec,
-    SpendState, doctor_mode, gh_json, gh_issue_edit,
-    is_repo_paused, preflight, run, slack_post, with_lock,
+    PreflightFailed,
+    PreflightSpec,
+    SpendState,
+    doctor_mode,
+    gh_issue_edit,
+    gh_json,
+    is_repo_paused,
+    preflight,
+    run,
+    slack_post,
+    with_lock,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "automerge")
@@ -50,9 +59,7 @@ PREFLIGHT = PreflightSpec(
     require_gh_auth=True,
 )
 WATCH_REPOS = [
-    r.strip()
-    for r in os.environ.get("ALFRED_AUTOMERGE_REPOS", "").split(",")
-    if r.strip()
+    r.strip() for r in os.environ.get("ALFRED_AUTOMERGE_REPOS", "").split(",") if r.strip()
 ]
 MIN_AGE_SECONDS = int(os.environ.get("ALFRED_AUTOMERGE_MIN_AGE_MIN", "30")) * 60
 
@@ -111,12 +118,19 @@ def unresolved_reviewer_threads(repo: str, pr_num: int, pr_author: str) -> list[
     )
     threads = gh_json(
         [
-            "gh", "api", "graphql",
-            "-f", f"query={query}",
-            "-F", f"owner={GH_ORG}",
-            "-F", f"name={repo}",
-            "-F", f"num={pr_num}",
-            "--jq", ".data.repository.pullRequest.reviewThreads.nodes",
+            "gh",
+            "api",
+            "graphql",
+            "-f",
+            f"query={query}",
+            "-F",
+            f"owner={GH_ORG}",
+            "-F",
+            f"name={repo}",
+            "-F",
+            f"num={pr_num}",
+            "--jq",
+            ".data.repository.pullRequest.reviewThreads.nodes",
         ],
         default=[],
     )
@@ -138,7 +152,7 @@ def unresolved_reviewer_threads(repo: str, pr_num: int, pr_author: str) -> list[
     return blocking
 
 
-_CLOSES_RE = re.compile(r'(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*#(\d+)')
+_CLOSES_RE = re.compile(r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*#(\d+)")
 
 
 def linked_issue_numbers(pr: dict) -> list[int]:
@@ -152,30 +166,45 @@ def candidates() -> list[tuple[str, dict]]:
     for repo in WATCH_REPOS:
         if is_repo_paused(repo):
             continue
-        prs = gh_json([
-            "gh", "pr", "list", "-R", f"{GH_ORG}/{repo}", "--state", "open",
-            "--label", "agent:authored",
-            "--json", "number,title,body,createdAt,reviewDecision,statusCheckRollup,labels,isDraft,author",
-            "--limit", "30",
-        ], default=[])
+        prs = gh_json(
+            [
+                "gh",
+                "pr",
+                "list",
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--state",
+                "open",
+                "--label",
+                "agent:authored",
+                "--json",
+                "number,title,body,createdAt,reviewDecision,statusCheckRollup,labels,isDraft,author",
+                "--limit",
+                "30",
+            ],
+            default=[],
+        )
         for pr in prs:
             if pr.get("isDraft"):
                 continue
             if pr.get("reviewDecision") == "CHANGES_REQUESTED":
                 continue
-            label_names = [l["name"] for l in pr.get("labels", [])]
+            label_names = [lbl["name"] for lbl in pr.get("labels", [])]
             if "do-not-review" in label_names or "do-not-merge" in label_names:
                 continue
             try:
-                created = datetime.strptime(pr["createdAt"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                age = (datetime.now(timezone.utc) - created).total_seconds()
+                created = datetime.strptime(pr["createdAt"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=UTC
+                )
+                age = (datetime.now(UTC) - created).total_seconds()
             except ValueError:
                 continue
             if age < MIN_AGE_SECONDS:
                 continue
             checks = pr.get("statusCheckRollup", []) or []
             ci_red = any(
-                (c.get("conclusion") or "").upper() in ("FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED")
+                (c.get("conclusion") or "").upper()
+                in ("FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED")
                 for c in checks
             )
             if ci_red:
@@ -199,18 +228,27 @@ def is_mergeable(repo: str, pr_num: int, pr_author: str = "") -> tuple[bool, str
         more = f" (+{len(unresolved) - 1} more)" if len(unresolved) > 1 else ""
         return False, f"unresolved review thread - {first}{more}"
 
-    issue_comments = gh_json([
-        "gh", "api", f"/repos/{GH_ORG}/{repo}/issues/{pr_num}/comments", "--paginate",
-    ], default=[])
-    inline_comments = gh_json([
-        "gh", "api", f"/repos/{GH_ORG}/{repo}/pulls/{pr_num}/comments", "--paginate",
-    ], default=[])
+    issue_comments = gh_json(
+        [
+            "gh",
+            "api",
+            f"/repos/{GH_ORG}/{repo}/issues/{pr_num}/comments",
+            "--paginate",
+        ],
+        default=[],
+    )
+    inline_comments = gh_json(
+        [
+            "gh",
+            "api",
+            f"/repos/{GH_ORG}/{repo}/pulls/{pr_num}/comments",
+            "--paginate",
+        ],
+        default=[],
+    )
 
     # Latest review-agent main review (NOT the P0/P1 split sub-comments)
-    review_main = [
-        c for c in issue_comments
-        if c.get("body", "").startswith(REVIEW_HEADER)
-    ]
+    review_main = [c for c in issue_comments if c.get("body", "").startswith(REVIEW_HEADER)]
     if not review_main:
         return False, f"no {REVIEW_AGENT} review yet"
     latest = review_main[-1]
@@ -219,14 +257,14 @@ def is_mergeable(repo: str, pr_num: int, pr_author: str = "") -> tuple[bool, str
 
     # Track which P0 comment ids the fix agent already addressed
     fix_replied_ids = set()
-    for c in (issue_comments + inline_comments):
+    for c in issue_comments + inline_comments:
         body = c.get("body", "")
         if FIX_REPLY_RE.search(body):
             m = re.search(r"comment\s+(\d+)", body)
             if m:
                 fix_replied_ids.add(int(m.group(1)))
 
-    for c in (issue_comments + inline_comments):
+    for c in issue_comments + inline_comments:
         body = c.get("body", "")
         user = (c.get("user") or {}).get("login", "")
         is_reviewer = (
@@ -247,7 +285,11 @@ def is_mergeable(repo: str, pr_num: int, pr_author: str = "") -> tuple[bool, str
         # The review-agent main review with "Blockers (P0)" then "None." is OK
         if body.startswith(REVIEW_HEADER):
             section = re.search(r"## Blockers \(P0\)\s*\n(.*?)(?=\n## |\Z)", body, re.DOTALL)
-            if section and section.group(1).strip().lower() in ("- none.", "none.", "- (or write none.)"):
+            if section and section.group(1).strip().lower() in (
+                "- none.",
+                "none.",
+                "- (or write none.)",
+            ):
                 continue
         return False, f"unresolved P0 in comment {c.get('id')} from {user}"
 
@@ -288,23 +330,35 @@ def main() -> int:
             continue
 
         # Squash-merge
-        res = run([
-            "gh", "pr", "merge", str(pr_num), "-R", f"{GH_ORG}/{repo}",
-            "--squash", "--delete-branch",
-        ], timeout=60)
+        res = run(
+            [
+                "gh",
+                "pr",
+                "merge",
+                str(pr_num),
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--squash",
+                "--delete-branch",
+            ],
+            timeout=60,
+        )
         if res.returncode == 0:
             merged.append((repo, pr_num, pr["title"]))
             # Close out the lifecycle on every issue this PR resolves.
             for issue_num in linked_issue_numbers(pr):
                 try:
                     gh_issue_edit(
-                        repo, issue_num,
+                        repo,
+                        issue_num,
                         add_labels=["agent:done"],
-                        remove_labels=["agent:pr-open", "agent:in-flight",
-                                       "agent:implement"],
+                        remove_labels=["agent:pr-open", "agent:in-flight", "agent:implement"],
                     )
-                except Exception as e:  # noqa: BLE001 - never block automerge on label drift
-                    print(f"[{AGENT}] {repo}#{issue_num}: label transition failed: {e}", file=sys.stderr)
+                except Exception as e:
+                    print(
+                        f"[{AGENT}] {repo}#{issue_num}: label transition failed: {e}",
+                        file=sys.stderr,
+                    )
         else:
             skipped.append((repo, pr_num, f"merge failed: {res.stderr.strip()[:200]}"))
 

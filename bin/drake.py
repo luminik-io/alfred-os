@@ -24,29 +24,39 @@ Failure modes (sentinel-driven, parsed from result.result_text):
   [DRAKE-OVER-BUDGET]     -> tool-call budget exhausted, partial results
   [DRAKE-ESCALATE]        -> gh auth dead / repo 404 / spec parse error
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 import os
 import sys
-from pathlib import Path
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    GH_ORG, HERMES_HOME, WORKSPACE_ROOT,
-    EventLog, PreflightFailed, PreflightSpec,
-    SpendState, claude_invoke, doctor_mode, gh_json, is_globally_blocked,
-    is_repo_paused, list_paused_repos, preflight, set_global_block, short, slack_post, with_lock,
+from agent_runner import (
+    GH_ORG,
+    HERMES_HOME,
+    WORKSPACE_ROOT,
+    EventLog,
+    PreflightFailed,
+    PreflightSpec,
+    SpendState,
+    claude_invoke,
+    doctor_mode,
+    gh_json,
+    is_globally_blocked,
+    is_repo_paused,
+    list_paused_repos,
+    preflight,
+    set_global_block,
+    short,
+    slack_post,
+    with_lock,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "drake")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
-DRAKE_REPOS = [
-    r.strip()
-    for r in os.environ.get("ALFRED_DRAKE_REPOS", "").split(",")
-    if r.strip()
-]
+DRAKE_REPOS = [r.strip() for r in os.environ.get("ALFRED_DRAKE_REPOS", "").split(",") if r.strip()]
 
 
 def _build_state_machine_context() -> str:
@@ -69,11 +79,24 @@ def _build_state_machine_context() -> str:
             ("agent:pr-open", pr_open),
             ("do-not-pickup", do_not_pickup),
         ]:
-            issues = gh_json([
-                "gh", "issue", "list", "-R", f"{GH_ORG}/{repo}",
-                "--label", label, "--state", "open",
-                "--json", "number,title", "--limit", "30",
-            ], default=[])
+            issues = gh_json(
+                [
+                    "gh",
+                    "issue",
+                    "list",
+                    "-R",
+                    f"{GH_ORG}/{repo}",
+                    "--label",
+                    label,
+                    "--state",
+                    "open",
+                    "--json",
+                    "number,title",
+                    "--limit",
+                    "30",
+                ],
+                default=[],
+            )
             for i in issues:
                 sink.append(f"{GH_ORG}/{repo}#{i['number']} - {i.get('title', '')[:80]}")
     parts = []
@@ -115,15 +138,25 @@ def _issues_authored_in_last_24h() -> int:
     """Count issues authored by the current gh user across GH_ORG in the
     last 24 hours. Used as a runner-level pre-flight cap; the prompt also
     re-checks this from inside the Claude session."""
-    since = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    issues = gh_json([
-        "gh", "search", "issues",
-        "--owner", GH_ORG,
-        "--author", "@me",
-        "--created", f">={since}",
-        "--json", "url",
-        "--limit", "100",
-    ], default=[])
+    since = (_dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    issues = gh_json(
+        [
+            "gh",
+            "search",
+            "issues",
+            "--owner",
+            GH_ORG,
+            "--author",
+            "@me",
+            "--created",
+            f">={since}",
+            "--json",
+            "url",
+            "--limit",
+            "100",
+        ],
+        default=[],
+    )
     return len(issues) if isinstance(issues, list) else 0
 
 
@@ -157,23 +190,32 @@ def main() -> int:
         print(f"[{AGENT.upper()}-RATE-LIMITED] {rate_blocked}. Skipping firing.")
         return 0
     if spend.state.get("consecutive_failures", 0) >= 5:
-        msg = (f"[{AGENT.upper()}-FAIL-STREAK] {spend.state['consecutive_failures']} consecutive "
-               "failures, 0 successes. Pausing for human review.")
-        print(msg); slack_post(msg, severity="alert")
+        msg = (
+            f"[{AGENT.upper()}-FAIL-STREAK] {spend.state['consecutive_failures']} consecutive "
+            "failures, 0 successes. Pausing for human review."
+        )
+        print(msg)
+        slack_post(msg, severity="alert")
         return 0
 
     # Pre-flight daily cap check at the runner level. Skips the firing entirely
     # without burning a Claude turn if we're already at the wall.
     today_count = _issues_authored_in_last_24h()
     if today_count >= DAILY_ISSUE_CAP:
-        msg = (f"[{AGENT.upper()}-DAILY-CAP-HIT] {today_count} issues created by @me in last 24h "
-               f">= cap of {DAILY_ISSUE_CAP}. Skipping firing.")
-        print(msg); slack_post(f"⏸️ {AGENT.title()}: daily {DAILY_ISSUE_CAP}-issue cap reached, skipping firing.")
+        msg = (
+            f"[{AGENT.upper()}-DAILY-CAP-HIT] {today_count} issues created by @me in last 24h "
+            f">= cap of {DAILY_ISSUE_CAP}. Skipping firing."
+        )
+        print(msg)
+        slack_post(
+            f"⏸️ {AGENT.title()}: daily {DAILY_ISSUE_CAP}-issue cap reached, skipping firing."
+        )
         return 0
 
     if not PROMPT_PATH.exists():
         msg = f"[{AGENT.upper()}-CONFIG-MISSING] prompt at {PROMPT_PATH} not found"
-        print(msg); slack_post(msg, severity="alert")
+        print(msg)
+        slack_post(msg, severity="alert")
         spend.increment(failures_today=1, consecutive_failures=1)
         return 0
 
@@ -202,22 +244,29 @@ def main() -> int:
     if result.subtype in ("error_budget", "error_rate_limit"):
         until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
         spend.increment(failures_today=1, consecutive_failures=1)
-        msg = (f"{AGENT.title()} hit Claude rate limit ({result.subtype}). Global block until "
-               f"{until} - all agents will skip until then.")
-        print(msg); slack_post(msg, severity="alert")
+        msg = (
+            f"{AGENT.title()} hit Claude rate limit ({result.subtype}). Global block until "
+            f"{until} - all agents will skip until then."
+        )
+        print(msg)
+        slack_post(msg, severity="alert")
         return 0
 
     if result.subtype == "error_max_turns":
         spend.increment(failures_today=1, consecutive_failures=1)
-        msg = (f"⏸️ {AGENT.title()} hit max-turns cap ({result.num_turns}). "
-               f"Last output: {short(text, 300)}")
-        print(msg); slack_post(msg, severity="warn")
+        msg = (
+            f"⏸️ {AGENT.title()} hit max-turns cap ({result.num_turns}). "
+            f"Last output: {short(text, 300)}"
+        )
+        print(msg)
+        slack_post(msg, severity="warn")
         return 0
 
     if result.subtype != "success":
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"❌ {AGENT.title()} firing failed: subtype={result.subtype} turns={result.num_turns}. {short(text, 300)}"
-        print(msg); slack_post(msg, severity="warn")
+        print(msg)
+        slack_post(msg, severity="warn")
         return 0
 
     # Successful subprocess return. Parse the sentinel the prompt was instructed
@@ -231,13 +280,15 @@ def main() -> int:
     if "[DRAKE-OVER-BUDGET]" in text:
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"⚠️ {AGENT.title()} hit prompt tool-call budget. {short(text[-400:], 400)}"
-        print(msg); slack_post(msg, severity="warn")
+        print(msg)
+        slack_post(msg, severity="warn")
         return 0
 
     if "[DRAKE-ESCALATE]" in text:
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"{AGENT.title()} escalating: {short(text[-500:], 500)}"
-        print(msg); slack_post(msg, severity="alert")
+        print(msg)
+        slack_post(msg, severity="alert")
         return 0
 
     if "[DRAKE-SCOPE-REJECTED]" in text:
@@ -247,9 +298,12 @@ def main() -> int:
         # operator sees which spec area needs sharpening.
         spend.set(consecutive_failures=0)
         spend.increment(successes_today=1)
-        msg = (f"⚠️ {AGENT.title()} refused to file vague candidate(s); "
-               f"spec needs operator scoping. {short(text[-500:], 500)}")
-        print(msg); slack_post(msg)
+        msg = (
+            f"⚠️ {AGENT.title()} refused to file vague candidate(s); "
+            f"spec needs operator scoping. {short(text[-500:], 500)}"
+        )
+        print(msg)
+        slack_post(msg)
         return 0
 
     if "[DRAKE-NOOP]" in text:
@@ -265,18 +319,24 @@ def main() -> int:
         spend.increment(successes_today=1)
         # Surface the full closing report (issue URLs + counts) to Slack so the
         # operator can scan and click through.
-        report = text[text.find("[DRAKE-OK]"):]
-        events.emit("firing_complete", outcome="ok", turns=result.num_turns, cost_usd=result.cost_usd)
+        report = text[text.find("[DRAKE-OK]") :]
+        events.emit(
+            "firing_complete", outcome="ok", turns=result.num_turns, cost_usd=result.cost_usd
+        )
         msg = f"📋 {AGENT.title()} firing complete (turns={result.num_turns}, cost=${result.cost_usd:.2f})\n{short(report, 1500)}"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         return 0
 
     # Success subtype but no recognised sentinel. Treat as soft failure: the
     # prompt didn't follow its closing-line contract.
     spend.increment(failures_today=1, consecutive_failures=1)
-    msg = (f"⚠️ {AGENT.title()} returned success but emitted no [DRAKE-*] sentinel. "
-           f"turns={result.num_turns}. Tail: {short(text[-400:], 400)}")
-    print(msg); slack_post(msg, severity="warn")
+    msg = (
+        f"⚠️ {AGENT.title()} returned success but emitted no [DRAKE-*] sentinel. "
+        f"turns={result.num_turns}. Tail: {short(text[-400:], 400)}"
+    )
+    print(msg)
+    slack_post(msg, severity="warn")
     return 0
 
 

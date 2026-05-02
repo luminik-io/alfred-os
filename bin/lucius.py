@@ -1,23 +1,40 @@
 #!/usr/bin/env python3
 """Lucius - feature dev agent. Picks an `agent:implement` issue, delegates to claude -p."""
+
 from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
-
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    GH_ORG, HERMES_HOME, WORKSPACE,
-    EventLog, PreflightFailed, PreflightSpec,
-    SpendState, claude_invoke, commit_trailer, doctor_mode,
-    gh_issue_comment, gh_issue_edit,
-    gh_json, gh_pr_create, is_globally_blocked, set_global_block,
-    is_repo_paused, make_worktree,
-    preflight, remove_worktree, run, short, slack_post, with_lock,
-    claim_issue, release_issue,
+from agent_runner import (
+    GH_ORG,
+    WORKSPACE,
+    EventLog,
+    PreflightFailed,
+    PreflightSpec,
+    SpendState,
+    claim_issue,
+    claude_invoke,
+    commit_trailer,
+    doctor_mode,
+    gh_issue_comment,
+    gh_issue_edit,
+    gh_json,
+    gh_pr_create,
+    is_globally_blocked,
+    is_repo_paused,
+    make_worktree,
+    preflight,
+    release_issue,
+    remove_worktree,
+    run,
+    set_global_block,
+    short,
+    slack_post,
+    with_lock,
 )
 
 # Codename is operator-overridable. The bin file name keeps the Batman default;
@@ -33,9 +50,7 @@ LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 # Repos this agent watches. Comma-separated env var lets the operator scope the
 # fleet without editing source. Empty list = idle exit.
 LUCIUS_REPOS = [
-    r.strip()
-    for r in os.environ.get("ALFRED_LUCIUS_REPOS", "").split(",")
-    if r.strip()
+    r.strip() for r in os.environ.get("ALFRED_LUCIUS_REPOS", "").split(",") if r.strip()
 ]
 
 PREFLIGHT = PreflightSpec(
@@ -102,55 +117,79 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
     for repo in LUCIUS_REPOS:
         if is_repo_paused(repo):
             continue
-        issues = gh_json([
-            "gh", "issue", "list", "-R", f"{GH_ORG}/{repo}",
-            "--label", "agent:implement", "--state", "open",
-            "--json", "number,title,url,labels,createdAt,body", "--limit", "20",
-        ], default=[])
+        issues = gh_json(
+            [
+                "gh",
+                "issue",
+                "list",
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--label",
+                "agent:implement",
+                "--state",
+                "open",
+                "--json",
+                "number,title,url,labels,createdAt,body",
+                "--limit",
+                "20",
+            ],
+            default=[],
+        )
         if not issues:
             continue
         issues.sort(key=lambda i: i["createdAt"])
         for issue in issues:
-            label_names = {l["name"] for l in issue.get("labels", [])}
+            label_names = {lbl["name"] for lbl in issue.get("labels", [])}
             # Defensive: skip anything carrying a state-machine blocker. The
             # gh query already filters by agent:implement, but a fresh issue
             # could acquire one of these between query and pick.
-            if label_names & {"agent:in-flight", "agent:pr-open", f"{AGENT}-pr-open",
-                              "do-not-pickup", "needs:human-scope"}:
+            if label_names & {
+                "agent:in-flight",
+                "agent:pr-open",
+                f"{AGENT}-pr-open",
+                "do-not-pickup",
+                "needs:human-scope",
+            }:
                 continue
-            attempts = sum(1 for l in label_names if l.startswith(f"{AGENT}-attempt-"))
+            attempts = sum(1 for lbl in label_names if lbl.startswith(f"{AGENT}-attempt-"))
             if attempts >= 3:
                 # Auto-mark needs:human-scope
-                gh_issue_edit(repo, issue["number"],
-                              add_labels=["needs:human-scope"],
-                              remove_labels=["agent:implement"])
-                gh_issue_comment(repo, issue["number"],
-                                 f"{AGENT.title()}: 3 prior attempts failed to ship. Marking needs:human-scope.")
+                gh_issue_edit(
+                    repo,
+                    issue["number"],
+                    add_labels=["needs:human-scope"],
+                    remove_labels=["agent:implement"],
+                )
+                gh_issue_comment(
+                    repo,
+                    issue["number"],
+                    f"{AGENT.title()}: 3 prior attempts failed to ship. Marking needs:human-scope.",
+                )
                 continue
             issue["_attempts"] = attempts
             return repo, issue
     return None, None
 
 
-def build_prompt(repo: str, issue: dict, wt: Path, branch: str,
-                 firing_id: str) -> str:
+def build_prompt(repo: str, issue: dict, wt: Path, branch: str, firing_id: str) -> str:
     repo_claude_md = ""
     md = WORKSPACE / repo / "CLAUDE.md"
     if md.exists():
         repo_claude_md = md.read_text()
 
     trailer = commit_trailer(
-        AGENT, firing_id,
+        AGENT,
+        firing_id,
         extra={"issue": f"{GH_ORG}/{repo}#{issue['number']}"},
     )
 
-    return f"""You are {AGENT.title()}, implementing GitHub issue #{issue['number']} in {GH_ORG}/{repo}.
+    return f"""You are {AGENT.title()}, implementing GitHub issue #{issue["number"]} in {GH_ORG}/{repo}.
 
-Issue title: {issue['title']}
-Issue URL: {issue['url']}
+Issue title: {issue["title"]}
+Issue URL: {issue["url"]}
 
 Issue body:
-{issue['body']}
+{issue["body"]}
 
 You are working in this worktree: {wt}
 Branch: {branch}
@@ -213,7 +252,7 @@ def main() -> int:
 
     blocked = is_globally_blocked()
     if blocked:
-        print(f'[{AGENT.upper()}-GLOBAL-BLOCKED] {blocked}. Skipping firing.')
+        print(f"[{AGENT.upper()}-GLOBAL-BLOCKED] {blocked}. Skipping firing.")
         return 0
     spend = SpendState(AGENT)
 
@@ -245,9 +284,14 @@ def main() -> int:
     # Pre-flight scoping
     body_len = len(issue.get("body") or "")
     if body_len > 8000:
-        gh_issue_comment(repo, issue_num,
-                         f"{AGENT.title()}: issue body is {body_len} chars - too cross-cutting. Marking needs:human-scope.")
-        gh_issue_edit(repo, issue_num, add_labels=["needs:human-scope"], remove_labels=["agent:implement"])
+        gh_issue_comment(
+            repo,
+            issue_num,
+            f"{AGENT.title()}: issue body is {body_len} chars - too cross-cutting. Marking needs:human-scope.",
+        )
+        gh_issue_edit(
+            repo, issue_num, add_labels=["needs:human-scope"], remove_labels=["agent:implement"]
+        )
         print(f"[{AGENT.upper()}-SKIPPED] #{issue_num} body too large ({body_len} chars)")
         return 0
 
@@ -258,8 +302,9 @@ def main() -> int:
     # if a PR is already open, or if the operator set do-not-pickup. Race
     # detection inside claim_issue backs out cleanly if we lost.
     if not claim_issue(repo, issue_num, codename=AGENT, firing_id=events.firing_id):
-        events.emit("firing_complete", outcome="dedup_skip",
-                    repo=f"{GH_ORG}/{repo}", number=issue_num)
+        events.emit(
+            "firing_complete", outcome="dedup_skip", repo=f"{GH_ORG}/{repo}", number=issue_num
+        )
         msg = f"[{AGENT.upper()}-DEDUP-SKIP] #{issue_num} already claimed / has PR / paused"
         print(msg)
         return 0
@@ -271,8 +316,9 @@ def main() -> int:
         msg = f"[{AGENT.upper()}-ERROR] {e}"
         print(msg)
         # Release the claim we just took so the next firing can retry.
-        release_issue(repo, issue_num, codename=AGENT,
-                      firing_id=events.firing_id, outcome="worktree-failed")
+        release_issue(
+            repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="worktree-failed"
+        )
         spend.increment(failures_today=1, consecutive_failures=1)
         return 0
 
@@ -292,26 +338,35 @@ def main() -> int:
         timeout=2400,  # 40 min cap; compile + claude can stretch
     )
     import json as _json
+
     (debug_dir / "result.json").write_text(_json.dumps(result.raw, indent=2)[:200000])
     (debug_dir / "result-text.txt").write_text(result.result_text or "")
 
-    spend.increment(firings_today=1, turns_today=result.num_turns,
-                    cost_usd_today=result.cost_usd)
+    spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
 
     # Branch on result
     if result.subtype == "success":
         # Did Claude commit?
-        new_commits = run(["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10).stdout.strip()
-        commit_count = len([l for l in new_commits.splitlines() if l.strip()])
+        new_commits = run(
+            ["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10
+        ).stdout.strip()
+        commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
 
         if "[ALREADY-IMPLEMENTED]" in result.result_text:
-            gh_issue_comment(repo, issue_num,
-                             f"{AGENT.title()} full-context check: {short(result.result_text, 300)}\n\nClosing as duplicate.")
+            gh_issue_comment(
+                repo,
+                issue_num,
+                f"{AGENT.title()} full-context check: {short(result.result_text, 300)}\n\nClosing as duplicate.",
+            )
             gh_issue_edit(repo, issue_num, add_labels=["done-already"])
-            release_issue(repo, issue_num, codename=AGENT,
-                          firing_id=events.firing_id,
-                          outcome="already-implemented",
-                          transition_to="agent:done")
+            release_issue(
+                repo,
+                issue_num,
+                codename=AGENT,
+                firing_id=events.firing_id,
+                outcome="already-implemented",
+                transition_to="agent:done",
+            )
             run(["gh", "issue", "close", str(issue_num), "-R", f"{GH_ORG}/{repo}"], timeout=20)
             remove_worktree(repo, wt)
             spend.set(consecutive_failures=0)
@@ -328,10 +383,23 @@ def main() -> int:
                 operator_email = os.environ.get("OPERATOR_EMAIL", f"{AGENT}@example.com")
                 # There ARE uncommitted changes — save them as a draft PR
                 run(["git", "add", "-A"], cwd=str(wt), timeout=30)
-                stat = run(["git", "diff", "--cached", "--stat"], cwd=str(wt), timeout=10).stdout.strip()
-                run(["git", "-c", f"user.email={operator_email}", "-c", f"user.name={AGENT.title()}",
-                     "commit", "-m", f"WIP: partial implementation of #{issue_num}\n\nClaude returned success but did not commit. Auto-salvaging unstaged changes for human review.\n\n{stat[:1500]}"],
-                    cwd=str(wt), timeout=30)
+                stat = run(
+                    ["git", "diff", "--cached", "--stat"], cwd=str(wt), timeout=10
+                ).stdout.strip()
+                run(
+                    [
+                        "git",
+                        "-c",
+                        f"user.email={operator_email}",
+                        "-c",
+                        f"user.name={AGENT.title()}",
+                        "commit",
+                        "-m",
+                        f"WIP: partial implementation of #{issue_num}\n\nClaude returned success but did not commit. Auto-salvaging unstaged changes for human review.\n\n{stat[:1500]}",
+                    ],
+                    cwd=str(wt),
+                    timeout=30,
+                )
                 run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=60)
                 body_file = Path(f"/tmp/{AGENT}-wip-{issue_num}.md")
                 body_file.write_text(f"""## DRAFT - WIP PR auto-salvaged from incomplete {AGENT.title()} run
@@ -352,21 +420,33 @@ Cost equivalent: ${result.cost_usd:.2f}
 
 Generated with Claude Code (claude.com/claude-code)
 """)
-                pr_url = gh_pr_create(repo, title=f"DRAFT: WIP partial implementation of #{issue_num}",
-                                       body_file=body_file, head=branch,
-                                       labels=["agent:authored", "do-not-review"])
+                pr_url = gh_pr_create(
+                    repo,
+                    title=f"DRAFT: WIP partial implementation of #{issue_num}",
+                    body_file=body_file,
+                    head=branch,
+                    labels=["agent:authored", "do-not-review"],
+                )
                 # WIP PR exists; transition to agent:pr-open so the issue
                 # is no longer claimable until the PR closes or merges.
-                release_issue(repo, issue_num, codename=AGENT,
-                              firing_id=events.firing_id, outcome="partial",
-                              transition_to="agent:pr-open", pr_url=pr_url)
+                release_issue(
+                    repo,
+                    issue_num,
+                    codename=AGENT,
+                    firing_id=events.firing_id,
+                    outcome="partial",
+                    transition_to="agent:pr-open",
+                    pr_url=pr_url,
+                )
                 remove_worktree(repo, wt)
                 spend.increment(failures_today=1, consecutive_failures=1)
                 msg = f"⚠️ {AGENT.title()} #{issue_num} salvaged as WIP draft: {pr_url or 'PR open failed'} (turns={result.num_turns})"
-                print(msg); slack_post(msg, severity="warn")
+                print(msg)
+                slack_post(msg, severity="warn")
                 return 0
-            release_issue(repo, issue_num, codename=AGENT,
-                          firing_id=events.firing_id, outcome="no-commit")
+            release_issue(
+                repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="no-commit"
+            )
             remove_worktree(repo, wt)
             spend.increment(failures_today=1, consecutive_failures=1)
             msg = f"[{AGENT.upper()}-NO-COMMIT] Claude success but no commit AND no unstaged changes. #{issue_num}, turns={result.num_turns}. {short(result.result_text, 300)}"
@@ -376,8 +456,12 @@ Generated with Claude Code (claude.com/claude-code)
 
         # Push + open PR
         run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=60)
-        commit_subject = run(["git", "log", "-1", "--format=%s"], cwd=str(wt), timeout=10).stdout.strip()
-        commit_body = run(["git", "log", "origin/main..HEAD", "--format=%B"], cwd=str(wt), timeout=10).stdout.strip()
+        commit_subject = run(
+            ["git", "log", "-1", "--format=%s"], cwd=str(wt), timeout=10
+        ).stdout.strip()
+        commit_body = run(
+            ["git", "log", "origin/main..HEAD", "--format=%B"], cwd=str(wt), timeout=10
+        ).stdout.strip()
 
         body_file = Path(f"/tmp/{AGENT}-prbody-{issue_num}.md")
         body_file.write_text(f"""## Summary
@@ -396,8 +480,9 @@ Closes #{issue_num}
 Generated with Claude Code (claude.com/claude-code)
 """)
 
-        pr_url = gh_pr_create(repo, title=commit_subject, body_file=body_file,
-                              head=branch, labels=["agent:authored"])
+        pr_url = gh_pr_create(
+            repo, title=commit_subject, body_file=body_file, head=branch, labels=["agent:authored"]
+        )
         remove_worktree(repo, wt)
 
         if pr_url:
@@ -405,18 +490,35 @@ Generated with Claude Code (claude.com/claude-code)
             # Also set <agent>-pr-open for back-compat with dashboards/scripts
             # that grep by codename.
             gh_issue_edit(repo, issue_num, add_labels=[f"{AGENT}-pr-open"])
-            release_issue(repo, issue_num, codename=AGENT,
-                          firing_id=events.firing_id, outcome="success",
-                          transition_to="agent:pr-open", pr_url=pr_url)
+            release_issue(
+                repo,
+                issue_num,
+                codename=AGENT,
+                firing_id=events.firing_id,
+                outcome="success",
+                transition_to="agent:pr-open",
+                pr_url=pr_url,
+            )
             spend.set(consecutive_failures=0)
             spend.increment(successes_today=1)
-            events.emit("pr_opened", url=pr_url, issue=f"{GH_ORG}/{repo}#{issue_num}", turns=result.num_turns, cost_usd=result.cost_usd)
+            events.emit(
+                "pr_opened",
+                url=pr_url,
+                issue=f"{GH_ORG}/{repo}#{issue_num}",
+                turns=result.num_turns,
+                cost_usd=result.cost_usd,
+            )
             msg = f"✅ {AGENT.title()} shipped: {pr_url} (closes #{issue_num}, turns={result.num_turns})"
             print(msg)
             slack_post(msg)
         else:
-            release_issue(repo, issue_num, codename=AGENT,
-                          firing_id=events.firing_id, outcome="pr-create-failed")
+            release_issue(
+                repo,
+                issue_num,
+                codename=AGENT,
+                firing_id=events.firing_id,
+                outcome="pr-create-failed",
+            )
             spend.increment(failures_today=1, consecutive_failures=1)
             msg = f"[{AGENT.upper()}-PR-FAILED] commit landed but PR creation failed. #{issue_num}, branch={branch}"
             print(msg)
@@ -424,13 +526,19 @@ Generated with Claude Code (claude.com/claude-code)
         return 0
 
     if result.subtype == "error_max_turns":
-        new_commits = run(["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10).stdout.strip()
-        commit_count = len([l for l in new_commits.splitlines() if l.strip()])
-        gh_issue_comment(repo, issue_num,
-                         f"{AGENT.title()}: hit {result.num_turns}-turn cap with {commit_count} commits. Will retry next firing.")
+        new_commits = run(
+            ["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10
+        ).stdout.strip()
+        commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
+        gh_issue_comment(
+            repo,
+            issue_num,
+            f"{AGENT.title()}: hit {result.num_turns}-turn cap with {commit_count} commits. Will retry next firing.",
+        )
         # Release the claim so next firing can re-pick the issue.
-        release_issue(repo, issue_num, codename=AGENT,
-                      firing_id=events.firing_id, outcome="max-turns")
+        release_issue(
+            repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="max-turns"
+        )
         remove_worktree(repo, wt)
         # Don't count as failure (resume is the plan)
         msg = f"⏸️ {AGENT.title()} #{issue_num} hit max-turns ({result.num_turns}). Will retry."
@@ -440,8 +548,9 @@ Generated with Claude Code (claude.com/claude-code)
 
     if result.subtype in ("error_budget", "error_rate_limit"):
         until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
-        release_issue(repo, issue_num, codename=AGENT,
-                      firing_id=events.firing_id, outcome="rate-limit")
+        release_issue(
+            repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="rate-limit"
+        )
         spend.increment(failures_today=1, consecutive_failures=1)
         remove_worktree(repo, wt)
         msg = f"{AGENT.title()} hit Claude rate limit ({result.subtype}). Set global block until {until} - all agents will skip until then."
@@ -450,8 +559,13 @@ Generated with Claude Code (claude.com/claude-code)
         return 0
 
     # Other failure (transient API rate limit etc.)
-    release_issue(repo, issue_num, codename=AGENT,
-                  firing_id=events.firing_id, outcome=f"failure-{result.subtype}")
+    release_issue(
+        repo,
+        issue_num,
+        codename=AGENT,
+        firing_id=events.firing_id,
+        outcome=f"failure-{result.subtype}",
+    )
     spend.increment(failures_today=1, consecutive_failures=1)
     remove_worktree(repo, wt)
     msg = f"❌ {AGENT.title()} #{issue_num}: subtype={result.subtype} turns={result.num_turns}. {short(result.result_text, 300)}"

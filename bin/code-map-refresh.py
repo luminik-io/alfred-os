@@ -23,6 +23,7 @@ Configuration via env vars (all optional - omit a slot to skip that scan):
 Honest scope: regex-based, not tree-sitter. Loud false positives, quiet
 false negatives — drift is advisory, not a gate.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,30 +31,30 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    HERMES_HOME, WORKSPACE, PreflightFailed, PreflightSpec,
-    doctor_mode, preflight, slack_post, with_lock,
+from agent_runner import (
+    HERMES_HOME,
+    WORKSPACE,
+    PreflightFailed,
+    PreflightSpec,
+    doctor_mode,
+    preflight,
+    slack_post,
+    with_lock,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "code-map-refresh")
 CODE_MAP_PATH = HERMES_HOME / "state" / "code-map.json"
 
-REPOS = [
-    r.strip()
-    for r in os.environ.get("ALFRED_CODE_MAP_REPOS", "").split(",")
-    if r.strip()
-]
+REPOS = [r.strip() for r in os.environ.get("ALFRED_CODE_MAP_REPOS", "").split(",") if r.strip()]
 BACKEND_REPO = os.environ.get("ALFRED_CODE_MAP_BACKEND_REPO", "").strip()
 SIDECAR_REPO = os.environ.get("ALFRED_CODE_MAP_SIDECAR_REPO", "").strip()
 CLIENT_REPOS = [
-    r.strip()
-    for r in os.environ.get("ALFRED_CODE_MAP_CLIENT_REPOS", "").split(",")
-    if r.strip()
+    r.strip() for r in os.environ.get("ALFRED_CODE_MAP_CLIENT_REPOS", "").split(",") if r.strip()
 ]
 
 PREFLIGHT = PreflightSpec(
@@ -72,12 +73,8 @@ FETCH_CALL_RE = re.compile(
     r"\bfetch\(\s*[`'\"]([^'\"`]+)[`'\"]\s*,\s*\{[^}]*method:\s*[`'\"](?:get|post|put|delete|patch)[`'\"]",
     re.IGNORECASE | re.DOTALL,
 )
-HONO_ROUTE_RE = re.compile(
-    r"\bapp\.(get|post|put|delete|patch)\(\s*[`'\"]([^'\"`]+)[`'\"]"
-)
-ROUTE_MOUNT_RE = re.compile(
-    r"\b(\w+)\.route\(\s*[`'\"]([^'\"`]+)[`'\"]\s*,\s*(\w+)\s*\)"
-)
+HONO_ROUTE_RE = re.compile(r"\bapp\.(get|post|put|delete|patch)\(\s*[`'\"]([^'\"`]+)[`'\"]")
+ROUTE_MOUNT_RE = re.compile(r"\b(\w+)\.route\(\s*[`'\"]([^'\"`]+)[`'\"]\s*,\s*(\w+)\s*\)")
 SUBROUTER_HANDLER_RE = re.compile(
     r"\b(\w+)\.(get|post|put|delete|patch|all)\(\s*[`'\"]([^'\"`]+)[`'\"]"
 )
@@ -87,7 +84,10 @@ def _git_head(repo_path: Path) -> str:
     try:
         res = subprocess.run(
             ["git", "-C", str(repo_path), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5, check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
         )
         return res.stdout.strip()
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -117,7 +117,7 @@ def scan_backend(repo_path: Path) -> dict[str, Any]:
             m = KOTLIN_PATH_RE.search(line)
             if not m:
                 continue
-            window = "\n".join(lines[i:i + 5])
+            window = "\n".join(lines[i : i + 5])
             if re.search(r"\b(class|interface|object)\s+\w+", window):
                 class_path = m.group(1)
                 break
@@ -147,11 +147,13 @@ def scan_backend(repo_path: Path) -> dict[str, Any]:
             full = ((class_path or "") + (method_path or "")).replace("//", "/")
             if not full:
                 continue
-            endpoints.append({
-                "method": method,
-                "path": full,
-                "file": f"{kt_file.relative_to(repo_path)}:{i + 1}",
-            })
+            endpoints.append(
+                {
+                    "method": method,
+                    "path": full,
+                    "file": f"{kt_file.relative_to(repo_path)}:{i + 1}",
+                }
+            )
 
     flyway_head = None
     for candidate in [
@@ -208,11 +210,13 @@ def scan_client_repo(repo_path: Path, src_subdir: str = "src") -> dict[str, Any]
                 path = m.group(2)
                 if not (path.startswith("/api/v1/") or path.startswith("/v1/")):
                     continue
-                api_calls.append({
-                    "method": method,
-                    "path": path,
-                    "file": f"{ts_file.relative_to(repo_path)}:{line_idx}",
-                })
+                api_calls.append(
+                    {
+                        "method": method,
+                        "path": path,
+                        "file": f"{ts_file.relative_to(repo_path)}:{line_idx}",
+                    }
+                )
 
         joined = "\n".join(text.splitlines())
         for m in FETCH_CALL_RE.finditer(joined):
@@ -220,13 +224,15 @@ def scan_client_repo(repo_path: Path, src_subdir: str = "src") -> dict[str, Any]
             if not (url.startswith("/api/v1/") or url.startswith("/v1/")):
                 continue
             method_match = re.search(r"method:\s*[`'\"]([^'\"`]+)[`'\"]", m.group(0), re.IGNORECASE)
-            method = (method_match.group(1).upper() if method_match else "GET")
-            line_idx = joined[:m.start()].count("\n") + 1
-            api_calls.append({
-                "method": method,
-                "path": url,
-                "file": f"{ts_file.relative_to(repo_path)}:~{line_idx}",
-            })
+            method = method_match.group(1).upper() if method_match else "GET"
+            line_idx = joined[: m.start()].count("\n") + 1
+            api_calls.append(
+                {
+                    "method": method,
+                    "path": url,
+                    "file": f"{ts_file.relative_to(repo_path)}:~{line_idx}",
+                }
+            )
 
     return {"head_sha": _git_head(repo_path), "api_calls": api_calls}
 
@@ -246,9 +252,9 @@ def scan_sidecar_routes(repo_path: Path) -> dict[str, Any]:
         return {"head_sha": _git_head(repo_path), "routes": [], "api_calls": []}
 
     ts_files = [
-        f for f in src_root.rglob("*.ts")
-        if "/__tests__/" not in str(f)
-        and not f.name.endswith((".test.ts", ".spec.ts"))
+        f
+        for f in src_root.rglob("*.ts")
+        if "/__tests__/" not in str(f) and not f.name.endswith((".test.ts", ".spec.ts"))
     ]
 
     sub_router_prefix: dict[str, str] = {}
@@ -284,11 +290,13 @@ def scan_sidecar_routes(repo_path: Path) -> dict[str, Any]:
                         full = f"{prefix}/{path}"
                 else:
                     continue
-                routes.append({
-                    "method": method,
-                    "path": full,
-                    "file": f"{ts_file.relative_to(repo_path)}:{line_idx}",
-                })
+                routes.append(
+                    {
+                        "method": method,
+                        "path": full,
+                        "file": f"{ts_file.relative_to(repo_path)}:{line_idx}",
+                    }
+                )
 
     seen: set[tuple[str, str]] = set()
     unique: list[dict[str, Any]] = []
@@ -312,7 +320,7 @@ def _normalize_path(path: str) -> str:
     if "?" in path:
         path = path.split("?", 1)[0]
     if path.startswith("/api/v1/"):
-        path = "/v1/" + path[len("/api/v1/"):]
+        path = "/v1/" + path[len("/api/v1/") :]
     path = re.sub(r"\$\{[^}]*query[^}]*\}$", "", path, flags=re.IGNORECASE)
     path = re.sub(r"\$\{[^}]*search[^}]*\}$", "", path, flags=re.IGNORECASE)
     path = re.sub(r"\$\{[^}]*params[^}]*\}$", "", path, flags=re.IGNORECASE)
@@ -340,13 +348,15 @@ def compute_contract_drift(code_map: dict[str, Any]) -> list[dict[str, Any]]:
         for call in repo_data.get("api_calls", []):
             key = (call["method"], _normalize_path(call["path"]))
             if key not in server_set:
-                drift.append({
-                    "caller": client_repo,
-                    "method": call["method"],
-                    "path": call["path"],
-                    "normalized": key[1],
-                    "file": call["file"],
-                })
+                drift.append(
+                    {
+                        "caller": client_repo,
+                        "method": call["method"],
+                        "path": call["path"],
+                        "normalized": key[1],
+                        "file": call["file"],
+                    }
+                )
     return drift
 
 
@@ -368,7 +378,7 @@ def build_code_map() -> dict[str, Any]:
         repos[repo] = {"head_sha": _git_head(WORKSPACE / repo)}
 
     code_map = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "repos": repos,
     }
     code_map["contract_drift"] = compute_contract_drift(code_map)
@@ -388,9 +398,11 @@ def main() -> int:
         return 0
 
     if not REPOS and not BACKEND_REPO and not SIDECAR_REPO:
-        print(f"[{AGENT.upper()}-IDLE] no repos configured "
-              "(set ALFRED_CODE_MAP_REPOS, ALFRED_CODE_MAP_BACKEND_REPO, "
-              "or ALFRED_CODE_MAP_SIDECAR_REPO)")
+        print(
+            f"[{AGENT.upper()}-IDLE] no repos configured "
+            "(set ALFRED_CODE_MAP_REPOS, ALFRED_CODE_MAP_BACKEND_REPO, "
+            "or ALFRED_CODE_MAP_SIDECAR_REPO)"
+        )
         return 0
 
     code_map = build_code_map()
@@ -406,10 +418,7 @@ def main() -> int:
     n_routes = 0
     if SIDECAR_REPO:
         n_routes = len(code_map["repos"].get(SIDECAR_REPO, {}).get("routes", []))
-    n_calls = sum(
-        len(code_map["repos"].get(r, {}).get("api_calls", []))
-        for r in CLIENT_REPOS
-    )
+    n_calls = sum(len(code_map["repos"].get(r, {}).get("api_calls", [])) for r in CLIENT_REPOS)
     n_drift = len(code_map["contract_drift"])
 
     summary = (

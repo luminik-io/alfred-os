@@ -5,6 +5,7 @@ Reads spend files from ${HERMES_HOME}/state/<agent>/spend-YYYY-MM-DD.json
 for every agent in ALFRED_MORNING_BRIEF_AGENTS, plus PRs labeled
 agent:authored across ALFRED_MORNING_BRIEF_REPOS.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,22 +14,23 @@ import sys
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
+from agent_runner import (
     GH_ORG,
-    PreflightFailed, PreflightSpec,
-    STATE_ROOT, doctor_mode, gh_json, preflight, slack_post,
+    STATE_ROOT,
+    PreflightFailed,
+    PreflightSpec,
+    doctor_mode,
+    gh_json,
+    preflight,
+    slack_post,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "morning-brief")
 AGENTS = [
-    a.strip()
-    for a in os.environ.get("ALFRED_MORNING_BRIEF_AGENTS", "").split(",")
-    if a.strip()
+    a.strip() for a in os.environ.get("ALFRED_MORNING_BRIEF_AGENTS", "").split(",") if a.strip()
 ]
 WATCH_REPOS = [
-    r.strip()
-    for r in os.environ.get("ALFRED_MORNING_BRIEF_REPOS", "").split(",")
-    if r.strip()
+    r.strip() for r in os.environ.get("ALFRED_MORNING_BRIEF_REPOS", "").split(",") if r.strip()
 ]
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
@@ -60,11 +62,24 @@ def yesterday_prs() -> list[dict]:
     yday = yesterday_str()
     out = []
     for repo in WATCH_REPOS:
-        prs = gh_json([
-            "gh", "pr", "list", "-R", f"{GH_ORG}/{repo}",
-            "--state", "all", "--label", "agent:authored",
-            "--json", "number,title,state,mergedAt,createdAt", "--limit", "20",
-        ], default=[])
+        prs = gh_json(
+            [
+                "gh",
+                "pr",
+                "list",
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--state",
+                "all",
+                "--label",
+                "agent:authored",
+                "--json",
+                "number,title,state,mergedAt,createdAt",
+                "--limit",
+                "20",
+            ],
+            default=[],
+        )
         for pr in prs:
             if pr["createdAt"].startswith(yday):
                 pr["repo"] = repo
@@ -83,8 +98,10 @@ def main() -> int:
         return 0
 
     if not AGENTS or not WATCH_REPOS:
-        print(f"[{AGENT.upper()}-IDLE] no agents/repos configured "
-              "(set ALFRED_MORNING_BRIEF_AGENTS and ALFRED_MORNING_BRIEF_REPOS)")
+        print(
+            f"[{AGENT.upper()}-IDLE] no agents/repos configured "
+            "(set ALFRED_MORNING_BRIEF_AGENTS and ALFRED_MORNING_BRIEF_REPOS)"
+        )
         return 0
 
     yday = yesterday_str()
@@ -102,12 +119,19 @@ def main() -> int:
         firings = s.get("firings_today", 0)
         turns = s.get("turns_today", 0)
         cost = s.get("cost_usd_today", 0)
-        succ = s.get("successes_today", 0) + s.get("reviews_posted", 0) + s.get("fixes_landed", 0) + s.get("triaged_today", 0)
+        succ = (
+            s.get("successes_today", 0)
+            + s.get("reviews_posted", 0)
+            + s.get("fixes_landed", 0)
+            + s.get("triaged_today", 0)
+        )
         fail = s.get("failures_today", 0) + s.get("failures", 0)
         total_turns += turns
         total_successes += succ
         total_failures += fail
-        lines.append(f"- *{agent}*: firings={firings}, turns={turns}, ok={succ}, fail={fail} (cost-eq ${cost:.2f})")
+        lines.append(
+            f"- *{agent}*: firings={firings}, turns={turns}, ok={succ}, fail={fail} (cost-eq ${cost:.2f})"
+        )
 
     prs = yesterday_prs()
     if prs:
@@ -121,11 +145,24 @@ def main() -> int:
 
     awaiting = []
     for repo in WATCH_REPOS:
-        prs = gh_json([
-            "gh", "pr", "list", "-R", f"{GH_ORG}/{repo}",
-            "--state", "open", "--label", "agent:authored",
-            "--json", "number,title,createdAt", "--limit", "20",
-        ], default=[])
+        prs = gh_json(
+            [
+                "gh",
+                "pr",
+                "list",
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--state",
+                "open",
+                "--label",
+                "agent:authored",
+                "--json",
+                "number,title,createdAt",
+                "--limit",
+                "20",
+            ],
+            default=[],
+        )
         for pr in prs:
             pr["repo"] = repo
             awaiting.append(pr)
@@ -140,7 +177,9 @@ def main() -> int:
     for agent in AGENTS:
         s = load_spend(agent, today)
         today_total += s.get("turns_today", 0)
-        today_succ += s.get("successes_today", 0) + s.get("reviews_posted", 0) + s.get("fixes_landed", 0)
+        today_succ += (
+            s.get("successes_today", 0) + s.get("reviews_posted", 0) + s.get("fixes_landed", 0)
+        )
     lines.append(f"\n*Today so far*: {today_total} turns, {today_succ} ok")
 
     msg = "\n".join(lines)

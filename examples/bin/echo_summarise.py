@@ -30,13 +30,14 @@ Required env (preflight will fail loud if missing):
 Cron suggestion: every 30 minutes.
     my.fleet.echo    echo_summarise.py    interval:1800    no
 """
+
 from __future__ import annotations
 
 import os
 import sys
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
+from agent_runner import (
     EventLog,
     PreflightFailed,
     PreflightSpec,
@@ -68,10 +69,19 @@ def pick_issue() -> dict | None:
     """Find the oldest open issue with the agent:summarise label."""
     issues = gh_json(
         [
-            "gh", "issue", "list", "-R", REPO_SLUG,
-            "--label", "agent:summarise", "--state", "open",
-            "--json", "number,title,body,createdAt,labels",
-            "--limit", "20",
+            "gh",
+            "issue",
+            "list",
+            "-R",
+            REPO_SLUG,
+            "--label",
+            "agent:summarise",
+            "--state",
+            "open",
+            "--json",
+            "number,title,body,createdAt,labels",
+            "--limit",
+            "20",
         ],
         default=[],
     )
@@ -79,7 +89,7 @@ def pick_issue() -> dict | None:
         return None
     issues.sort(key=lambda i: i["createdAt"])
     for issue in issues:
-        labels = {l["name"] for l in issue.get("labels", [])}
+        labels = {lbl["name"] for lbl in issue.get("labels", [])}
         # Defensive: claim_issue would refuse these too, but skip early to
         # avoid touching the gh API needlessly.
         if labels & {
@@ -159,8 +169,11 @@ def main() -> int:
 
     if result.subtype != "success":
         release_issue(
-            REPO_SLUG, issue_num,
-            codename=AGENT, firing_id=events.firing_id, outcome=f"failure-{result.subtype}",
+            REPO_SLUG,
+            issue_num,
+            codename=AGENT,
+            firing_id=events.firing_id,
+            outcome=f"failure-{result.subtype}",
         )
         spend.increment(failures_today=1, consecutive_failures=1)
         slack_post(
@@ -173,8 +186,11 @@ def main() -> int:
     summary = (result.result_text or "").strip()
     if not summary:
         release_issue(
-            REPO_SLUG, issue_num,
-            codename=AGENT, firing_id=events.firing_id, outcome="empty-output",
+            REPO_SLUG,
+            issue_num,
+            codename=AGENT,
+            firing_id=events.firing_id,
+            outcome="empty-output",
         )
         spend.increment(failures_today=1, consecutive_failures=1)
         slack_post(
@@ -185,8 +201,11 @@ def main() -> int:
 
     gh_issue_comment(REPO_SLUG, issue_num, f"**Echo (auto-summary):** {summary}")
     release_issue(
-        REPO_SLUG, issue_num,
-        codename=AGENT, firing_id=events.firing_id, outcome="success",
+        REPO_SLUG,
+        issue_num,
+        codename=AGENT,
+        firing_id=events.firing_id,
+        outcome="success",
         transition_to="agent:done",
     )
 
@@ -194,8 +213,10 @@ def main() -> int:
     spend.increment(successes_today=1)
     slack_post(f"Echo summarised {REPO_SLUG}#{issue_num}: _{summary[:120]}_")
     events.emit(
-        "firing_complete", outcome="success",
-        turns=result.num_turns, cost_usd=result.cost_usd,
+        "firing_complete",
+        outcome="success",
+        turns=result.num_turns,
+        cost_usd=result.cost_usd,
     )
     return 0
 
