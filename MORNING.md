@@ -1,32 +1,32 @@
-# Morning brief — pennyworth public-launch readiness PR
+# Morning brief — alfred-os public-launch readiness PR
 
-PR: [`feat/fresh-machine-onboarding`](https://github.com/luminik-io/pennyworth/pull/2) (replace with actual number once opened)
+PR: [`feat/fresh-machine-onboarding`](https://github.com/luminik-io/alfred-os/pull/2) (replace with actual number once opened)
 
 This file enumerates every defaulted decision so you can override on wake. Read top-to-bottom; each section ends with the override path.
 
 ## What I shipped overnight
 
-A complete public-launch surface for pennyworth. Eight commits, ~6500 lines of additions across:
+A complete public-launch surface for alfred-os. Eight commits, ~6500 lines of additions across:
 
-- **Fresh-machine bootstrap** — `install.sh` + `INSTALL.md` + `.pennyworthrc.example`. From `git clone` to `bash bin/doctor.sh` passing in 30 minutes including auth.
+- **Fresh-machine bootstrap** — `install.sh` + `INSTALL.md` + `.alfredrc.example`. From `git clone` to `bash bin/doctor.sh` passing in 30 minutes including auth.
 - **Setup walkthroughs** — `docs/SLACK_SETUP.md`, `docs/AWS_SETUP.md`, `docs/CLAUDE_CODE.md`, `docs/SKILLS.md`, `docs/LINUX.md`, `docs/TUTORIAL.md`.
 - **Reference example agent** — `examples/bin/echo_summarise.py` showing the full pick → claim → invoke → act → release → report lifecycle.
 - **Project hygiene** — VERSION, CHANGELOG, CODE_OF_CONDUCT, SECURITY, SUPPORT, ROADMAP, issue templates, PR template, dependabot.
 - **Quality gates** — pyproject.toml (ruff + mypy), .pre-commit-config.yaml.
 - **CI** — pytest matrix (3.11/3.12/3.13) + ruff + mypy + shellcheck + python-syntax + scrub-check.
 - **Release automation** — tag → GitHub release with auto-extracted changelog.
-- **Brew formula** — Formula/pennyworth.rb skeleton.
+- **Brew formula** — Formula/alfred-os.rb skeleton.
 - **Astro Starlight site** — 16 content pages under `site/` + GitHub Pages deploy workflow.
 
 ## Decisions I made (override one-liners)
 
 ### License: MIT
 
-Already MIT in the repo, kept it. **Override**: edit `LICENSE`. If you change to Apache 2.0 / GPL, also bump `pyproject.toml` `license` and `Formula/pennyworth.rb` `license`.
+Already MIT in the repo, kept it. **Override**: edit `LICENSE`. If you change to Apache 2.0 / GPL, also bump `pyproject.toml` `license` and `Formula/alfred-os.rb` `license`.
 
-### Site URL: `luminik-io.github.io/pennyworth`
+### Site URL: `luminik-io.github.io/alfred-os`
 
-Site config defaults to `PENNYWORTH_SITE_URL=https://luminik-io.github.io` + `PENNYWORTH_SITE_BASE=/pennyworth`. **Override**: set repo Variables `PENNYWORTH_SITE_URL` + `PENNYWORTH_SITE_BASE` in Settings → Secrets and variables → Actions → Variables. The site workflow picks them up on next build. For a custom domain like `pennyworth.dev`, set `PENNYWORTH_SITE_URL=https://pennyworth.dev` + `PENNYWORTH_SITE_BASE=/`.
+Site config defaults to `ALFRED_OS_SITE_URL=https://luminik-io.github.io` + `ALFRED_OS_SITE_BASE=/alfred-os`. **Override**: set repo Variables `ALFRED_OS_SITE_URL` + `ALFRED_OS_SITE_BASE` in Settings → Secrets and variables → Actions → Variables. The site workflow picks them up on next build. For a custom domain like `alfred-os.dev`, set `ALFRED_OS_SITE_URL=https://alfred-os.dev` + `ALFRED_OS_SITE_BASE=/`.
 
 ### Pages source: GitHub Actions (not branch)
 
@@ -34,7 +34,7 @@ Site is built + deployed via `actions/deploy-pages@v4`. **You need to enable**: 
 
 ### Repo visibility: PRIVATE (per your instruction)
 
-I did not flip the repo to public. Confirm by checking https://github.com/luminik-io/pennyworth — should still be private. **To flip**: Settings → General → Danger Zone → Change repository visibility.
+I did not flip the repo to public. Confirm by checking https://github.com/luminik-io/alfred-os — should still be private. **To flip**: Settings → General → Danger Zone → Change repository visibility.
 
 ### Branch protection: not configured
 
@@ -43,7 +43,7 @@ I cannot configure branch protection autonomously. Recommended for public launch
 
 ### Brew tap: not created
 
-`Formula/pennyworth.rb` is in this repo at `Formula/pennyworth.rb`. For `brew install luminik-io/tap/pennyworth` to work, you need a `homebrew-tap` repo. **Override**: create `luminik-io/homebrew-tap` (or similar) and copy the Formula into it. The `release.yml` workflow logs the source-tarball sha256 on every tag — paste that into the Formula in your tap.
+`Formula/alfred-os.rb` is in this repo at `Formula/alfred-os.rb`. For `brew install luminik-io/tap/alfred-os` to work, you need a `homebrew-tap` repo. **Override**: create `luminik-io/homebrew-tap` (or similar) and copy the Formula into it. The `release.yml` workflow logs the source-tarball sha256 on every tag — paste that into the Formula in your tap.
 
 ### Issue templates / PR template / dependabot enabled
 
@@ -55,7 +55,7 @@ VERSION + CHANGELOG entry. **Override**: bump VERSION + add a new CHANGELOG sect
 
 ### Linux support: macOS-only stance, deferred to roadmap
 
-`install.sh` refuses to run on non-macOS unless `PENNYWORTH_FORCE_LINUX=1`. `docs/LINUX.md` documents the rationale + interim cron / systemd patterns + roadmap. **Override**: write the systemd port (welcome PR — see Roadmap "in flight").
+`install.sh` refuses to run on non-macOS unless `ALFRED_FORCE_LINUX=1`. `docs/LINUX.md` documents the rationale + interim cron / systemd patterns + roadmap. **Override**: write the systemd port (welcome PR — see Roadmap "in flight").
 
 ### CI: 3 Python versions, all linters strict
 
@@ -64,7 +64,7 @@ VERSION + CHANGELOG entry. **Override**: bump VERSION + add a new CHANGELOG sect
 ## What needs your input before public launch
 
 1. **Configure GitHub Pages source** = GitHub Actions (one click in Settings).
-2. **Decide site URL**: stick with `luminik-io.github.io/pennyworth` or buy a domain (`pennyworth.dev`?).
+2. **Decide site URL**: stick with `luminik-io.github.io/alfred-os` or buy a domain (`alfred-os.dev`?).
 3. **Create the homebrew tap repo** if you want `brew install`. Else strip `Formula/` and the brew references in CI/release workflows.
 4. **Configure branch protection** on `main` before flipping public.
 5. **Write a logo** — `site/astro.config.mjs` references a logo slot but I can't create images. Drop SVG/PNG into `site/src/assets/` and uncomment the `logo:` block in the config.
@@ -89,7 +89,7 @@ The CHANGELOG `[Unreleased]` section enumerates everything in this PR. The defer
 - **`claim_pr` / `release_pr`** → state machine for PR-level work (review-fix agents).
 - **`render-systemd.sh`** → first-class Linux support.
 - **Spend dashboards** → weekly fleet recap.
-- **`pennyworth-init` template** → scaffolding for new fleets.
+- **`alfred-os-init` template** → scaffolding for new fleets.
 
 ## Sandbox note
 

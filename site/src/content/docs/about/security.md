@@ -3,13 +3,13 @@ title: Security
 description: Reporting vulnerabilities, scope, hardening recommendations.
 ---
 
-The full policy lives at [`SECURITY.md`](https://github.com/luminik-io/pennyworth/blob/main/SECURITY.md). The shape:
+The full policy lives at [`SECURITY.md`](https://github.com/luminik-io/alfred-os/blob/main/SECURITY.md). The shape:
 
 ## Reporting a vulnerability
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Preferred: open a [private security advisory](https://github.com/luminik-io/pennyworth/security/advisories/new).
+Preferred: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new).
 
 Acknowledgement target: 72 hours. Patch target for critical / high severity: 14 days.
 
@@ -43,7 +43,7 @@ Out of scope:
 
 For consumer fleets:
 
-1. **Per-agent IAM**, never operator SSO. See [AWS setup](/pennyworth/guides/aws/).
+1. **Per-agent IAM**, never operator SSO. See [AWS setup](/alfred-os/guides/aws/).
 2. **Secrets via AWS Secrets Manager**, not env files committed to home.
 3. **Pre-push hook installed** in every operator-touched repo.
 4. **Read every skill before installing.** Skills run with `claude`'s permissions.

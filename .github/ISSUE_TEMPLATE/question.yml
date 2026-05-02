@@ -1,5 +1,5 @@
 name: Question
-description: Ask about pennyworth (when the docs don't answer it)
+description: Ask about alfred-os (when the docs don't answer it)
 title: "[question] "
 labels: ["question"]
 body:
@@ -8,11 +8,11 @@ body:
       value: |
         Welcome. Before opening a question issue, check:
 
-        - [`INSTALL.md`](https://github.com/luminik-io/pennyworth/blob/main/INSTALL.md) — fresh-machine setup
-        - [`docs/TUTORIAL.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/TUTORIAL.md) — your-first-agent walkthrough
-        - [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/STATE_MACHINE.md) — claim/release semantics
-        - [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/SLACK_SETUP.md), [`docs/AWS_SETUP.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/AWS_SETUP.md), [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/CLAUDE_CODE.md)
-        - [`SUPPORT.md`](https://github.com/luminik-io/pennyworth/blob/main/SUPPORT.md) — what's in scope
+        - [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md) — fresh-machine setup
+        - [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md) — your-first-agent walkthrough
+        - [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md) — claim/release semantics
+        - [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md), [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md), [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md)
+        - [`SUPPORT.md`](https://github.com/luminik-io/alfred-os/blob/main/SUPPORT.md) — what's in scope
 
         If the answer's already there, the doc gets a star, not a new issue.
 

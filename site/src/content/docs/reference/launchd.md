@@ -5,9 +5,9 @@ description: How agents.conf + _template.plist + render.sh produce the per-agent
 
 The framework's scheduling layer. Three files, fully documented.
 
-- [`launchd/_template.plist`](https://github.com/luminik-io/pennyworth/blob/main/launchd/_template.plist) — the canonical template with `__PLACEHOLDER__` tokens.
-- [`launchd/agents.conf.example`](https://github.com/luminik-io/pennyworth/blob/main/launchd/agents.conf.example) — TSV format documentation.
-- [`launchd/render.sh`](https://github.com/luminik-io/pennyworth/blob/main/launchd/render.sh) — substitutes tokens, writes one plist per row.
+- [`launchd/_template.plist`](https://github.com/luminik-io/alfred-os/blob/main/launchd/_template.plist) — the canonical template with `__PLACEHOLDER__` tokens.
+- [`launchd/agents.conf.example`](https://github.com/luminik-io/alfred-os/blob/main/launchd/agents.conf.example) — TSV format documentation.
+- [`launchd/render.sh`](https://github.com/luminik-io/alfred-os/blob/main/launchd/render.sh) — substitutes tokens, writes one plist per row.
 
 ## `agents.conf` format
 

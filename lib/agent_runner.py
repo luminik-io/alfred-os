@@ -1,5 +1,5 @@
 """
-pennyworth — shared library for cron-driven Claude Code agents.
+alfred-os — shared library for cron-driven Claude Code agents.
 
 Provides the primitives every codename agent needs:
 

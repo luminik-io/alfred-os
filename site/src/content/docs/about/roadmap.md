@@ -3,7 +3,7 @@ title: Roadmap
 description: What's shipped, what's in flight, what's deliberately out of scope.
 ---
 
-The full roadmap lives at [`ROADMAP.md`](https://github.com/luminik-io/pennyworth/blob/main/ROADMAP.md). The shape:
+The full roadmap lives at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md). The shape:
 
 ## Shipped
 
@@ -11,11 +11,11 @@ The full roadmap lives at [`ROADMAP.md`](https://github.com/luminik-io/pennywort
 - launchd plist template + render.sh + deploy.sh.
 - doctor.sh — fleet-wide preflight under `HERMES_DOCTOR=1`.
 - hermes-claude — two-account swap helper.
-- [Issue claim state machine](/pennyworth/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
-- [Slack severity routing](/pennyworth/concepts/severity-routing/) (`info` / `warn` / `alert`).
+- [Issue claim state machine](/alfred-os/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
+- [Slack severity routing](/alfred-os/concepts/severity-routing/) (`info` / `warn` / `alert`).
 - `install.sh` + `INSTALL.md` for fresh-machine bootstrap.
 - Setup walkthroughs: Slack, AWS, Claude Code, skills, Linux stance, your-first-agent tutorial.
-- [Operator CLI](/pennyworth/reference/cli/) — label-state + pre-push hook.
+- [Operator CLI](/alfred-os/reference/cli/) — label-state + pre-push hook.
 - CI (pytest + ruff + mypy + shellcheck + scrub-check) on every PR.
 - Release automation (tag → GitHub release with auto-extracted changelog).
 - Project hygiene: COC, security, support, issue templates, PR template, dependabot.
@@ -30,7 +30,7 @@ The full roadmap lives at [`ROADMAP.md`](https://github.com/luminik-io/pennywort
 - **`claim_pr` / `release_pr`** — extend the state machine to PR-level work.
 - **`render-systemd.sh`** — first-class Linux scheduling.
 - **Spend dashboards** — render a weekly recap from per-agent spend files.
-- **`pennyworth-init` template** — `npm create vite`-style scaffolding for a new fleet.
+- **`alfred-os-init` template** — `npm create vite`-style scaffolding for a new fleet.
 
 ## Considered, not yet committed
 

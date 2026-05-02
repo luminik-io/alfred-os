@@ -1,11 +1,11 @@
 # AWS setup
 
-Pennyworth uses AWS for two optional things:
+Alfred-OS uses AWS for two optional things:
 
 1. **Secrets Manager** — stores the Slack webhook URL and any per-fleet credentials (Sentry tokens, third-party API keys) so they don't live in shell rc files. Resolution is cached on disk for 7 days; AWS is only hit when the cache expires or is missing.
 2. **Per-agent IAM** — every cron-spawned agent that needs AWS access gets its own scoped IAM user with a narrow inline policy. The operator's SSO chain is **never** used by cron.
 
-If you don't need either of those, skip this entire doc and put `SLACK_WEBHOOK_URL` directly in `~/.pennyworthrc`. Pennyworth runs fine without an AWS account.
+If you don't need either of those, skip this entire doc and put `SLACK_WEBHOOK_URL` directly in `~/.alfredrc`. Alfred-OS runs fine without an AWS account.
 
 ## Why per-agent IAM
 
@@ -36,7 +36,7 @@ AWS_ADMIN_PROFILE="<your-admin-profile>"
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-user \
   --user-name huntress-cron \
-  --tags Key=purpose,Value=pennyworth-agent
+  --tags Key=purpose,Value=alfred-os-agent
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-access-key \
   --user-name huntress-cron \
@@ -187,7 +187,7 @@ aws --profile huntress-cron secretsmanager get-secret-value \
 
 ## 4. Configure the launchd plist
 
-The plists rendered by `launchd/render.sh` get an `AWS_PROFILE` env var if you set it in `agents.conf` or in your `~/.pennyworthrc`. The agent runner picks it up via the standard AWS credential chain.
+The plists rendered by `launchd/render.sh` get an `AWS_PROFILE` env var if you set it in `agents.conf` or in your `~/.alfredrc`. The agent runner picks it up via the standard AWS credential chain.
 
 For per-agent profiles, the cleanest pattern is to set `AWS_PROFILE` *inside the agent's Python runner* before any `subprocess.run(["aws", ...])` call:
 

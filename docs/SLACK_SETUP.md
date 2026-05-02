@@ -1,6 +1,6 @@
 # Slack setup
 
-Pennyworth posts agent reports to a Slack channel via an **incoming webhook**. This doc walks through creating the Slack app, getting the webhook URL, and (optionally) provisioning a bot token if you want richer integration later.
+Alfred-OS posts agent reports to a Slack channel via an **incoming webhook**. This doc walks through creating the Slack app, getting the webhook URL, and (optionally) provisioning a bot token if you want richer integration later.
 
 If you've already got a webhook URL, the only thing the framework needs is `SLACK_WEBHOOK_URL` in your environment (or in AWS Secrets Manager — see below). Skip to [§ Wiring it up](#wiring-it-up).
 
@@ -16,7 +16,7 @@ The framework needs only the webhook URL today. The bot/app tokens are for featu
 ## 1. Create the Slack app
 
 1. Go to https://api.slack.com/apps → **Create New App** → **From scratch**.
-2. Name it (e.g. `alfred-bot`, `pennyworth-fleet`, `<yourstartup>-agents`).
+2. Name it (e.g. `alfred-bot`, `alfred-os-fleet`, `<yourstartup>-agents`).
 3. Pick the workspace that owns the channel you want to post to.
 4. Click **Create App**.
 
@@ -42,7 +42,7 @@ https://hooks.slack.com/services/T.../B.../...........
 
 ```sh
 curl -X POST -H 'Content-Type: application/json' \
-  --data '{"text":"hello from pennyworth setup"}' \
+  --data '{"text":"hello from alfred-os setup"}' \
   'https://hooks.slack.com/services/T.../B.../...........'
 ```
 
@@ -54,7 +54,7 @@ You have three options. Pick one.
 
 ### Option A — Env var (simplest)
 
-Append to `~/.pennyworthrc`:
+Append to `~/.alfredrc`:
 
 ```sh
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...........
@@ -88,14 +88,14 @@ You also need an IAM identity that the cron-spawned agents use, with `secretsman
 
 Set `SLACK_WEBHOOK_URL` only when you want to override the AWS-stored value (e.g. testing a webhook rotation). Leave it unset normally and let AWS resolution handle it.
 
-## 5. Verify in pennyworth
+## 5. Verify in alfred-os
 
 ```sh
 python3 - <<'PY'
 import sys
 sys.path.insert(0, "lib")
 from agent_runner import slack_post
-ok = slack_post("pennyworth setup test — channel migration confirmed")
+ok = slack_post("alfred-os setup test — channel migration confirmed")
 print("posted:", ok)
 PY
 ```
@@ -163,7 +163,7 @@ You'll want to do this when you accidentally paste the URL somewhere it shouldn'
 
    ```sh
    # Env var path:
-   sed -i '' 's|^SLACK_WEBHOOK_URL=.*|SLACK_WEBHOOK_URL=<new-url>|' ~/.pennyworthrc
+   sed -i '' 's|^SLACK_WEBHOOK_URL=.*|SLACK_WEBHOOK_URL=<new-url>|' ~/.alfredrc
 
    # AWS Secrets path:
    aws --profile <admin> secretsmanager update-secret \

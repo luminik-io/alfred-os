@@ -1,23 +1,23 @@
 ---
-title: Pennyworth
+title: Alfred-OS
 description: Cron-driven Claude Code agent fleet for solo founders. One Mac, one operator, code shipping while you sleep.
 template: splash
 hero:
   tagline: One Mac. One operator. A fleet of narrow-specialist agents shipping code while you sleep.
   actions:
     - text: Install (30 min)
-      link: /pennyworth/getting-started/install/
+      link: /alfred-os/getting-started/install/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
-      link: https://github.com/luminik-io/pennyworth
+      link: https://github.com/luminik-io/alfred-os
       icon: external
       variant: minimal
 ---
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-## Why pennyworth exists
+## Why alfred-os exists
 
 Most agentic frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. That's the wrong shape for an *unattended* engineering team.
 
@@ -25,7 +25,7 @@ Most agentic frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume
 - **In-memory state** can't survive an OS reboot. macOS restarts every few weeks.
 - **Chat-first interfaces** force the operator to be the bottleneck. The whole point is to *not* be one.
 
-Pennyworth picks a different shape: every agent is a **fresh subprocess in its own git worktree**, dispatched by **`launchd`**, isolated by **per-agent IAM**, bounded by **per-day spend caps** with a **fleet-wide rate-limit poison pill**.
+Alfred-OS picks a different shape: every agent is a **fresh subprocess in its own git worktree**, dispatched by **`launchd`**, isolated by **per-agent IAM**, bounded by **per-day spend caps** with a **fleet-wide rate-limit poison pill**.
 
 ```
 launchd plist (every N min)
@@ -70,7 +70,7 @@ slack_post('<result>', severity=...)  report to your fleet's Slack channel
 
 You're a solo founder, indie hacker, or small-team CTO who wants their backlog to *physically move* overnight. You have a Mac that's always on. You've already paid for Claude Pro or Max. You'd rather your engineering team be **a fleet of narrow specialists you wrote in 200 lines each** than a $30k/yr senior who just left.
 
-You're **not** building a multi-tenant SaaS, hosted orchestrator, or chat-first agent UX. Pennyworth is deliberately small.
+You're **not** building a multi-tenant SaaS, hosted orchestrator, or chat-first agent UX. Alfred-OS is deliberately small.
 
 ## What's deliberately out of scope
 
@@ -88,25 +88,25 @@ You're **not** building a multi-tenant SaaS, hosted orchestrator, or chat-first 
 <LinkCard
   title="Install in 30 minutes"
   description="Fresh-Mac setup: install.sh handles brew + npm + dirs + shell rc + auth checks."
-  href="/pennyworth/getting-started/install/"
+  href="/alfred-os/getting-started/install/"
 />
 
 <LinkCard
   title="Build your first agent"
   description="The Echo tutorial: pick → claim → invoke → act → release → report. The shape every richer codename inherits."
-  href="/pennyworth/getting-started/tutorial/"
+  href="/alfred-os/getting-started/tutorial/"
 />
 
 <LinkCard
   title="Read the architecture"
-  description="Why cron, why worktrees, why per-agent IAM. The design constraints that make pennyworth opinionated."
-  href="/pennyworth/concepts/architecture/"
+  description="Why cron, why worktrees, why per-agent IAM. The design constraints that make alfred-os opinionated."
+  href="/alfred-os/concepts/architecture/"
 />
 
 ## Status
 
-Pennyworth is at **v0.1.0** — initial public extraction from a fleet that has been running unattended for several months. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
+Alfred-OS is at **v0.1.0** — initial public extraction from a fleet that has been running unattended for several months. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design constraints get reviewed; PRs that broaden scope get politely declined. Read [Contributing](/pennyworth/about/contributing/) before opening.
+Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design constraints get reviewed; PRs that broaden scope get politely declined. Read [Contributing](/alfred-os/about/contributing/) before opening.
 
-License: [MIT](https://github.com/luminik-io/pennyworth/blob/main/LICENSE).
+License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).

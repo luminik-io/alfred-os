@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hello — the smallest possible pennyworth codename agent.
+"""Hello — the smallest possible alfred-os codename agent.
 
 Demonstrates the canonical pattern every cron-driven agent follows:
 
@@ -64,7 +64,7 @@ def main() -> int:
     # - Track spend:             SpendState(AGENT).increment(turns_today=N)
     # - Trip the global block:   set_global_block(hours=1, reason="hello-rate-limit")
 
-    msg = f"👋 Hello from pennyworth at {events.firing_id}"
+    msg = f"👋 Hello from alfred-os at {events.firing_id}"
     print(msg)
     slack_post(msg)
     events.emit("firing_complete", message=msg)

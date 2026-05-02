@@ -1,16 +1,16 @@
 # Install
 
-Fresh-machine guide: from a Mac with nothing on it to a working pennyworth fleet skeleton in about 30 minutes.
+Fresh-machine guide: from a Mac with nothing on it to a working alfred-os fleet skeleton in about 30 minutes.
 
 For the deeper operational walkthrough (AWS IAM-per-agent, hermes-agent, troubleshooting), read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
 
 ## TL;DR
 
 ```sh
-git clone https://github.com/luminik-io/pennyworth.git ~/code/pennyworth
-cd ~/code/pennyworth
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
 bash install.sh
-exec $SHELL                       # pick up ~/.pennyworthrc
+exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub auth
 claude                            # Claude Code first-run auth
 bash deploy.sh && bash bin/doctor.sh
@@ -27,8 +27,8 @@ Idempotent (safe to re-run). On a fresh Mac it:
 3. `brew install`s the CLI dependencies: `git`, `gh`, `jq`, `awscli`, `python@3.11`, `node`, `uv`.
 4. `npm install -g @anthropic-ai/claude-code` (the Claude Code CLI).
 5. Creates `$HERMES_HOME` (default `~/.hermes`) and `$WORKSPACE_ROOT` (default `~/code`).
-6. Drops `~/.pennyworthrc` from `.pennyworthrc.example` and prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
-7. Appends a source-line to your shell rc (`~/.zshrc` / `~/.bashrc`) so every new shell loads `~/.pennyworthrc`.
+6. Drops `~/.alfredrc` from `.alfredrc.example` and prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
+7. Appends a source-line to your shell rc (`~/.zshrc` / `~/.bashrc`) so every new shell loads `~/.alfredrc`.
 8. Reports auth status for `gh`, `aws`, `claude` so you know what's left to do.
 
 What it does **not** do (deliberately):
@@ -41,7 +41,7 @@ What it does **not** do (deliberately):
 If you want a non-interactive run:
 
 ```sh
-PENNYWORTH_NONINTERACTIVE=1 GH_ORG=myorg OPERATOR_NAME='Your Name' \
+ALFRED_NONINTERACTIVE=1 GH_ORG=myorg OPERATOR_NAME='Your Name' \
   OPERATOR_EMAIL=you@example.com bash install.sh
 ```
 
@@ -50,8 +50,8 @@ PENNYWORTH_NONINTERACTIVE=1 GH_ORG=myorg OPERATOR_NAME='Your Name' \
 ### 1. Clone
 
 ```sh
-git clone https://github.com/luminik-io/pennyworth.git ~/code/pennyworth
-cd ~/code/pennyworth
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
 ```
 
 ### 2. Bootstrap
@@ -63,7 +63,7 @@ bash install.sh
 Watch for two things:
 
 - The Homebrew install will prompt for your sudo password.
-- The script asks for your GitHub org, display name, and email. Defaults are fine if you're just kicking the tyres — you can edit `~/.pennyworthrc` later.
+- The script asks for your GitHub org, display name, and email. Defaults are fine if you're just kicking the tyres — you can edit `~/.alfredrc` later.
 
 ### 3. Reload your shell
 
@@ -108,7 +108,7 @@ See [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md) for the recommended IAM policies.
 The framework's `slack_post()` resolves a webhook URL via env → cache → AWS Secrets. The simplest path is the env var:
 
 ```sh
-echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.pennyworthrc
+echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.alfredrc
 ```
 
 For a full walkthrough of creating the Slack app + webhook, read [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md).
@@ -139,7 +139,7 @@ Then read [`BOOTSTRAP.md`](BOOTSTRAP.md) for the full pattern: per-agent IAM, Sl
 ## Troubleshooting `install.sh`
 
 **"Refusing to install on non-macOS host."**
-You're on Linux. The `launchd` scheduling layer is macOS-only today. A `systemd` port is on the roadmap but not shipped. Override: `PENNYWORTH_FORCE_LINUX=1` (you're on your own).
+You're on Linux. The `launchd` scheduling layer is macOS-only today. A `systemd` port is on the roadmap but not shipped. Override: `ALFRED_FORCE_LINUX=1` (you're on your own).
 
 **"npm not found; skipping Claude Code install."**
 The `node` brew install should bring `npm` along. If you skipped brew (`--skip-brew`), install Node manually then run install.sh again with `--skip-brew`.
@@ -160,12 +160,12 @@ The npm global install dir might not be in your PATH. Run `npm config get prefix
 
 | Path | What it is | Safe to delete |
 |---|---|---|
-| `~/.pennyworthrc` | Operator config — sourced by every shell | After re-running install.sh |
+| `~/.alfredrc` | Operator config — sourced by every shell | After re-running install.sh |
 | `~/.hermes/` | Runtime root (state, worktrees, deployed bin/lib) | Yes, `deploy.sh` repopulates |
 | `~/code/` | Default workspace root | If you set a different `WORKSPACE_ROOT` |
 | `~/.zshrc` (or `.bashrc`) | One source-block appended | Manually edit to remove |
 
-Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/pennyworth`.
+Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/alfred-os`.
 
 ## Where to go next
 

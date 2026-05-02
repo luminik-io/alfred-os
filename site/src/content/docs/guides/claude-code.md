@@ -3,9 +3,9 @@ title: Claude Code
 description: Install, Pro vs Max sizing, two-account swap, troubleshooting.
 ---
 
-Pennyworth runs every agent as a `claude -p` subprocess. The framework is the harness; Claude Code is the brain.
+Alfred-OS runs every agent as a `claude -p` subprocess. The framework is the harness; Claude Code is the brain.
 
-The full guide lives at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/pennyworth/blob/main/docs/CLAUDE_CODE.md). The highlights:
+The full guide lives at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md). The highlights:
 
 ## Install
 
@@ -49,7 +49,7 @@ Typical use: run on `primary`, hit the cap (Slack alert from `set_global_block`)
 
 ## CLAUDE_BIN
 
-If `claude` isn't on the PATH that `launchd` inherits, set the absolute path in `~/.pennyworthrc`:
+If `claude` isn't on the PATH that `launchd` inherits, set the absolute path in `~/.alfredrc`:
 
 ```sh
 CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
@@ -63,7 +63,7 @@ A Max-subscription fleet shipping 10-20 PRs a day costs $100-200/mo flat — sam
 
 ## Troubleshooting
 
-The full troubleshooting list is at [`docs/CLAUDE_CODE.md#troubleshooting`](https://github.com/luminik-io/pennyworth/blob/main/docs/CLAUDE_CODE.md#troubleshooting). Most common:
+The full troubleshooting list is at [`docs/CLAUDE_CODE.md#troubleshooting`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md#troubleshooting). Most common:
 
 - `claude: command not found` from `launchd` → set `CLAUDE_BIN`.
 - `error_rate_limit` immediately on every firing → cap blown, swap accounts or wait.

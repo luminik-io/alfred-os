@@ -1,17 +1,17 @@
 ---
 title: Install
-description: Fresh-machine setup for pennyworth in about 30 minutes.
+description: Fresh-machine setup for alfred-os in about 30 minutes.
 ---
 
-This page condenses [`INSTALL.md`](https://github.com/luminik-io/pennyworth/blob/main/INSTALL.md). For the full doc with every troubleshooting case, read it on GitHub.
+This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md). For the full doc with every troubleshooting case, read it on GitHub.
 
 ## TL;DR
 
 ```sh
-git clone https://github.com/luminik-io/pennyworth.git ~/code/pennyworth
-cd ~/code/pennyworth
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
 bash install.sh
-exec $SHELL                       # pick up ~/.pennyworthrc
+exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 bash deploy.sh && bash bin/doctor.sh
@@ -23,13 +23,13 @@ You should see `0 passed, 0 failed` from doctor on a clean install — the frame
 
 Idempotent (safe to re-run). On a fresh Mac it:
 
-1. Verifies macOS. (Linux support is on the roadmap; see [Linux](/pennyworth/guides/linux/).)
+1. Verifies macOS. (Linux support is on the roadmap; see [Linux](/alfred-os/guides/linux/).)
 2. Installs Homebrew if missing.
 3. `brew install`s `python@3.11`, `git`, `gh`, `jq`, `awscli`, `node`, `uv`.
 4. `npm install -g @anthropic-ai/claude-code`.
 5. Creates `$HERMES_HOME` (default `~/.hermes`) and `$WORKSPACE_ROOT` (default `~/code`).
-6. Drops `~/.pennyworthrc` from the template, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
-7. Appends a source-line to your shell rc so every new shell loads `~/.pennyworthrc`.
+6. Drops `~/.alfredrc` from the template, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
+7. Appends a source-line to your shell rc so every new shell loads `~/.alfredrc`.
 8. Reports auth status for `gh`, `aws`, `claude`.
 
 What it does **not** do (deliberately):
@@ -43,7 +43,7 @@ What it does **not** do (deliberately):
 For automation:
 
 ```sh
-PENNYWORTH_NONINTERACTIVE=1 \
+ALFRED_NONINTERACTIVE=1 \
   GH_ORG=myorg \
   OPERATOR_NAME='Your Name' \
   OPERATOR_EMAIL=you@example.com \
@@ -54,20 +54,20 @@ Per-stage skips: `--skip-brew`, `--skip-npm`.
 
 ## After install
 
-Point pennyworth at your fleet's Slack channel and (optionally) AWS:
+Point alfred-os at your fleet's Slack channel and (optionally) AWS:
 
-- [Slack setup](/pennyworth/guides/slack/) — create the app, mint the webhook.
-- [AWS setup](/pennyworth/guides/aws/) — IAM-per-agent, Secrets Manager.
-- [Claude Code](/pennyworth/guides/claude-code/) — Pro vs Max sizing, two-account swap.
+- [Slack setup](/alfred-os/guides/slack/) — create the app, mint the webhook.
+- [AWS setup](/alfred-os/guides/aws/) — IAM-per-agent, Secrets Manager.
+- [Claude Code](/alfred-os/guides/claude-code/) — Pro vs Max sizing, two-account swap.
 
 Then write your first codename agent:
 
-- [Tutorial: your first agent in 30 minutes](/pennyworth/getting-started/tutorial/) — builds Echo end-to-end.
+- [Tutorial: your first agent in 30 minutes](/alfred-os/getting-started/tutorial/) — builds Echo end-to-end.
 
 ## Troubleshooting
 
-The full troubleshooting list lives in [`INSTALL.md`](https://github.com/luminik-io/pennyworth/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common are:
+The full troubleshooting list lives in [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common are:
 
-- **"Refusing to install on non-macOS host"** — pennyworth's scheduling layer is `launchd`. Linux requires the systemd port (on the roadmap).
-- **`claude: command not found` from launchd** — the plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.pennyworthrc`.
+- **"Refusing to install on non-macOS host"** — alfred-os's scheduling layer is `launchd`. Linux requires the systemd port (on the roadmap).
+- **`claude: command not found` from launchd** — the plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`.
 - **`gh auth login` browser doesn't open** — use the device-code flow: `gh auth login --hostname github.com --git-protocol https --web`.

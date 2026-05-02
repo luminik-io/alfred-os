@@ -4,7 +4,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.** Report privately so we can patch before disclosure.
 
-Preferred channel: open a [private security advisory](https://github.com/luminik-io/pennyworth/security/advisories/new) on this repository. Backup channel: email the maintainer listed in `pyproject.toml` `[project] authors` field.
+Preferred channel: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) on this repository. Backup channel: email the maintainer listed in `pyproject.toml` `[project] authors` field.
 
 We aim to acknowledge within 72 hours and ship a patch (or document the trade-off) within 14 days for critical / high severity issues.
 
@@ -42,7 +42,7 @@ Out of scope:
 
 ## Hardening recommendations
 
-For consumer fleets running pennyworth in production:
+For consumer fleets running alfred-os in production:
 
 1. **Per-agent IAM, never operator SSO.** See `docs/AWS_SETUP.md`. Operator's SSO has admin; cron-spawned agents must not.
 2. **Secrets via AWS Secrets Manager**, not env files committed to the operator's home. The framework's resolve-then-cache pattern (`slack_post`) is the model.
@@ -50,7 +50,7 @@ For consumer fleets running pennyworth in production:
 4. **Read every skill before installing.** Skills are markdown + scripts; they run with the same permissions as `claude`. See `docs/SKILLS.md`.
 5. **Webhook URLs treated as secrets.** Anyone with the webhook URL can post to your channel as the bot. Rotate immediately on suspected exposure.
 6. **Bot tokens (`xoxb-…`) and app tokens (`xapp-1-…`) treated as secrets.** Never put them in commits, screenshots, chat. Rotate via Slack admin → Apps → reinstall.
-7. **Audit `agent:authored` PRs before merge.** Pennyworth provides the `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle, but human merge is by design — automated merge of unaudited code is out-of-scope for the framework.
+7. **Audit `agent:authored` PRs before merge.** Alfred-OS provides the `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle, but human merge is by design — automated merge of unaudited code is out-of-scope for the framework.
 
 ## Disclosure history
 

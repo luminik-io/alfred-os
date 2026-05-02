@@ -1,4 +1,4 @@
-"""Tests for the pennyworth agent_runner primitives.
+"""Tests for the alfred-os agent_runner primitives.
 
 Covers the deterministic helpers: PreflightSpec / preflight, doctor_mode,
 load_prompt, commit_trailer, HandoffTable, EventLog. Skips anything that

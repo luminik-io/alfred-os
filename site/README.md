@@ -1,6 +1,6 @@
-# Pennyworth docs site
+# Alfred-OS docs site
 
-Astro Starlight site for [pennyworth](https://github.com/luminik-io/pennyworth).
+Astro Starlight site for [alfred-os](https://github.com/luminik-io/alfred-os).
 
 ## Local dev
 
@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the URL Astro prints (default `http://localhost:4321/pennyworth/`).
+Open the URL Astro prints (default `http://localhost:4321/alfred-os/`).
 
 ## Build
 
@@ -21,12 +21,12 @@ Output in `dist/`.
 
 ## Deploy
 
-CI deploys on push to `main` via `.github/workflows/site.yml`. Output served at `https://luminik-io.github.io/pennyworth/`.
+CI deploys on push to `main` via `.github/workflows/site.yml`. Output served at `https://luminik-io.github.io/alfred-os/`.
 
 ## Override the site URL
 
 ```sh
-PENNYWORTH_SITE_URL=https://pennyworth.dev PENNYWORTH_SITE_BASE=/ npm run build
+ALFRED_OS_SITE_URL=https://alfred-os.dev ALFRED_OS_SITE_BASE=/ npm run build
 ```
 
 Useful when migrating off GitHub Pages onto a custom domain.
@@ -39,4 +39,4 @@ Useful when migrating off GitHub Pages onto a custom domain.
 
 ## Editing existing pages
 
-The "Edit page" link in the rendered sidebar opens the file at `https://github.com/luminik-io/pennyworth/edit/main/site/...`. Set up by `editLink` in `astro.config.mjs`.
+The "Edit page" link in the rendered sidebar opens the file at `https://github.com/luminik-io/alfred-os/edit/main/site/...`. Set up by `editLink` in `astro.config.mjs`.
