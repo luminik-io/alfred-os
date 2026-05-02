@@ -1,0 +1,124 @@
+# Linux support
+
+**Short answer: not yet.** Pennyworth's scheduling layer is `launchd`, which is macOS-only. The framework code itself (`agent_runner.py`, the helper scripts) is Python and Bash and runs fine on Linux — but without a scheduling layer that mirrors `launchd`'s per-user agent semantics, the fleet isn't actually a fleet.
+
+## Why launchd specifically
+
+The framework's per-firing isolation depends on a few `launchd` properties:
+
+- **Per-user agents**, not system services. Operator can edit/reload plists without sudo.
+- **`KeepAlive`-free fire-and-forget**. `StartInterval` / `StartCalendarInterval` triggers a one-shot run; the process exits and `launchd` is happy. No process-supervisor accidentally restarting a crashing agent in a tight loop.
+- **`bootstrap` / `bootout` semantics** — paused agents stay paused across operator login/logout cycles via the marker file at `$HERMES_HOME/state/_paused/<agent>`.
+- **stdout / stderr to per-agent files** at `/tmp/<label>.{stdout,stderr}` — the operator's grep-and-tail muscle memory.
+- **`EnvironmentVariables` block** in the plist — a clean per-agent env without polluting the operator's shell.
+
+systemd user units cover most of this (`Type=oneshot`, `OnCalendar=`, no `Restart=on-failure`), but the operational surface is different enough that supporting both well requires a real port, not a translation layer.
+
+## What works on Linux today
+
+If you want to read the code, write your own agents, run the test suite, or use the `agent_runner` primitives in a manually-driven script, **all of that works on Linux**. Specifically:
+
+- `lib/agent_runner.py` — every primitive (preflight, lock, spend, claude_invoke, gh, slack, claim_issue/release_issue, severity routing) works unchanged.
+- `tests/` — `pytest` runs the full 35-case suite on Linux.
+- `bin/doctor.sh` — works (it's just bash + grep).
+- `bin/hermes-claude` — works (just symlink swapping).
+- `examples/bin/label_state.py` — works.
+- `examples/git-hooks/pre-push` — works (operator-side, runs in your shell).
+
+**What doesn't work**:
+
+- `launchd/render.sh` — generates `.plist` files. Linux doesn't have plists.
+- `deploy.sh` — calls `launchctl bootstrap`. Will fail with command-not-found.
+- The `install.sh` macOS check — refuses to run unless you set `PENNYWORTH_FORCE_LINUX=1`.
+
+## How to run pennyworth-shaped agents on Linux today
+
+Until the systemd port lands, you have two options:
+
+### Option 1: cron + a wrapper script
+
+Skip the framework's launchd bits entirely. Write each agent as you'd write a bash script:
+
+```cron
+# crontab -e
+*/20 * * * * /usr/bin/env HERMES_HOME=$HOME/.hermes WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
+```
+
+You lose the per-agent stdout/stderr separation and the `_paused/` marker pattern, but the framework primitives all work. Shape your `bin/<codename>.py` exactly as the macOS examples show.
+
+### Option 2: systemd user units (manually written)
+
+Drop a unit + timer per agent in `~/.config/systemd/user/`:
+
+```ini
+# ~/.config/systemd/user/pennyworth-lucius.service
+[Unit]
+Description=pennyworth Lucius (feature-dev agent)
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.pennyworthrc
+ExecStart=/usr/bin/env python3 %h/.hermes/bin/lucius.py
+StandardOutput=append:%h/.hermes/logs/lucius.stdout
+StandardError=append:%h/.hermes/logs/lucius.stderr
+```
+
+```ini
+# ~/.config/systemd/user/pennyworth-lucius.timer
+[Unit]
+Description=pennyworth Lucius timer
+
+[Timer]
+OnUnitActiveSec=20min
+Unit=pennyworth-lucius.service
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable + start:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now pennyworth-lucius.timer
+```
+
+Pause:
+
+```sh
+systemctl --user disable --now pennyworth-lucius.timer
+```
+
+Status:
+
+```sh
+systemctl --user list-timers
+journalctl --user -u pennyworth-lucius -n 50
+```
+
+This is what a `systemd/render.sh` would generate. Until that ships, you're hand-rolling.
+
+## Roadmap for first-class Linux support
+
+Not committed to a date, but the structure of the work is clear:
+
+1. **`systemd/_template.service` + `systemd/_template.timer`** — analogous to `launchd/_template.plist`.
+2. **`systemd/render.sh`** — same TSV input as `launchd/agents.conf`, different output format.
+3. **`deploy.sh` host detection** — branch on `uname -s` and call the right renderer.
+4. **`bin/alfred-style` wrapper** — shell helper that wraps `systemctl --user` calls in operator-friendly commands (`alfred pause` etc.).
+5. **`install.sh` Linux branch** — apt/dnf/pacman package install paths instead of brew.
+6. **Test the round-trip** on at least Ubuntu LTS and Fedora.
+
+If you want to do this work, see [`CONTRIBUTING.md`](../CONTRIBUTING.md) — we'll happily review a PR. If you want to *fund* the work, file an issue with your willingness to sponsor and we'll scope it together.
+
+## What about WSL2?
+
+WSL2 on Windows is a Linux kernel — the same constraints apply. Cron works, systemd-user works (in distros that enable it). We don't actively test WSL2 but no part of the framework should care that it's running there.
+
+The bigger gotcha on WSL2 is path mapping: `WORKSPACE_ROOT` should be a `~/code` style Linux path, not `/mnt/c/Users/...`. Cross-filesystem worktrees are slow and Windows file-locking semantics confuse `git worktree`.
+
+## What about Docker?
+
+Pennyworth is not container-friendly today. The launchd/systemd assumption means you'd need to host the scheduler outside the container and shell into it for each firing — at which point you've reimplemented `launchctl kickstart` poorly. A "pennyworth in a container" pattern would need the framework to expose its own minimal scheduler and abandon the host-scheduler dependency. Not on the roadmap.
+
+If you want to run agents *inside* containers (e.g. a per-firing Docker image with isolated tooling), that's compatible — write your codename's `bin/<name>.py` to `docker run --rm ... claude -p ...` instead of calling `claude` directly. The framework doesn't care what shell you wrap around the LLM call.
