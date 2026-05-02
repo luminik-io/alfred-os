@@ -5,7 +5,7 @@ description: Recommended skill set for an autonomous engineering fleet, install 
 
 Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface. Alfred-OS doesn't ship skills itself; consumer agents pick what they need.
 
-The full guide lives at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SKILLS.md). The highlights:
+Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SKILLS.md). Highlights:
 
 ## Where they live
 
@@ -60,21 +60,21 @@ For a single fresh-install script, see [`docs/SKILLS.md#skill-install-automation
 
 ## Security note
 
-Skills run with the same permissions as `claude` — they can read/write files in the agent's worktree, run shell commands, invoke tools. Treat any new skill the way you'd treat any other dependency:
+Skills run with the same permissions as `claude`. They can read/write files in the agent's worktree, run shell commands, invoke tools. Treat any new skill the way you'd treat any other dependency:
 
 1. Read the `SKILL.md`.
 2. Skim the scripts the skill might invoke.
 3. Run a Snyk / CodeQL scan on unfamiliar sources.
 4. Pin to a specific commit when installing from a third-party tap.
 
-The fleet's IAM-per-agent + per-firing-worktree-isolation patterns limit blast radius (a malicious skill in the Lucius worktree can't reach the operator's home or the secondary Claude account), but those are mitigations, not prevention.
+The fleet's IAM-per-agent + per-firing-worktree-isolation patterns limit blast radius (a malicious skill in the Lucius worktree can't reach the operator's home or the secondary Claude account). Mitigations, not prevention.
 
 ## Anti-recommendations
 
-- **Anything that auto-publishes** (auto-tweet, auto-deploy, auto-merge). Alfred-OS's ethos is human-in-the-loop on outbound.
+- **Anything that auto-publishes** (auto-tweet, auto-deploy, auto-merge). Use as draft-then-review only.
 - **Skills that fork to the network without explicit allowlists.** Network egress from a worktree is a known agent attack vector.
-- **Skills the operator hasn't read.** Skills are markdown — read them.
+- **Skills the operator hasn't read.** Skills are markdown. Read them.
 
 ## Where skills live in the framework's mental model
 
-Skills are **operator-installed, not framework-bundled**. Alfred-OS ships zero skills by default. Consumer fleets pick. This keeps the framework pluralist (different fleets, different stacks) and small (no skill maintenance burden on us).
+Skills are operator-installed, not framework-bundled. Alfred-OS ships zero skills by default. Consumer fleets pick. Keeps the framework pluralist (different fleets, different stacks) and small (no skill maintenance burden on us).

@@ -5,9 +5,9 @@ description: How agents.conf + _template.plist + render.sh produce the per-agent
 
 The framework's scheduling layer. Three files, fully documented.
 
-- [`launchd/_template.plist`](https://github.com/luminik-io/alfred-os/blob/main/launchd/_template.plist) — the canonical template with `__PLACEHOLDER__` tokens.
-- [`launchd/agents.conf.example`](https://github.com/luminik-io/alfred-os/blob/main/launchd/agents.conf.example) — TSV format documentation.
-- [`launchd/render.sh`](https://github.com/luminik-io/alfred-os/blob/main/launchd/render.sh) — substitutes tokens, writes one plist per row.
+- [`launchd/_template.plist`](https://github.com/luminik-io/alfred-os/blob/main/launchd/_template.plist): the canonical template with `__PLACEHOLDER__` tokens.
+- [`launchd/agents.conf.example`](https://github.com/luminik-io/alfred-os/blob/main/launchd/agents.conf.example): TSV format documentation.
+- [`launchd/render.sh`](https://github.com/luminik-io/alfred-os/blob/main/launchd/render.sh): substitutes tokens, writes one plist per row.
 
 ## `agents.conf` format
 
@@ -50,13 +50,13 @@ Tabs are required between fields. Trailing empty fields can be omitted.
 | `__HOME__` | `$HOME` at render time |
 | `__LOG_STEM__` | `agents.conf` field 5 (or label if empty) |
 
-`launchd` does not interpolate env vars inside plists — substitution must happen at deploy time. Override `HERMES_HOME` or `WORKSPACE_ROOT` in the shell that runs `render.sh` (or `deploy.sh`) to re-target the rendered plists.
+`launchd` does not interpolate env vars inside plists. Substitution must happen at deploy time. Override `HERMES_HOME` or `WORKSPACE_ROOT` in the shell that runs `render.sh` (or `deploy.sh`) to re-target the rendered plists.
 
 ## Adding an agent
 
 1. Drop `bin/<your-codename>.py` into your fleet repo.
 2. Append a row to `launchd/agents.conf`.
-3. Run `bash deploy.sh` — renders + bootstraps.
+3. Run `bash deploy.sh`: renders + bootstraps.
 4. Verify with `bash bin/doctor.sh`.
 
 ## Pause / resume
@@ -85,4 +85,4 @@ Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use 
 
 The shipped template sets `RunAtLoad = false`, so `bash deploy.sh` does not immediately fire any agent. They wait for their scheduled trigger (or `launchctl kickstart`).
 
-If you want immediate on-deploy firing for a specific agent, render its plist with `RunAtLoad = true` (edit `_template.plist` for that agent only — there's no per-agent override in `agents.conf` yet; tracked).
+For immediate on-deploy firing of a specific agent, render its plist with `RunAtLoad = true` (edit `_template.plist` for that agent only). No per-agent override in `agents.conf` yet; tracked.

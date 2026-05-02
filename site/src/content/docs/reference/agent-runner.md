@@ -1,11 +1,11 @@
 ---
 title: agent_runner API reference
-description: Every public primitive in lib/agent_runner.py — function signatures, semantics, return shapes.
+description: Public primitives in lib/agent_runner.py. Function signatures, semantics, return shapes.
 ---
 
 The framework substrate. Every codename agent imports from this module. Source: [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py).
 
-Categorised by what the operator-facing primitive does. For deep semantics, read the source's docstrings — they're the authoritative reference.
+Categorised by what the operator-facing primitive does. For deep semantics, read the source's docstrings. They're the authoritative reference.
 
 ## Path resolution + module constants
 
@@ -188,7 +188,7 @@ def claude_invoke_streaming(prompt: str, *,
                             timeout: int = 1200) -> ClaudeResult
 ```
 
-The streaming variant writes a per-firing JSONL transcript to `$HERMES_HOME/state/transcripts/<agent>/<YYYY-MM>/<firing-id>.jsonl` so post-hoc tool/skill aggregation works.
+The streaming variant writes a per-firing JSONL transcript to `$HERMES_HOME/state/transcripts/<agent>/<YYYY-MM>/<firing-id>.jsonl` for post-hoc tool/skill aggregation.
 
 ## Event log + commit trailer + handoff table
 
@@ -212,7 +212,7 @@ def load_prompt(path: Path | str, *,
                 extra_vars: dict[str, str] | None = None) -> str
 ```
 
-Substitutes `${ENV_VAR}` from the environment (and any `extra_vars`). Unset vars stay as literals — fail-loud if you accidentally interpolate a missing var into a `gh` command.
+Substitutes `${ENV_VAR}` from the environment (and any `extra_vars`). Unset vars stay as literals. Fails loud if you accidentally interpolate a missing var into a `gh` command.
 
 ## Conventions
 

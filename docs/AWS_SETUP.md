@@ -2,19 +2,19 @@
 
 Alfred-OS uses AWS for two optional things:
 
-1. **Secrets Manager** — stores the Slack webhook URL and any per-fleet credentials (Sentry tokens, third-party API keys) so they don't live in shell rc files. Resolution is cached on disk for 7 days; AWS is only hit when the cache expires or is missing.
-2. **Per-agent IAM** — every cron-spawned agent that needs AWS access gets its own scoped IAM user with a narrow inline policy. The operator's SSO chain is **never** used by cron.
+1. **Secrets Manager**: stores the Slack webhook URL and any per-fleet credentials (Sentry tokens, third-party API keys) so they don't live in shell rc files. Resolution is cached on disk for 7 days; AWS is only hit when the cache expires or is missing.
+2. **Per-agent IAM**: every cron-spawned agent that needs AWS access gets its own scoped IAM user with a narrow inline policy. The operator's SSO chain is never used by cron.
 
-If you don't need either of those, skip this entire doc and put `SLACK_WEBHOOK_URL` directly in `~/.alfredrc`. Alfred-OS runs fine without an AWS account.
+If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in `~/.alfredrc`. Alfred-OS runs fine without an AWS account.
 
 ## Why per-agent IAM
 
-The operator's AWS SSO has admin everywhere. If a cron-spawned agent inherited that, a runaway prompt could in principle trigger any AWS action. The per-agent pattern caps the blast radius:
+The operator's AWS SSO has admin everywhere. If a cron-spawned agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps the blast radius:
 
-- `huntress-cron` — read-only on the staging E2E test secrets and the Slack webhook secret.
-- `oracle-cron` — read-only on ECS, ALB, CloudWatch logs/metrics. No `secretsmanager:*`.
-- `gordon-cron` — read-only on ECS describe + the Sentry token secret.
-- `alfred-host` — read-only on `alfred/*` secrets (catch-all for fleet-wide config).
+- `huntress-cron`: read-only on the staging E2E test secrets and the Slack webhook secret.
+- `oracle-cron`: read-only on ECS, ALB, CloudWatch logs/metrics. No `secretsmanager:*`.
+- `gordon-cron`: read-only on ECS describe + the Sentry token secret.
+- `alfred-host`: read-only on `alfred/*` secrets (catch-all for fleet-wide config).
 
 Each agent's prompt invokes `aws` with that profile and strips any operator SSO env that might leak in:
 
@@ -224,7 +224,7 @@ aws --profile "$AWS_ADMIN_PROFILE" iam delete-access-key \
 shred -u /tmp/new.json
 ```
 
-If anything in steps 2-3 goes wrong, the old key is still active — you can roll back. Once step 4 completes, the rotation is committed.
+If anything in steps 2-3 goes wrong, the old key is still active. Roll back. Once step 4 completes, the rotation is committed.
 
 ## Troubleshooting
 
@@ -238,7 +238,7 @@ The keys in `~/.aws/credentials` are wrong, expired, or swapped between profiles
 The AWS credential chain prefers env vars over `~/.aws/credentials`. Either run the agent under launchd (no operator env inherited) or strip env vars at the top of the agent runner (see step 4).
 
 **`AccessDeniedException` on `secretsmanager:GetSecretValue` for a secret you can clearly read.**
-Check the resource pattern — secrets get a 6-character suffix on creation (`alfred/slack-webhook-NmY0Gv`), so the policy resource pattern must end with `*` to match. `arn:…:secret:alfred/slack-webhook` (no trailing `*`) won't match.
+Check the resource pattern. Secrets get a 6-character suffix on creation (`alfred/slack-webhook-NmY0Gv`), so the policy resource pattern must end with `*` to match. `arn:…:secret:alfred/slack-webhook` (no trailing `*`) won't match.
 
 **`alfred-host` IAM read-only and you need `CreateSecret`.**
 That's by design. Use your admin SSO profile to create/update; the cron-time IAM user only reads.

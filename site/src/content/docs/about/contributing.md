@@ -3,12 +3,12 @@ title: Contributing
 description: How to propose changes, the design constraints we hold, the PR review flow.
 ---
 
-The full guide lives at [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md). The shape:
+Full guide at [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md). The shape:
 
 ## Read first
 
-- [Architecture](/alfred-os/concepts/architecture/) — the design rationale.
-- [Roadmap](/alfred-os/about/roadmap/) — what's in flight and what's deliberately out.
+- [Architecture](/alfred-os/concepts/architecture/): the design rationale.
+- [Roadmap](/alfred-os/about/roadmap/): what's in flight and what's out.
 - The constraints in [Architecture → "What this rules out"](/alfred-os/concepts/architecture/#what-this-rules-out).
 
 PRs that fit get reviewed. PRs that broaden scope get politely declined.
@@ -32,12 +32,12 @@ pre-commit install
 
 ## What we accept
 
-- **Bug fixes** — always welcome. File the bug first if you didn't.
-- **Test coverage** — always welcome. Alfred-OS aims for 100% on `agent_runner.py` over time.
-- **Doc fixes / clarifications** — always welcome.
-- **New examples** under `examples/bin/` — welcome if they show a useful pattern not already covered.
-- **In-flight roadmap items** — welcome if you've sketched the design in the related issue first.
-- **New `agent_runner` primitives** — welcome if there's a clear pattern in real fleets that justifies framework-level support.
+- **Bug fixes**: always welcome. File the bug first if you didn't.
+- **Test coverage**: always welcome. Alfred-OS aims for 100% on `agent_runner.py` over time.
+- **Doc fixes / clarifications**: always welcome.
+- **New examples** under `examples/bin/`: welcome if they show a useful pattern not already covered.
+- **In-flight roadmap items**: welcome if you've sketched the design in the related issue first.
+- **New `agent_runner` primitives**: welcome if there's a clear pattern in real fleets that justifies framework-level support.
 
 ## What we don't accept
 
@@ -58,9 +58,9 @@ pre-commit install
 
 ## Codename proposals
 
-If you want to propose a new codename for the reference fleet (`luminik-io/alfred`), open the issue *there*, not here. Alfred-OS is the framework; codenames are fleet-specific.
+For a new codename in the reference fleet (`luminik-io/alfred`), open the issue there, not here. Alfred-OS is the framework; codenames are fleet-specific.
 
-If you want to propose a new *example* codename for `examples/bin/` here, open a feature request issue with the codename + role + 100-line sketch. We'll respond with the design call before you write the PR.
+For a new example codename in `examples/bin/`, open a feature request issue with the codename + role + 100-line sketch. We'll respond with the design call before you write the PR.
 
 ## Review flow
 

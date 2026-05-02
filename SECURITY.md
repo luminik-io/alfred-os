@@ -4,27 +4,27 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.** Report privately so we can patch before disclosure.
 
-Preferred channel: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) on this repository. Backup channel: email the maintainer listed in `pyproject.toml` `[project] authors` field.
+Preferred: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) on this repository. Backup: email the maintainer listed in `pyproject.toml` `[project] authors`.
 
-We aim to acknowledge within 72 hours and ship a patch (or document the trade-off) within 14 days for critical / high severity issues.
+Acknowledgement target: 72 hours. Patch (or documented trade-off) target for critical / high severity: 14 days.
 
 ## Scope
 
 In scope:
 
-- `lib/agent_runner.py` — the framework primitives every consumer agent imports.
-- `bin/` — the operator-facing helpers.
-- `examples/bin/label_state.py` — operator CLI for the state machine.
-- `examples/git-hooks/pre-push` — pre-push hook installed in consumer repos.
-- `install.sh` — fresh-machine bootstrap.
-- The Astro Starlight site at `site/` — content + build config.
+- `lib/agent_runner.py`: framework primitives every consumer agent imports.
+- `bin/`: operator-facing helpers.
+- `examples/bin/label_state.py`: operator CLI for the state machine.
+- `examples/git-hooks/pre-push`: pre-push hook installed in consumer repos.
+- `install.sh`: fresh-machine bootstrap.
+- `site/`: Astro Starlight site, content + build config.
 
 Out of scope:
 
-- The Anthropic Claude Code CLI itself (`@anthropic-ai/claude-code`) — report to Anthropic.
-- Third-party skills (`gstack`, CodeRabbit, etc.) — report upstream.
-- Consumer fleet code that imports `agent_runner` — that's the consumer's responsibility.
-- Operator misconfigurations (leaked AWS keys, public Slack webhooks, etc.). We document hardening in `docs/AWS_SETUP.md` and `docs/SLACK_SETUP.md` but cannot enforce.
+- The Anthropic Claude Code CLI itself (`@anthropic-ai/claude-code`). Report to Anthropic.
+- Third-party skills (`gstack`, CodeRabbit, etc.). Report upstream.
+- Consumer fleet code that imports `agent_runner`. Consumer's responsibility.
+- Operator misconfigurations (leaked AWS keys, public Slack webhooks). Hardening documented in `docs/AWS_SETUP.md` and `docs/SLACK_SETUP.md`; can't be enforced.
 
 ## What we treat as critical
 
@@ -36,8 +36,8 @@ Out of scope:
 
 ## What we treat as standard
 
-- Local file disclosure within the operator's home directory (the framework runs as the operator; reading their files is by design).
-- Denial of service via legitimate use (rate-limit hit, max-turns exhausted) — those are framework features, not bugs.
+- Local file disclosure within the operator's home directory. The framework runs as the operator; reading their files is by design.
+- Denial of service via legitimate use (rate-limit hit, max-turns exhausted). Framework features, not bugs.
 - Issues in third-party skills the operator chose to install.
 
 ## Hardening recommendations
@@ -48,9 +48,9 @@ For consumer fleets running alfred-os in production:
 2. **Secrets via AWS Secrets Manager**, not env files committed to the operator's home. The framework's resolve-then-cache pattern (`slack_post`) is the model.
 3. **Pre-push hook installed** in every repo the operator pushes to. `examples/git-hooks/pre-push` blocks accidental races against in-flight agents.
 4. **Read every skill before installing.** Skills are markdown + scripts; they run with the same permissions as `claude`. See `docs/SKILLS.md`.
-5. **Webhook URLs treated as secrets.** Anyone with the webhook URL can post to your channel as the bot. Rotate immediately on suspected exposure.
-6. **Bot tokens (`xoxb-…`) and app tokens (`xapp-1-…`) treated as secrets.** Never put them in commits, screenshots, chat. Rotate via Slack admin → Apps → reinstall.
-7. **Audit `agent:authored` PRs before merge.** Alfred-OS provides the `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle, but human merge is by design — automated merge of unaudited code is out-of-scope for the framework.
+5. **Webhook URLs treated as secrets.** Anyone with the URL can post to your channel as the bot. Rotate on suspected exposure.
+6. **Bot tokens (`xoxb-…`) and app tokens (`xapp-1-…`) treated as secrets.** Never put them in commits, screenshots, or chat. Rotate via Slack admin → Apps → reinstall.
+7. **Audit `agent:authored` PRs before merge.** Alfred-OS provides the `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle, but human merge is by design. Automated merge of unaudited code is out of scope.
 
 ## Disclosure history
 

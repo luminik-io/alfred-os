@@ -1,18 +1,18 @@
 # Tutorial: your first cron-driven agent in 30 minutes
 
-End-to-end walkthrough. By the end you will have:
+End-to-end walkthrough. By the end:
 
-- A new codename agent named `Echo` that picks the oldest open issue with a specific label, asks Claude to add a one-line summary as a comment, and reports back to Slack.
-- That agent firing every 30 minutes via `launchd`, isolated in a per-firing git worktree, claiming the issue via the state machine before posting, with a clean `bash bin/doctor.sh` saying it passes.
-- A working understanding of the framework's mental model so you can write the next codename without re-reading anything.
+- A new codename agent `Echo` that picks the oldest open issue with a specific label, asks Claude to add a one-line summary as a comment, reports to Slack.
+- That agent firing every 30 minutes via `launchd`, isolated in a per-firing git worktree, claiming the issue via the state machine before posting, with a clean `bash bin/doctor.sh` pass.
+- The framework's mental model, so you can write the next codename without re-reading anything.
 
-This assumes you've completed [`INSTALL.md`](../INSTALL.md) — i.e., `bash install.sh` has run, `gh auth login` and `claude` are authenticated, `bash deploy.sh && bash bin/doctor.sh` shows `0 passed, 0 failed`.
+Assumes you've completed [`INSTALL.md`](../INSTALL.md): `bash install.sh` has run, `gh auth login` and `claude` are authenticated, `bash deploy.sh && bash bin/doctor.sh` shows `0 passed, 0 failed`.
 
 ## What we're building
 
-Echo is the simplest useful agent: it doesn't write code, it just summarises issues. Pick on a specific repo. Look for issues labeled `agent:summarise`. Pick the oldest. Claim it via the state machine. Ask Claude for a one-line summary. Post the summary as an issue comment. Release the claim. Report to Slack. Done.
+Echo doesn't write code. It summarises issues. On a specific repo, find issues labeled `agent:summarise`, pick the oldest, claim it via the state machine, ask Claude for a one-line summary, post the summary as an issue comment, release the claim, report to Slack.
 
-This shape is the same shape as Lucius, Drake, Ra's al Ghul — pick → claim → invoke claude → act → release → report. Once you can write Echo, you can write any of them.
+Same shape as Lucius, Drake, Ra's al Ghul: pick → claim → invoke claude → act → release → report. Once you can write Echo, you can write any of them.
 
 ## Step 1: pick a target repo
 
@@ -200,11 +200,11 @@ Within ~10 seconds you should see:
 ✅ Echo summarised myorg/sandbox-repo#42: _<the one-line summary>_
 ```
 
-Look at the issue in GitHub — there's a new comment from your gh user, the `agent:in-flight` label was added then replaced with `agent:done`, and three structured comments are visible in the issue: claim, release, and the actual summary.
+Look at the issue in GitHub: there's a new comment from your gh user, the `agent:in-flight` label was added then replaced with `agent:done`, and three structured comments are visible in the issue: claim, release, and the actual summary.
 
-Look at `#alfred` in Slack — there's the success message.
+Look at `#alfred` in Slack: there's the success message.
 
-## Step 7: confirm the dedup actually works
+## Step 7: confirm dedup actually works
 
 Force a second firing immediately:
 
@@ -212,15 +212,15 @@ Force a second firing immediately:
 launchctl kickstart -k "gui/$(id -u)/my.fleet.echo"
 ```
 
-Output should be:
+Output:
 
 ```
 [ECHO-IDLE] no agent:summarise issues
 ```
 
-Why? Because the first firing transitioned the issue to `agent:done`, removing the `agent:summarise` label is up to your prompt — but the `claim_issue` call would have refused either way because `agent:done` blocks claiming.
+The first firing transitioned the issue to `agent:done`. Removing the `agent:summarise` label is up to your prompt, but `claim_issue` would have refused either way because `agent:done` blocks claiming.
 
-Now create another test issue with the `agent:summarise` label and force-fire again. Echo picks it up, summarises, transitions, done.
+Create another test issue with the `agent:summarise` label and force-fire again. Echo picks it up, summarises, transitions, done.
 
 ## Step 8: pause + resume
 
@@ -241,27 +241,27 @@ alfred resume echo
 
 ## What you just learned
 
-Every framework primitive Echo uses scales up to a complex agent without changing shape:
+Every framework primitive Echo uses scales up to a richer agent without changing shape:
 
-- `with_lock(AGENT)` — host-level mutex prevents concurrent firings.
-- `preflight(PREFLIGHT)` — fail loud and early on missing env / CLIs / auth.
-- `doctor_mode()` — `bash bin/doctor.sh` doesn't burn turns or commit side effects.
-- `is_globally_blocked()` — fleet-wide rate-limit poison pill.
-- `SpendState(AGENT)` — per-agent per-day spend tracking.
-- `claim_issue()` / `release_issue()` — issue claim state machine ([STATE_MACHINE.md](STATE_MACHINE.md)).
-- `claude_invoke()` — structured `claude -p` invocation, parses turns/cost/session_id/result.
-- `gh_issue_comment()` / `gh_pr_*()` — gh CLI wrappers.
-- `slack_post(text, severity=)` — webhook post with severity routing.
-- `EventLog` — per-firing JSONL audit log.
+- `with_lock(AGENT)`: host-level mutex prevents concurrent firings.
+- `preflight(PREFLIGHT)`: fail loud and early on missing env / CLIs / auth.
+- `doctor_mode()`: `bash bin/doctor.sh` doesn't burn turns or commit side effects.
+- `is_globally_blocked()`: fleet-wide rate-limit poison pill.
+- `SpendState(AGENT)`: per-agent per-day spend tracking.
+- `claim_issue()` / `release_issue()`: issue claim state machine ([STATE_MACHINE.md](STATE_MACHINE.md)).
+- `claude_invoke()`: structured `claude -p` invocation, parses turns/cost/session_id/result.
+- `gh_issue_comment()` / `gh_pr_*()`: gh CLI wrappers.
+- `slack_post(text, severity=)`: webhook post with severity routing.
+- `EventLog`: per-firing JSONL audit log.
 
-For more sophisticated agents (write code, open PRs, multi-step prompts, max-turns resume), look at [`examples/bin/`](../examples/bin/) and the reference fleet at [`luminik-io/alfred`](https://github.com/luminik-io/alfred).
+For richer agents (write code, open PRs, multi-step prompts, max-turns resume), see [`examples/bin/`](../examples/bin/) and the reference fleet at [`luminik-io/alfred`](https://github.com/luminik-io/alfred).
 
 ## Next steps
 
-- Read [`STATE_MACHINE.md`](STATE_MACHINE.md) for the dedup/race semantics.
-- Read [`AWS_SETUP.md`](AWS_SETUP.md) if your agent needs Secrets Manager.
-- Read [`SKILLS.md`](SKILLS.md) for the recommended Claude Code skills (Echo doesn't use any; richer agents do).
-- Read [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the design rationale (codename pattern, plan-review gate, IAM-per-agent).
+- [`STATE_MACHINE.md`](STATE_MACHINE.md) for dedup/race semantics.
+- [`AWS_SETUP.md`](AWS_SETUP.md) if your agent needs Secrets Manager.
+- [`SKILLS.md`](SKILLS.md) for the recommended Claude Code skills. Echo doesn't use any; richer agents do.
+- [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the design rationale (codename pattern, plan-review gate, IAM-per-agent).
 
 ## Common stumbles
 
@@ -271,6 +271,6 @@ For more sophisticated agents (write code, open PRs, multi-step prompts, max-tur
 
 **Slack post returns `True` but you don't see the message.** Webhook cache may be stale. `rm $HERMES_HOME/state/slack-webhook.cache` and retry.
 
-**`launchctl kickstart` fails with "Could not find specified service."** The plist isn't loaded. `bash deploy.sh` again (the launchctl bootstrap step is idempotent).
+**`launchctl kickstart` fails with "Could not find specified service."** The plist isn't loaded. `bash deploy.sh` again. The launchctl bootstrap step is idempotent.
 
 **Doctor passes but the agent fails on real firing.** Doctor only verifies preflight. Real firings can fail for runtime reasons (rate limit, gh API timeout, claude error). Check `/tmp/my.fleet.echo.stderr`.

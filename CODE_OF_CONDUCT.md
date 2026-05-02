@@ -2,7 +2,7 @@
 
 ## Our pledge
 
-We — maintainers and contributors of alfred-os — pledge to make participation in this project a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+We, the maintainers and contributors of alfred-os, pledge to make participation in this project a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
 
 ## Our standards
 
@@ -28,7 +28,7 @@ Project maintainers are responsible for clarifying and enforcing our standards o
 
 ## Scope
 
-This Code of Conduct applies within all project spaces — issues, pull requests, discussions, code review threads — and also applies when an individual is officially representing the project in public spaces.
+This Code of Conduct applies within all project spaces (issues, pull requests, discussions, code review threads) and when an individual is officially representing the project in public spaces.
 
 ## Enforcement
 

@@ -17,7 +17,7 @@ sequenceDiagram
     runner->>lib: with_lock(AGENT)
     runner->>lib: preflight(spec)
     runner->>lib: SpendState / is_globally_blocked
-    runner->>gh: pick_issue() — find oldest agent:implement
+    runner->>gh: pick_issue(): find oldest agent:implement
     runner->>lib: claim_issue(repo, num, codename, firing_id)
     lib->>gh: add agent:in-flight label
     lib->>gh: post claim comment

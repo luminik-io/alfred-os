@@ -1,19 +1,19 @@
 # Contributing
 
-alfred-os is the framework behind one operator's production fleet. PRs are welcome, but the maintainer's bar is "does this make alfred-os a better framework for narrow-specialist cron-driven Claude Code agents" — not "does this support every adjacent use case." If a change adds configurability at the cost of more moving parts, expect it to be declined.
+Alfred-OS is the framework behind one operator's production fleet. PRs welcome. The maintainer's bar: "does this make alfred-os a better framework for narrow-specialist cron-driven Claude Code agents". Not "does this support every adjacent use case". Changes that add configurability at the cost of more moving parts get declined.
 
 ## Proposing a new codename agent
 
-File an issue first. The issue should answer:
+File an issue first. The issue answers:
 
-1. **Role** - one paragraph. What does this agent do that none of the existing ones do? "Like Lucius but for X" is fine if X is genuinely separate.
-2. **Schedule** - how often does it fire? Why that cadence and not 2x or 0.5x?
-3. **Trigger** - does it scan for something (a label, a file, an open PR) or does it run unconditionally?
-4. **AWS scope** - if it touches AWS, what IAM actions does it need? Spell out the inline policy you'd give its dedicated `<codename>-cron` user.
-5. **Failure mode** - what does the agent do if `claude -p` returns `error_max_turns`? `error_rate_limit`? An empty result? Failure handling is half the work.
-6. **Spend cap** - proposed `turns_today` ceiling and `consecutive_failures` ceiling.
+1. **Role**: one paragraph. What does this agent do that none of the existing ones do? "Like Lucius but for X" is fine if X is genuinely separate.
+2. **Schedule**: how often does it fire? Why that cadence and not 2x or 0.5x?
+3. **Trigger**: does it scan for something (a label, a file, an open PR) or run unconditionally?
+4. **AWS scope**: if it touches AWS, what IAM actions does it need? Spell out the inline policy for its dedicated `<codename>-cron` user.
+5. **Failure mode**: what does the agent do if `claude -p` returns `error_max_turns`? `error_rate_limit`? An empty result? Failure handling is half the work.
+6. **Spend cap**: proposed `turns_today` ceiling and `consecutive_failures` ceiling.
 
-The maintainer will respond with "go ahead" or "not now / here's why." Don't write the prompt before the issue is accepted; refining the prompt is most of the work and we'd rather not throw it away.
+The maintainer responds "go ahead" or "not now, here's why." Don't write the prompt before the issue is accepted. Refining the prompt is most of the work.
 
 ## Changing a prompt
 
@@ -32,7 +32,7 @@ To test a prompt change before letting it run on a real cron:
 5. Inspect the debug dump in `/tmp/<agent>-debug-<ts>/` (Lucius writes `prompt.txt` and `result.json` for every firing).
 6. Resume the cron when satisfied.
 
-Voice rules are locked. No em-dashes. No "leverage", "unlock", "seamless", "transform", "comprehensive", "robust", "streamline". No fabricated numbers - always cite the file or codepath the number came from. The existing CLAUDE.md files are the voice reference; match them.
+Voice rules are locked. No em-dashes. No "leverage", "unlock", "seamless", "transform", "comprehensive", "robust", "streamline". No fabricated numbers; cite the file or codepath the number came from. The existing CLAUDE.md files are the voice reference. Match them.
 
 ## Commit messages
 
@@ -55,8 +55,8 @@ Body explains why, not what. The diff already shows what.
 2. Running `bash infra/agents/deploy.sh` (it's idempotent).
 3. Firing the smallest agent that exercises the changed code path. Bat-Signal is good for `slack_post` changes; Bane is good for spend-state changes; Lucius for `make_worktree` changes.
 
-There is no formal test suite. The runtime is short enough to read end-to-end, and the production firings are the integration test.
+No formal test suite. The runtime is short enough to read end-to-end. Production firings are the integration test.
 
-## Where the OSS-readiness pass is being driven
+## OSS-readiness pass
 
-This pass is an open thread. The current state of the cleanup is tracked on the `chore/oss-docs` and `chore/oss-paths` branches. If you spot something that obviously needs fixing - a hardcoded `/Users/batman` path, a doc that points at a private URL, a TODO that's been there since 2026-04 - open a small PR rather than asking. Drive-by fixes are the easiest contribution to land.
+Open thread. State of the cleanup is tracked on the `chore/oss-docs` and `chore/oss-paths` branches. If you spot something that needs fixing (a hardcoded `/Users/batman` path, a doc that points at a private URL, a stale TODO), open a small PR rather than asking. Drive-by fixes are the easiest contribution to land.

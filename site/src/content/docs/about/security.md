@@ -3,7 +3,7 @@ title: Security
 description: Reporting vulnerabilities, scope, hardening recommendations.
 ---
 
-The full policy lives at [`SECURITY.md`](https://github.com/luminik-io/alfred-os/blob/main/SECURITY.md). The shape:
+Full policy at [`SECURITY.md`](https://github.com/luminik-io/alfred-os/blob/main/SECURITY.md). The shape:
 
 ## Reporting a vulnerability
 
@@ -27,9 +27,9 @@ In scope:
 Out of scope:
 
 - The Anthropic Claude Code CLI (report to Anthropic).
-- Third-party skills (gstack, CodeRabbit, etc.) — report upstream.
-- Consumer fleet code that imports `agent_runner` — that's the consumer's responsibility.
-- Operator misconfigurations (leaked AWS keys, public Slack webhooks) — we document hardening, can't enforce.
+- Third-party skills (gstack, CodeRabbit, etc.). Report upstream.
+- Consumer fleet code that imports `agent_runner`. Consumer's responsibility.
+- Operator misconfigurations (leaked AWS keys, public Slack webhooks). Hardening documented; can't be enforced.
 
 ## Critical classes
 
@@ -47,6 +47,6 @@ For consumer fleets:
 2. **Secrets via AWS Secrets Manager**, not env files committed to home.
 3. **Pre-push hook installed** in every operator-touched repo.
 4. **Read every skill before installing.** Skills run with `claude`'s permissions.
-5. **Webhook URLs treated as secrets.** Rotate immediately on suspected exposure.
+5. **Webhook URLs treated as secrets.** Rotate on suspected exposure.
 6. **Bot tokens (`xoxb-`) and app tokens (`xapp-1-`) treated as secrets.** Same.
 7. **Audit `agent:authored` PRs before merge.** Auto-merge of unaudited code is out of scope.

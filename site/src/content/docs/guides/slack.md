@@ -3,9 +3,9 @@ title: Slack
 description: Create the app, mint the webhook, store it, post your first message.
 ---
 
-Alfred-OS posts agent reports to a Slack channel via an **incoming webhook**. The framework's `slack_post()` resolves the URL via env → 7-day disk cache → AWS Secrets Manager, so steady-state firings don't pay an AWS round-trip every time.
+Alfred-OS posts agent reports to a Slack channel via an incoming webhook. `slack_post()` resolves the URL via env → 7-day disk cache → AWS Secrets Manager, so steady-state firings don't pay an AWS round-trip every time.
 
-The full guide lives at [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md). The highlights:
+Full guide at [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md). Highlights:
 
 ## 1. Create the app
 
@@ -15,7 +15,7 @@ https://api.slack.com/apps → **Create New App** → **From scratch** → name 
 
 App settings → **Features → Incoming Webhooks** → toggle on → **Add New Webhook to Workspace** → pick the channel → **Allow**.
 
-Copy the URL (it's a secret — anyone with it can post to your channel).
+Copy the URL. It's a secret. Anyone with it can post to your channel.
 
 ## 3. Test it
 
@@ -31,14 +31,14 @@ Should appear in the channel within a second.
 
 Three options:
 
-### Option A — Env var (simplest)
+### Option A: Env var (simplest)
 
 ```sh
 echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.alfredrc
 exec $SHELL
 ```
 
-### Option B — AWS Secrets Manager (recommended for prod)
+### Option B: AWS Secrets Manager (recommended for prod)
 
 ```sh
 aws --profile <admin> secretsmanager create-secret \
@@ -50,9 +50,9 @@ aws --profile <admin> secretsmanager create-secret \
 
 The framework's default secret ID is `alfred/slack-webhook`. See [AWS setup](/alfred-os/guides/aws/) for the IAM policy your cron-time identity needs.
 
-### Option C — Both
+### Option C: Both
 
-Set `SLACK_WEBHOOK_URL` only when you want to override the AWS-stored value (e.g. testing a rotation).
+Set `SLACK_WEBHOOK_URL` only to override the AWS-stored value (e.g. testing a rotation).
 
 ## 5. Verify in Python
 

@@ -1,14 +1,14 @@
 ---
 title: Severity routing
-description: How slack_post separates the high-signal from the firehose without you opening two channels.
+description: Separate high-signal from the firehose without two channels.
 ---
 
-A solo founder has one Slack channel for the fleet — call it `#alfred`. With 6+ codename agents firing every 20 minutes, **everything** ends up there: Lucius shipped, Drake noop, Bane no-coverage-target, automerge merged, cleanup swept, Gordon ECS-in-sync.
+One Slack channel for the fleet (call it `#alfred`). With 6+ codename agents firing every 20 minutes, everything ends up there: Lucius shipped, Drake noop, Bane no-coverage-target, automerge merged, cleanup swept, Gordon ECS-in-sync.
 
 Two failure modes:
 
 1. **Drown the signal.** A genuine alert (Claude rate-limit, ECS drift, security scan finding) gets lost in the daily firehose.
-2. **Split the channel.** Two channels — one for noise, one for alerts — works, but solo founder + two channels = neither gets read religiously.
+2. **Split the channel.** Two channels (one for noise, one for alerts) works, but solo operator + two channels = neither gets read religiously.
 
 Severity routing solves both without changing channel count.
 
@@ -17,7 +17,7 @@ Severity routing solves both without changing channel count.
 `slack_post()` takes an optional `severity=` keyword:
 
 ```python
-slack_post("Lucius shipped #42", severity="info")        # default — plain text
+slack_post("Lucius shipped #42", severity="info")        # default: plain text
 slack_post("Lucius hit max-turns on #42", severity="warn") # ⚠️ prefix
 slack_post("Staging deploy drifted from main", severity="alert") # 🚨 + <!here>
 ```
@@ -30,7 +30,7 @@ Three tiers:
 | `warn` | Prefixed `⚠️` if not already | Soft failures: rate-limit on one provider, max-turns hit, salvaged WIP draft |
 | `alert` | Prefixed `🚨` + appends `<!here>` | Operator must see: production drift, fleet-wide rate-limit, doctor failure on a load-bearing agent, security signal |
 
-Unknown severity values are coerced to `info`. Existing callers without a `severity=` kwarg keep their previous behaviour exactly — back-compat default.
+Unknown severity values are coerced to `info`. Existing callers without a `severity=` kwarg keep their previous behaviour exactly: back-compat default.
 
 ## What you actually get
 
@@ -44,7 +44,7 @@ In Slack, the channel timeline now reads like:
 [normal]    🧹 cleanup: swept 1 stale agent:in-flight claim
 [bold]      ⚠️ Lucius #305 hit max-turns (150). Will retry.
 [normal]    ✅ Lucius shipped: <PR-url> (turns=51)
-[ping]      🚨 Gordon — staging deployment health
+[ping]      🚨 Gordon: staging deployment health
             ECS drift (live ≠ main): staging-api-service main=abc123 live=def456
             <!here>
 ```
@@ -53,20 +53,20 @@ Your eye snaps to the 🚨 line. The ⚠️ line is visible without scrolling. T
 
 ## Reclassification guidance
 
-When sweeping a callsite, ask: **what would I want to know about while making coffee?**
+When sweeping a callsite, ask: what would I want to know about while making coffee?
 
-- **`alert`** — anything that pauses the fleet, breaks production, or signals security. The operator must see it before the next agent firing potentially makes it worse.
-- **`warn`** — soft failures that recover on their own (rate-limit on one provider, max-turns on one issue) but the operator should know happened.
-- **`info`** — everything else. If you're not sure, this is the right answer.
+- **`alert`**: anything that pauses the fleet, breaks production, or signals security. The operator must see it before the next agent firing potentially makes it worse.
+- **`warn`**: soft failures that recover on their own (rate-limit on one provider, max-turns on one issue) but the operator should know happened.
+- **`info`**: everything else. If you're not sure, this is the right answer.
 
 Bias toward `info`. Over-using `alert` re-creates the firehose problem you started with.
 
 ## What's deferred
 
-Today's `slack_post` uses an **incoming webhook**. Webhooks have two limits:
+Today's `slack_post` uses an incoming webhook. Webhooks have two limits:
 
-- **Cannot post threaded replies** (no `thread_ts`).
-- **Cannot update the channel topic** (read-only on channel state).
+- Cannot post threaded replies (no `thread_ts`).
+- Cannot update the channel topic (read-only on channel state).
 
 When alfred-os ships bot-token integration (`xoxb-…`), two follow-ups land:
 
@@ -77,6 +77,6 @@ Both tracked in [Roadmap](/alfred-os/about/roadmap/) under "in-flight."
 
 ## See also
 
-- [Slack setup](/alfred-os/guides/slack/) — webhook creation, AWS storage, optional bot-token path.
-- [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md) — the full guide.
-- [`agent_runner.slack_post`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py) — the source.
+- [Slack setup](/alfred-os/guides/slack/): webhook creation, AWS storage, optional bot-token path.
+- [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md): the full guide.
+- [`agent_runner.slack_post`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py): the source.
