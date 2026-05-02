@@ -23,6 +23,7 @@ Configuration env vars:
   ALFRED_GORDON_SENTRY_SECRET_ID  AWS Secrets Manager secret with auth_token
                                   (default: alfred/sentry-api-token)
 """
+
 from __future__ import annotations
 
 import json
@@ -35,9 +36,16 @@ import urllib.request
 from typing import Any
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    EventLog, PreflightFailed, PreflightSpec,
-    SpendState, doctor_mode, gh_json, preflight, slack_post, with_lock,
+from agent_runner import (
+    EventLog,
+    PreflightFailed,
+    PreflightSpec,
+    SpendState,
+    doctor_mode,
+    gh_json,
+    preflight,
+    slack_post,
+    with_lock,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "gordon")
@@ -81,13 +89,25 @@ PREFLIGHT = PreflightSpec(
 
 
 def _aws(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
-                        "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k
+        not in (
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_SECURITY_TOKEN",
+        )
+    }
     if AWS_PROFILE:
         env["AWS_PROFILE"] = AWS_PROFILE
     return subprocess.run(
-        ["aws"] + args, env=env, capture_output=True, text=True, timeout=timeout,
+        ["aws", *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
     )
 
 
@@ -120,12 +140,18 @@ def check_ecs_drift() -> list[dict[str, Any]]:
     if not (STAGING_CLUSTER and SERVICE_TO_REPO):
         return []
     services = list(SERVICE_TO_REPO.keys())
-    desc = _aws_json([
-        "ecs", "describe-services",
-        "--cluster", STAGING_CLUSTER,
-        "--services", *services,
-        "--region", REGION,
-    ])
+    desc = _aws_json(
+        [
+            "ecs",
+            "describe-services",
+            "--cluster",
+            STAGING_CLUSTER,
+            "--services",
+            *services,
+            "--region",
+            REGION,
+        ]
+    )
     out: list[dict[str, Any]] = []
     if not desc:
         return out
@@ -135,11 +161,16 @@ def check_ecs_drift() -> list[dict[str, Any]]:
         td_arn = svc.get("taskDefinition")
         if not name or not td_arn:
             continue
-        td = _aws_json([
-            "ecs", "describe-task-definition",
-            "--task-definition", td_arn,
-            "--region", REGION,
-        ])
+        td = _aws_json(
+            [
+                "ecs",
+                "describe-task-definition",
+                "--task-definition",
+                td_arn,
+                "--region",
+                REGION,
+            ]
+        )
         live_image = ""
         if td:
             containers = (td.get("taskDefinition") or {}).get("containerDefinitions") or []
@@ -162,25 +193,32 @@ def check_ecs_drift() -> list[dict[str, Any]]:
         a = (live_sha or "").lower()[:12]
         b = (head_sha or "").lower()[:12]
         in_sync = bool(a and b and a == b)
-        out.append({
-            "service": name,
-            "repo": repo_slug,
-            "live_image": live_image,
-            "live_sha": live_sha,
-            "main_sha": head_sha,
-            "in_sync": in_sync,
-        })
+        out.append(
+            {
+                "service": name,
+                "repo": repo_slug,
+                "live_image": live_image,
+                "live_sha": live_sha,
+                "main_sha": head_sha,
+                "in_sync": in_sync,
+            }
+        )
     return out
 
 
 def fetch_sentry_token() -> str | None:
     if not SENTRY_ORG:
         return None
-    res = _aws_json([
-        "secretsmanager", "get-secret-value",
-        "--secret-id", SENTRY_SECRET_ID,
-        "--region", REGION,
-    ])
+    res = _aws_json(
+        [
+            "secretsmanager",
+            "get-secret-value",
+            "--secret-id",
+            SENTRY_SECRET_ID,
+            "--region",
+            REGION,
+        ]
+    )
     if not res:
         return None
     secret_str = res.get("SecretString") or "{}"
@@ -206,13 +244,15 @@ def fetch_sentry_top_issues(token: str, hours: int = 24, limit: int = 5) -> list
         return []
     out: list[dict[str, Any]] = []
     for issue in data[:limit] if isinstance(data, list) else []:
-        out.append({
-            "id": issue.get("shortId") or issue.get("id"),
-            "title": (issue.get("title") or "")[:120],
-            "count": issue.get("count"),
-            "users": (issue.get("userCount") or 0),
-            "permalink": issue.get("permalink"),
-        })
+        out.append(
+            {
+                "id": issue.get("shortId") or issue.get("id"),
+                "title": (issue.get("title") or "")[:120],
+                "count": issue.get("count"),
+                "users": (issue.get("userCount") or 0),
+                "permalink": issue.get("permalink"),
+            }
+        )
     return out
 
 
@@ -248,7 +288,9 @@ def main() -> int:
 
     spend.increment(firings_today=1)
 
-    summary_lines = [f"[{AGENT.upper()}-OK] services={len(drift)} drifted={len(drifted)} sentry_issues={len(sentry_issues)}"]
+    summary_lines = [
+        f"[{AGENT.upper()}-OK] services={len(drift)} drifted={len(drifted)} sentry_issues={len(sentry_issues)}"
+    ]
     print("\n".join(summary_lines))
 
     if not drifted and not sentry_issues:
@@ -271,7 +313,7 @@ def main() -> int:
         for issue in sentry_issues:
             link = issue.get("permalink") or "(no link)"
             slack_lines.append(
-                f"  • {issue['count']}× {issue['users']} users - `{issue['id']}` {issue['title']}\n    <{link}>"
+                f"  • {issue['count']}x {issue['users']} users - `{issue['id']}` {issue['title']}\n    <{link}>"
             )
 
     msg = "\n".join(slack_lines)

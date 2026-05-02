@@ -38,6 +38,7 @@ that way — no external deps, no clever indirection.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -46,9 +47,9 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 # ---------------------------------------------------------------------------
 # Constants — the canonical Batman-codename map.
@@ -57,30 +58,84 @@ from typing import Iterable
 # role-key -> (default codename, one-line description, operates_on_repos,
 # default schedule string in launchd/agents.conf format)
 AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
-    "feature_dev":         ("lucius",              "feature dev (picks agent:implement issues, opens PRs)",       True,  "interval:1200"),
-    "planner":             ("drake",               "issue planner (files agent:implement issues from specs)",     True,  "interval:7200"),
-    "test_coverage":       ("bane",                "test coverage (writes tests for low-coverage changed files)", True,  "interval:14400"),
-    "pr_review":           ("rasalghul",           "PR review (multi-axis on every fresh PR)",                    True,  "interval:1800"),
-    "ci_repair":           ("nightwing",           "CI repair (re-runs flaky checks, opens fix PRs)",             True,  "interval:2700"),
-    "doc_writer":          ("robin",               "doc writer (keeps READMEs and ADRs in sync)",                 True,  "interval:10800"),
-    "smoke_runner":        ("huntress",            "staging smoke runner (hits a URL on schedule)",               False, "interval:1800"),
-    "ops_morning":         ("gordon",              "ops morning (ECS + Sentry health roll-up)",                   False, "cron:8:00"),
-    "automerge":           ("automerge",           "PR automerge (merges green, blessed PRs)",                    False, "interval:900"),
-    "agent_cleanup":       ("agent-cleanup",       "agent cleanup (prunes stale claims + worktrees)",             False, "cron:3:00"),
-    "code_map_refresh":    ("code-map-refresh",    "code map refresh (regenerates per-repo skeleton)",            True,  "interval:21600"),
-    "morning_brief":       ("agent-morning-brief", "morning brief (overnight fleet summary)",                     False, "cron:7:00"),
-    "fleet_recap_morning": ("fleet-recap-morning", "fleet recap morning (7:30 status post)",                      False, "cron:7:30"),
-    "fleet_recap_evening": ("fleet-recap-evening", "fleet recap evening (22:00 status post)",                     False, "cron:22:00"),
+    "feature_dev": (
+        "lucius",
+        "feature dev (picks agent:implement issues, opens PRs)",
+        True,
+        "interval:1200",
+    ),
+    "planner": (
+        "drake",
+        "issue planner (files agent:implement issues from specs)",
+        True,
+        "interval:7200",
+    ),
+    "test_coverage": (
+        "bane",
+        "test coverage (writes tests for low-coverage changed files)",
+        True,
+        "interval:14400",
+    ),
+    "pr_review": ("rasalghul", "PR review (multi-axis on every fresh PR)", True, "interval:1800"),
+    "ci_repair": (
+        "nightwing",
+        "CI repair (re-runs flaky checks, opens fix PRs)",
+        True,
+        "interval:2700",
+    ),
+    "doc_writer": ("robin", "doc writer (keeps READMEs and ADRs in sync)", True, "interval:10800"),
+    "smoke_runner": (
+        "huntress",
+        "staging smoke runner (hits a URL on schedule)",
+        False,
+        "interval:1800",
+    ),
+    "ops_morning": ("gordon", "ops morning (ECS + Sentry health roll-up)", False, "cron:8:00"),
+    "automerge": ("automerge", "PR automerge (merges green, blessed PRs)", False, "interval:900"),
+    "agent_cleanup": (
+        "agent-cleanup",
+        "agent cleanup (prunes stale claims + worktrees)",
+        False,
+        "cron:3:00",
+    ),
+    "code_map_refresh": (
+        "code-map-refresh",
+        "code map refresh (regenerates per-repo skeleton)",
+        True,
+        "interval:21600",
+    ),
+    "morning_brief": (
+        "agent-morning-brief",
+        "morning brief (overnight fleet summary)",
+        False,
+        "cron:7:00",
+    ),
+    "fleet_recap_morning": (
+        "fleet-recap-morning",
+        "fleet recap morning (7:30 status post)",
+        False,
+        "cron:7:30",
+    ),
+    "fleet_recap_evening": (
+        "fleet-recap-evening",
+        "fleet recap evening (22:00 status post)",
+        False,
+        "cron:22:00",
+    ),
 }
 
 # Map default codename -> role-key (for discovery from bin/*.py).
-CODENAME_TO_ROLE: dict[str, str] = {default: role for role, (default, _, _, _) in AGENT_CATALOG.items()}
+CODENAME_TO_ROLE: dict[str, str] = {
+    default: role for role, (default, _, _, _) in AGENT_CATALOG.items()
+}
 
 # Repo-operating agents that need a staging URL / cluster name beyond repos.
 SPECIAL_PROMPTS = {
     "huntress": [("HUNTRESS_STAGING_URL", "Staging URL Huntress should hit")],
-    "gordon":   [("GORDON_ECS_CLUSTER", "ECS cluster name for Gordon"),
-                 ("GORDON_SENTRY_ORG",  "Sentry org slug for Gordon (blank to skip)")],
+    "gordon": [
+        ("GORDON_ECS_CLUSTER", "ECS cluster name for Gordon"),
+        ("GORDON_SENTRY_ORG", "Sentry org slug for Gordon (blank to skip)"),
+    ],
 }
 
 CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
@@ -93,28 +148,45 @@ ALFREDRC_BANNER = "# alfred-init — generated below this line. Safe to re-run."
 # ANSI helpers (TTY-aware).
 # ---------------------------------------------------------------------------
 
+
 class Style:
     def __init__(self, enabled: bool):
         self.enabled = enabled
-        self.BLUE   = "\033[1;34m" if enabled else ""
-        self.GREEN  = "\033[1;32m" if enabled else ""
+        self.BLUE = "\033[1;34m" if enabled else ""
+        self.GREEN = "\033[1;32m" if enabled else ""
         self.YELLOW = "\033[1;33m" if enabled else ""
-        self.RED    = "\033[1;31m" if enabled else ""
-        self.DIM    = "\033[2m"    if enabled else ""
-        self.OFF    = "\033[0m"    if enabled else ""
+        self.RED = "\033[1;31m" if enabled else ""
+        self.DIM = "\033[2m" if enabled else ""
+        self.OFF = "\033[0m" if enabled else ""
+
 
 STYLE = Style(sys.stdout.isatty())
 
-def step(msg: str) -> None:    print(f"{STYLE.BLUE}==>{STYLE.OFF} {msg}")
-def ok(msg: str) -> None:      print(f"{STYLE.GREEN}  ok{STYLE.OFF} {msg}")
-def warn(msg: str) -> None:    print(f"{STYLE.YELLOW}  ! {STYLE.OFF} {msg}", file=sys.stderr)
-def fail(msg: str) -> None:    print(f"{STYLE.RED}  !!{STYLE.OFF} {msg}", file=sys.stderr)
-def note(msg: str) -> None:    print(f"{STYLE.DIM}     {msg}{STYLE.OFF}")
+
+def step(msg: str) -> None:
+    print(f"{STYLE.BLUE}==>{STYLE.OFF} {msg}")
+
+
+def ok(msg: str) -> None:
+    print(f"{STYLE.GREEN}  ok{STYLE.OFF} {msg}")
+
+
+def warn(msg: str) -> None:
+    print(f"{STYLE.YELLOW}  ! {STYLE.OFF} {msg}", file=sys.stderr)
+
+
+def fail(msg: str) -> None:
+    print(f"{STYLE.RED}  !!{STYLE.OFF} {msg}", file=sys.stderr)
+
+
+def note(msg: str) -> None:
+    print(f"{STYLE.DIM}     {msg}{STYLE.OFF}")
 
 
 # ---------------------------------------------------------------------------
 # Config dataclass — single source of truth for what the wizard collects.
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class WizardState:
@@ -129,10 +201,10 @@ class WizardState:
     aws_region: str = "us-east-1"
     use_aws: bool = False
     aws_agent_profiles: dict[str, str] = field(default_factory=dict)  # codename -> profile
-    enabled_roles: list[str] = field(default_factory=list)            # role keys
-    role_to_codename: dict[str, str] = field(default_factory=dict)    # role -> codename
-    role_to_repos: dict[str, list[str]] = field(default_factory=dict) # role -> [org/repo]
-    role_to_schedule: dict[str, str] = field(default_factory=dict)    # role -> schedule
+    enabled_roles: list[str] = field(default_factory=list)  # role keys
+    role_to_codename: dict[str, str] = field(default_factory=dict)  # role -> codename
+    role_to_repos: dict[str, list[str]] = field(default_factory=dict)  # role -> [org/repo]
+    role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
 
     def codename_for(self, role: str) -> str:
@@ -142,6 +214,7 @@ class WizardState:
 # ---------------------------------------------------------------------------
 # Prompt helpers.
 # ---------------------------------------------------------------------------
+
 
 def ask(prompt: str, default: str = "", *, non_interactive: bool = False) -> str:
     if non_interactive:
@@ -168,8 +241,15 @@ def ask_yes_no(prompt: str, default: bool = False, *, non_interactive: bool = Fa
 # Subprocess helpers.
 # ---------------------------------------------------------------------------
 
-def run(cmd: list[str], *, check: bool = False, capture: bool = True,
-        timeout: int | None = None, input_str: str | None = None) -> subprocess.CompletedProcess:
+
+def run(
+    cmd: list[str],
+    *,
+    check: bool = False,
+    capture: bool = True,
+    timeout: int | None = None,
+    input_str: str | None = None,
+) -> subprocess.CompletedProcess:
     """Thin wrapper around subprocess.run with sane defaults."""
     return subprocess.run(
         cmd,
@@ -189,6 +269,7 @@ def have(binary: str) -> bool:
 # .alfredrc IO — append-only with idempotent guard markers.
 # ---------------------------------------------------------------------------
 
+
 def read_alfredrc(path: Path) -> dict[str, str]:
     """Parse KEY=VALUE pairs from ~/.alfredrc. Quotes/exports are tolerated."""
     out: dict[str, str] = {}
@@ -199,7 +280,7 @@ def read_alfredrc(path: Path) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export "):]
+            line = line[len("export ") :]
         if "=" not in line:
             continue
         k, _, v = line.partition("=")
@@ -228,15 +309,14 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
         block.append(f"{k}={v}")
     new = existing.rstrip() + "\n\n" + "\n".join(block) + "\n"
     path.write_text(new)
-    try:
+    with contextlib.suppress(OSError):
         path.chmod(0o600)
-    except OSError:
-        pass
 
 
 # ---------------------------------------------------------------------------
 # Agent discovery — scan bin/*.py for known codenames.
 # ---------------------------------------------------------------------------
+
 
 def discover_agents(bin_dir: Path) -> list[str]:
     """Return the role-keys from AGENT_CATALOG whose runners exist in bin/.
@@ -271,6 +351,7 @@ def discover_agents(bin_dir: Path) -> list[str]:
 # ---------------------------------------------------------------------------
 # agents.conf renderer.
 # ---------------------------------------------------------------------------
+
 
 def render_agents_conf(state: WizardState) -> str:
     """Produce the full agents.conf text from WizardState.
@@ -323,13 +404,16 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         for k, v in state.role_to_extras.get(role, {}).items():
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
-            out[f"AWS_PROFILE_{codename.upper().replace('-', '_')}"] = state.aws_agent_profiles[codename]
+            out[f"AWS_PROFILE_{codename.upper().replace('-', '_')}"] = state.aws_agent_profiles[
+                codename
+            ]
     return out
 
 
 # ---------------------------------------------------------------------------
 # Slack webhook test post.
 # ---------------------------------------------------------------------------
+
 
 def slack_post(webhook: str, text: str, *, timeout: int = 10) -> tuple[bool, str]:
     payload = json.dumps({"text": text}).encode("utf-8")
@@ -347,13 +431,14 @@ def slack_post(webhook: str, text: str, *, timeout: int = 10) -> tuple[bool, str
             return False, f"HTTP {resp.status}: {body}"
     except urllib.error.URLError as e:
         return False, str(e)
-    except Exception as e:  # noqa: BLE001 — surface anything to the operator
+    except Exception as e:
         return False, str(e)
 
 
 # ---------------------------------------------------------------------------
 # Wizard steps.
 # ---------------------------------------------------------------------------
+
 
 def step_0_preflight(state: WizardState) -> None:
     step("Preflight")
@@ -435,7 +520,9 @@ def step_2_github(state: WizardState, *, non_interactive: bool) -> None:
         rows = []
     state.repos = sorted({r.get("nameWithOwner", "") for r in rows if r.get("nameWithOwner")})
     if not state.repos:
-        warn(f"No repos visible in {state.gh_org}. You can still proceed, but per-agent repo prompts will be blank.")
+        warn(
+            f"No repos visible in {state.gh_org}. You can still proceed, but per-agent repo prompts will be blank."
+        )
     else:
         ok(f"{len(state.repos)} repos visible in {state.gh_org}")
 
@@ -448,7 +535,9 @@ def step_3_slack(state: WizardState, *, non_interactive: bool) -> None:
     note("4. Add a webhook URL to the channel you want for fleet status.")
     note("5. Copy the resulting URL.")
     while True:
-        url = ask("Paste your Slack webhook URL (or 'skip')", "skip", non_interactive=non_interactive)
+        url = ask(
+            "Paste your Slack webhook URL (or 'skip')", "skip", non_interactive=non_interactive
+        )
         if url == "skip" or not url:
             warn("Skipping Slack setup. Agents that depend on slack_post will degrade quietly.")
             return
@@ -463,15 +552,21 @@ def step_3_slack(state: WizardState, *, non_interactive: bool) -> None:
         fail(f"Test post failed: {body}")
         if not ask_yes_no("Retry?", True, non_interactive=non_interactive):
             return
-    storage = ask("Store webhook in AWS Secrets Manager (recommended for prod) or env? [aws/env]",
-                  "env", non_interactive=non_interactive).lower()
+    storage = ask(
+        "Store webhook in AWS Secrets Manager (recommended for prod) or env? [aws/env]",
+        "env",
+        non_interactive=non_interactive,
+    ).lower()
     if storage == "aws":
         if not have("aws"):
             warn("`aws` CLI not found; falling back to env-var storage.")
             state.slack_storage = "env"
             return
-        profile = ask("AWS profile name (admin) for writing the secret", "default",
-                      non_interactive=non_interactive)
+        profile = ask(
+            "AWS profile name (admin) for writing the secret",
+            "default",
+            non_interactive=non_interactive,
+        )
         region = ask("AWS region", state.aws_region, non_interactive=non_interactive)
         ident = run(["aws", "--profile", profile, "sts", "get-caller-identity"], timeout=20)
         if ident.returncode != 0:
@@ -479,21 +574,41 @@ def step_3_slack(state: WizardState, *, non_interactive: bool) -> None:
             warn("Falling back to env-var storage.")
             state.slack_storage = "env"
             return
-        create = run([
-            "aws", "--profile", profile, "--region", region,
-            "secretsmanager", "create-secret",
-            "--name", "alfred/slack-webhook",
-            "--secret-string", state.slack_webhook,
-        ], timeout=30)
+        create = run(
+            [
+                "aws",
+                "--profile",
+                profile,
+                "--region",
+                region,
+                "secretsmanager",
+                "create-secret",
+                "--name",
+                "alfred/slack-webhook",
+                "--secret-string",
+                state.slack_webhook,
+            ],
+            timeout=30,
+        )
         if create.returncode != 0:
             if "ResourceExistsException" in create.stderr or "already exists" in create.stderr:
                 if ask_yes_no("Secret exists. Update it?", True, non_interactive=non_interactive):
-                    upd = run([
-                        "aws", "--profile", profile, "--region", region,
-                        "secretsmanager", "update-secret",
-                        "--secret-id", "alfred/slack-webhook",
-                        "--secret-string", state.slack_webhook,
-                    ], timeout=30)
+                    upd = run(
+                        [
+                            "aws",
+                            "--profile",
+                            profile,
+                            "--region",
+                            region,
+                            "secretsmanager",
+                            "update-secret",
+                            "--secret-id",
+                            "alfred/slack-webhook",
+                            "--secret-string",
+                            state.slack_webhook,
+                        ],
+                        timeout=30,
+                    )
                     if upd.returncode != 0:
                         fail(f"Update failed: {upd.stderr.strip()}")
                         warn("Falling back to env-var storage.")
@@ -515,8 +630,9 @@ def step_3_slack(state: WizardState, *, non_interactive: bool) -> None:
 
 def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
     step("AWS (optional, per-agent IAM)")
-    if not ask_yes_no("Use AWS for per-agent IAM and Secrets Manager?", False,
-                      non_interactive=non_interactive):
+    if not ask_yes_no(
+        "Use AWS for per-agent IAM and Secrets Manager?", False, non_interactive=non_interactive
+    ):
         ok("Skipping per-agent AWS profiles.")
         return
     state.use_aws = True
@@ -526,8 +642,9 @@ def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
         if codename not in {state.codename_for(r) for r in state.enabled_roles}:
             continue
         default_profile = f"{codename}-cron"
-        profile = ask(f"AWS profile for {codename}?", default_profile,
-                      non_interactive=non_interactive)
+        profile = ask(
+            f"AWS profile for {codename}?", default_profile, non_interactive=non_interactive
+        )
         ident = run(["aws", "--profile", profile, "sts", "get-caller-identity"], timeout=20)
         if ident.returncode != 0:
             warn(f"AWS profile '{profile}' not configured. See docs/AWS_SETUP.md.")
@@ -536,8 +653,9 @@ def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
         ok(f"AWS profile for {codename}: {profile}")
 
 
-def step_5_pick_agents(state: WizardState, available: list[str], *,
-                       agents_arg: str | None, non_interactive: bool) -> None:
+def step_5_pick_agents(
+    state: WizardState, available: list[str], *, agents_arg: str | None, non_interactive: bool
+) -> None:
     step("Pick agents")
     if not available:
         warn("No agent runners discovered in bin/. Did parallel agents land yet?")
@@ -573,8 +691,9 @@ def step_6_codenames(state: WizardState, *, non_interactive: bool) -> None:
     for role in state.enabled_roles:
         default, desc, _, _ = AGENT_CATALOG[role]
         while True:
-            chosen = ask(f"Codename for {desc.split(' (')[0]}?", default,
-                         non_interactive=non_interactive)
+            chosen = ask(
+                f"Codename for {desc.split(' (')[0]}?", default, non_interactive=non_interactive
+            )
             if not CODENAME_RE.match(chosen):
                 fail("Codename must match ^[a-z][a-z0-9-]*$")
                 if non_interactive:
@@ -607,8 +726,7 @@ def step_7_repos(state: WizardState, *, non_interactive: bool) -> None:
         print(f"  Repos for {codename} ({AGENT_CATALOG[role][1]}):")
         for i, repo in enumerate(state.repos, 1):
             print(f"    {i:>2}. {repo}")
-        raw = ask("Numbers (comma-separated), 'all', or 'engineering' (excludes specs/docs)",
-                  "all")
+        raw = ask("Numbers (comma-separated), 'all', or 'engineering' (excludes specs/docs)", "all")
         state.role_to_repos[role] = _resolve_repo_selection(raw, state.repos)
     # Special prompts (Huntress staging URL, Gordon ECS cluster, etc.)
     for role in state.enabled_roles:
@@ -679,10 +797,9 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     print("--- agents.conf ---")
     print(conf)
     print("-------------------")
-    if not non_interactive:
-        if not ask_yes_no("Looks good?", True):
-            warn("Re-run alfred-init to revise. Existing config left in place.")
-            sys.exit(1)
+    if not non_interactive and not ask_yes_no("Looks good?", True):
+        warn("Re-run alfred-init to revise. Existing config left in place.")
+        sys.exit(1)
 
 
 def step_10_deploy(state: WizardState) -> None:
@@ -718,7 +835,9 @@ def step_12_smoke(state: WizardState) -> None:
     step("Smoke test")
     n = len(state.enabled_roles)
     if state.slack_webhook:
-        ok_post, body = slack_post(state.slack_webhook, f"alfred-os: configured and ready. {n} agents enabled.")
+        ok_post, body = slack_post(
+            state.slack_webhook, f"alfred-os: configured and ready. {n} agents enabled."
+        )
         if ok_post:
             ok("final Slack post sent")
         else:
@@ -756,16 +875,25 @@ def step_12_smoke(state: WizardState) -> None:
 # CLI entry point.
 # ---------------------------------------------------------------------------
 
+
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="alfred init — agent fleet configuration wizard.")
-    p.add_argument("--non-interactive", action="store_true",
-                   help="Accept all defaults; never prompt.")
-    p.add_argument("--config", type=Path, default=None,
-                   help="JSON file with pre-baked answers.")
-    p.add_argument("--agents", type=str, default=None,
-                   help="Comma-separated codenames to enable (skips multi-select).")
-    p.add_argument("--repo-root", type=Path, default=None,
-                   help="Path to the alfred-os checkout (default: parent of this script).")
+    p.add_argument(
+        "--non-interactive", action="store_true", help="Accept all defaults; never prompt."
+    )
+    p.add_argument("--config", type=Path, default=None, help="JSON file with pre-baked answers.")
+    p.add_argument(
+        "--agents",
+        type=str,
+        default=None,
+        help="Comma-separated codenames to enable (skips multi-select).",
+    )
+    p.add_argument(
+        "--repo-root",
+        type=Path,
+        default=None,
+        help="Path to the alfred-os checkout (default: parent of this script).",
+    )
     return p.parse_args(list(argv) if argv is not None else None)
 
 

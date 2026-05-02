@@ -16,32 +16,42 @@ Without that file, the runner falls back to language-suffix defaults (see
 _load_pre_push_config in lucius.py for the same pattern). Coverage hint
 defaults to "(operator: configure coverage_hint per repo)".
 """
+
 from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
-
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    GH_ORG, STATE_ROOT, WORKSPACE,
-    EventLog, PreflightFailed, PreflightSpec,
-    SpendState, claude_invoke, commit_trailer, doctor_mode, gh_pr_create, is_globally_blocked,
+from agent_runner import (
+    GH_ORG,
+    STATE_ROOT,
+    WORKSPACE,
+    EventLog,
+    PreflightFailed,
+    PreflightSpec,
+    SpendState,
+    claude_invoke,
+    commit_trailer,
+    doctor_mode,
+    gh_pr_create,
+    is_globally_blocked,
+    is_repo_paused,
     make_worktree,
-    is_repo_paused, preflight, remove_worktree, run, slack_post, with_lock,
+    preflight,
+    remove_worktree,
+    run,
+    slack_post,
+    with_lock,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "bane")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 LAST_REPO_FILE = STATE_ROOT / AGENT / "last-repo.txt"
 
-ROTATION = [
-    r.strip()
-    for r in os.environ.get("ALFRED_BANE_REPOS", "").split(",")
-    if r.strip()
-]
+ROTATION = [r.strip() for r in os.environ.get("ALFRED_BANE_REPOS", "").split(",") if r.strip()]
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
@@ -77,7 +87,9 @@ def _load_repo_config(agent_codename: str) -> dict[str, dict[str, str]]:
             else:
                 entry["pre_push"] = ""
         if "coverage_hint" not in entry:
-            entry["coverage_hint"] = "(operator: configure coverage_hint per repo in ~/.alfredrc.d/{}.yaml)".format(agent_codename)
+            entry["coverage_hint"] = (
+                f"(operator: configure coverage_hint per repo in ~/.alfredrc.d/{agent_codename}.yaml)"
+            )
         out[repo] = entry
     return out
 
@@ -109,10 +121,12 @@ def pick_repo() -> str | None:
     return None
 
 
-def build_prompt(repo: str, wt: Path, repo_claude_md: str,
-                 coverage_hint: str, pre_push: str, firing_id: str) -> str:
+def build_prompt(
+    repo: str, wt: Path, repo_claude_md: str, coverage_hint: str, pre_push: str, firing_id: str
+) -> str:
     trailer = commit_trailer(
-        AGENT, firing_id,
+        AGENT,
+        firing_id,
         extra={"repo": f"{GH_ORG}/{repo}"},
     )
     return f"""You are {AGENT.title()}, the test coverage agent. Add tests for the actively-changed, undertested file with the lowest line coverage.
@@ -183,7 +197,7 @@ def main() -> int:
 
     blocked = is_globally_blocked()
     if blocked:
-        print(f'[{AGENT.upper()}-GLOBAL-BLOCKED] {blocked}. Skipping firing.')
+        print(f"[{AGENT.upper()}-GLOBAL-BLOCKED] {blocked}. Skipping firing.")
         events.emit("firing_complete", outcome="global-blocked")
         return 0
     spend = SpendState(AGENT)
@@ -209,26 +223,33 @@ def main() -> int:
         wt, branch = make_worktree(repo, AGENT, "coverage")
     except RuntimeError as e:
         msg = f"[{AGENT.upper()}-ERROR] {e}"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome="worktree-error")
         return 0
     events.emit("worktree_created", branch=branch, path=str(wt))
 
-    prompt = build_prompt(repo, wt, repo_claude_md, coverage_hint, pre_push,
-                          firing_id=events.firing_id)
+    prompt = build_prompt(
+        repo, wt, repo_claude_md, coverage_hint, pre_push, firing_id=events.firing_id
+    )
 
     result = claude_invoke(
-        prompt, workdir=wt, allowed_tools="Read,Edit,Write,Bash,Grep",
-        max_turns=80, timeout=1200,
+        prompt,
+        workdir=wt,
+        allowed_tools="Read,Edit,Write,Bash,Grep",
+        max_turns=80,
+        timeout=1200,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
-    events.emit("claude_invoke_done", turns=result.num_turns, subtype=result.subtype,
-                success=result.success)
+    events.emit(
+        "claude_invoke_done", turns=result.num_turns, subtype=result.subtype, success=result.success
+    )
 
     if not result.success:
         remove_worktree(repo, wt)
         msg = f"❌ {AGENT.title()} {repo}: subtype={result.subtype} turns={result.num_turns}"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome=f"claude-{result.subtype}")
         return 0
 
@@ -243,36 +264,54 @@ def main() -> int:
         return 0
 
     if "[BUG-FOUND]" in head:
-        bug_line = next((l for l in text.splitlines() if "[BUG-FOUND]" in l), "")
+        bug_line = next((lbl for lbl in text.splitlines() if "[BUG-FOUND]" in lbl), "")
         bug_desc = bug_line.split("[BUG-FOUND]", 1)[-1].strip()[:200]
         remove_worktree(repo, wt)
         issue_url = ""
-        res = run([
-            "gh", "issue", "create", "-R", f"{GH_ORG}/{repo}",
-            "--title", f"bug: {bug_desc}",
-            "--body", f"{AGENT.title()} discovered this while attempting to add tests. Triage required.",
-            "--label", "bug",
-        ], timeout=30)
+        res = run(
+            [
+                "gh",
+                "issue",
+                "create",
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--title",
+                f"bug: {bug_desc}",
+                "--body",
+                f"{AGENT.title()} discovered this while attempting to add tests. Triage required.",
+                "--label",
+                "bug",
+            ],
+            timeout=30,
+        )
         if res.returncode == 0:
             issue_url = (res.stdout or "").strip().splitlines()[-1]
         msg = f"🐛 {AGENT.title()} {repo}: bug found, filed {issue_url}. turns={result.num_turns}"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome="bug-found", issue_url=issue_url)
         return 0
 
     # Verify commit landed
-    new_commits = run(["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10).stdout.strip()
+    new_commits = run(
+        ["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10
+    ).stdout.strip()
     if not new_commits:
         remove_worktree(repo, wt)
         msg = f"[{AGENT.upper()}-NO-COMMIT] {repo}: claude success but no commit. turns={result.num_turns}"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome="no-commit")
         return 0
 
     # Push + open PR
     run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=60)
-    commit_subject = run(["git", "log", "-1", "--format=%s"], cwd=str(wt), timeout=10).stdout.strip()
-    commit_body = run(["git", "log", "origin/main..HEAD", "--format=%B"], cwd=str(wt), timeout=10).stdout.strip()
+    commit_subject = run(
+        ["git", "log", "-1", "--format=%s"], cwd=str(wt), timeout=10
+    ).stdout.strip()
+    commit_body = run(
+        ["git", "log", "origin/main..HEAD", "--format=%B"], cwd=str(wt), timeout=10
+    ).stdout.strip()
 
     body_file = Path(f"/tmp/{AGENT}-prbody-{repo}.md")
     body_file.write_text(f"""## Summary
@@ -284,20 +323,29 @@ def main() -> int:
 Generated with Claude Code (claude.com/claude-code)
 """)
 
-    pr_url = gh_pr_create(repo, title=commit_subject, body_file=body_file,
-                          head=branch, labels=["agent:authored", "test-coverage"])
+    pr_url = gh_pr_create(
+        repo,
+        title=commit_subject,
+        body_file=body_file,
+        head=branch,
+        labels=["agent:authored", "test-coverage"],
+    )
     remove_worktree(repo, wt)
 
     if pr_url:
         spend.increment(successes_today=1)
         msg = f"✅ {AGENT.title()} {repo}: {pr_url} (turns={result.num_turns})"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("pr_opened", url=pr_url, repo=f"{GH_ORG}/{repo}", turns=result.num_turns)
         events.emit("firing_complete", outcome="pr-opened")
     else:
         spend.increment(failures_today=1)
-        msg = f"[{AGENT.upper()}-PR-FAILED] {repo}: commit landed on {branch} but PR creation failed."
-        print(msg); slack_post(msg)
+        msg = (
+            f"[{AGENT.upper()}-PR-FAILED] {repo}: commit landed on {branch} but PR creation failed."
+        )
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome="pr-create-failed")
     return 0
 

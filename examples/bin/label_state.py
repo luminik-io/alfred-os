@@ -44,6 +44,7 @@ Layout note:
     operator-facing wrapper. See the project's README for an
     end-to-end example.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,8 +56,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    PAUSED_REPOS_FILE,  # noqa: F401  (exposed so operators can inspect)
+from agent_runner import (
+    PAUSED_REPOS_FILE,
     find_stale_claims,
     force_release_stale_claim,
     gh_issue_edit,
@@ -72,8 +73,7 @@ def parse_issue_ref(s: str) -> tuple[str, int]:
     m = ISSUE_REF_RE.match(s.strip())
     if not m:
         raise SystemExit(
-            f"label-state: invalid issue ref '{s}'. Expected form: <repo>#<N> "
-            f"(e.g. backend#42)"
+            f"label-state: invalid issue ref '{s}'. Expected form: <repo>#<N> (e.g. backend#42)"
         )
     return m.group(1), int(m.group(2))
 
@@ -82,14 +82,19 @@ def cmd_claim(args: argparse.Namespace) -> int:
     repo, num = parse_issue_ref(args.ref)
     state = issue_dedup_check(repo, num)
     if state["pr_open"]:
-        print(f"label-state: {repo}#{num} already has a PR open. "
-              f"Manual claim refused.", file=sys.stderr)
+        print(
+            f"label-state: {repo}#{num} already has a PR open. Manual claim refused.",
+            file=sys.stderr,
+        )
         return 2
     if state["in_flight"] and not args.force:
         latest = state.get("latest_claim") or {}
-        print(f"label-state: {repo}#{num} is in-flight by "
-              f"{latest.get('codename', '?')}:{latest.get('firing_id', '?')}. "
-              f"Pass --force to override.", file=sys.stderr)
+        print(
+            f"label-state: {repo}#{num} is in-flight by "
+            f"{latest.get('codename', '?')}:{latest.get('firing_id', '?')}. "
+            f"Pass --force to override.",
+            file=sys.stderr,
+        )
         return 2
     gh_issue_edit(repo, num, add_labels=["do-not-pickup"])
     print(f"label-state: claimed {repo}#{num} for the operator (do-not-pickup set).")
@@ -130,8 +135,7 @@ def cmd_dedup_check(args: argparse.Namespace) -> int:
         state["reasons"] = reasons
         print(json.dumps(state, indent=2))
     else:
-        print(f"label-state: {repo}#{num} NOT claimable - {', '.join(reasons)}",
-              file=sys.stderr)
+        print(f"label-state: {repo}#{num} NOT claimable - {', '.join(reasons)}", file=sys.stderr)
     return 1
 
 
@@ -151,8 +155,10 @@ def cmd_status_issue(args: argparse.Namespace) -> int:
     print(f"  human-scope:    {'yes' if state['needs_human_scope'] else 'no'}")
     if state.get("latest_claim"):
         c = state["latest_claim"]
-        print(f"  latest claim:   codename={c.get('codename')} "
-              f"firing_id={c.get('firing_id')} ts={c.get('createdAt') or c.get('ts')}")
+        print(
+            f"  latest claim:   codename={c.get('codename')} "
+            f"firing_id={c.get('firing_id')} ts={c.get('createdAt') or c.get('ts')}"
+        )
     print(f"  labels:         {', '.join(state['labels']) if state['labels'] else '(none)'}")
     return 0
 
@@ -187,17 +193,20 @@ def cmd_repo(args: argparse.Namespace) -> int:
 def cmd_sweep_claims(args: argparse.Namespace) -> int:
     repos = [args.repo] if args.repo else _default_sweep_repos()
     if not repos:
-        print("label-state sweep-claims: no repos to sweep. Pass --repo or set "
-              "LABEL_STATE_SWEEP_REPOS in your environment "
-              "(comma-separated repo slugs).", file=sys.stderr)
+        print(
+            "label-state sweep-claims: no repos to sweep. Pass --repo or set "
+            "LABEL_STATE_SWEEP_REPOS in your environment "
+            "(comma-separated repo slugs).",
+            file=sys.stderr,
+        )
         return 2
-    sweep_id = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%d-%H%M%S-manual")
+    sweep_id = _dt.datetime.now(_dt.UTC).strftime("%Y%m%d-%H%M%S-manual")
     total_stale = 0
     total_swept = 0
     for repo in repos:
         try:
             stale = find_stale_claims(repo, max_age_hours=args.max_age_hours)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"  {repo}: probe failed: {e}", file=sys.stderr)
             continue
         if not stale:
@@ -205,22 +214,28 @@ def cmd_sweep_claims(args: argparse.Namespace) -> int:
         total_stale += len(stale)
         print(f"  {repo}: {len(stale)} stale claim(s)")
         for entry in stale:
-            print(f"    #{entry['number']} codename={entry['codename']} "
-                  f"firing_id={entry['firing_id']} "
-                  f"age={entry.get('age_hours', 0):.1f}h - "
-                  f"{entry.get('title', '')[:60]}")
+            print(
+                f"    #{entry['number']} codename={entry['codename']} "
+                f"firing_id={entry['firing_id']} "
+                f"age={entry.get('age_hours', 0):.1f}h - "
+                f"{entry.get('title', '')[:60]}"
+            )
             if not args.dry_run:
                 try:
                     force_release_stale_claim(repo, entry["number"], sweep_id=sweep_id)
                     total_swept += 1
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     print(f"    sweep failed: {e}", file=sys.stderr)
     if args.dry_run:
-        print(f"label-state: dry-run, {total_stale} stale claim(s) across "
-              f"{len(repos)} repo(s). No changes made.")
+        print(
+            f"label-state: dry-run, {total_stale} stale claim(s) across "
+            f"{len(repos)} repo(s). No changes made."
+        )
     else:
-        print(f"label-state: swept {total_swept}/{total_stale} stale claim(s) "
-              f"across {len(repos)} repo(s).")
+        print(
+            f"label-state: swept {total_swept}/{total_stale} stale claim(s) "
+            f"across {len(repos)} repo(s)."
+        )
     return 0
 
 
@@ -246,22 +261,19 @@ def main() -> int:
 
     p = sub.add_parser("claim", help="Set do-not-pickup on an issue")
     p.add_argument("ref", help="<repo>#<N>")
-    p.add_argument("--force", action="store_true",
-                   help="Override an existing in-flight claim")
+    p.add_argument("--force", action="store_true", help="Override an existing in-flight claim")
     p.set_defaults(func=cmd_claim)
 
     p = sub.add_parser("release", help="Remove do-not-pickup from an issue")
     p.add_argument("ref")
     p.set_defaults(func=cmd_release)
 
-    p = sub.add_parser("dedup-check",
-                       help="Exit non-zero if an issue is not claimable")
+    p = sub.add_parser("dedup-check", help="Exit non-zero if an issue is not claimable")
     p.add_argument("ref")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_dedup_check)
 
-    p = sub.add_parser("status-issue",
-                       help="Pretty-print the state-machine view of an issue")
+    p = sub.add_parser("status-issue", help="Pretty-print the state-machine view of an issue")
     p.add_argument("ref")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_status_issue)
@@ -271,8 +283,7 @@ def main() -> int:
     p.add_argument("repo", nargs="?", help="<repo-name>")
     p.set_defaults(func=cmd_repo)
 
-    p = sub.add_parser("sweep-claims",
-                       help="Force-release stale agent:in-flight claims")
+    p = sub.add_parser("sweep-claims", help="Force-release stale agent:in-flight claims")
     p.add_argument("--max-age-hours", type=int, default=4)
     p.add_argument("--repo", help="Sweep one repo only")
     p.add_argument("--dry-run", action="store_true")

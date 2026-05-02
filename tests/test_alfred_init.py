@@ -13,10 +13,10 @@ are NOT exercised — those need a live operator + accounts.
 
 Run via `pytest tests/test_alfred_init.py`.
 """
+
 from __future__ import annotations
 
 import importlib.util
-import io
 import os
 import subprocess
 import sys
@@ -24,10 +24,10 @@ from pathlib import Path
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Module loader — bin/alfred-init.py has a hyphen, so import via spec.
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def init_mod():
@@ -43,6 +43,7 @@ def init_mod():
 # ---------------------------------------------------------------------------
 # discover_agents
 # ---------------------------------------------------------------------------
+
 
 def test_discover_agents_empty(tmp_path, init_mod):
     bin_dir = tmp_path / "bin"
@@ -80,8 +81,18 @@ def test_discover_agents_returns_empty_for_missing_dir(tmp_path, init_mod):
 # render_agents_conf
 # ---------------------------------------------------------------------------
 
-def _state_with(init_mod, tmp_path, *, roles=("feature_dev",), gh_org="acme",
-                slack_url="", repos=None, codenames=None, schedules=None):
+
+def _state_with(
+    init_mod,
+    tmp_path,
+    *,
+    roles=("feature_dev",),
+    gh_org="acme",
+    slack_url="",
+    repos=None,
+    codenames=None,
+    schedules=None,
+):
     state = init_mod.WizardState(
         hermes_home=tmp_path / "hermes",
         alfredrc=tmp_path / ".alfredrc",
@@ -109,8 +120,7 @@ def test_render_agents_conf_basic(init_mod, tmp_path):
 
 
 def test_render_agents_conf_fleet_recap_shares_script(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path,
-                        roles=("fleet_recap_morning", "fleet_recap_evening"))
+    state = _state_with(init_mod, tmp_path, roles=("fleet_recap_morning", "fleet_recap_evening"))
     text = init_mod.render_agents_conf(state)
     # Both rows point at fleet-recap.sh and share the log stem.
     assert text.count("fleet-recap.sh") == 2
@@ -122,9 +132,9 @@ def test_render_agents_conf_fleet_recap_shares_script(init_mod, tmp_path):
 
 
 def test_render_agents_conf_custom_codename(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path,
-                        roles=("feature_dev",),
-                        codenames={"feature_dev": "robin-hood"})
+    state = _state_with(
+        init_mod, tmp_path, roles=("feature_dev",), codenames={"feature_dev": "robin-hood"}
+    )
     text = init_mod.render_agents_conf(state)
     assert "alfred.robin-hood\trobin-hood.py" in text
 
@@ -133,9 +143,11 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
 # env_assignments_for
 # ---------------------------------------------------------------------------
 
+
 def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     state = _state_with(
-        init_mod, tmp_path,
+        init_mod,
+        tmp_path,
         roles=("feature_dev",),
         repos={"feature_dev": ["acme/foo", "acme/bar"]},
     )
@@ -173,19 +185,14 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
 # alfredrc IO
 # ---------------------------------------------------------------------------
 
+
 def test_read_alfredrc_missing_returns_empty(tmp_path, init_mod):
     assert init_mod.read_alfredrc(tmp_path / ".alfredrc") == {}
 
 
 def test_read_alfredrc_parses_kv_and_strips_quotes(tmp_path, init_mod):
     rc = tmp_path / ".alfredrc"
-    rc.write_text(
-        "# comment\n"
-        "GH_ORG=acme\n"
-        "export OPERATOR_NAME=Alice\n"
-        "QUOTED='hello world'\n"
-        "\n"
-    )
+    rc.write_text("# comment\nGH_ORG=acme\nexport OPERATOR_NAME=Alice\nQUOTED='hello world'\n\n")
     out = init_mod.read_alfredrc(rc)
     assert out["GH_ORG"] == "acme"
     assert out["OPERATOR_NAME"] == "Alice"
@@ -219,6 +226,7 @@ def test_upsert_alfredrc_updates_values(tmp_path, init_mod):
 # ---------------------------------------------------------------------------
 # _resolve_repo_selection
 # ---------------------------------------------------------------------------
+
 
 def test_resolve_repo_selection_all(init_mod):
     repos = ["acme/api", "acme/web", "acme/specs"]
@@ -255,6 +263,7 @@ def test_resolve_repo_selection_drops_garbage(init_mod):
 # slack webhook regex
 # ---------------------------------------------------------------------------
 
+
 def test_slack_webhook_regex_accepts_real(init_mod):
     assert init_mod.SLACK_WEBHOOK_RE.match("https://hooks.slack.com/services/T0/B0/abc")
 
@@ -267,6 +276,7 @@ def test_slack_webhook_regex_rejects_other(init_mod):
 # ---------------------------------------------------------------------------
 # codename regex
 # ---------------------------------------------------------------------------
+
 
 def test_codename_regex(init_mod):
     assert init_mod.CODENAME_RE.match("lucius")
@@ -282,6 +292,7 @@ def test_codename_regex(init_mod):
 # load_config
 # ---------------------------------------------------------------------------
 
+
 def test_load_config_round_trip(tmp_path, init_mod):
     cfg = tmp_path / "answers.json"
     cfg.write_text('{"gh_org": "acme", "agents": ["lucius"]}')
@@ -295,14 +306,17 @@ def test_apply_config_overrides(init_mod, tmp_path):
         alfredrc=tmp_path / ".alfredrc",
         repo_root=tmp_path,
     )
-    init_mod.apply_config_overrides(state, {
-        "gh_org": "acme",
-        "slack_webhook": "https://hooks.slack.com/services/X/Y/Z",
-        "slack_storage": "aws",
-        "use_aws": True,
-        "aws_agent_profiles": {"huntress": "huntress-cron"},
-        "agents": ["lucius", "drake"],
-    })
+    init_mod.apply_config_overrides(
+        state,
+        {
+            "gh_org": "acme",
+            "slack_webhook": "https://hooks.slack.com/services/X/Y/Z",
+            "slack_storage": "aws",
+            "use_aws": True,
+            "aws_agent_profiles": {"huntress": "huntress-cron"},
+            "agents": ["lucius", "drake"],
+        },
+    )
     assert state.gh_org == "acme"
     assert state.slack_storage == "aws"
     assert state.use_aws is True
@@ -314,6 +328,7 @@ def test_apply_config_overrides(init_mod, tmp_path):
 # ---------------------------------------------------------------------------
 # main() doctor short-circuit (sentinel for bin/doctor.sh)
 # ---------------------------------------------------------------------------
+
 
 def test_doctor_sentinel(monkeypatch, capsys, init_mod):
     monkeypatch.setenv("HERMES_DOCTOR", "1")
@@ -327,11 +342,13 @@ def test_doctor_sentinel(monkeypatch, capsys, init_mod):
 # Subprocess invocation also honours HERMES_DOCTOR (the path doctor.sh hits).
 # ---------------------------------------------------------------------------
 
+
 def test_doctor_sentinel_via_subprocess():
     repo_root = Path(__file__).resolve().parent.parent
     src = repo_root / "bin" / "alfred-init.py"
     env = dict(os.environ, HERMES_DOCTOR="1")
-    cp = subprocess.run([sys.executable, str(src)], capture_output=True, text=True,
-                        env=env, timeout=10)
+    cp = subprocess.run(
+        [sys.executable, str(src)], capture_output=True, text=True, env=env, timeout=10
+    )
     assert cp.returncode == 0
     assert "[ALFRED-INIT-DOCTOR-OK]" in cp.stdout

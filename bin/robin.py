@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Robin - bug triage agent. Labels open issues by severity, asks for repro info, hands off to Lucius."""
+
 from __future__ import annotations
 
 import datetime
@@ -9,11 +10,26 @@ import re
 import sys
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
-from agent_runner import (  # noqa: E402
-    GH_ORG, STATE_ROOT, WORKSPACE_ROOT,
-    EventLog, PreflightFailed, PreflightSpec,
-    SpendState, claude_invoke, doctor_mode, ensure_labels, gh_issue_comment, gh_issue_edit,
-    gh_json, is_globally_blocked, is_repo_paused, preflight, short, slack_post, with_lock,
+from agent_runner import (
+    GH_ORG,
+    STATE_ROOT,
+    WORKSPACE_ROOT,
+    EventLog,
+    PreflightFailed,
+    PreflightSpec,
+    SpendState,
+    claude_invoke,
+    doctor_mode,
+    ensure_labels,
+    gh_issue_comment,
+    gh_issue_edit,
+    gh_json,
+    is_globally_blocked,
+    is_repo_paused,
+    preflight,
+    short,
+    slack_post,
+    with_lock,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "robin")
@@ -25,11 +41,7 @@ PREFLIGHT = PreflightSpec(
     require_gh_auth=True,
 )
 
-TRIAGE_REPOS = [
-    r.strip()
-    for r in os.environ.get("ALFRED_ROBIN_REPOS", "").split(",")
-    if r.strip()
-]
+TRIAGE_REPOS = [r.strip() for r in os.environ.get("ALFRED_ROBIN_REPOS", "").split(",") if r.strip()]
 
 # Persistent dedup ledger. The same issue can survive a label-add failure
 # (gh returns success but the label is missing on next read — eventual
@@ -61,7 +73,7 @@ def _load_touched() -> dict[str, str]:
     eligible again after a week."""
     if not TOUCHED_LEDGER.exists():
         return {}
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=TOUCHED_TTL_DAYS)
+    cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=TOUCHED_TTL_DAYS)
     out: dict[str, str] = {}
     for line in TOUCHED_LEDGER.read_text().splitlines():
         line = line.strip()
@@ -71,7 +83,7 @@ def _load_touched() -> dict[str, str]:
             entry = json.loads(line)
             ts = datetime.datetime.fromisoformat(entry["ts"])
             if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=datetime.timezone.utc)
+                ts = ts.replace(tzinfo=datetime.UTC)
             if ts < cutoff:
                 continue
             out[entry["key"]] = entry["ts"]
@@ -85,7 +97,7 @@ def _record_touched(repo: str, num: int) -> None:
     TOUCHED_LEDGER.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "key": f"{repo}#{num}",
-        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "ts": datetime.datetime.now(datetime.UTC).isoformat(),
     }
     with open(TOUCHED_LEDGER, "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -99,15 +111,27 @@ def list_untriaged() -> list[tuple[str, dict]]:
     for repo in TRIAGE_REPOS:
         if is_repo_paused(repo):
             continue
-        issues = gh_json([
-            "gh", "issue", "list", "-R", f"{GH_ORG}/{repo}", "--state", "open",
-            "--json", "number,title,body,labels,createdAt,author", "--limit", "30",
-        ], default=[])
+        issues = gh_json(
+            [
+                "gh",
+                "issue",
+                "list",
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--state",
+                "open",
+                "--json",
+                "number,title,body,labels,createdAt,author",
+                "--limit",
+                "30",
+            ],
+            default=[],
+        )
         for i in issues:
             key = f"{repo}#{i['number']}"
             if key in touched:
                 continue
-            label_names = [l["name"] for l in i.get("labels", [])]
+            label_names = [lbl["name"] for lbl in i.get("labels", [])]
             if any(n.startswith("severity:") for n in label_names):
                 continue
             if "agent:implement" in label_names:
@@ -148,18 +172,21 @@ def main() -> int:
 
     blocked = is_globally_blocked()
     if blocked:
-        print(f'[{AGENT.upper()}-GLOBAL-BLOCKED] {blocked}. Skipping firing.')
+        print(f"[{AGENT.upper()}-GLOBAL-BLOCKED] {blocked}. Skipping firing.")
         events.emit("firing_complete", outcome="global-blocked")
         return 0
     spend = SpendState(AGENT)
 
     if spend.state.get("triaged_today", 0) >= DAILY_TRIAGE_CAP:
-        print(f"[{AGENT.upper()}-DAILY-CAP] triaged_today={spend.state.get('triaged_today', 0)} >= {DAILY_TRIAGE_CAP}. Skipping.")
+        print(
+            f"[{AGENT.upper()}-DAILY-CAP] triaged_today={spend.state.get('triaged_today', 0)} >= {DAILY_TRIAGE_CAP}. Skipping."
+        )
         events.emit("firing_complete", outcome="triage-cap")
         return 0
     if spend.state["turns_today"] >= DAILY_TURN_CAP:
         msg = f"[{AGENT.upper()}-DAILY-CAP] turns={spend.state['turns_today']} >= {DAILY_TURN_CAP}. Skipping."
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome="turn-cap")
         return 0
 
@@ -225,16 +252,19 @@ Output - print EXACTLY this JSON to stdout, nothing else:
 }}
 """
     result = claude_invoke(
-        prompt, workdir=WORKSPACE_ROOT,
+        prompt,
+        workdir=WORKSPACE_ROOT,
         allowed_tools="Read,Bash,Glob,Grep",
-        max_turns=20, timeout=600,
+        max_turns=20,
+        timeout=600,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
 
     if not result.success:
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"❌ {AGENT.title()}: subtype={result.subtype} turns={result.num_turns}"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome=f"claude-{result.subtype}")
         return 0
 
@@ -249,13 +279,15 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         triages = parsed.get("triages", [])
     except (json.JSONDecodeError, AttributeError) as e:
         msg = f"❌ {AGENT.title()}: could not parse Claude JSON output ({e}). First line: {short(text.splitlines()[0] if text else '', 100)}"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome="parse-error")
         return 0
 
     if not isinstance(triages, list):
         msg = f"❌ {AGENT.title()}: triages is not a list"
-        print(msg); slack_post(msg)
+        print(msg)
+        slack_post(msg)
         events.emit("firing_complete", outcome="bad-triages-type")
         return 0
 
@@ -273,19 +305,35 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         if not severity.startswith("severity:"):
             continue
 
-        labels_to_add = [severity] + [l for l in extra if l in {
-            "agent:implement", "needs:info", "duplicate", "bug", "needs:triage",
-        }]
+        labels_to_add = [severity] + [
+            lbl
+            for lbl in extra
+            if lbl
+            in {
+                "agent:implement",
+                "needs:info",
+                "duplicate",
+                "bug",
+                "needs:triage",
+            }
+        ]
         ok = gh_issue_edit(repo, num, add_labels=labels_to_add)
         if comment:
             gh_issue_comment(repo, num, comment)
         # Record the touch even on failure - the next firing will re-pull
         # the same issue otherwise. The TTL window allows a re-try after 7 days.
         _record_touched(repo, num)
-        events.emit("triaged", repo=f"{GH_ORG}/{repo}", number=num,
-                    severity_label=severity, extra_labels=extra)
+        events.emit(
+            "triaged",
+            repo=f"{GH_ORG}/{repo}",
+            number=num,
+            severity_label=severity,
+            extra_labels=extra,
+        )
         flag = "" if ok else " (label apply RC!=0)"
-        summary_lines.append(f"- {repo}#{num} → {severity}{flag}" + (f" + {','.join(extra)}" if extra else ""))
+        summary_lines.append(
+            f"- {repo}#{num} → {severity}{flag}" + (f" + {','.join(extra)}" if extra else "")
+        )
 
     spend.increment(triaged_today=len(triages))
 
@@ -299,8 +347,12 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         events.emit("firing_complete", outcome="no-triages-applied")
         return 0
 
-    msg = f"🐦 {AGENT.title()}: triaged {len(summary_lines)} issue(s) (turns={result.num_turns})\n" + "\n".join(summary_lines)
-    print(msg); slack_post(msg)
+    msg = (
+        f"🐦 {AGENT.title()}: triaged {len(summary_lines)} issue(s) (turns={result.num_turns})\n"
+        + "\n".join(summary_lines)
+    )
+    print(msg)
+    slack_post(msg)
     events.emit("firing_complete", outcome="triaged", count=len(summary_lines))
     return 0
 

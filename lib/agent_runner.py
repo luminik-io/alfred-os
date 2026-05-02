@@ -25,19 +25,20 @@ overridable. ``GH_ORG`` is required for any helper that targets GitHub
 (e.g. ``gh_pr_create``); set it once in the launchd plist's
 ``EnvironmentVariables`` block.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import os
-import shlex
 import subprocess
 import sys
 import time
 import urllib.request
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # --------------------------------------------------------------------------
 # Path resolution
@@ -101,7 +102,7 @@ SLACK_WEBHOOK_CACHE_TTL = 7 * 24 * 3600  # 7 days; the webhook URL itself is sta
 GLOBAL_BLOCKED_FILE = STATE_ROOT / "global-blocked-until.json"
 
 
-def is_globally_blocked() -> Optional[str]:
+def is_globally_blocked() -> str | None:
     """Return reason string if a global rate-limit block is active, else None."""
     if not GLOBAL_BLOCKED_FILE.exists():
         return None
@@ -111,14 +112,12 @@ def is_globally_blocked() -> Optional[str]:
         return None
     until = data.get("until", "")
     try:
-        exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError:
         return None
-    if datetime.now(timezone.utc) >= exp:
-        try:
+    if datetime.now(UTC) >= exp:
+        with contextlib.suppress(OSError):
             GLOBAL_BLOCKED_FILE.unlink()
-        except OSError:
-            pass
         return None
     return f"global rate-limit block until {until} (reason: {data.get('reason', 'unknown')})"
 
@@ -126,10 +125,12 @@ def is_globally_blocked() -> Optional[str]:
 def set_global_block(hours: int, reason: str) -> str:
     """Set a global rate-limit block. Returns the until-iso string."""
     from datetime import timedelta
-    until = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    until = (datetime.now(UTC) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     GLOBAL_BLOCKED_FILE.parent.mkdir(parents=True, exist_ok=True)
     GLOBAL_BLOCKED_FILE.write_text(json.dumps({"until": until, "reason": reason}))
     return until
+
 
 # GH_REPO_TO_LOCAL maps GitHub-repo-slug → local-checkout-directory under
 # WORKSPACE_ROOT. Empty by default; consumers populate it for their fleet:
@@ -177,27 +178,42 @@ def _full_repo(slug: str) -> str:
 
 # ---------- Helpers ----------
 
+
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
-def run(cmd: list[str], *, cwd: Optional[str] = None, timeout: int = 60,
-        check: bool = False, capture: bool = True, env: Optional[dict] = None) -> subprocess.CompletedProcess:
+def run(
+    cmd: list[str],
+    *,
+    cwd: str | None = None,
+    timeout: int = 60,
+    check: bool = False,
+    capture: bool = True,
+    env: dict | None = None,
+) -> subprocess.CompletedProcess:
     """Wrapped subprocess.run with sane defaults + clear errors."""
     proc_env = dict(os.environ)
     if env:
         proc_env.update(env)
     try:
         return subprocess.run(
-            cmd, cwd=cwd, timeout=timeout, check=check,
-            capture_output=capture, text=True, env=proc_env,
+            cmd,
+            cwd=cwd,
+            timeout=timeout,
+            check=check,
+            capture_output=capture,
+            text=True,
+            env=proc_env,
         )
     except subprocess.TimeoutExpired as e:
-        return subprocess.CompletedProcess(cmd, 124, stdout=e.stdout or "", stderr=f"TIMEOUT after {timeout}s")
+        return subprocess.CompletedProcess(
+            cmd, 124, stdout=e.stdout or "", stderr=f"TIMEOUT after {timeout}s"
+        )
     except Exception as e:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr=f"{type(e).__name__}: {e}")
 
@@ -286,11 +302,22 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
     if not hook:
         secret_id = os.environ.get("SLACK_WEBHOOK_SECRET_ID", "slack/agents/webhook-url")
         secret_region = os.environ.get("SLACK_WEBHOOK_SECRET_REGION", "us-east-1")
-        res = run([
-            "aws", "secretsmanager", "get-secret-value",
-            "--secret-id", secret_id, "--region", secret_region,
-            "--query", "SecretString", "--output", "text",
-        ], timeout=8)
+        res = run(
+            [
+                "aws",
+                "secretsmanager",
+                "get-secret-value",
+                "--secret-id",
+                secret_id,
+                "--region",
+                secret_region,
+                "--query",
+                "SecretString",
+                "--output",
+                "text",
+            ],
+            timeout=8,
+        )
         if res.returncode != 0 or not res.stdout.strip():
             # Silently skip — don't flood stderr on every call when Slack is
             # unconfigured. Callers that need at-least-once read the False return.
@@ -340,7 +367,7 @@ class PreflightSpec:
     agent: str
     env_vars: list[str] = field(default_factory=lambda: ["HERMES_HOME", "WORKSPACE_ROOT"])
     bins: list[str] = field(default_factory=list)
-    aws_profile: Optional[str] = None
+    aws_profile: str | None = None
     require_gh_auth: bool = False
     require_workspace_repos: list[str] = field(default_factory=list)
 
@@ -383,13 +410,24 @@ def preflight(spec: PreflightSpec) -> None:
     #    the operator's interactive SSO session in place of the agent's
     #    scoped IAM user.
     if spec.aws_profile:
-        env = {k: v for k, v in os.environ.items()
-               if k not in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
-                            "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN")}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SESSION_TOKEN",
+                "AWS_SECURITY_TOKEN",
+            )
+        }
         env["AWS_PROFILE"] = spec.aws_profile
         sts = subprocess.run(
             ["aws", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"],
-            env=env, capture_output=True, text=True, timeout=10,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         out = (sts.stderr or sts.stdout or "").strip()
         if sts.returncode != 0 or spec.aws_profile not in (sts.stdout or ""):
@@ -445,13 +483,14 @@ def doctor_mode() -> bool:
 # ``env_vars`` to fail loud on missing config.
 
 
-def load_prompt(path: Path | str, *, extra_vars: Optional[dict[str, str]] = None) -> str:
+def load_prompt(path: Path | str, *, extra_vars: dict[str, str] | None = None) -> str:
     """Read a prompt file and substitute ``${VAR}`` placeholders from env.
 
     ``extra_vars`` overrides ``os.environ`` for specific keys; useful for
     per-firing context like ``${ISSUE_NUMBER}`` or ``${REPO_SLUG}``.
     """
     import string
+
     p = Path(path)
     text = p.read_text()
     mapping = dict(os.environ)
@@ -484,14 +523,14 @@ class EventLog:
         events.emit("pr_opened", url=pr_url, files_changed=12)
     """
 
-    def __init__(self, agent: str, firing_id: Optional[str] = None,
-                 path: Optional[Path] = None) -> None:
+    def __init__(self, agent: str, firing_id: str | None = None, path: Path | None = None) -> None:
         self.agent = agent
         # firing_id defaults to a UTC-stamped + short-random tag; keep it
         # short enough to fit in a git-commit trailer and a slack message.
         if firing_id is None:
             import secrets
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+
+            stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             firing_id = f"{stamp}-{secrets.token_hex(2)}"
         self.firing_id = firing_id
         if path is None:
@@ -504,7 +543,7 @@ class EventLog:
         """Append one record. Never raises; a broken event log shouldn't
         kill an agent firing — print to stderr and continue."""
         record = {
-            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             "agent": self.agent,
             "firing_id": self.firing_id,
             "event": event,
@@ -527,7 +566,7 @@ class EventLog:
 #   git log --grep "Agent-Firing-Id: 2026-04-29-1647-bf3a"
 
 
-def commit_trailer(agent: str, firing_id: str, *, extra: Optional[dict[str, str]] = None) -> str:
+def commit_trailer(agent: str, firing_id: str, *, extra: dict[str, str] | None = None) -> str:
     """Build a multi-line commit-trailer block.
 
     Caller appends this to their commit message. Format follows the
@@ -602,9 +641,11 @@ HANDOFFS = HandoffTable()
 
 # ---------- Lock ----------
 
+
 @dataclass
 class AgentLock:
     """Mutex via mkdir(2) atomicity. Auto-released on process exit."""
+
     name: str
     _lock_dir: Path = field(init=False)
 
@@ -626,6 +667,7 @@ class AgentLock:
                 # Stale lock — try to clean and retry, but use exist_ok=False on
                 # the retry so two concurrent processes can't both succeed.
                 import shutil
+
                 shutil.rmtree(self._lock_dir, ignore_errors=True)
                 try:
                     self._lock_dir.mkdir(exist_ok=False)
@@ -637,14 +679,17 @@ class AgentLock:
 
     def release(self) -> None:
         import shutil
+
         shutil.rmtree(self._lock_dir, ignore_errors=True)
 
 
 # ---------- Spend state ----------
 
+
 @dataclass
 class SpendState:
     """Per-agent per-day spend tracking. Auto-resets at midnight via per-day filename."""
+
     agent: str
     state: dict = field(default_factory=dict)
     _path: Path = field(init=False)
@@ -682,13 +727,13 @@ class SpendState:
         self.state.update(kwargs)
         self.save()
 
-    def is_blocked(self) -> Optional[str]:
+    def is_blocked(self) -> str | None:
         """Return reason if this agent should not fire, else None."""
         until = self.state.get("blocked_until")
         if until:
             try:
-                exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                if datetime.now(timezone.utc) < exp:
+                exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+                if datetime.now(UTC) < exp:
                     return f"blocked until {until}"
                 # Expired — clear
                 self.state["blocked_until"] = None
@@ -701,7 +746,8 @@ class SpendState:
 
 # ---------- Label management ----------
 
-def ensure_labels(repo_slug: str, labels: Optional[list[tuple[str, str, str]]] = None) -> None:
+
+def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = None) -> None:
     """Idempotent label creation. Silent on already-exists. Cached per process."""
     if labels is None:
         labels = STANDARD_LABELS
@@ -709,16 +755,30 @@ def ensure_labels(repo_slug: str, labels: Optional[list[tuple[str, str, str]]] =
     if globals().get(cache_key):
         return
     for name, color, desc in labels:
-        run([
-            "gh", "label", "create", name, "--color", color, "--description", desc,
-            "-R", _full_repo(repo_slug),
-        ], timeout=15)
+        run(
+            [
+                "gh",
+                "label",
+                "create",
+                name,
+                "--color",
+                color,
+                "--description",
+                desc,
+                "-R",
+                _full_repo(repo_slug),
+            ],
+            timeout=15,
+        )
     globals()[cache_key] = True
 
 
 # ---------- Worktree ----------
 
-def make_worktree(local_repo: str, agent: str, target: str, base: str = "origin/main") -> tuple[Path, str]:
+
+def make_worktree(
+    local_repo: str, agent: str, target: str, base: str = "origin/main"
+) -> tuple[Path, str]:
     """Create a fresh worktree on a unique branch. Returns (path, branch)."""
     repo_path = WORKSPACE / local_repo
     ts = int(time.time())
@@ -726,9 +786,19 @@ def make_worktree(local_repo: str, agent: str, target: str, base: str = "origin/
     wt = WORKTREE_ROOT / f"eng-{agent}-{local_repo}-{target}-{ts}"
     WORKTREE_ROOT.mkdir(exist_ok=True)
     run(["git", "fetch", "origin", "main"], cwd=str(repo_path), timeout=60)
-    res = run([
-        "git", "worktree", "add", "-b", branch, str(wt), base,
-    ], cwd=str(repo_path), timeout=60)
+    res = run(
+        [
+            "git",
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            str(wt),
+            base,
+        ],
+        cwd=str(repo_path),
+        timeout=60,
+    )
     if res.returncode != 0:
         raise RuntimeError(f"worktree add failed: {res.stderr.strip()}")
     return wt, branch
@@ -741,7 +811,9 @@ def make_worktree_from_branch(local_repo: str, agent: str, head_ref: str, target
     wt = WORKTREE_ROOT / f"eng-{agent}-{local_repo}-{target}-{ts}"
     WORKTREE_ROOT.mkdir(exist_ok=True)
     run(["git", "fetch", "origin", head_ref], cwd=str(repo_path), timeout=60)
-    res = run(["git", "worktree", "add", str(wt), f"origin/{head_ref}"], cwd=str(repo_path), timeout=60)
+    res = run(
+        ["git", "worktree", "add", str(wt), f"origin/{head_ref}"], cwd=str(repo_path), timeout=60
+    )
     if res.returncode != 0:
         raise RuntimeError(f"worktree add failed: {res.stderr.strip()}")
     return wt
@@ -780,16 +852,16 @@ class ClaudeResult:
     subtype: str  # "success" | "error_max_turns" | "error_budget" | "error_rate_limit" | etc.
     num_turns: int
     cost_usd: float
-    session_id: Optional[str]
+    session_id: str | None
     result_text: str
     raw: dict
     # New (additive) fields - opt-in for callers. Existing agents that read
     # only the five legacy fields keep working unchanged.
-    stop_reason: Optional[str] = None
-    error_message: Optional[str] = None
+    stop_reason: str | None = None
+    error_message: str | None = None
 
 
-def _derive_success(subtype: str, stop_reason: Optional[str]) -> bool:
+def _derive_success(subtype: str, stop_reason: str | None) -> bool:
     """Single source of truth for the success boolean.
 
     stop_reason wins when it carries a definite signal. We fall back to the
@@ -815,7 +887,7 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
     if stop_reason is not None and not isinstance(stop_reason, str):
         stop_reason = str(stop_reason)
 
-    error_message: Optional[str] = None
+    error_message: str | None = None
     if stop_reason in STOP_REASON_FAIL:
         # Prefer a structured error field if claude provided one; otherwise
         # fall back to the result text or the api_error_status string.
@@ -826,7 +898,9 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
                 break
         if not error_message:
             text = raw.get("result") or fallback_text
-            error_message = (text or f"claude stop_reason={stop_reason}").strip() or f"claude stop_reason={stop_reason}"
+            error_message = (
+                text or f"claude stop_reason={stop_reason}"
+            ).strip() or f"claude stop_reason={stop_reason}"
 
     return ClaudeResult(
         success=_derive_success(subtype, stop_reason),
@@ -841,10 +915,16 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
     )
 
 
-def claude_invoke(prompt: str, *, workdir: Path, allowed_tools: str,
-                   max_turns: int, timeout: int = 1200,
-                   resume_session: Optional[str] = None,
-                   model: Optional[str] = None) -> ClaudeResult:
+def claude_invoke(
+    prompt: str,
+    *,
+    workdir: Path,
+    allowed_tools: str,
+    max_turns: int,
+    timeout: int = 1200,
+    resume_session: str | None = None,
+    model: str | None = None,
+) -> ClaudeResult:
     """Invoke `claude -p` with the given prompt. Returns parsed result.
 
     Uses `--output-format json` (single final event). The returned
@@ -857,11 +937,17 @@ def claude_invoke(prompt: str, *, workdir: Path, allowed_tools: str,
     default model so existing callers see no behavioural change. Use
     ``route_llm`` instead of passing ``model`` directly."""
     cmd = [
-        CLAUDE_BIN, "-p", prompt,
-        "--allowedTools", allowed_tools,
-        "--max-turns", str(max_turns),
-        "--output-format", "json",
-        "--permission-mode", "bypassPermissions",
+        CLAUDE_BIN,
+        "-p",
+        prompt,
+        "--allowedTools",
+        allowed_tools,
+        "--max-turns",
+        str(max_turns),
+        "--output-format",
+        "json",
+        "--permission-mode",
+        "bypassPermissions",
     ]
     if model:
         cmd.extend(["--model", model])
@@ -872,8 +958,12 @@ def claude_invoke(prompt: str, *, workdir: Path, allowed_tools: str,
 
     if not res.stdout:
         return ClaudeResult(
-            success=False, subtype="parse-failed", num_turns=0, cost_usd=0.0,
-            session_id=None, result_text=res.stderr or "",
+            success=False,
+            subtype="parse-failed",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=res.stderr or "",
             raw={},
             stop_reason="error",
             error_message="claude produced no stdout",
@@ -883,8 +973,12 @@ def claude_invoke(prompt: str, *, workdir: Path, allowed_tools: str,
         raw = json.loads(res.stdout)
     except json.JSONDecodeError:
         return ClaudeResult(
-            success=False, subtype="parse-failed", num_turns=0, cost_usd=0.0,
-            session_id=None, result_text=res.stdout or res.stderr or "",
+            success=False,
+            subtype="parse-failed",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=res.stdout or res.stderr or "",
             raw={},
             stop_reason="error",
             error_message="claude output unparseable",
@@ -893,12 +987,18 @@ def claude_invoke(prompt: str, *, workdir: Path, allowed_tools: str,
     return _build_claude_result(raw, fallback_text=res.stderr or "")
 
 
-def claude_invoke_streaming(prompt: str, *, workdir: Path, allowed_tools: str,
-                             agent: str, firing_id: str,
-                             max_turns: Optional[int] = None,
-                             timeout: int = 1200,
-                             resume_session: Optional[str] = None,
-                             model: Optional[str] = None) -> ClaudeResult:
+def claude_invoke_streaming(
+    prompt: str,
+    *,
+    workdir: Path,
+    allowed_tools: str,
+    agent: str,
+    firing_id: str,
+    max_turns: int | None = None,
+    timeout: int = 1200,
+    resume_session: str | None = None,
+    model: str | None = None,
+) -> ClaudeResult:
     """Streaming counterpart of :func:`claude_invoke`. Same return shape.
 
     The full implementation in the alfred reference fleet pipes
@@ -938,22 +1038,41 @@ def transcript_path(agent: str, firing_id: str) -> Path:
     but the path resolver ships now so consumer agents and ``alfred logs``
     don't need to change when streaming lands.
     """
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    month = datetime.now(UTC).strftime("%Y-%m")
     return TRANSCRIPTS_ROOT / agent / month / f"{firing_id}.jsonl"
 
 
 # ---------- gh CLI helpers ----------
 
-def gh_pr_create(repo_slug: str, *, title: str, body_file: Path, head: Optional[str] = None,
-                 labels: Optional[list[str]] = None, base: str = "main") -> Optional[str]:
+
+def gh_pr_create(
+    repo_slug: str,
+    *,
+    title: str,
+    body_file: Path,
+    head: str | None = None,
+    labels: list[str] | None = None,
+    base: str = "main",
+) -> str | None:
     """Open a PR. Pre-ensures labels exist. Returns PR URL or None on failure."""
     if labels:
         ensure_labels(repo_slug)
-    cmd = ["gh", "pr", "create", "-R", _full_repo(repo_slug),
-           "--title", title, "--body-file", str(body_file), "--base", base]
+    cmd = [
+        "gh",
+        "pr",
+        "create",
+        "-R",
+        _full_repo(repo_slug),
+        "--title",
+        title,
+        "--body-file",
+        str(body_file),
+        "--base",
+        base,
+    ]
     if head:
         cmd.extend(["--head", head])
-    for label in (labels or []):
+    for label in labels or []:
         cmd.extend(["--label", label])
     res = run(cmd, timeout=60)
     if res.returncode != 0:
@@ -966,32 +1085,55 @@ def gh_pr_create(repo_slug: str, *, title: str, body_file: Path, head: Optional[
     return None
 
 
-def gh_issue_edit(repo_slug: str, num: int, *, add_labels: list[str] = None,
-                  remove_labels: list[str] = None) -> bool:
+def gh_issue_edit(
+    repo_slug: str,
+    num: int,
+    *,
+    add_labels: list[str] | None = None,
+    remove_labels: list[str] | None = None,
+) -> bool:
     if add_labels:
         ensure_labels(repo_slug)
     cmd = ["gh", "issue", "edit", str(num), "-R", _full_repo(repo_slug)]
-    for label in (add_labels or []):
+    for label in add_labels or []:
         cmd.extend(["--add-label", label])
-    for label in (remove_labels or []):
+    for label in remove_labels or []:
         cmd.extend(["--remove-label", label])
     res = run(cmd, timeout=30)
     return res.returncode == 0
 
 
 def gh_issue_comment(repo_slug: str, num: int, body: str) -> bool:
-    res = run([
-        "gh", "issue", "comment", str(num), "-R", _full_repo(repo_slug),
-        "--body", body,
-    ], timeout=30)
+    res = run(
+        [
+            "gh",
+            "issue",
+            "comment",
+            str(num),
+            "-R",
+            _full_repo(repo_slug),
+            "--body",
+            body,
+        ],
+        timeout=30,
+    )
     return res.returncode == 0
 
 
 def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool:
-    res = run([
-        "gh", "pr", "comment", str(num), "-R", _full_repo(repo_slug),
-        "--body", body,
-    ], timeout=30)
+    res = run(
+        [
+            "gh",
+            "pr",
+            "comment",
+            str(num),
+            "-R",
+            _full_repo(repo_slug),
+            "--body",
+            body,
+        ],
+        timeout=30,
+    )
     return res.returncode == 0
 
 
@@ -1034,16 +1176,19 @@ PAUSED_REPOS_FILE = STATE_ROOT / "paused-repos.json"
 # these exist on the target repo on first call. Operators don't need to
 # extend STANDARD_LABELS for the lifecycle to work — it's self-contained.
 LIFECYCLE_LABELS: list[tuple[str, str, str]] = [
-    ("agent:in-flight", "e11d21",
-     "An agent is actively working this issue. Set before worktree, cleared on exit."),
-    ("agent:pr-open", "fbca04",
-     "A PR exists for this issue. Set by release_issue on success."),
-    ("agent:done", "0e8a16",
-     "Issue shipped. Set externally on PR merge."),
-    ("do-not-pickup", "5319e7",
-     "Operator override: agents must not claim this issue."),
-    ("needs:human-scope", "e99695",
-     "Issue requires manual scoping; not eligible for autonomous pickup."),
+    (
+        "agent:in-flight",
+        "e11d21",
+        "An agent is actively working this issue. Set before worktree, cleared on exit.",
+    ),
+    ("agent:pr-open", "fbca04", "A PR exists for this issue. Set by release_issue on success."),
+    ("agent:done", "0e8a16", "Issue shipped. Set externally on PR merge."),
+    ("do-not-pickup", "5319e7", "Operator override: agents must not claim this issue."),
+    (
+        "needs:human-scope",
+        "e99695",
+        "Issue requires manual scoping; not eligible for autonomous pickup.",
+    ),
 ]
 
 
@@ -1092,7 +1237,7 @@ def _parse_claim_comment(body: str) -> dict:
     payload = body.strip()
     for prefix in (CLAIM_COMMENT_PREFIX, RELEASE_COMMENT_PREFIX):
         if payload.startswith(prefix):
-            payload = payload[len(prefix):]
+            payload = payload[len(prefix) :]
             break
     if payload.endswith("-->"):
         payload = payload[:-3]
@@ -1105,10 +1250,19 @@ def _parse_claim_comment(body: str) -> dict:
 
 def _issue_state(repo_slug: str, num: int) -> dict:
     """One-shot fetch of labels + comments + state, used by claim/release/sweep."""
-    return gh_json([
-        "gh", "issue", "view", str(num), "-R", _full_repo(repo_slug),
-        "--json", "labels,state,comments,number",
-    ], default={"labels": [], "state": "OPEN", "comments": [], "number": num})
+    return gh_json(
+        [
+            "gh",
+            "issue",
+            "view",
+            str(num),
+            "-R",
+            _full_repo(repo_slug),
+            "--json",
+            "labels,state,comments,number",
+        ],
+        default={"labels": [], "state": "OPEN", "comments": [], "number": num},
+    )
 
 
 def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> bool:
@@ -1135,29 +1289,34 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
     state = _issue_state(repo_slug, num)
     if state.get("state") != "OPEN":
         return False
-    labels = {l["name"] for l in state.get("labels", [])}
-    blockers = labels & {"agent:in-flight", "agent:pr-open",
-                         "do-not-pickup", "needs:human-scope"}
+    labels = {lbl["name"] for lbl in state.get("labels", [])}
+    blockers = labels & {"agent:in-flight", "agent:pr-open", "do-not-pickup", "needs:human-scope"}
     if blockers:
         return False
     # First-call setup: make sure the lifecycle labels exist on this repo.
     # ensure_labels is process-cached, so the second+ calls are a no-op.
     ensure_labels(repo_slug, LIFECYCLE_LABELS)
-    if not gh_issue_edit(repo_slug, num, add_labels=["agent:in-flight"],
-                         remove_labels=["agent:implement"]):
+    if not gh_issue_edit(
+        repo_slug, num, add_labels=["agent:in-flight"], remove_labels=["agent:implement"]
+    ):
         return False
-    claim_body = (f"{CLAIM_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
-                  f"ts={now_iso()} -->")
+    claim_body = (
+        f"{CLAIM_COMMENT_PREFIX}codename={codename} firing_id={firing_id} ts={now_iso()} -->"
+    )
     gh_issue_comment(repo_slug, num, claim_body)
     contested_by = _detect_contested_claim(
-        repo_slug, num, codename=codename, firing_id=firing_id,
+        repo_slug,
+        num,
+        codename=codename,
+        firing_id=firing_id,
     )
     if contested_by is not None:
-        gh_issue_edit(repo_slug, num,
-                      add_labels=["agent:implement"],
-                      remove_labels=["agent:in-flight"])
+        gh_issue_edit(
+            repo_slug, num, add_labels=["agent:implement"], remove_labels=["agent:in-flight"]
+        )
         gh_issue_comment(
-            repo_slug, num,
+            repo_slug,
+            num,
             f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
             f"outcome=race-yielded-to={contested_by} ts={now_iso()} -->",
         )
@@ -1165,10 +1324,16 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
     return True
 
 
-def release_issue(repo_slug: str, num: int, *, codename: str, firing_id: str,
-                  outcome: str = "success",
-                  transition_to: Optional[str] = None,
-                  pr_url: Optional[str] = None) -> bool:
+def release_issue(
+    repo_slug: str,
+    num: int,
+    *,
+    codename: str,
+    firing_id: str,
+    outcome: str = "success",
+    transition_to: str | None = None,
+    pr_url: str | None = None,
+) -> bool:
     """Release a claim. Optionally transition to a follow-up state label.
 
     Args:
@@ -1190,15 +1355,17 @@ def release_issue(repo_slug: str, num: int, *, codename: str, firing_id: str,
     gh_issue_edit(repo_slug, num, add_labels=add, remove_labels=remove)
     pr_part = f" pr={pr_url}" if pr_url else ""
     gh_issue_comment(
-        repo_slug, num,
+        repo_slug,
+        num,
         f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
         f"outcome={outcome}{pr_part} ts={now_iso()} -->",
     )
     return True
 
 
-def _detect_contested_claim(repo_slug: str, num: int, *,
-                            codename: str, firing_id: str) -> Optional[str]:
+def _detect_contested_claim(
+    repo_slug: str, num: int, *, codename: str, firing_id: str
+) -> str | None:
     """Return the contesting claimant's ``"codename:firing_id"`` if we lost a
     race, else None. Reads recent comments and finds any unreleased claim
     whose ``createdAt`` is earlier than ours.
@@ -1235,19 +1402,32 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
     ``max_age_hours``. Returns dicts with number / title / codename /
     firing_id / age_hours. The caller decides whether to force-release.
     """
-    issues = gh_json([
-        "gh", "issue", "list", "-R", _full_repo(repo_slug),
-        "--label", "agent:in-flight", "--state", "open",
-        "--json", "number,title", "--limit", "100",
-    ], default=[])
-    cutoff = datetime.now(timezone.utc).timestamp() - max_age_hours * 3600
+    issues = gh_json(
+        [
+            "gh",
+            "issue",
+            "list",
+            "-R",
+            _full_repo(repo_slug),
+            "--label",
+            "agent:in-flight",
+            "--state",
+            "open",
+            "--json",
+            "number,title",
+            "--limit",
+            "100",
+        ],
+        default=[],
+    )
+    cutoff = datetime.now(UTC).timestamp() - max_age_hours * 3600
     stale: list[dict] = []
     for issue in issues:
         num = issue["number"]
         state = _issue_state(repo_slug, num)
         comments = state.get("comments", [])
-        latest_claim_ts: Optional[str] = None
-        latest_claim_meta: Optional[dict] = None
+        latest_claim_ts: str | None = None
+        latest_claim_meta: dict | None = None
         releases: set[tuple] = set()
         for c in comments:
             body = (c.get("body") or "").strip()
@@ -1259,18 +1439,30 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
                 meta = _parse_claim_comment(body)
                 releases.add((meta.get("codename"), meta.get("firing_id")))
         if not latest_claim_meta or not latest_claim_ts:
-            stale.append({
-                "repo": repo_slug, "number": num, "title": issue.get("title", ""),
-                "codename": "?", "firing_id": "?", "age_hours": float("inf"),
-            })
+            stale.append(
+                {
+                    "repo": repo_slug,
+                    "number": num,
+                    "title": issue.get("title", ""),
+                    "codename": "?",
+                    "firing_id": "?",
+                    "age_hours": float("inf"),
+                }
+            )
             continue
         key = (latest_claim_meta.get("codename"), latest_claim_meta.get("firing_id"))
         if key in releases:
-            stale.append({
-                "repo": repo_slug, "number": num, "title": issue.get("title", ""),
-                "codename": key[0] or "?", "firing_id": key[1] or "?",
-                "age_hours": 0.0, "label_drift": True,
-            })
+            stale.append(
+                {
+                    "repo": repo_slug,
+                    "number": num,
+                    "title": issue.get("title", ""),
+                    "codename": key[0] or "?",
+                    "firing_id": key[1] or "?",
+                    "age_hours": 0.0,
+                    "label_drift": True,
+                }
+            )
             continue
         try:
             ts = datetime.strptime(
@@ -1280,11 +1472,16 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
         except (ValueError, AttributeError):
             continue
         if ts < cutoff:
-            stale.append({
-                "repo": repo_slug, "number": num, "title": issue.get("title", ""),
-                "codename": key[0] or "?", "firing_id": key[1] or "?",
-                "age_hours": (datetime.now(timezone.utc).timestamp() - ts) / 3600,
-            })
+            stale.append(
+                {
+                    "repo": repo_slug,
+                    "number": num,
+                    "title": issue.get("title", ""),
+                    "codename": key[0] or "?",
+                    "firing_id": key[1] or "?",
+                    "age_hours": (datetime.now(UTC).timestamp() - ts) / 3600,
+                }
+            )
     return stale
 
 
@@ -1292,11 +1489,10 @@ def force_release_stale_claim(repo_slug: str, num: int, *, sweep_id: str) -> boo
     """Forcibly release a stale claim. Restores ``agent:implement`` so the
     queue picks it up. Records ``outcome=stale-swept`` in the release comment.
     """
-    gh_issue_edit(repo_slug, num,
-                  add_labels=["agent:implement"],
-                  remove_labels=["agent:in-flight"])
+    gh_issue_edit(repo_slug, num, add_labels=["agent:implement"], remove_labels=["agent:in-flight"])
     gh_issue_comment(
-        repo_slug, num,
+        repo_slug,
+        num,
         f"{RELEASE_COMMENT_PREFIX}codename=cleanup firing_id={sweep_id} "
         f"outcome=stale-swept ts={now_iso()} -->",
     )
@@ -1309,9 +1505,9 @@ def issue_dedup_check(repo_slug: str, num: int) -> dict:
     an issue-referencing branch would race an in-flight agent.
     """
     state = _issue_state(repo_slug, num)
-    labels = [l["name"] for l in state.get("labels", [])]
+    labels = [lbl["name"] for lbl in state.get("labels", [])]
     comments = state.get("comments", [])
-    latest_claim: Optional[dict] = None
+    latest_claim: dict | None = None
     for c in reversed(comments[-50:]):
         body = (c.get("body") or "").strip()
         if body.startswith(CLAIM_COMMENT_PREFIX):
@@ -1342,6 +1538,7 @@ def issue_dedup_check(repo_slug: str, num: int) -> dict:
 
 # ---------- Top-level entry point ----------
 
+
 def with_lock(name: str):
     """Context manager-ish helper: acquire lock, exit if held by another live PID."""
     lock = AgentLock(name)
@@ -1349,6 +1546,7 @@ def with_lock(name: str):
         print(f"[{name}-LOCKED] previous run still active. Skipping firing.")
         sys.exit(0)
     import atexit
+
     atexit.register(lock.release)
     return lock
 
@@ -1380,8 +1578,9 @@ def _shared_agent_available() -> bool:
         sys.path.insert(0, str(SHARED_AGENT / "tools"))
         sys.path.insert(0, str(SHARED_AGENT / "harness"))
         sys.path.insert(0, str(SHARED_AGENT / "memory"))
-        import recall  # noqa: F401
         import memory_reflect  # noqa: F401
+        import recall  # noqa: F401
+
         return True
     except Exception:
         return False
@@ -1396,7 +1595,9 @@ def recall_for(intent: str, top_k: int = 3) -> str:
     if not _shared_agent_available():
         return ""
     try:
-        from recall import recall as _recall, format_pretty
+        from recall import format_pretty
+        from recall import recall as _recall
+
         result, meta = _recall(intent, top_k=top_k)
         if not result:
             return ""
@@ -1406,9 +1607,16 @@ def recall_for(intent: str, top_k: int = 3) -> str:
         return ""
 
 
-def reflect(skill: str, action: str, outcome: str, *,
-            success: bool = True, importance: int = 5,
-            note: str = "", confidence: float | None = None) -> dict | None:
+def reflect(
+    skill: str,
+    action: str,
+    outcome: str,
+    *,
+    success: bool = True,
+    importance: int = 5,
+    note: str = "",
+    confidence: float | None = None,
+) -> dict | None:
     """Append an episodic entry from inside any agent.
 
     Use after every meaningful action so the dream cycle has something to
@@ -1418,10 +1626,15 @@ def reflect(skill: str, action: str, outcome: str, *,
         return None
     try:
         from memory_reflect import reflect as _reflect
+
         return _reflect(
-            skill_name=skill, action=action, outcome=outcome,
-            success=success, importance=importance,
-            reflection=note, confidence=confidence,
+            skill_name=skill,
+            action=action,
+            outcome=outcome,
+            success=success,
+            importance=importance,
+            reflection=note,
+            confidence=confidence,
         )
     except Exception as e:
         print(f"[reflect] swallowed: {e}", file=sys.stderr)
@@ -1453,9 +1666,11 @@ def call_with_guardrail(prompt: str, validator, **kwargs):
         return None
     try:
         from guardrail import with_guardrail
+
         max_retries = kwargs.pop("max_retries", 1)
         return with_guardrail(
-            prompt, validator,
+            prompt,
+            validator,
             claude_invoke_fn=claude_invoke,
             max_retries=max_retries,
             **kwargs,
@@ -1476,6 +1691,7 @@ def assemble_shared_context(intent: str, budget: int = 16000) -> str:
         return ""
     try:
         from context_budget import build_context
+
         ctx, _used = build_context(intent, budget=budget)
         return ctx
     except Exception as e:
@@ -1508,17 +1724,22 @@ def emit(event_type: str, **payload) -> None:
         return
     try:
         from event_stream import Event, EventStream
+
         agent = payload.pop("agent", "unknown")
         tokens_in = int(payload.pop("tokens_in", 0) or 0)
         tokens_out = int(payload.pop("tokens_out", 0) or 0)
         cost_usd = float(payload.pop("cost_usd", 0.0) or 0.0)
         tags = list(payload.pop("tags", []) or [])
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         ev = Event(
-            ts=ts, agent=agent, type=event_type,
+            ts=ts,
+            agent=agent,
+            type=event_type,
             payload=dict(payload),
-            tokens_in=tokens_in, tokens_out=tokens_out,
-            cost_usd=cost_usd, tags=tags,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost_usd,
+            tags=tags,
         )
         EventStream().append(ev)
     except Exception as e:
@@ -1541,33 +1762,37 @@ class _FiringContext:
         self._extra: dict = {}
         self._success_called: bool = False
 
-    def success(self, *, num_turns: int = 0, cost_usd: float = 0.0,
-                **extra) -> None:
+    def success(self, *, num_turns: int = 0, cost_usd: float = 0.0, **extra) -> None:
         """Record happy-path numbers for the closing event."""
         self._success_called = True
         self._num_turns = int(num_turns or 0)
         self._cost_usd = float(cost_usd or 0.0)
         self._extra = dict(extra)
 
-    def __enter__(self) -> "_FiringContext":
+    def __enter__(self) -> _FiringContext:
         emit("firing_start", agent=self.agent)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         if exc is not None:
-            emit("error", agent=self.agent,
-                 error=f"{exc_type.__name__}: {exc}")
-            emit("firing_end", agent=self.agent,
-                 success=False,
-                 num_turns=self._num_turns,
-                 cost_usd=self._cost_usd,
-                 reason=exc_type.__name__)
+            emit("error", agent=self.agent, error=f"{exc_type.__name__}: {exc}")
+            emit(
+                "firing_end",
+                agent=self.agent,
+                success=False,
+                num_turns=self._num_turns,
+                cost_usd=self._cost_usd,
+                reason=exc_type.__name__,
+            )
             return False  # don't suppress
-        emit("firing_end", agent=self.agent,
-             success=bool(self._success_called),
-             num_turns=self._num_turns,
-             cost_usd=self._cost_usd,
-             **self._extra)
+        emit(
+            "firing_end",
+            agent=self.agent,
+            success=bool(self._success_called),
+            num_turns=self._num_turns,
+            cost_usd=self._cost_usd,
+            **self._extra,
+        )
         return False
 
 
@@ -1607,9 +1832,9 @@ def emit_firing(agent: str) -> _FiringContext:
 # repo + issue, Bane needs repo + commit-sha, etc.).
 
 
-def best_of_n(agent: str, n: int = 2, *,
-              task_id: Optional[str] = None,
-              work_factory: Optional[Any] = None) -> Optional[Any]:
+def best_of_n(
+    agent: str, n: int = 2, *, task_id: str | None = None, work_factory: Any | None = None
+) -> Any | None:
     """Return a configured ``TaskRun`` for ``agent``, or None if the brain
     is unavailable. ``work_factory`` is required before calling
     ``run_attempts``; it can be passed here OR set on the returned object.
@@ -1652,10 +1877,10 @@ def best_of_n(agent: str, n: int = 2, *,
 # we don't drift on stale IDs every release. The "local" tier is routed
 # to Ollama running on the host (qwen2.5:3b-instruct-q4_K_M).
 TIER_TO_MODEL = {
-    "opus":   "opus",
+    "opus": "opus",
     "sonnet": "sonnet",
-    "haiku":  "haiku",
-    "local":  None,  # routed to Ollama, see _ollama_invoke
+    "haiku": "haiku",
+    "local": None,  # routed to Ollama, see _ollama_invoke
 }
 
 OLLAMA_HOST = "http://localhost:11434"
@@ -1745,8 +1970,13 @@ def _ollama_invoke(prompt: str, **kw) -> ClaudeResult:
     rejected = unsupported + unknown
     if rejected:
         return ClaudeResult(
-            success=False, subtype="error", num_turns=0, cost_usd=0.0,
-            session_id=None, result_text="", raw={},
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
             stop_reason="error",
             error_message=(
                 "ollama tier does not support kwargs: "
@@ -1754,11 +1984,13 @@ def _ollama_invoke(prompt: str, **kw) -> ClaudeResult:
                 + ". Drop them or route this prompt to claude (sonnet/haiku/opus) instead."
             ),
         )
-    payload = json.dumps({
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+        }
+    ).encode("utf-8")
     req = urllib.request.Request(
         f"{OLLAMA_HOST}/api/generate",
         data=payload,
@@ -1770,15 +2002,25 @@ def _ollama_invoke(prompt: str, **kw) -> ClaudeResult:
     except urllib.error.URLError as e:
         reason = getattr(e, "reason", e)
         return ClaudeResult(
-            success=False, subtype="error", num_turns=0, cost_usd=0.0,
-            session_id=None, result_text="", raw={},
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
             stop_reason="error",
             error_message=f"ollama not running: {reason}",
         )
     except Exception as e:
         return ClaudeResult(
-            success=False, subtype="error", num_turns=0, cost_usd=0.0,
-            session_id=None, result_text="", raw={},
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
             stop_reason="error",
             error_message=f"ollama request failed: {type(e).__name__}: {e}",
         )
@@ -1787,8 +2029,13 @@ def _ollama_invoke(prompt: str, **kw) -> ClaudeResult:
         raw = json.loads(body)
     except json.JSONDecodeError:
         return ClaudeResult(
-            success=False, subtype="error", num_turns=0, cost_usd=0.0,
-            session_id=None, result_text=body, raw={},
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=body,
+            raw={},
             stop_reason="error",
             error_message="ollama response unparseable",
         )
@@ -1819,8 +2066,13 @@ def route_llm(tier: str, prompt: str, **kw) -> ClaudeResult:
     if tier == "local":
         if not start_ollama_if_needed():
             return ClaudeResult(
-                success=False, subtype="error", num_turns=0, cost_usd=0.0,
-                session_id=None, result_text="", raw={},
+                success=False,
+                subtype="error",
+                num_turns=0,
+                cost_usd=0.0,
+                session_id=None,
+                result_text="",
+                raw={},
                 stop_reason="error",
                 error_message=(
                     "ollama daemon could not be started; the local tier is "
