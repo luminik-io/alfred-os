@@ -2,6 +2,36 @@
 
 This document explains why alfred-os has the shape it has. Read [`README.md`](README.md) for the elevator pitch and [`BOOTSTRAP.md`](BOOTSTRAP.md) for the setup. This is the design rationale.
 
+## Per-firing flow
+
+```mermaid
+sequenceDiagram
+    participant launchd
+    participant runner as bin/&lt;codename&gt;.py
+    participant lib as lib/agent_runner.py
+    participant claude as claude -p
+    participant gh as gh CLI
+    participant slack as Slack webhook
+
+    launchd->>runner: fire (every N min)
+    runner->>lib: with_lock(AGENT)
+    runner->>lib: preflight(spec)
+    runner->>lib: SpendState / is_globally_blocked
+    runner->>gh: pick_issue() — find oldest agent:implement
+    runner->>lib: claim_issue(repo, num, codename, firing_id)
+    lib->>gh: add agent:in-flight label
+    lib->>gh: post claim comment
+    runner->>lib: make_worktree(repo, agent, issue)
+    runner->>claude: claude -p '&lt;prompt&gt;' --max-turns N
+    claude-->>runner: ClaudeResult (turns, cost, session_id, result_text)
+    runner->>gh: gh pr create
+    runner->>lib: release_issue(transition_to=agent:pr-open, pr_url=...)
+    runner->>slack: slack_post('✅ shipped', severity=info)
+    runner->>lib: remove_worktree
+```
+
+Every box outside the host is reached by stdlib subprocess + HTTP. No persistent connection. State on disk under `${HERMES_HOME}/state/`.
+
 ## Why this shape
 
 alfred-os is built for one operator. One Mac Mini in a closet, one Anthropic Claude Pro / Max subscription, one founder merging the PRs. Every design decision falls out of those three constraints.
