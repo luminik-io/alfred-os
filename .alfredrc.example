@@ -1,0 +1,75 @@
+# alfred-os operator config — example.
+#
+# Copy to ~/.alfredrc (already done by install.sh on a fresh setup),
+# fill in the values, and your shell rc will source it on every new session.
+#
+# This file is sourced as KEY=VALUE pairs. No shell expansion, no quoting
+# tricks — keep values simple. install.sh's ~/.alfredrc loader is
+# tolerant of multi-word values like ACP_ARGS=--acp --stdio.
+
+# ----------------------------------------------------------------------
+# Required
+# ----------------------------------------------------------------------
+
+# GitHub org or user that owns your fleet's product repos. Used by every
+# helper that resolves a bare repo slug like "backend" → "<org>/backend".
+GH_ORG=
+
+# ----------------------------------------------------------------------
+# Recommended (used by agent prompts and operator-facing tooling)
+# ----------------------------------------------------------------------
+
+# Display name shown in agent prompts. Leave blank to keep the generic
+# "the operator" phrasing.
+OPERATOR_NAME=
+
+# Operator email referenced in some prompts (account-attribution, etc.).
+OPERATOR_EMAIL=
+
+# GitHub login (used by some prompts when distinct from GH_ORG).
+OPERATOR_GH_HANDLE=
+
+# ----------------------------------------------------------------------
+# Workspace + runtime paths (already supported by agent_runner)
+# ----------------------------------------------------------------------
+
+# Where the runtime lives — state/, worktrees/, lib/, bin/. Defaults to
+# ~/.hermes when unset. The launchd plists are rendered with this path.
+HERMES_HOME=
+
+# Parent directory of the per-repo product checkouts. Defaults to
+# ~/code when unset. agent_runner.WORKSPACE = WORKSPACE_ROOT/product.
+WORKSPACE_ROOT=
+
+# ----------------------------------------------------------------------
+# Slack (one of these — env var is the shortcut, AWS Secrets is the prod path)
+# ----------------------------------------------------------------------
+
+# Direct webhook URL. Simplest path; bypasses the AWS resolution chain.
+# SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
+
+# AWS Secrets Manager path. Default is alfred/slack-webhook (us-east-1).
+# Override only if you keep your secrets under a different prefix.
+# SLACK_WEBHOOK_SECRET_ID=alfred/slack-webhook
+# SLACK_WEBHOOK_SECRET_REGION=us-east-1
+
+# ----------------------------------------------------------------------
+# Claude Code
+# ----------------------------------------------------------------------
+
+# Absolute path to the `claude` CLI. Defaults to whatever is on $PATH;
+# override only if you have a non-standard install or run from launchd
+# without inheriting your shell's PATH.
+# CLAUDE_BIN=/usr/local/bin/claude
+
+# ----------------------------------------------------------------------
+# Operator-side overrides (no sensible defaults)
+# ----------------------------------------------------------------------
+
+# Comma-separated list of repos for `label-state sweep-claims` to scan.
+# Leave empty to require an explicit --repo flag.
+# LABEL_STATE_SWEEP_REPOS=backend,frontend,mobile
+
+# Skip the dedup-check pre-push hook globally. Use sparingly — the hook
+# is what prevents you from racing your own agents.
+# LABEL_STATE_SKIP_DEDUP_CHECK=0

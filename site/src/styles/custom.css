@@ -1,0 +1,39 @@
+/* Pennyworth site overrides on top of Starlight defaults. */
+
+:root {
+  --sl-color-accent-low: #1e2841;
+  --sl-color-accent: #4a72e0;
+  --sl-color-accent-high: #c5d3ff;
+
+  --sl-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d6e0ff;
+  --sl-color-accent: #2855c8;
+  --sl-color-accent-high: #1e2841;
+}
+
+/* Make code blocks slightly tighter and more readable. */
+.expressive-code {
+  font-size: 0.92rem;
+}
+
+/* Hero slot lift for the landing page. */
+.hero {
+  padding-top: 1rem;
+}
+
+.hero h1 {
+  letter-spacing: -0.02em;
+}
+
+/* Subtle visual divider for the codename pattern callouts. */
+.codename-callout {
+  border-left: 3px solid var(--sl-color-accent);
+  padding: 0.6rem 1rem;
+  background: var(--sl-color-bg-nav);
+  border-radius: 0 4px 4px 0;
+  margin: 1rem 0;
+}

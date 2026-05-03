@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify VERSION matches tag
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          version_in_file="$(cat VERSION | tr -d '[:space:]')"
+          tag_no_v="${tag#v}"
+          if [ "$tag_no_v" != "$version_in_file" ]; then
+            echo "::error::Tag $tag does not match VERSION file ($version_in_file)"
+            exit 1
+          fi
+
+      - name: Extract changelog notes for this version
+        id: notes
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          tag_no_v="${tag#v}"
+          # Extract the section between [<this-version>] and the next [<...] heading
+          awk -v ver="[$tag_no_v]" '
+            $0 ~ "^## " ver { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "::warning::No changelog section found for $tag; using a stub."
+            echo "Release $tag" > /tmp/release-notes.md
+          fi
+          echo "notes_file=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          gh release create "$tag" \
+            --repo "${{ github.repository }}" \
+            --title "$tag" \
+            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            --verify-tag
+
+      - name: Compute source tarball checksum (for brew formula)
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          tarball_url="https://github.com/${{ github.repository }}/archive/refs/tags/${tag}.tar.gz"
+          echo "::notice::Source tarball: $tarball_url"
+          curl -fsSL "$tarball_url" -o /tmp/src.tar.gz
+          sha256=$(shasum -a 256 /tmp/src.tar.gz | awk '{print $1}')
+          echo "::notice::sha256: $sha256"
+          echo "Update Formula/alfred-os.rb with this sha256 then push to your tap."
