@@ -162,8 +162,9 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
+# mkdocs documentation — alfred-os uses Astro, not mkdocs. /site is the Astro
+# Starlight project; build artefacts inside it are gitignored via site/.gitignore.
+# (Do not re-add /site here — that breaks the docs build.)
 
 # mypy
 .mypy_cache/
@@ -214,3 +215,4 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+uv.lock

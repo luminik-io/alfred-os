@@ -1,4 +1,4 @@
-"""Tests for the pennyworth agent_runner primitives.
+"""Tests for the alfred-os agent_runner primitives.
 
 Covers the deterministic helpers: PreflightSpec / preflight, doctor_mode,
 load_prompt, commit_trailer, HandoffTable, EventLog. Skips anything that
@@ -6,12 +6,11 @@ shells out to gh / aws / claude / git.
 
 Run via `pytest tests/`.
 """
+
 from __future__ import annotations
 
 import json
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -49,6 +48,7 @@ def test_preflight_passes_when_env_and_bins_resolve(monkeypatch):
 
 def test_preflight_raises_on_missing_env(monkeypatch):
     import agent_runner as ar
+
     monkeypatch.delenv("HERMES_HOME", raising=False)
 
     spec = ar.PreflightSpec(agent="test", env_vars=["HERMES_HOME"])
@@ -66,27 +66,33 @@ def test_preflight_raises_on_missing_binary():
 
 def test_doctor_mode_default_false(monkeypatch):
     import agent_runner as ar
+
     monkeypatch.delenv("HERMES_DOCTOR", raising=False)
     assert ar.doctor_mode() is False
 
 
-@pytest.mark.parametrize("val,expected", [
-    ("1", True),
-    ("yes", True),
-    ("true", True),
-    ("0", False),
-    ("false", False),
-    ("False", False),
-    ("", False),
-])
+@pytest.mark.parametrize(
+    "val,expected",
+    [
+        ("1", True),
+        ("yes", True),
+        ("true", True),
+        ("0", False),
+        ("false", False),
+        ("False", False),
+        ("", False),
+    ],
+)
 def test_doctor_mode_env_values(monkeypatch, val, expected):
     import agent_runner as ar
+
     monkeypatch.setenv("HERMES_DOCTOR", val)
     assert ar.doctor_mode() is expected
 
 
 def test_load_prompt_substitutes_env_and_extras(monkeypatch, tmp_path):
     import agent_runner as ar
+
     monkeypatch.setenv("OPERATOR_GH_HANDLE", "alice")
 
     p = tmp_path / "prompt.md"
@@ -125,7 +131,8 @@ def test_commit_trailer_extra_keys():
     import agent_runner as ar
 
     t = ar.commit_trailer(
-        "lucius", "2026-04-29",
+        "lucius",
+        "2026-04-29",
         extra={"issue": "myorg/backend#275", "model_used": "claude-opus-4-7"},
     )
     assert "Issue: myorg/backend#275" in t
@@ -216,7 +223,6 @@ def test_event_log_swallows_oserror(tmp_path, monkeypatch, capsys):
 
 
 def test_full_repo_helper(monkeypatch):
-    import agent_runner as ar
 
     monkeypatch.setenv("GH_ORG", "myorg")
     # Re-import to pick up GH_ORG
@@ -238,3 +244,266 @@ def test_full_repo_raises_when_org_unset(monkeypatch):
 
     with pytest.raises(RuntimeError, match="GH_ORG"):
         ar._full_repo("bare-slug")
+
+
+# ---------- Slack severity routing ----------
+
+
+def test_slack_post_default_severity_is_info(monkeypatch):
+    """Existing callers passing no kwarg keep their previous behaviour."""
+    import agent_runner as ar
+
+    sent: list[str] = []
+    monkeypatch.setattr(
+        ar, "_post_slack_webhook", lambda hook, text: (sent.append(text), True)[1], raising=False
+    )
+
+
+def test_slack_post_warn_prefix(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")
+    sent: list[str] = []
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self):
+            return b""
+
+    def fake_urlopen(req, *a, **kw):
+        sent.append(req.data.decode("utf-8") if hasattr(req, "data") else "")
+        return _FakeResp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    assert ar.slack_post("the build broke", severity="warn") is True
+    assert sent, "no payload was posted"
+    payload = json.loads(sent[-1])
+    assert "⚠️" in payload["text"]
+    assert "the build broke" in payload["text"]
+
+
+def test_slack_post_alert_prefix_and_here_ping(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")
+    sent: list[str] = []
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self):
+            return b""
+
+    def fake_urlopen(req, *a, **kw):
+        sent.append(req.data.decode("utf-8") if hasattr(req, "data") else "")
+        return _FakeResp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    assert ar.slack_post("staging is down", severity="alert") is True
+    assert sent, "no payload was posted"
+    payload = json.loads(sent[-1])
+    assert "🚨" in payload["text"]
+    assert "<!here>" in payload["text"]
+    assert "staging is down" in payload["text"]
+
+
+def test_slack_post_alert_does_not_double_prefix(monkeypatch):
+    """An alert text that already starts with 🚨 or has <!here> isn't double-prefixed."""
+    import agent_runner as ar
+
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")
+    sent: list[str] = []
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self):
+            return b""
+
+    def fake_urlopen(req, *a, **kw):
+        sent.append(req.data.decode("utf-8") if hasattr(req, "data") else "")
+        return _FakeResp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    ar.slack_post("🚨 already prefixed", severity="alert")
+    payload = json.loads(sent[-1])
+    # Exactly one 🚨 at the start (no double prefix)
+    assert payload["text"].count("🚨") == 1
+
+
+def test_slack_post_unknown_severity_falls_back_to_info(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")
+    sent: list[str] = []
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def read(self):
+            return b""
+
+    def fake_urlopen(req, *a, **kw):
+        sent.append(req.data.decode("utf-8") if hasattr(req, "data") else "")
+        return _FakeResp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    ar.slack_post("just a status", severity="not-a-real-tier")
+    payload = json.loads(sent[-1])
+    # Fell back to info: no prefix, no <!here>
+    assert "🚨" not in payload["text"]
+    assert "⚠️" not in payload["text"]
+    assert "<!here>" not in payload["text"]
+
+
+# ---------- Repo pause / resume ----------
+
+
+def test_repo_pause_resume_roundtrip(tmp_path, monkeypatch):
+    import agent_runner as ar
+
+    assert ar.list_paused_repos() == []
+    assert ar.is_repo_paused("backend") is False
+
+    out = ar.set_repo_paused("backend", paused=True)
+    assert out == ["backend"]
+    assert ar.is_repo_paused("backend") is True
+    assert ar.list_paused_repos() == ["backend"]
+
+    out = ar.set_repo_paused("frontend", paused=True)
+    assert sorted(out) == ["backend", "frontend"]
+
+    out = ar.set_repo_paused("backend", paused=False)
+    assert out == ["frontend"]
+    assert ar.is_repo_paused("backend") is False
+    assert ar.is_repo_paused("frontend") is True
+
+
+def test_is_repo_paused_fail_open_on_missing_file(monkeypatch):
+    """If the paused-repos file doesn't exist, is_repo_paused returns False."""
+    import agent_runner as ar
+
+    # Ensure the file does not exist
+    if ar.PAUSED_REPOS_FILE.exists():
+        ar.PAUSED_REPOS_FILE.unlink()
+    assert ar.is_repo_paused("anything") is False
+
+
+def test_is_repo_paused_fail_open_on_corrupt_file(tmp_path):
+    """A garbage paused-repos file is treated as 'no repos paused' (fail-open)."""
+    import agent_runner as ar
+
+    ar.PAUSED_REPOS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ar.PAUSED_REPOS_FILE.write_text("{not json")
+    assert ar.is_repo_paused("backend") is False
+
+
+# ---------- Claim comment parsing ----------
+
+
+def test_parse_claim_comment_round_trip():
+    import agent_runner as ar
+
+    body = "<!-- agent-claim:codename=lucius firing_id=20260501-194217-643a ts=2026-05-01T19:42:33Z -->"
+    meta = ar._parse_claim_comment(body)
+    assert meta["codename"] == "lucius"
+    assert meta["firing_id"] == "20260501-194217-643a"
+    assert meta["ts"] == "2026-05-01T19:42:33Z"
+
+
+def test_parse_release_comment_carries_outcome():
+    import agent_runner as ar
+
+    body = "<!-- agent-release:codename=lucius firing_id=abc outcome=success pr=https://github.com/foo/bar/pull/42 ts=2026-05-01T20:00:00Z -->"
+    meta = ar._parse_claim_comment(body)
+    assert meta["codename"] == "lucius"
+    assert meta["outcome"] == "success"
+    assert meta["pr"] == "https://github.com/foo/bar/pull/42"
+
+
+# ---------- issue_dedup_check (with mocked gh) ----------
+
+
+def test_issue_dedup_check_claimable_when_open_and_no_blockers(monkeypatch):
+    monkeypatch.setenv("GH_ORG", "myorg")
+    for m in list(sys.modules):
+        if m == "agent_runner":
+            del sys.modules[m]
+    import agent_runner as ar2
+
+    monkeypatch.setattr(
+        ar2,
+        "_issue_state",
+        lambda repo, num: {
+            "labels": [{"name": "agent:implement"}],
+            "state": "OPEN",
+            "comments": [],
+            "number": num,
+        },
+    )
+    out = ar2.issue_dedup_check("myrepo", 42)
+    assert out["claimable"] is True
+    assert out["in_flight"] is False
+    assert out["pr_open"] is False
+
+
+def test_issue_dedup_check_blocks_when_in_flight(monkeypatch):
+    monkeypatch.setenv("GH_ORG", "myorg")
+    for m in list(sys.modules):
+        if m == "agent_runner":
+            del sys.modules[m]
+    import agent_runner as ar2
+
+    monkeypatch.setattr(
+        ar2,
+        "_issue_state",
+        lambda repo, num: {
+            "labels": [{"name": "agent:in-flight"}],
+            "state": "OPEN",
+            "comments": [],
+            "number": num,
+        },
+    )
+    out = ar2.issue_dedup_check("myrepo", 42)
+    assert out["claimable"] is False
+    assert out["in_flight"] is True
+
+
+def test_issue_dedup_check_blocks_on_repo_pause(monkeypatch, tmp_path):
+    monkeypatch.setenv("GH_ORG", "myorg")
+    for m in list(sys.modules):
+        if m == "agent_runner":
+            del sys.modules[m]
+    import agent_runner as ar2
+
+    ar2.set_repo_paused("myrepo", paused=True)
+    monkeypatch.setattr(
+        ar2,
+        "_issue_state",
+        lambda repo, num: {
+            "labels": [{"name": "agent:implement"}],
+            "state": "OPEN",
+            "comments": [],
+            "number": num,
+        },
+    )
+    out = ar2.issue_dedup_check("myrepo", 42)
+    assert out["claimable"] is False
+    assert out["repo_paused"] is True

@@ -1,0 +1,91 @@
+name: Bug report
+description: Something is broken or behaving wrong
+title: "[bug] "
+labels: ["bug", "needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more concrete you are, the faster we can fix it.
+
+        **Before filing:** check [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md) "Common stumbles" and [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md) "Troubleshooting" — most install/config issues are answered there.
+
+  - type: input
+    id: version
+    attributes:
+      label: alfred-os version
+      description: Output of `cat VERSION` from your clone.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      description: Output of `sw_vers -productVersion`.
+      placeholder: "14.5"
+    validations:
+      required: true
+
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`.
+      placeholder: "1.x.y"
+    validations:
+      required: false
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: One paragraph. What did you do, what did you expect, what did you get instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Exact reproduction steps
+      description: Copy-paste the commands you ran, in order. Include any non-default env vars.
+      render: shell
+      placeholder: |
+        export GH_ORG=myorg
+        bash install.sh
+        bash bin/doctor.sh
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Full output
+      description: Paste the entire output, not just the error line. Include `bash bin/doctor.sh` output if relevant.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: state
+    attributes:
+      label: Relevant state files (optional)
+      description: |
+        If the bug is about a specific firing, paste the contents of the agent's spend file:
+        `cat $HERMES_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`
+
+        Redact any secrets first. The framework should never put secret values in spend files, but check.
+      render: json
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Sanity checks
+      options:
+        - label: I checked `bash bin/doctor.sh` passes (or I included its output if not).
+          required: true
+        - label: I redacted any AWS keys, Slack URLs, bot tokens, or other secrets from the output above.
+          required: true

@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# pre-push hook — refuse to push if a referenced issue is currently in-flight
+# (claimed by an agent) or already has a PR open. Symmetric guard against
+# the operator accidentally racing an autonomous agent.
+#
+# Reads commit messages on the about-to-be-pushed range. For every commit
+# body line matching ``Closes #N`` / ``Fixes #N`` / ``Resolves #N``
+# (case-insensitive), invokes the consumer's label-state CLI to decide
+# whether the issue is claimable. Push fails if any referenced issue is
+# not claimable.
+#
+# Resolution order for the label-state CLI:
+#   1. ``$LABEL_STATE_BIN`` env var
+#   2. The first ``label-state`` on PATH
+#   3. ``${HERMES_HOME:-$HOME/.hermes}/bin/label-state``
+# If none resolve, the hook exits 0 (fail-open) so a host without the
+# CLI installed can still push.
+#
+# Override per-push: ``git push --no-verify``
+# Override globally: ``LABEL_STATE_SKIP_DEDUP_CHECK=1`` in your shell rc
+
+set -uo pipefail
+
+if [[ "${LABEL_STATE_SKIP_DEDUP_CHECK:-}" == "1" ]]; then
+  exit 0
+fi
+
+# Locate label-state CLI.
+cli="${LABEL_STATE_BIN:-}"
+if [[ -z "$cli" ]]; then
+  cli="$(command -v label-state 2>/dev/null || true)"
+fi
+if [[ -z "$cli" || ! -x "$cli" ]]; then
+  cli="${HERMES_HOME:-$HOME/.hermes}/bin/label-state"
+fi
+if [[ ! -x "$cli" ]]; then
+  exit 0  # fail-open
+fi
+
+# Determine the GitHub repo slug from the origin remote.
+remote_url=$(git remote get-url origin 2>/dev/null || true)
+if [[ -z "$remote_url" ]]; then
+  exit 0
+fi
+# extract <repo> from https://github.com/<org>/<repo>.git or git@github.com:<org>/<repo>.git
+repo_slug=$(printf '%s' "$remote_url" | sed -E 's|.*github\.com[/:][^/]+/||; s|\.git$||')
+if [[ -z "$repo_slug" ]]; then
+  exit 0
+fi
+
+# stdin: <local-ref> <local-sha> <remote-ref> <remote-sha> per pushed branch
+exit_code=0
+issues_seen=()
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Skip branch deletions (local_sha is all zeros)
+  if [[ "$local_sha" =~ ^0+$ ]]; then
+    continue
+  fi
+  # Determine the commit range. If remote_sha is all zeros (first push of
+  # a new branch), diff against origin/main as a sane upper bound.
+  if [[ "$remote_sha" =~ ^0+$ ]]; then
+    base="$(git merge-base "$local_sha" origin/main 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo "$local_sha~1")"
+    range="${base}..${local_sha}"
+  else
+    range="${remote_sha}..${local_sha}"
+  fi
+  # Extract Closes / Fixes / Resolves issue numbers from commit bodies
+  while read -r issue_num; do
+    [[ -z "$issue_num" ]] && continue
+    seen=0
+    for s in "${issues_seen[@]:-}"; do
+      [[ "$s" == "$issue_num" ]] && { seen=1; break; }
+    done
+    [[ "$seen" == "1" ]] && continue
+    issues_seen+=("$issue_num")
+
+    if ! out=$("$cli" dedup-check "${repo_slug}#${issue_num}" 2>&1); then
+      printf 'pre-push: BLOCK %s#%s\n  %s\n' "$repo_slug" "$issue_num" "$out" >&2
+      exit_code=1
+    fi
+  done < <(
+    git log --format='%B' "$range" 2>/dev/null \
+      | grep -iE '^(closes|fixes|resolves)[[:space:]]*#[0-9]+' \
+      | grep -oE '#[0-9]+' \
+      | tr -d '#' \
+      | sort -u
+  )
+done
+
+if [[ "$exit_code" -ne 0 ]]; then
+  cat <<'MSG' >&2
+
+pre-push refused: at least one referenced issue is currently being worked
+on by an agent or already has a PR open. Coordinate via your fleet's
+status channel or override with one of:
+
+  git push --no-verify
+  LABEL_STATE_SKIP_DEDUP_CHECK=1 git push
+  label-state claim <repo>#<N>     # take the issue manually first
+MSG
+fi
+
+exit "$exit_code"

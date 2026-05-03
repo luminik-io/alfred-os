@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# pennyworth — deploy framework files into ${HERMES_HOME}/{lib,bin}/ and
+# alfred-os — deploy framework files into ${HERMES_HOME}/{lib,bin}/ and
 # install the launchd plist template renderer.
 #
 # This script deploys ONLY the framework. Codename-specific bin scripts and
 # launchd/agents.conf live in the consuming repo (e.g. luminik-io/alfred,
-# which imports pennyworth as a git submodule and calls this script before
+# which imports alfred-os as a git submodule and calls this script before
 # deploying its own per-codename pieces).
 #
 # Idempotent. Safe to re-run.
@@ -28,13 +28,13 @@ LOCAL_BIN="${HOME}/.local/bin"
 
 mkdir -p "$HERMES_BIN" "$HERMES_LIB" "$LOCAL_BIN"
 
-echo "[pennyworth/deploy] HERMES_HOME=$HERMES_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
+echo "[alfred-os/deploy] HERMES_HOME=$HERMES_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
-echo "[pennyworth/deploy] copying lib/"
+echo "[alfred-os/deploy] copying lib/"
 cp "$REPO_DIR/lib/"*.py "$HERMES_LIB/"
 chmod 644 "$HERMES_LIB/"*.py
 
-echo "[pennyworth/deploy] copying bin/ (every regular file)"
+echo "[alfred-os/deploy] copying bin/ (every regular file)"
 for f in "$REPO_DIR/bin/"*; do
   [ -f "$f" ] || continue
   cp "$f" "$HERMES_BIN/"
@@ -45,13 +45,13 @@ done
 # so expose it under ~/.local/bin via a stable symlink that survives redeploys.
 if [ -f "$HERMES_BIN/hermes-claude" ]; then
   ln -sfn "$HERMES_BIN/hermes-claude" "$LOCAL_BIN/hermes-claude"
-  echo "[pennyworth/deploy] linked hermes-claude → $LOCAL_BIN/hermes-claude"
+  echo "[alfred-os/deploy] linked hermes-claude → $LOCAL_BIN/hermes-claude"
 fi
 
 # doctor.sh ships into HERMES_BIN via the bin/ copy loop above. Consumer
-# repos can wrap it with their own env defaults; pennyworth itself does
+# repos can wrap it with their own env defaults; alfred-os itself does
 # NOT install a user-facing symlink — that's the consumer's choice.
 
-echo "[pennyworth/deploy] framework deployed. Consumer-side deploy can now"
-echo "[pennyworth/deploy] copy its own bin/<codename>.py and render plists"
-echo "[pennyworth/deploy] from launchd/_template.plist + its own agents.conf."
+echo "[alfred-os/deploy] framework deployed. Consumer-side deploy can now"
+echo "[alfred-os/deploy] copy its own bin/<codename>.py and render plists"
+echo "[alfred-os/deploy] from launchd/_template.plist + its own agents.conf."
