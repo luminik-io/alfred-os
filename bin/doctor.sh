@@ -65,6 +65,30 @@ prepend_path_if_dir "/opt/homebrew/sbin"
 prepend_path_if_dir "/usr/local/bin"
 export PATH
 
+# macOS does not ship GNU coreutils' `timeout`. Auto-detect a usable
+# implementation; on Linux this finds `timeout`, on a fresh Mac with
+# `brew install coreutils` it finds `gtimeout`, and otherwise falls
+# back to running the command without a wall-clock cap. Recommended:
+# `brew install coreutils` for parity with Linux behaviour.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="gtimeout"
+else
+  TIMEOUT_BIN=""
+fi
+
+# Run a command with a wall-clock cap if a timeout binary is available;
+# otherwise just run it. Usage: _run_with_timeout <secs> <cmd> [args...]
+_run_with_timeout() {
+  local secs="$1"; shift
+  if [ -n "$TIMEOUT_BIN" ]; then
+    "$TIMEOUT_BIN" "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 # Prefer running the deployed scripts when present (they're the live runtime),
 # fall back to the in-repo copies when not deployed yet (a fresh checkout
 # wants to verify before its first deploy.sh run).
@@ -87,8 +111,9 @@ for script in "$BIN_DIR"/*.py; do
   printf "  %-30s " "$name"
 
   # Each agent's preflight should complete in well under 30s. Capture stdout
-  # so we can inspect the sentinel without flooding the terminal.
-  output=$(timeout 30 python3 "$script" 2>&1) || true
+  # so we can inspect the sentinel without flooding the terminal. Use the
+  # detected timeout helper so this works on a fresh Mac without coreutils.
+  output=$(_run_with_timeout 30 python3 "$script" 2>&1) || true
 
   if echo "$output" | grep -q "DOCTOR-OK"; then
     printf "✅ ok\n"
