@@ -11,7 +11,7 @@ If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in 
 
 The operator's AWS SSO has admin everywhere. If a cron-spawned agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps the blast radius:
 
-- `huntress-cron`: read-only on the staging E2E test secrets and the Slack webhook secret.
+- `<your-codename>-cron`: read-only on the agent's specific secrets (e.g. test credentials, webhook URLs).
 - `oracle-cron`: read-only on ECS, ALB, CloudWatch logs/metrics. No `secretsmanager:*`.
 - `gordon-cron`: read-only on ECS describe + the Sentry token secret.
 - `alfred-host`: read-only on `alfred/*` secrets (catch-all for fleet-wide config).
@@ -28,29 +28,29 @@ The strip-then-set pattern forces the AWS credential chain to use the named prof
 
 ## 1. Create the IAM user
 
-For each agent you want to grant AWS access, do this once (substitute `huntress-cron` with your agent's IAM user name):
+For each agent you want to grant AWS access, do this once (substitute `<your-codename>-cron` with your agent's IAM user name):
 
 ```sh
 # Pick a profile that already has admin (your SSO chain or root).
 AWS_ADMIN_PROFILE="<your-admin-profile>"
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-user \
-  --user-name huntress-cron \
+  --user-name <your-codename>-cron \
   --tags Key=purpose,Value=alfred-os-agent
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-access-key \
-  --user-name huntress-cron \
-  --output json > /tmp/huntress-cron.keys.json
+  --user-name <your-codename>-cron \
+  --output json > /tmp/<your-codename>-cron.keys.json
 
-cat /tmp/huntress-cron.keys.json
+cat /tmp/<your-codename>-cron.keys.json
 # Copy the AccessKeyId + SecretAccessKey out of this file.
-shred -u /tmp/huntress-cron.keys.json   # don't leave it on disk
+shred -u /tmp/<your-codename>-cron.keys.json   # don't leave it on disk
 ```
 
 Append to `~/.aws/credentials`:
 
 ```ini
-[huntress-cron]
+[<your-codename>-cron]
 aws_access_key_id = AKIA...
 aws_secret_access_key = ...
 region = us-east-1
@@ -59,7 +59,7 @@ region = us-east-1
 Confirm:
 
 ```sh
-aws --profile huntress-cron sts get-caller-identity
+aws --profile <your-codename>-cron sts get-caller-identity
 ```
 
 You should see the user ARN.
@@ -69,7 +69,7 @@ You should see the user ARN.
 Replace the resources with the actual ARNs your agent needs. Example for an agent that reads two specific secrets:
 
 ```sh
-cat > /tmp/huntress-cron-policy.json <<'EOF'
+cat > /tmp/<your-codename>-cron-policy.json <<'EOF'
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -77,8 +77,8 @@ cat > /tmp/huntress-cron-policy.json <<'EOF'
       "Effect": "Allow",
       "Action": ["secretsmanager:GetSecretValue"],
       "Resource": [
-        "arn:aws:secretsmanager:us-east-1:*:secret:e2e/staging/test-user-*",
-        "arn:aws:secretsmanager:us-east-1:*:secret:slack/staging/internal-webhook-url-*"
+        "arn:aws:secretsmanager:us-east-1:*:secret:<your/secret/path>-*",
+        "arn:aws:secretsmanager:us-east-1:*:secret:<your/webhook/path>-*"
       ]
     }
   ]
@@ -86,9 +86,9 @@ cat > /tmp/huntress-cron-policy.json <<'EOF'
 EOF
 
 aws --profile "$AWS_ADMIN_PROFILE" iam put-user-policy \
-  --user-name huntress-cron \
-  --policy-name huntress-cron-secrets-readonly \
-  --policy-document file:///tmp/huntress-cron-policy.json
+  --user-name <your-codename>-cron \
+  --policy-name <your-codename>-cron-secrets-readonly \
+  --policy-document file:///tmp/<your-codename>-cron-policy.json
 ```
 
 Common policy templates:
@@ -179,7 +179,7 @@ rm -f "$HERMES_HOME/state/slack-webhook.cache"
 Read (verifies `<agent>-cron`'s policy works):
 
 ```sh
-aws --profile huntress-cron secretsmanager get-secret-value \
+aws --profile <your-codename>-cron secretsmanager get-secret-value \
   --secret-id alfred/slack-webhook \
   --region us-east-1 \
   --query SecretString --output text
@@ -194,7 +194,7 @@ For per-agent profiles, the cleanest pattern is to set `AWS_PROFILE` *inside the
 ```python
 # In your agent's bin/<codename>.py:
 import os
-os.environ["AWS_PROFILE"] = "huntress-cron"
+os.environ["AWS_PROFILE"] = "<your-codename>-cron"
 # Strip any leakage from the operator's session:
 for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
          "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN"):
@@ -210,16 +210,16 @@ Every 90 days minimum. The flow:
 ```sh
 # 1. Mint a new key
 aws --profile "$AWS_ADMIN_PROFILE" iam create-access-key \
-  --user-name huntress-cron --output json > /tmp/new.json
+  --user-name <your-codename>-cron --output json > /tmp/new.json
 
 # 2. Update ~/.aws/credentials with the new key/secret
 
 # 3. Verify the agent works with the new key
-aws --profile huntress-cron sts get-caller-identity
+aws --profile <your-codename>-cron sts get-caller-identity
 
 # 4. Delete the old key by ID
 aws --profile "$AWS_ADMIN_PROFILE" iam delete-access-key \
-  --user-name huntress-cron --access-key-id <old-AKIA-id>
+  --user-name <your-codename>-cron --access-key-id <old-AKIA-id>
 
 shred -u /tmp/new.json
 ```

@@ -25,6 +25,7 @@
 - [ ] `uv run --with pytest pytest tests/` — all green
 - [ ] `bash bin/doctor.sh` — passes locally
 - [ ] `ruff check .` — no new violations
+- [ ] `bash bin/scrub-check.sh` — clean
 - [ ] (If shell change) `shellcheck <file>` — clean
 
 ## Screenshots / output

@@ -13,7 +13,7 @@ Full guide at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob
 
 The operator's SSO has admin everywhere. If a cron-spawned agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps blast radius:
 
-- `huntress-cron`: read-only on staging E2E test secrets + the Slack webhook.
+- `<your-codename>-cron`: read-only on the agent's specific secrets (test creds, webhooks, etc.).
 - `oracle-cron`: read-only on ECS, ALB, CloudWatch logs/metrics. No `secretsmanager:*`.
 - `gordon-cron`: read-only on ECS describe + the Sentry token.
 - `alfred-host`: read-only on `alfred/*` secrets.
@@ -26,11 +26,11 @@ The agent's prompt invokes `aws` with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_AC
 AWS_ADMIN_PROFILE="<your-admin>"
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-user \
-  --user-name huntress-cron \
+  --user-name <your-codename>-cron \
   --tags Key=purpose,Value=alfred-os-agent
 
 aws --profile "$AWS_ADMIN_PROFILE" iam create-access-key \
-  --user-name huntress-cron --output json > /tmp/keys.json
+  --user-name <your-codename>-cron --output json > /tmp/keys.json
 
 # Copy AccessKeyId + SecretAccessKey into ~/.aws/credentials, then:
 shred -u /tmp/keys.json
@@ -39,7 +39,7 @@ shred -u /tmp/keys.json
 `~/.aws/credentials` entry:
 
 ```ini
-[huntress-cron]
+[<your-codename>-cron]
 aws_access_key_id = AKIA...
 aws_secret_access_key = ...
 region = us-east-1
@@ -49,8 +49,8 @@ region = us-east-1
 
 ```sh
 aws --profile "$AWS_ADMIN_PROFILE" iam put-user-policy \
-  --user-name huntress-cron \
-  --policy-name huntress-cron-secrets-readonly \
+  --user-name <your-codename>-cron \
+  --policy-name <your-codename>-cron-secrets-readonly \
   --policy-document file:///tmp/policy.json
 ```
 

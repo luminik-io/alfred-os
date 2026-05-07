@@ -19,8 +19,8 @@ jobs:
     name: Lint (ruff + mypy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
@@ -39,12 +39,12 @@ jobs:
       matrix:
         python: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - run: uv run --python ${{ matrix.python }} --with pytest pytest tests/ -v
@@ -53,7 +53,7 @@ jobs:
     name: shellcheck (bash)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Find shell scripts
@@ -86,8 +86,8 @@ jobs:
     name: Python syntax check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Compile every Python file
@@ -101,33 +101,6 @@ jobs:
     name: Pennyworth-cleanliness scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Refuse known-private patterns
-        run: |
-          set -e
-          patterns=(
-            "/Users/operator"
-            "luminik-internal"
-            "prasad@luminik\.io"
-            "C0ATTT5DDGA"
-            "T024P63979U"
-          )
-          fail=0
-          for pat in "${patterns[@]}"; do
-            # Search everything except the dependency lockfiles, the launchd
-            # template (placeholders only), and the changelog (which records
-            # the migration history).
-            if grep -RIn -E "$pat" \
-              --exclude-dir=.git \
-              --exclude-dir=.github \
-              --exclude-dir=site/node_modules \
-              --exclude-dir=infra/agents/launchd/_generated \
-              --exclude=CHANGELOG.md \
-              --exclude=*.lock \
-              --exclude=package-lock.json \
-              .; then
-              echo "::error::Found forbidden pattern: $pat"
-              fail=1
-            fi
-          done
-          [ "$fail" -eq 0 ] || exit 1
+        run: bash bin/scrub-check.sh

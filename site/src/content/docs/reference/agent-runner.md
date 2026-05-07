@@ -22,6 +22,8 @@ LIB_DIR: Path                # HERMES_HOME / "lib"
 BIN_DIR: Path                # HERMES_HOME / "bin"
 
 CLAUDE_BIN: str              # path to the claude CLI; default "claude"
+CODEX_BIN: str               # path to the codex CLI; default "codex"
+CODEX_TRANSCRIPTS_ROOT: Path # HERMES_HOME / "state" / "codex"
 
 GH_REPO_TO_LOCAL: dict[str, str]   # consumer-extended slug → local-dir map
 STANDARD_LABELS: list[tuple]       # consumer-extended label set for ensure_labels
@@ -186,9 +188,19 @@ def claude_invoke_streaming(prompt: str, *,
                             firing_id: str,
                             max_turns: int | None = None,
                             timeout: int = 1200) -> ClaudeResult
+
+def codex_invoke(prompt: str, *,
+                 workdir: Path,
+                 agent: str = "codex",
+                 firing_id: str | None = None,
+                 timeout: int = 1200,
+                 model: str | None = None,
+                 sandbox: str | None = None,
+                 approval_policy: str | None = None,
+                 add_dirs: list[Path] | None = None) -> ClaudeResult
 ```
 
-The streaming variant writes a per-firing JSONL transcript to `$HERMES_HOME/state/transcripts/<agent>/<YYYY-MM>/<firing-id>.jsonl` for post-hoc tool/skill aggregation.
+The OSS streaming variant currently delegates to `claude_invoke()` while preserving the future call shape. `codex_invoke()` shells out to `codex exec`, rejects unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`), defaults to `read-only` + `approval_policy=never`, and writes final-message/stdout/stderr artifacts to `$HERMES_HOME/state/codex/<agent>/<YYYY-MM>/`.
 
 ## Event log + commit trailer + handoff table
 

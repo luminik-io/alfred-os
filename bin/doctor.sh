@@ -14,12 +14,18 @@
 
 set -uo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 : "${HERMES_HOME:=$HOME/.hermes}"
 : "${LUMINIK_WORKSPACE:=$HOME/Workspace}"
 : "${WORKSPACE_ROOT:=$LUMINIK_WORKSPACE}"
 export HERMES_HOME WORKSPACE_ROOT LUMINIK_WORKSPACE HERMES_DOCTOR=1
+
+if [ -d "$REPO_DIR/lib" ]; then
+  PYTHONPATH="$REPO_DIR/lib${PYTHONPATH:+:$PYTHONPATH}"
+  export PYTHONPATH
+fi
 
 # Mirror what launchd plists put on PATH so doctor.sh matches cron-time
 # conditions even when invoked from a non-login subshell. fnm init is
@@ -27,17 +33,61 @@ export HERMES_HOME WORKSPACE_ROOT LUMINIK_WORKSPACE HERMES_DOCTOR=1
 # `npm` otherwise. Keeping these prepends idempotent: if they're already
 # present (e.g. doctor.sh was run from the operator's interactive zsh)
 # they no-op.
+prepend_path_if_dir() {
+  case ":$PATH:" in
+    *":$1:"*) ;;
+    *) [ -d "$1" ] && PATH="$1:$PATH" ;;
+  esac
+}
+
+LOCAL_BIN="$HOME/.local/bin"
 FNM_BIN="$HOME/.local/share/fnm/aliases/default/bin"
-JAVA_BIN="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin"
-case ":$PATH:" in
-  *":$FNM_BIN:"*) ;;
-  *) [ -d "$FNM_BIN" ] && PATH="$FNM_BIN:$PATH" ;;
-esac
-case ":$PATH:" in
-  *":$JAVA_BIN:"*) ;;
-  *) [ -d "$JAVA_BIN" ] && PATH="$JAVA_BIN:$PATH" ;;
-esac
+
+# Detect openjdk@21 path via brew so this works on both Apple Silicon
+# (`/opt/homebrew`) and Intel Macs (`/usr/local`). Fall back gracefully
+# when brew isn't installed.
+if command -v brew >/dev/null 2>&1; then
+  JAVA_BREW_PREFIX="$(brew --prefix openjdk@21 2>/dev/null || true)"
+else
+  JAVA_BREW_PREFIX=""
+fi
+if [ -n "$JAVA_BREW_PREFIX" ]; then
+  JAVA_BIN="$JAVA_BREW_PREFIX/libexec/openjdk.jdk/Contents/Home/bin"
+else
+  JAVA_BIN="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin"
+fi
+
+prepend_path_if_dir "$LOCAL_BIN"
+prepend_path_if_dir "$FNM_BIN"
+prepend_path_if_dir "$JAVA_BIN"
+prepend_path_if_dir "/opt/homebrew/bin"
+prepend_path_if_dir "/opt/homebrew/sbin"
+prepend_path_if_dir "/usr/local/bin"
 export PATH
+
+# macOS does not ship GNU coreutils' `timeout`. Auto-detect a usable
+# implementation; on Linux this finds `timeout`, on a fresh Mac with
+# `brew install coreutils` it finds `gtimeout`, and otherwise falls
+# back to running the command without a wall-clock cap. Recommended:
+# `brew install coreutils` for parity with Linux behaviour.
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="gtimeout"
+else
+  TIMEOUT_BIN=""
+fi
+
+# Run a command with a wall-clock cap if a timeout binary is available;
+# otherwise just run it. Usage: _run_with_timeout <secs> <cmd> [args...]
+_run_with_timeout() {
+  local secs="$1"; shift
+  if [ -n "$TIMEOUT_BIN" ]; then
+    "$TIMEOUT_BIN" "$secs" "$@"
+  else
+    "$@"
+  fi
+}
 
 # Prefer running the deployed scripts when present (they're the live runtime),
 # fall back to the in-repo copies when not deployed yet (a fresh checkout
@@ -45,7 +95,7 @@ export PATH
 if [ -d "$HERMES_HOME/bin" ] && ls "$HERMES_HOME/bin"/*.py >/dev/null 2>&1; then
   BIN_DIR="$HERMES_HOME/bin"
 else
-  BIN_DIR="$REPO_DIR/bin"
+  BIN_DIR="$SCRIPT_DIR"
 fi
 
 echo "doctor: checking agents under $BIN_DIR"
@@ -61,8 +111,9 @@ for script in "$BIN_DIR"/*.py; do
   printf "  %-30s " "$name"
 
   # Each agent's preflight should complete in well under 30s. Capture stdout
-  # so we can inspect the sentinel without flooding the terminal.
-  output=$(timeout 30 python3 "$script" 2>&1) || true
+  # so we can inspect the sentinel without flooding the terminal. Use the
+  # detected timeout helper so this works on a fresh Mac without coreutils.
+  output=$(_run_with_timeout 30 python3 "$script" 2>&1) || true
 
   if echo "$output" | grep -q "DOCTOR-OK"; then
     printf "✅ ok\n"

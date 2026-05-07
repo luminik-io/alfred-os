@@ -1,6 +1,6 @@
 # Claude Code
 
-Alfred-OS runs every agent as a `claude -p` subprocess. The framework is the harness, Claude Code is the brain. This doc covers installation, Pro-vs-Max sizing, authentication, and the multi-account swap pattern (`hermes-claude`).
+Alfred-OS runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`hermes-claude`), and the optional Codex path.
 
 ## What "Claude Code" is
 
@@ -10,6 +10,28 @@ The official Anthropic CLI for Claude. Two surfaces:
 - `claude -p '<prompt>'`: non-interactive single-prompt invocation. **What every agent uses.** Returns a structured JSON result the framework parses (turns, cost, success/failure subtype, session id for resume).
 
 Alfred-OS doesn't talk to the Anthropic API directly. It shells out to `claude`. The CLI handles model selection, billing, rate-limit signalling, retries, MCP plumbing. Re-implementing any of that is out of scope.
+
+## Optional Codex routing
+
+If the `codex` CLI is installed and authenticated, agents can route a task through `route_llm("codex", ...)` or call `codex_invoke()` directly. This is intended for review-style work, not unconstrained write access:
+
+- Default sandbox: `read-only`
+- Default approval policy: `never`
+- Artifacts: `$HERMES_HOME/state/codex/<agent>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`
+- Unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`) are rejected up front.
+
+Environment overrides:
+
+```sh
+CODEX_BIN=$HOME/.local/bin/codex
+CODEX_MODEL=<your-model-id>
+CODEX_SANDBOX=read-only
+CODEX_APPROVAL_POLICY=never
+```
+
+`deploy.sh` links an interactive-shell `codex` binary into `~/.local/bin/codex` when one exists. Rendered launchd plists include `~/.local/bin` in PATH, so Codex can stay optional without pinning app-bundle paths into agent config.
+
+Use Codex alongside Claude when you want an independent reviewer or when Claude quota is scarce. Keep feature-writing agents on Claude until you have deliberately designed a Codex write sandbox for that codename.
 
 ## Install
 
@@ -90,17 +112,17 @@ hermes-claude primary
 
 ## CLAUDE_BIN env var
 
-If `claude` isn't on the PATH that launchd inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`:
+If `claude` isn't on the PATH that launchd inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/claude` over an fnm-managed path:
 
 ```sh
-CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
+CLAUDE_BIN=$HOME/.local/bin/claude
 ```
 
-The framework's `claude_invoke()` uses `CLAUDE_BIN` if set, otherwise `claude` from PATH. Get the right path:
+`deploy.sh` links the interactive-shell `claude` binary into `~/.local/bin/claude` when one exists, mirroring the Codex setup, so launchd-rendered plists pick it up via `~/.local/bin` on PATH. The framework's `claude_invoke()` uses `CLAUDE_BIN` if set, otherwise `claude` from PATH. Get the right path:
 
 ```sh
 which claude
-# → /Users/you/.local/share/fnm/aliases/default/bin/claude
+# → /Users/you/.local/bin/claude (if symlinked) or .../fnm/aliases/.../bin/claude
 ```
 
 ## Cost vs token-API mental model
@@ -119,6 +141,9 @@ Claude Code supports installable skills (small markdown + script bundles that ex
 
 **`claude: command not found` from a launchd-spawned agent.**
 The plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc` (sourced by launchd via the agent's environment), or symlink `claude` to `/usr/local/bin/`.
+
+**`codex: command not found` from a launchd-spawned agent.**
+Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/codex` over an app-bundle path.
 
 **`error_rate_limit` immediately on every firing.**
 You've blown the weekly cap. `cat $HERMES_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `hermes-claude swap`, or upgrade to Max.

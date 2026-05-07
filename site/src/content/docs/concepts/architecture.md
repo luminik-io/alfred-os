@@ -32,7 +32,7 @@ The worktree is created via `git worktree add` from a fresh `origin/main` (or wh
 Every agent that touches AWS gets its own scoped IAM user:
 
 ```
-huntress-cron       read-only on staging E2E test secrets + the Slack webhook secret
+<your-codename>-cron read-only on the agent's specific secrets (test creds, webhooks, etc.)
 oracle-cron         read-only on ECS, ALB, CloudWatch logs/metrics. No secretsmanager:*.
 gordon-cron         read-only on ECS describe + the Sentry token secret
 alfred-host         read-only on alfred/* secrets (catch-all for fleet-wide config)

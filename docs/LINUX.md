@@ -19,7 +19,7 @@ systemd user units cover most of this (`Type=oneshot`, `OnCalendar=`, no `Restar
 If you want to read the code, write your own agents, run the test suite, or use the `agent_runner` primitives in a manually-driven script, all of that works on Linux:
 
 - `lib/agent_runner.py`: every primitive (preflight, lock, spend, claude_invoke, gh, slack, claim_issue/release_issue, severity routing) works unchanged.
-- `tests/`: `pytest` runs the full 35-case suite on Linux.
+- `tests/`: `pytest` runs the full test suite on Linux.
 - `bin/doctor.sh`: works (bash + grep).
 - `bin/hermes-claude`: works (symlink swapping).
 - `examples/bin/label_state.py`: works.
@@ -39,7 +39,7 @@ Until the systemd port lands, two options:
 
 Skip the framework's launchd bits entirely. Write each agent as a bash script:
 
-```cron
+```text
 # crontab -e
 */20 * * * * /usr/bin/env HERMES_HOME=$HOME/.hermes WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
 ```

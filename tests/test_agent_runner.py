@@ -10,6 +10,7 @@ Run via `pytest tests/`.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -244,6 +245,119 @@ def test_full_repo_raises_when_org_unset(monkeypatch):
 
     with pytest.raises(RuntimeError, match="GH_ORG"):
         ar._full_repo("bare-slug")
+
+
+def test_route_llm_codex_dispatches_without_claude(monkeypatch):
+    import agent_runner as ar
+
+    calls: list[tuple[str, dict]] = []
+
+    def fake_codex(prompt, **kwargs):
+        calls.append((prompt, kwargs))
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="codex ok",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    monkeypatch.setattr(ar, "codex_invoke", fake_codex)
+    monkeypatch.setattr(ar, "claude_invoke", lambda *a, **k: pytest.fail("Claude was called"))
+
+    out = ar.route_llm("codex", "review this", workdir=Path("/tmp"), agent="reviewer")
+
+    assert out.success is True
+    assert out.result_text == "codex ok"
+    assert calls == [("review this", {"workdir": Path("/tmp"), "agent": "reviewer"})]
+
+
+def test_codex_invoke_rejects_unsupported_claude_controls():
+    import agent_runner as ar
+
+    out = ar.codex_invoke(
+        "review",
+        workdir=Path("/tmp"),
+        agent="reviewer",
+        allowed_tools="Read",
+        max_turns=5,
+        resume_session="abc",
+    )
+
+    assert out.success is False
+    assert out.stop_reason == "error"
+    msg = (out.error_message or "").lower()
+    assert "allowed_tools" in msg
+    assert "max_turns" in msg
+    assert "resume_session" in msg
+
+
+def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypatch):
+    import agent_runner as ar
+
+    root = tmp_path / "codex"
+
+    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+        last_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        last_path.parent.mkdir(parents=True, exist_ok=True)
+        last_path.write_text("Codex review body")
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout="session id: codex-session-1\ntokens used\n1,234\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
+    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+
+    out = ar.codex_invoke(
+        "review",
+        workdir=tmp_path,
+        agent="reviewer",
+        firing_id="fire-1",
+        timeout=30,
+        sandbox="read-only",
+    )
+
+    assert out.success is True
+    assert out.result_text == "Codex review body"
+    assert out.session_id == "codex-session-1"
+    assert out.raw["tokens_used"] == 1234
+    assert out.raw["sandbox"] == "read-only"
+    assert Path(out.raw["stdout_path"]).read_text().startswith("session id:")
+    assert out.raw["last_message_path"].endswith("fire-1.last.md")
+
+
+def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch):
+    import agent_runner as ar
+
+    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+        return subprocess.CompletedProcess(
+            cmd,
+            1,
+            stdout="",
+            stderr="ERROR: You've hit your usage limit. Try again later.",
+        )
+
+    monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", tmp_path / "codex")
+    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+
+    out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
+
+    assert out.success is False
+    assert out.subtype == "error_rate_limit"
+    assert out.stop_reason == "error"
+
+
+def test_get_tier_from_labels_accepts_codex():
+    import agent_runner as ar
+
+    assert ar.get_tier_from_labels([{"name": "llm-tier:codex"}]) == "codex"
 
 
 # ---------- Slack severity routing ----------
