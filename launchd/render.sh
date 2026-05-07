@@ -32,15 +32,29 @@ TEMPLATE="$SCRIPT_DIR/_template.plist"
 CONF="$SCRIPT_DIR/agents.conf"
 OUT_DIR="${1:-$SCRIPT_DIR/_generated}"
 
-if [[ ! -f "$CONF" && -f "$SCRIPT_DIR/agents.conf.example" ]]; then
-  echo "render.sh: no agents.conf found; using agents.conf.example (copy it to agents.conf for a real fleet)" >&2
-  CONF="$SCRIPT_DIR/agents.conf.example"
+if [[ ! -f "$CONF" ]]; then
+  echo "render.sh: agents.conf not found at $CONF" >&2
+  echo "render.sh: copy agents.conf.example to agents.conf and edit it before running deploy.sh." >&2
+  exit 1
 fi
 
 : "${HERMES_HOME:=$HOME/.hermes}"
 : "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/Workspace}}"
 
-JAVA_HOME_DEFAULT="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+# Detect openjdk@21 install path at render time so this works across
+# Apple Silicon (`/opt/homebrew`), Intel Macs (`/usr/local`), and Linux
+# Homebrew (`/home/linuxbrew/.linuxbrew`). Fall back to a sensible default
+# if `brew` is missing entirely.
+if command -v brew >/dev/null 2>&1; then
+  JAVA_BREW_PREFIX="$(brew --prefix openjdk@21 2>/dev/null || true)"
+else
+  JAVA_BREW_PREFIX=""
+fi
+if [[ -n "$JAVA_BREW_PREFIX" ]]; then
+  JAVA_HOME_DEFAULT="$JAVA_BREW_PREFIX/libexec/openjdk.jdk/Contents/Home"
+else
+  JAVA_HOME_DEFAULT="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+fi
 JAVA_BIN="$JAVA_HOME_DEFAULT/bin"
 FNM_BIN="$HOME/.local/share/fnm/aliases/default/bin"
 LOCAL_BIN="$HOME/.local/bin"

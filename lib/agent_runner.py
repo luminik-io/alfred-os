@@ -1085,7 +1085,7 @@ def codex_invoke(
     prompt: str,
     *,
     workdir: Path,
-    agent: str = "codex",
+    agent: str,
     firing_id: str | None = None,
     timeout: int = 1200,
     model: str | None = None,

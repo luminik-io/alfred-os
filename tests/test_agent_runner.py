@@ -282,6 +282,7 @@ def test_codex_invoke_rejects_unsupported_claude_controls():
     out = ar.codex_invoke(
         "review",
         workdir=Path("/tmp"),
+        agent="reviewer",
         allowed_tools="Read",
         max_turns=5,
         resume_session="abc",
@@ -346,7 +347,7 @@ def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch)
     monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", tmp_path / "codex")
     monkeypatch.setattr(ar.subprocess, "run", fake_run)
 
-    out = ar.codex_invoke("review", workdir=tmp_path, firing_id="fire-1")
+    out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
 
     assert out.success is False
     assert out.subtype == "error_rate_limit"

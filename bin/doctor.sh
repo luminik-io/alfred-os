@@ -42,7 +42,21 @@ prepend_path_if_dir() {
 
 LOCAL_BIN="$HOME/.local/bin"
 FNM_BIN="$HOME/.local/share/fnm/aliases/default/bin"
-JAVA_BIN="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin"
+
+# Detect openjdk@21 path via brew so this works on both Apple Silicon
+# (`/opt/homebrew`) and Intel Macs (`/usr/local`). Fall back gracefully
+# when brew isn't installed.
+if command -v brew >/dev/null 2>&1; then
+  JAVA_BREW_PREFIX="$(brew --prefix openjdk@21 2>/dev/null || true)"
+else
+  JAVA_BREW_PREFIX=""
+fi
+if [ -n "$JAVA_BREW_PREFIX" ]; then
+  JAVA_BIN="$JAVA_BREW_PREFIX/libexec/openjdk.jdk/Contents/Home/bin"
+else
+  JAVA_BIN="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin"
+fi
+
 prepend_path_if_dir "$LOCAL_BIN"
 prepend_path_if_dir "$FNM_BIN"
 prepend_path_if_dir "$JAVA_BIN"

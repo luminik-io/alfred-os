@@ -17,7 +17,7 @@ The fleet runs on a single always-on macOS host. A Mac Mini works. An old laptop
 | Node via fnm | Frontend pre-push checks; `claude` CLI lives under fnm by default in this repo | `brew install fnm && fnm install --lts` |
 | `git` 2.40+ | Worktree commands the agents lean on | `brew install git` |
 | `gh` (GitHub CLI) | Every agent uses `gh issue` / `gh pr` | `brew install gh && gh auth login` |
-| `aws` (AWS CLI v2) | Huntress, Oracle, the Slack webhook fetch | `brew install awscli` |
+| `aws` (AWS CLI v2) | AWS-touching agents and the Slack webhook fetch | `brew install awscli` |
 | `claude` (Anthropic Claude Code CLI) | The actual code-writing engine | See [Anthropic docs](https://docs.anthropic.com/claude/docs/claude-code) |
 | Anthropic Claude Pro or Max subscription | Pays for agent turns; no API key required | claude.ai/upgrade |
 
@@ -47,17 +47,17 @@ All framework paths are env-driven via `HERMES_HOME` and `WORKSPACE_ROOT`. No so
 
 The operator's SSO chain is never used by cron. Every AWS-touching agent gets its own scoped IAM user.
 
-Create the user (one-time, in the AWS console or via CloudFormation), then write its access keys to `~/.aws/credentials` under a named profile. Example for Huntress:
+Create the user (one-time, in the AWS console or via CloudFormation), then write its access keys to `~/.aws/credentials` under a named profile. Example for an agent codenamed `<your-cron-iam-user>`:
 
 ```ini
 # ~/.aws/credentials
-[huntress-cron]
+[<your-cron-iam-user>]
 aws_access_key_id = AKIA...
 aws_secret_access_key = ...
 region = us-east-1
 ```
 
-Inline IAM policy (Huntress reads only the staging E2E test credentials):
+Inline IAM policy (example: read only specific secrets the agent needs):
 
 ```json
 {
@@ -67,21 +67,21 @@ Inline IAM policy (Huntress reads only the staging E2E test credentials):
       "Effect": "Allow",
       "Action": ["secretsmanager:GetSecretValue"],
       "Resource": [
-        "arn:aws:secretsmanager:us-east-1:*:secret:e2e/staging/test-user-*",
-        "arn:aws:secretsmanager:us-east-1:*:secret:slack/staging/internal-webhook-url-*"
+        "arn:aws:secretsmanager:us-east-1:*:secret:<your/secret/path>-*",
+        "arn:aws:secretsmanager:us-east-1:*:secret:<your/webhook/path>-*"
       ]
     }
   ]
 }
 ```
 
-Oracle's policy is similar but read-only across ECS, ALB, and CloudWatch logs/metrics, no `secretsmanager:*`. Adjust per agent.
+A read-only-monitoring agent's policy will look different, e.g. ECS, ALB, and CloudWatch read perms with no `secretsmanager:*`. Adjust per agent.
 
 Each agent's prompt invokes `aws` like this so the credentials chain prefers the dedicated profile over any ambient SSO env vars:
 
 ```sh
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN \
-    -u AWS_SECURITY_TOKEN AWS_PROFILE=huntress-cron aws ...
+    -u AWS_SECURITY_TOKEN AWS_PROFILE=<your-cron-iam-user> aws ...
 ```
 
 The `env -u` calls strip any operator SSO leakage; `AWS_PROFILE` then forces the scoped profile.
@@ -142,7 +142,7 @@ Expected output:
   - my.fleet.nightwing
   - my.fleet.rasalghul
   - my.fleet.bane
-  - my.fleet.huntress
+  - my.fleet.nightowl
   ...
 [deploy] active jobs:
 -	0	my.fleet.lucius
@@ -172,7 +172,7 @@ doctor: checking agents under /Users/<you>/.hermes/bin
   my-deps-bot                    ✅ ok
   ...
   drake                          ✅ ok
-  huntress                       ✅ ok
+  nightowl                       ✅ ok
   lucius                         ✅ ok
   ...
 
@@ -225,9 +225,9 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
 
 **`codex: command not found` in the launchd log.** Rerun `deploy.sh` after installing Codex. If `codex` is visible in your interactive shell, deploy links it into `~/.local/bin/codex`, which the renderer adds to launchd PATH. Otherwise set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
 
-**Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id slack/staging/internal-webhook-url --region us-east-1` against the agent's profile (`AWS_PROFILE=huntress-cron`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.hermes/state/slack-webhook.cache`.
+**Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id <your/webhook/path> --region us-east-1` against the agent's profile (`AWS_PROFILE=<your-cron-iam-user>`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.hermes/state/slack-webhook.cache`.
 
-**`AccessDeniedException` from AWS.** The agent is using the wrong profile. Confirm `~/.aws/credentials` has the named profile and that the agent's prompt uses `env -u ... AWS_PROFILE=<agent>-cron`. The operator's SSO env vars beat profiles in the AWS credential chain. The `env -u` strips them.
+**`AccessDeniedException` from AWS.** The agent is using the wrong profile. Confirm `~/.aws/credentials` has the named profile and that the agent's prompt uses `env -u ... AWS_PROFILE=<your-cron-iam-user>`. The operator's SSO env vars beat profiles in the AWS credential chain. The `env -u` strips them.
 
 **Plist not loading.** `launchctl bootstrap` is silent on success and noisy on failure. Run it manually with the full path:
 ```sh

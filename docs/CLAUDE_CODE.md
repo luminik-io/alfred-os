@@ -24,7 +24,7 @@ Environment overrides:
 
 ```sh
 CODEX_BIN=$HOME/.local/bin/codex
-CODEX_MODEL=gpt-5.4
+CODEX_MODEL=<your-model-id>
 CODEX_SANDBOX=read-only
 CODEX_APPROVAL_POLICY=never
 ```
@@ -112,17 +112,17 @@ hermes-claude primary
 
 ## CLAUDE_BIN env var
 
-If `claude` isn't on the PATH that launchd inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`:
+If `claude` isn't on the PATH that launchd inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/claude` over an fnm-managed path:
 
 ```sh
-CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
+CLAUDE_BIN=$HOME/.local/bin/claude
 ```
 
-The framework's `claude_invoke()` uses `CLAUDE_BIN` if set, otherwise `claude` from PATH. Get the right path:
+`deploy.sh` links the interactive-shell `claude` binary into `~/.local/bin/claude` when one exists, mirroring the Codex setup, so launchd-rendered plists pick it up via `~/.local/bin` on PATH. The framework's `claude_invoke()` uses `CLAUDE_BIN` if set, otherwise `claude` from PATH. Get the right path:
 
 ```sh
 which claude
-# → /Users/you/.local/share/fnm/aliases/default/bin/claude
+# → /Users/you/.local/bin/claude (if symlinked) or .../fnm/aliases/.../bin/claude
 ```
 
 ## Cost vs token-API mental model
