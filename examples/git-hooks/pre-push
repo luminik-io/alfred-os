@@ -51,7 +51,7 @@ fi
 # stdin: <local-ref> <local-sha> <remote-ref> <remote-sha> per pushed branch
 exit_code=0
 issues_seen=()
-while read -r local_ref local_sha remote_ref remote_sha; do
+while read -r _local_ref local_sha _remote_ref remote_sha; do
   # Skip branch deletions (local_sha is all zeros)
   if [[ "$local_sha" =~ ^0+$ ]]; then
     continue

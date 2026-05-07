@@ -56,6 +56,8 @@ Every codename is operator-customisable at install time. Default Batman names; r
 #### Project hygiene
 
 - CI: `pytest` (3.11 / 3.12 / 3.13) + `ruff check` + `ruff format --check` + `mypy lib/` + `shellcheck` + `python-syntax` + `scrub-check` (refuses known-private patterns).
+- `bin/scrub-check.sh`: reusable local + CI scrub scan for host-private paths, fleet identifiers, Slack tokens/webhooks, and AWS access key IDs.
+- `docs/RELEASE_CHECKLIST.md`: public release checklist with pre-tag gates, scrub requirements, and GitHub Release flow.
 - Release automation: tag → GitHub release with auto-extracted changelog notes + brew-formula sha256 echoed to logs.
 - `Formula/alfred-os.rb`: Homebrew formula skeleton.
 - `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, issue templates, PR template, `dependabot.yml`, `pyproject.toml` (ruff + mypy), `.pre-commit-config.yaml`.
@@ -66,6 +68,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - `STANDARD_LABELS` includes the lifecycle labels; consumers no longer need to extend it for the state machine to work.
 - Per-repo configuration loaded from `~/.alfredrc.d/<codename>.toml` via stdlib `tomllib` (was PyYAML; PyYAML is not stdlib and shouldn't be required for a fresh install).
 - Doctor mode runs before env-config IDLE checks across all 12 agents — `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred init`.
+- `bin/doctor.sh` now falls back to the in-repo `bin/` and `lib/` paths before deploy, so a clean checkout can self-check without a pre-existing `$HERMES_HOME`.
 - All docs voice-swept: removed audience-marketing intros, outcome-fantasy framing, hire/replace framing, LLM filler vocab, marketing emoji, sign-offs, vanity stats, em-dashes. ~210 lines of marketing prose deleted across 39 files; technical content preserved.
 
 ### Removed

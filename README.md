@@ -7,7 +7,7 @@
 ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-A framework for cron-driven Claude Code agents on a single Mac. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide poison pill on rate-limit.
+A framework for cron-driven Claude Code-first agents on a single Mac, with optional Codex routing for review-style work. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide poison pill on rate-limit.
 
 Docs site: https://luminik-io.github.io/alfred-os
 Reference fleet (full production application): [`luminik-io/alfred`](https://github.com/luminik-io/alfred)
@@ -29,7 +29,7 @@ launchd plist (every N min)
 ${HERMES_HOME}/bin/<codename>.py    one file per agent
    │
    ▼
-agent_runner module                 lock + preflight + spend + claude_invoke + gh + slack
+agent_runner module                 lock + preflight + spend + claude/codex invoke + gh + slack
    │
    ▼
 claude -p '<prompt>' --max-turns N  the LLM work, in a fresh subprocess
@@ -62,7 +62,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first cron firin
 
 | Path | What it is |
 |---|---|
-| [`lib/agent_runner.py`](lib/agent_runner.py) | Shared library. Preflight, lock, spend, claude_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, slack severity routing. |
+| [`lib/agent_runner.py`](lib/agent_runner.py) | Shared library. Preflight, lock, spend, claude_invoke, codex_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, slack severity routing. |
 | [`bin/`](bin/) | Operator helpers: `doctor.sh` (host validator), `hermes-claude` (two-account swap). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
 | [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${HERMES_HOME}`, render plists, bootstrap `launchd`. |
@@ -88,6 +88,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first cron firin
 - [Linux](docs/LINUX.md): current macOS-only stance + interim cron / systemd patterns.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md): private-disclosure process.
+- [Release checklist](docs/RELEASE_CHECKLIST.md): pre-tag gates, scrub scan, GitHub Release flow.
 
 Rendered version: https://luminik-io.github.io/alfred-os/.
 
@@ -104,7 +105,7 @@ See [Architecture → Codename pattern](https://luminik-io.github.io/alfred-os/c
 - ❌ Multi-tenant. Single operator, one Mac, one config.
 - ❌ A web UI. Slack is the human surface.
 - ❌ Long-running orchestration loops. Cron is the orchestrator.
-- ❌ LLM routing / model selection at the framework layer. Claude Code already handles model picking; alfred-os invokes the CLI.
+- ❌ Hosted model gateways. alfred-os shells out to local CLIs (`claude`, optional `codex`, optional Ollama); it does not run a multi-tenant inference gateway.
 - ❌ Browser automation runtimes. If your fleet needs a browser, install Playwright in your codename agent's bin script.
 - ❌ Vector databases for memory. The reference fleet uses a doc-shaped memory layer (gbrain). Alfred-OS doesn't ship one; that's a per-fleet decision.
 - ❌ Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing in alfred-os.

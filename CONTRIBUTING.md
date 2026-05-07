@@ -60,3 +60,5 @@ No formal test suite. The runtime is short enough to read end-to-end. Production
 ## OSS-readiness pass
 
 Open thread. State of the cleanup is tracked. If you spot something that needs fixing (a hardcoded host-specific path, a doc that points at a private URL, a stale TODO), open a small PR rather than asking. Drive-by fixes are the easiest contribution to land.
+
+Before opening a release PR, run `bash bin/scrub-check.sh` locally and follow [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). The scrub check is also wired into CI.

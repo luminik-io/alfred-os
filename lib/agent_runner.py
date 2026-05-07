@@ -9,6 +9,7 @@ Provides the primitives every codename agent needs:
 - ``is_globally_blocked()`` / ``set_global_block()`` — fleet-wide rate-limit poison pill.
 - ``run()`` / ``gh_json()`` — `subprocess` wrappers with sane defaults and clear errors.
 - ``claude_invoke()`` — call ``claude -p`` and parse the structured result.
+- ``codex_invoke()`` — optional ``codex exec`` subprocess for review-style tasks.
 - ``make_worktree()`` / ``remove_worktree()`` — per-firing git-worktree isolation.
 - ``slack_post()`` — webhook-based Slack notification with disk caching.
 - ``ensure_labels()`` / ``gh_pr_create()`` / ``gh_issue_*()`` — gh CLI wrappers.
@@ -16,8 +17,9 @@ Provides the primitives every codename agent needs:
 Consumers (e.g. luminik-io/alfred) write a thin ``bin/<codename>.py`` per
 agent that imports from this module, declares a ``PreflightSpec``, and calls
 ``claude_invoke()``. The runner does no LLM-orchestration work itself; all
-real work happens inside the ``claude -p`` subprocess against the operator's
-Claude Code subscription (or any other ``CLAUDE_BIN`` they configure).
+real work happens inside a CLI subprocess against the operator's configured
+Claude Code subscription, optional Codex login, or any wrapper binary they
+configure.
 
 Path defaults assume a single macOS host. ``HERMES_HOME`` defaults to
 ``~/.hermes`` and ``WORKSPACE_ROOT`` to ``~/Workspace``; both are env-var
@@ -57,6 +59,8 @@ from typing import Any
 #                       whatever is on $PATH; override only if you have a
 #                       non-standard install. Set to a fully-qualified path
 #                       on hosts without `claude` on PATH (e.g., launchd).
+#   CODEX_BIN         - absolute path to the `codex` CLI. Defaults to
+#                       whatever is on $PATH. Only used by llm-tier:codex.
 # --------------------------------------------------------------------------
 HOME = Path(os.path.expanduser("~"))
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
@@ -93,6 +97,11 @@ TRANSCRIPTS_ROOT = STATE_ROOT / "transcripts"
 PROMPTS_ROOT = HERMES_HOME / "prompts"
 
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
+CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
+CODEX_DEFAULT_MODEL = os.environ.get("CODEX_MODEL", "").strip() or None
+CODEX_DEFAULT_SANDBOX = os.environ.get("CODEX_SANDBOX", "read-only").strip() or "read-only"
+CODEX_APPROVAL_POLICY = os.environ.get("CODEX_APPROVAL_POLICY", "never").strip() or "never"
+CODEX_TRANSCRIPTS_ROOT = STATE_ROOT / "codex"
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"
 SLACK_WEBHOOK_CACHE_TTL = 7 * 24 * 3600  # 7 days; the webhook URL itself is stable
 
@@ -1042,6 +1051,207 @@ def transcript_path(agent: str, firing_id: str) -> Path:
     return TRANSCRIPTS_ROOT / agent / month / f"{firing_id}.jsonl"
 
 
+def codex_artifact_paths(agent: str, firing_id: str) -> dict[str, Path]:
+    """Canonical artifact paths for a non-interactive Codex run."""
+    month = datetime.now(UTC).strftime("%Y-%m")
+    directory = CODEX_TRANSCRIPTS_ROOT / agent / month
+    directory.mkdir(parents=True, exist_ok=True)
+    return {
+        "last_message": directory / f"{firing_id}.last.md",
+        "stdout": directory / f"{firing_id}.stdout.txt",
+        "stderr": directory / f"{firing_id}.stderr.txt",
+    }
+
+
+def _extract_codex_session_id(text: str) -> str | None:
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("session id:"):
+            return stripped.split(":", 1)[1].strip() or None
+    return None
+
+
+def _extract_codex_tokens(text: str) -> int:
+    lines = [line.strip() for line in (text or "").splitlines()]
+    for idx, line in enumerate(lines):
+        if line == "tokens used" and idx + 1 < len(lines):
+            raw = lines[idx + 1].replace(",", "")
+            if raw.isdigit():
+                return int(raw)
+    return 0
+
+
+def codex_invoke(
+    prompt: str,
+    *,
+    workdir: Path,
+    agent: str,
+    firing_id: str | None = None,
+    timeout: int = 1200,
+    model: str | None = None,
+    sandbox: str | None = None,
+    approval_policy: str | None = None,
+    add_dirs: list[Path] | None = None,
+    allowed_tools: str | None = None,
+    max_turns: int | None = None,
+    resume_session: str | None = None,
+) -> ClaudeResult:
+    """Invoke ``codex exec`` non-interactively and return a ClaudeResult shape.
+
+    Codex does not expose Claude's tool allow-list, max-turn, or resume-session
+    semantics. The wrapper rejects those kwargs instead of implying they were
+    enforced. Default posture is review-safe: read-only sandbox and no approval
+    prompts.
+    """
+    unsupported = {
+        "allowed_tools": allowed_tools,
+        "max_turns": max_turns,
+        "resume_session": resume_session,
+    }
+    rejected = [name for name, value in unsupported.items() if value is not None]
+    if rejected:
+        return ClaudeResult(
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
+            stop_reason="error",
+            error_message=(
+                "codex engine does not support kwargs: "
+                + ", ".join(rejected)
+                + ". Use sandbox/approval controls, or route this prompt to Claude."
+            ),
+        )
+
+    if firing_id is None:
+        import secrets
+
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        firing_id = f"{stamp}-{secrets.token_hex(2)}"
+
+    paths = codex_artifact_paths(agent, firing_id)
+    cmd = [
+        CODEX_BIN,
+        "exec",
+        "--cd",
+        str(workdir),
+        "--sandbox",
+        sandbox or CODEX_DEFAULT_SANDBOX,
+        "-c",
+        f'approval_policy="{approval_policy or CODEX_APPROVAL_POLICY}"',
+        "--output-last-message",
+        str(paths["last_message"]),
+    ]
+    chosen_model = model or CODEX_DEFAULT_MODEL
+    if chosen_model:
+        cmd.extend(["--model", chosen_model])
+    for directory in add_dirs or []:
+        cmd.extend(["--add-dir", str(directory)])
+    cmd.append("-")
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt,
+            cwd=str(workdir),
+            timeout=timeout,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as e:
+        return ClaudeResult(
+            success=False,
+            subtype="parse-failed",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=str(e),
+            raw={},
+            stop_reason="error",
+            error_message=f"codex CLI not found: {e}",
+        )
+    except subprocess.TimeoutExpired as e:
+        return ClaudeResult(
+            success=False,
+            subtype="error_timeout",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=str(e.stdout or ""),
+            raw={},
+            stop_reason="error",
+            error_message=f"codex_invoke exceeded {timeout}s",
+        )
+
+    stdout = proc.stdout or ""
+    stderr = proc.stderr or ""
+    with contextlib.suppress(OSError):
+        paths["stdout"].write_text(stdout)
+        paths["stderr"].write_text(stderr)
+
+    try:
+        result_text = paths["last_message"].read_text().strip()
+    except OSError:
+        result_text = ""
+    if not result_text:
+        lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+        result_text = lines[-1] if lines else ""
+
+    combined = f"{stdout}\n{stderr}"
+    raw = {
+        "engine": "codex",
+        "returncode": proc.returncode,
+        "stdout_path": str(paths["stdout"]),
+        "stderr_path": str(paths["stderr"]),
+        "last_message_path": str(paths["last_message"]),
+        "tokens_used": _extract_codex_tokens(combined),
+        "model": chosen_model,
+        "sandbox": sandbox or CODEX_DEFAULT_SANDBOX,
+    }
+    session_id = _extract_codex_session_id(combined)
+    if proc.returncode != 0:
+        tail = (stderr or stdout or "").strip()[-1000:]
+        subtype = "error_rate_limit" if "usage limit" in tail.lower() else "error"
+        return ClaudeResult(
+            success=False,
+            subtype=subtype,
+            num_turns=1,
+            cost_usd=0.0,
+            session_id=session_id,
+            result_text=result_text or tail,
+            raw=raw,
+            stop_reason="error",
+            error_message=tail or f"codex exited {proc.returncode}",
+        )
+    if not result_text:
+        return ClaudeResult(
+            success=False,
+            subtype="parse-failed",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id=session_id,
+            result_text=stderr or stdout,
+            raw=raw,
+            stop_reason="error",
+            error_message="codex produced no final message",
+        )
+
+    return ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=session_id,
+        result_text=result_text,
+        raw=raw,
+        stop_reason="end_turn",
+        error_message=None,
+    )
+
+
 # ---------- gh CLI helpers ----------
 
 
@@ -1874,12 +2084,14 @@ def best_of_n(
 # Aliases (opus / sonnet / haiku) are passed straight through to
 # `claude --model`. The CLI resolves them to the latest dated model so
 # we don't drift on stale IDs every release. The "local" tier is routed
-# to Ollama running on the host (qwen2.5:3b-instruct-q4_K_M).
+# to Ollama running on the host (qwen2.5:3b-instruct-q4_K_M). The "codex"
+# tier is routed to `codex exec` and is best suited to read-only review.
 TIER_TO_MODEL = {
     "opus": "opus",
     "sonnet": "sonnet",
     "haiku": "haiku",
     "local": None,  # routed to Ollama, see _ollama_invoke
+    "codex": None,  # routed to codex_invoke
 }
 
 OLLAMA_HOST = "http://localhost:11434"
@@ -2055,13 +2267,15 @@ def _ollama_invoke(prompt: str, **kw) -> ClaudeResult:
 def route_llm(tier: str, prompt: str, **kw) -> ClaudeResult:
     """Route a prompt to the right model based on tier.
 
-    ``tier`` in {"opus", "sonnet", "haiku", "local"}. Unknown tiers
+    ``tier`` in {"opus", "sonnet", "haiku", "local", "codex"}. Unknown tiers
     fall back to sonnet so a typo in a label can't take an agent down.
     All extra kwargs are forwarded to the underlying invoker.
 
     For ``local``, ensures the Ollama daemon is up before dispatching so
     a cold host does not produce a misleading ``ollama not running``
     failure on the first call."""
+    if tier == "codex":
+        return codex_invoke(prompt, **kw)
     if tier == "local":
         if not start_ollama_if_needed():
             return ClaudeResult(

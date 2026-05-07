@@ -29,6 +29,10 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | `WORKSPACE_ROOT` | `agent_runner.WORKSPACE = WORKSPACE_ROOT/product` | `$HOME/Workspace` |
 | `LUMINIK_WORKSPACE` | back-compat alias for `WORKSPACE_ROOT` | (deprecated) |
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
+| `CODEX_BIN` | `agent_runner.codex_invoke` | `codex` (PATH) |
+| `CODEX_MODEL` | optional model override for `codex exec` | (Codex default) |
+| `CODEX_SANDBOX` | `codex exec --sandbox` | `read-only` |
+| `CODEX_APPROVAL_POLICY` | `codex exec -c approval_policy=...` | `never` |
 
 ## Slack
 

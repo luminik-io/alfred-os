@@ -3,7 +3,7 @@ title: Claude Code
 description: Install, Pro vs Max sizing, two-account swap, troubleshooting.
 ---
 
-Alfred-OS runs every agent as a `claude -p` subprocess. The framework is the harness, Claude Code is the brain.
+Alfred-OS runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. Codex can be enabled as an optional review engine.
 
 Full guide at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md). Highlights:
 
@@ -55,6 +55,19 @@ If `claude` isn't on the PATH that `launchd` inherits, set the absolute path in 
 CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
 ```
 
+## Optional Codex
+
+Set `CODEX_BIN` if `codex` is not on the `launchd` PATH. `codex_invoke()` defaults to a read-only sandbox and writes artifacts under `$HERMES_HOME/state/codex/`.
+
+```sh
+CODEX_BIN=$HOME/.local/bin/codex
+CODEX_MODEL=gpt-5.4
+CODEX_SANDBOX=read-only
+CODEX_APPROVAL_POLICY=never
+```
+
+`deploy.sh` links an interactive-shell `codex` binary into `~/.local/bin/codex` when one exists. Rendered launchd plists include `~/.local/bin` in PATH.
+
 ## Cost mental model
 
 The Anthropic subscription model does not pass through token costs. The fleet is bounded by the weekly turn quota, not USD-per-token. Spend caps in `SpendState` are runaway-loop safety rails, not bill-tracking.
@@ -66,5 +79,6 @@ A Max-subscription fleet shipping 10-20 PRs a day costs $100-200/mo flat. Same a
 Full list at [`docs/CLAUDE_CODE.md#troubleshooting`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md#troubleshooting). Most common:
 
 - `claude: command not found` from `launchd`: set `CLAUDE_BIN`.
+- `codex: command not found` from `launchd`: rerun `deploy.sh` after installing Codex, or set `CODEX_BIN`.
 - `error_rate_limit` immediately on every firing: cap blown, swap accounts or wait.
 - `error_max_turns` on every firing of one agent: tighten scope or widen the budget in that agent's runner.

@@ -48,6 +48,18 @@ if [ -f "$HERMES_BIN/hermes-claude" ]; then
   echo "[alfred-os/deploy] linked hermes-claude → $LOCAL_BIN/hermes-claude"
 fi
 
+# Some GUI-installed CLIs, notably Codex.app on macOS, live outside the
+# launchd PATH even though the interactive shell can resolve them. If the
+# operator already has codex on the interactive PATH, expose it through
+# ~/.local/bin so rendered plists and doctor.sh resolve it consistently.
+if command -v codex >/dev/null 2>&1; then
+  CODEX_SOURCE="$(command -v codex)"
+  if [ "$CODEX_SOURCE" != "$LOCAL_BIN/codex" ]; then
+    ln -sfn "$CODEX_SOURCE" "$LOCAL_BIN/codex"
+  fi
+  echo "[alfred-os/deploy] linked codex → $LOCAL_BIN/codex"
+fi
+
 # doctor.sh ships into HERMES_BIN via the bin/ copy loop above. Consumer
 # repos can wrap it with their own env defaults; alfred-os itself does
 # NOT install a user-facing symlink — that's the consumer's choice.

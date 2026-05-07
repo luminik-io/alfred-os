@@ -10,7 +10,7 @@ Full doc at [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/
 ## What works on Linux today
 
 - `lib/agent_runner.py`: every primitive runs unchanged.
-- `tests/`: `pytest` runs the full 35-case suite.
+- `tests/`: `pytest` runs the full test suite.
 - `bin/doctor.sh`, `bin/hermes-claude`: work.
 - `examples/bin/label_state.py`, `examples/git-hooks/pre-push`: work.
 
@@ -23,7 +23,7 @@ Full doc at [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/
 
 ### Option 1: cron + a wrapper script
 
-```cron
+```text
 */20 * * * * /usr/bin/env HERMES_HOME=$HOME/.hermes WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
 ```
 

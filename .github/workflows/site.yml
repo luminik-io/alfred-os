@@ -28,11 +28,11 @@ jobs:
     name: Build (Astro)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "20" 
+          node-version: "22.12.0"
 
       - name: Install dependencies
         working-directory: site
@@ -45,15 +45,17 @@ jobs:
           ALFRED_OS_SITE_BASE: ${{ vars.ALFRED_OS_SITE_BASE || '/alfred-os' }}
         run: npm run build
 
+      # Keep Pages publishing disabled while alfred-os is still private launch prep.
+      # Set repo variable ALFRED_OS_PUBLISH_PAGES=true when the site is ready to publish.
       - name: Upload Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site/dist
 
   deploy:
     name: Deploy to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -61,4 +63,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

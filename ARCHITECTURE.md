@@ -174,13 +174,13 @@ Every AWS-touching cron has its own IAM user with a least-privilege inline polic
 The operator's SSO chain is never used by cron. Two reasons:
 
 1. **SSO sessions expire.** A 12-hour SSO token elapsing at 22:00 takes down everything that depends on it. Scoped IAM access keys do not expire.
-2. **Blast radius.** If a Lucius prompt-injection were to coax an `aws s3 rm --recursive` out of `claude -p`, the resulting access scope is whatever was authenticated. The operator's SSO chain has full admin. `huntress-cron` has read on two secrets.
+2. **Blast radius.** If a Lucius prompt-injection were to coax an `aws s3 rm --recursive` out of `claude -p`, the resulting access scope is whatever was authenticated. The operator's SSO chain has full admin. A scoped `<your-codename>-cron` IAM user has read on a handful of secrets.
 
 Each agent's prompt invokes `aws` with explicit env-stripping:
 
 ```sh
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN \
-    -u AWS_SECURITY_TOKEN AWS_PROFILE=huntress-cron aws ...
+    -u AWS_SECURITY_TOKEN AWS_PROFILE=<your-codename>-cron aws ...
 ```
 
 Env vars beat profiles in the AWS credential chain, so any leaked `AWS_*` from the operator's shell would override the profile silently. The `env -u` strips them.
