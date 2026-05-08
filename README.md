@@ -7,10 +7,16 @@
 ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-A framework for cron-driven Claude Code-first agents on a single Mac, with optional Codex routing for review-style work. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide poison pill on rate-limit.
+A local engineering-fleet layer for Hermes: cron-driven Claude Code-first agents on a single Mac, with optional Codex routing for review-style work. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide poison pill on rate-limit.
 
 Docs site: https://luminik-io.github.io/alfred-os
 Reference fleet (full production application): [`luminik-io/alfred`](https://github.com/luminik-io/alfred)
+
+## Relationship to Hermes
+
+alfred-os is not a hosted model gateway and not a replacement for Hermes. It is an opinionated extension layer for operators who already want Hermes-style local agent infrastructure, but need a concrete engineering fleet: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards.
+
+Hermes should own generic platform concerns such as auth, model/provider routing, fallback, MCP, skills, memory, gateway, and dashboard. alfred-os owns the repeatable fleet pattern above that platform. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
 ## Design notes
 
@@ -32,7 +38,11 @@ ${HERMES_HOME}/bin/<codename>.py    one file per agent
 agent_runner module                 lock + preflight + spend + claude/codex invoke + gh + slack
    │
    ▼
-claude -p '<prompt>' --max-turns N  the LLM work, in a fresh subprocess
+claude -p '<prompt>' --max-turns N    the LLM work, in a fresh subprocess
+                                      N is the caller's value or the
+                                      framework default ("effectively
+                                      unlimited"); the wall-clock
+                                      timeout is the real ceiling
    │
    ▼
 slack_post('<result>', severity=…)  report to the fleet's Slack channel
