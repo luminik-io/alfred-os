@@ -161,3 +161,33 @@ def test_env_int_clamps_in_range(monkeypatch) -> None:
         agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=5000, minimum=100, maximum=8000)
         == 100
     )
+
+
+def test_env_int_clamps_out_of_range_default(monkeypatch) -> None:
+    """An out-of-range ``default`` must be clamped too — the safety
+    guarantee is unconditional. Codex P2 review (PR #13): the unset /
+    unparseable paths previously returned ``default`` as-is, defeating
+    the clamp the docstring promises.
+    """
+    monkeypatch.delenv("ALFRED_LUCIUS_TURN_CAP", raising=False)
+    # Default above maximum: must be clamped to maximum.
+    assert (
+        agent_runner.env_int(
+            "ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000
+        )
+        == 8000
+    )
+    # Default below minimum: must be clamped to minimum.
+    assert (
+        agent_runner.env_int("ALFRED_LUCIUS_TURN_CAP", default=1, minimum=100, maximum=8000)
+        == 100
+    )
+
+    # Same protection on the unparseable path.
+    monkeypatch.setenv("ALFRED_LUCIUS_TURN_CAP", "garbage")
+    assert (
+        agent_runner.env_int(
+            "ALFRED_LUCIUS_TURN_CAP", default=99999, minimum=100, maximum=8000
+        )
+        == 8000
+    )

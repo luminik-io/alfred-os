@@ -200,16 +200,20 @@ def env_int(name: str, default: int, *, minimum: int = 1, maximum: int | None = 
     """Read a small integer knob from env without letting bad values break cron.
 
     Missing / non-integer values fall back to ``default``. Result is always
-    clamped to the ``[minimum, maximum]`` range so a typo in the launchd
-    plist can't kneecap or unbound a per-firing budget.
+    clamped to the ``[minimum, maximum]`` range — including the fallback
+    path — so a typo in the launchd plist can't kneecap or unbound a
+    per-firing budget. A caller that supplies an out-of-range ``default``
+    (e.g. ``default`` above ``maximum``) gets the clamped value, not the
+    raw default; the safety guarantee is unconditional.
     """
     raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        return default
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = default
+    else:
+        value = default
     value = max(minimum, value)
     if maximum is not None:
         value = min(maximum, value)
