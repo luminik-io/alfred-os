@@ -27,6 +27,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     make_worktree,
+    optional_env_int,
     preflight,
     release_issue,
     remove_worktree,
@@ -330,11 +331,20 @@ def main() -> int:
     debug_dir = Path(f"/tmp/{AGENT}-debug-{issue_num}-{int(__import__('time').time())}")
     debug_dir.mkdir(exist_ok=True)
     (debug_dir / "prompt.txt").write_text(prompt)
+    # Per-firing turn cap intentionally unset by default. The previous
+    # hard ceiling on ``max_turns`` could produce no-output runs on
+    # cross-file work where Lucius needs to read context, edit, and run
+    # pre-push checks. The wall-clock ``timeout`` below is the only real
+    # ceiling now; ``claude_invoke`` translates a ``None`` cap to
+    # ``--max-turns _CLAUDE_UNLIMITED_TURNS`` so the CLI's hidden 40-
+    # turn default cannot kick in. ``ALFRED_LUCIUS_MAX_TURNS`` exists
+    # as an emergency / debug knob; ``optional_env_int`` clamps it to
+    # a sensible floor.
     result = claude_invoke(
         prompt,
         workdir=wt,
         allowed_tools="Read,Edit,Write,Bash,Grep",
-        max_turns=200,
+        max_turns=optional_env_int("ALFRED_LUCIUS_MAX_TURNS", minimum=40),
         timeout=2400,  # 40 min cap; compile + claude can stretch
     )
     import json as _json

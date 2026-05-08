@@ -35,6 +35,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     make_worktree_from_branch,
+    optional_env_int,
     preflight,
     remove_worktree,
     run,
@@ -352,7 +353,7 @@ def main() -> int:
             prompt,
             workdir=wt,
             allowed_tools="Read,Edit,Bash,Grep",
-            max_turns=25,
+            max_turns=optional_env_int("ALFRED_NIGHTWING_MAX_TURNS", minimum=25),
             timeout=600,
         )
         total_turns += result.num_turns

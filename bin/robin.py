@@ -26,6 +26,7 @@ from agent_runner import (
     gh_json,
     is_globally_blocked,
     is_repo_paused,
+    optional_env_int,
     preflight,
     short,
     slack_post,
@@ -255,7 +256,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         prompt,
         workdir=WORKSPACE_ROOT,
         allowed_tools="Read,Bash,Glob,Grep",
-        max_turns=20,
+        max_turns=optional_env_int("ALFRED_ROBIN_MAX_TURNS", minimum=20),
         timeout=600,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)

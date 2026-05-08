@@ -196,6 +196,68 @@ def today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def env_int(name: str, default: int, *, minimum: int = 1, maximum: int | None = None) -> int:
+    """Read a small integer knob from env without letting bad values break cron.
+
+    Missing / non-integer values fall back to ``default``. Result is always
+    clamped to the ``[minimum, maximum]`` range — including the fallback
+    path — so a typo in the launchd plist can't kneecap or unbound a
+    per-firing budget. A caller that supplies an out-of-range ``default``
+    (e.g. ``default`` above ``maximum``) gets the clamped value, not the
+    raw default; the safety guarantee is unconditional.
+    """
+    raw = os.environ.get(name, "").strip()
+    if raw:
+        try:
+            value = int(raw)
+        except ValueError:
+            value = default
+    else:
+        value = default
+    value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+def optional_env_int(name: str, *, minimum: int = 1, maximum: int | None = None) -> int | None:
+    """Read an optional integer knob; return None when unset or unparseable.
+
+    Designed for "no default ceiling, but allow temporary debugging via env"
+    knobs — most prominently the per-firing ``max_turns`` budget on agents
+    where a hard cap produces no-output runs (the agent burns its whole
+    budget surveying without ever reaching a sentinel). Callers pass the
+    result straight to ``claude_invoke_streaming(max_turns=...)``; when
+    None the streaming wrapper maps it to ``_CLAUDE_UNLIMITED_TURNS`` so
+    the Claude CLI never falls back to its hidden 40-turn default. The
+    firing-level ``timeout`` remains the real bound.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+# Claude Code's ``-p`` (non-interactive) mode applies a hidden 40-turn
+# default when ``--max-turns`` is omitted. That default is far too tight
+# for our agents — Lucius routinely needs 60-150 turns on cross-file work,
+# Drake's healthy planning runs hit 60+. ``claude_invoke`` and
+# ``claude_invoke_streaming`` always pass an explicit ``--max-turns``: the
+# caller's value if given, otherwise this effectively-unlimited number,
+# so the per-firing wall-clock ``timeout`` becomes the real ceiling.
+# Callers that genuinely want a low cap pass ``max_turns=<int>`` themselves;
+# the env-knob path (``ALFRED_<AGENT>_MAX_TURNS`` via ``optional_env_int``)
+# feeds into the same parameter.
+_CLAUDE_UNLIMITED_TURNS = 999
+
+
 def run(
     cmd: list[str],
     *,
@@ -929,7 +991,7 @@ def claude_invoke(
     *,
     workdir: Path,
     allowed_tools: str,
-    max_turns: int,
+    max_turns: int | None = None,
     timeout: int = 1200,
     resume_session: str | None = None,
     model: str | None = None,
@@ -941,10 +1003,18 @@ def claude_invoke(
     result_text, num_turns, cost_usd) and the new stop_reason / error_message
     pair ported from pi-mono. See module-level comment for the discipline.
 
+    ``max_turns`` caps the per-firing turn budget when explicitly provided.
+    When None (the default), the wrapper passes ``--max-turns
+    _CLAUDE_UNLIMITED_TURNS`` so the Claude CLI never falls back to its
+    hidden 40-turn ``-p``-mode default. Per-agent daily turn caps in
+    SpendState plus the wall-clock ``timeout`` are the real ceilings; the
+    per-firing cap is only useful for debugging or emergency containment.
+
     ``model`` is an optional alias or full model ID forwarded to
     ``claude --model``. When None (the default), the CLI picks its own
     default model so existing callers see no behavioural change. Use
     ``route_llm`` instead of passing ``model`` directly."""
+    effective_max_turns = max_turns if max_turns is not None else _CLAUDE_UNLIMITED_TURNS
     cmd = [
         CLAUDE_BIN,
         "-p",
@@ -952,7 +1022,7 @@ def claude_invoke(
         "--allowedTools",
         allowed_tools,
         "--max-turns",
-        str(max_turns),
+        str(effective_max_turns),
         "--output-format",
         "json",
         "--permission-mode",
@@ -1023,11 +1093,14 @@ def claude_invoke_streaming(
 
     The ``agent`` and ``firing_id`` keyword arguments are accepted (so
     callers don't have to change when streaming lands) but currently
-    unused. ``max_turns=None`` is mapped to a hard ceiling of 200 to
-    match the reference fleet's per-firing safety bound.
+    unused. ``max_turns=None`` is mapped to ``_CLAUDE_UNLIMITED_TURNS``
+    so the wall-clock ``timeout`` remains the only ceiling — passing a
+    finite integer is the operator's emergency / debug knob. The hidden
+    40-turn ``-p``-mode default is never reached because we always emit
+    ``--max-turns`` explicitly from ``claude_invoke``.
     """
     if max_turns is None:
-        max_turns = 200
+        max_turns = _CLAUDE_UNLIMITED_TURNS
     return claude_invoke(
         prompt,
         workdir=workdir,
