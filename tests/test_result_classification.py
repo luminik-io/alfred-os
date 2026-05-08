@@ -311,3 +311,113 @@ def test_rate_limit_regex_matches_real_signals() -> None:
     assert _RATE_LIMIT_RESULT_RE.search("rate_limit_error: too many requests") is not None
     assert _RATE_LIMIT_RESULT_RE.search("HTTP 429") is not None
     assert _RATE_LIMIT_RESULT_RE.search("quota exceeded") is not None
+
+
+# ---------------------------------------------------------------------------
+# Auth-retry helper — gates the post-401 quarantine+retry path inside
+# claude_invoke.
+# ---------------------------------------------------------------------------
+
+
+def test_should_retry_claude_auth_requires_classification_match(monkeypatch) -> None:
+    """The helper must NOT trigger a retry when the result is anything
+    other than ``error_authentication``. A result classifying as e.g.
+    ``error_rate_limit`` or ``success`` should not quarantine the
+    credential file (that would cause spurious re-auths)."""
+    import agent_runner as ar
+
+    quarantine_called = {"n": 0}
+
+    def fake_quarantine(reason):
+        quarantine_called["n"] += 1
+        return True
+
+    monkeypatch.setattr(ar, "_quarantine_stale_claude_credentials", fake_quarantine)
+
+    healthy = ar.ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="",
+        raw={},
+        stop_reason="end_turn",
+    )
+    assert ar._should_retry_claude_auth(healthy, already_retried=False) is False
+    assert quarantine_called["n"] == 0
+
+    rate_limited = ar.ClaudeResult(
+        success=False,
+        subtype="error_rate_limit",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="",
+        raw={},
+        stop_reason="error",
+    )
+    assert ar._should_retry_claude_auth(rate_limited, already_retried=False) is False
+    assert quarantine_called["n"] == 0
+
+
+def test_should_retry_claude_auth_does_not_retry_twice(monkeypatch) -> None:
+    """The re-entry guard ``already_retried=True`` must prevent a second
+    quarantine + retry. Without this guard a persistent 401 would loop
+    forever, deleting credential caches each round."""
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "_quarantine_stale_claude_credentials", lambda _r: True)
+
+    auth_failed = ar.ClaudeResult(
+        success=False,
+        subtype="error_authentication",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="Failed to authenticate",
+        raw={},
+        stop_reason="error",
+    )
+    assert ar._should_retry_claude_auth(auth_failed, already_retried=False) is True
+    assert ar._should_retry_claude_auth(auth_failed, already_retried=True) is False
+
+
+def test_should_retry_skipped_when_no_credential_file_to_quarantine(monkeypatch) -> None:
+    """When ``_quarantine_stale_claude_credentials`` returns False (no
+    file to move, or operator disabled the repair via env var), the
+    helper must not signal a retry — there's nothing to fix, retrying
+    would loop on the same 401."""
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "_quarantine_stale_claude_credentials", lambda _r: False)
+
+    auth_failed = ar.ClaudeResult(
+        success=False,
+        subtype="error_authentication",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=None,
+        result_text="Not logged in",
+        raw={},
+        stop_reason="error",
+    )
+    assert ar._should_retry_claude_auth(auth_failed, already_retried=False) is False
+
+
+def test_quarantine_disabled_by_env_var(monkeypatch, tmp_path) -> None:
+    """``ALFRED_DISABLE_CLAUDE_AUTH_REPAIR=1`` must short-circuit the
+    quarantine before any filesystem I/O. Operators on hosts that store
+    Claude creds elsewhere can opt out of the auto-repair entirely."""
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR", "1")
+    # Even if the credential file exists, the env-disabled path returns
+    # False without touching it. Use a fake config dir under tmp_path.
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    fake_creds = tmp_path / ".credentials.json"
+    fake_creds.write_text('{"foo": "bar"}')
+    assert ar._quarantine_stale_claude_credentials("test") is False
+    # File untouched.
+    assert fake_creds.exists()
+    assert fake_creds.read_text() == '{"foo": "bar"}'

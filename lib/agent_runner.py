@@ -1189,6 +1189,7 @@ def claude_invoke(
     timeout: int = 1200,
     resume_session: str | None = None,
     model: str | None = None,
+    _auth_retry: bool = False,
 ) -> ClaudeResult:
     """Invoke `claude -p` with the given prompt. Returns parsed result.
 
@@ -1207,7 +1208,14 @@ def claude_invoke(
     ``model`` is an optional alias or full model ID forwarded to
     ``claude --model``. When None (the default), the CLI picks its own
     default model so existing callers see no behavioural change. Use
-    ``route_llm`` instead of passing ``model`` directly."""
+    ``route_llm`` instead of passing ``model`` directly.
+
+    On a one-time ``error_authentication`` classification we quarantine
+    a stale ``~/.claude/.credentials.json`` (if any) and retry once,
+    letting the CLI fall back to Keychain. ``_auth_retry`` is the
+    re-entry guard — set internally on the retry call so we can never
+    loop. Disabled entirely by ``ALFRED_DISABLE_CLAUDE_AUTH_REPAIR=1``.
+    """
     effective_max_turns = max_turns if max_turns is not None else _CLAUDE_UNLIMITED_TURNS
     cmd = [
         CLAUDE_BIN,
@@ -1230,7 +1238,7 @@ def claude_invoke(
     res = run(cmd, cwd=str(workdir), timeout=timeout, capture=True)
 
     if not res.stdout:
-        return ClaudeResult(
+        fallback = ClaudeResult(
             success=False,
             subtype="parse-failed",
             num_turns=0,
@@ -1241,6 +1249,7 @@ def claude_invoke(
             stop_reason="error",
             error_message="claude produced no stdout",
         )
+        return fallback
 
     try:
         raw = json.loads(res.stdout)
@@ -1257,7 +1266,19 @@ def claude_invoke(
             error_message="claude output unparseable",
         )
 
-    return _build_claude_result(raw, fallback_text=res.stderr or "")
+    result = _build_claude_result(raw, fallback_text=res.stderr or "")
+    if _should_retry_claude_auth(result, already_retried=_auth_retry):
+        return claude_invoke(
+            prompt,
+            workdir=workdir,
+            allowed_tools=allowed_tools,
+            max_turns=max_turns,
+            timeout=timeout,
+            resume_session=resume_session,
+            model=model,
+            _auth_retry=True,
+        )
+    return result
 
 
 def claude_invoke_streaming(
