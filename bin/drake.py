@@ -46,6 +46,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     list_paused_repos,
+    optional_env_int,
     preflight,
     set_global_block,
     short,
@@ -227,7 +228,7 @@ def main() -> int:
         prompt,
         workdir=WORKSPACE_ROOT,
         allowed_tools="Read,Bash,Grep,Glob",
-        max_turns=40,
+        max_turns=optional_env_int("ALFRED_DRAKE_MAX_TURNS", minimum=40),
         timeout=1800,  # 30 min cap; Drake reads + greps + creates, no compile
     )
 

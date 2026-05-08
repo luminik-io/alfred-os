@@ -25,6 +25,7 @@ from agent_runner import (
     gh_pr_comment,
     is_globally_blocked,
     is_repo_paused,
+    optional_env_int,
     preflight,
     run,
     slack_post,
@@ -414,7 +415,7 @@ Ship-ready: yes / no - <one sentence>
         prompt,
         workdir=local_path,
         allowed_tools="Read,Bash,Glob,Grep",
-        max_turns=40,
+        max_turns=optional_env_int("ALFRED_RASALGHUL_MAX_TURNS", minimum=40),
         timeout=900,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)

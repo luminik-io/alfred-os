@@ -40,6 +40,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     make_worktree,
+    optional_env_int,
     preflight,
     remove_worktree,
     run,
@@ -237,7 +238,7 @@ def main() -> int:
         prompt,
         workdir=wt,
         allowed_tools="Read,Edit,Write,Bash,Grep",
-        max_turns=80,
+        max_turns=optional_env_int("ALFRED_BANE_MAX_TURNS", minimum=40),
         timeout=1200,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
