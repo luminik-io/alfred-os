@@ -38,8 +38,11 @@ ${HERMES_HOME}/bin/<codename>.py    one file per agent
 agent_runner module                 lock + preflight + spend + claude/codex invoke + gh + slack
    │
    ▼
-claude -p '<prompt>'                  the LLM work, in a fresh subprocess
-  [optional --max-turns N]            only when explicitly configured
+claude -p '<prompt>' --max-turns N    the LLM work, in a fresh subprocess
+                                      N is the caller's value or the
+                                      framework default ("effectively
+                                      unlimited"); the wall-clock
+                                      timeout is the real ceiling
    │
    ▼
 slack_post('<result>', severity=…)  report to the fleet's Slack channel
