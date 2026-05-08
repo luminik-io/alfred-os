@@ -33,6 +33,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -917,6 +918,115 @@ STOP_REASON_HEALTHY = frozenset({"end_turn", "tool_use", "stop_sequence"})
 STOP_REASON_FAIL = frozenset({"error", "aborted"})
 
 
+# ---------------------------------------------------------------------------
+# Provider-error envelope detection
+#
+# Claude Code's ``-p`` mode sometimes returns ``subtype=success`` and a
+# healthy ``stop_reason`` even when the underlying API call hit a
+# rate-limit, an auth failure, an Anthropic 529 overload, or a usage cap.
+# The error body leaks into ``result_text`` and (usually) ``is_error=true``
+# is also set. We detect the four common shapes so spend tracking, retry,
+# and fleet-wide global block work correctly.
+#
+# Tightened heuristic (Codex P1 lessons from upstream alfred):
+#  * ``is_error=true`` is the primary trigger. When the API explicitly
+#    flags the response as an error envelope, we trust it; the regex is
+#    just a sanity boost.
+#  * Without ``is_error=true``, we require the strict regex match against
+#    the JSON error envelope shape. Bare prose mentioning "HTTP 500" or
+#    "service unavailable" no longer flips a healthy stop_reason.
+#  * Auth + budget regexes match CLI-specific phrasing ("Please run
+#    /login", "out of extra usage") that is tight enough to scan against
+#    result_text without false-positiving on engineering prose.
+#  * Rate-limit detection is the loose one: ``\brate-limit\b`` matches
+#    common implementation prose like "added rate-limit handling". Its
+#    haystack drops result_text when ``is_error=false`` so a healthy PR
+#    summary cannot get reclassified.
+# ---------------------------------------------------------------------------
+_OVERLOAD_RESULT_RE = re.compile(
+    # Anthropic JSON error envelope.
+    r'"type"\s*:\s*"error"[^\n]{0,400}?"type"\s*:\s*"overloaded_error"'
+    # Literal "API Error" CLI prefix paired with overloaded_error on the
+    # same line.
+    r"|(?m:^API Error[^\n]{0,400}overloaded_error)"
+    # Anthropic 529 explicitly.
+    r"|\bHTTP\s*529\b"
+    r"|\b529\b\s*[:.\-]\s*(?:overloaded|too\s+many\s+requests)"
+    # Bedrock throttle inside an error envelope (not bare prose).
+    r'|"type"\s*:\s*"error"[^\n]{0,400}?[Bb]edrock[^\n]{0,400}?throttl(?:ing|ed)'
+    r'|"type"\s*:\s*"error"[^\n]{0,400}?throttl(?:ing|ed)[^\n]{0,400}?[Bb]edrock',
+    re.IGNORECASE,
+)
+
+_AUTH_RESULT_RE = re.compile(
+    r"authentication_(?:error|failed)|failed to authenticate|invalid authentication credentials"
+    r"|\bAPI Error:\s*401\b|\b401\b[^\n]{0,120}authentication"
+    r"|not logged in|please run /login",
+    re.IGNORECASE,
+)
+
+_BUDGET_RESULT_RE = re.compile(
+    r"\b(?:you(?:'re| are) out of extra usage|you(?:'ve| have) hit your usage limit)\b"
+    r"|\bout of extra usage\b",
+    re.IGNORECASE,
+)
+
+_RATE_LIMIT_RESULT_RE = re.compile(
+    r"\brate[_ -]?limit(?:ed|_exceeded| exceeded)?\b"
+    r"|\b429\b|\btoo many requests\b|\bquota exceeded\b",
+    re.IGNORECASE,
+)
+
+
+def _truthy_env(name: str) -> bool:
+    """Standard ``1 / true / yes / on`` env-truthiness check."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _claude_credentials_file() -> Path:
+    """Return Claude Code's legacy disk credential cache path.
+
+    Current Claude Code on macOS uses Keychain as the live credential store,
+    but older or stale ``.credentials.json`` files can still be picked up
+    by non-interactive subprocesses and produce a 401 despite ``claude
+    auth status`` reporting logged in. We never delete the file; we
+    quarantine it and let the CLI fall back to Keychain on the retry.
+    """
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    if config_dir:
+        return Path(config_dir).expanduser() / ".credentials.json"
+    return HOME / ".claude" / ".credentials.json"
+
+
+def _quarantine_stale_claude_credentials(reason: str) -> bool:
+    """Move a stale Claude credential cache out of the way, if present.
+
+    Disabled by setting ``ALFRED_DISABLE_CLAUDE_AUTH_REPAIR=1``. Returns
+    True only when a file was moved and a retry is worth attempting.
+    """
+    if _truthy_env("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR"):
+        return False
+    path = _claude_credentials_file()
+    if not path.exists():
+        return False
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    target = path.with_name(f"{path.name}.bak.auth-failed-{stamp}")
+    try:
+        path.replace(target)
+    except OSError as exc:
+        print(
+            f"[claude-auth-repair] could not quarantine {path}: {exc}",
+            file=sys.stderr,
+        )
+        return False
+    print(
+        f"[claude-auth-repair] quarantined stale credential cache {path} -> {target} "
+        f"after {reason}; retrying once",
+        file=sys.stderr,
+    )
+    return True
+
+
 @dataclass
 class ClaudeResult:
     success: bool
@@ -951,12 +1061,81 @@ def _derive_success(subtype: str, stop_reason: str | None) -> bool:
 def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
     """Build a ClaudeResult from the parsed final JSON event.
 
-    Centralises the stop_reason -> success mapping so tests can hit the same
-    code path the live runtime hits."""
+    Centralises the stop_reason -> success mapping plus envelope-shape
+    error reclassification so tests hit the same code path the runtime
+    hits.
+
+    Trigger discipline:
+      * ``is_error=true`` is the primary reclassification trigger. When
+        the API explicitly flags the response as an error envelope, we
+        trust it and the regex serves only as corroboration.
+      * Without ``is_error=true`` we require a strict regex match against
+        a JSON error envelope shape — bare prose mentioning "throttling"
+        no longer flips a healthy stop_reason.
+      * Rate-limit detection (``\\brate-limit\\b``) is the loose one and
+        false-positives on engineering prose like "added rate-limit
+        handling". result_text is mixed into its haystack only when
+        is_error=true. Auth + budget regexes scan the full haystack —
+        their patterns are tight enough that implementation prose does
+        not collide with them.
+    """
     subtype = raw.get("subtype", "missing")
     stop_reason = raw.get("stop_reason")
     if stop_reason is not None and not isinstance(stop_reason, str):
         stop_reason = str(stop_reason)
+
+    result_text = raw.get("result", "") or ""
+
+    strict_haystack = "\n".join(
+        str(raw.get(key) or "")
+        for key in ("error", "error_message", "errorMessage", "api_error_status")
+    )
+    is_error_flag = bool(raw.get("is_error"))
+    full_haystack = f"{result_text}\n{strict_haystack}"
+    looks_auth = bool(_AUTH_RESULT_RE.search(full_haystack))
+    looks_budget = bool(_BUDGET_RESULT_RE.search(full_haystack))
+    rate_limit_haystack = full_haystack if is_error_flag else strict_haystack
+    looks_rate_limit = bool(_RATE_LIMIT_RESULT_RE.search(rate_limit_haystack))
+    looks_overloaded = bool(_OVERLOAD_RESULT_RE.search(result_text))
+
+    def mark_error(new_subtype: str) -> None:
+        nonlocal subtype, stop_reason
+        subtype = new_subtype
+        stop_reason = "error"
+
+    if is_error_flag:
+        # Primary path: the API said is_error=true. Trust that and pin
+        # the subtype specific so auth failures don't masquerade as
+        # overloads.
+        if stop_reason in STOP_REASON_FAIL:
+            pass
+        elif looks_budget:
+            mark_error("error_budget")
+        elif looks_auth:
+            mark_error("error_authentication")
+        elif looks_overloaded:
+            mark_error("error_overloaded")
+        elif looks_rate_limit:
+            mark_error("error_rate_limit")
+        elif stop_reason in STOP_REASON_HEALTHY and str(subtype).startswith("error"):
+            # Claude can report e.g. subtype=error_max_turns with
+            # stop_reason=tool_use. Preserve the specific subtype while
+            # forcing success=False via stop_reason=error.
+            mark_error(str(subtype))
+        elif stop_reason in STOP_REASON_HEALTHY or (stop_reason is None and subtype == "success"):
+            mark_error("error_api")
+    elif stop_reason in STOP_REASON_HEALTHY:
+        # Defensive path: is_error missing/false but the body carries a
+        # genuine provider error marker. The strict regexes make this
+        # safe enough for the wrapper edge cases we have seen live.
+        if looks_budget:
+            mark_error("error_budget")
+        elif looks_auth:
+            mark_error("error_authentication")
+        elif looks_overloaded:
+            mark_error("error_overloaded")
+        elif looks_rate_limit:
+            mark_error("error_rate_limit")
 
     error_message: str | None = None
     if stop_reason in STOP_REASON_FAIL:
@@ -968,7 +1147,7 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
                 error_message = str(val)
                 break
         if not error_message:
-            text = raw.get("result") or fallback_text
+            text = result_text or fallback_text
             error_message = (
                 text or f"claude stop_reason={stop_reason}"
             ).strip() or f"claude stop_reason={stop_reason}"
@@ -979,10 +1158,25 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
         num_turns=int(raw.get("num_turns", 0) or 0),
         cost_usd=float(raw.get("total_cost_usd", 0) or 0),
         session_id=raw.get("session_id"),
-        result_text=raw.get("result", "") or "",
+        result_text=result_text,
         raw=raw,
         stop_reason=stop_reason,
         error_message=error_message,
+    )
+
+
+def _should_retry_claude_auth(result: ClaudeResult, *, already_retried: bool) -> bool:
+    """Decide whether to retry once after an authentication failure.
+
+    True only when (a) we have not retried this firing yet AND (b) the
+    result classified as ``error_authentication`` AND (c) quarantining
+    a stale ``.credentials.json`` actually moved a file out of the way.
+    Lets the CLI fall back to Keychain on the retry.
+    """
+    return (
+        not already_retried
+        and result.subtype == "error_authentication"
+        and _quarantine_stale_claude_credentials(result.error_message or result.result_text)
     )
 
 
