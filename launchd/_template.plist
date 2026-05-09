@@ -6,7 +6,8 @@
   <string>__LABEL__</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__HERMES_BIN__/__SCRIPT__</string>
+    <string>__HERMES_BIN__/agent-launch</string>
+    <string>__SCRIPT__</string>
   </array>
 __SCHEDULE_BLOCK__
   <key>StandardOutPath</key>
@@ -24,6 +25,10 @@ __JAVA_BLOCK__
     <string>__HERMES_HOME__</string>
     <key>WORKSPACE_ROOT</key>
     <string>__WORKSPACE_ROOT__</string>
+    <key>AGENT_CODENAME</key>
+    <string>__AGENT_SHORT__</string>
+    <key>LAUNCHD_LABEL</key>
+    <string>__LABEL__</string>
 __GH_ORG_BLOCK__
 __ROLE_BLOCK__
   </dict>

@@ -26,8 +26,7 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | Var | Used by | Default |
 |---|---|---|
 | `HERMES_HOME` | everything | `$HOME/.hermes` |
-| `WORKSPACE_ROOT` | `agent_runner.WORKSPACE = WORKSPACE_ROOT/product` | `$HOME/Workspace` |
-| `LUMINIK_WORKSPACE` | back-compat alias for `WORKSPACE_ROOT` | (deprecated) |
+| `WORKSPACE_ROOT` | `agent_runner.WORKSPACE = WORKSPACE_ROOT/product` | `$HOME/code` |
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
 | `CODEX_BIN` | `agent_runner.codex_invoke` | `codex` (PATH) |
 | `CODEX_MODEL` | optional model override for `codex exec` | (Codex default) |
@@ -42,13 +41,14 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | `SLACK_WEBHOOK_SECRET_ID` | `slack_post` (AWS path) | `alfred/slack-webhook` |
 | `SLACK_WEBHOOK_SECRET_REGION` | `slack_post` (AWS path) | `us-east-1` |
 
-Resolution order: env → 7-day disk cache at `$HERMES_HOME/state/slack-webhook.cache` → AWS Secrets Manager. First hit wins.
+Resolution order: env -> 30-day disk cache at `$HERMES_HOME/state/slack-webhook.cache` -> AWS Secrets Manager. First hit wins.
 
 ## AWS
 
 | Var | Used by | Default |
 |---|---|---|
-| `AWS_PROFILE` | per-agent runner sets explicitly before `aws ...` calls | (none: must be set) |
+| `ALFRED_HUNTRESS_AWS_PROFILE`, `ALFRED_GORDON_AWS_PROFILE` | role runners that touch AWS | (none: AWS checks disabled or use default chain) |
+| `AWS_PROFILE` | set by role runners around owned `aws ...` calls | (none) |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN` | stripped before `aws ...` calls in agents that need pure-profile auth | (operator's SSO leakage) |
 
 ## Doctor

@@ -76,7 +76,7 @@ Constraints:
 
 Each codename has:
 
-- **A bin script**: `bin/<codename>.py`. Imports from `agent_runner`. ~150-300 lines.
+- **A bin script**: `bin/<role>.py`. Imports from `agent_runner`. ~150-300 lines.
 - **A launchd entry**: one line in `launchd/agents.conf` (label, script, schedule, java flag).
 - **(Optional) A prompt file**: `agents/<dept>/prompts/<codename>.md`. Long-form context the runner inlines into `claude -p`.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/alfred-os/guides/aws/).

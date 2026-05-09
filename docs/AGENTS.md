@@ -1,6 +1,6 @@
 # Agents
 
-The agents shipped in alfred-os are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; the operator can rename any agent during `alfred init` or by editing `~/.alfredrc` later.
+The agents shipped in alfred-os are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; the operator can rename any agent during `alfred-init` or by editing `~/.alfredrc` later.
 
 ## Fleet map
 
@@ -68,7 +68,7 @@ The default install ships these agents. Schedules are sensible defaults; overrid
 
 ## Codename customization
 
-`alfred init` asks for each agent's codename and falls back to the Batman default if you press Enter. The codename appears in PR titles, Slack messages, commit-trailer metadata, log filenames, worktree paths, and the launchd plist label.
+`alfred-init` asks for each agent's codename and falls back to the Batman default if you press Enter. The codename appears in PR titles, Slack messages, commit-trailer metadata, log filenames, worktree paths, and the launchd plist label.
 
 ### Why the defaults are Batman
 
@@ -99,7 +99,7 @@ The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-mor
 
 ```mermaid
 flowchart TB
-    init["alfred init wizard<br/><i>operator picks codenames</i>"]
+    init["alfred-init wizard<br/><i>operator picks codenames</i>"]
     rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
     conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
     plist["my.fleet.marshall.plist<br/>EnvironmentVariables:<br/><code>AGENT_CODENAME=marshall</code>"]
@@ -116,7 +116,7 @@ flowchart TB
 
 The agent script lives at `bin/<role>.py` (e.g. `bin/lucius.py` is the feature-dev script's default name). The operator-chosen codename is set via:
 
-1. The launchd plist's `EnvironmentVariables` block: `AGENT_CODENAME=<chosen-name>`. Rendered by `launchd/render.sh` from the codename column in `agents.conf`.
+1. The launchd plist's `EnvironmentVariables` block: `AGENT_CODENAME=<chosen-name>`. Rendered by `launchd/render.sh` from the label suffix in `agents.conf`.
 2. The agent runner reads `AGENT = os.environ.get("AGENT_CODENAME", "<default>")` at startup.
 3. Slack messages, PR titles, log paths, worktree paths, label-claim comments all use the codename from `AGENT`.
 
@@ -157,23 +157,18 @@ The default install is engineering-only. Future categories tracked in [`ROADMAP.
 
 These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are out of scope for v0.1. PRs that propose individual agents in these categories are welcome; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
-## Pause / resume / inspect
+## Inspect and gate
 
 ```sh
-alfred status                 # fleet-wide health snapshot
-alfred status-issue <repo>#<N>  # state-machine view of one issue
-alfred logs <agent>           # per-agent stdout/stderr from launchd
-alfred metrics                # per-agent cost + turn + success rate
-alfred pause <agent>          # stop scheduled firings
-alfred resume <agent>         # reverse a pause
-alfred run <agent>            # one-shot, ignores schedule
-alfred doctor                 # preflight every agent under HERMES_DOCTOR=1
-alfred deploy                 # re-render plists, sync bin + lib, reload launchd
-alfred claim <repo>#<N>       # operator override on one issue
-alfred release <repo>#<N>     # remove operator override
-alfred dedup-check <repo>#<N> # exit non-zero if not claimable
-alfred repo {pause,resume,list} [<repo>]  # repo-level pause
-alfred sweep-claims [--dry-run]  # force-release stale claims
+alfred agents                 # configured agents, schedule, enable state, role
+alfred enable <codename>      # add codename to the runner gate
+alfred disable <codename>     # remove codename from the runner gate
+alfred enabled-agents         # print the current runner-gate list
+bash deploy.sh                # sync bin/lib; render + bootstrap if agents.conf exists
+bash bin/doctor.sh            # preflight configured Python agents
 ```
 
-See [`reference/cli.md`](../site/src/content/docs/reference/cli.md) for the full surface.
+The private reference fleet has richer `status`, `logs`, `pause`, `resume`,
+`run`, and metrics commands. They are not part of the public CLI yet. For
+issue-claim operator overrides, copy or wrap `examples/bin/label_state.py`
+in your own fleet.

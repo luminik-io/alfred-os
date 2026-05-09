@@ -5,7 +5,7 @@
 # Secondary auth lives in ~/.claude-secondary/ (used when primary hits weekly cap).
 #
 # This script flips the launchctl global env var CLAUDE_CONFIG_DIR. Only
-# launchd-spawned processes (the 14 cron agents) inherit it. Your interactive
+# launchd-spawned processes inherit it. Your interactive
 # Claude Code sessions in iTerm / Cursor / VS Code are unaffected because
 # they don't go through launchd.
 #
@@ -63,7 +63,7 @@ show_status() {
   if [ -n "$prefix" ]; then
     agent_count=$(launchctl list | grep -c "$prefix" || true)
   else
-    agent_count=$(launchctl list | grep -cE 'agent|fleet|cron' || true)
+    agent_count=$(launchctl list | grep -cE 'agent|fleet|alfred' || true)
   fi
   echo "Live launchd agents: $agent_count"
   echo ""

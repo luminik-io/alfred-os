@@ -3,7 +3,7 @@ title: AWS
 description: IAM-per-agent, Secrets Manager naming, scoped policy templates.
 ---
 
-Alfred-OS uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sentry tokens, third-party API keys) and **per-agent IAM** (one scoped IAM identity per cron-spawned agent).
+Alfred-OS uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sentry tokens, third-party API keys) and **per-agent IAM** (one scoped IAM identity per scheduled agent).
 
 If you don't need either, skip this. Put `SLACK_WEBHOOK_URL` in `~/.alfredrc` directly. The framework runs fine without an AWS account.
 
@@ -11,14 +11,13 @@ Full guide at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob
 
 ## Why per-agent IAM
 
-The operator's SSO has admin everywhere. If a cron-spawned agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps blast radius:
+The operator's SSO has admin everywhere. If a scheduled agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps blast radius:
 
 - `<your-codename>-cron`: read-only on the agent's specific secrets (test creds, webhooks, etc.).
-- `oracle-cron`: read-only on ECS, ALB, CloudWatch logs/metrics. No `secretsmanager:*`.
-- `gordon-cron`: read-only on ECS describe + the Sentry token.
+- `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token.
 - `alfred-host`: read-only on `alfred/*` secrets.
 
-The agent's prompt invokes `aws` with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN AWS_PROFILE=<agent>-cron aws ...` so the operator's ambient SSO can't leak through.
+Agent runners that touch AWS read role-specific variables such as `ALFRED_HUNTRESS_AWS_PROFILE` or `ALFRED_GORDON_AWS_PROFILE` from `~/.alfredrc`, then strip ambient `AWS_*` credentials and set `AWS_PROFILE` only for the AWS subprocess they own.
 
 ## Create a scoped IAM user
 
