@@ -115,6 +115,46 @@ def test_load_prompt_leaves_unset_vars_as_literal(tmp_path):
     assert out == "Repo: ${THIS_VAR_IS_NOT_SET_ANYWHERE}"
 
 
+def test_agent_role_returns_empty_when_unset(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.delenv("ALFRED_LUCIUS_ROLE", raising=False)
+    assert ar.agent_role("lucius") == ""
+    assert ar.agent_role("") == ""
+
+
+def test_agent_role_reads_alfred_codename_role_env(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
+    assert ar.agent_role("lucius") == "Single-repo feature engineer"
+
+
+def test_agent_role_translates_dash_to_underscore_for_compound_codenames(monkeypatch):
+    """`alfred-nightly` and `brand-mention-scanner` use ALFRED_<CODENAME>_ROLE
+    where dashes in the codename become underscores in the env-var key."""
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_ALFRED_NIGHTLY_ROLE", "Overnight orchestrator (Sun 22:00)")
+    monkeypatch.setenv("ALFRED_BRAND_MENTION_SCANNER_ROLE", "Brand mention monitor")
+    assert ar.agent_role("alfred-nightly") == "Overnight orchestrator (Sun 22:00)"
+    assert ar.agent_role("brand-mention-scanner") == "Brand mention monitor"
+
+
+def test_codename_with_role_formats_when_role_set(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
+    assert ar.codename_with_role("lucius") == "lucius (Single-repo feature engineer)"
+
+
+def test_codename_with_role_falls_back_to_bare_codename_when_no_role(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.delenv("ALFRED_LUCIUS_ROLE", raising=False)
+    assert ar.codename_with_role("lucius") == "lucius"
+
+
 def test_commit_trailer_is_git_interpret_trailers_compatible():
     import agent_runner as ar
 

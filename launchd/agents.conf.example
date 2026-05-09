@@ -1,6 +1,6 @@
 # Per-agent launchd config consumed by render.sh.
 #
-# Format: each non-comment, non-blank line is a record with five
+# Format: each non-comment, non-blank line is a record with up to six
 # tab-separated fields:
 #
 #   1. label       - launchd job label (also the .plist filename stem)
@@ -17,20 +17,26 @@
 #                    Empty falls back to label. Useful when two plists
 #                    share a script (sso-check-10 and sso-check-22 both
 #                    write to /tmp/luminik.eng.sso-check.{stdout,stderr}).
+#   6. role        - one-line operational descriptor in plain English.
+#                    Surfaced in `alfred agents`, `alfred status <agent>`,
+#                    and Slack post prefixes — codenames alone don't
+#                    carry meaning to a fresh contributor (or to your
+#                    future self at 2am). Keep it under ~50 chars.
+#                    Optional but strongly recommended.
 #
 # Tabs are required between fields. Trailing empty fields can be omitted.
 
 # Example entries. Replace with your own codenames.
 #
 # A scheduler-style codename that polls every 20 minutes:
-#   my.fleet.poller	poller.py	interval:1200	yes
+#   my.fleet.poller	poller.py	interval:1200	yes			Issue poller
 #
 # A nightly reviewer that runs at 02:00:
-#   my.fleet.reviewer	reviewer.py	cron:2:00	yes
+#   my.fleet.reviewer	reviewer.py	cron:2:00	yes			Nightly PR reviewer
 #
 # A weekly Sunday-night dependency scanner at 22:00:
-#   my.fleet.deps	deps-scanner.py	cron:0:22:00	yes
+#   my.fleet.deps	deps-scanner.py	cron:0:22:00	yes			Weekly dependency audit
 #
 # A check that fires at 10:00 AND 22:00 (two rows, shared script + log_stem):
-#   my.fleet.health-am	health-check.py	cron:10:00	no	my.fleet.health
-#   my.fleet.health-pm	health-check.py	cron:22:00	no	my.fleet.health
+#   my.fleet.health-am	health-check.py	cron:10:00	no	my.fleet.health	Fleet health (morning)
+#   my.fleet.health-pm	health-check.py	cron:22:00	no	my.fleet.health	Fleet health (evening)

@@ -571,6 +571,44 @@ def load_prompt(path: Path | str, *, extra_vars: dict[str, str] | None = None) -
     return string.Template(text).safe_substitute(mapping)
 
 
+# ---------- Role / codename metadata ----------
+#
+# Codenames alone don't carry meaning. A fresh contributor (or your future
+# self at 2am) reads ``[BATMAN-PLAN-DRAFTED]`` or ``[NIGHTWING-COMPLETE]``
+# and has to cross-reference the per-agent prompt to figure out what the
+# agent does. ``role`` is a one-line operational descriptor stored in
+# ``agents.conf`` column 7 and rendered into each launchd plist as
+# ``ALFRED_<CODENAME>_ROLE``. Slack post prefixes and the ``alfred agents``
+# CLI surface ``codename (role)`` so codenames stay decorative without
+# losing operational context.
+
+
+def agent_role(codename: str) -> str:
+    """Return the one-line operational role descriptor for an agent.
+
+    Read from ``ALFRED_<CODENAME>_ROLE`` (rendered into each launchd plist
+    by ``launchd/render.sh`` from agents.conf column 7). Returns the empty
+    string when no role is set; never raises. ``-`` characters in compound
+    codenames (``alfred-nightly``, ``brand-mention-scanner``) are
+    translated to ``_`` to match what render.sh emits.
+    """
+    if not codename:
+        return ""
+    env_key = "ALFRED_" + codename.upper().replace("-", "_") + "_ROLE"
+    return (os.environ.get(env_key) or "").strip()
+
+
+def codename_with_role(codename: str) -> str:
+    """Format ``"<codename> (<role>)"`` when a role is set, else the bare codename.
+
+    Slack post prefixes and CLI status output use this so a reader who
+    hasn't memorized the agent cast still gets operational context next
+    to every codename.
+    """
+    role = agent_role(codename)
+    return f"{codename} ({role})" if role else codename
+
+
 # ---------- Per-firing event log (jsonl) ----------
 #
 # An append-only structured event log per agent firing. Solves three pains:
