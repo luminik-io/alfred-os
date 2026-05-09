@@ -222,7 +222,15 @@ def cmd_sweep_claims(args: argparse.Namespace) -> int:
             )
             if not args.dry_run:
                 try:
-                    force_release_stale_claim(repo, entry["number"], sweep_id=sweep_id)
+                    released = force_release_stale_claim(
+                        repo,
+                        entry["number"],
+                        sweep_id=sweep_id,
+                        released_codename=entry.get("codename"),
+                        released_firing_id=entry.get("firing_id"),
+                    )
+                    if not released:
+                        raise RuntimeError("GitHub label/comment update returned false")
                     total_swept += 1
                 except Exception as e:
                     print(f"    sweep failed: {e}", file=sys.stderr)
