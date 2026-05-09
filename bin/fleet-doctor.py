@@ -124,21 +124,21 @@ def check_stale_worktrees() -> Finding:
 
 
 def check_enabled_agents() -> Finding:
-    """Surface the configured fleet enable list. Always green — purely
+    """Surface the configured runner gate list. Always green — purely
     informational so the operator can confirm the gating state."""
     if not (STATE_ROOT / "fleet" / "enabled.txt").exists():
         return Finding(
             "enabled-agents",
             "green",
-            "fleet enable file missing → all agents default-enabled",
+            "fleet gate file missing → runners fall back to their own defaults",
         )
     enabled = list_enabled_agents()
     if not enabled:
-        return Finding("enabled-agents", "yellow", "fleet enable file present but empty")
+        return Finding("enabled-agents", "yellow", "fleet gate file present but empty")
     return Finding(
         "enabled-agents",
         "green",
-        f"{len(enabled)} agent(s) enabled: {', '.join(enabled)}",
+        f"{len(enabled)} agent(s) listed in runner gate: {', '.join(enabled)}",
     )
 
 
