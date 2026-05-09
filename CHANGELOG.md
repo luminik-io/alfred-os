@@ -17,6 +17,7 @@ Pivot from "extracted framework substrate" to "complete engineering agent fleet"
 - **Runner-side dedup.** `find_open_authored_pr_for_issue` (with substring-false-positive guard) + `reuse_or_make_worktree` so partial work survives across firings of the same issue. Backport of alfred PR #129.
 - **STANDARD_LABELS bootstrap.** `batman-pr-open` and `agent:large-feature` ship by default; `gh_pr_create` auto-creates ad-hoc labels and surfaces gh stderr on failure. Backport of alfred PR #145.
 - **Fleet doctor.** New `bin/fleet-doctor.py` ships four read-only health checks (paused repos, global block, stale worktrees, fleet enable list) → single severity-stripe Slack thread. Backport of alfred PR #130 (slimmed for OSS).
+- **Runner safety hardening.** Batman and fleet-doctor now acquire the shared lock helper correctly; cleanup scopes `/tmp` sweeping to agent-owned prefixes instead of broad wildcard matches.
 
 
 #### Engineering agents (`bin/`)

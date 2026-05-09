@@ -11,8 +11,8 @@ claim-rollback / plan-shape logic stays unit-testable. This file is the
 runner skeleton: preflight, find a bundle, post a plan summary, exit.
 The full execution chain (worktrees + Claude invocation + cross-repo
 PR chaining + founder approval gate) is intentionally NOT in alfred-os
-yet — those bits depend on alfred-private infra (cross_repo_pr,
-multi_worktree, slack_approval) and arrive in a follow-up commit.
+yet. Fleets with extra coordination requirements can layer those
+site-specific extensions on top.
 
 Wiring:
 
@@ -208,42 +208,42 @@ def main() -> int:
         print(f"[BATMAN-PREFLIGHT-FAIL] {e}", file=sys.stderr)
         return 0
 
-    with with_lock(CODENAME):
-        issues = _list_large_features()
-        if not issues:
-            print("[BATMAN-NOOP] no eligible agent:large-feature issues")
-            return 0
-        # Oldest first.
-        issues.sort(key=lambda i: i.get("createdAt", ""))
-        bundle = _bundle_for_issue(issues[0])
-        plan = parse_plan_from_bundle(bundle)
+    with_lock(CODENAME)
+    issues = _list_large_features()
+    if not issues:
+        print("[BATMAN-NOOP] no eligible agent:large-feature issues")
+        return 0
+    # Oldest first.
+    issues.sort(key=lambda i: i.get("createdAt", ""))
+    bundle = _bundle_for_issue(issues[0])
+    plan = parse_plan_from_bundle(bundle)
 
-        firing_id = _firing_id()
-        primary = bundle.primary_issue
-        summary = (
-            f"plan drafted for {bundle.slug} "
-            f"({len(bundle.issues)} issue(s), {len(plan.affected_repos)} repo(s))"
-        )
-        body = (
-            f"*Issue:* <{primary.get('url')}|{primary.get('title')}>\n"
-            f"*Bundle:* `{bundle.slug}`\n"
-            f"*Affected repos:* {', '.join(plan.affected_repos) or '(none)'}\n"
-            f"*Rollout order:* {' → '.join(plan.affected_repos) or '(default)'}\n"
-        )
-        # Try the bot-token thread root first; fall back to the
-        # webhook surface so the operator gets *some* visibility on
-        # fleets without a bot token configured.
-        handle = firing_thread_root(
-            codename=CODENAME,
-            firing_id=firing_id,
-            summary_one_liner=summary,
-            severity="info",
-            body=body,
-        )
-        if handle is None:
-            slack_post(f"[BATMAN-PLAN-DRAFTED] {summary}\n{body}", severity="info")
+    firing_id = _firing_id()
+    primary = bundle.primary_issue
+    summary = (
+        f"plan drafted for {bundle.slug} "
+        f"({len(bundle.issues)} issue(s), {len(plan.affected_repos)} repo(s))"
+    )
+    body = (
+        f"*Issue:* <{primary.get('url')}|{primary.get('title')}>\n"
+        f"*Bundle:* `{bundle.slug}`\n"
+        f"*Affected repos:* {', '.join(plan.affected_repos) or '(none)'}\n"
+        f"*Rollout order:* {' → '.join(plan.affected_repos) or '(default)'}\n"
+    )
+    # Try the bot-token thread root first; fall back to the
+    # webhook surface so the operator gets *some* visibility on
+    # fleets without a bot token configured.
+    handle = firing_thread_root(
+        codename=CODENAME,
+        firing_id=firing_id,
+        summary_one_liner=summary,
+        severity="info",
+        body=body,
+    )
+    if handle is None:
+        slack_post(f"[BATMAN-PLAN-DRAFTED] {summary}\n{body}", severity="info")
 
-        print(f"[BATMAN-PLAN-DRAFTED] firing_id={firing_id} bundle={bundle.slug}")
+    print(f"[BATMAN-PLAN-DRAFTED] firing_id={firing_id} bundle={bundle.slug}")
     return 0
 
 

@@ -206,27 +206,27 @@ def main() -> int:
         print(f"[FLEET-DOCTOR-PREFLIGHT-FAIL] {e}", file=sys.stderr)
         return 0
 
-    with with_lock(AGENT):
-        findings = run_all_checks()
-        sev = overall_severity(findings)
-        body = format_summary(findings)
-        from datetime import UTC, datetime
+    with_lock(AGENT)
+    findings = run_all_checks()
+    sev = overall_severity(findings)
+    body = format_summary(findings)
+    from datetime import UTC, datetime
 
-        firing_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        summary = f"fleet snapshot · {sev}"
-        handle = firing_thread_root(
-            codename=AGENT,
-            firing_id=firing_id,
-            summary_one_liner=summary,
+    firing_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    summary = f"fleet snapshot · {sev}"
+    handle = firing_thread_root(
+        codename=AGENT,
+        firing_id=firing_id,
+        summary_one_liner=summary,
+        severity=SEVERITY_TO_SLACK[sev],
+        body=body,
+    )
+    if handle is None:
+        slack_post(
+            f"[FLEET-DOCTOR] {summary}\n{body}",
             severity=SEVERITY_TO_SLACK[sev],
-            body=body,
         )
-        if handle is None:
-            slack_post(
-                f"[FLEET-DOCTOR] {summary}\n{body}",
-                severity=SEVERITY_TO_SLACK[sev],
-            )
-        print(f"[FLEET-DOCTOR-{sev.upper()}] {len(findings)} check(s)")
+    print(f"[FLEET-DOCTOR-{sev.upper()}] {len(findings)} check(s)")
     return 0
 
 

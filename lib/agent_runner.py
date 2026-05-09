@@ -2423,7 +2423,7 @@ def issue_dedup_check(repo_slug: str, num: int) -> dict:
 
 
 def with_lock(name: str):
-    """Context manager-ish helper: acquire lock, exit if held by another live PID."""
+    """Acquire the per-agent lock, exiting if another live PID holds it."""
     lock = AgentLock(name)
     if not lock.acquire():
         print(f"[{name}-LOCKED] previous run still active. Skipping firing.")
