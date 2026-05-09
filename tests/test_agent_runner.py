@@ -51,18 +51,89 @@ def test_preflight_raises_on_missing_env(monkeypatch):
     import agent_runner as ar
 
     monkeypatch.delenv("HERMES_HOME", raising=False)
+    posted: list[str] = []
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
     spec = ar.PreflightSpec(agent="test", env_vars=["HERMES_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
+    assert posted == []
 
 
-def test_preflight_raises_on_missing_binary():
+def test_preflight_raises_on_missing_binary(monkeypatch):
     import agent_runner as ar
+
+    posted: list[str] = []
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
     spec = ar.PreflightSpec(agent="test", bins=["__definitely_not_a_real_command__"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
+    assert posted == []
+
+
+def test_preflight_suppresses_slack_when_not_under_launchd(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
+    monkeypatch.delenv("ALFRED_PREFLIGHT_FORCE_SLACK", raising=False)
+    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
+    monkeypatch.delenv("HERMES_HOME", raising=False)
+    posted: list[str] = []
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
+
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(spec)
+    assert posted == []
+
+
+def test_preflight_suppresses_slack_when_launchd_env_is_placeholder(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("XPC_SERVICE_NAME", "0")
+    monkeypatch.delenv("ALFRED_PREFLIGHT_FORCE_SLACK", raising=False)
+    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
+    monkeypatch.delenv("HERMES_HOME", raising=False)
+    posted: list[str] = []
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
+
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(spec)
+    assert posted == []
+
+
+def test_preflight_posts_slack_under_launchd(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
+    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
+    monkeypatch.delenv("HERMES_HOME", raising=False)
+    posted: list[str] = []
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
+
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(spec)
+    assert len(posted) == 1
+    assert "lucius preflight failed" in posted[0]
+
+
+def test_preflight_force_slack_env_overrides_manual_suppression(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
+    monkeypatch.setenv("ALFRED_PREFLIGHT_FORCE_SLACK", "1")
+    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
+    monkeypatch.delenv("HERMES_HOME", raising=False)
+    posted: list[str] = []
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
+
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(spec)
+    assert len(posted) == 1
 
 
 def test_preflight_reports_gh_auth_timeout(monkeypatch):
