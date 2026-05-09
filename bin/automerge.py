@@ -65,6 +65,10 @@ MIN_AGE_SECONDS = int(os.environ.get("ALFRED_AUTOMERGE_MIN_AGE_MIN", "30")) * 60
 
 P0_KEYWORDS = re.compile(r"\b(P0|blocking|critical|🛑|⛔)", re.IGNORECASE)
 SHIP_READY_YES = re.compile(r"^Ship-ready:\s*yes\b", re.IGNORECASE | re.MULTILINE)
+REVIEWED_HEAD_SHA = re.compile(
+    r"^Reviewed-head-sha:\s*([0-9a-f]{7,40})\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 # Bot reviewer logins whose unresolved review threads block merge.
 KNOWN_REVIEWER_LOGINS_LOWER = {
@@ -174,6 +178,20 @@ def _parse_github_timestamp(raw: str | None) -> datetime | None:
         return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
+def reviewed_head_sha(review_body: str) -> str | None:
+    match = REVIEWED_HEAD_SHA.search(review_body or "")
+    return match.group(1).lower() if match else None
+
+
+def current_pr_head_oid(repo: str, pr_num: int) -> str | None:
+    view = gh_json(
+        ["gh", "pr", "view", str(pr_num), "-R", f"{GH_ORG}/{repo}", "--json", "headRefOid"],
+        default={},
+    )
+    head = view.get("headRefOid") if isinstance(view, dict) else None
+    return str(head).strip().lower() if head else None
+
+
 def latest_commit_timestamp(repo: str, pr_num: int) -> datetime | None:
     view = gh_json(
         ["gh", "pr", "view", str(pr_num), "-R", f"{GH_ORG}/{repo}", "--json", "commits"],
@@ -253,6 +271,7 @@ def is_mergeable(
     pr_num: int,
     pr_author: str = "",
     latest_commit_at: datetime | None = None,
+    head_oid: str | None = None,
 ) -> tuple[bool, str]:
     """Verify Ship-ready=yes from latest review, no unresolved P0,
     and no unresolved reviewer threads."""
@@ -288,6 +307,15 @@ def is_mergeable(
     latest = review_main[-1]
     if not SHIP_READY_YES.search(latest.get("body", "")):
         return False, f"{REVIEW_AGENT} did not say Ship-ready: yes"
+    reviewed_sha = reviewed_head_sha(latest.get("body", ""))
+    current_head = (head_oid or current_pr_head_oid(repo, pr_num) or "").lower()
+    if not current_head:
+        return False, "could not verify current PR head SHA"
+    if not reviewed_sha:
+        return False, f"{REVIEW_AGENT} review did not record head SHA"
+    if reviewed_sha != current_head:
+        return False, "ship-ready review is for an older PR head"
+
     review_created = _parse_github_timestamp(latest.get("created_at") or latest.get("createdAt"))
     commit_created = latest_commit_at or latest_commit_timestamp(repo, pr_num)
     if commit_created is None:

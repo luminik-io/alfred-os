@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import UTC, datetime
@@ -58,6 +59,10 @@ DIFF_LINE_CAP_SPECS = int(os.environ.get("ALFRED_RASALGHUL_DIFF_CAP_SPECS", "800
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_RASALGHUL_TURN_CAP", "800"))
 DAILY_REVIEW_CAP = int(os.environ.get("ALFRED_RASALGHUL_REVIEW_CAP", "30"))
 REVIEW_AUTHOR_PREFIX = f"{AGENT.title()} - review"
+REVIEWED_HEAD_SHA = re.compile(
+    r"^Reviewed-head-sha:\s*([0-9a-f]{7,40})\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def _extract_section(text: str, header: str) -> list[str]:
@@ -82,6 +87,30 @@ def _extract_section(text: str, header: str) -> list[str]:
     return out
 
 
+def reviewed_head_sha(review_body: str) -> str | None:
+    match = REVIEWED_HEAD_SHA.search(review_body or "")
+    return match.group(1).lower() if match else None
+
+
+def attach_review_head_sha(review_body: str, head_sha: str | None) -> str:
+    head = (head_sha or "").strip().lower()
+    if not head:
+        return review_body
+    lines = review_body.splitlines()
+    if not lines:
+        return review_body
+    metadata = f"Reviewed-head-sha: {head}"
+    replaced = False
+    for i, line in enumerate(lines[:6]):
+        if REVIEWED_HEAD_SHA.match(line):
+            lines[i] = metadata
+            replaced = True
+            break
+    if not replaced:
+        lines.insert(1, metadata)
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def pick_pr() -> tuple[str, dict] | tuple[None, None]:
     """Find oldest open PR not yet reviewed by this agent (and not draft, not WIP)."""
     for repo in REVIEW_REPOS:
@@ -97,7 +126,7 @@ def pick_pr() -> tuple[str, dict] | tuple[None, None]:
                 "--state",
                 "open",
                 "--json",
-                "number,title,headRefName,url,createdAt,labels,isDraft",
+                "number,title,headRefName,headRefOid,url,createdAt,labels,isDraft",
                 "--limit",
                 "30",
             ],
@@ -161,6 +190,10 @@ def pick_pr() -> tuple[str, dict] | tuple[None, None]:
                 c for c in comments if c.get("body", "").startswith(REVIEW_AUTHOR_PREFIX)
             ]
             if not our_reviews:
+                return repo, pr
+            head_sha = (pr.get("headRefOid") or "").strip().lower()
+            latest_review = our_reviews[-1]
+            if not head_sha or reviewed_head_sha(latest_review.get("body", "")) != head_sha:
                 return repo, pr
 
             try:
@@ -273,12 +306,13 @@ def main() -> int:
             "-R",
             f"{GH_ORG}/{repo}",
             "--json",
-            "title,body,additions,deletions",
+            "title,body,additions,deletions,headRefOid",
         ],
         default={},
     )
     pr_title = meta.get("title", "")
     pr_body = meta.get("body", "") or ""
+    head_sha = (meta.get("headRefOid") or pr.get("headRefOid") or "").strip().lower()
 
     # Prior reviewer comments from known bot reviewers
     prior_comments = gh_json(
@@ -473,6 +507,7 @@ Ship-ready: yes / no - <one sentence>
                 "## Recovered body\n\n" + text + "\n\n"
                 "Ship-ready: no\n"
             )
+    text = attach_review_head_sha(text, head_sha)
 
     # Re-verify PR is still OPEN
     state = gh_json(
