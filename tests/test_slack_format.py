@@ -187,11 +187,24 @@ def test_home_channel_resolution(monkeypatch):
     import slack_format as sf
 
     monkeypatch.delenv("SLACK_HOME_CHANNEL", raising=False)
+    monkeypatch.delenv("BATMAN_APPROVAL_CHANNEL", raising=False)
     assert sf._home_channel() == "alfred"
     monkeypatch.setenv("SLACK_HOME_CHANNEL", "#fleet-ops")
     assert sf._home_channel() == "fleet-ops"
     # Caller-supplied wins.
     assert sf._home_channel("custom") == "custom"
+
+
+def test_home_channel_batman_approval_alias_wins_over_slack_home(monkeypatch):
+    """BATMAN_APPROVAL_CHANNEL is the historical alias from the alfred
+    Batman approval flow. It must continue to route firing threads so
+    a fleet that wired plan posts to a non-default channel keeps that
+    routing."""
+    import slack_format as sf
+
+    monkeypatch.setenv("SLACK_HOME_CHANNEL", "fleet-ops")
+    monkeypatch.setenv("BATMAN_APPROVAL_CHANNEL", "#alfred-approvals")
+    assert sf._home_channel() == "alfred-approvals"
 
 
 def test_truncate_aggressive_with_marker():

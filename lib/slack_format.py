@@ -149,11 +149,24 @@ def _resolve_bot_token() -> str | None:
 def _home_channel(channel: str | None = None) -> str:
     """Resolve the channel for a firing post.
 
-    Caller-supplied wins; otherwise read ``SLACK_HOME_CHANNEL`` env var,
-    falling back to ``alfred``. Strip any leading ``#`` so the API
-    accepts it.
+    Resolution order (first non-empty wins):
+
+      1. caller-supplied ``channel`` argument
+      2. ``BATMAN_APPROVAL_CHANNEL`` env var — historical name read by
+         the alfred Batman approval flow; honoured here so a fleet
+         that already routes Batman posts to a non-default channel
+         keeps that routing for every firing thread.
+      3. ``SLACK_HOME_CHANNEL`` env var — canonical name.
+      4. literal ``alfred`` fallback.
+
+    Strips any leading ``#`` so the API accepts it.
     """
-    raw = (channel or os.environ.get(HOME_CHANNEL_ENV) or HOME_CHANNEL_DEFAULT).strip()
+    raw = (
+        channel
+        or os.environ.get("BATMAN_APPROVAL_CHANNEL")
+        or os.environ.get(HOME_CHANNEL_ENV)
+        or HOME_CHANNEL_DEFAULT
+    ).strip()
     return raw.lstrip("#")
 
 
