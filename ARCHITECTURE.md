@@ -121,8 +121,8 @@ Each agent has its own caps. From `infra/agents/bin/lucius.py`:
 ```py
 if spend.state["turns_today"] >= 5000:
     msg = f"[LUCIUS-DAILY-CAP] turns_today={...} >= 5000."
-    slack_post(msg + " Auto-pausing eng-lucius.")
-    run(["hermes", "cron", "pause", CRON_ID], timeout=10)
+    slack_post(msg + " Auto-pausing lucius.")
+    run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], timeout=10)
     return 0
 if spend.state["consecutive_failures"] >= 8:
     msg = f"[LUCIUS-FAIL-STREAK] {...} consecutive failures."
@@ -203,7 +203,7 @@ When the primary Claude subscription hits its weekly cap, the cron can fall back
 | `[BLOCKED] <reason>` | Claude could not resolve an error. | Slack-post with the reason. Counted as a failure. |
 | `[SILENT]` | No work matched the agent's filter (e.g. no `agent:implement` issues). | Exit 0, no Slack post. The non-event is the signal. |
 | `[LUCIUS-NO-COMMIT]` | `claude -p` returned success but no commit landed. | Look for unstaged changes; if any, salvage as a `do-not-review` draft PR. Otherwise count as failure. |
-| `[LUCIUS-DAILY-CAP]` | Per-agent turn cap exceeded. | Auto-pause the cron via `hermes cron pause`. |
+| `[LUCIUS-DAILY-CAP]` | Per-agent turn cap exceeded. | Auto-pause the launchd job via `launchctl bootout`. |
 | `[LUCIUS-FAIL-STREAK]` | 8 consecutive failures with 0 successes. | Slack-post; agent stays on schedule, but the streak is now visible for the operator to investigate. |
 | `[<AGENT>-GLOBAL-BLOCKED]` | Another agent already tripped the global block. | Exit silently. |
 

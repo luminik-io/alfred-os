@@ -1,0 +1,75 @@
+"""Smoke tests for launchd/render.sh — role-column wiring.
+
+These shell out to bash. The render script reads ``agents.conf`` from a
+caller-controlled path and writes plists into a caller-controlled output
+dir, so the tests stand up a tiny conf with one record and inspect the
+resulting plist.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+RENDER_SH = REPO_ROOT / "launchd" / "render.sh"
+TEMPLATE = REPO_ROOT / "launchd" / "_template.plist"
+
+
+def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -> Path:
+    """Run render.sh against a temp launchd dir. Returns the output dir."""
+    work = tmp_path / "launchd"
+    work.mkdir()
+    shutil.copy(RENDER_SH, work / "render.sh")
+    shutil.copy(TEMPLATE, work / "_template.plist")
+    (work / "agents.conf").write_text(conf_text)
+    out_dir = tmp_path / "out"
+    full_env = {**os.environ, **(env or {})}
+    res = subprocess.run(
+        ["bash", str(work / "render.sh"), str(out_dir)],
+        capture_output=True,
+        text=True,
+        env=full_env,
+    )
+    if res.returncode != 0:
+        pytest.fail(f"render.sh failed: {res.stderr}")
+    return out_dir
+
+
+def test_render_emits_alfred_role_env_when_role_column_set(tmp_path):
+    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tSingle-repo feature engineer\n"
+    out_dir = _render(tmp_path, conf)
+    plist = (out_dir / "my.fleet.lucius.plist").read_text()
+    assert "ALFRED_LUCIUS_ROLE" in plist
+    assert "<string>Single-repo feature engineer</string>" in plist
+
+
+def test_render_omits_role_block_when_column_empty(tmp_path):
+    conf = "my.fleet.poller\tpoller.py\tinterval:1200\tno\n"
+    out_dir = _render(tmp_path, conf)
+    plist = (out_dir / "my.fleet.poller.plist").read_text()
+    # No ALFRED_*_ROLE key emitted when the column is empty.
+    assert "ALFRED_POLLER_ROLE" not in plist
+    assert "_ROLE" not in plist
+
+
+def test_render_translates_dash_in_compound_codename(tmp_path):
+    conf = "my.fleet.brand-mention-scanner\tscan.py\tinterval:7200\tno\t\tBrand mention monitor\n"
+    out_dir = _render(tmp_path, conf)
+    plist = (out_dir / "my.fleet.brand-mention-scanner.plist").read_text()
+    assert "ALFRED_BRAND_MENTION_SCANNER_ROLE" in plist
+
+
+def test_render_escapes_xml_special_characters_in_role(tmp_path):
+    role = "Reviewer for PRs <80 lines & rising"
+    conf = f"my.fleet.r\treview.py\tinterval:600\tno\t\t{role}\n"
+    out_dir = _render(tmp_path, conf)
+    plist = (out_dir / "my.fleet.r.plist").read_text()
+    # The literal `<` / `&` must be escaped so the plist is still XML.
+    assert "&lt;" in plist
+    assert "&amp;" in plist
+    assert "<80" not in plist

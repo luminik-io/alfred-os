@@ -58,7 +58,7 @@ show_status() {
   echo ""
   local agent_count
   # FLEET_LABEL_PREFIX defaults to nothing — show all live launchd jobs.
-  # Override (e.g. FLEET_LABEL_PREFIX=luminik.eng) to filter to your fleet.
+  # Override (e.g. FLEET_LABEL_PREFIX=my.fleet) to filter to your fleet.
   local prefix="${FLEET_LABEL_PREFIX:-}"
   if [ -n "$prefix" ]; then
     agent_count=$(launchctl list | grep -c "$prefix" || true)

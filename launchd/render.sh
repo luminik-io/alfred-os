@@ -19,6 +19,11 @@
 #   __WORKSPACE_ROOT__  - resolves at render time from $WORKSPACE_ROOT
 #   __HOME__               - $HOME at render time
 #   __LOG_STEM__           - basename for /tmp/<stem>.{stdout,stderr}
+#   __ROLE_BLOCK__         - ALFRED_<AGENT>_ROLE=<one-line descriptor>
+#                            from agents.conf column 6. Empty -> no env
+#                            var. Read by agent_role() so Slack post
+#                            prefixes and CLI status surface the
+#                            human-readable role next to the codename.
 #
 # launchd does not interpolate env vars inside plists, so these
 # substitutions happen here at deploy time. Override HERMES_HOME or
@@ -65,8 +70,12 @@ mkdir -p "$OUT_DIR"
 find "$OUT_DIR" -maxdepth 1 -type f -name '*.plist' -delete
 
 render_one() {
-  local label="$1" script="$2" schedule="$3" needs_java="$4" log_stem="$5"
+  local label="$1" script="$2" schedule="$3" needs_java="$4" log_stem="$5" role="${6:-}"
   [[ -z "$log_stem" ]] && log_stem="$label"
+
+  # Derive the agent short-name (last dot-segment) for the per-agent
+  # ALFRED_<AGENT>_ROLE env-var key. e.g. my.fleet.lucius -> lucius.
+  local agent_short="${label##*.}"
 
   local schedule_block
   case "$schedule" in
@@ -123,12 +132,25 @@ render_one() {
 
   python3 - "$TEMPLATE" "$out" \
       "$label" "$script" "$schedule_block" "$path_value" "$java_block" \
-      "$hermes_bin" "$HERMES_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" <<'PY'
+      "$hermes_bin" "$HERMES_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" \
+      "$agent_short" "$role" <<'PY'
 import sys
+from xml.sax.saxutils import escape
 template_path, out_path, label, script, schedule_block, path_value, java_block, \
-    hermes_bin, hermes_home, workspace_root, home_dir, log_stem, gh_org = sys.argv[1:]
+    hermes_bin, hermes_home, workspace_root, home_dir, log_stem, gh_org, \
+    agent_short, role = sys.argv[1:]
 with open(template_path) as f:
     txt = f.read()
+role_block = ""
+if role:
+    env_key = "ALFRED_" + agent_short.upper().replace("-", "_") + "_ROLE"
+    # Roles can in principle contain & < > characters; escape them so
+    # the rendered plist remains valid XML. Real-world values today are
+    # plain ASCII, but the escape is cheap insurance.
+    role_block = (
+        f'    <key>{env_key}</key>\n'
+        f'    <string>{escape(role)}</string>'
+    )
 mapping = {
     "__LABEL__": label,
     "__SCRIPT__": script,
@@ -144,6 +166,7 @@ mapping = {
     ),
     "__HOME__": home_dir,
     "__LOG_STEM__": log_stem,
+    "__ROLE_BLOCK__": role_block,
 }
 for k, v in mapping.items():
     txt = txt.replace(k, v)
@@ -162,11 +185,20 @@ with open(out_path, "w") as f:
 PY
 }
 
-while IFS=$'\t' read -r label script schedule needs_java log_stem rest; do
+# Bash treats tab as a whitespace IFS char and collapses consecutive tabs
+# into one separator — which corrupts empty middle columns (an unset
+# log_stem with a role still set turns into "log_stem=<role>, role=<empty>").
+# Pre-expand each record into a non-whitespace field separator (\x1f) so
+# read preserves empties.
+awk -F'\t' '
+  /^[[:space:]]*$/ { next }
+  /^[[:space:]]*#/ { next }
+  { printf "%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n", $1, $2, $3, $4, $5, $6 }
+' "$CONF" | while IFS=$'\x1f' read -r label script schedule needs_java log_stem role; do
   [[ -z "$label" ]] && continue
-  case "$label" in \#*) continue ;; esac
-  render_one "$label" "$script" "$schedule" "${needs_java:-no}" "${log_stem:-}"
+  render_one "$label" "$script" "$schedule" "${needs_java:-no}" "${log_stem:-}" "${role:-}"
   echo "  rendered $label.plist"
-done < "$CONF"
+done
 
-echo "[render] wrote $(ls -1 "$OUT_DIR" | wc -l | tr -d ' ') plists to $OUT_DIR"
+plist_count="$(find "$OUT_DIR" -maxdepth 1 -type f -name '*.plist' | wc -l | tr -d ' ')"
+echo "[render] wrote $plist_count plists to $OUT_DIR"

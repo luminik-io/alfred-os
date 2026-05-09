@@ -1,14 +1,14 @@
 [project]
 name = "alfred-os"
 version = "0.1.0"
-description = "A small framework for running a fleet of narrow-specialist Claude Code agents on a single Mac, dispatched by cron, isolated by git worktree."
+description = "A small framework for running a fleet of narrow-specialist Claude Code agents on a single Mac, dispatched by launchd, isolated by git worktree."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
   { name = "Alfred-OS contributors" },
 ]
 requires-python = ">=3.11"
-keywords = ["claude-code", "agents", "cron", "launchd", "automation"]
+keywords = ["claude-code", "agents", "launchd", "automation"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
@@ -121,4 +121,3 @@ filterwarnings = [
 # brain isn't mounted. Tell mypy to ignore the missing imports.
 module = ["memory_reflect", "recall", "guardrail", "context_budget", "event_stream"]
 ignore_missing_imports = true
-

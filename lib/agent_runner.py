@@ -1,5 +1,5 @@
 """
-alfred-os — shared library for cron-driven Claude Code agents.
+alfred-os — shared library for launchd-managed Claude Code agents.
 
 Provides the primitives every codename agent needs:
 
@@ -53,7 +53,7 @@ from typing import Any
 #
 #   HERMES_HOME       - where the agent runtime lives (state/, worktrees/,
 #                       lib/, bin/, shared/.agent/). Defaults to ~/.hermes.
-#   LUMINIK_WORKSPACE - root of the per-repo product checkouts (every
+#   WORKSPACE_ROOT    - root of the per-repo product checkouts (every
 #                       <repo> in GH_REPO_TO_LOCAL is a child directory).
 #                       Defaults to ~/Claude_Workspace.
 #   CLAUDE_BIN        - absolute path to the `claude` CLI. Defaults to
@@ -66,15 +66,7 @@ from typing import Any
 HOME = Path(os.path.expanduser("~"))
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
 
-# WORKSPACE_ROOT is the canonical name. LUMINIK_WORKSPACE is the legacy
-# alias preserved for back-compat with the original alfred deployment;
-# new consumers should set WORKSPACE_ROOT only.
-WORKSPACE_ROOT = Path(
-    os.environ.get("WORKSPACE_ROOT")
-    or os.environ.get("LUMINIK_WORKSPACE")
-    or os.path.expanduser("~/Workspace")
-)
-LUMINIK_WORKSPACE = WORKSPACE_ROOT  # deprecated alias
+WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT") or os.path.expanduser("~/Workspace"))
 
 # Back-compat alias: alfred-era bin scripts import WORKSPACE and use it as
 # the root containing per-repo checkouts under product/. Keep that shape.
@@ -157,14 +149,34 @@ def set_global_block(hours: int, reason: str) -> str:
 GH_REPO_TO_LOCAL: dict[str, str] = {}
 
 # STANDARD_LABELS — labels that ``ensure_labels()`` will create on the
-# target repo if missing. Empty default; consumers extend per their workflow.
-# Each tuple: (name, hex-color-no-hash, description).
+# target repo if missing. Each tuple: (name, hex-color-no-hash, description).
+# Consumers can ``STANDARD_LABELS.extend(...)`` from their bin/*.py to add
+# fleet-specific labels.
 #
-#     STANDARD_LABELS.extend([
-#         ("agent:authored", "00ff00", "Authored by an autonomous agent"),
-#         ("agent:implement", "ffa500", "Picked up by an agent for implementation"),
-#     ])
-STANDARD_LABELS: list[tuple[str, str, str]] = []
+# The defaults below ship the labels Batman + the bundle model rely on so
+# every PR-create / issue-edit path "just works" on a fresh product repo:
+#
+#   batman-pr-open       — set by Batman when a bundle PR exists in the
+#                          repo; cleared on merge.
+#   agent:large-feature  — issue label that opts the issue into Batman's
+#                          bundle search (multi-repo feature work).
+#
+# Without these defaults, the first PR-create call against a fresh repo
+# would fail with "could not add label" and return None silently; the
+# operator then got "PR open failed" with no breadcrumb. (Same root
+# cause as luminik-io/alfred Issue #142.)
+STANDARD_LABELS: list[tuple[str, str, str]] = [
+    (
+        "batman-pr-open",
+        "5319e7",
+        "A Batman bundle-PR is open in this repo. Set on PR open, cleared on merge.",
+    ),
+    (
+        "agent:large-feature",
+        "ff6b00",
+        "Multi-repo feature; picked up as a bundle by Batman.",
+    ),
+]
 
 
 def _full_repo(slug: str) -> str:
@@ -542,9 +554,9 @@ def doctor_mode() -> bool:
 
 # ---------- Prompt loading + variable substitution ----------
 #
-# Codename agents read their system prompt from a markdown file in the repo
-# (or from a Hermes cron config). The same file is editable as documentation
-# AND consumed by the runner at firing time. To keep operator-specific
+# Codename agents read their system prompt from a markdown file in the repo.
+# The same file is editable as documentation AND consumed by the runner at
+# firing time. To keep operator-specific
 # values out of the file (gh handle, email, repo lists) without forcing a
 # pre-render step, load_prompt() does shell-style ${VAR} substitution
 # against the process env when reading the file.
@@ -569,6 +581,44 @@ def load_prompt(path: Path | str, *, extra_vars: dict[str, str] | None = None) -
     if extra_vars:
         mapping.update(extra_vars)
     return string.Template(text).safe_substitute(mapping)
+
+
+# ---------- Role / codename metadata ----------
+#
+# Codenames alone don't carry meaning. A fresh contributor (or your future
+# self at 2am) reads ``[BATMAN-PLAN-DRAFTED]`` or ``[NIGHTWING-COMPLETE]``
+# and has to cross-reference the per-agent prompt to figure out what the
+# agent does. ``role`` is a one-line operational descriptor stored in
+# ``agents.conf`` column 7 and rendered into each launchd plist as
+# ``ALFRED_<CODENAME>_ROLE``. Slack post prefixes and the ``alfred agents``
+# CLI surface ``codename (role)`` so codenames stay decorative without
+# losing operational context.
+
+
+def agent_role(codename: str) -> str:
+    """Return the one-line operational role descriptor for an agent.
+
+    Read from ``ALFRED_<CODENAME>_ROLE`` (rendered into each launchd plist
+    by ``launchd/render.sh`` from agents.conf column 7). Returns the empty
+    string when no role is set; never raises. ``-`` characters in compound
+    codenames (``alfred-nightly``, ``brand-mention-scanner``) are
+    translated to ``_`` to match what render.sh emits.
+    """
+    if not codename:
+        return ""
+    env_key = "ALFRED_" + codename.upper().replace("-", "_") + "_ROLE"
+    return (os.environ.get(env_key) or "").strip()
+
+
+def codename_with_role(codename: str) -> str:
+    """Format ``"<codename> (<role>)"`` when a role is set, else the bare codename.
+
+    Slack post prefixes and CLI status output use this so a reader who
+    hasn't memorized the agent cast still gets operational context next
+    to every codename.
+    """
+    role = agent_role(codename)
+    return f"{codename} ({role})" if role else codename
 
 
 # ---------- Per-firing event log (jsonl) ----------
@@ -894,6 +944,113 @@ def make_worktree_from_branch(local_repo: str, agent: str, head_ref: str, target
 def remove_worktree(local_repo: str, wt: Path) -> None:
     repo_path = WORKSPACE / local_repo
     run(["git", "worktree", "remove", "--force", str(wt)], cwd=str(repo_path), timeout=30)
+
+
+def find_existing_worktree(local_repo: str, agent: str, target: str) -> Path | None:
+    """Locate a previous-firing worktree for ``(agent, local_repo, target)``.
+
+    Returns the most recent matching path under ``WORKTREE_ROOT`` or
+    ``None`` if no leftover worktree exists. The glob pattern matches
+    the on-disk naming convention written by ``make_worktree``:
+    ``eng-<agent>-<repo>-<target>-<ts>``. Sorting by mtime keeps the
+    dedup deterministic when (rare) more than one stale worktree
+    exists for the same target.
+    """
+    if not WORKTREE_ROOT.exists():
+        return None
+    pattern = f"eng-{agent}-{local_repo}-{target}-*"
+    matches = sorted(
+        (p for p in WORKTREE_ROOT.glob(pattern) if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return matches[0] if matches else None
+
+
+def _worktree_branch(wt: Path) -> str | None:
+    """Return the branch checked out inside ``wt`` or ``None`` on error."""
+    res = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(wt), timeout=10)
+    if res.returncode != 0:
+        return None
+    branch = (res.stdout or "").strip()
+    return branch or None
+
+
+def _worktree_is_stale(local_repo: str, wt: Path, base: str = "origin/main") -> bool:
+    """Heuristic: is this worktree's branch detached from current ``base``?
+
+    A worktree is stale when its branch is on ``HEAD`` (detached) OR
+    when base has moved past it AND it has no commits ahead. The first
+    half catches a wedged worktree we cannot resume on; the second
+    catches the common case where the planner reset the issue label
+    after a no-commit firing and main has since moved on. We always
+    reuse a worktree that is ahead of base by any amount so prior work
+    survives across firings.
+    """
+    repo_path = WORKSPACE / local_repo
+    # Refresh local view of base so the comparison is honest.
+    run(["git", "fetch", "origin", "main"], cwd=str(repo_path), timeout=60)
+    branch = _worktree_branch(wt)
+    if not branch or branch == "HEAD":
+        return True
+    behind_ahead = run(
+        ["git", "rev-list", "--left-right", "--count", f"{base}...{branch}"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    if behind_ahead.returncode != 0:
+        return True
+    parts = (behind_ahead.stdout or "").strip().split()
+    if len(parts) != 2:
+        return True
+    try:
+        behind, ahead = int(parts[0]), int(parts[1])
+    except ValueError:
+        return True
+    return ahead == 0 and behind > 0
+
+
+def reuse_or_make_worktree(
+    local_repo: str, agent: str, target: str, *, base: str = "origin/main"
+) -> tuple[Path, str, bool]:
+    """Reuse a previous-firing worktree when one exists; else fall back to fresh.
+
+    Returns ``(path, branch, reused)`` where ``reused`` is ``True``
+    when we landed on a leftover worktree from a prior firing. Closes
+    the runner-side dedup hole: every firing of a long-running issue
+    (max-turns, partial commits) lands on the SAME worktree, so commits
+    stack up and pre-push checks see the full state instead of a
+    clean slate.
+
+    Stale worktrees (``_worktree_is_stale``) are removed before the
+    ``make_worktree`` fallback so ``WORKTREE_ROOT`` does not accumulate
+    dead branches on every firing miss.
+    """
+    existing = find_existing_worktree(local_repo, agent, target)
+    if existing is None:
+        wt, branch = make_worktree(local_repo, agent, target, base=base)
+        return wt, branch, False
+    if _worktree_is_stale(local_repo, existing, base=base):
+        # Best-effort cleanup. ``remove_worktree`` swallows failures
+        # because git's --force already handles the locked / dirty
+        # case; if even that fails we walk over to make_worktree which
+        # uses a fresh ts and lands at a different path.
+        with contextlib.suppress(Exception):
+            remove_worktree(local_repo, existing)
+        wt, branch = make_worktree(local_repo, agent, target, base=base)
+        return wt, branch, False
+    branch = _worktree_branch(existing) or ""
+    if not branch:
+        with contextlib.suppress(Exception):
+            remove_worktree(local_repo, existing)
+        wt, branch = make_worktree(local_repo, agent, target, base=base)
+        return wt, branch, False
+    # Reuse: refresh local view of main inside the worktree so the
+    # resumed firing sees the latest base; the caller decides whether
+    # to rebase. Best-effort fetch keeps the path clean if the network
+    # is briefly unavailable.
+    run(["git", "fetch", "origin", "main"], cwd=str(existing), timeout=60)
+    return existing, branch, True
 
 
 # ---------- Claude invocation ----------
@@ -1552,9 +1709,43 @@ def gh_pr_create(
     labels: list[str] | None = None,
     base: str = "main",
 ) -> str | None:
-    """Open a PR. Pre-ensures labels exist. Returns PR URL or None on failure."""
+    """Open a PR. Pre-ensures labels exist. Returns PR URL or None on failure.
+
+    Logs the gh stderr to ``stderr`` on failure: the prior
+    silent-None-return pattern made PR-open failures opaque. The
+    runner saw "PR open failed" with no clue whether the cause was
+    push, label, branch protection, or anything else; the worktree
+    then got cleaned up and forensics were lost. Now the gh error
+    message reaches the firing's stderr / Slack alert path.
+
+    Also opportunistically creates any ad-hoc labels not in
+    ``STANDARD_LABELS`` with a neutral grey colour. Belt-and-braces:
+    a future caller passing a brand-new label without first
+    extending STANDARD_LABELS still gets a working PR.
+    """
     if labels:
         ensure_labels(repo_slug)
+        # Ad-hoc labels (anything passed in but not in STANDARD_LABELS)
+        # get created on the fly so a future caller passing a new
+        # label without updating STANDARD_LABELS still ships.
+        standard_names = {name for name, _, _ in STANDARD_LABELS}
+        adhoc = [lbl for lbl in labels if lbl not in standard_names]
+        for lbl in adhoc:
+            run(
+                [
+                    "gh",
+                    "label",
+                    "create",
+                    lbl,
+                    "--color",
+                    "ededed",
+                    "--description",
+                    "Auto-created by gh_pr_create on first use",
+                    "-R",
+                    _full_repo(repo_slug),
+                ],
+                timeout=15,
+            )
     cmd = [
         "gh",
         "pr",
@@ -1574,8 +1765,18 @@ def gh_pr_create(
         cmd.extend(["--label", label])
     res = run(cmd, timeout=60)
     if res.returncode != 0:
+        stderr = (res.stderr or "").strip()
+        stdout = (res.stdout or "").strip()
+        print(
+            f"[gh_pr_create] FAILED repo={_full_repo(repo_slug)} "
+            f"head={head or '(default)'} base={base} "
+            f"title={title[:80]!r} rc={res.returncode}\n"
+            f"  stderr: {stderr[:600]}\n"
+            f"  stdout: {stdout[:200]}",
+            file=sys.stderr,
+        )
         return None
-    # Last line is the URL
+    # Last line is the URL.
     for line in reversed((res.stdout or "").splitlines()):
         line = line.strip()
         if line.startswith("https://"):
@@ -1633,6 +1834,67 @@ def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool:
         timeout=30,
     )
     return res.returncode == 0
+
+
+def find_open_authored_pr_for_issue(
+    repo_slug: str, issue_num: int, *, label: str = "agent:authored"
+) -> dict | None:
+    """Return the first open agent-authored PR that references ``issue_num``.
+
+    Runner-side mirror of the prompt's Step 1.5 dedup. We search any
+    open PR whose title or body mentions ``#<issue_num>`` (this is how
+    Conventional-Commits ``Closes #N`` / ``Fixes #N`` link ends up in
+    the body) and only consider PRs carrying ``label`` so a human PR
+    that happens to reference the issue does NOT lock the queue. We
+    skip the issue if the agent is going to step on its own toes; we
+    do NOT block the queue on third-party PRs.
+
+    Returns the PR JSON dict (with ``number``, ``url``, ``state``,
+    ``labels``, ``title``, ``body``) or ``None`` if no such PR exists.
+    Falls back to ``None`` on any ``gh`` failure so a transient
+    network blip does not lock out the picker.
+    """
+    prs = gh_json(
+        [
+            "gh",
+            "pr",
+            "list",
+            "-R",
+            _full_repo(repo_slug),
+            "--state",
+            "open",
+            "--search",
+            f'"#{issue_num}" in:title,body',
+            "--json",
+            "number,url,state,labels,title,body",
+            "--limit",
+            "10",
+        ],
+        default=[],
+    )
+    for pr in prs or []:
+        pr_labels = {label_obj.get("name") for label_obj in pr.get("labels", [])}
+        if label and label not in pr_labels:
+            continue
+        # Be defensive: ``gh``'s text search substring-matches, so a
+        # PR mentioning ``#12345`` matches a search for ``#12``. Re-
+        # validate the body+title contain the exact issue token
+        # followed by a non-digit (or end-of-text) so we never lock
+        # issue #12 behind a PR that closes #1234.
+        token = f"#{issue_num}"
+        haystack = f" {pr.get('title', '')} {pr.get('body', '') or ''} "
+        idx = haystack.find(token)
+        valid = False
+        while idx >= 0:
+            after = haystack[idx + len(token) : idx + len(token) + 1]
+            if not after.isdigit():
+                valid = True
+                break
+            idx = haystack.find(token, idx + 1)
+        if not valid:
+            continue
+        return pr
+    return None
 
 
 # ---------- Issue claim state machine ----------
@@ -1726,6 +1988,129 @@ def set_repo_paused(repo_slug: str, paused: bool) -> list[str]:
         current.discard(repo_slug)
     out = sorted(current)
     PAUSED_REPOS_FILE.write_text(json.dumps({"paused": out}, indent=2))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Fleet-wide agent enable/disable
+#
+# Runner-level gate for opt-in agents. State lives at
+# ``$HERMES_HOME/state/fleet/enabled.txt`` — newline-separated codenames,
+# ``#`` comments allowed. Operators edit this with vi at 2am, so a flat
+# text file beats JSON for survival under "I just want to add one line".
+#
+# Missing file or missing codename returns ``default``. Callers pick:
+# True for default-enabled agents, False for opt-in agents like a brand-new
+# feature being burned in. Listed codenames are always enabled.
+# ---------------------------------------------------------------------------
+FLEET_DIR = STATE_ROOT / "fleet"
+FLEET_ENABLED_FILE = FLEET_DIR / "enabled.txt"
+
+
+def _read_enabled_codenames() -> list[str]:
+    """Parse ``FLEET_ENABLED_FILE`` into the list of enabled codenames.
+
+    Skips blank lines and ``#``-prefixed comments. Inline comments are
+    also stripped (``batman # MVP burn-in``). Returns ``[]`` when the
+    file is missing or unreadable — callers decide the default-enabled
+    behaviour via ``is_agent_enabled``'s ``default`` keyword.
+    """
+    if not FLEET_ENABLED_FILE.exists():
+        return []
+    try:
+        text = FLEET_ENABLED_FILE.read_text()
+    except OSError:
+        return []
+    out: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "#" in line:
+            line = line.split("#", 1)[0].strip()
+        if line:
+            out.append(line)
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            deduped.append(c)
+    return deduped
+
+
+def is_agent_enabled(codename: str, *, default: bool = True) -> bool:
+    """Return True iff ``codename`` is enabled via the fleet state file.
+
+    File missing → ``default`` (True for opt-out agents, False for
+    opt-in agents like Batman until burn-in).
+    File present and codename listed → True.
+    File present and codename not listed → ``default``.
+    """
+    if not FLEET_ENABLED_FILE.exists():
+        return default
+    return codename in _read_enabled_codenames() or default
+
+
+def list_enabled_agents() -> list[str]:
+    """Return the parsed list of codenames in ``FLEET_ENABLED_FILE``.
+
+    Empty list when the file is missing — callers that want
+    ``default-enabled`` semantics should consult ``is_agent_enabled``
+    per codename.
+    """
+    return _read_enabled_codenames()
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """tmp+rename atomic write. Leaves no half-written file on crash."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text(text)
+        tmp.replace(path)
+    finally:
+        if tmp.exists():
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+
+
+def _write_enabled_codenames(codenames: list[str]) -> None:
+    """Persist a list of codenames to ``FLEET_ENABLED_FILE`` atomically.
+    Sorts for stable diffs and dedupes silently."""
+    deduped = sorted({c.strip() for c in codenames if c and c.strip()})
+    header = (
+        "# Fleet enable list — managed by `alfred enable/disable <agent>`.\n"
+        "# One codename per line. Blank lines and `#`-comments are ignored.\n"
+        "# Edit by hand at your own risk; the CLI is the supported path.\n"
+    )
+    body = "\n".join(deduped)
+    _atomic_write(FLEET_ENABLED_FILE, header + body + ("\n" if body else ""))
+
+
+def enable_agent(codename: str) -> list[str]:
+    """Add ``codename`` to ``FLEET_ENABLED_FILE``. Idempotent. Returns
+    the new sorted list of enabled codenames."""
+    codename = codename.strip()
+    if not codename:
+        raise ValueError("enable_agent: codename must be non-empty")
+    current = set(_read_enabled_codenames())
+    current.add(codename)
+    out = sorted(current)
+    _write_enabled_codenames(out)
+    return out
+
+
+def disable_agent(codename: str) -> list[str]:
+    """Remove ``codename`` from ``FLEET_ENABLED_FILE``. Idempotent.
+    Returns the new sorted list of enabled codenames."""
+    codename = codename.strip()
+    if not codename:
+        raise ValueError("disable_agent: codename must be non-empty")
+    current = set(_read_enabled_codenames())
+    current.discard(codename)
+    out = sorted(current)
+    _write_enabled_codenames(out)
     return out
 
 
@@ -2038,7 +2423,7 @@ def issue_dedup_check(repo_slug: str, num: int) -> dict:
 
 
 def with_lock(name: str):
-    """Context manager-ish helper: acquire lock, exit if held by another live PID."""
+    """Acquire the per-agent lock, exiting if another live PID holds it."""
     lock = AgentLock(name)
     if not lock.acquire():
         print(f"[{name}-LOCKED] previous run still active. Skipping firing.")
