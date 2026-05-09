@@ -172,6 +172,54 @@ def test_gordon_raises_when_requested_service_missing(monkeypatch):
         gordon.check_ecs_drift()
 
 
+def test_gordon_reports_drift_when_optional_sentry_fetch_fails(monkeypatch):
+    gordon = load_bin_module("gordon.py", monkeypatch)
+
+    class FakeEvents:
+        def __init__(self, *a, **kw):
+            self.emitted = []
+
+        def emit(self, *a, **kw):
+            self.emitted.append((a, kw))
+
+    class FakeSpend:
+        def increment(self, **kw):
+            return None
+
+    posts = []
+    monkeypatch.setattr(gordon, "with_lock", lambda agent: None)
+    monkeypatch.setattr(gordon, "preflight", lambda spec: None)
+    monkeypatch.setattr(gordon, "doctor_mode", lambda: False)
+    monkeypatch.setattr(gordon, "STAGING_CLUSTER", "cluster")
+    monkeypatch.setattr(gordon, "EventLog", FakeEvents)
+    monkeypatch.setattr(gordon, "SpendState", lambda agent: FakeSpend())
+    monkeypatch.setattr(
+        gordon,
+        "check_ecs_drift",
+        lambda: [
+            {
+                "service": "api",
+                "repo": "backend",
+                "live_sha": "live",
+                "main_sha": "main",
+                "in_sync": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        gordon,
+        "fetch_sentry_token",
+        lambda: (_ for _ in ()).throw(gordon.MonitoringFetchError("sentry down")),
+    )
+    monkeypatch.setattr(gordon, "slack_post", lambda text, **kw: posts.append((text, kw)))
+
+    assert gordon.main() == 0
+    assert posts
+    assert any("ECS drift" in text for text, _ in posts)
+    assert any("sentry down" in text for text, _ in posts)
+    assert any(kw.get("severity") == "alert" for _, kw in posts)
+
+
 def test_agent_lock_writes_pid_identity_metadata(monkeypatch, tmp_path):
     sys.path.insert(0, str(ROOT / "lib"))
     import agent_runner as ar

@@ -297,12 +297,13 @@ def main() -> int:
     events.emit("firing_started")
     spend = SpendState(AGENT)
 
-    collection_errors: list[str] = []
+    blocking_errors: list[str] = []
+    optional_errors: list[str] = []
     try:
         drift = check_ecs_drift()
     except MonitoringFetchError as e:
         drift = []
-        collection_errors.append(str(e))
+        blocking_errors.append(str(e))
     drifted = [r for r in drift if not r["in_sync"]]
     events.emit("ecs_drift_checked", services=len(drift), drifted=len(drifted))
 
@@ -311,20 +312,20 @@ def main() -> int:
         token = fetch_sentry_token()
     except MonitoringFetchError as e:
         token = None
-        collection_errors.append(str(e))
+        optional_errors.append(str(e))
     try:
         if token:
             sentry_issues = fetch_sentry_top_issues(token, hours=24, limit=5)
     except MonitoringFetchError as e:
-        collection_errors.append(str(e))
+        optional_errors.append(str(e))
     events.emit("sentry_fetched", count=len(sentry_issues), token_available=bool(token))
 
     spend.increment(firings_today=1)
 
-    if collection_errors:
+    if blocking_errors:
         spend.increment(failures_today=1, consecutive_failures=1)
         msg = f"⚠️ {AGENT.title()}: monitoring input collection failed: " + "; ".join(
-            collection_errors[:3]
+            blocking_errors[:3]
         )
         print(msg)
         slack_post(msg, severity="alert")
@@ -337,6 +338,15 @@ def main() -> int:
     print("\n".join(summary_lines))
 
     if not drifted and not sentry_issues:
+        if optional_errors:
+            spend.increment(failures_today=1, consecutive_failures=1)
+            msg = f"⚠️ {AGENT.title()}: optional Sentry collection failed: " + "; ".join(
+                optional_errors[:3]
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            events.emit("firing_complete", outcome="sentry-fetch-failed")
+            return 0
         # Healthy day, stay quiet on Slack.
         return 0
 
@@ -358,6 +368,11 @@ def main() -> int:
             slack_lines.append(
                 f"  • {issue['count']}x {issue['users']} users - `{issue['id']}` {issue['title']}\n    <{link}>"
             )
+
+    if optional_errors:
+        slack_lines.append("\n*Sentry collection warning:*")
+        for error in optional_errors[:3]:
+            slack_lines.append(f"  • {error}")
 
     msg = "\n".join(slack_lines)
     severity = "alert" if drifted else "info"
