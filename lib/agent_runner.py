@@ -14,15 +14,16 @@ Provides the primitives every codename agent needs:
 - ``slack_post()`` — webhook-based Slack notification with disk caching.
 - ``ensure_labels()`` / ``gh_pr_create()`` / ``gh_issue_*()`` — gh CLI wrappers.
 
-Consumers (e.g. luminik-io/alfred) write a thin ``bin/<codename>.py`` per
-agent that imports from this module, declares a ``PreflightSpec``, and calls
-``claude_invoke()``. The runner does no LLM-orchestration work itself; all
+Consumers (e.g. luminik-io/alfred) write a thin role runner such as
+``bin/lucius.py`` or ``bin/huntress.py`` that imports from this module,
+declares a ``PreflightSpec``, and calls ``claude_invoke()``. The runner does
+no LLM-orchestration work itself; all
 real work happens inside a CLI subprocess against the operator's configured
 Claude Code subscription, optional Codex login, or any wrapper binary they
 configure.
 
 Path defaults assume a single macOS host. ``HERMES_HOME`` defaults to
-``~/.hermes`` and ``WORKSPACE_ROOT`` to ``~/Workspace``; both are env-var
+``~/.hermes`` and ``WORKSPACE_ROOT`` to ``~/code``; both are env-var
 overridable. ``GH_ORG`` is required for any helper that targets GitHub
 (e.g. ``gh_pr_create``); set it once in the launchd plist's
 ``EnvironmentVariables`` block.
@@ -55,7 +56,7 @@ from typing import Any
 #                       lib/, bin/, shared/.agent/). Defaults to ~/.hermes.
 #   WORKSPACE_ROOT    - root of the per-repo product checkouts (every
 #                       <repo> in GH_REPO_TO_LOCAL is a child directory).
-#                       Defaults to ~/Claude_Workspace.
+#                       Defaults to ~/code.
 #   CLAUDE_BIN        - absolute path to the `claude` CLI. Defaults to
 #                       whatever is on $PATH; override only if you have a
 #                       non-standard install. Set to a fully-qualified path
@@ -66,7 +67,7 @@ from typing import Any
 HOME = Path(os.path.expanduser("~"))
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
 
-WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT") or os.path.expanduser("~/Workspace"))
+WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT") or os.path.expanduser("~/code"))
 
 # Back-compat alias: alfred-era bin scripts import WORKSPACE and use it as
 # the root containing per-repo checkouts under product/. Keep that shape.
@@ -96,11 +97,11 @@ CODEX_DEFAULT_SANDBOX = os.environ.get("CODEX_SANDBOX", "read-only").strip() or 
 CODEX_APPROVAL_POLICY = os.environ.get("CODEX_APPROVAL_POLICY", "never").strip() or "never"
 CODEX_TRANSCRIPTS_ROOT = STATE_ROOT / "codex"
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"
-SLACK_WEBHOOK_CACHE_TTL = 7 * 24 * 3600  # 7 days; the webhook URL itself is stable
+SLACK_WEBHOOK_CACHE_TTL = 30 * 24 * 3600  # 30 days; the webhook URL itself is stable
 
 # Shared rate-limit blocker — when ANY agent hits Anthropic's error_rate_limit
 # or error_budget, all agents respect the block until the timeout passes.
-# Otherwise each agent's cron would keep firing into the rate-limit wall.
+# Otherwise each scheduled agent would keep firing into the rate-limit wall.
 GLOBAL_BLOCKED_FILE = STATE_ROOT / "global-blocked-until.json"
 
 
@@ -220,7 +221,7 @@ def today_str() -> str:
 
 
 def env_int(name: str, default: int, *, minimum: int = 1, maximum: int | None = None) -> int:
-    """Read a small integer knob from env without letting bad values break cron.
+    """Read a small integer knob from env without letting bad values break scheduled runs.
 
     Missing / non-integer values fall back to ``default``. Result is always
     clamped to the ``[minimum, maximum]`` range — including the fallback
@@ -336,11 +337,11 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
 
     1. ``SLACK_WEBHOOK_URL`` env var — simplest path; set it once in your
        launchd plist or shell profile.
-    2. Disk cache at ``${HERMES_HOME}/state/slack-webhook.cache`` (7-day TTL)
+    2. Disk cache at ``${HERMES_HOME}/state/slack-webhook.cache`` (30-day TTL)
        — written by step 3 the first time it succeeds, so subsequent calls
        skip the AWS round-trip.
     3. AWS Secrets Manager — secret id from ``SLACK_WEBHOOK_SECRET_ID``
-       (default ``slack/agents/webhook-url``), region from
+       (default ``alfred/slack-webhook``), region from
        ``SLACK_WEBHOOK_SECRET_REGION`` (default ``us-east-1``). Optional;
        lets you keep the URL out of plain env if you've already wired AWS.
 
@@ -394,7 +395,7 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
 
     # 3. AWS Secrets Manager fallback
     if not hook:
-        secret_id = os.environ.get("SLACK_WEBHOOK_SECRET_ID", "slack/agents/webhook-url")
+        secret_id = os.environ.get("SLACK_WEBHOOK_SECRET_ID", "alfred/slack-webhook")
         secret_region = os.environ.get("SLACK_WEBHOOK_SECRET_REGION", "us-east-1")
         res = run(
             [
@@ -1488,8 +1489,7 @@ def claude_invoke_streaming(
     ``--output-format stream-json`` through a parser that writes a
     per-firing JSONL transcript to
     ``${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``
-    so post-hoc tool / skill aggregation works (``alfred logs <agent>
-    --firing <id>``).
+    so post-hoc tool / skill aggregation works in downstream fleet CLIs.
 
     The OSS framework currently delegates to plain :func:`claude_invoke`
     for simplicity. Behaviour: identical ``ClaudeResult`` (turns, cost,
@@ -1521,8 +1521,8 @@ def transcript_path(agent: str, firing_id: str) -> Path:
 
     Convention: ``${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``.
     Currently no transcripts are written (see :func:`claude_invoke_streaming`),
-    but the path resolver ships now so consumer agents and ``alfred logs``
-    don't need to change when streaming lands.
+    but the path resolver ships now so consumer agents and downstream log
+    viewers don't need to change when streaming lands.
     """
     month = datetime.now(UTC).strftime("%Y-%m")
     return TRANSCRIPTS_ROOT / agent / month / f"{firing_id}.jsonl"
@@ -2672,7 +2672,7 @@ def assemble_shared_context(intent: str, budget: int = 16000) -> str:
 # without mounting the harness path itself. Every helper swallows
 # exceptions: a broken stream must NEVER take down a working agent.
 #
-# See infra/agents/shared/.agent/harness/event_stream.py for the
+# See shared/.agent/harness/event_stream.py in the private reference fleet for the
 # Event/EventStream contract and the type vocabulary.
 
 

@@ -32,7 +32,7 @@ Alfred-OS's shape:
 launchd plist (every N min)
    │
    ▼
-${HERMES_HOME}/bin/<codename>.py    one file per agent
+${HERMES_HOME}/bin/<role>.py        one file per agent role
    │
    ▼
 agent_runner module                 lock + preflight + spend + claude/codex invoke + gh + slack
@@ -66,7 +66,7 @@ bash deploy.sh && bash bin/doctor.sh
 
 `doctor.sh` reports `0 passed, 0 failed` against an empty fleet. The framework is installed; you haven't pointed any codename agents at it. See [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
 
-Full setup including AWS IAM-per-agent, Slack webhook, and your first cron firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md).
+Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md).
 
 ## What's in here
 
@@ -80,7 +80,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first cron firin
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/`](bin/) | Operator helpers: `doctor.sh` (host validator), `hermes-claude` (two-account swap). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
-| [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${HERMES_HOME}`, render plists, bootstrap `launchd`. |
+| [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${HERMES_HOME}`. If `launchd/agents.conf` exists, render plists and bootstrap `launchd`; otherwise do a framework-only deploy. |
 | [`install.sh`](install.sh) | Fresh-machine bootstrap: brew + npm + dirs + shell rc. Idempotent. |
 | [`examples/bin/hello.py`](examples/bin/hello.py) | Smallest possible codename agent: preflight + Slack post. |
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference: pick / claim / claude / act / release / report. |
@@ -109,7 +109,7 @@ Rendered version: https://luminik-io.github.io/alfred-os/.
 
 ## Codename pattern
 
-The framework expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels and gh state rather than in-process calls. The reference fleet ([`luminik-io/alfred`](https://github.com/luminik-io/alfred)) uses Batman side-characters: **Lucius** (feature dev), **Drake** (planner), **Bane** (test coverage), **Ra's al Ghul** (PR review), **Robin** (bug triage), **Nightwing** (review-fix), **Huntress** (post-deploy smoke), **Gordon** (deploy health), **Bat-Signal** (Slack notifier). Pick whatever cast fits.
+The framework expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels and gh state rather than in-process calls. The reference fleet ([`luminik-io/alfred`](https://github.com/luminik-io/alfred)) uses Batman side-characters: **Batman** (multi-repo coordinator), **Lucius** (feature dev), **Drake** (planner), **Bane** (test coverage), **Ra's al Ghul** (PR review), **Robin** (bug triage), **Nightwing** (review-fix), **Huntress** (post-deploy smoke), **Gordon** (deploy health). Pick whatever cast fits.
 
 The cast matters for two reasons. Codenames appear in PR titles, Slack messages, and commit-trailer metadata; a coherent cast makes the fleet's channel scannable. And narrow scopes per codename are a forcing function for design quality. "What does Bane do?" is a sharper question than "what does the test agent do?".
 
@@ -119,7 +119,7 @@ See [Architecture → Codename pattern](https://luminik-io.github.io/alfred-os/c
 
 - ❌ Multi-tenant. Single operator, one Mac, one config.
 - ❌ A web UI. Slack is the human surface.
-- ❌ Long-running orchestration loops. Cron is the orchestrator.
+- ❌ Long-running orchestration loops. The OS scheduler is the orchestrator.
 - ❌ Hosted model gateways. alfred-os shells out to local CLIs (`claude`, optional `codex`, optional Ollama); it does not run a multi-tenant inference gateway.
 - ❌ Browser automation runtimes. If your fleet needs a browser, install Playwright in your codename agent's bin script.
 - ❌ Vector databases for memory. The reference fleet uses a doc-shaped memory layer (gbrain). Alfred-OS doesn't ship one; that's a per-fleet decision.
@@ -137,4 +137,4 @@ MIT. See [`LICENSE`](LICENSE).
 
 ## Why "alfred-os"
 
-Alfred Alfred-OS is Bruce Wayne's butler, the one who keeps the cave running while the mission is in flight. The reference fleet is named `alfred`, the codenames are bat-themed, and the framework that lets the cave function is `alfred-os`.
+Alfred-OS is named after Bruce Wayne's butler, the one who keeps the cave running while the mission is in flight. The reference fleet is named `alfred`, the codenames are bat-themed, and the framework that lets the cave function is `alfred-os`.

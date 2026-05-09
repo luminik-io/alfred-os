@@ -113,8 +113,8 @@ def _state_with(
 def test_render_agents_conf_basic(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev", "planner"))
     text = init_mod.render_agents_conf(state)
-    assert "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius" in text
-    assert "alfred.drake\tdrake.py\tinterval:7200\tno\talfred.drake" in text
+    assert "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tfeature dev" in text
+    assert "alfred.drake\tdrake.py\tinterval:7200\tno\talfred.drake\tissue planner" in text
     # Header comment present.
     assert text.startswith("# agents.conf")
 
@@ -125,7 +125,7 @@ def test_render_agents_conf_fleet_recap_shares_script(init_mod, tmp_path):
     # Both rows point at fleet-recap.sh and share the log stem.
     assert text.count("fleet-recap.sh") == 2
     # Both rows write to the same /tmp/alfred.fleet-recap.{stdout,stderr}.
-    assert text.count("\talfred.fleet-recap\n") == 2
+    assert text.count("\talfred.fleet-recap\tfleet recap") == 2
     # The labels stay distinct so launchd doesn't collide them.
     assert "alfred.fleet-recap-morning\t" in text
     assert "alfred.fleet-recap-evening\t" in text
@@ -136,7 +136,7 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
         init_mod, tmp_path, roles=("feature_dev",), codenames={"feature_dev": "robin-hood"}
     )
     text = init_mod.render_agents_conf(state)
-    assert "alfred.robin-hood\trobin-hood.py" in text
+    assert "alfred.robin-hood\tlucius.py" in text
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
     state.use_aws = True
     state.aws_agent_profiles = {"huntress": "huntress-cron"}
     out = init_mod.env_assignments_for(state)
-    assert out["AWS_PROFILE_HUNTRESS"] == "huntress-cron"
+    assert out["ALFRED_HUNTRESS_AWS_PROFILE"] == "huntress-cron"
 
 
 # ---------------------------------------------------------------------------

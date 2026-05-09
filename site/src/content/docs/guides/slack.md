@@ -3,7 +3,7 @@ title: Slack
 description: Create the app, mint the webhook, store it, post your first message.
 ---
 
-Alfred-OS posts agent reports to a Slack channel via an incoming webhook. `slack_post()` resolves the URL via env → 7-day disk cache → AWS Secrets Manager, so steady-state firings don't pay an AWS round-trip every time.
+Alfred-OS posts agent reports to a Slack channel via an incoming webhook. `slack_post()` resolves the URL via env -> 30-day disk cache -> AWS Secrets Manager, so steady-state firings don't pay an AWS round-trip every time.
 
 Full guide at [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md). Highlights:
 
@@ -48,7 +48,7 @@ aws --profile <admin> secretsmanager create-secret \
   --region us-east-1
 ```
 
-The framework's default secret ID is `alfred/slack-webhook`. See [AWS setup](/alfred-os/guides/aws/) for the IAM policy your cron-time identity needs.
+The framework's default secret ID is `alfred/slack-webhook`. See [AWS setup](/alfred-os/guides/aws/) for the IAM policy your scheduled-agent identity needs.
 
 ### Option C: Both
 

@@ -9,6 +9,7 @@ resulting plist.
 from __future__ import annotations
 
 import os
+import plistlib
 import shutil
 import subprocess
 from pathlib import Path
@@ -73,3 +74,14 @@ def test_render_escapes_xml_special_characters_in_role(tmp_path):
     assert "&lt;" in plist
     assert "&amp;" in plist
     assert "<80" not in plist
+
+
+def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
+    conf = "my.fleet.marshall\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+    out_dir = _render(tmp_path, conf)
+    plist_data = plistlib.loads((out_dir / "my.fleet.marshall.plist").read_bytes())
+    assert Path(plist_data["ProgramArguments"][0]).name == "agent-launch"
+    assert plist_data["ProgramArguments"][1] == "lucius.py"
+    env = plist_data["EnvironmentVariables"]
+    assert env["AGENT_CODENAME"] == "marshall"
+    assert env["LAUNCHD_LABEL"] == "my.fleet.marshall"

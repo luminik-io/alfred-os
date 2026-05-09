@@ -82,7 +82,7 @@ When the subscription cap trips mid-firing, the framework treats it as a fleet-w
 
 ## The `hermes-claude` swap pattern
 
-Two Anthropic accounts? `bin/hermes-claude` points the cron-spawned `claude` at either one without re-authenticating each time.
+Two Anthropic accounts? `bin/hermes-claude` points the launchd-spawned `claude` at either one without re-authenticating each time.
 
 The mechanism: `~/.claude/` is the auth dir. `hermes-claude` keeps two snapshots (`~/.claude-primary/` and `~/.claude-secondary/`) and symlinks `~/.claude` to whichever you're using.
 
@@ -149,7 +149,7 @@ Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>`
 You've blown the weekly cap. `cat $HERMES_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `hermes-claude swap`, or upgrade to Max.
 
 **`error_max_turns` on every firing of one agent.**
-That agent's max-turns budget is too tight for the work. Either widen the budget in the runner (look for `max_turns=` in the agent's `bin/<codename>.py`), or scope-cap the issues that agent picks up.
+That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/lucius.py`), or scope-cap the issues that agent picks up.
 
 **`session_id` resume doesn't work.**
 The framework writes `last_session_id_per_target` into the agent's spend file (`$HERMES_HOME/state/<agent>/spend-YYYY-MM-DD.json`). If this is empty, resume isn't being attempted. Check the agent's prompt; it should pass `--resume <session_id>` when re-firing on the same issue after a max-turns event.

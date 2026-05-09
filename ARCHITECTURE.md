@@ -42,19 +42,19 @@ alfred-os is built for one operator. One Mac Mini in a closet, one Anthropic Cla
 
 ## The codename pattern
 
-Codenames are Batman side-characters: Lucius for feature dev, Bane for tests, Robin for triage, Nightwing for review-fix, Huntress for E2E smoke, Oracle for monitoring, Ra's al Ghul for code review, Planner for issue creation. The naming is deliberate: codenames appear in PR titles, Slack messages, and commit authorship, so they must be memorable and internally consistent.
+Codenames are Batman side-characters in the reference fleet: Batman for multi-repo coordination, Lucius for feature dev, Drake for issue planning, Bane for tests, Robin for triage, Nightwing for review-fix, Huntress for E2E smoke, Gordon for deployment health, and Ra's al Ghul for code review. The naming is deliberate: codenames appear in PR titles, Slack messages, and commit authorship, so they must be memorable and internally consistent.
 
 Same codename across repos means "same role applied to that repo's code," not "one agent spans repos." Lucius in `<your-backend-repo>` and Lucius in `<your-frontend-repo>` are two separate processes running the same prompt against different codebases. They never share state.
 
-This is the opposite of the CrewAI / AutoGen design, where a generalist agent decomposes tasks across roles at runtime. alfred-os wires the roles at deploy time. The decomposition is the cron schedule. The negotiation channel is the consumer's Slack channel.
+This is the opposite of the CrewAI / AutoGen design, where a generalist agent decomposes tasks across roles at runtime. alfred-os wires the roles at deploy time. The decomposition is the launchd schedule. The negotiation channel is the consumer's Slack channel.
 
 Why narrow specialists rather than one general agent: each role gets a different turn budget, a different IAM scope, a different tool list, a different escalation rule, a different failure-mode taxonomy. Lucius is allowed `Read,Edit,Write,Bash,Grep` and 80 turns; Robin gets `Read,Bash` and 30 turns. Generalist prompts that try to cover every case end up with the worst spend profile of all the cases combined.
 
-## Cron-driven, not chat-driven
+## Scheduled, not chat-driven
 
 What this gets you:
 
-- **24/7 unattended operation.** Lucius fires every 20 minutes whether or not the operator is at the keyboard. Bane fires nightly. Oracle posts a morning brief at 06:00.
+- **24/7 unattended operation.** Lucius fires every 20 minutes whether or not the operator is at the keyboard. Bane fires nightly. Gordon or your own monitoring codename posts a morning health brief.
 - **Idempotent firings.** Every firing reads its inputs from scratch (open issues, PR list, file system). If a firing crashes, the next one starts clean. There is no resume protocol to debug.
 - **No babysitter process.** No long-lived agent that has to survive a Mac sleep cycle. `launchd` re-fires whenever the schedule says so.
 - **Spend predictability.** Each firing has a hard turn cap and a hard timeout. The fleet's worst-case daily cost is bounded by the schedule, not by what the operator is asking for.
@@ -66,9 +66,9 @@ What it costs you:
 
 ## Plan-review gate
 
-The single biggest quality lever in the system. The full canonical description lives in `~/.hermes/overnight/manifest.md`; the short version:
+The single biggest quality lever in the system:
 
-> Quality ceiling is set by the plan, not the executor. Therefore for every coding task: draft a short plan (problem statement, chosen approach, key interfaces, risks, test strategy), save it under `~/.hermes/overnight/plans/T#N-plan.md`, dispatch that plan to a separate Claude Code session running in **review-only mode**, apply the feedback, then execute.
+> Quality ceiling is set by the plan, not the executor. Therefore for every coding task: draft a short plan (problem statement, chosen approach, key interfaces, risks, test strategy), save it in the firing's worktree, dispatch that plan to a separate Claude Code session running in **review-only mode**, apply the feedback, then execute.
 
 The review session runs against a stricter critique prompt: "Critique this plan. Identify missing cases, type issues, architectural smells, simpler alternatives. Pay close attention to data types, uniqueness constraints, and error handling." The reviewer never touches code. The executor never sees the original draft, only the post-review version.
 
@@ -81,12 +81,12 @@ This is alfred-os's main answer to the question "what stops a single autonomous 
 Concurrent firings must never clobber each other or the operator's main checkout. The runtime puts every firing in its own throwaway git worktree:
 
 ```py
-# infra/agents/lib/agent_runner.py
+# lib/agent_runner.py
 WORKTREE_ROOT = HERMES / "worktrees"
 # wt = ~/.hermes/worktrees/<agent>-<repo>-<issue>-<ts>/
 ```
 
-In `infra/agents/bin/lucius.py`:
+In a fleet script such as `bin/lucius.py`:
 
 ```py
 wt, branch = make_worktree(local, AGENT, str(issue_num))
@@ -116,7 +116,7 @@ successes_today, failures_today, consecutive_failures,
 blocked_until, last_session_id_per_target
 ```
 
-Each agent has its own caps. From `infra/agents/bin/lucius.py`:
+Each agent has its own caps. From a Lucius-style implementation:
 
 ```py
 if spend.state["turns_today"] >= 5000:
@@ -133,7 +133,7 @@ if spend.state["consecutive_failures"] >= 8:
 Beyond per-agent caps, the fleet shares a global block. When any agent's `claude -p` returns `error_rate_limit` or `error_budget` (the Anthropic subscription hit its weekly cap), it writes:
 
 ```py
-# infra/agents/lib/agent_runner.py
+# lib/agent_runner.py
 GLOBAL_BLOCKED_FILE = STATE_ROOT / "global-blocked-until.json"
 
 def set_global_block(hours: int, reason: str) -> str:
@@ -150,7 +150,7 @@ if blocked:
     return 0
 ```
 
-Without this, the entire fleet would spend the next hour firing into the rate-limit wall and burning more turns just to learn the wall is still there. With it, the wall hit by Lucius at 22:46 silences Bane's nightly run, Oracle's 06:00 brief, and Huntress's next smoke until the block expires.
+Without this, the entire fleet would spend the next hour firing into the rate-limit wall and burning more turns just to learn the wall is still there. With it, the wall hit by Lucius at 22:46 silences Bane's nightly run, Gordon's health brief, and Huntress's next smoke until the block expires.
 
 The pre-flight `claude -p "reply OK"` canary that earlier versions used was removed: it was tripping false-positives on its 60-second timeout and killing real firings. The real `claude -p` call below it already surfaces `error_rate_limit` cleanly.
 
@@ -158,20 +158,20 @@ The pre-flight `claude -p "reply OK"` canary that earlier versions used was remo
 
 Every meaningful event posts to `#your-fleet-channel`. Successes, failures, rate limits, salvaged WIP PRs, "no work to do" silences. The Slack channel doubles as the human surface and the audit log: one place to scroll back through and see what the fleet did overnight.
 
-The webhook is fetched from AWS Secrets Manager and cached at `~/.hermes/state/slack-webhook.cache` with a 7-day TTL. Cache lives outside `/tmp` so it survives reboots, and the long TTL avoids depending on a healthy AWS SSO session for routine Slack posts. From `agent_runner.py`:
+The webhook is fetched from AWS Secrets Manager and cached at `~/.hermes/state/slack-webhook.cache` with a 30-day TTL. Cache lives outside `/tmp` so it survives reboots, and the long TTL avoids depending on a healthy AWS SSO session for routine Slack posts. From `agent_runner.py`:
 
 ```py
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"
-SLACK_WEBHOOK_CACHE_TTL = 7 * 24 * 3600
+SLACK_WEBHOOK_CACHE_TTL = 30 * 24 * 3600
 ```
 
 `slack_post()` returns a boolean: `True` on confirmed POST, `False` on any failure. Most callers fire-and-forget. A few (the brand-mention scanner) only mark a record as "seen" after a confirmed post.
 
 ## AWS IAM-per-agent
 
-Every AWS-touching cron has its own IAM user with a least-privilege inline policy. Huntress reads two specific Secrets Manager entries (E2E test creds + the Slack webhook). Oracle has read-only ECS / ALB / CloudWatch and explicitly no `secretsmanager:*`.
+Every AWS-touching scheduled agent has its own IAM user with a least-privilege inline policy. Huntress reads two specific Secrets Manager entries (E2E test creds + the Slack webhook). A monitoring codename such as Gordon can have read-only ECS / ALB / CloudWatch and explicitly no `secretsmanager:*`.
 
-The operator's SSO chain is never used by cron. Two reasons:
+The operator's SSO chain is never used by scheduled agents. Two reasons:
 
 1. **SSO sessions expire.** A 12-hour SSO token elapsing at 22:00 takes down everything that depends on it. Scoped IAM access keys do not expire.
 2. **Blast radius.** If a Lucius prompt-injection were to coax an `aws s3 rm --recursive` out of `claude -p`, the resulting access scope is whatever was authenticated. The operator's SSO chain has full admin. A scoped `<your-codename>-cron` IAM user has read on a handful of secrets.
@@ -187,13 +187,13 @@ Env vars beat profiles in the AWS credential chain, so any leaked `AWS_*` from t
 
 ## Claude account fallback
 
-When the primary Claude subscription hits its weekly cap, the cron can fall back to a second Anthropic account by pointing `CLAUDE_CONFIG_DIR` at a separate config dir (e.g. `~/.claude-secondary/`). The launchd plists honor `EnvironmentVariables`, so flipping the routing for cron-spawned agents is a matter of `launchctl setenv CLAUDE_CONFIG_DIR ~/.claude-secondary` and re-loading. The operator's interactive Claude Code sessions keep using the primary config because they don't read that env var.
+When the primary Claude subscription hits its weekly cap, scheduled agents can fall back to a second Anthropic account by pointing `CLAUDE_CONFIG_DIR` at a separate config dir (e.g. `~/.claude-secondary/`). The launchd plists honor `EnvironmentVariables`, so flipping the routing for launchd-spawned agents is a matter of `launchctl setenv CLAUDE_CONFIG_DIR ~/.claude-secondary` and re-loading. The operator's interactive Claude Code sessions keep using the primary config because they don't read that env var.
 
-[NEEDS-OPERATOR-INPUT] The fallback config dir is referenced in the live setup but isn't wired into the `infra/agents/` plists in this repo. Document the actual switching mechanism (env var, plist patch, hermes flag?) once decided.
+[NEEDS-OPERATOR-INPUT] The fallback config dir is supported by launchd environment variables, but each fleet still needs to decide whether the switch is manual (`launchctl setenv`) or wrapped by an operator CLI command.
 
 ## Failure modes and recovery
 
-`infra/agents/bin/lucius.py` is the canonical example. The exit codes are not real exit codes - they are sentinel strings printed to stdout for the launchd log and `#your-fleet-channel`.
+A Lucius-style feature agent is the canonical example. The exit codes are not real exit codes - they are sentinel strings printed to stdout for the launchd log and `#your-fleet-channel`.
 
 | Sentinel | When | What the system does |
 |---|---|---|

@@ -2,6 +2,7 @@
 #
 # Copy to ~/.alfredrc (already done by install.sh on a fresh setup),
 # fill in the values, and your shell rc will source it on every new session.
+# launchd jobs see the same values through bin/agent-launch at firing time.
 #
 # This file is sourced as KEY=VALUE pairs. No shell expansion, no quoting
 # tricks — keep values simple. install.sh's ~/.alfredrc loader is
