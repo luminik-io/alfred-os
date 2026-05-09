@@ -196,11 +196,11 @@ def main(argv: list[str] | None = None) -> int:
     p_agents = sub.add_parser("agents", help="list configured agents")
     p_agents.set_defaults(func=cmd_agents)
 
-    p_enable = sub.add_parser("enable", help="enable an agent in the fleet enable file")
+    p_enable = sub.add_parser("enable", help="list an agent in the runner gate file")
     p_enable.add_argument("codename")
     p_enable.set_defaults(func=cmd_enable)
 
-    p_disable = sub.add_parser("disable", help="disable an agent in the fleet enable file")
+    p_disable = sub.add_parser("disable", help="remove an agent from the runner gate file")
     p_disable.add_argument("codename")
     p_disable.set_defaults(func=cmd_disable)
 
