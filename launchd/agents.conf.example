@@ -18,8 +18,8 @@
 #                    share a script (sso-check-10 and sso-check-22 both
 #                    write to /tmp/my.fleet.sso-check.{stdout,stderr}).
 #   6. role        - one-line operational descriptor in plain English.
-#                    Surfaced in `alfred agents`, `alfred status <agent>`,
-#                    and Slack post prefixes — codenames alone don't
+#                    Surfaced in `alfred agents` and Slack post prefixes;
+#                    codenames alone don't
 #                    carry meaning to a fresh contributor (or to your
 #                    future self at 2am). Keep it under ~50 chars.
 #                    Optional but strongly recommended.

@@ -1,5 +1,5 @@
 class AlfredOs < Formula
-  desc "Cron-driven Claude Code agent fleet for solo founders"
+  desc "Launchd-managed Claude Code agent fleet for solo founders"
   homepage "https://luminik-io.github.io/alfred-os"
   # NOTE: bump `version`, `url`, and `sha256` on every release. The release
   # workflow at .github/workflows/release.yml prints the tarball sha256 to the
@@ -25,6 +25,8 @@ class AlfredOs < Formula
     libexec.install Dir["*"]
 
     # Operator-facing helpers go onto PATH.
+    bin.install_symlink libexec/"bin/alfred" => "alfred"
+    bin.install_symlink libexec/"bin/alfred-init.py" => "alfred-init"
     bin.install_symlink libexec/"bin/doctor.sh" => "alfred-doctor"
     bin.install_symlink libexec/"bin/hermes-claude" => "alfred-hermes-claude"
     bin.install_symlink libexec/"install.sh" => "alfred-install"
@@ -40,9 +42,11 @@ class AlfredOs < Formula
         #{libexec}
 
       Available commands:
+        alfred                 # minimal runner-gate CLI
+        alfred-init            # interactive fleet configuration wizard
         alfred-install         # one-time fresh-machine setup (brew + npm + dirs + rc)
-        alfred-deploy          # sync lib/+bin/ into $HERMES_HOME, render plists, reload launchd
-        alfred-doctor          # preflight every agent under HERMES_DOCTOR=1
+        alfred-deploy          # sync lib/+bin/ into $HERMES_HOME; renders plists when agents.conf exists
+        alfred-doctor          # preflight configured agents under HERMES_DOCTOR=1
         alfred-hermes-claude   # swap between Claude Code accounts
         alfred-label-state     # operator CLI for the issue claim state machine
 

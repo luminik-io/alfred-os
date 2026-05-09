@@ -49,8 +49,11 @@ Tabs are required between fields. Trailing empty fields can be omitted.
 | `__WORKSPACE_ROOT__` | resolved at render time |
 | `__HOME__` | `$HOME` at render time |
 | `__LOG_STEM__` | `agents.conf` field 5 (or label if empty) |
+| `__AGENT_SHORT__` | label suffix, rendered as `AGENT_CODENAME` |
 
-`launchd` does not interpolate env vars inside plists. Substitution must happen at deploy time. Override `HERMES_HOME` or `WORKSPACE_ROOT` in the shell that runs `render.sh` (or `deploy.sh`) to re-target the rendered plists.
+`launchd` does not source shell rc files. The rendered plist calls
+`agent-launch`, which sources `~/.alfredrc` at firing time and then execs the
+agent script from `$HERMES_HOME/bin`.
 
 ## Adding an agent
 

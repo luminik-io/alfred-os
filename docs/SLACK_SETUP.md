@@ -67,7 +67,7 @@ Reload your shell (`exec $SHELL`). `slack_post()` reads this directly.
 
 ### Option B: AWS Secrets Manager (recommended for prod)
 
-Store the URL as a secret and let `slack_post()` resolve it via the env → cache → AWS chain (cached at `$HERMES_HOME/state/slack-webhook.cache` for 7 days):
+Store the URL as a secret and let `slack_post()` resolve it via the env -> cache -> AWS chain (cached at `$HERMES_HOME/state/slack-webhook.cache` for 30 days):
 
 ```sh
 aws --profile <admin-profile> secretsmanager create-secret \
@@ -79,7 +79,7 @@ aws --profile <admin-profile> secretsmanager create-secret \
 
 The default secret ID is `alfred/slack-webhook`. Override via `SLACK_WEBHOOK_SECRET_ID` if you keep secrets under a different prefix.
 
-You also need an IAM identity that the cron-spawned agents use, with `secretsmanager:GetSecretValue` on `arn:…:secret:alfred/slack-webhook-*`. See [`AWS_SETUP.md`](AWS_SETUP.md).
+You also need an IAM identity that scheduled agents use, with `secretsmanager:GetSecretValue` on `arn:…:secret:alfred/slack-webhook-*`. See [`AWS_SETUP.md`](AWS_SETUP.md).
 
 **Pros**: rotation is `aws secretsmanager update-secret` + `rm ~/.hermes/state/slack-webhook.cache`, value never lives in shell rc, audit logs on every fetch.
 **Cons**: requires AWS account.

@@ -4,13 +4,13 @@
 # Usage:
 #   ./render.sh [output_dir]
 #
-# Defaults the output dir to "$(dirname "$0")/_generated/" so the
-# rendered plists sit next to the canonical hand-edited copies without
-# stomping them. deploy.sh consumes the rendered copies.
+# Defaults the output dir to "$(dirname "$0")/_generated/" so rendered
+# snapshots sit next to the template and agents.conf. deploy.sh consumes the
+# rendered copies.
 #
 # Substitutions:
 #   __LABEL__              - launchd job label
-#   __SCRIPT__             - script filename in HERMES_BIN
+#   __SCRIPT__             - script filename in HERMES_BIN, passed to agent-launch
 #   __SCHEDULE_BLOCK__     - either StartInterval or StartCalendarInterval
 #   __PATH__               - colon-joined PATH for the EnvironmentVariables block
 #   __JAVA_BLOCK__         - JAVA_HOME entry (empty when needs_java=no)
@@ -19,10 +19,11 @@
 #   __WORKSPACE_ROOT__  - resolves at render time from $WORKSPACE_ROOT
 #   __HOME__               - $HOME at render time
 #   __LOG_STEM__           - basename for /tmp/<stem>.{stdout,stderr}
+#   __AGENT_SHORT__        - label suffix, used as AGENT_CODENAME
 #   __ROLE_BLOCK__         - ALFRED_<AGENT>_ROLE=<one-line descriptor>
 #                            from agents.conf column 6. Empty -> no env
 #                            var. Read by agent_role() so Slack post
-#                            prefixes and CLI status surface the
+#                            prefixes and operator CLI surface the
 #                            human-readable role next to the codename.
 #
 # launchd does not interpolate env vars inside plists, so these
@@ -43,8 +44,37 @@ if [[ ! -f "$CONF" ]]; then
   exit 1
 fi
 
+load_env_file() {
+  local file="$1" line key value
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    case "$line" in
+      export\ *) line="${line#export }" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      ''|[0-9]*|*[!A-Za-z0-9_]*)
+        continue
+        ;;
+    esac
+    case "$value" in
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    value="${value//\$\{HOME\}/$HOME}"
+    value="${value//\$HOME/$HOME}"
+    export "$key=$value"
+  done < "$file"
+}
+
+load_env_file "$HOME/.alfredrc"
+
 : "${HERMES_HOME:=$HOME/.hermes}"
-: "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/Workspace}}"
+: "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/code}}"
 
 # Detect openjdk@21 install path at render time so this works across
 # Apple Silicon (`/opt/homebrew`), Intel Macs (`/usr/local`), and Linux
@@ -160,6 +190,7 @@ mapping = {
     "__HERMES_BIN__": hermes_bin,
     "__HERMES_HOME__": hermes_home,
     "__WORKSPACE_ROOT__": workspace_root,
+    "__AGENT_SHORT__": agent_short,
     "__GH_ORG_BLOCK__": (
         f'    <key>GH_ORG</key>\n    <string>{gh_org}</string>'
         if gh_org else ""

@@ -12,7 +12,7 @@ Categorised by what the operator-facing primitive does. For deep semantics, read
 ```python
 HOME: Path                   # operator's home directory
 HERMES_HOME: Path            # runtime root, default ~/.hermes
-WORKSPACE_ROOT: Path         # parent of per-repo checkouts, default ~/Workspace
+WORKSPACE_ROOT: Path         # parent of per-repo checkouts, default ~/code
 WORKSPACE: Path              # WORKSPACE_ROOT / "product" (back-compat alias)
 GH_ORG: str                  # GitHub org slug; required for gh helpers
 
@@ -99,7 +99,7 @@ def slack_post(text: str, *,
 # "alert" (🚨 prefix + appends <!here>).
 ```
 
-Webhook URL resolution: `SLACK_WEBHOOK_URL` env → 7-day disk cache at `$HERMES_HOME/state/slack-webhook.cache` → AWS Secrets Manager (`SLACK_WEBHOOK_SECRET_ID`, default `alfred/slack-webhook`).
+Webhook URL resolution: `SLACK_WEBHOOK_URL` env -> 30-day disk cache at `$HERMES_HOME/state/slack-webhook.cache` -> AWS Secrets Manager (`SLACK_WEBHOOK_SECRET_ID`, default `alfred/slack-webhook`).
 
 ## GitHub helpers
 
