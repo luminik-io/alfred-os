@@ -120,6 +120,21 @@ def test_preflight_posts_slack_under_launchd(monkeypatch):
     assert "lucius preflight failed" in posted[0]
 
 
+def test_preflight_posts_slack_when_doctor_env_is_false(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
+    monkeypatch.setenv("HERMES_DOCTOR", "0")
+    monkeypatch.delenv("HERMES_HOME", raising=False)
+    posted: list[str] = []
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
+
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(spec)
+    assert len(posted) == 1
+
+
 def test_preflight_force_slack_env_overrides_manual_suppression(monkeypatch):
     import agent_runner as ar
 
