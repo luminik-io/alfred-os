@@ -310,7 +310,15 @@ for repo in CLAIM_SWEEP_REPOS:
     stale_total += len(stale)
     for entry in stale:
         try:
-            force_release_stale_claim(repo, entry["number"], sweep_id=sweep_id)
+            released = force_release_stale_claim(
+                repo,
+                entry["number"],
+                sweep_id=sweep_id,
+                released_codename=entry.get("codename"),
+                released_firing_id=entry.get("firing_id"),
+            )
+            if not released:
+                raise RuntimeError("GitHub label/comment update returned false")
             swept_total += 1
             print(
                 f"[cleanup] stale-claim swept: {repo}#{entry['number']} "

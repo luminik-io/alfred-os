@@ -103,7 +103,9 @@ issue_dedup_check(repo, num) -> dict
 find_stale_claims(repo, *, max_age_hours=4) -> list[dict]
 
 # Recovery
-force_release_stale_claim(repo, num, *, sweep_id) -> bool
+force_release_stale_claim(repo, num, *, sweep_id,
+                          released_codename=None,
+                          released_firing_id=None) -> bool
 
 # Operator overrides
 is_repo_paused(repo) -> bool
