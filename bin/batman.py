@@ -44,6 +44,7 @@ for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) 
 
 from agent_runner import (  # noqa: E402
     GH_ORG,
+    GH_REPO_TO_LOCAL,
     PreflightSpec,
     doctor_mode,
     gh_json,
@@ -78,6 +79,24 @@ def _scan_repos() -> list[str]:
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
+def _repo_arg_for_scan_token(token: str) -> str | None:
+    """Return the ``owner/repo`` value passed to ``gh search --repo``."""
+    token = token.strip()
+    if not token:
+        return None
+    if "/" in token:
+        return token
+    repo_slug = next(
+        (
+            github_repo
+            for github_repo, local_repo in GH_REPO_TO_LOCAL.items()
+            if token in {github_repo, local_repo}
+        ),
+        token,
+    )
+    return f"{GH_ORG}/{repo_slug}" if GH_ORG else None
+
+
 def _list_large_features() -> list[dict]:
     """Cross-repo search for open ``agent:large-feature`` issues.
 
@@ -87,13 +106,15 @@ def _list_large_features() -> list[dict]:
     """
     if not GH_ORG:
         return []
-    rows = gh_json(
+    repo_args = [_repo_arg_for_scan_token(repo) for repo in _scan_repos()]
+    repo_args = [repo for repo in repo_args if repo]
+    if not repo_args:
+        return []
+    cmd = ["gh", "search", "issues"]
+    for repo in repo_args:
+        cmd.extend(["--repo", repo])
+    cmd.extend(
         [
-            "gh",
-            "search",
-            "issues",
-            "--owner",
-            GH_ORG,
             "--label",
             LARGE_FEATURE_LABEL,
             "--state",
@@ -102,7 +123,10 @@ def _list_large_features() -> list[dict]:
             "number,title,url,labels,createdAt,body",
             "--limit",
             "20",
-        ],
+        ]
+    )
+    rows = gh_json(
+        cmd,
         default=[],
     )
     if not isinstance(rows, list):
