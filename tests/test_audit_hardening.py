@@ -55,7 +55,7 @@ def test_automerge_blocks_ship_ready_review_older_than_commit(monkeypatch):
         if "/issues/" in " ".join(cmd):
             return [
                 {
-                    "body": f"{automerge.REVIEW_HEADER}\n\nShip-ready: yes",
+                    "body": f"{automerge.REVIEW_HEADER}\nReviewed-head-sha: abc1234\n\nShip-ready: yes",
                     "created_at": "2026-05-09T10:00:00Z",
                 }
             ]
@@ -68,10 +68,49 @@ def test_automerge_blocks_ship_ready_review_older_than_commit(monkeypatch):
         "backend",
         42,
         latest_commit_at=datetime(2026, 5, 9, 11, 0, 0, tzinfo=UTC),
+        head_oid="abc1234",
     )
 
     assert not ok
     assert "older than latest commit" in reason
+
+
+def test_automerge_blocks_review_for_stale_head_even_when_commit_is_old(monkeypatch):
+    automerge = load_bin_module("automerge.py", monkeypatch)
+    monkeypatch.setattr(automerge, "unresolved_reviewer_threads", lambda *a, **kw: [])
+
+    def fake_gh_json(cmd, default=None):
+        if "/issues/" in " ".join(cmd):
+            return [
+                {
+                    "body": f"{automerge.REVIEW_HEADER}\nReviewed-head-sha: abc1234\n\nShip-ready: yes",
+                    "created_at": "2026-05-09T11:00:00Z",
+                }
+            ]
+        if "/pulls/" in " ".join(cmd):
+            return []
+        return default
+
+    monkeypatch.setattr(automerge, "gh_json", fake_gh_json)
+    ok, reason = automerge.is_mergeable(
+        "backend",
+        42,
+        latest_commit_at=datetime(2026, 5, 9, 10, 0, 0, tzinfo=UTC),
+        head_oid="def5678",
+    )
+
+    assert not ok
+    assert "older PR head" in reason
+
+
+def test_rasalghul_attaches_reviewed_head_sha(monkeypatch):
+    rasalghul = load_bin_module("rasalghul.py", monkeypatch)
+    body = f"{rasalghul.REVIEW_AUTHOR_PREFIX}\n\nShip-ready: yes\n"
+
+    out = rasalghul.attach_review_head_sha(body, "ABC1234")
+
+    assert out.splitlines()[1] == "Reviewed-head-sha: abc1234"
+    assert rasalghul.reviewed_head_sha(out) == "abc1234"
 
 
 def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
