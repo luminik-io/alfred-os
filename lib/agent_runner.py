@@ -475,6 +475,11 @@ class PreflightFailed(RuntimeError):
     """
 
 
+def _env_value_enabled(name: str) -> bool:
+    value = os.environ.get(name)
+    return bool(value and value.strip().lower() not in {"", "0", "false", "no", "off"})
+
+
 def preflight(spec: PreflightSpec) -> None:
     """Validate the host before doing real work. Raise PreflightFailed on miss.
 
@@ -482,10 +487,6 @@ def preflight(spec: PreflightSpec) -> None:
     sees the full picture in a single Slack notification.
     """
     import shutil  # local import: only used when an agent actually checks bins
-
-    def _env_value_enabled(name: str) -> bool:
-        value = os.environ.get(name)
-        return bool(value and value.strip().lower() not in {"", "0", "false", "no", "off"})
 
     misses: list[str] = []
 
@@ -587,7 +588,7 @@ def doctor_mode() -> bool:
     sentinel instead of doing real work. Lets the operator verify a fresh setup
     without burning Claude turns or making side effects.
     """
-    return os.environ.get("HERMES_DOCTOR", "").strip() not in ("", "0", "false", "False")
+    return _env_value_enabled("HERMES_DOCTOR")
 
 
 # ---------- Prompt loading + variable substitution ----------
