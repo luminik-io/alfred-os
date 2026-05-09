@@ -483,6 +483,10 @@ def preflight(spec: PreflightSpec) -> None:
     """
     import shutil  # local import: only used when an agent actually checks bins
 
+    def _env_value_enabled(name: str) -> bool:
+        value = os.environ.get(name)
+        return bool(value and value.strip().lower() not in {"", "0", "false", "no", "off"})
+
     misses: list[str] = []
 
     # 1. Required env vars. HERMES_HOME / WORKSPACE_ROOT default to user-home
@@ -563,7 +567,16 @@ def preflight(spec: PreflightSpec) -> None:
     detail = "\n  ".join(f"- {m}" for m in misses)
     print(f"{sentinel} {len(misses)} issue(s):\n  {detail}")
     headline = misses[0] + (f" (+{len(misses) - 1} more)" if len(misses) > 1 else "")
-    slack_post(f"🚫 {spec.agent} preflight failed: {headline}")
+    suppress_slack = (
+        os.environ.get("HERMES_DOCTOR")
+        or spec.agent == "test"
+        or (
+            not _env_value_enabled("XPC_SERVICE_NAME")
+            and not _env_value_enabled("ALFRED_PREFLIGHT_FORCE_SLACK")
+        )
+    )
+    if not suppress_slack:
+        slack_post(f"🚫 {spec.agent} preflight failed: {headline}")
     raise PreflightFailed(misses)
 
 
