@@ -157,14 +157,34 @@ def set_global_block(hours: int, reason: str) -> str:
 GH_REPO_TO_LOCAL: dict[str, str] = {}
 
 # STANDARD_LABELS — labels that ``ensure_labels()`` will create on the
-# target repo if missing. Empty default; consumers extend per their workflow.
-# Each tuple: (name, hex-color-no-hash, description).
+# target repo if missing. Each tuple: (name, hex-color-no-hash, description).
+# Consumers can ``STANDARD_LABELS.extend(...)`` from their bin/*.py to add
+# fleet-specific labels.
 #
-#     STANDARD_LABELS.extend([
-#         ("agent:authored", "00ff00", "Authored by an autonomous agent"),
-#         ("agent:implement", "ffa500", "Picked up by an agent for implementation"),
-#     ])
-STANDARD_LABELS: list[tuple[str, str, str]] = []
+# The defaults below ship the labels Batman + the bundle model rely on so
+# every PR-create / issue-edit path "just works" on a fresh product repo:
+#
+#   batman-pr-open       — set by Batman when a bundle PR exists in the
+#                          repo; cleared on merge.
+#   agent:large-feature  — issue label that opts the issue into Batman's
+#                          bundle search (multi-repo feature work).
+#
+# Without these defaults, the first PR-create call against a fresh repo
+# would fail with "could not add label" and return None silently; the
+# operator then got "PR open failed" with no breadcrumb. (Same root
+# cause as luminik-io/alfred Issue #142.)
+STANDARD_LABELS: list[tuple[str, str, str]] = [
+    (
+        "batman-pr-open",
+        "5319e7",
+        "A Batman bundle-PR is open in this repo. Set on PR open, cleared on merge.",
+    ),
+    (
+        "agent:large-feature",
+        "ff6b00",
+        "Multi-repo feature; picked up as a bundle by Batman.",
+    ),
+]
 
 
 def _full_repo(slug: str) -> str:
@@ -1590,9 +1610,43 @@ def gh_pr_create(
     labels: list[str] | None = None,
     base: str = "main",
 ) -> str | None:
-    """Open a PR. Pre-ensures labels exist. Returns PR URL or None on failure."""
+    """Open a PR. Pre-ensures labels exist. Returns PR URL or None on failure.
+
+    Logs the gh stderr to ``stderr`` on failure: the prior
+    silent-None-return pattern made PR-open failures opaque. The
+    runner saw "PR open failed" with no clue whether the cause was
+    push, label, branch protection, or anything else; the worktree
+    then got cleaned up and forensics were lost. Now the gh error
+    message reaches the firing's stderr / Slack alert path.
+
+    Also opportunistically creates any ad-hoc labels not in
+    ``STANDARD_LABELS`` with a neutral grey colour. Belt-and-braces:
+    a future caller passing a brand-new label without first
+    extending STANDARD_LABELS still gets a working PR.
+    """
     if labels:
         ensure_labels(repo_slug)
+        # Ad-hoc labels (anything passed in but not in STANDARD_LABELS)
+        # get created on the fly so a future caller passing a new
+        # label without updating STANDARD_LABELS still ships.
+        standard_names = {name for name, _, _ in STANDARD_LABELS}
+        adhoc = [lbl for lbl in labels if lbl not in standard_names]
+        for lbl in adhoc:
+            run(
+                [
+                    "gh",
+                    "label",
+                    "create",
+                    lbl,
+                    "--color",
+                    "ededed",
+                    "--description",
+                    "Auto-created by gh_pr_create on first use",
+                    "-R",
+                    _full_repo(repo_slug),
+                ],
+                timeout=15,
+            )
     cmd = [
         "gh",
         "pr",
@@ -1612,8 +1666,18 @@ def gh_pr_create(
         cmd.extend(["--label", label])
     res = run(cmd, timeout=60)
     if res.returncode != 0:
+        stderr = (res.stderr or "").strip()
+        stdout = (res.stdout or "").strip()
+        print(
+            f"[gh_pr_create] FAILED repo={_full_repo(repo_slug)} "
+            f"head={head or '(default)'} base={base} "
+            f"title={title[:80]!r} rc={res.returncode}\n"
+            f"  stderr: {stderr[:600]}\n"
+            f"  stdout: {stdout[:200]}",
+            file=sys.stderr,
+        )
         return None
-    # Last line is the URL
+    # Last line is the URL.
     for line in reversed((res.stdout or "").splitlines()):
         line = line.strip()
         if line.startswith("https://"):
