@@ -37,6 +37,7 @@ from agent_runner import (
     doctor_mode,
     find_stale_claims,
     force_release_stale_claim,
+    lock_pid_identity_matches,
     preflight,
     slack_post,
 )
@@ -264,7 +265,7 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
         pid_alive = True
     except (OSError, ValueError, ProcessLookupError):
         pid_alive = False
-    if pid_alive and old_pid:
+    if pid_alive and old_pid and lock_pid_identity_matches(lock_dir, old_pid):
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             subprocess.run(
                 ["pkill", "-TERM", "-P", str(old_pid)],

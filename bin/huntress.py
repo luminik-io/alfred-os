@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,20 @@ PREFLIGHT = PreflightSpec(
     bins=["aws", "npx"] if AWS_PROFILE or SECRET_ID else ["npx"],
     aws_profile=AWS_PROFILE or None,
 )
+
+
+def redact_text(text: str, secrets: list[str]) -> str:
+    redacted = text
+    for secret in secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
+
+
+def secure_run_dir(agent: str) -> Path:
+    path = Path(tempfile.mkdtemp(prefix=f"{agent}-run-"))
+    path.chmod(0o700)
+    return path
 
 
 def _aws(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
@@ -196,8 +211,7 @@ def main() -> int:
 
     # 3. Run Playwright
     ts = int(time.time())
-    run_dir = Path(f"/tmp/{AGENT}-run-{ts}")
-    run_dir.mkdir(exist_ok=True)
+    run_dir = secure_run_dir(AGENT)
 
     pw_env = dict(os.environ)
     if email:
@@ -217,8 +231,16 @@ def main() -> int:
         timeout=600,
     )
     pw_duration_ms = int((time.time() - pw_started) * 1000)
-    (run_dir / "stdout.json").write_text(pw.stdout or "")
-    (run_dir / "stderr.log").write_text(pw.stderr or "")
+    secrets = [
+        email,
+        password,
+        os.environ.get("HUNTRESS_EMAIL", ""),
+        os.environ.get("HUNTRESS_PASSWORD", ""),
+    ]
+    redacted_stdout = redact_text(pw.stdout or "", secrets)
+    redacted_stderr = redact_text(pw.stderr or "", secrets)
+    (run_dir / "stdout.json").write_text(redacted_stdout)
+    (run_dir / "stderr.log").write_text(redacted_stderr)
 
     spend.increment(firings_today=1)
     events.emit("playwright_done", returncode=pw.returncode, duration_ms=pw_duration_ms)
@@ -235,7 +257,7 @@ def main() -> int:
     spend.increment(failures_today=1, consecutive_failures=1)
 
     try:
-        report = json.loads(pw.stdout) if pw.stdout else {}
+        report = json.loads(redacted_stdout) if redacted_stdout else {}
     except json.JSONDecodeError:
         report = {}
 
@@ -267,8 +289,8 @@ def main() -> int:
     if not failed_titles:
         # No parseable failures = Playwright crashed before producing JSON.
         # Surface stderr/stdout tails so the operator can grab the full log.
-        stderr_tail = "\n".join((pw.stderr or "").splitlines()[-25:])
-        stdout_tail = "\n".join((pw.stdout or "").splitlines()[-15:])
+        stderr_tail = "\n".join(redacted_stderr.splitlines()[-25:])
+        stdout_tail = "\n".join(redacted_stdout.splitlines()[-15:])
         msg_lines = [
             f"❌ {AGENT.title()}: Playwright exited {pw.returncode} with no parseable failures.",
             f"  Run dir (full logs): `{run_dir}/`  (stderr.log + stdout.json)",
@@ -276,7 +298,7 @@ def main() -> int:
         if stderr_tail.strip():
             excerpt = stderr_tail[-1200:]
             msg_lines.append(f"  Stderr tail:\n```\n{excerpt}\n```")
-        if stdout_tail.strip() and not (pw.stdout or "").lstrip().startswith("{"):
+        if stdout_tail.strip() and not redacted_stdout.lstrip().startswith("{"):
             msg_lines.append(f"  Stdout tail:\n```\n{stdout_tail[-600:]}\n```")
         msg = "\n".join(msg_lines)
         print(msg)
@@ -284,8 +306,8 @@ def main() -> int:
         events.emit(
             "firing_complete",
             outcome="blocked-unparseable",
-            stderr_bytes=len(pw.stderr or ""),
-            stdout_bytes=len(pw.stdout or ""),
+            stderr_bytes=len(redacted_stderr),
+            stdout_bytes=len(redacted_stdout),
             run_dir=str(run_dir),
         )
         return 0
@@ -321,9 +343,7 @@ def main() -> int:
             slack_lines.append(f"❌ {AGENT.title()}: {rel} ({presigned})")
 
     # "Drift" = selector / routing change rather than a backend regression.
-    is_drift = "TimeoutError" in (pw.stderr or "") or any(
-        "TimeoutError" in e for e in failed_errors
-    )
+    is_drift = "TimeoutError" in redacted_stderr or any("TimeoutError" in e for e in failed_errors)
 
     # Optional: report deploy SHA when a reference repo is configured
     deploy_sha = "unknown"

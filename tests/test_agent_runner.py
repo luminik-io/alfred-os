@@ -91,6 +91,27 @@ def test_preflight_reports_aws_timeout(monkeypatch):
         ar.preflight(ar.PreflightSpec(agent="test", aws_profile="alfred-test"))
 
 
+def test_maybe_set_global_block_for_provider_limits(monkeypatch):
+    import agent_runner as ar
+
+    calls = []
+    monkeypatch.setattr(ar, "set_global_block", lambda **kw: calls.append(kw) or "until")
+
+    result = type("Result", (), {"subtype": "error_rate_limit"})()
+
+    assert ar.maybe_set_global_block_for_result("robin", result) == "until"
+    assert calls == [{"hours": 1, "reason": "robin-error_rate_limit"}]
+
+
+def test_maybe_set_global_block_ignores_non_provider_errors(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "set_global_block", lambda **kw: pytest.fail("unexpected block"))
+    result = type("Result", (), {"subtype": "error"})()
+
+    assert ar.maybe_set_global_block_for_result("robin", result) is None
+
+
 def test_doctor_mode_default_false(monkeypatch):
     import agent_runner as ar
 

@@ -161,6 +161,35 @@ def linked_issue_numbers(pr: dict) -> list[int]:
     return [int(m) for m in _CLOSES_RE.findall(text)]
 
 
+def _parse_github_timestamp(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def latest_commit_timestamp(repo: str, pr_num: int) -> datetime | None:
+    view = gh_json(
+        ["gh", "pr", "view", str(pr_num), "-R", f"{GH_ORG}/{repo}", "--json", "commits"],
+        default={},
+    )
+    commits = view.get("commits", []) if isinstance(view, dict) else []
+    if not commits:
+        return None
+    latest: datetime | None = None
+    for commit in commits:
+        ts = _parse_github_timestamp(commit.get("committedDate") or commit.get("authoredDate"))
+        if ts and (latest is None or ts > latest):
+            latest = ts
+    return latest
+
+
 def candidates() -> list[tuple[str, dict]]:
     out = []
     for repo in WATCH_REPOS:
@@ -219,7 +248,12 @@ def candidates() -> list[tuple[str, dict]]:
     return out
 
 
-def is_mergeable(repo: str, pr_num: int, pr_author: str = "") -> tuple[bool, str]:
+def is_mergeable(
+    repo: str,
+    pr_num: int,
+    pr_author: str = "",
+    latest_commit_at: datetime | None = None,
+) -> tuple[bool, str]:
     """Verify Ship-ready=yes from latest review, no unresolved P0,
     and no unresolved reviewer threads."""
     unresolved = unresolved_reviewer_threads(repo, pr_num, pr_author)
@@ -254,6 +288,14 @@ def is_mergeable(repo: str, pr_num: int, pr_author: str = "") -> tuple[bool, str
     latest = review_main[-1]
     if not SHIP_READY_YES.search(latest.get("body", "")):
         return False, f"{REVIEW_AGENT} did not say Ship-ready: yes"
+    review_created = _parse_github_timestamp(latest.get("created_at") or latest.get("createdAt"))
+    commit_created = latest_commit_at or latest_commit_timestamp(repo, pr_num)
+    if commit_created is None:
+        return False, "could not verify latest commit timestamp"
+    if review_created is None:
+        return False, "could not verify review timestamp"
+    if review_created < commit_created:
+        return False, "ship-ready review is older than latest commit"
 
     # Track which P0 comment ids the fix agent already addressed
     fix_replied_ids = set()

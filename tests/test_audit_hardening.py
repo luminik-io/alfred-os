@@ -1,0 +1,188 @@
+"""Regression coverage for audit hardening fixes."""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import stat
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_bin_module(name: str, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HERMES_HOME", str(ROOT))
+    sys.path.insert(0, str(ROOT / "lib"))
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), ROOT / "bin" / name)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.pop(spec.name, None)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_robin_rejects_triages_outside_candidate_set(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+    candidates = [
+        ("backend", {"number": 10}),
+        ("frontend", {"number": 20}),
+    ]
+
+    valid, rejected = robin.validated_triages(
+        [
+            {"repo": "backend", "number": 10, "severity": "severity:p1"},
+            {"repo": "backend", "number": 999, "severity": "severity:p1"},
+            {"repo": "other", "number": 20, "severity": "severity:p1"},
+            {"repo": "frontend", "number": "20", "severity": "severity:p1"},
+            {"repo": "backend", "number": 10, "severity": "severity:p2"},
+        ],
+        candidates,
+    )
+
+    assert valid == [{"repo": "backend", "number": 10, "severity": "severity:p1"}]
+    assert len(rejected) == 4
+
+
+def test_automerge_blocks_ship_ready_review_older_than_commit(monkeypatch):
+    automerge = load_bin_module("automerge.py", monkeypatch)
+    monkeypatch.setattr(automerge, "unresolved_reviewer_threads", lambda *a, **kw: [])
+
+    def fake_gh_json(cmd, default=None):
+        if "/issues/" in " ".join(cmd):
+            return [
+                {
+                    "body": f"{automerge.REVIEW_HEADER}\n\nShip-ready: yes",
+                    "created_at": "2026-05-09T10:00:00Z",
+                }
+            ]
+        if "/pulls/" in " ".join(cmd):
+            return []
+        return default
+
+    monkeypatch.setattr(automerge, "gh_json", fake_gh_json)
+    ok, reason = automerge.is_mergeable(
+        "backend",
+        42,
+        latest_commit_at=datetime(2026, 5, 9, 11, 0, 0, tzinfo=UTC),
+    )
+
+    assert not ok
+    assert "older than latest commit" in reason
+
+
+def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    releases = []
+    monkeypatch.setattr(lucius, "release_issue", lambda *a, **kw: releases.append((a, kw)))
+
+    lucius.release_wip_salvage("backend", 42, "fid-1", None)
+
+    assert releases == [
+        (
+            ("backend", 42),
+            {
+                "codename": "lucius",
+                "firing_id": "fid-1",
+                "outcome": "partial-pr-create-failed",
+            },
+        )
+    ]
+
+
+def test_lucius_wip_salvage_success_transitions_to_pr_open(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    releases = []
+    monkeypatch.setattr(lucius, "release_issue", lambda *a, **kw: releases.append((a, kw)))
+
+    lucius.release_wip_salvage("backend", 42, "fid-1", "https://github.com/o/r/pull/1")
+
+    assert releases[0][1]["transition_to"] == "agent:pr-open"
+    assert releases[0][1]["pr_url"] == "https://github.com/o/r/pull/1"
+
+
+def test_lock_pid_identity_requires_matching_metadata(monkeypatch, tmp_path):
+    sys.path.insert(0, str(ROOT / "lib"))
+    import agent_runner as ar
+
+    lock_dir = tmp_path / "agent-lock-lucius"
+    lock_dir.mkdir()
+    (lock_dir / "metadata.json").write_text(
+        '{"pid": 12345, "pid_start_key": "Mon May  9 10:00:00 2026"}'
+    )
+
+    monkeypatch.setattr(ar, "pid_start_key", lambda pid: "Mon May  9 11:00:00 2026")
+
+    assert ar.lock_pid_identity_matches(lock_dir, 12345) is False
+
+
+def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
+    huntress = load_bin_module("huntress.py", monkeypatch)
+
+    assert huntress.redact_text("email=a@example.com password=s3cr3t", ["s3cr3t"]) == (
+        "email=a@example.com password=[REDACTED]"
+    )
+
+    run_dir = huntress.secure_run_dir("huntress-test")
+    try:
+        mode = stat.S_IMODE(run_dir.stat().st_mode)
+        assert mode == 0o700
+    finally:
+        run_dir.rmdir()
+
+
+def test_gordon_raises_on_aws_failure(monkeypatch):
+    gordon = load_bin_module("gordon.py", monkeypatch)
+
+    class Result:
+        returncode = 1
+        stderr = "boom"
+        stdout = ""
+
+    monkeypatch.setattr(gordon, "_aws", lambda *a, **kw: Result())
+
+    with pytest.raises(gordon.MonitoringFetchError):
+        gordon._aws_json(["ecs", "describe-services"])
+
+
+def test_gordon_raises_on_ecs_service_failures(monkeypatch):
+    gordon = load_bin_module("gordon.py", monkeypatch)
+    monkeypatch.setattr(gordon, "STAGING_CLUSTER", "cluster")
+    monkeypatch.setattr(gordon, "SERVICE_TO_REPO", {"svc": ("org/repo", "main")})
+    monkeypatch.setattr(
+        gordon,
+        "_aws_json",
+        lambda *a, **kw: {"services": [], "failures": [{"arn": "svc", "reason": "MISSING"}]},
+    )
+
+    with pytest.raises(gordon.MonitoringFetchError):
+        gordon.check_ecs_drift()
+
+
+def test_gordon_raises_when_requested_service_missing(monkeypatch):
+    gordon = load_bin_module("gordon.py", monkeypatch)
+    monkeypatch.setattr(gordon, "STAGING_CLUSTER", "cluster")
+    monkeypatch.setattr(gordon, "SERVICE_TO_REPO", {"svc": ("org/repo", "main")})
+    monkeypatch.setattr(gordon, "_aws_json", lambda *a, **kw: {"services": [], "failures": []})
+
+    with pytest.raises(gordon.MonitoringFetchError):
+        gordon.check_ecs_drift()
+
+
+def test_agent_lock_writes_pid_identity_metadata(monkeypatch, tmp_path):
+    sys.path.insert(0, str(ROOT / "lib"))
+    import agent_runner as ar
+
+    lock = ar.AgentLock("metadata-test")
+    lock._lock_dir = tmp_path / "agent-lock-metadata-test"
+    monkeypatch.setattr(ar, "pid_start_key", lambda pid: "start-key")
+
+    assert lock.acquire() is True
+    try:
+        assert (lock._lock_dir / "pid").read_text().strip() == str(os.getpid())
+        assert "start-key" in (lock._lock_dir / "metadata.json").read_text()
+    finally:
+        lock.release()
