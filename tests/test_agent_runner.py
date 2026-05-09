@@ -65,6 +65,32 @@ def test_preflight_raises_on_missing_binary():
         ar.preflight(spec)
 
 
+def test_preflight_reports_gh_auth_timeout(monkeypatch):
+    import agent_runner as ar
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], timeout=kwargs.get("timeout"))
+
+    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+    monkeypatch.setattr(ar, "slack_post", lambda *a, **kw: True)
+
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(ar.PreflightSpec(agent="test", require_gh_auth=True))
+
+
+def test_preflight_reports_aws_timeout(monkeypatch):
+    import agent_runner as ar
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], timeout=kwargs.get("timeout"))
+
+    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+    monkeypatch.setattr(ar, "slack_post", lambda *a, **kw: True)
+
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(ar.PreflightSpec(agent="test", aws_profile="alfred-test"))
+
+
 def test_doctor_mode_default_false(monkeypatch):
     import agent_runner as ar
 
@@ -590,6 +616,101 @@ def test_parse_release_comment_carries_outcome():
     assert meta["codename"] == "lucius"
     assert meta["outcome"] == "success"
     assert meta["pr"] == "https://github.com/foo/bar/pull/42"
+
+
+def test_force_release_stale_claim_preserves_original_claim_identity(monkeypatch):
+    import agent_runner as ar
+
+    edits = []
+    comments = []
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a: comments.append(a) or True)
+    monkeypatch.setattr(ar, "now_iso", lambda: "2026-05-09T10:00:00Z")
+
+    assert ar.force_release_stale_claim(
+        "myrepo",
+        42,
+        sweep_id="sweep-1",
+        released_codename="lucius",
+        released_firing_id="firing-1",
+    )
+
+    assert edits == [
+        (
+            ("myrepo", 42),
+            {"add_labels": ["agent:implement"], "remove_labels": ["agent:in-flight"]},
+        )
+    ]
+    assert comments == [
+        (
+            "myrepo",
+            42,
+            "<!-- agent-release:codename=lucius firing_id=firing-1 "
+            "outcome=stale-swept swept_by=sweep-1 ts=2026-05-09T10:00:00Z -->",
+        )
+    ]
+
+
+def test_force_release_stale_claim_reports_comment_failure(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: False)
+
+    assert not ar.force_release_stale_claim(
+        "myrepo",
+        42,
+        sweep_id="sweep-1",
+        released_codename="lucius",
+        released_firing_id="firing-1",
+    )
+
+
+def test_claim_issue_rolls_back_when_claim_comment_fails(monkeypatch):
+    import agent_runner as ar
+
+    edits = []
+    monkeypatch.setattr(ar, "is_repo_paused", lambda repo: False)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "labels": [{"name": "agent:implement"}],
+            "state": "OPEN",
+            "comments": [],
+            "number": num,
+        },
+    )
+    monkeypatch.setattr(ar, "ensure_labels", lambda *a, **kw: None)
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: False)
+
+    assert not ar.claim_issue("myrepo", 42, codename="lucius", firing_id="fid-1")
+    assert edits == [
+        (
+            ("myrepo", 42),
+            {"add_labels": ["agent:in-flight"], "remove_labels": ["agent:implement"]},
+        ),
+        (
+            ("myrepo", 42),
+            {"add_labels": ["agent:implement"], "remove_labels": ["agent:in-flight"]},
+        ),
+    ]
+
+
+def test_release_issue_reports_comment_failure(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: False)
+
+    assert not ar.release_issue(
+        "myrepo",
+        42,
+        codename="lucius",
+        firing_id="fid-1",
+        outcome="success",
+    )
 
 
 # ---------- issue_dedup_check (with mocked gh) ----------

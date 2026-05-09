@@ -135,7 +135,9 @@ def find_stale_claims(repo_slug: str, *,
                       max_age_hours: int = 4) -> list[dict]
 
 def force_release_stale_claim(repo_slug: str, num: int, *,
-                              sweep_id: str) -> bool
+                              sweep_id: str,
+                              released_codename: str | None = None,
+                              released_firing_id: str | None = None) -> bool
 
 def issue_dedup_check(repo_slug: str, num: int) -> dict
 

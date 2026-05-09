@@ -506,23 +506,37 @@ def preflight(spec: PreflightSpec) -> None:
             )
         }
         env["AWS_PROFILE"] = spec.aws_profile
-        sts = subprocess.run(
-            ["aws", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        out = (sts.stderr or sts.stdout or "").strip()
-        if sts.returncode != 0 or spec.aws_profile not in (sts.stdout or ""):
-            err = out.splitlines()[-1] if out else "no output"
-            misses.append(f"AWS profile `{spec.aws_profile}` not usable: {err[:120]}")
+        try:
+            sts = subprocess.run(
+                ["aws", "sts", "get-caller-identity", "--query", "Arn", "--output", "text"],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            misses.append(f"AWS profile `{spec.aws_profile}` check timed out")
+        except FileNotFoundError:
+            misses.append("binary `aws` not found on PATH")
+        else:
+            out = (sts.stderr or sts.stdout or "").strip()
+            if sts.returncode != 0 or spec.aws_profile not in (sts.stdout or ""):
+                err = out.splitlines()[-1] if out else "no output"
+                misses.append(f"AWS profile `{spec.aws_profile}` not usable: {err[:120]}")
 
     # 4. gh auth alive — every issue / PR / label operation needs it.
     if spec.require_gh_auth:
-        gh = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True, timeout=10)
-        if gh.returncode != 0:
-            misses.append("gh auth not active (run `gh auth login`)")
+        try:
+            gh = subprocess.run(
+                ["gh", "auth", "status"], capture_output=True, text=True, timeout=30
+            )
+        except subprocess.TimeoutExpired:
+            misses.append("gh auth status timed out")
+        except FileNotFoundError:
+            misses.append("binary `gh` not found on PATH")
+        else:
+            if gh.returncode != 0:
+                misses.append("gh auth not active (run `gh auth login`)")
 
     # 5. Local repo checkouts present. Agents that grep across a repo can't
     #    do useful work if the checkout is missing.
@@ -2186,7 +2200,11 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
     claim_body = (
         f"{CLAIM_COMMENT_PREFIX}codename={codename} firing_id={firing_id} ts={now_iso()} -->"
     )
-    gh_issue_comment(repo_slug, num, claim_body)
+    if not gh_issue_comment(repo_slug, num, claim_body):
+        gh_issue_edit(
+            repo_slug, num, add_labels=["agent:implement"], remove_labels=["agent:in-flight"]
+        )
+        return False
     contested_by = _detect_contested_claim(
         repo_slug,
         num,
@@ -2235,15 +2253,15 @@ def release_issue(
         add.append(transition_to)
     else:
         add.append("agent:implement")
-    gh_issue_edit(repo_slug, num, add_labels=add, remove_labels=remove)
+    edited = gh_issue_edit(repo_slug, num, add_labels=add, remove_labels=remove)
     pr_part = f" pr={pr_url}" if pr_url else ""
-    gh_issue_comment(
+    commented = gh_issue_comment(
         repo_slug,
         num,
         f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
         f"outcome={outcome}{pr_part} ts={now_iso()} -->",
     )
-    return True
+    return edited and commented
 
 
 def _detect_contested_claim(
@@ -2368,18 +2386,32 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
     return stale
 
 
-def force_release_stale_claim(repo_slug: str, num: int, *, sweep_id: str) -> bool:
-    """Forcibly release a stale claim. Restores ``agent:implement`` so the
-    queue picks it up. Records ``outcome=stale-swept`` in the release comment.
+def force_release_stale_claim(
+    repo_slug: str,
+    num: int,
+    *,
+    sweep_id: str,
+    released_codename: str | None = None,
+    released_firing_id: str | None = None,
+) -> bool:
+    """Forcibly release a stale claim and restore ``agent:implement``.
+
+    The release comment is written under the stale claim's original
+    ``(codename, firing_id)`` so future claim detection can pair the release
+    with the original claim. ``sweep_id`` remains in metadata for audit.
     """
-    gh_issue_edit(repo_slug, num, add_labels=["agent:implement"], remove_labels=["agent:in-flight"])
-    gh_issue_comment(
+    edited = gh_issue_edit(
+        repo_slug, num, add_labels=["agent:implement"], remove_labels=["agent:in-flight"]
+    )
+    codename = released_codename or "cleanup"
+    firing_id = released_firing_id or sweep_id
+    commented = gh_issue_comment(
         repo_slug,
         num,
-        f"{RELEASE_COMMENT_PREFIX}codename=cleanup firing_id={sweep_id} "
-        f"outcome=stale-swept ts={now_iso()} -->",
+        f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
+        f"outcome=stale-swept swept_by={sweep_id} ts={now_iso()} -->",
     )
-    return True
+    return edited and commented
 
 
 def issue_dedup_check(repo_slug: str, num: int) -> dict:

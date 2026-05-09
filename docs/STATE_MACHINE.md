@@ -112,7 +112,9 @@ issue_dedup_check(repo, num) -> dict
 find_stale_claims(repo, *, max_age_hours=4) -> list[dict]
 
 # Recovery
-force_release_stale_claim(repo, num, *, sweep_id) -> bool
+force_release_stale_claim(repo, num, *, sweep_id,
+                          released_codename=None,
+                          released_firing_id=None) -> bool
 
 # Operator overrides
 is_repo_paused(repo) -> bool
@@ -143,7 +145,13 @@ PAUSED_REPOS_FILE: Path
    ```python
    for repo in CLEANUP_SWEEP_REPOS:
        for entry in find_stale_claims(repo, max_age_hours=4):
-           force_release_stale_claim(repo, entry["number"], sweep_id=sweep_id)
+           force_release_stale_claim(
+              repo,
+              entry["number"],
+              sweep_id=sweep_id,
+              released_codename=entry.get("codename"),
+              released_firing_id=entry.get("firing_id"),
+          )
    ```
 
 4. Drop `examples/bin/label_state.py` into your fleet's `bin/` directory and dispatch the subcommands (`claim`, `release`, `dedup-check`, `status-issue`, `repo`, `sweep-claims`) from your operator-facing CLI wrapper.
