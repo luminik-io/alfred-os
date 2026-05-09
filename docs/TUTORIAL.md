@@ -1,4 +1,4 @@
-# Tutorial: your first cron-driven agent in 30 minutes
+# Tutorial: your first launchd-managed agent in 30 minutes
 
 End-to-end walkthrough. By the end:
 

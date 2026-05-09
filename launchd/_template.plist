@@ -24,9 +24,8 @@ __JAVA_BLOCK__
     <string>__HERMES_HOME__</string>
     <key>WORKSPACE_ROOT</key>
     <string>__WORKSPACE_ROOT__</string>
-    <key>LUMINIK_WORKSPACE</key>
-    <string>__WORKSPACE_ROOT__</string>
 __GH_ORG_BLOCK__
+__ROLE_BLOCK__
   </dict>
   <key>WorkingDirectory</key>
   <string>__HOME__</string>

@@ -7,7 +7,7 @@ Retention policy (lower-bounds, configurable via env vars):
   transcripts/.../*.jsonl   30 days  (per-firing stream-json)
   events/<id>.jsonl         30 days  (per-firing structured event log)
   /tmp/<agent>-debug-*       1 day
-  worktrees/<name>           2 hours after mtime + git worktree remove
+  clean worktrees/<name>     2 hours after mtime + git worktree remove
   /tmp/agent-lock-<name>     4 hours (force-unlocked if older - matches
                                      AgentLock._LOCK_MAX_AGE_SECONDS)
 
@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
 from agent_runner import (
+    HERMES_HOME,
     STATE_ROOT,
     WORKSPACE,
     WORKTREE_ROOT,
@@ -61,47 +62,123 @@ if doctor_mode():
 NOW = time.time()
 ONE_DAY = 86400
 
-# Scan ALL agent-prefixed scratch files in /tmp; the scrubbed runners use
-# `<agent-codename>-debug-*`, `<agent-codename>-prbody-*`, etc.
-TMP_PATTERNS = [
-    "*-debug-*",
-    "*-prompt-*",
-    "*-prbody-*",
-    "*-wip-*",
-    "*-out-*",
-    "*-run-*",
+TMP_SUFFIXES = [
+    "debug-*",
+    "prompt-*",
+    "prbody-*",
+    "wip-*",
+    "out-*",
+    "run-*",
 ]
+
+
+def configured_tmp_prefixes() -> list[str]:
+    """Return agent-owned /tmp prefixes cleanup is allowed to sweep."""
+    prefixes: set[str] = set()
+    raw = os.environ.get("ALFRED_CLEANUP_TMP_PREFIXES", "")
+    prefixes.update(t.strip() for t in raw.split(",") if t.strip())
+
+    conf_candidates = [
+        HERMES_HOME / "launchd" / "agents.conf",
+        Path(__file__).resolve().parent.parent / "launchd" / "agents.conf",
+    ]
+    for conf in conf_candidates:
+        if not conf.exists():
+            continue
+        with contextlib.suppress(OSError):
+            for raw_line in conf.read_text().splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("# "):
+                    continue
+                if line.startswith("#"):
+                    line = line.lstrip("#").lstrip()
+                if "\t" not in line:
+                    continue
+                label = line.split("\t", 1)[0].strip()
+                if label:
+                    prefixes.add(label.rsplit(".", 1)[-1])
+
+    for script in Path(__file__).resolve().parent.glob("*.py"):
+        prefixes.add(script.stem)
+
+    return sorted(prefixes)
+
 
 removed = 0
 freed_mb = 0.0
-for pattern in TMP_PATTERNS:
-    for p in Path("/tmp").glob(pattern):
-        try:
-            age_days = (NOW - p.stat().st_mtime) / ONE_DAY
-            if age_days < 1:
-                continue
-            size_mb = (
-                sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
-                if p.is_dir()
-                else p.stat().st_size
-            ) / (1024 * 1024)
-            if p.is_dir():
-                shutil.rmtree(p, ignore_errors=True)
-            else:
-                p.unlink(missing_ok=True)
-            removed += 1
-            freed_mb += size_mb
-        except OSError:
-            pass
+for prefix in configured_tmp_prefixes():
+    patterns = [f"{prefix}-{suffix}" for suffix in TMP_SUFFIXES]
+    if prefix == "rasalghul":
+        patterns.append("rasalghul-*")
+    for pattern in patterns:
+        for p in Path("/tmp").glob(pattern):
+            try:
+                age_days = (NOW - p.stat().st_mtime) / ONE_DAY
+                if age_days < 1:
+                    continue
+                size_mb = (
+                    sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+                    if p.is_dir()
+                    else p.stat().st_size
+                ) / (1024 * 1024)
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink(missing_ok=True)
+                removed += 1
+                freed_mb += size_mb
+            except OSError:
+                pass
 
-# Sweep abandoned worktrees (>2h old, not tracked by any git worktree list)
+for p in Path("/tmp").glob(f"{AGENT}-*.json"):
+    try:
+        age_days = (NOW - p.stat().st_mtime) / ONE_DAY
+        if age_days < 1:
+            continue
+        freed_mb += p.stat().st_size / (1024 * 1024)
+        p.unlink(missing_ok=True)
+        removed += 1
+    except OSError:
+        pass
+
+
+def dirty_worktree_reason(wt: Path) -> str | None:
+    """Return why a stale worktree must be preserved, or None when clean."""
+    if not wt.is_dir():
+        return "not-a-directory"
+    if not (wt / ".git").exists():
+        return "not-a-git-worktree"
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(wt), "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git-status-failed:{exc.__class__.__name__}"
+    if res.returncode != 0:
+        return f"git-status-failed:{res.stderr.strip()[:120] or res.returncode}"
+    if res.stdout.strip():
+        return "dirty"
+    return None
+
+
+# Sweep abandoned clean worktrees (>2h old). Dirty or unknown directories are
+# kept so cleanup never destroys in-progress agent work.
 wt_root = WORKTREE_ROOT
 wt_removed = 0
+wt_skipped = 0
 if wt_root.exists():
     for wt in wt_root.iterdir():
         try:
             age = NOW - wt.stat().st_mtime
             if age < 7200:  # < 2h, leave alone
+                continue
+            dirty_reason = dirty_worktree_reason(wt)
+            if dirty_reason:
+                wt_skipped += 1
+                print(f"[cleanup] worktree skipped: {wt} ({dirty_reason})", file=sys.stderr)
                 continue
             for repo_dir in WORKSPACE.iterdir():
                 if not (repo_dir / ".git").exists():
@@ -198,13 +275,19 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
     locks_unlocked += 1
 
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
-print(f"[cleanup] worktrees: {wt_removed} abandoned removed")
+print(f"[cleanup] worktrees: {wt_removed} abandoned removed, {wt_skipped} dirty/unknown skipped")
 print(f"[cleanup] spend files: {spend_removed} removed (>{SPEND_RETENTION_DAYS}d)")
 print(f"[cleanup] event logs: {events_removed} removed (>{EVENTS_RETENTION_DAYS}d)")
 print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
+if wt_skipped:
+    slack_post(
+        f"cleanup skipped {wt_skipped} stale worktree(s) because they were dirty "
+        "or could not be proven safe to remove.",
+        severity="warn",
+    )
 
 # Sweep stale agent:in-flight claims across configured repos.
 CLAIM_MAX_AGE_HOURS = int(os.environ.get("ALFRED_CLAIM_MAX_AGE_HOURS", "4"))

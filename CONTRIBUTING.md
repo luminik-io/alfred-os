@@ -1,6 +1,6 @@
 # Contributing
 
-Alfred-OS is the framework behind one operator's production fleet. PRs welcome. The maintainer's bar: "does this make alfred-os a better framework for narrow-specialist cron-driven Claude Code agents". Not "does this support every adjacent use case". Changes that add configurability at the cost of more moving parts get declined.
+Alfred-OS is the framework behind one operator's production fleet. PRs welcome. The maintainer's bar: "does this make alfred-os a better framework for narrow-specialist launchd-managed Claude Code agents". Not "does this support every adjacent use case". Changes that add configurability at the cost of more moving parts get declined.
 
 ## Proposing a new codename agent
 
@@ -17,20 +17,20 @@ The maintainer responds "go ahead" or "not now, here's why." Don't write the pro
 
 ## Changing a prompt
 
-Prompts in `agents/<dept>/prompts/*.md` are the canonical source. The live runtime inlines them via `hermes cron edit`, so editing the file in this repo is half the change. The other half:
+Prompts in `agents/<dept>/prompts/*.md` are the canonical source. After editing a prompt, redeploy the fleet so the live `$HERMES_HOME` copy and rendered launchd jobs match the repo:
 
 ```sh
-hermes cron edit <cron-id> --prompt "$(cat agents/engineering/prompts/lucius-feature-dev.md)"
+bash deploy.sh
 ```
 
-To test a prompt change before letting it run on a real cron:
+To test a prompt change before letting it run on schedule:
 
-1. Pause the cron: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/my.fleet.<agent>.plist`
+1. Pause the launchd job: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/my.fleet.<agent>.plist`
 2. Edit the prompt file.
-3. Re-sync the cron via `hermes cron edit`.
+3. Re-run `bash deploy.sh`.
 4. Fire the agent by hand: `launchctl kickstart -k gui/$(id -u)/my.fleet.<agent>` (after re-loading the plist with `launchctl bootstrap`).
 5. Inspect the debug dump in `/tmp/<agent>-debug-<ts>/` (Lucius writes `prompt.txt` and `result.json` for every firing).
-6. Resume the cron when satisfied.
+6. Resume the launchd job when satisfied.
 
 Voice rules are locked. No em-dashes. No "leverage", "unlock", "seamless", "transform", "comprehensive", "robust", "streamline". No fabricated numbers; cite the file or codepath the number came from. The existing CLAUDE.md files are the voice reference. Match them.
 

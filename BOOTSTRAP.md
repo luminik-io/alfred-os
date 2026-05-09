@@ -1,6 +1,6 @@
 # Bootstrap
 
-End-to-end setup for consuming alfred-os as the framework for your own cron-driven Claude Code fleet on a fresh Mac. Plan ~60 minutes the first time, most of it on AWS IAM and the Anthropic Claude Code CLI.
+End-to-end setup for consuming alfred-os as the framework for your own launchd-managed Claude Code fleet on a fresh Mac. Plan ~60 minutes the first time, most of it on AWS IAM and the Anthropic Claude Code CLI.
 
 The fleet runs on a single always-on macOS host. A Mac Mini works. An old laptop with the lid open works. Not a server-class deployment.
 
@@ -109,11 +109,11 @@ Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` if you keep secrets under a 
 
 The runtime caches the webhook at `$HERMES_HOME/state/slack-webhook.cache` with a 7-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner.py`](lib/agent_runner.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
 
-## 4. Hermes-agent (cron + canon + ACP)
+## 4. Hermes-agent (canon + optional scheduler + ACP)
 
 Alfred-OS-driven fleets typically use [hermes-agent](https://github.com/NousResearch/hermes-agent) for three things:
 
-- **cron**: higher-level scheduling layer. The launchd plists in `launchd/` are the runtime; prompts in `agents/<dept>/prompts/` are inlined into Hermes cron entries via `hermes cron edit` so they can be re-synced from a single source.
+- **optional scheduler**: non-engineering departments may still use Hermes cron. The engineering fleet in this repo runs via launchd.
 - **canon**: shared writing-style and voice rules pulled in by every agent prompt.
 - **ACP** (Agent Control Protocol): the `#your-fleet-channel` Slack thread response surface (yes/no buttons, structured replies). Used by the personal-assistant and content departments more than engineering.
 
@@ -121,7 +121,6 @@ Install hermes-agent per its README, then verify:
 
 ```sh
 hermes --version
-hermes cron list
 ```
 
 Engineering agents in this repo run via launchd and do **not** require Hermes for their core loop. The non-engineering departments (content, sales, personal-assistant) use it as their scheduler.
@@ -237,9 +236,10 @@ Common errors: file not executable (`chmod +x`), wrong shebang (`#!/usr/bin/env 
 
 **Claude rate limit (`error_rate_limit` or `error_budget`).** The whole fleet is now in a global block for one hour. Inspect `~/.hermes/state/global-blocked-until.json`. Wait, or delete the file to clear the block manually. Then look at why one agent burned the weekly cap. Usually a runaway loop on a too-large issue. Lucius's hard cap is 5000 turns/day; tighten if needed.
 
-**`hermes cron edit` did not take effect.** The cron runs the **inlined** prompt, not the file at `agents/.../prompts/<name>.md`. After editing a prompt you must re-sync:
+**Prompt change did not take effect.** Re-run deploy and confirm the rendered launchd job points at the deployed binary under `$HERMES_HOME/bin`:
 ```sh
-hermes cron edit <cron-id> --prompt "$(cat agents/engineering/prompts/lucius-feature-dev.md)"
+bash deploy.sh
+launchctl print gui/$(id -u)/my.fleet.lucius
 ```
 
 **Spend caps tripping too early.** Each agent's cap lives in its own bin (e.g. `lucius.py` line ~122). Adjust the constant and re-deploy.

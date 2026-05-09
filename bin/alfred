@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""``alfred`` — operator CLI for the alfred-os fleet.
+
+A small, dependency-free entry point covering the operator's day-to-day
+verbs. Heavy logic lives in ``lib/agent_runner.py``; this file is just
+arg-parsing and pretty-printing.
+
+Subcommands today:
+
+  alfred agents               List configured agents from ``agents.conf``
+                              with role, schedule, and resolved enable
+                              state.
+  alfred enable <codename>    Add ``codename`` to the runner-level fleet
+                              gate file.
+                              Idempotent.
+  alfred disable <codename>   Remove ``codename`` from the runner-level
+                              fleet gate file. Idempotent.
+  alfred enabled-agents       Print the parsed list of enabled codenames
+                              (or explain that the gate file is missing).
+
+The runner-level fleet gate file lives at
+``$HERMES_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
+Missing codenames fall back to each runner's default: stable agents are
+default-enabled, while opt-in agents such as Batman default to disabled
+until explicitly enabled.
+
+Pure stdlib. The operator reads this file when something breaks; keep
+it that way — no external deps.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+# Resolve lib/ relative to the script regardless of how it was invoked.
+# In the fleet layout the script lives in ``$HERMES_HOME/bin/`` and the
+# library in ``$HERMES_HOME/lib/``; in a checkout the script lives in
+# ``<repo>/bin/`` and the library in ``<repo>/lib/``. Add both candidate
+# parents to sys.path so either layout works without packaging.
+_HERE = Path(__file__).resolve().parent
+for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) / "lib"):
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+
+import agent_runner  # noqa: E402
+
+OPT_IN_AGENTS = {"batman"}
+
+
+def _default_enabled(codename: str) -> bool:
+    return codename not in OPT_IN_AGENTS
+
+
+def _agents_conf_path() -> Path:
+    """Return the path to ``agents.conf``.
+
+    Prefers ``$HERMES_HOME/launchd/agents.conf`` (deployed location);
+    falls back to ``<repo>/launchd/agents.conf`` for in-checkout use.
+    """
+    candidates = [
+        Path(os.environ.get("HERMES_HOME", "")) / "launchd" / "agents.conf",
+        _HERE.parent / "launchd" / "agents.conf",
+        _HERE.parent / "launchd" / "agents.conf.example",
+    ]
+    for p in candidates:
+        if p and p.exists():
+            return p
+    return candidates[-1]
+
+
+def _parse_agents_conf(path: Path) -> list[dict[str, str]]:
+    """Return the list of agent records from ``agents.conf``.
+
+    Each record is a dict with keys ``label, script, schedule,
+    needs_java, log_stem, role, disabled``. ``disabled`` is True when
+    the conf line is commented out (``#my.fleet.batman ...``).
+    """
+    if not path.exists():
+        return []
+    out: list[dict[str, str]] = []
+    for raw in path.read_text().splitlines():
+        line = raw.rstrip("\n")
+        stripped = line.lstrip()
+        if not stripped:
+            continue
+        if stripped.startswith("# ") or stripped == "#":
+            continue
+        disabled = False
+        if stripped.startswith("#"):
+            # Heuristic: a commented agent line still has tabs in it.
+            # (Plain comments like "# Format: ..." are dropped above.)
+            if "\t" not in stripped:
+                continue
+            disabled = True
+            stripped = stripped.lstrip("#").lstrip()
+        cols = stripped.split("\t")
+        # Pad to 6 columns so missing trailing fields don't IndexError.
+        cols = cols + [""] * (6 - len(cols))
+        label, script, schedule, needs_java, log_stem, role = cols[:6]
+        if not label:
+            continue
+        out.append(
+            {
+                "label": label,
+                "script": script,
+                "schedule": schedule,
+                "needs_java": needs_java,
+                "log_stem": log_stem,
+                "role": role,
+                "disabled": "yes" if disabled else "no",
+            }
+        )
+    return out
+
+
+def _codename_from_label(label: str) -> str:
+    """Last dot-segment of a launchd label is the codename."""
+    return label.rsplit(".", 1)[-1] if "." in label else label
+
+
+def cmd_agents(_args: argparse.Namespace) -> int:
+    conf = _agents_conf_path()
+    agents = _parse_agents_conf(conf)
+    if not agents:
+        print(f"alfred: no agents found at {conf}", file=sys.stderr)
+        return 0
+
+    rows = []
+    for a in agents:
+        codename = _codename_from_label(a["label"])
+        enabled = agent_runner.is_agent_enabled(codename, default=_default_enabled(codename))
+        rows.append(
+            (
+                codename,
+                a["schedule"] or "-",
+                "off" if a["disabled"] == "yes" else "on",
+                "yes" if enabled else "no",
+                a["role"] or "-",
+            )
+        )
+
+    headers = ("codename", "schedule", "loaded", "enabled", "role")
+    widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    print(fmt.format(*headers))
+    print(fmt.format(*("-" * w for w in widths)))
+    for r in rows:
+        print(fmt.format(*r))
+
+    if not agent_runner.FLEET_ENABLED_FILE.exists():
+        print(
+            f"\nFleet gate file missing ({agent_runner.FLEET_ENABLED_FILE}); "
+            "default-enabled agents are shown as enabled, while opt-in agents "
+            "such as Batman stay disabled until `alfred enable <codename>`."
+        )
+    return 0
+
+
+def cmd_enable(args: argparse.Namespace) -> int:
+    out = agent_runner.enable_agent(args.codename)
+    print(f"alfred: enabled {args.codename}")
+    print(f"alfred: {len(out)} agent(s) now enabled: {', '.join(out) or '(none)'}")
+    return 0
+
+
+def cmd_disable(args: argparse.Namespace) -> int:
+    out = agent_runner.disable_agent(args.codename)
+    print(f"alfred: disabled {args.codename}")
+    print(f"alfred: {len(out)} agent(s) now enabled: {', '.join(out) or '(none)'}")
+    return 0
+
+
+def cmd_enabled_agents(_args: argparse.Namespace) -> int:
+    if not agent_runner.FLEET_ENABLED_FILE.exists():
+        print(
+            f"alfred: fleet gate file missing ({agent_runner.FLEET_ENABLED_FILE}); "
+            "listed opt-in gates are empty, so each runner falls back to its default."
+        )
+        return 0
+    enabled = agent_runner.list_enabled_agents()
+    if not enabled:
+        print("alfred: 0 agents enabled (file present but empty)")
+        return 0
+    for c in enabled:
+        print(c)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="alfred", description="alfred-os operator CLI")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    p_agents = sub.add_parser("agents", help="list configured agents")
+    p_agents.set_defaults(func=cmd_agents)
+
+    p_enable = sub.add_parser("enable", help="enable an agent in the fleet enable file")
+    p_enable.add_argument("codename")
+    p_enable.set_defaults(func=cmd_enable)
+
+    p_disable = sub.add_parser("disable", help="disable an agent in the fleet enable file")
+    p_disable.add_argument("codename")
+    p_disable.set_defaults(func=cmd_disable)
+
+    p_enabled = sub.add_parser("enabled-agents", help="print the list of enabled codenames")
+    p_enabled.set_defaults(func=cmd_enabled_agents)
+
+    args = p.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
