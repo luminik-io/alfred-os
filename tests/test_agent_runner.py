@@ -120,11 +120,12 @@ def test_preflight_posts_slack_under_launchd(monkeypatch):
     assert "lucius preflight failed" in posted[0]
 
 
-def test_preflight_posts_slack_when_doctor_env_is_false(monkeypatch):
+@pytest.mark.parametrize("doctor_value", ["0", "false", "no", "off"])
+def test_preflight_posts_slack_when_doctor_env_is_false(monkeypatch, doctor_value):
     import agent_runner as ar
 
     monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
-    monkeypatch.setenv("HERMES_DOCTOR", "0")
+    monkeypatch.setenv("HERMES_DOCTOR", doctor_value)
     monkeypatch.delenv("HERMES_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
@@ -214,6 +215,9 @@ def test_doctor_mode_default_false(monkeypatch):
         ("0", False),
         ("false", False),
         ("False", False),
+        ("no", False),
+        ("off", False),
+        ("OFF", False),
         ("", False),
     ],
 )
