@@ -119,45 +119,36 @@ if [ -f "$CONF" ]; then
     UID_VALUE="$(id -u)"
     echo "[alfred-os/deploy] installing launchd plists to $LAUNCH_AGENTS_DIR"
     CURRENT_LABELS="$(mktemp -t alfred-os-labels-XXXXXX)"
-    CURRENT_PREFIXES="$(mktemp -t alfred-os-prefixes-XXXXXX)"
-    trap 'rm -f "$CURRENT_LABELS" "$CURRENT_PREFIXES"' EXIT
+    PREVIOUS_LABELS="$(mktemp -t alfred-os-previous-labels-XXXXXX)"
+    MANAGED_LABELS_TMP="$(mktemp -t alfred-os-managed-labels-XXXXXX)"
+    MANAGED_LABELS_FILE="$HERMES_LAUNCHD/managed-labels.txt"
+    trap 'rm -f "$CURRENT_LABELS" "$PREVIOUS_LABELS" "$MANAGED_LABELS_TMP"' EXIT
     for plist in "$OUT_DIR"/*.plist; do
       [ -f "$plist" ] || continue
       label="$(basename "$plist" .plist)"
       echo "$label" >> "$CURRENT_LABELS"
-      prefix="${label%.*}"
-      if [ "$prefix" != "$label" ]; then
-        echo "$prefix." >> "$CURRENT_PREFIXES"
-      fi
     done
     sort -u "$CURRENT_LABELS" -o "$CURRENT_LABELS"
-    sort -u "$CURRENT_PREFIXES" -o "$CURRENT_PREFIXES"
+    if [ -f "$MANAGED_LABELS_FILE" ]; then
+      sort -u "$MANAGED_LABELS_FILE" > "$PREVIOUS_LABELS"
+    else
+      : > "$PREVIOUS_LABELS"
+    fi
 
     is_current_label() {
       grep -Fxq "$1" "$CURRENT_LABELS"
     }
 
-    has_managed_prefix() {
-      local label="$1" prefix
-      [ -s "$CURRENT_PREFIXES" ] || return 1
-      while IFS= read -r prefix; do
-        [ -n "$prefix" ] || continue
-        case "$label" in
-          "$prefix"*) return 0 ;;
-        esac
-      done < "$CURRENT_PREFIXES"
-      return 1
-    }
-
-    for existing in "$LAUNCH_AGENTS_DIR"/*.plist; do
-      [ -f "$existing" ] || continue
-      label="$(basename "$existing" .plist)"
+    while IFS= read -r label || [ -n "$label" ]; do
+      [ -n "$label" ] || continue
       is_current_label "$label" && continue
-      has_managed_prefix "$label" || continue
+      existing="$LAUNCH_AGENTS_DIR/$label.plist"
+      [ -f "$existing" ] || continue
       launchctl bootout "gui/$UID_VALUE" "$existing" >/dev/null 2>&1 || true
       rm -f "$existing"
       echo "  - $label removed (not present in current agents.conf)"
-    done
+    done < "$PREVIOUS_LABELS"
+
     for plist in "$OUT_DIR"/*.plist; do
       [ -f "$plist" ] || continue
       label="$(basename "$plist" .plist)"
@@ -173,6 +164,8 @@ if [ -f "$CONF" ]; then
       launchctl bootstrap "gui/$UID_VALUE" "$dest"
       echo "  - $label loaded"
     done
+    cp "$CURRENT_LABELS" "$MANAGED_LABELS_TMP"
+    mv "$MANAGED_LABELS_TMP" "$MANAGED_LABELS_FILE"
   else
     echo "[alfred-os/deploy] non-macOS host; rendered plists but skipped launchctl"
   fi

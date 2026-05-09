@@ -127,9 +127,13 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     (src / "launchd" / "agents.conf").write_text(
         "alfred.new\tprobe.py\tinterval:60\tno\talfred.new\tNew helper\n"
     )
+    managed = hermes / "launchd" / "managed-labels.txt"
+    managed.parent.mkdir(parents=True)
+    managed.write_text("alfred.old\n")
     launch_agents = home / "Library" / "LaunchAgents"
     launch_agents.mkdir(parents=True)
     (launch_agents / "alfred.old.plist").write_text("<plist><dict></dict></plist>\n")
+    (launch_agents / "alfred.personal.plist").write_text("<plist><dict></dict></plist>\n")
     (launch_agents / "unrelated.keep.plist").write_text("<plist><dict></dict></plist>\n")
     launchctl_log = tmp_path / "launchctl.log"
     (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
@@ -154,8 +158,11 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     )
     assert res.returncode == 0, res.stdout + res.stderr
     assert not (launch_agents / "alfred.old.plist").exists()
+    assert (launch_agents / "alfred.personal.plist").exists()
     assert (launch_agents / "unrelated.keep.plist").exists()
     assert (launch_agents / "alfred.new.plist").exists()
+    assert managed.read_text().strip() == "alfred.new"
     log = launchctl_log.read_text()
     assert "alfred.old.plist" in log
+    assert "alfred.personal.plist" not in log
     assert "alfred.new.plist" in log
