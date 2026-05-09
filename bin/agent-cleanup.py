@@ -7,7 +7,7 @@ Retention policy (lower-bounds, configurable via env vars):
   transcripts/.../*.jsonl   30 days  (per-firing stream-json)
   events/<id>.jsonl         30 days  (per-firing structured event log)
   /tmp/<agent>-debug-*       1 day
-  worktrees/<name>           2 hours after mtime + git worktree remove
+  clean worktrees/<name>     2 hours after mtime + git worktree remove
   /tmp/agent-lock-<name>     4 hours (force-unlocked if older - matches
                                      AgentLock._LOCK_MAX_AGE_SECONDS)
 
@@ -94,14 +94,44 @@ for pattern in TMP_PATTERNS:
         except OSError:
             pass
 
-# Sweep abandoned worktrees (>2h old, not tracked by any git worktree list)
+
+def dirty_worktree_reason(wt: Path) -> str | None:
+    """Return why a stale worktree must be preserved, or None when clean."""
+    if not wt.is_dir():
+        return "not-a-directory"
+    if not (wt / ".git").exists():
+        return "not-a-git-worktree"
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(wt), "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"git-status-failed:{exc.__class__.__name__}"
+    if res.returncode != 0:
+        return f"git-status-failed:{res.stderr.strip()[:120] or res.returncode}"
+    if res.stdout.strip():
+        return "dirty"
+    return None
+
+
+# Sweep abandoned clean worktrees (>2h old). Dirty or unknown directories are
+# kept so cleanup never destroys in-progress agent work.
 wt_root = WORKTREE_ROOT
 wt_removed = 0
+wt_skipped = 0
 if wt_root.exists():
     for wt in wt_root.iterdir():
         try:
             age = NOW - wt.stat().st_mtime
             if age < 7200:  # < 2h, leave alone
+                continue
+            dirty_reason = dirty_worktree_reason(wt)
+            if dirty_reason:
+                wt_skipped += 1
+                print(f"[cleanup] worktree skipped: {wt} ({dirty_reason})", file=sys.stderr)
                 continue
             for repo_dir in WORKSPACE.iterdir():
                 if not (repo_dir / ".git").exists():
@@ -198,13 +228,19 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
     locks_unlocked += 1
 
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
-print(f"[cleanup] worktrees: {wt_removed} abandoned removed")
+print(f"[cleanup] worktrees: {wt_removed} abandoned removed, {wt_skipped} dirty/unknown skipped")
 print(f"[cleanup] spend files: {spend_removed} removed (>{SPEND_RETENTION_DAYS}d)")
 print(f"[cleanup] event logs: {events_removed} removed (>{EVENTS_RETENTION_DAYS}d)")
 print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
+if wt_skipped:
+    slack_post(
+        f"cleanup skipped {wt_skipped} stale worktree(s) because they were dirty "
+        "or could not be proven safe to remove.",
+        severity="warn",
+    )
 
 # Sweep stale agent:in-flight claims across configured repos.
 CLAIM_MAX_AGE_HOURS = int(os.environ.get("ALFRED_CLAIM_MAX_AGE_HOURS", "4"))

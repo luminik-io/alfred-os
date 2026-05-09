@@ -1,5 +1,5 @@
 """
-alfred-os — shared library for cron-driven Claude Code agents.
+alfred-os — shared library for launchd-managed Claude Code agents.
 
 Provides the primitives every codename agent needs:
 
@@ -53,7 +53,7 @@ from typing import Any
 #
 #   HERMES_HOME       - where the agent runtime lives (state/, worktrees/,
 #                       lib/, bin/, shared/.agent/). Defaults to ~/.hermes.
-#   LUMINIK_WORKSPACE - root of the per-repo product checkouts (every
+#   WORKSPACE_ROOT    - root of the per-repo product checkouts (every
 #                       <repo> in GH_REPO_TO_LOCAL is a child directory).
 #                       Defaults to ~/Claude_Workspace.
 #   CLAUDE_BIN        - absolute path to the `claude` CLI. Defaults to
@@ -66,15 +66,7 @@ from typing import Any
 HOME = Path(os.path.expanduser("~"))
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
 
-# WORKSPACE_ROOT is the canonical name. LUMINIK_WORKSPACE is the legacy
-# alias preserved for back-compat with the original alfred deployment;
-# new consumers should set WORKSPACE_ROOT only.
-WORKSPACE_ROOT = Path(
-    os.environ.get("WORKSPACE_ROOT")
-    or os.environ.get("LUMINIK_WORKSPACE")
-    or os.path.expanduser("~/Workspace")
-)
-LUMINIK_WORKSPACE = WORKSPACE_ROOT  # deprecated alias
+WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT") or os.path.expanduser("~/Workspace"))
 
 # Back-compat alias: alfred-era bin scripts import WORKSPACE and use it as
 # the root containing per-repo checkouts under product/. Keep that shape.
@@ -562,9 +554,9 @@ def doctor_mode() -> bool:
 
 # ---------- Prompt loading + variable substitution ----------
 #
-# Codename agents read their system prompt from a markdown file in the repo
-# (or from a Hermes cron config). The same file is editable as documentation
-# AND consumed by the runner at firing time. To keep operator-specific
+# Codename agents read their system prompt from a markdown file in the repo.
+# The same file is editable as documentation AND consumed by the runner at
+# firing time. To keep operator-specific
 # values out of the file (gh handle, email, repo lists) without forcing a
 # pre-render step, load_prompt() does shell-style ${VAR} substitution
 # against the process env when reading the file.
@@ -2002,15 +1994,14 @@ def set_repo_paused(repo_slug: str, paused: bool) -> list[str]:
 # ---------------------------------------------------------------------------
 # Fleet-wide agent enable/disable
 #
-# Single source of truth for "is agent X enabled". State lives at
+# Runner-level gate for opt-in agents. State lives at
 # ``$HERMES_HOME/state/fleet/enabled.txt`` — newline-separated codenames,
 # ``#`` comments allowed. Operators edit this with vi at 2am, so a flat
 # text file beats JSON for survival under "I just want to add one line".
 #
-# When the file exists it is AUTHORITATIVE: codename listed → enabled,
-# codename not listed → disabled. When the file is missing the helper
-# returns ``default`` (callers pick: True for opt-out agents, False for
-# opt-in agents like a brand-new feature being burned in).
+# Missing file or missing codename returns ``default``. Callers pick:
+# True for default-enabled agents, False for opt-in agents like a brand-new
+# feature being burned in. Listed codenames are always enabled.
 # ---------------------------------------------------------------------------
 FLEET_DIR = STATE_ROOT / "fleet"
 FLEET_ENABLED_FILE = FLEET_DIR / "enabled.txt"
@@ -2054,17 +2045,11 @@ def is_agent_enabled(codename: str, *, default: bool = True) -> bool:
     File missing → ``default`` (True for opt-out agents, False for
     opt-in agents like Batman until burn-in).
     File present and codename listed → True.
-    File present and codename not listed → False.
-
-    The file is authoritative when it exists — callers must NOT fall
-    back to legacy markers in that case, otherwise an operator who
-    explicitly disabled an agent will see it silently re-enabled by a
-    stale marker. Pre-existing-marker fallback belongs upstream of
-    this helper, only when the fleet file is missing.
+    File present and codename not listed → ``default``.
     """
     if not FLEET_ENABLED_FILE.exists():
         return default
-    return codename in _read_enabled_codenames()
+    return codename in _read_enabled_codenames() or default
 
 
 def list_enabled_agents() -> list[str]:

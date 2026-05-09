@@ -16,7 +16,7 @@
 #   5. log_stem    - basename used for /tmp/<stem>.{stdout,stderr}.
 #                    Empty falls back to label. Useful when two plists
 #                    share a script (sso-check-10 and sso-check-22 both
-#                    write to /tmp/luminik.eng.sso-check.{stdout,stderr}).
+#                    write to /tmp/my.fleet.sso-check.{stdout,stderr}).
 #   6. role        - one-line operational descriptor in plain English.
 #                    Surfaced in `alfred agents`, `alfred status <agent>`,
 #                    and Slack post prefixes — codenames alone don't

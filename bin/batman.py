@@ -39,8 +39,11 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) / "lib"):
-    if candidate.exists() and str(candidate) not in sys.path:
-        sys.path.insert(0, str(candidate))
+    if candidate.exists():
+        candidate_path = str(candidate)
+        if candidate_path in sys.path:
+            sys.path.remove(candidate_path)
+        sys.path.insert(0, candidate_path)
 
 from agent_runner import (  # noqa: E402
     GH_ORG,

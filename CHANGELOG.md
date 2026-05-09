@@ -11,7 +11,7 @@ Pivot from "extracted framework substrate" to "complete engineering agent fleet"
 #### 2026-05-09 catch-up backport from `luminik-io/alfred`
 
 - **Role field on every agent.** `agents.conf` gets a 6th tab-separated column carrying a one-line operational descriptor; `render.sh` emits `ALFRED_<CODENAME>_ROLE` env vars; `agent_role()` / `codename_with_role()` surface the role in CLI + Slack post prefixes. Backport of alfred PR #123.
-- **Single-source-of-truth fleet enable file.** New `$HERMES_HOME/state/fleet/enabled.txt` plus `is_agent_enabled` / `enable_agent` / `disable_agent` helpers. Codex P1 fix folded in: when the file exists it is authoritative — codenames not listed are disabled regardless of legacy markers. New `bin/alfred` CLI ships `alfred enable / disable / agents / enabled-agents`. Backport of alfred PR #125.
+- **Runner-level fleet gate file.** New `$HERMES_HOME/state/fleet/enabled.txt` plus `is_agent_enabled` / `enable_agent` / `disable_agent` helpers. Listed codenames are enabled; missing codenames fall back to each runner's default so opt-in agents can be gated without making normal launchd agents look disabled. New `bin/alfred` CLI ships `alfred enable / disable / agents / enabled-agents`. Backport of alfred PR #125 plus the 2026-05-09 gate-semantics cleanup.
 - **Slack threading + Block Kit + severity colour stripes.** New `lib/slack_format.py` with bot-token-aware `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. PR #141 attachment-deduplication guard baked in from day one. Honours `BATMAN_APPROVAL_CHANNEL` for routing. Backport of alfred PRs #126, #141.
 - **Bundle-label model + Batman skeleton.** New `lib/batman.py` with `Bundle` dataclass, all-or-nothing `claim_bundle`, best-effort `release_bundle`, loose-markdown `parse_plan_from_issue` / `parse_plan_from_bundle`. PR #121 scope-widening guard included. New `bin/batman.py` skeleton runner posts plan summaries; full execution chain deferred. Backport of alfred PRs #115, #127, #121.
 - **Runner-side dedup.** `find_open_authored_pr_for_issue` (with substring-false-positive guard) + `reuse_or_make_worktree` so partial work survives across firings of the same issue. Backport of alfred PR #129.
@@ -30,7 +30,7 @@ Pivot from "extracted framework substrate" to "complete engineering agent fleet"
 - **huntress** (post-deploy smoke): runs Playwright tests against `ALFRED_HUNTRESS_TARGET_URL`. Optional ECS staging-readiness pre-check + S3 screenshot upload.
 - **gordon** (deploy health): daily ECS task-def vs `main` HEAD diff + top-N Sentry issues. Quiet on healthy days.
 - **automerge**: squash-merges clean `agent:authored` PRs (CI green, no unresolved P0 reviewer comments, latest review ends "Ship-ready: yes").
-- **agent-cleanup**: daily housekeeping (worktrees, stuck locks, stale `agent:in-flight` claims via `force_release_stale_claim`).
+- **agent-cleanup**: daily housekeeping (clean stale worktrees, stuck locks, stale `agent:in-flight` claims via `force_release_stale_claim`). Dirty or unknown worktrees are skipped and reported.
 - **code-map-refresh**: cross-repo contract scan. Writes `${HERMES_HOME}/state/code-map.json` for other agents.
 - **agent-morning-brief**: daily Slack post — yesterday's PRs, in-flight work, doctor status.
 - **fleet-recap.sh**: 07:30 + 22:00 Slack digest (per-agent firings / cost / success rate).

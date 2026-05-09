@@ -74,7 +74,7 @@ render_one() {
   [[ -z "$log_stem" ]] && log_stem="$label"
 
   # Derive the agent short-name (last dot-segment) for the per-agent
-  # ALFRED_<AGENT>_ROLE env-var key. e.g. luminik.eng.lucius -> lucius.
+  # ALFRED_<AGENT>_ROLE env-var key. e.g. my.fleet.lucius -> lucius.
   local agent_short="${label##*.}"
 
   local schedule_block
@@ -200,4 +200,5 @@ awk -F'\t' '
   echo "  rendered $label.plist"
 done
 
-echo "[render] wrote $(ls -1 "$OUT_DIR" | wc -l | tr -d ' ') plists to $OUT_DIR"
+plist_count="$(find "$OUT_DIR" -maxdepth 1 -type f -name '*.plist' | wc -l | tr -d ' ')"
+echo "[render] wrote $plist_count plists to $OUT_DIR"

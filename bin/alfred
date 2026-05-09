@@ -10,18 +10,19 @@ Subcommands today:
   alfred agents               List configured agents from ``agents.conf``
                               with role, schedule, and resolved enable
                               state.
-  alfred enable <codename>    Add ``codename`` to the fleet enable file.
+  alfred enable <codename>    Add ``codename`` to the runner-level fleet
+                              gate file.
                               Idempotent.
-  alfred disable <codename>   Remove ``codename`` from the fleet enable
-                              file. Idempotent.
+  alfred disable <codename>   Remove ``codename`` from the runner-level
+                              fleet gate file. Idempotent.
   alfred enabled-agents       Print the parsed list of enabled codenames
-                              (or "(file missing → default-enabled)").
+                              (or explain that the gate file is missing).
 
-The fleet enable file lives at ``$HERMES_HOME/state/fleet/enabled.txt``.
-When the file exists it is authoritative — codenames not listed there
-are treated as disabled. When the file is missing every agent is
-treated as enabled (default-enabled semantics) so a fresh install
-keeps working until the operator opts in to explicit gating.
+The runner-level fleet gate file lives at
+``$HERMES_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
+Missing codenames fall back to each runner's default: stable agents are
+default-enabled, while opt-in agents such as Batman default to disabled
+until explicitly enabled.
 
 Pure stdlib. The operator reads this file when something breaks; keep
 it that way — no external deps.
@@ -46,6 +47,12 @@ for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) 
 
 import agent_runner  # noqa: E402
 
+OPT_IN_AGENTS = {"batman"}
+
+
+def _default_enabled(codename: str) -> bool:
+    return codename not in OPT_IN_AGENTS
+
 
 def _agents_conf_path() -> Path:
     """Return the path to ``agents.conf``.
@@ -69,7 +76,7 @@ def _parse_agents_conf(path: Path) -> list[dict[str, str]]:
 
     Each record is a dict with keys ``label, script, schedule,
     needs_java, log_stem, role, disabled``. ``disabled`` is True when
-    the conf line is commented out (``#luminik.eng.batman ...``).
+    the conf line is commented out (``#my.fleet.batman ...``).
     """
     if not path.exists():
         return []
@@ -121,15 +128,10 @@ def cmd_agents(_args: argparse.Namespace) -> int:
         print(f"alfred: no agents found at {conf}", file=sys.stderr)
         return 0
 
-    file_present = agent_runner.FLEET_ENABLED_FILE.exists()
     rows = []
     for a in agents:
         codename = _codename_from_label(a["label"])
-        # Default-enabled when fleet file missing; authoritative when present.
-        if file_present:
-            enabled = agent_runner.is_agent_enabled(codename, default=False)
-        else:
-            enabled = True
+        enabled = agent_runner.is_agent_enabled(codename, default=_default_enabled(codename))
         rows.append(
             (
                 codename,
@@ -148,11 +150,11 @@ def cmd_agents(_args: argparse.Namespace) -> int:
     for r in rows:
         print(fmt.format(*r))
 
-    if not file_present:
+    if not agent_runner.FLEET_ENABLED_FILE.exists():
         print(
-            f"\nFleet enable file missing ({agent_runner.FLEET_ENABLED_FILE}); every "
-            "agent treated as enabled. Run `alfred enable <codename>` to opt in to "
-            "explicit gating."
+            f"\nFleet gate file missing ({agent_runner.FLEET_ENABLED_FILE}); "
+            "default-enabled agents are shown as enabled, while opt-in agents "
+            "such as Batman stay disabled until `alfred enable <codename>`."
         )
     return 0
 
@@ -174,8 +176,8 @@ def cmd_disable(args: argparse.Namespace) -> int:
 def cmd_enabled_agents(_args: argparse.Namespace) -> int:
     if not agent_runner.FLEET_ENABLED_FILE.exists():
         print(
-            f"alfred: fleet enable file missing ({agent_runner.FLEET_ENABLED_FILE}); "
-            "every agent is treated as enabled by default."
+            f"alfred: fleet gate file missing ({agent_runner.FLEET_ENABLED_FILE}); "
+            "listed opt-in gates are empty, so each runner falls back to its default."
         )
         return 0
     enabled = agent_runner.list_enabled_agents()

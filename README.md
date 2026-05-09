@@ -7,7 +7,7 @@
 ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-A local engineering-fleet layer for Hermes: cron-driven Claude Code-first agents on a single Mac, with optional Codex routing for review-style work. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide poison pill on rate-limit.
+A local engineering-fleet layer for Hermes: launchd-managed Claude Code-first agents on a single Mac, with optional Codex routing for review-style work. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide rate-limit block.
 
 Docs site: https://luminik-io.github.io/alfred-os
 Reference fleet (full production application): [`luminik-io/alfred`](https://github.com/luminik-io/alfred)

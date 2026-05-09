@@ -1,8 +1,8 @@
-"""Tests for the fleet enable/disable state in lib/agent_runner.py.
+"""Tests for the runner-level fleet gate in lib/agent_runner.py.
 
-Covers: file-missing default behaviour, authority of the file when
-present, comment handling, atomic writes, idempotence, round-trip
-through enable_agent / disable_agent.
+Covers: file-missing default behaviour, file-present default fallback,
+comment handling, atomic writes, idempotence, round-trip through
+enable_agent / disable_agent.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def test_is_agent_enabled_returns_default_when_file_missing():
     assert ar.is_agent_enabled("batman", default=False) is False
 
 
-def test_is_agent_enabled_authoritative_when_file_present():
+def test_is_agent_enabled_respects_default_when_file_present():
     import agent_runner as ar
 
     ar.FLEET_ENABLED_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -45,10 +45,11 @@ def test_is_agent_enabled_authoritative_when_file_present():
     # Listed: enabled regardless of default.
     assert ar.is_agent_enabled("batman", default=False) is True
     assert ar.is_agent_enabled("lucius", default=False) is True
-    # Not listed: disabled regardless of default — file is authoritative.
-    # (This is the P1 fix: a stale legacy marker must NOT silently re-enable
-    # an agent that the operator explicitly removed from the fleet file.)
-    assert ar.is_agent_enabled("nightwing", default=True) is False
+    # Not listed: the caller's default still decides. This lets the same file
+    # gate opt-in runners while normal launchd-scheduled agents remain visible
+    # and runnable unless explicitly paused/unloaded.
+    assert ar.is_agent_enabled("nightwing", default=True) is True
+    assert ar.is_agent_enabled("nightwing", default=False) is False
 
 
 def test_read_enabled_codenames_skips_blank_and_comments():
@@ -74,7 +75,7 @@ def test_enable_agent_round_trip():
     assert "batman" in out
     assert ar.FLEET_ENABLED_FILE.exists()
     assert ar.is_agent_enabled("batman") is True
-    assert ar.is_agent_enabled("nightwing", default=True) is False  # not listed
+    assert ar.is_agent_enabled("nightwing", default=True) is True  # default-enabled
 
 
 def test_enable_agent_idempotent():
@@ -103,7 +104,7 @@ def test_disable_agent_round_trip():
     ar.enable_agent("lucius")
     out = ar.disable_agent("batman")
     assert out == ["lucius"]
-    assert ar.is_agent_enabled("batman") is False
+    assert ar.is_agent_enabled("batman", default=False) is False
     assert ar.is_agent_enabled("lucius") is True
 
 
@@ -187,3 +188,30 @@ def test_cli_enabled_agents_announces_missing_file(tmp_path):
     res = _run_cli("enabled-agents", env_extra=env)
     assert res.returncode == 0
     assert "missing" in res.stdout.lower()
+
+
+def test_cli_agents_does_not_disable_default_agents_when_gate_file_exists(tmp_path):
+    hermes = tmp_path / "hermes"
+    launchd = hermes / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "my.fleet.batman\tbatman.py\tinterval:5400\tno\t\tBundle coordinator\n"
+        "my.fleet.lucius\tlucius.py\tinterval:1200\tyes\t\tFeature dev\n"
+    )
+    gate = hermes / "state" / "fleet"
+    gate.mkdir(parents=True)
+    (gate / "enabled.txt").write_text("batman\n")
+    env = {
+        "HERMES_HOME": str(hermes),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("agents", env_extra=env)
+    assert res.returncode == 0, res.stderr
+    lines = {
+        line.split()[0]: line
+        for line in res.stdout.splitlines()
+        if line.startswith(("batman", "lucius"))
+    }
+    assert "yes" in lines["batman"].split()
+    assert "yes" in lines["lucius"].split()
