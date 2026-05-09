@@ -568,7 +568,7 @@ def preflight(spec: PreflightSpec) -> None:
     print(f"{sentinel} {len(misses)} issue(s):\n  {detail}")
     headline = misses[0] + (f" (+{len(misses) - 1} more)" if len(misses) > 1 else "")
     suppress_slack = (
-        os.environ.get("HERMES_DOCTOR")
+        _env_value_enabled("HERMES_DOCTOR")
         or spec.agent == "test"
         or (
             not _env_value_enabled("XPC_SERVICE_NAME")
