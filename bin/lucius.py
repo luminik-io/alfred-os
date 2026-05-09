@@ -230,6 +230,28 @@ If you hit an error you cannot resolve:
 """
 
 
+def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str | None) -> None:
+    if pr_url:
+        release_issue(
+            repo,
+            issue_num,
+            codename=AGENT,
+            firing_id=firing_id,
+            outcome="partial",
+            transition_to="agent:pr-open",
+            pr_url=pr_url,
+        )
+        return
+
+    release_issue(
+        repo,
+        issue_num,
+        codename=AGENT,
+        firing_id=firing_id,
+        outcome="partial-pr-create-failed",
+    )
+
+
 def main() -> int:
     with_lock(AGENT)
 
@@ -437,17 +459,7 @@ Generated with Claude Code (claude.com/claude-code)
                     head=branch,
                     labels=["agent:authored", "do-not-review"],
                 )
-                # WIP PR exists; transition to agent:pr-open so the issue
-                # is no longer claimable until the PR closes or merges.
-                release_issue(
-                    repo,
-                    issue_num,
-                    codename=AGENT,
-                    firing_id=events.firing_id,
-                    outcome="partial",
-                    transition_to="agent:pr-open",
-                    pr_url=pr_url,
-                )
+                release_wip_salvage(repo, issue_num, events.firing_id, pr_url)
                 remove_worktree(repo, wt)
                 spend.increment(failures_today=1, consecutive_failures=1)
                 msg = f"⚠️ {AGENT.title()} #{issue_num} salvaged as WIP draft: {pr_url or 'PR open failed'} (turns={result.num_turns})"

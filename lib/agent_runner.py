@@ -134,6 +134,16 @@ def set_global_block(hours: int, reason: str) -> str:
     return until
 
 
+PROVIDER_LIMIT_SUBTYPES = {"error_budget", "error_rate_limit"}
+
+
+def maybe_set_global_block_for_result(agent: str, result: Any, *, hours: int = 1) -> str | None:
+    subtype = getattr(result, "subtype", "")
+    if subtype not in PROVIDER_LIMIT_SUBTYPES:
+        return None
+    return set_global_block(hours=hours, reason=f"{agent}-{subtype}")
+
+
 # GH_REPO_TO_LOCAL maps GitHub-repo-slug → local-checkout-directory under
 # WORKSPACE_ROOT. Empty by default; consumers populate it for their fleet:
 #
@@ -810,7 +820,15 @@ class AgentLock:
                 except FileExistsError:
                     # Another process won the race
                     return False
-        (self._lock_dir / "pid").write_text(str(os.getpid()))
+        pid = os.getpid()
+        (self._lock_dir / "pid").write_text(str(pid))
+        metadata = {
+            "pid": pid,
+            "pid_start_key": pid_start_key(pid),
+            "cmdline": " ".join(sys.argv),
+            "agent": self.name,
+        }
+        (self._lock_dir / "metadata.json").write_text(json.dumps(metadata, sort_keys=True))
         return True
 
     def release(self) -> None:
@@ -2464,6 +2482,35 @@ def with_lock(name: str):
 
     atexit.register(lock.release)
     return lock
+
+
+def pid_start_key(pid: int) -> str:
+    try:
+        res = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "lstart="],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError, OSError):
+        return ""
+    return res.stdout.strip() if res.returncode == 0 else ""
+
+
+def lock_pid_identity_matches(lock_dir: Path, pid: int) -> bool:
+    metadata_file = lock_dir / "metadata.json"
+    if not metadata_file.exists():
+        return False
+    try:
+        metadata = json.loads(metadata_file.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    if metadata.get("pid") != pid:
+        return False
+    expected_start = metadata.get("pid_start_key")
+    if not expected_start:
+        return False
+    return pid_start_key(pid) == expected_start
 
 
 def short(text: str, n: int = 300) -> str:

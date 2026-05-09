@@ -25,6 +25,7 @@ from agent_runner import (
     gh_pr_comment,
     is_globally_blocked,
     is_repo_paused,
+    maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
     run,
@@ -425,6 +426,16 @@ Ship-ready: yes / no - <one sentence>
 
     if not result.success:
         spend.increment(failures_today=1)
+        until = maybe_set_global_block_for_result(AGENT, result)
+        if until:
+            msg = (
+                f"{AGENT.title()} hit Claude rate limit ({result.subtype}). "
+                f"Global block until {until}."
+            )
+            print(msg)
+            slack_post(msg, severity="alert")
+            events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+            return 0
         msg = (
             f"❌ {AGENT.title()}: subtype={result.subtype} turns={result.num_turns} on PR {pr_num}"
         )

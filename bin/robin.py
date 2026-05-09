@@ -26,6 +26,7 @@ from agent_runner import (
     gh_json,
     is_globally_blocked,
     is_repo_paused,
+    maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
     short,
@@ -152,6 +153,51 @@ def list_untriaged() -> list[tuple[str, dict]]:
     return candidates[:5]  # max 5 per firing
 
 
+def candidate_keys(candidates: list[tuple[str, dict]]) -> set[tuple[str, int]]:
+    """Return the exact repo/issue pairs Robin is allowed to mutate."""
+    keys: set[tuple[str, int]] = set()
+    for repo, issue in candidates:
+        try:
+            num = int(issue["number"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        keys.add((repo, num))
+    return keys
+
+
+def validated_triages(
+    triages: object,
+    candidates: list[tuple[str, dict]],
+) -> tuple[list[dict], list[str]]:
+    """Filter Claude output to the candidate allowlist before GitHub writes."""
+    if not isinstance(triages, list):
+        return [], ["triages is not a list"]
+
+    allowed = candidate_keys(candidates)
+    valid: list[dict] = []
+    rejected: list[str] = []
+    seen: set[tuple[str, int]] = set()
+    for idx, item in enumerate(triages):
+        if not isinstance(item, dict):
+            rejected.append(f"triage[{idx}] is not an object")
+            continue
+        repo = item.get("repo")
+        num = item.get("number")
+        if not isinstance(repo, str) or not isinstance(num, int) or isinstance(num, bool):
+            rejected.append(f"triage[{idx}] has invalid repo/number")
+            continue
+        key = (repo, num)
+        if key not in allowed:
+            rejected.append(f"triage[{idx}] targets non-candidate {repo}#{num}")
+            continue
+        if key in seen:
+            rejected.append(f"triage[{idx}] duplicates {repo}#{num}")
+            continue
+        seen.add(key)
+        valid.append(item)
+    return valid, rejected
+
+
 def main() -> int:
     with_lock(AGENT)
 
@@ -263,6 +309,16 @@ Output - print EXACTLY this JSON to stdout, nothing else:
 
     if not result.success:
         spend.increment(failures_today=1, consecutive_failures=1)
+        until = maybe_set_global_block_for_result(AGENT, result)
+        if until:
+            msg = (
+                f"{AGENT.title()} hit Claude rate limit ({result.subtype}). "
+                f"Global block until {until}."
+            )
+            print(msg)
+            slack_post(msg, severity="alert")
+            events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+            return 0
         msg = f"❌ {AGENT.title()}: subtype={result.subtype} turns={result.num_turns}"
         print(msg)
         slack_post(msg)
@@ -277,7 +333,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
 
     try:
         parsed = json.loads(text)
-        triages = parsed.get("triages", [])
+        raw_triages = parsed.get("triages", [])
     except (json.JSONDecodeError, AttributeError) as e:
         msg = f"❌ {AGENT.title()}: could not parse Claude JSON output ({e}). First line: {short(text.splitlines()[0] if text else '', 100)}"
         print(msg)
@@ -285,12 +341,9 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         events.emit("firing_complete", outcome="parse-error")
         return 0
 
-    if not isinstance(triages, list):
-        msg = f"❌ {AGENT.title()}: triages is not a list"
-        print(msg)
-        slack_post(msg)
-        events.emit("firing_complete", outcome="bad-triages-type")
-        return 0
+    triages, rejected_triages = validated_triages(raw_triages, candidates)
+    if rejected_triages:
+        events.emit("triages_rejected", count=len(rejected_triages), reasons=rejected_triages[:5])
 
     # Apply each triage decision
     summary_lines = []

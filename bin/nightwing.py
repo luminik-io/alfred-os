@@ -35,6 +35,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     make_worktree_from_branch,
+    maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
     remove_worktree,
@@ -366,6 +367,17 @@ def main() -> int:
         )
 
         if not result.success:
+            until = maybe_set_global_block_for_result(AGENT, result)
+            if until:
+                msg = (
+                    f"{AGENT.title()} hit Claude rate limit ({result.subtype}). "
+                    f"Global block until {until}."
+                )
+                print(msg)
+                slack_post(msg, severity="alert")
+                events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+                remove_worktree(repo, wt)
+                return 0
             print(
                 f"[{AGENT.upper()}-FAIL] comment {cid}: subtype={result.subtype} turns={result.num_turns}"
             )

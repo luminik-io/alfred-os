@@ -88,6 +88,10 @@ PREFLIGHT = PreflightSpec(
 )
 
 
+class MonitoringFetchError(RuntimeError):
+    """Raised when a monitoring input cannot be collected safely."""
+
+
 def _aws(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
     env = {
         k: v
@@ -114,11 +118,13 @@ def _aws(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
 def _aws_json(args: list[str], timeout: int = 30) -> Any:
     res = _aws(args, timeout=timeout)
     if res.returncode != 0:
-        return None
+        err = (res.stderr or res.stdout or "").strip().splitlines()
+        detail = err[-1] if err else "no output"
+        raise MonitoringFetchError(f"aws {' '.join(args[:2])} failed: {detail[:160]}")
     try:
         return json.loads(res.stdout)
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as e:
+        raise MonitoringFetchError(f"aws {' '.join(args[:2])} returned invalid JSON: {e}") from e
 
 
 def _image_sha_from_tag(image: str) -> str | None:
@@ -154,7 +160,21 @@ def check_ecs_drift() -> list[dict[str, Any]]:
     )
     out: list[dict[str, Any]] = []
     if not desc:
-        return out
+        raise MonitoringFetchError("ecs describe-services returned no data")
+    failures = desc.get("failures") or []
+    if failures:
+        reason = "; ".join(
+            f"{f.get('arn') or f.get('reason') or 'unknown'}:{f.get('reason') or 'failed'}"
+            for f in failures
+        )
+        raise MonitoringFetchError(f"ecs describe-services returned failures: {reason[:180]}")
+
+    returned_services = {svc.get("serviceName") for svc in desc.get("services", [])}
+    missing = sorted(set(services) - {name for name in returned_services if name})
+    if missing:
+        raise MonitoringFetchError(
+            "ecs describe-services missing service(s): " + ", ".join(missing)
+        )
 
     for svc in desc.get("services", []):
         name = svc.get("serviceName")
@@ -172,10 +192,9 @@ def check_ecs_drift() -> list[dict[str, Any]]:
             ]
         )
         live_image = ""
-        if td:
-            containers = (td.get("taskDefinition") or {}).get("containerDefinitions") or []
-            if containers:
-                live_image = containers[0].get("image", "")
+        containers = (td.get("taskDefinition") or {}).get("containerDefinitions") or []
+        if containers:
+            live_image = containers[0].get("image", "")
         live_sha = _image_sha_from_tag(live_image) or ""
 
         repo_slug, branch = SERVICE_TO_REPO[name]
@@ -189,6 +208,8 @@ def check_ecs_drift() -> list[dict[str, Any]]:
         head_sha = ""
         if isinstance(commit, dict):
             head_sha = (commit.get("sha") or "")[:12]
+        if not head_sha:
+            raise MonitoringFetchError(f"gh commit fetch failed for {repo_slug}@{branch}")
 
         a = (live_sha or "").lower()[:12]
         b = (head_sha or "").lower()[:12]
@@ -240,8 +261,8 @@ def fetch_sentry_top_issues(token: str, hours: int = 24, limit: int = 5) -> list
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError):
-        return []
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
+        raise MonitoringFetchError(f"sentry fetch failed: {e}") from e
     out: list[dict[str, Any]] = []
     for issue in data[:limit] if isinstance(data, list) else []:
         out.append(
@@ -276,17 +297,39 @@ def main() -> int:
     events.emit("firing_started")
     spend = SpendState(AGENT)
 
-    drift = check_ecs_drift()
+    collection_errors: list[str] = []
+    try:
+        drift = check_ecs_drift()
+    except MonitoringFetchError as e:
+        drift = []
+        collection_errors.append(str(e))
     drifted = [r for r in drift if not r["in_sync"]]
     events.emit("ecs_drift_checked", services=len(drift), drifted=len(drifted))
 
     sentry_issues: list[dict[str, Any]] = []
-    token = fetch_sentry_token()
-    if token:
-        sentry_issues = fetch_sentry_top_issues(token, hours=24, limit=5)
+    try:
+        token = fetch_sentry_token()
+    except MonitoringFetchError as e:
+        token = None
+        collection_errors.append(str(e))
+    try:
+        if token:
+            sentry_issues = fetch_sentry_top_issues(token, hours=24, limit=5)
+    except MonitoringFetchError as e:
+        collection_errors.append(str(e))
     events.emit("sentry_fetched", count=len(sentry_issues), token_available=bool(token))
 
     spend.increment(firings_today=1)
+
+    if collection_errors:
+        spend.increment(failures_today=1, consecutive_failures=1)
+        msg = f"⚠️ {AGENT.title()}: monitoring input collection failed: " + "; ".join(
+            collection_errors[:3]
+        )
+        print(msg)
+        slack_post(msg, severity="alert")
+        events.emit("firing_complete", outcome="monitoring-fetch-failed")
+        return 0
 
     summary_lines = [
         f"[{AGENT.upper()}-OK] services={len(drift)} drifted={len(drifted)} sentry_issues={len(sentry_issues)}"
