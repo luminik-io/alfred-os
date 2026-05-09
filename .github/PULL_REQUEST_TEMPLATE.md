@@ -11,7 +11,7 @@
 
 ## Design alignment
 
-<!-- Pennyworth is deliberately small. Confirm your change fits the constraints in CONTRIBUTING.md. -->
+<!-- Alfred-OS is deliberately small. Confirm your change fits the constraints in CONTRIBUTING.md. -->
 
 - [ ] My change does NOT broaden scope (no multi-tenant, no web UI, no hosted-service patterns).
 - [ ] My change does NOT add a runtime dependency that's not already in `pyproject.toml` (or I justify it in the PR body).

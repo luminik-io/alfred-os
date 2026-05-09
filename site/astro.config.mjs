@@ -15,7 +15,7 @@ export default defineConfig({
     starlight({
       title: "Alfred-OS",
       description:
-        "Cron-driven Claude Code agent fleet for solo founders. " +
+        "Launchd-managed Claude Code agent fleet for solo founders. " +
         "One Mac, one operator, code shipping while you sleep.",
       // logo: {
       //   src: './src/assets/logo.svg',  // operator: drop a real logo here

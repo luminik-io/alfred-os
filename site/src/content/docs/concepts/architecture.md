@@ -1,13 +1,13 @@
 ---
 title: Architecture
-description: Design rationale for cron, worktrees, IAM-per-agent, codename pattern.
+description: Design rationale for launchd, worktrees, IAM-per-agent, codename pattern.
 ---
 
 Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md). This page is the executive summary.
 
 ## Five non-negotiables
 
-### 1. Cron, not loops
+### 1. launchd, not loops
 
 Every agent firing is a fresh `launchd` event, not a tick in a long-running process. Trade-offs:
 
@@ -33,12 +33,11 @@ Every agent that touches AWS gets its own scoped IAM user:
 
 ```
 <your-codename>-cron read-only on the agent's specific secrets (test creds, webhooks, etc.)
-oracle-cron         read-only on ECS, ALB, CloudWatch logs/metrics. No secretsmanager:*.
-gordon-cron         read-only on ECS describe + the Sentry token secret
+gordon-cron         read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token
 alfred-host         read-only on alfred/* secrets (catch-all for fleet-wide config)
 ```
 
-The operator's SSO (which has admin everywhere) is never used by cron. The agent's prompt invokes `aws` with `env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN AWS_PROFILE=<agent>-cron aws ...` so the operator's ambient SSO can't leak through.
+The operator's SSO (which has admin everywhere) is never used by scheduled agents. AWS-aware runners read role-specific variables such as `ALFRED_GORDON_AWS_PROFILE`, strip inherited `AWS_*` credentials, and set `AWS_PROFILE` only around the AWS subprocess they own.
 
 See [AWS setup](/alfred-os/guides/aws/) for templates.
 
@@ -63,7 +62,7 @@ See [codename pattern](/alfred-os/concepts/codename-pattern/) for more.
 ## What this rules out
 
 - Multi-tenant deployments. Alfred-OS is single-operator by design.
-- Long-running orchestration loops. Cron is the orchestrator.
+- Long-running orchestration loops. The OS scheduler is the orchestrator.
 - LLM routing / model selection at the framework layer. Claude Code does this.
 - Browser automation runtimes. If your fleet needs Playwright, install it in the codename's bin script.
 - Vector databases for memory. The reference fleet uses gbrain (a doc-shaped layer); alfred-os doesn't ship one.

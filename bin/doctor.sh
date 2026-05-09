@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # doctor.sh - run preflight checks for every agent without burning a Claude turn.
 #
-# For each script in ${HERMES_HOME}/bin/, we set HERMES_DOCTOR=1 and invoke the
+# For each configured Python script, we set HERMES_DOCTOR=1 and invoke the
 # script. Each agent runs its preflight() and, on success, exits with a
 # [<AGENT>-DOCTOR-OK] sentinel before doing any real work. On preflight miss
 # the agent exits with a [<AGENT>-PREFLIGHT-FAILED] sentinel naming each gap.
@@ -17,8 +17,37 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+load_env_file() {
+  local file="$1" line key value
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    case "$line" in
+      export\ *) line="${line#export }" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      ''|[0-9]*|*[!A-Za-z0-9_]*)
+        continue
+        ;;
+    esac
+    case "$value" in
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    value="${value//\$\{HOME\}/$HOME}"
+    value="${value//\$HOME/$HOME}"
+    export "$key=$value"
+  done < "$file"
+}
+
+load_env_file "$HOME/.alfredrc"
+
 : "${HERMES_HOME:=$HOME/.hermes}"
-: "${WORKSPACE_ROOT:=$HOME/Workspace}"
+: "${WORKSPACE_ROOT:=$HOME/code}"
 export HERMES_HOME WORKSPACE_ROOT HERMES_DOCTOR=1
 
 if [ -d "$REPO_DIR/lib" ]; then
@@ -26,7 +55,7 @@ if [ -d "$REPO_DIR/lib" ]; then
   export PYTHONPATH
 fi
 
-# Mirror what launchd plists put on PATH so doctor.sh matches cron-time
+# Mirror what launchd plists put on PATH so doctor.sh matches firing-time
 # conditions even when invoked from a non-login subshell. fnm init is
 # shell-rc-driven, so a bare `bash doctor.sh` wouldn't see `claude` or
 # `npm` otherwise. Keeping these prepends idempotent: if they're already
@@ -67,8 +96,7 @@ export PATH
 # macOS does not ship GNU coreutils' `timeout`. Auto-detect a usable
 # implementation; on Linux this finds `timeout`, on a fresh Mac with
 # `brew install coreutils` it finds `gtimeout`, and otherwise falls
-# back to running the command without a wall-clock cap. Recommended:
-# `brew install coreutils` for parity with Linux behaviour.
+# back to a tiny Python timeout wrapper.
 if command -v timeout >/dev/null 2>&1; then
   TIMEOUT_BIN="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then
@@ -78,44 +106,118 @@ else
 fi
 
 # Run a command with a wall-clock cap if a timeout binary is available;
-# otherwise just run it. Usage: _run_with_timeout <secs> <cmd> [args...]
+# otherwise use a stdlib Python wrapper. Usage:
+# _run_with_timeout <secs> <cmd> [args...]
 _run_with_timeout() {
   local secs="$1"; shift
   if [ -n "$TIMEOUT_BIN" ]; then
     "$TIMEOUT_BIN" "$secs" "$@"
   else
-    "$@"
+    python3 - "$secs" "$@" <<'PY'
+import subprocess
+import sys
+
+secs = int(sys.argv[1])
+cmd = sys.argv[2:]
+try:
+    proc = subprocess.run(cmd, timeout=secs)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+sys.exit(proc.returncode)
+PY
   fi
 }
 
-# Prefer running the deployed scripts when present (they're the live runtime),
-# fall back to the in-repo copies when not deployed yet (a fresh checkout
-# wants to verify before its first deploy.sh run).
-if [ -d "$HERMES_HOME/bin" ] && ls "$HERMES_HOME/bin"/*.py >/dev/null 2>&1; then
-  BIN_DIR="$HERMES_HOME/bin"
-else
-  BIN_DIR="$SCRIPT_DIR"
-fi
+configured_agents() {
+  local conf=""
+  if [ -f "$REPO_DIR/launchd/agents.conf" ]; then
+    conf="$REPO_DIR/launchd/agents.conf"
+  elif [ -f "$HERMES_HOME/launchd/agents.conf" ]; then
+    conf="$HERMES_HOME/launchd/agents.conf"
+  fi
+  if [ -n "$conf" ]; then
+    awk -F'\t' '
+      /^[[:space:]]*$/ { next }
+      /^[[:space:]]*#/ { next }
+      $2 ~ /\.py$/ { print $1 "\t" $2 }
+    ' "$conf" | sort -u
+    return 0
+  fi
 
-echo "doctor: checking agents under $BIN_DIR"
+  if [ -d "$HOME/Library/LaunchAgents" ]; then
+    python3 - "$HOME/Library/LaunchAgents" <<'PY'
+from pathlib import Path
+import plistlib
+import sys
+
+for plist in sorted(Path(sys.argv[1]).glob("*.plist")):
+    try:
+        data = plistlib.loads(plist.read_bytes())
+    except Exception:
+        continue
+    label = str(data.get("Label") or "")
+    if not label.startswith(("alfred.", "my.fleet.")):
+        continue
+    args = data.get("ProgramArguments") or []
+    if not args:
+        continue
+    candidate = None
+    if str(args[0]).endswith(".py"):
+        candidate = args[0]
+    elif Path(str(args[0])).name == "agent-launch" and len(args) > 1:
+        candidate = args[1]
+    if candidate and str(candidate).endswith(".py"):
+        print(f"{label}\t{Path(str(candidate)).name}")
+PY
+  fi
+}
+
+echo "doctor: checking configured agents"
 echo "        HERMES_HOME=$HERMES_HOME"
 echo "        WORKSPACE_ROOT=$WORKSPACE_ROOT"
 echo
 
 pass=0
 fail=0
-for script in "$BIN_DIR"/*.py; do
-  [ -f "$script" ] || continue
+while IFS=$'\t' read -r label script_name; do
+  [ -n "$label" ] || continue
+  [ -n "$script_name" ] || continue
+  if [ -f "$HERMES_HOME/bin/$script_name" ]; then
+    script="$HERMES_HOME/bin/$script_name"
+    launch_arg="$script_name"
+  elif [ -f "$SCRIPT_DIR/$script_name" ]; then
+    script="$SCRIPT_DIR/$script_name"
+    launch_arg="$script"
+  else
+    printf "  %-30s ❌ missing\n" "${script_name%.py}"
+    fail=$((fail + 1))
+    continue
+  fi
   name=$(basename "$script" .py)
   printf "  %-30s " "$name"
 
   # Each agent's preflight should complete in well under 30s. Capture stdout
   # so we can inspect the sentinel without flooding the terminal. Use the
   # detected timeout helper so this works on a fresh Mac without coreutils.
-  output=$(_run_with_timeout 30 python3 "$script" 2>&1) || true
+  launcher="$HERMES_HOME/bin/agent-launch"
+  if [ ! -x "$launcher" ]; then
+    launcher="$SCRIPT_DIR/agent-launch"
+  fi
+  if [ -x "$launcher" ]; then
+    output=$(_run_with_timeout 30 env HERMES_DOCTOR=1 \
+      AGENT_CODENAME="${label##*.}" LAUNCHD_LABEL="$label" \
+      "$launcher" "$launch_arg" 2>&1) || true
+  else
+    output=$(_run_with_timeout 30 env HERMES_DOCTOR=1 \
+      AGENT_CODENAME="${label##*.}" LAUNCHD_LABEL="$label" \
+      python3 "$script" 2>&1) || true
+  fi
 
   if echo "$output" | grep -q "DOCTOR-OK"; then
     printf "✅ ok\n"
+    pass=$((pass + 1))
+  elif echo "$output" | grep -qE "\[[A-Z0-9_-]+-LOCKED\]"; then
+    printf "🟡 in flight\n"
     pass=$((pass + 1))
   elif echo "$output" | grep -q "PREFLIGHT-FAILED"; then
     printf "❌ preflight failed\n"
@@ -129,7 +231,7 @@ for script in "$BIN_DIR"/*.py; do
     echo "$output" | head -5 | sed 's/^/      /'
     fail=$((fail + 1))
   fi
-done
+done < <(configured_agents | sort -u)
 
 echo
 echo "doctor: $pass passed, $fail failed"

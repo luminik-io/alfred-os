@@ -36,7 +36,7 @@ Recommendation: Pro to validate, Max once you've got 2+ daily codenames. The two
 
 ## Two-account swap (`hermes-claude`)
 
-Two Anthropic accounts? `bin/hermes-claude` symlinks `~/.claude` to either `~/.claude-primary/` or `~/.claude-secondary/` so the cron-spawned `claude` uses whichever you point at.
+Two Anthropic accounts? `bin/hermes-claude` symlinks `~/.claude` to either `~/.claude-primary/` or `~/.claude-secondary/` so launchd-spawned `claude` uses whichever you point at.
 
 ```sh
 hermes-claude status      # which account is active

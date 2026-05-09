@@ -44,7 +44,7 @@ Skip the framework's launchd bits entirely. Write each agent as a bash script:
 */20 * * * * /usr/bin/env HERMES_HOME=$HOME/.hermes WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
 ```
 
-You lose the per-agent stdout/stderr separation and the `_paused/` marker pattern, but the framework primitives all work. Shape your `bin/<codename>.py` exactly as the macOS examples show.
+You lose the per-agent stdout/stderr separation and the `_paused/` marker pattern, but the framework primitives all work. Shape your stable role runner, such as `bin/lucius.py`, exactly as the macOS examples show.
 
 ### Option 2: systemd user units (manually written)
 
