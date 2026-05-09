@@ -89,7 +89,8 @@ def test_check_enabled_agents_green_with_missing_file():
     fd = _load_doctor()
     result = fd.check_enabled_agents()
     assert result.severity == "green"
-    assert "missing" in result.message.lower() or "default-enabled" in result.message
+    assert "missing" in result.message.lower()
+    assert "own defaults" in result.message
 
 
 def test_check_enabled_agents_lists_codenames():
