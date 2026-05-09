@@ -1,6 +1,6 @@
 # Claude Code skills
 
-Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface for a specific purpose: code review, refactoring, browser testing, security checks. Pennyworth doesn't ship skills itself. Consumer agents pick the ones they want.
+Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface for a specific purpose: code review, refactoring, browser testing, security checks. Alfred-OS does not ship skills itself. Consumer agents pick the ones they want.
 
 This doc lists the skills the reference fleet uses, what they're for, and the install commands.
 
@@ -132,7 +132,7 @@ Document which skills each codename invokes in your fleet's `agents/<dept>/CLAUD
 | Ra's al Ghul (PR review) | `code-review`, `code-review-and-quality`, `security-and-hardening`, `/review` |
 | Nightwing (review-fix) | `autofix` (CodeRabbit thread auto-closure), `code-review-and-quality`, `/review` |
 | Robin (bug triage) | `debugging-and-error-recovery`, `/investigate` |
-| Oracle (deploy monitor) | `debugging-and-error-recovery`, `/investigate` |
+| Gordon or another deploy monitor | `debugging-and-error-recovery`, `/investigate` |
 | Huntress (E2E smoke) | `/browse`, `/qa` |
 
 Skills are opt-in per-agent. No "skill bus" the framework wires up. The agent's prompt tells `claude -p` to invoke a skill, e.g.:
@@ -161,6 +161,6 @@ The fleet's IAM-per-agent and per-firing-worktree-isolation patterns limit blast
 
 ## Where skills live in the framework's mental model
 
-Skills are operator-installed, not framework-bundled. Pennyworth ships zero skills by default. The consumer fleet picks. Keeps the framework pluralist (different fleets, different skill stacks) and small (no skill maintenance burden on the framework).
+Skills are operator-installed, not framework-bundled. Alfred-OS ships zero skills by default. The consumer fleet picks. Keeps the framework pluralist (different fleets, different skill stacks) and small (no skill maintenance burden on the framework).
 
 If a future skill becomes universally needed (e.g. a state-machine-aware skill that reads the agent claim labels), it lands in `examples/skills/` as a documented option, never as a default.

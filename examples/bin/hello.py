@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hello — the smallest possible alfred-os codename agent.
 
-Demonstrates the canonical pattern every cron-driven agent follows:
+Demonstrates the canonical pattern every launchd-managed agent follows:
 
     1. Resolve agent_runner from $HERMES_HOME/lib (set by the launchd plist)
     2. Acquire a per-agent mutex with with_lock()

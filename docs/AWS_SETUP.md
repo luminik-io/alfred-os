@@ -2,18 +2,17 @@
 
 Alfred-OS uses AWS for two optional things:
 
-1. **Secrets Manager**: stores the Slack webhook URL and any per-fleet credentials (Sentry tokens, third-party API keys) so they don't live in shell rc files. Resolution is cached on disk for 7 days; AWS is only hit when the cache expires or is missing.
-2. **Per-agent IAM**: every cron-spawned agent that needs AWS access gets its own scoped IAM user with a narrow inline policy. The operator's SSO chain is never used by cron.
+1. **Secrets Manager**: stores the Slack webhook URL and any per-fleet credentials (Sentry tokens, third-party API keys) so they don't live in shell rc files. Resolution is cached on disk for 30 days; AWS is only hit when the cache expires or is missing.
+2. **Per-agent IAM**: every scheduled agent that needs AWS access gets its own scoped IAM user with a narrow inline policy. The operator's SSO chain is never used by scheduled agents.
 
 If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in `~/.alfredrc`. Alfred-OS runs fine without an AWS account.
 
 ## Why per-agent IAM
 
-The operator's AWS SSO has admin everywhere. If a cron-spawned agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps the blast radius:
+The operator's AWS SSO has admin everywhere. If a scheduled agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps the blast radius:
 
 - `<your-codename>-cron`: read-only on the agent's specific secrets (e.g. test credentials, webhook URLs).
-- `oracle-cron`: read-only on ECS, ALB, CloudWatch logs/metrics. No `secretsmanager:*`.
-- `gordon-cron`: read-only on ECS describe + the Sentry token secret.
+- `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token secret.
 - `alfred-host`: read-only on `alfred/*` secrets (catch-all for fleet-wide config).
 
 Each agent's prompt invokes `aws` with that profile and strips any operator SSO env that might leak in:
@@ -106,7 +105,7 @@ Common policy templates:
 }
 ```
 
-### ECS read-only (Oracle, Gordon)
+### ECS read-only (Gordon or another monitoring codename)
 
 ```json
 {
@@ -123,7 +122,7 @@ Common policy templates:
 }
 ```
 
-### CloudWatch Logs read (Oracle)
+### CloudWatch Logs read (monitoring codename)
 
 ```json
 {
@@ -187,12 +186,12 @@ aws --profile <your-codename>-cron secretsmanager get-secret-value \
 
 ## 4. Configure the launchd plist
 
-The plists rendered by `launchd/render.sh` get an `AWS_PROFILE` env var if you set it in `agents.conf` or in your `~/.alfredrc`. The agent runner picks it up via the standard AWS credential chain.
+The rendered plists do not have an `AWS_PROFILE` column. `alfred-init` writes role-specific profile variables such as `ALFRED_HUNTRESS_AWS_PROFILE` and `ALFRED_GORDON_AWS_PROFILE` into `~/.alfredrc`; `bin/agent-launch` loads that file at firing time; the stable role runner then sets `AWS_PROFILE` only around the AWS calls it owns.
 
-For per-agent profiles, the cleanest pattern is to set `AWS_PROFILE` *inside the agent's Python runner* before any `subprocess.run(["aws", ...])` call:
+For per-agent profiles, the cleanest pattern is to set `AWS_PROFILE` inside the agent's Python runner before any `subprocess.run(["aws", ...])` call:
 
 ```python
-# In your agent's bin/<codename>.py:
+# In your agent's stable role runner, such as bin/huntress.py:
 import os
 os.environ["AWS_PROFILE"] = "<your-codename>-cron"
 # Strip any leakage from the operator's session:
@@ -241,4 +240,4 @@ The AWS credential chain prefers env vars over `~/.aws/credentials`. Either run 
 Check the resource pattern. Secrets get a 6-character suffix on creation (`alfred/slack-webhook-NmY0Gv`), so the policy resource pattern must end with `*` to match. `arn:…:secret:alfred/slack-webhook` (no trailing `*`) won't match.
 
 **`alfred-host` IAM read-only and you need `CreateSecret`.**
-That's by design. Use your admin SSO profile to create/update; the cron-time IAM user only reads.
+That's by design. Use your admin SSO profile to create/update; the scheduled-agent IAM user only reads.
