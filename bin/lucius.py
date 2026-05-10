@@ -300,6 +300,13 @@ def main() -> int:
         msg = f"[{AGENT.upper()}-FAIL-STREAK] {spend.state['consecutive_failures']} consecutive failures, 0 successes. Pausing for human review."
         print(msg)
         slack_post(msg, severity="alert")
+        events.emit(
+            "agent_paused",
+            reason="fail_streak",
+            consecutive_failures=spend.state["consecutive_failures"],
+        )
+        events.emit("firing_complete", outcome="paused_fail_streak")
+        run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], timeout=10)
         return 0
 
     repo, issue = pick_issue()
@@ -390,6 +397,7 @@ def main() -> int:
         timeout=2400,  # 40 min cap; compile + claude can stretch
         codex_timeout=2400,
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+        codex_bypass_approvals_and_sandbox=True,
         on_fallback=_on_engine_fallback,
     )
     import json as _json

@@ -620,8 +620,10 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
     import agent_runner as ar
 
     root = tmp_path / "codex"
+    commands = []
 
     def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+        commands.append(cmd)
         last_path = Path(cmd[cmd.index("--output-last-message") + 1])
         last_path.parent.mkdir(parents=True, exist_ok=True)
         last_path.write_text("Codex review body")
@@ -651,6 +653,41 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
     assert out.raw["sandbox"] == "read-only"
     assert Path(out.raw["stdout_path"]).read_text().startswith("session id:")
     assert out.raw["last_message_path"].endswith("fire-1.last.md")
+    assert "--skip-git-repo-check" in commands[0]
+
+
+def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
+    import agent_runner as ar
+
+    root = tmp_path / "codex"
+    commands = []
+
+    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+        commands.append(cmd)
+        last_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        last_path.parent.mkdir(parents=True, exist_ok=True)
+        last_path.write_text("Codex implementation body")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
+    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+
+    out = ar.codex_invoke(
+        "implement",
+        workdir=tmp_path,
+        agent="lucius",
+        firing_id="fire-1",
+        timeout=30,
+        sandbox="workspace-write",
+        bypass_approvals_and_sandbox=True,
+    )
+
+    cmd = commands[0]
+    assert out.success is True
+    assert out.raw["sandbox"] == "danger-full-access"
+    assert out.raw["bypass_approvals_and_sandbox"] is True
+    assert "--dangerously-bypass-approvals-and-sandbox" in cmd
+    assert "--sandbox" not in cmd
 
 
 def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch):
