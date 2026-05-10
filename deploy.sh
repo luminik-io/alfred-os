@@ -139,6 +139,25 @@ if [ -f "$CONF" ]; then
       grep -Fxq "$1" "$CURRENT_LABELS"
     }
 
+    launchctl_pid_for_label() {
+      local target="$1"
+      launchctl list 2>/dev/null | awk -v label="$target" '$NF == label { print $1; exit }'
+    }
+
+    restart_loaded_label() {
+      local label="$1"
+      local plist="$2"
+      local pid
+      pid="$(launchctl_pid_for_label "$label")"
+      if [ -n "$pid" ] && [ "$pid" != "-" ] && [ "${ALFRED_DEPLOY_RESTART_RUNNING:-0}" != "1" ]; then
+        echo "  - $label running pid $pid; installed but reload deferred"
+        return 0
+      fi
+      launchctl bootout "gui/$UID_VALUE" "$plist" >/dev/null 2>&1 || true
+      launchctl bootstrap "gui/$UID_VALUE" "$plist"
+      echo "  - $label loaded"
+    }
+
     while IFS= read -r label || [ -n "$label" ]; do
       [ -n "$label" ] || continue
       is_current_label "$label" && continue
@@ -160,9 +179,7 @@ if [ -f "$CONF" ]; then
         launchctl bootout "gui/$UID_VALUE" "$dest" >/dev/null 2>&1 || true
         continue
       fi
-      launchctl bootout "gui/$UID_VALUE" "$dest" >/dev/null 2>&1 || true
-      launchctl bootstrap "gui/$UID_VALUE" "$dest"
-      echo "  - $label loaded"
+      restart_loaded_label "$label" "$dest"
     done
     cp "$CURRENT_LABELS" "$MANAGED_LABELS_TMP"
     mv "$MANAGED_LABELS_TMP" "$MANAGED_LABELS_FILE"

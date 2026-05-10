@@ -244,8 +244,10 @@ if TRANSCRIPTS_ROOT.exists():
             except OSError:
                 pass
 
-# Force-unlock agents whose lock is older than 4h.
+# Force-unlock dead or stale-identity agent locks. Keep healthy locks under
+# 4h, and give freshly-created locks a brief mkdir-before-pid-write grace.
 LOCK_MAX_AGE = 4 * 3600
+LOCK_GRACE_SECONDS = 60
 locks_unlocked = 0
 for lock_dir in Path("/tmp").glob("agent-lock-*"):
     if not lock_dir.is_dir():
@@ -254,18 +256,24 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
         age = NOW - lock_dir.stat().st_mtime
     except OSError:
         continue
-    if age <= LOCK_MAX_AGE:
-        continue
     pid_file = lock_dir / "pid"
     pid_alive = False
+    identity_matches = False
     old_pid = 0
     try:
         old_pid = int(pid_file.read_text().strip())
         os.kill(old_pid, 0)
         pid_alive = True
-    except (OSError, ValueError, ProcessLookupError):
+        identity_matches = lock_pid_identity_matches(lock_dir, old_pid)
+    except (ValueError, ProcessLookupError):
         pid_alive = False
-    if pid_alive and old_pid and lock_pid_identity_matches(lock_dir, old_pid):
+    except OSError:
+        pid_alive = False
+    if old_pid == 0 and age <= LOCK_GRACE_SECONDS:
+        continue
+    if pid_alive and identity_matches and age <= LOCK_MAX_AGE:
+        continue
+    if pid_alive and old_pid and identity_matches:
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             subprocess.run(
                 ["pkill", "-TERM", "-P", str(old_pid)],
