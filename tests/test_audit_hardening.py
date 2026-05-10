@@ -273,3 +273,21 @@ def test_agent_lock_writes_pid_identity_metadata(monkeypatch, tmp_path):
         assert "start-key" in (lock._lock_dir / "metadata.json").read_text()
     finally:
         lock.release()
+
+
+def test_agent_lock_reclaims_reused_pid(monkeypatch, tmp_path):
+    sys.path.insert(0, str(ROOT / "lib"))
+    import agent_runner as ar
+
+    lock = ar.AgentLock("metadata-test")
+    lock._lock_dir = tmp_path / "agent-lock-metadata-test"
+    lock._lock_dir.mkdir()
+    (lock._lock_dir / "pid").write_text(str(os.getpid()))
+    (lock._lock_dir / "metadata.json").write_text('{"pid": 999999, "pid_start_key": "old"}')
+    monkeypatch.setattr(ar, "pid_start_key", lambda pid: "new")
+
+    assert lock.acquire() is True
+    try:
+        assert (lock._lock_dir / "pid").read_text().strip() == str(os.getpid())
+    finally:
+        lock.release()

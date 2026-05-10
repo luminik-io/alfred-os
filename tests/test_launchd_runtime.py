@@ -166,3 +166,59 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     assert "alfred.old.plist" in log
     assert "alfred.personal.plist" not in log
     assert "alfred.new.plist" in log
+
+
+def test_deploy_defers_reload_for_running_jobs(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    hermes = tmp_path / "hermes"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "launchd" / "render.sh", src / "launchd" / "render.sh")
+    shutil.copy(REPO / "launchd" / "_template.plist", src / "launchd" / "_template.plist")
+    shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
+    (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
+    (src / "bin" / "probe.py").chmod(0o755)
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    (src / "launchd" / "agents.conf").write_text(
+        "alfred.new\tprobe.py\tinterval:60\tno\talfred.new\tNew helper\n"
+    )
+    launchctl_log = tmp_path / "launchctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
+    (fakebin / "launchctl").write_text(
+        "#!/usr/bin/env sh\n"
+        f"printf '%s\\n' \"$*\" >> {str(launchctl_log)!r}\n"
+        'case "$1" in\n'
+        "  list) printf '123\\t0\\talfred.new\\n' ;;\n"
+        "esac\n"
+        "exit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "launchctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "HERMES_HOME": str(hermes),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "alfred.new running pid 123; installed but reload deferred" in res.stdout
+    alfred_new_calls = [
+        line for line in launchctl_log.read_text().splitlines() if "alfred.new.plist" in line
+    ]
+    assert alfred_new_calls == []
