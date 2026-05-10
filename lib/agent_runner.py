@@ -882,6 +882,8 @@ HANDOFFS = HandoffTable()
 
 # ---------- Lock ----------
 
+_LOCK_GRACE_SECONDS = 60
+
 
 @dataclass
 class AgentLock:
@@ -893,6 +895,12 @@ class AgentLock:
     def __post_init__(self):
         self._lock_dir = Path(f"/tmp/agent-lock-{self.name}")
 
+    def _lock_age_seconds(self) -> float | None:
+        try:
+            return max(0.0, time.time() - self._lock_dir.stat().st_mtime)
+        except OSError:
+            return None
+
     def acquire(self) -> bool:
         try:
             self._lock_dir.mkdir(exist_ok=False)
@@ -902,6 +910,12 @@ class AgentLock:
                 old_pid = int(pid_file.read_text().strip())
                 os.kill(old_pid, 0)
                 if lock_pid_identity_matches(self._lock_dir, old_pid):
+                    return False
+                metadata_file = self._lock_dir / "metadata.json"
+                lock_age = self._lock_age_seconds()
+                if not metadata_file.exists():
+                    return False
+                if lock_age is not None and lock_age <= _LOCK_GRACE_SECONDS:
                     return False
             except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
                 pass

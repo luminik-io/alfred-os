@@ -271,6 +271,15 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
         pid_alive = False
     if old_pid == 0 and age <= LOCK_GRACE_SECONDS:
         continue
+    if pid_alive and not identity_matches and age <= LOCK_GRACE_SECONDS:
+        continue
+    if (
+        pid_alive
+        and not identity_matches
+        and not (lock_dir / "metadata.json").exists()
+        and age <= LOCK_MAX_AGE
+    ):
+        continue
     if pid_alive and identity_matches and age <= LOCK_MAX_AGE:
         continue
     if pid_alive and old_pid and identity_matches:
