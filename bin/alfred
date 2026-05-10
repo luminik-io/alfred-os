@@ -201,7 +201,6 @@ def _normalize_agent_name(agent: str) -> str:
     raw = agent.strip().lower()
     aliases = {
         "review": "rasalghul",
-        "review-engine": "rasalghul",
         "ras": "rasalghul",
         "ras-al-ghul": "rasalghul",
         "tim": "drake",
@@ -288,16 +287,6 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_review_engine_status(_args: argparse.Namespace) -> int:
-    _args.agent = "rasalghul"
-    return cmd_engine_status(_args)
-
-
-def cmd_review_engine_set(args: argparse.Namespace) -> int:
-    args.agent = "rasalghul"
-    return cmd_engine_set(args)
-
-
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="alfred", description="alfred-os operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
@@ -325,16 +314,6 @@ def main(argv: list[str] | None = None) -> int:
     p_engine_set.add_argument("agent")
     p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid", "both"])
     p_engine_set.set_defaults(func=cmd_engine_set)
-
-    p_review_engine = sub.add_parser(
-        "review-engine", help="back-compat alias for engine set/status rasalghul"
-    )
-    review_sub = p_review_engine.add_subparsers(dest="review_engine_command", required=True)
-    p_review_status = review_sub.add_parser("status", help="show review engine state")
-    p_review_status.set_defaults(func=cmd_review_engine_status)
-    p_review_set = review_sub.add_parser("set", help="set review engine")
-    p_review_set.add_argument("mode", choices=["claude", "codex", "hybrid", "both"])
-    p_review_set.set_defaults(func=cmd_review_engine_set)
 
     args = p.parse_args(argv)
     return args.func(args)
