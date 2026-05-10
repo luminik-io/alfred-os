@@ -6,6 +6,7 @@ import importlib.util
 import os
 import stat
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -285,9 +286,23 @@ def test_agent_lock_reclaims_reused_pid(monkeypatch, tmp_path):
     (lock._lock_dir / "pid").write_text(str(os.getpid()))
     (lock._lock_dir / "metadata.json").write_text('{"pid": 999999, "pid_start_key": "old"}')
     monkeypatch.setattr(ar, "pid_start_key", lambda pid: "new")
+    old = time.time() - 5 * 3600
+    os.utime(lock._lock_dir, (old, old))
 
     assert lock.acquire() is True
     try:
         assert (lock._lock_dir / "pid").read_text().strip() == str(os.getpid())
     finally:
         lock.release()
+
+
+def test_agent_lock_keeps_live_pid_when_metadata_missing(tmp_path):
+    sys.path.insert(0, str(ROOT / "lib"))
+    import agent_runner as ar
+
+    lock = ar.AgentLock("metadata-test")
+    lock._lock_dir = tmp_path / "agent-lock-metadata-test"
+    lock._lock_dir.mkdir()
+    (lock._lock_dir / "pid").write_text(str(os.getpid()))
+
+    assert lock.acquire() is False
