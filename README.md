@@ -3,7 +3,6 @@
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
 [![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://luminik-io.github.io/alfred-os/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Made with Claude Code](https://img.shields.io/badge/Made%20with-Claude%20Code-D97757)](https://docs.claude.com/en/docs/claude-code)
 ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
