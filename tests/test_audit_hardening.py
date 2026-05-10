@@ -157,6 +157,23 @@ def test_lock_pid_identity_requires_matching_metadata(monkeypatch, tmp_path):
     monkeypatch.setattr(ar, "pid_start_key", lambda pid: "Mon May  9 11:00:00 2026")
 
     assert ar.lock_pid_identity_matches(lock_dir, 12345) is False
+    assert ar.lock_pid_identity_status(lock_dir, 12345) is False
+
+
+def test_lock_pid_identity_probe_failure_is_unknown(monkeypatch, tmp_path):
+    sys.path.insert(0, str(ROOT / "lib"))
+    import agent_runner as ar
+
+    lock_dir = tmp_path / "agent-lock-lucius"
+    lock_dir.mkdir()
+    (lock_dir / "metadata.json").write_text(
+        '{"pid": 12345, "pid_start_key": "Mon May  9 10:00:00 2026"}'
+    )
+
+    monkeypatch.setattr(ar, "pid_start_key", lambda pid: "")
+
+    assert ar.lock_pid_identity_status(lock_dir, 12345) is None
+    assert ar.lock_pid_identity_matches(lock_dir, 12345) is False
 
 
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
@@ -304,5 +321,21 @@ def test_agent_lock_keeps_live_pid_when_metadata_missing(tmp_path):
     lock._lock_dir = tmp_path / "agent-lock-metadata-test"
     lock._lock_dir.mkdir()
     (lock._lock_dir / "pid").write_text(str(os.getpid()))
+
+    assert lock.acquire() is False
+
+
+def test_agent_lock_keeps_live_pid_when_start_probe_fails(monkeypatch, tmp_path):
+    sys.path.insert(0, str(ROOT / "lib"))
+    import agent_runner as ar
+
+    lock = ar.AgentLock("metadata-test")
+    lock._lock_dir = tmp_path / "agent-lock-metadata-test"
+    lock._lock_dir.mkdir()
+    (lock._lock_dir / "pid").write_text(str(os.getpid()))
+    (lock._lock_dir / "metadata.json").write_text(
+        f'{{"pid": {os.getpid()}, "pid_start_key": "known"}}'
+    )
+    monkeypatch.setattr(ar, "pid_start_key", lambda pid: "")
 
     assert lock.acquire() is False

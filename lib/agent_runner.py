@@ -909,11 +909,11 @@ class AgentLock:
             try:
                 old_pid = int(pid_file.read_text().strip())
                 os.kill(old_pid, 0)
-                if lock_pid_identity_matches(self._lock_dir, old_pid):
+                identity_status = lock_pid_identity_status(self._lock_dir, old_pid)
+                if identity_status is True:
                     return False
-                metadata_file = self._lock_dir / "metadata.json"
                 lock_age = self._lock_age_seconds()
-                if not metadata_file.exists():
+                if identity_status is None:
                     return False
                 if lock_age is not None and lock_age <= _LOCK_GRACE_SECONDS:
                     return False
@@ -2717,20 +2717,27 @@ def pid_start_key(pid: int) -> str:
     return res.stdout.strip() if res.returncode == 0 else ""
 
 
-def lock_pid_identity_matches(lock_dir: Path, pid: int) -> bool:
+def lock_pid_identity_status(lock_dir: Path, pid: int) -> bool | None:
     metadata_file = lock_dir / "metadata.json"
     if not metadata_file.exists():
-        return False
+        return None
     try:
         metadata = json.loads(metadata_file.read_text())
     except (OSError, json.JSONDecodeError):
-        return False
+        return None
     if metadata.get("pid") != pid:
         return False
     expected_start = metadata.get("pid_start_key")
     if not expected_start:
-        return False
-    return pid_start_key(pid) == expected_start
+        return None
+    actual_start = pid_start_key(pid)
+    if not actual_start:
+        return None
+    return actual_start == expected_start
+
+
+def lock_pid_identity_matches(lock_dir: Path, pid: int) -> bool:
+    return lock_pid_identity_status(lock_dir, pid) is True
 
 
 def short(text: str, n: int = 300) -> str:
