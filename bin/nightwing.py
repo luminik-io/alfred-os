@@ -358,13 +358,6 @@ def main() -> int:
         )
 
         def _on_engine_fallback(fallback_result):
-            until = maybe_set_global_block_for_result(AGENT, fallback_result)
-            if until:
-                events.emit(
-                    "global_block_set",
-                    until=until,
-                    reason=f"{AGENT}-{fallback_result.subtype}",
-                )
             events.emit(
                 "llm_fallback",
                 from_engine="claude",
@@ -398,7 +391,7 @@ def main() -> int:
         )
 
         if not result.success:
-            until = maybe_set_global_block_for_result(AGENT, result)
+            until = maybe_set_global_block_for_result(AGENT, result, engine_used=engine_used)
             if until:
                 msg = (
                     f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}). "

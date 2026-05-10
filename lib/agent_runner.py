@@ -209,7 +209,15 @@ def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -
     return [CLAUDE_BIN]
 
 
-def maybe_set_global_block_for_result(agent: str, result: Any, *, hours: int = 1) -> str | None:
+def maybe_set_global_block_for_result(
+    agent: str,
+    result: Any,
+    *,
+    hours: int = 1,
+    engine_used: str | None = "claude",
+) -> str | None:
+    if engine_used != "claude":
+        return None
     subtype = getattr(result, "subtype", "")
     if subtype not in PROVIDER_LIMIT_SUBTYPES:
         return None

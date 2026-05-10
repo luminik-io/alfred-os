@@ -216,6 +216,28 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
         assert agent in res.stdout
 
 
+def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
+    hermes = tmp_path / "hermes"
+    launchd = hermes / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "my.fleet.marshall\tlucius.py\tinterval:1200\tyes\t\tCustom feature engineer\n"
+    )
+    env = {
+        "HERMES_HOME": str(hermes),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("engine", "set", "marshall", "codex", env_extra=env)
+    assert res.returncode == 0, res.stderr
+    assert "marshall engine set to codex" in res.stdout
+    assert (hermes / "state" / "engines" / "marshall").read_text().strip() == "codex"
+
+    status = _run_cli("engine", "status", "marshall", env_extra=env)
+    assert status.returncode == 0, status.stderr
+    assert "marshall engine: codex" in status.stdout
+
+
 def test_cli_review_engine_alias_is_not_exposed(tmp_path):
     env = {
         "HERMES_HOME": str(tmp_path / "hermes"),

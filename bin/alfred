@@ -19,7 +19,7 @@ Subcommands today:
                               (or explain that the gate file is missing).
   alfred engine status [agent]
                               Show resolved Claude/Codex engine mode for one
-                              agent or the known LLM runner fleet.
+                              agent or the configured LLM runner fleet.
   alfred engine set <agent> <claude|codex|hybrid>
                               Persist an engine override in
                               $HERMES_HOME/state/engines/<agent>.
@@ -56,6 +56,7 @@ import agent_runner  # noqa: E402
 
 OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
+ENGINE_SCRIPTS = tuple(f"{agent}.py" for agent in ENGINE_AGENTS)
 
 
 def _default_enabled(codename: str) -> bool:
@@ -214,6 +215,17 @@ def _engine_state_file(agent: str) -> Path:
     return agent_runner.STATE_ROOT / "engines" / agent
 
 
+def _engine_agent_codenames() -> tuple[str, ...]:
+    seen = list(ENGINE_AGENTS)
+    for record in _parse_agents_conf(_agents_conf_path()):
+        if Path(record["script"]).name not in ENGINE_SCRIPTS:
+            continue
+        codename = _codename_from_label(record["label"])
+        if codename and codename not in seen:
+            seen.append(codename)
+    return tuple(seen)
+
+
 def _engine_behavior(mode: str) -> str:
     resolved = agent_runner.normalize_engine(mode)
     if resolved == "claude":
@@ -225,8 +237,9 @@ def _engine_behavior(mode: str) -> str:
 
 def _require_engine_agent(agent: str) -> str:
     normalized = _normalize_agent_name(agent)
-    if normalized not in ENGINE_AGENTS:
-        supported = ", ".join(ENGINE_AGENTS)
+    supported_agents = _engine_agent_codenames()
+    if normalized not in supported_agents:
+        supported = ", ".join(supported_agents)
         raise ValueError(f"unsupported engine-aware agent '{normalized}'. Supported: {supported}")
     return normalized
 
@@ -252,7 +265,7 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
 
     headers = ("agent", "engine", "behavior")
     rows = []
-    for agent in ENGINE_AGENTS:
+    for agent in _engine_agent_codenames():
         mode = agent_runner.agent_engine(
             agent,
             legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,

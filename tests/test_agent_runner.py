@@ -199,6 +199,18 @@ def test_maybe_set_global_block_ignores_non_provider_errors(monkeypatch):
     assert ar.maybe_set_global_block_for_result("robin", result) is None
 
 
+def test_maybe_set_global_block_ignores_codex_provider_limits(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "set_global_block", lambda **kw: pytest.fail("unexpected block"))
+    result = type("Result", (), {"subtype": "error_rate_limit"})()
+
+    assert ar.maybe_set_global_block_for_result("robin", result, engine_used="codex") is None
+    assert (
+        ar.maybe_set_global_block_for_result("robin", result, engine_used="codex-fallback") is None
+    )
+
+
 def test_doctor_mode_default_false(monkeypatch):
     import agent_runner as ar
 

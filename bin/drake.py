@@ -231,8 +231,6 @@ def main() -> int:
     # Drake works in the workspace root so it can read across all product repos
     # without juggling paths. It only writes via gh; no file edits.
     def _on_engine_fallback(fallback_result):
-        until = set_global_block(hours=1, reason=f"{AGENT}-{fallback_result.subtype}")
-        events.emit("global_block_set", until=until, reason=f"{AGENT}-{fallback_result.subtype}")
         events.emit(
             "llm_fallback",
             from_engine="claude",
@@ -275,12 +273,20 @@ def main() -> int:
     # Rate-limit / budget hits propagate to the fleet-wide global block so other
     # agents don't burn turns into the same wall.
     if result.subtype in ("error_budget", "error_rate_limit"):
-        until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
+        until = None
+        if engine_used == "claude":
+            until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
         spend.increment(failures_today=1, consecutive_failures=1)
-        msg = (
-            f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}). Global block until "
-            f"{until} - all agents will skip until then."
-        )
+        if until:
+            msg = (
+                f"{AGENT.title()} hit Claude provider rate limit ({result.subtype}). Global block until "
+                f"{until} - Claude agents will skip until then."
+            )
+        else:
+            msg = (
+                f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}); "
+                "Claude agents are not globally blocked."
+            )
         print(msg)
         slack_post(msg, severity="alert")
         return 0
