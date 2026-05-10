@@ -37,7 +37,7 @@ from agent_runner import (
     doctor_mode,
     find_stale_claims,
     force_release_stale_claim,
-    lock_pid_identity_matches,
+    lock_pid_identity_status,
     preflight,
     slack_post,
 )
@@ -258,31 +258,26 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
         continue
     pid_file = lock_dir / "pid"
     pid_alive = False
-    identity_matches = False
+    identity_status = False
     old_pid = 0
     try:
         old_pid = int(pid_file.read_text().strip())
         os.kill(old_pid, 0)
         pid_alive = True
-        identity_matches = lock_pid_identity_matches(lock_dir, old_pid)
+        identity_status = lock_pid_identity_status(lock_dir, old_pid)
     except (ValueError, ProcessLookupError):
         pid_alive = False
     except OSError:
         pid_alive = False
     if old_pid == 0 and age <= LOCK_GRACE_SECONDS:
         continue
-    if pid_alive and not identity_matches and age <= LOCK_GRACE_SECONDS:
+    if pid_alive and identity_status is None and age <= LOCK_MAX_AGE:
         continue
-    if (
-        pid_alive
-        and not identity_matches
-        and not (lock_dir / "metadata.json").exists()
-        and age <= LOCK_MAX_AGE
-    ):
+    if pid_alive and identity_status is False and age <= LOCK_GRACE_SECONDS:
         continue
-    if pid_alive and identity_matches and age <= LOCK_MAX_AGE:
+    if pid_alive and identity_status is True and age <= LOCK_MAX_AGE:
         continue
-    if pid_alive and old_pid and identity_matches:
+    if pid_alive and old_pid and identity_status is True:
         with contextlib.suppress(OSError, subprocess.SubprocessError):
             subprocess.run(
                 ["pkill", "-TERM", "-P", str(old_pid)],
