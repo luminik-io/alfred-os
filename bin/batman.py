@@ -49,6 +49,7 @@ from agent_runner import (  # noqa: E402
     GH_ORG,
     GH_REPO_TO_LOCAL,
     PreflightSpec,
+    agent_engine,
     doctor_mode,
     gh_json,
     is_agent_enabled,
@@ -66,6 +67,7 @@ from batman import (  # noqa: E402
 from slack_format import firing_thread_root  # noqa: E402
 
 CODENAME = "batman"
+BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
 
 
 def _scan_repos() -> list[str]:
@@ -229,6 +231,7 @@ def main() -> int:
         f"*Bundle:* `{bundle.slug}`\n"
         f"*Affected repos:* {', '.join(plan.affected_repos) or '(none)'}\n"
         f"*Rollout order:* {' → '.join(plan.affected_repos) or '(default)'}\n"
+        f"*Configured engine:* `{BATMAN_ENGINE}`\n"
     )
     # Try the bot-token thread root first; fall back to the
     # webhook surface so the operator gets *some* visibility on

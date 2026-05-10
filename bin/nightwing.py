@@ -27,11 +27,16 @@ from agent_runner import (
     PreflightFailed,
     PreflightSpec,
     SpendState,
-    claude_invoke,
+    agent_engine,
+    claude_invoke_streaming,
+    codex_invoke,
+    codex_sandbox_for_agent,
     commit_trailer,
     doctor_mode,
+    engine_preflight_bins,
     gh_json,
     gh_pr_comment,
+    invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
     make_worktree_from_branch,
@@ -46,12 +51,13 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "nightwing")
+NIGHTWING_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 REVIEW_AGENT_NAME = os.environ.get("ALFRED_NIGHTWING_REVIEW_AGENT", "rasalghul").title()
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=["claude", "gh", "git"],
+    bins=[*engine_preflight_bins(NIGHTWING_ENGINE), "gh", "git"],
     require_gh_auth=True,
 )
 WATCH_REPOS = [
@@ -350,16 +356,41 @@ def main() -> int:
             PRE_PUSH.get(repo, ""),
             firing_id=events.firing_id,
         )
-        result = claude_invoke(
+
+        def _on_engine_fallback(fallback_result):
+            until = maybe_set_global_block_for_result(AGENT, fallback_result)
+            if until:
+                events.emit(
+                    "global_block_set",
+                    until=until,
+                    reason=f"{AGENT}-{fallback_result.subtype}",
+                )
+            events.emit(
+                "llm_fallback",
+                from_engine="claude",
+                to_engine="codex",
+                reason=fallback_result.error_message or fallback_result.result_text,
+            )
+
+        result, engine_used = invoke_agent_engine(
             prompt,
+            engine=NIGHTWING_ENGINE,
+            claude_fn=claude_invoke_streaming,
+            codex_fn=codex_invoke,
             workdir=wt,
-            allowed_tools="Read,Edit,Bash,Grep",
-            max_turns=optional_env_int("ALFRED_NIGHTWING_MAX_TURNS", minimum=25),
+            claude_allowed_tools="Read,Edit,Bash,Grep",
+            agent=AGENT,
+            firing_id=events.firing_id,
+            claude_max_turns=optional_env_int("ALFRED_NIGHTWING_MAX_TURNS", minimum=25),
             timeout=600,
+            codex_timeout=600,
+            codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+            on_fallback=_on_engine_fallback,
         )
         total_turns += result.num_turns
         events.emit(
-            "claude_invoke_done",
+            "llm_invoke_done",
+            engine=engine_used,
             comment_id=cid,
             turns=result.num_turns,
             subtype=result.subtype,
@@ -370,16 +401,16 @@ def main() -> int:
             until = maybe_set_global_block_for_result(AGENT, result)
             if until:
                 msg = (
-                    f"{AGENT.title()} hit Claude rate limit ({result.subtype}). "
+                    f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}). "
                     f"Global block until {until}."
                 )
                 print(msg)
                 slack_post(msg, severity="alert")
-                events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+                events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
                 remove_worktree(repo, wt)
                 return 0
             print(
-                f"[{AGENT.upper()}-FAIL] comment {cid}: subtype={result.subtype} turns={result.num_turns}"
+                f"[{AGENT.upper()}-FAIL] comment {cid}: engine={engine_used} subtype={result.subtype} turns={result.num_turns}"
             )
             continue
 
@@ -393,7 +424,7 @@ def main() -> int:
         ).stdout.strip()
         if not new_sha or new_sha == parent_sha:
             print(
-                f"[{AGENT.upper()}-NO-COMMIT] comment {cid}: claude said success but no new commit"
+                f"[{AGENT.upper()}-NO-COMMIT] comment {cid}: {engine_used} said success but no new commit"
             )
             continue
 

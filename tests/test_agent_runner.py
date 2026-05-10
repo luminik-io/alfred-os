@@ -453,6 +453,137 @@ def test_route_llm_codex_dispatches_without_claude(monkeypatch):
     assert calls == [("review this", {"workdir": Path("/tmp"), "agent": "reviewer"})]
 
 
+def test_agent_engine_reads_state_file_before_default():
+    import agent_runner as ar
+
+    target = ar.STATE_ROOT / "engines" / "batman"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("codex\n")
+
+    assert ar.agent_engine("batman", default="hybrid") == "codex"
+
+
+def test_agent_engine_env_override_wins(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_BATMAN_ENGINE", "claude")
+    assert ar.agent_engine("batman", default="hybrid") == "claude"
+
+
+def test_engine_preflight_bins_treats_hybrid_as_claude_first():
+    import agent_runner as ar
+
+    assert ar.engine_preflight_bins("claude") == [ar.CLAUDE_BIN]
+    assert ar.engine_preflight_bins("codex") == [ar.CODEX_BIN]
+    assert ar.engine_preflight_bins("hybrid") == [ar.CLAUDE_BIN]
+
+
+def test_codex_sandbox_for_agent_honors_write_flag():
+    import agent_runner as ar
+
+    env = {"ALFRED_NIGHTWING_CODEX_WRITE": "1"}
+    assert ar.codex_sandbox_for_agent("nightwing", environ=env) == "workspace-write"
+
+
+def test_invoke_agent_engine_codex_skips_claude():
+    import agent_runner as ar
+
+    calls: list[str] = []
+
+    def fake_claude(*args, **kwargs):
+        calls.append("claude")
+        pytest.fail("Claude was called")
+
+    def fake_codex(*args, **kwargs):
+        calls.append("codex")
+        assert kwargs["sandbox"] == "workspace-write"
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="codex ok",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_sandbox="workspace-write",
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+    )
+
+    assert out.success is True
+    assert out.result_text == "codex ok"
+    assert engine_used == "codex"
+    assert calls == ["codex"]
+
+
+def test_invoke_agent_engine_hybrid_falls_back_on_provider_limit():
+    import agent_runner as ar
+
+    calls: list[str] = []
+    fallback_seen: list[str] = []
+
+    def fake_claude(*args, **kwargs):
+        calls.append("claude")
+        return ar.ClaudeResult(
+            success=False,
+            subtype="error_rate_limit",
+            num_turns=2,
+            cost_usd=0.0,
+            session_id="claude-session",
+            result_text="limit",
+            raw={},
+            stop_reason="error",
+            error_message="limit",
+        )
+
+    def fake_codex(*args, **kwargs):
+        calls.append("codex")
+        assert kwargs["timeout"] == 45
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="codex ok",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_timeout=45,
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+        on_fallback=lambda result: fallback_seen.append(result.subtype),
+    )
+
+    assert out.success is True
+    assert out.result_text == "codex ok"
+    assert engine_used == "codex-fallback"
+    assert calls == ["claude", "codex"]
+    assert fallback_seen == ["error_rate_limit"]
+
+
 def test_codex_invoke_rejects_unsupported_claude_controls():
     import agent_runner as ar
 

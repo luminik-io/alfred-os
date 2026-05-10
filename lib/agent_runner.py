@@ -39,6 +39,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -96,6 +97,7 @@ CODEX_DEFAULT_MODEL = os.environ.get("CODEX_MODEL", "").strip() or None
 CODEX_DEFAULT_SANDBOX = os.environ.get("CODEX_SANDBOX", "read-only").strip() or "read-only"
 CODEX_APPROVAL_POLICY = os.environ.get("CODEX_APPROVAL_POLICY", "never").strip() or "never"
 CODEX_TRANSCRIPTS_ROOT = STATE_ROOT / "codex"
+ENGINE_CHOICES = {"claude", "codex", "hybrid"}
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"
 SLACK_WEBHOOK_CACHE_TTL = 30 * 24 * 3600  # 30 days; the webhook URL itself is stable
 
@@ -136,6 +138,75 @@ def set_global_block(hours: int, reason: str) -> str:
 
 
 PROVIDER_LIMIT_SUBTYPES = {"error_budget", "error_rate_limit"}
+
+
+def normalize_engine(raw: str | None, *, default: str = "hybrid") -> str:
+    """Normalize an agent engine mode."""
+    value = (raw or "").strip().lower()
+    if value == "both":
+        return "hybrid"
+    if value in ENGINE_CHOICES:
+        return value
+    fallback = (default or "hybrid").strip().lower()
+    if fallback == "both":
+        return "hybrid"
+    return fallback if fallback in ENGINE_CHOICES else "hybrid"
+
+
+def _agent_env_slug(agent: str) -> str:
+    return agent.strip().upper().replace("-", "_")
+
+
+def agent_engine(
+    agent: str,
+    *,
+    default: str = "hybrid",
+    legacy_env: str | None = None,
+    legacy_state_file: Path | None = None,
+    environ: dict[str, str] | None = None,
+) -> str:
+    """Resolve the configured engine for one agent.
+
+    Precedence:
+    1. ``ALFRED_<AGENT>_ENGINE``
+    2. optional legacy env var, such as ``ALFRED_REVIEW_ENGINE``
+    3. ``ALFRED_ENGINE`` for fleet-wide testing
+    4. ``${HERMES_HOME}/state/engines/<agent>``
+    5. optional legacy state file
+    6. default
+    """
+    env = environ if environ is not None else os.environ
+    safe_agent = agent.strip().lower().replace("_", "-")
+    env_name = f"ALFRED_{_agent_env_slug(safe_agent)}_ENGINE"
+    for name in (env_name, legacy_env, "ALFRED_ENGINE"):
+        if name and env.get(name, "").strip():
+            return normalize_engine(env.get(name), default=default)
+
+    state_file = STATE_ROOT / "engines" / safe_agent
+    for path in (state_file, legacy_state_file):
+        if not path:
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if raw:
+            return normalize_engine(raw, default=default)
+    return normalize_engine(None, default=default)
+
+
+def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -> list[str]:
+    """Return load-bearing binaries for an engine mode.
+
+    Hybrid is Claude-first by default, so a missing optional Codex fallback
+    does not stop ordinary scheduled work.
+    """
+    mode = normalize_engine(engine)
+    if mode == "codex":
+        return [CODEX_BIN]
+    if mode == "hybrid" and hybrid_requires_codex:
+        return [CLAUDE_BIN, CODEX_BIN]
+    return [CLAUDE_BIN]
 
 
 def maybe_set_global_block_for_result(agent: str, result: Any, *, hours: int = 1) -> str | None:
@@ -1741,6 +1812,98 @@ def codex_invoke(
         stop_reason="end_turn",
         error_message=None,
     )
+
+
+def codex_sandbox_for_agent(
+    agent: str,
+    *,
+    default: str = "read-only",
+    environ: dict[str, str] | None = None,
+) -> str:
+    """Resolve the Codex sandbox for an agent.
+
+    Precedence:
+    1. ``ALFRED_<AGENT>_CODEX_SANDBOX``
+    2. ``<AGENT>_CODEX_SANDBOX`` legacy alias
+    3. ``ALFRED_<AGENT>_CODEX_WRITE=1`` -> ``workspace-write``
+    4. caller default
+    """
+    env = environ if environ is not None else os.environ
+    slug = _agent_env_slug(agent)
+    explicit = (
+        env.get(f"ALFRED_{slug}_CODEX_SANDBOX") or env.get(f"{slug}_CODEX_SANDBOX") or ""
+    ).strip()
+    if explicit:
+        return explicit
+    if (env.get(f"ALFRED_{slug}_CODEX_WRITE") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return "workspace-write"
+    return default
+
+
+def invoke_agent_engine(
+    prompt: str,
+    *,
+    engine: str,
+    agent: str,
+    firing_id: str,
+    workdir: Path,
+    claude_allowed_tools: str,
+    timeout: int,
+    claude_max_turns: int | None = None,
+    claude_model: str | None = None,
+    codex_timeout: int | None = None,
+    codex_model: str | None = None,
+    codex_sandbox: str | None = None,
+    codex_add_dirs: list[Path] | None = None,
+    codex_approval_policy: str | None = None,
+    claude_fn: Callable[..., ClaudeResult] | None = None,
+    codex_fn: Callable[..., ClaudeResult] | None = None,
+    on_fallback: Callable[[ClaudeResult], None] | None = None,
+) -> tuple[ClaudeResult, str]:
+    """Invoke a prompt through Claude, Codex, or Claude-first hybrid."""
+    mode = normalize_engine(engine)
+    claude_call = claude_fn or claude_invoke_streaming
+    codex_call = codex_fn or codex_invoke
+
+    def _invoke_claude() -> ClaudeResult:
+        return claude_call(
+            prompt,
+            workdir=workdir,
+            allowed_tools=claude_allowed_tools,
+            agent=agent,
+            firing_id=firing_id,
+            max_turns=claude_max_turns,
+            timeout=timeout,
+            model=claude_model,
+        )
+
+    def _invoke_codex() -> ClaudeResult:
+        return codex_call(
+            prompt,
+            workdir=workdir,
+            agent=agent,
+            firing_id=firing_id,
+            timeout=codex_timeout or timeout,
+            model=codex_model,
+            sandbox=codex_sandbox,
+            approval_policy=codex_approval_policy,
+            add_dirs=codex_add_dirs,
+        )
+
+    if mode == "codex":
+        return _invoke_codex(), "codex"
+
+    result = _invoke_claude()
+    if mode == "hybrid" and result.subtype in PROVIDER_LIMIT_SUBTYPES:
+        if on_fallback:
+            on_fallback(result)
+        return _invoke_codex(), "codex-fallback"
+    return result, "claude"
 
 
 # ---------- gh CLI helpers ----------

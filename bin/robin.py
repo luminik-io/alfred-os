@@ -18,12 +18,17 @@ from agent_runner import (
     PreflightFailed,
     PreflightSpec,
     SpendState,
-    claude_invoke,
+    agent_engine,
+    claude_invoke_streaming,
+    codex_invoke,
+    codex_sandbox_for_agent,
     doctor_mode,
+    engine_preflight_bins,
     ensure_labels,
     gh_issue_comment,
     gh_issue_edit,
     gh_json,
+    invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
     maybe_set_global_block_for_result,
@@ -35,11 +40,12 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "robin")
+ROBIN_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=["claude", "gh", "git"],
+    bins=[*engine_preflight_bins(ROBIN_ENGINE), "gh", "git"],
     require_gh_auth=True,
 )
 
@@ -169,7 +175,7 @@ def validated_triages(
     triages: object,
     candidates: list[tuple[str, dict]],
 ) -> tuple[list[dict], list[str]]:
-    """Filter Claude output to the candidate allowlist before GitHub writes."""
+    """Filter LLM output to the candidate allowlist before GitHub writes."""
     if not isinstance(triages, list):
         return [], ["triages is not a list"]
 
@@ -248,7 +254,7 @@ def main() -> int:
     for repo in {c[0] for c in candidates}:
         ensure_labels(repo, SEVERITY_LABELS)
 
-    # Build one Claude prompt that triages all candidates in a single call
+    # Build one LLM prompt that triages all candidates in a single call
     items_block = "\n\n".join(
         f"### {GH_ORG}/{repo}#{i['number']}\n"
         f"Title: {i['title']}\n"
@@ -298,34 +304,64 @@ Output - print EXACTLY this JSON to stdout, nothing else:
   ]
 }}
 """
-    result = claude_invoke(
+
+    def _on_engine_fallback(fallback_result):
+        until = maybe_set_global_block_for_result(AGENT, fallback_result)
+        if until:
+            events.emit(
+                "global_block_set", until=until, reason=f"{AGENT}-{fallback_result.subtype}"
+            )
+        events.emit(
+            "llm_fallback",
+            from_engine="claude",
+            to_engine="codex",
+            reason=fallback_result.error_message or fallback_result.result_text,
+        )
+
+    result, engine_used = invoke_agent_engine(
         prompt,
+        engine=ROBIN_ENGINE,
+        claude_fn=claude_invoke_streaming,
+        codex_fn=codex_invoke,
         workdir=WORKSPACE_ROOT,
-        allowed_tools="Read,Bash,Glob,Grep",
-        max_turns=optional_env_int("ALFRED_ROBIN_MAX_TURNS", minimum=20),
+        claude_allowed_tools="Read,Bash,Glob,Grep",
+        agent=AGENT,
+        firing_id=events.firing_id,
+        claude_max_turns=optional_env_int("ALFRED_ROBIN_MAX_TURNS", minimum=20),
         timeout=600,
+        codex_timeout=600,
+        codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+        codex_add_dirs=[WORKSPACE_ROOT],
+        on_fallback=_on_engine_fallback,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
+    events.emit(
+        "llm_invoke_done",
+        engine=engine_used,
+        turns=result.num_turns,
+        subtype=result.subtype,
+        success=result.success,
+    )
 
     if not result.success:
         spend.increment(failures_today=1, consecutive_failures=1)
         until = maybe_set_global_block_for_result(AGENT, result)
         if until:
             msg = (
-                f"{AGENT.title()} hit Claude rate limit ({result.subtype}). "
+                f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}). "
                 f"Global block until {until}."
             )
             print(msg)
             slack_post(msg, severity="alert")
-            events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+            events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
             return 0
-        msg = f"❌ {AGENT.title()}: subtype={result.subtype} turns={result.num_turns}"
+        msg = f"❌ {AGENT.title()}: engine={engine_used} subtype={result.subtype} turns={result.num_turns}"
         print(msg)
         slack_post(msg)
-        events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+        events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
         return 0
 
-    # Parse Claude's JSON response
+    # Parse the LLM JSON response
     text = (result.result_text or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").rstrip()
     if text.endswith("```"):
@@ -335,7 +371,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         parsed = json.loads(text)
         raw_triages = parsed.get("triages", [])
     except (json.JSONDecodeError, AttributeError) as e:
-        msg = f"❌ {AGENT.title()}: could not parse Claude JSON output ({e}). First line: {short(text.splitlines()[0] if text else '', 100)}"
+        msg = f"❌ {AGENT.title()}: could not parse {engine_used} JSON output ({e}). First line: {short(text.splitlines()[0] if text else '', 100)}"
         print(msg)
         slack_post(msg)
         events.emit("firing_complete", outcome="parse-error")

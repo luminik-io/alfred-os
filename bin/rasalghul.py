@@ -14,16 +14,21 @@ from pathlib import Path
 sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
 from agent_runner import (
     GH_ORG,
+    STATE_ROOT,
     WORKSPACE,
     WORKSPACE_ROOT,
     EventLog,
     PreflightFailed,
     PreflightSpec,
     SpendState,
-    claude_invoke,
+    agent_engine,
+    claude_invoke_streaming,
+    codex_invoke,
     doctor_mode,
+    engine_preflight_bins,
     gh_json,
     gh_pr_comment,
+    invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
     maybe_set_global_block_for_result,
@@ -35,11 +40,17 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "rasalghul")
+RASALGHUL_ENGINE = agent_engine(
+    AGENT,
+    default="hybrid",
+    legacy_env="ALFRED_REVIEW_ENGINE",
+    legacy_state_file=STATE_ROOT / "review-engine",
+)
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=["claude", "gh", "git"],
+    bins=[*engine_preflight_bins(RASALGHUL_ENGINE), "gh", "git"],
     require_gh_auth=True,
 )
 
@@ -446,16 +457,42 @@ Output - print EXACTLY this structure to stdout, nothing else:
 Ship-ready: yes / no - <one sentence>
 """
 
-    result = claude_invoke(
+    def _on_engine_fallback(fallback_result):
+        until = maybe_set_global_block_for_result(AGENT, fallback_result)
+        if until:
+            events.emit(
+                "global_block_set", until=until, reason=f"{AGENT}-{fallback_result.subtype}"
+            )
+        events.emit(
+            "llm_fallback",
+            from_engine="claude",
+            to_engine="codex",
+            reason=fallback_result.error_message or fallback_result.result_text,
+        )
+
+    result, engine_used = invoke_agent_engine(
         prompt,
+        engine=RASALGHUL_ENGINE,
+        claude_fn=claude_invoke_streaming,
+        codex_fn=codex_invoke,
         workdir=local_path,
-        allowed_tools="Read,Bash,Glob,Grep",
-        max_turns=optional_env_int("ALFRED_RASALGHUL_MAX_TURNS", minimum=40),
+        claude_allowed_tools="Read,Bash,Glob,Grep",
+        agent=AGENT,
+        firing_id=events.firing_id,
+        claude_max_turns=optional_env_int("ALFRED_RASALGHUL_MAX_TURNS", minimum=40),
         timeout=900,
+        codex_timeout=900,
+        codex_sandbox="read-only",
+        codex_add_dirs=[tmp, WORKSPACE_ROOT],
+        on_fallback=_on_engine_fallback,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     events.emit(
-        "claude_invoke_done", turns=result.num_turns, subtype=result.subtype, success=result.success
+        "llm_invoke_done",
+        engine=engine_used,
+        turns=result.num_turns,
+        subtype=result.subtype,
+        success=result.success,
     )
 
     if not result.success:
@@ -463,19 +500,20 @@ Ship-ready: yes / no - <one sentence>
         until = maybe_set_global_block_for_result(AGENT, result)
         if until:
             msg = (
-                f"{AGENT.title()} hit Claude rate limit ({result.subtype}). "
+                f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}). "
                 f"Global block until {until}."
             )
             print(msg)
             slack_post(msg, severity="alert")
-            events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+            events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
             return 0
         msg = (
-            f"❌ {AGENT.title()}: subtype={result.subtype} turns={result.num_turns} on PR {pr_num}"
+            f"❌ {AGENT.title()}: engine={engine_used} subtype={result.subtype} "
+            f"turns={result.num_turns} on PR {pr_num}"
         )
         print(msg)
         slack_post(msg)
-        events.emit("firing_complete", outcome=f"claude-{result.subtype}")
+        events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
         return 0
 
     # Salvage off-format output instead of dropping it. Model sometimes emits

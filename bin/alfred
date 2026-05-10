@@ -17,6 +17,13 @@ Subcommands today:
                               fleet gate file. Idempotent.
   alfred enabled-agents       Print the parsed list of enabled codenames
                               (or explain that the gate file is missing).
+  alfred engine status [agent]
+                              Show resolved Claude/Codex engine mode for one
+                              agent or the known LLM runner fleet.
+  alfred engine set <agent> <claude|codex|hybrid>
+                              Persist an engine override in
+                              $HERMES_HOME/state/engines/<agent>.
+                              Alias: provider.
 
 The runner-level fleet gate file lives at
 ``$HERMES_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
@@ -48,6 +55,7 @@ for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) 
 import agent_runner  # noqa: E402
 
 OPT_IN_AGENTS = {"batman"}
+ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
 
 
 def _default_enabled(codename: str) -> bool:
@@ -189,6 +197,107 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _normalize_agent_name(agent: str) -> str:
+    raw = agent.strip().lower()
+    aliases = {
+        "review": "rasalghul",
+        "review-engine": "rasalghul",
+        "ras": "rasalghul",
+        "ras-al-ghul": "rasalghul",
+        "tim": "drake",
+        "tim-drake": "drake",
+        "night-wing": "nightwing",
+    }
+    return aliases.get(raw, raw)
+
+
+def _engine_state_file(agent: str) -> Path:
+    return agent_runner.STATE_ROOT / "engines" / agent
+
+
+def _engine_behavior(mode: str) -> str:
+    resolved = agent_runner.normalize_engine(mode)
+    if resolved == "claude":
+        return "Claude Code only"
+    if resolved == "codex":
+        return "Codex only"
+    return "Claude Code first, Codex fallback on Claude limit/budget errors"
+
+
+def _require_engine_agent(agent: str) -> str:
+    normalized = _normalize_agent_name(agent)
+    if normalized not in ENGINE_AGENTS:
+        supported = ", ".join(ENGINE_AGENTS)
+        raise ValueError(f"unsupported engine-aware agent '{normalized}'. Supported: {supported}")
+    return normalized
+
+
+def cmd_engine_status(args: argparse.Namespace) -> int:
+    if args.agent:
+        try:
+            agent = _require_engine_agent(args.agent)
+        except ValueError as e:
+            print(f"alfred engine: {e}", file=sys.stderr)
+            return 2
+        mode = agent_runner.agent_engine(
+            agent,
+            legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,
+            legacy_state_file=(
+                agent_runner.STATE_ROOT / "review-engine" if agent == "rasalghul" else None
+            ),
+        )
+        print(f"{agent} engine: {mode}")
+        print(f"state file: {_engine_state_file(agent)}")
+        print(f"behavior: {_engine_behavior(mode)}")
+        return 0
+
+    headers = ("agent", "engine", "behavior")
+    rows = []
+    for agent in ENGINE_AGENTS:
+        mode = agent_runner.agent_engine(
+            agent,
+            legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,
+            legacy_state_file=(
+                agent_runner.STATE_ROOT / "review-engine" if agent == "rasalghul" else None
+            ),
+        )
+        rows.append((agent, mode, _engine_behavior(mode)))
+    widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    print(fmt.format(*headers))
+    print(fmt.format(*("-" * w for w in widths)))
+    for row in rows:
+        print(fmt.format(*row))
+    return 0
+
+
+def cmd_engine_set(args: argparse.Namespace) -> int:
+    try:
+        agent = _require_engine_agent(args.agent)
+    except ValueError as e:
+        print(f"alfred engine: {e}", file=sys.stderr)
+        return 2
+    mode = agent_runner.normalize_engine(args.mode)
+    target = _engine_state_file(agent)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(mode + "\n", encoding="utf-8")
+    if agent == "rasalghul":
+        (agent_runner.STATE_ROOT / "review-engine").write_text(mode + "\n", encoding="utf-8")
+    print(f"alfred: {agent} engine set to {mode}")
+    print(f"alfred: wrote {target}")
+    return 0
+
+
+def cmd_review_engine_status(_args: argparse.Namespace) -> int:
+    _args.agent = "rasalghul"
+    return cmd_engine_status(_args)
+
+
+def cmd_review_engine_set(args: argparse.Namespace) -> int:
+    args.agent = "rasalghul"
+    return cmd_engine_set(args)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="alfred", description="alfred-os operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
@@ -206,6 +315,26 @@ def main(argv: list[str] | None = None) -> int:
 
     p_enabled = sub.add_parser("enabled-agents", help="print the list of enabled codenames")
     p_enabled.set_defaults(func=cmd_enabled_agents)
+
+    p_engine = sub.add_parser("engine", aliases=["provider"], help="manage per-agent engines")
+    engine_sub = p_engine.add_subparsers(dest="engine_command", required=True)
+    p_engine_status = engine_sub.add_parser("status", help="show resolved engine state")
+    p_engine_status.add_argument("agent", nargs="?")
+    p_engine_status.set_defaults(func=cmd_engine_status)
+    p_engine_set = engine_sub.add_parser("set", help="set one agent's engine")
+    p_engine_set.add_argument("agent")
+    p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid", "both"])
+    p_engine_set.set_defaults(func=cmd_engine_set)
+
+    p_review_engine = sub.add_parser(
+        "review-engine", help="back-compat alias for engine set/status rasalghul"
+    )
+    review_sub = p_review_engine.add_subparsers(dest="review_engine_command", required=True)
+    p_review_status = review_sub.add_parser("status", help="show review engine state")
+    p_review_status.set_defaults(func=cmd_review_engine_status)
+    p_review_set = review_sub.add_parser("set", help="set review engine")
+    p_review_set.add_argument("mode", choices=["claude", "codex", "hybrid", "both"])
+    p_review_set.set_defaults(func=cmd_review_engine_set)
 
     args = p.parse_args(argv)
     return args.func(args)
