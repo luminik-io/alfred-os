@@ -1706,6 +1706,7 @@ def codex_invoke(
     cmd = [
         CODEX_BIN,
         "exec",
+        "--skip-git-repo-check",
         "--cd",
         str(workdir),
         "--sandbox",

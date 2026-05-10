@@ -620,8 +620,10 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
     import agent_runner as ar
 
     root = tmp_path / "codex"
+    commands = []
 
     def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+        commands.append(cmd)
         last_path = Path(cmd[cmd.index("--output-last-message") + 1])
         last_path.parent.mkdir(parents=True, exist_ok=True)
         last_path.write_text("Codex review body")
@@ -651,6 +653,7 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
     assert out.raw["sandbox"] == "read-only"
     assert Path(out.raw["stdout_path"]).read_text().startswith("session id:")
     assert out.raw["last_message_path"].endswith("fire-1.last.md")
+    assert "--skip-git-repo-check" in commands[0]
 
 
 def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch):
