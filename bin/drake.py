@@ -204,8 +204,11 @@ def main() -> int:
         )
         print(msg)
         slack_post(msg, severity="alert")
-        events.emit("agent_paused", reason="fail_streak",
-                    consecutive_failures=spend.state["consecutive_failures"])
+        events.emit(
+            "agent_paused",
+            reason="fail_streak",
+            consecutive_failures=spend.state["consecutive_failures"],
+        )
         events.emit("firing_complete", outcome="paused_fail_streak")
         run(["launchctl", "bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}"], timeout=10)
         return 0

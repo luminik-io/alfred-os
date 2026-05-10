@@ -1661,6 +1661,7 @@ def codex_invoke(
     model: str | None = None,
     sandbox: str | None = None,
     approval_policy: str | None = None,
+    bypass_approvals_and_sandbox: bool = False,
     add_dirs: list[Path] | None = None,
     allowed_tools: str | None = None,
     max_turns: int | None = None,
@@ -1709,13 +1710,21 @@ def codex_invoke(
         "--skip-git-repo-check",
         "--cd",
         str(workdir),
-        "--sandbox",
-        sandbox or CODEX_DEFAULT_SANDBOX,
-        "-c",
-        f'approval_policy="{approval_policy or CODEX_APPROVAL_POLICY}"',
-        "--output-last-message",
-        str(paths["last_message"]),
     ]
+    resolved_sandbox = sandbox or CODEX_DEFAULT_SANDBOX
+    if bypass_approvals_and_sandbox:
+        cmd.append("--dangerously-bypass-approvals-and-sandbox")
+        resolved_sandbox = "danger-full-access"
+    else:
+        cmd.extend(
+            [
+                "--sandbox",
+                resolved_sandbox,
+                "-c",
+                f'approval_policy="{approval_policy or CODEX_APPROVAL_POLICY}"',
+            ]
+        )
+    cmd.extend(["--output-last-message", str(paths["last_message"])])
     chosen_model = model or CODEX_DEFAULT_MODEL
     if chosen_model:
         cmd.extend(["--model", chosen_model])
@@ -1780,7 +1789,8 @@ def codex_invoke(
         "last_message_path": str(paths["last_message"]),
         "tokens_used": _extract_codex_tokens(combined),
         "model": chosen_model,
-        "sandbox": sandbox or CODEX_DEFAULT_SANDBOX,
+        "sandbox": resolved_sandbox,
+        "bypass_approvals_and_sandbox": bypass_approvals_and_sandbox,
     }
     session_id = _extract_codex_session_id(combined)
     if proc.returncode != 0:
@@ -1870,6 +1880,7 @@ def invoke_agent_engine(
     codex_sandbox: str | None = None,
     codex_add_dirs: list[Path] | None = None,
     codex_approval_policy: str | None = None,
+    codex_bypass_approvals_and_sandbox: bool = False,
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
@@ -1901,6 +1912,7 @@ def invoke_agent_engine(
             model=codex_model,
             sandbox=codex_sandbox,
             approval_policy=codex_approval_policy,
+            bypass_approvals_and_sandbox=codex_bypass_approvals_and_sandbox,
             add_dirs=codex_add_dirs,
         )
 
