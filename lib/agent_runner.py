@@ -35,6 +35,7 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -899,21 +900,28 @@ class AgentLock:
             pid_file = self._lock_dir / "pid"
             try:
                 old_pid = int(pid_file.read_text().strip())
-                # Check if still alive
                 os.kill(old_pid, 0)
-                # alive — refuse
-                return False
-            except (FileNotFoundError, ValueError, ProcessLookupError):
+                if lock_pid_identity_matches(self._lock_dir, old_pid):
+                    return False
+            except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+                pass
+            else:
+                print(
+                    f"[{self.name}-lock] pid {old_pid} is alive but no longer "
+                    "matches this lock; force-acquiring as stale.",
+                    file=sys.stderr,
+                )
+            try:
                 # Stale lock — try to clean and retry, but use exist_ok=False on
                 # the retry so two concurrent processes can't both succeed.
-                import shutil
-
                 shutil.rmtree(self._lock_dir, ignore_errors=True)
                 try:
                     self._lock_dir.mkdir(exist_ok=False)
                 except FileExistsError:
                     # Another process won the race
                     return False
+            except OSError:
+                return False
         pid = os.getpid()
         (self._lock_dir / "pid").write_text(str(pid))
         metadata = {
