@@ -16,14 +16,19 @@ from agent_runner import (
     PreflightFailed,
     PreflightSpec,
     SpendState,
+    agent_engine,
     claim_issue,
-    claude_invoke,
+    claude_invoke_streaming,
+    codex_invoke,
+    codex_sandbox_for_agent,
     commit_trailer,
     doctor_mode,
+    engine_preflight_bins,
     gh_issue_comment,
     gh_issue_edit,
     gh_json,
     gh_pr_create,
+    invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
     make_worktree,
@@ -43,6 +48,7 @@ from agent_runner import (
 # agent at runtime without touching the source. Slack messages use AGENT.title()
 # so a renamed agent renders cleanly.
 AGENT = os.environ.get("AGENT_CODENAME", "lucius")
+LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
 
 # Launchd plist label used for the auto-pause path. Defaults to a generic name;
 # override in the plist EnvironmentVariables to match your label scheme.
@@ -56,7 +62,7 @@ LUCIUS_REPOS = [
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=["claude", "gh", "git"],
+    bins=[*engine_preflight_bins(LUCIUS_ENGINE), "gh", "git"],
     require_gh_auth=True,
     # Repo dirs are resolved by name under WORKSPACE; absent dirs fail preflight.
     require_workspace_repos=LUCIUS_REPOS,
@@ -345,7 +351,7 @@ def main() -> int:
         spend.increment(failures_today=1, consecutive_failures=1)
         return 0
 
-    # Invoke claude
+    # Invoke the configured LLM engine.
     events.emit("issue_picked", repo=f"{GH_ORG}/{repo}", number=issue_num, attempt=next_attempt)
     events.emit("worktree_created", branch=branch, path=str(wt))
     prompt = build_prompt(repo, issue, wt, branch, firing_id=events.firing_id)
@@ -353,21 +359,38 @@ def main() -> int:
     debug_dir = Path(f"/tmp/{AGENT}-debug-{issue_num}-{int(__import__('time').time())}")
     debug_dir.mkdir(exist_ok=True)
     (debug_dir / "prompt.txt").write_text(prompt)
+
     # Per-firing turn cap intentionally unset by default. The previous
     # hard ceiling on ``max_turns`` could produce no-output runs on
     # cross-file work where Lucius needs to read context, edit, and run
     # pre-push checks. The wall-clock ``timeout`` below is the only real
-    # ceiling now; ``claude_invoke`` translates a ``None`` cap to
+    # ceiling now; ``claude_invoke_streaming`` translates a ``None`` cap to
     # ``--max-turns _CLAUDE_UNLIMITED_TURNS`` so the CLI's hidden 40-
     # turn default cannot kick in. ``ALFRED_LUCIUS_MAX_TURNS`` exists
     # as an emergency / debug knob; ``optional_env_int`` clamps it to
     # a sensible floor.
-    result = claude_invoke(
+    def _on_engine_fallback(fallback_result):
+        events.emit(
+            "llm_fallback",
+            from_engine="claude",
+            to_engine="codex",
+            reason=short(fallback_result.error_message or fallback_result.result_text, 240),
+        )
+
+    result, engine_used = invoke_agent_engine(
         prompt,
+        engine=LUCIUS_ENGINE,
+        claude_fn=claude_invoke_streaming,
+        codex_fn=codex_invoke,
         workdir=wt,
-        allowed_tools="Read,Edit,Write,Bash,Grep",
-        max_turns=optional_env_int("ALFRED_LUCIUS_MAX_TURNS", minimum=40),
+        claude_allowed_tools="Read,Edit,Write,Bash,Grep",
+        agent=AGENT,
+        firing_id=events.firing_id,
+        claude_max_turns=optional_env_int("ALFRED_LUCIUS_MAX_TURNS", minimum=40),
         timeout=2400,  # 40 min cap; compile + claude can stretch
+        codex_timeout=2400,
+        codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+        on_fallback=_on_engine_fallback,
     )
     import json as _json
 
@@ -375,10 +398,17 @@ def main() -> int:
     (debug_dir / "result-text.txt").write_text(result.result_text or "")
 
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
+    events.emit(
+        "llm_invoke_done",
+        engine=engine_used,
+        turns=result.num_turns,
+        subtype=result.subtype,
+        success=result.success,
+    )
 
     # Branch on result
     if result.subtype == "success":
-        # Did Claude commit?
+        # Did the engine commit?
         new_commits = run(
             ["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10
         ).stdout.strip()
@@ -427,7 +457,7 @@ def main() -> int:
                         f"user.name={AGENT.title()}",
                         "commit",
                         "-m",
-                        f"WIP: partial implementation of #{issue_num}\n\nClaude returned success but did not commit. Auto-salvaging unstaged changes for human review.\n\n{stat[:1500]}",
+                        f"WIP: partial implementation of #{issue_num}\n\n{engine_used} returned success but did not commit. Auto-salvaging unstaged changes for human review.\n\n{stat[:1500]}",
                     ],
                     cwd=str(wt),
                     timeout=30,
@@ -436,10 +466,11 @@ def main() -> int:
                 body_file = Path(f"/tmp/{AGENT}-wip-{issue_num}.md")
                 body_file.write_text(f"""## DRAFT - WIP PR auto-salvaged from incomplete {AGENT.title()} run
 
-{AGENT.title()}'s `claude -p` returned success but did not produce a commit. Inspecting the worktree found unstaged changes - committing them here for human review.
+{AGENT.title()}'s `{engine_used}` run returned success but did not produce a commit. Inspecting the worktree found unstaged changes - committing them here for human review.
 
 Issue: #{issue_num}
-Claude turns: {result.num_turns}
+Engine: {engine_used}
+Turns: {result.num_turns}
 Cost equivalent: ${result.cost_usd:.2f}
 
 ```
@@ -450,7 +481,7 @@ Cost equivalent: ${result.cost_usd:.2f}
 1. Manually finish the implementation on branch `{branch}` and re-open as a proper PR
 2. Or close + delete the branch and let {AGENT.title()} retry on a fresh worktree (after splitting the issue if it was too big)
 
-Generated with Claude Code (claude.com/claude-code)
+Generated by Alfred OS
 """)
                 pr_url = gh_pr_create(
                     repo,
@@ -471,7 +502,7 @@ Generated with Claude Code (claude.com/claude-code)
             )
             remove_worktree(repo, wt)
             spend.increment(failures_today=1, consecutive_failures=1)
-            msg = f"[{AGENT.upper()}-NO-COMMIT] Claude success but no commit AND no unstaged changes. #{issue_num}, turns={result.num_turns}. {short(result.result_text, 300)}"
+            msg = f"[{AGENT.upper()}-NO-COMMIT] {engine_used} success but no commit AND no unstaged changes. #{issue_num}, turns={result.num_turns}. {short(result.result_text, 300)}"
             print(msg)
             slack_post(msg, severity="warn")
             return 0
@@ -496,10 +527,11 @@ Closes #{issue_num}
 - [ ] Reviewer feedback addressed
 
 ## {AGENT.title()} meta
-- claude turns: {result.num_turns}
+- engine: {engine_used}
+- turns: {result.num_turns}
 - attempt: {next_attempt}
 
-Generated with Claude Code (claude.com/claude-code)
+Generated by Alfred OS
 """)
 
         pr_url = gh_pr_create(
@@ -569,13 +601,24 @@ Generated with Claude Code (claude.com/claude-code)
         return 0
 
     if result.subtype in ("error_budget", "error_rate_limit"):
-        until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
+        until = None
+        if engine_used == "claude":
+            until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
         release_issue(
             repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="rate-limit"
         )
         spend.increment(failures_today=1, consecutive_failures=1)
         remove_worktree(repo, wt)
-        msg = f"{AGENT.title()} hit Claude rate limit ({result.subtype}). Set global block until {until} - all agents will skip until then."
+        if until:
+            msg = (
+                f"{AGENT.title()} hit Claude provider rate limit ({result.subtype}). "
+                f"Set global block until {until} - Claude agents will skip until then."
+            )
+        else:
+            msg = (
+                f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}); "
+                "Claude agents are not globally blocked."
+            )
         print(msg)
         slack_post(msg, severity="alert")
         return 0
@@ -590,7 +633,7 @@ Generated with Claude Code (claude.com/claude-code)
     )
     spend.increment(failures_today=1, consecutive_failures=1)
     remove_worktree(repo, wt)
-    msg = f"❌ {AGENT.title()} #{issue_num}: subtype={result.subtype} turns={result.num_turns}. {short(result.result_text, 300)}"
+    msg = f"❌ {AGENT.title()} #{issue_num}: engine={engine_used} subtype={result.subtype} turns={result.num_turns}. {short(result.result_text, 300)}"
     print(msg)
     slack_post(msg, severity="warn")
     return 0

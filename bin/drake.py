@@ -40,9 +40,14 @@ from agent_runner import (
     PreflightFailed,
     PreflightSpec,
     SpendState,
-    claude_invoke,
+    agent_engine,
+    claude_invoke_streaming,
+    codex_invoke,
+    codex_sandbox_for_agent,
     doctor_mode,
+    engine_preflight_bins,
     gh_json,
+    invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
     list_paused_repos,
@@ -55,6 +60,7 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "drake")
+DRAKE_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
 DRAKE_REPOS = [r.strip() for r in os.environ.get("ALFRED_DRAKE_REPOS", "").split(",") if r.strip()]
@@ -128,7 +134,7 @@ DAILY_ISSUE_CAP = int(os.environ.get("ALFRED_DRAKE_DAILY_ISSUE_CAP", "50"))
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
-    bins=["claude", "gh", "git"],
+    bins=[*engine_preflight_bins(DRAKE_ENGINE), "gh", "git"],
     require_gh_auth=True,
     # Drake reads across the entire workspace; missing checkouts are advisory only.
     require_workspace_repos=DRAKE_REPOS,
@@ -200,7 +206,7 @@ def main() -> int:
         return 0
 
     # Pre-flight daily cap check at the runner level. Skips the firing entirely
-    # without burning a Claude turn if we're already at the wall.
+    # without burning an LLM turn if we're already at the wall.
     today_count = _issues_authored_in_last_24h()
     if today_count >= DAILY_ISSUE_CAP:
         msg = (
@@ -223,13 +229,30 @@ def main() -> int:
     prompt = PROMPT_PATH.read_text() + _build_state_machine_context()
 
     # Drake works in the workspace root so it can read across all product repos
-    # without juggling paths. It only WRITES via gh; no file edits.
-    result = claude_invoke(
+    # without juggling paths. It only writes via gh; no file edits.
+    def _on_engine_fallback(fallback_result):
+        events.emit(
+            "llm_fallback",
+            from_engine="claude",
+            to_engine="codex",
+            reason=short(fallback_result.error_message or fallback_result.result_text, 240),
+        )
+
+    result, engine_used = invoke_agent_engine(
         prompt,
+        engine=DRAKE_ENGINE,
+        claude_fn=claude_invoke_streaming,
+        codex_fn=codex_invoke,
         workdir=WORKSPACE_ROOT,
-        allowed_tools="Read,Bash,Grep,Glob",
-        max_turns=optional_env_int("ALFRED_DRAKE_MAX_TURNS", minimum=40),
+        claude_allowed_tools="Read,Bash,Grep,Glob",
+        agent=AGENT,
+        firing_id=events.firing_id,
+        claude_max_turns=optional_env_int("ALFRED_DRAKE_MAX_TURNS", minimum=40),
         timeout=1800,  # 30 min cap; Drake reads + greps + creates, no compile
+        codex_timeout=1800,
+        codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+        codex_add_dirs=[WORKSPACE_ROOT],
+        on_fallback=_on_engine_fallback,
     )
 
     spend.increment(
@@ -239,16 +262,31 @@ def main() -> int:
     )
 
     text = result.result_text or ""
+    events.emit(
+        "llm_invoke_done",
+        engine=engine_used,
+        turns=result.num_turns,
+        subtype=result.subtype,
+        success=result.success,
+    )
 
     # Rate-limit / budget hits propagate to the fleet-wide global block so other
     # agents don't burn turns into the same wall.
     if result.subtype in ("error_budget", "error_rate_limit"):
-        until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
+        until = None
+        if engine_used == "claude":
+            until = set_global_block(hours=1, reason=f"{AGENT}-{result.subtype}")
         spend.increment(failures_today=1, consecutive_failures=1)
-        msg = (
-            f"{AGENT.title()} hit Claude rate limit ({result.subtype}). Global block until "
-            f"{until} - all agents will skip until then."
-        )
+        if until:
+            msg = (
+                f"{AGENT.title()} hit Claude provider rate limit ({result.subtype}). Global block until "
+                f"{until} - Claude agents will skip until then."
+            )
+        else:
+            msg = (
+                f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}); "
+                "Claude agents are not globally blocked."
+            )
         print(msg)
         slack_post(msg, severity="alert")
         return 0
@@ -265,7 +303,10 @@ def main() -> int:
 
     if result.subtype != "success":
         spend.increment(failures_today=1, consecutive_failures=1)
-        msg = f"❌ {AGENT.title()} firing failed: subtype={result.subtype} turns={result.num_turns}. {short(text, 300)}"
+        msg = (
+            f"❌ {AGENT.title()} firing failed: engine={engine_used} "
+            f"subtype={result.subtype} turns={result.num_turns}. {short(text, 300)}"
+        )
         print(msg)
         slack_post(msg, severity="warn")
         return 0

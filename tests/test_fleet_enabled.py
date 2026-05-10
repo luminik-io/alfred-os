@@ -190,6 +190,68 @@ def test_cli_enabled_agents_announces_missing_file(tmp_path):
     assert "missing" in res.stdout.lower()
 
 
+def test_cli_engine_set_supports_batman(tmp_path):
+    env = {
+        "HERMES_HOME": str(tmp_path / "hermes"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+    res = _run_cli("engine", "set", "batman", "codex", env_extra=env)
+    assert res.returncode == 0, res.stderr
+    assert "batman engine set to codex" in res.stdout
+    assert (tmp_path / "hermes" / "state" / "engines" / "batman").read_text().strip() == "codex"
+
+    status = _run_cli("engine", "status", "batman", env_extra=env)
+    assert status.returncode == 0, status.stderr
+    assert "batman engine: codex" in status.stdout
+
+
+def test_cli_engine_status_lists_known_agents(tmp_path):
+    env = {
+        "HERMES_HOME": str(tmp_path / "hermes"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+    res = _run_cli("engine", "status", env_extra=env)
+    assert res.returncode == 0, res.stderr
+    for agent in ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin"):
+        assert agent in res.stdout
+
+
+def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
+    hermes = tmp_path / "hermes"
+    launchd = hermes / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "my.fleet.marshall\tlucius.py\tinterval:1200\tyes\t\tCustom feature engineer\n"
+    )
+    env = {
+        "HERMES_HOME": str(hermes),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("engine", "set", "marshall", "codex", env_extra=env)
+    assert res.returncode == 0, res.stderr
+    assert "marshall engine set to codex" in res.stdout
+    assert (hermes / "state" / "engines" / "marshall").read_text().strip() == "codex"
+
+    status = _run_cli("engine", "status", "marshall", env_extra=env)
+    assert status.returncode == 0, status.stderr
+    assert "marshall engine: codex" in status.stdout
+
+
+def test_cli_review_engine_alias_is_not_exposed(tmp_path):
+    env = {
+        "HERMES_HOME": str(tmp_path / "hermes"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+    help_res = _run_cli("--help", env_extra=env)
+    assert help_res.returncode == 0, help_res.stderr
+    assert "review-engine" not in help_res.stdout
+
+    res = _run_cli("review-engine", "status", env_extra=env)
+    assert res.returncode == 2
+    assert "invalid choice" in res.stderr
+
+
 def test_cli_agents_does_not_disable_default_agents_when_gate_file_exists(tmp_path):
     hermes = tmp_path / "hermes"
     launchd = hermes / "launchd"
