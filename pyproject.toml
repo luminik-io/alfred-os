@@ -48,6 +48,19 @@ build-backend = "hatchling.build"
 only-include = ["lib"]
 sources = ["lib"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/site/node_modules",
+  "/site/dist",
+  "/site/.astro",
+  "/.venv",
+  "/.mypy_cache",
+  "/.pytest_cache",
+  "/.ruff_cache",
+  "**/__pycache__",
+  "*.py[cod]",
+]
+
 # --------------------------------------------------------------------------
 # ruff — linting + formatting
 # --------------------------------------------------------------------------

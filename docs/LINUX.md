@@ -105,7 +105,7 @@ Not committed to a date, but the structure of the work is clear:
 1. **`systemd/_template.service` + `systemd/_template.timer`**: analogous to `launchd/_template.plist`.
 2. **`systemd/render.sh`**: same TSV input as `launchd/agents.conf`, different output format.
 3. **`deploy.sh` host detection**: branch on `uname -s` and call the right renderer.
-4. **`bin/alfred-style` wrapper**: shell helper that wraps `systemctl --user` calls in operator-friendly commands (`alfred pause` etc.).
+4. **Operator wrapper**: shell helper that wraps `systemctl --user` calls in operator-friendly commands such as `pause-agent`.
 5. **`install.sh` Linux branch**: apt/dnf/pacman package install paths instead of brew.
 6. **Test the round-trip** on at least Ubuntu LTS and Fedora.
 

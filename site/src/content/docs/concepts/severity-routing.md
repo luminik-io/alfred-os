@@ -3,7 +3,7 @@ title: Severity routing
 description: Separate high-signal from the firehose without two channels.
 ---
 
-One Slack channel for the fleet (call it `#alfred`). With 6+ codename agents firing every 20 minutes, everything ends up there: Lucius shipped, Drake noop, Bane no-coverage-target, automerge merged, cleanup swept, Gordon ECS-in-sync.
+One Slack channel for the fleet. With 6+ codename agents firing every 20 minutes, everything ends up there: Lucius shipped, Drake noop, Bane no-coverage-target, automerge merged, cleanup swept, Gordon ECS-in-sync.
 
 Two failure modes:
 

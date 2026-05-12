@@ -79,7 +79,7 @@ Skip P2 / nit. Skip discussion. Skip comments on files the PR doesn't already mo
 If a candidate comment touches auth, IAM, AWS Secrets Manager, sessions, tokens, OAuth, user-input validation, SQL injection, SSRF, CSRF, XSS, deserialization, file upload, multi-tenant isolation:
 
 - Do NOT commit a fix.
-- Post to `#alfred` with: reviewer name, PR URL, comment permalink, comment text, your proposed approach in plain English.
+- Post to the configured Slack channel with: reviewer name, PR URL, comment permalink, comment text, your proposed approach in plain English.
 - Mark the candidate as "security-hold" and skip.
 
 ### Step 4: Pick up to 3 candidate comments + check out branch in worktree
@@ -157,7 +157,7 @@ gh pr checks <pr-num> -R ${GH_ORG}/<slug>
 
 If your fix turned a previously-green CI run red:
 - Revert the commit you just pushed: `git revert <sha> && git push`
-- Post to `#alfred`: `❌ ${AGENT_CODENAME}: revert on <pr-url> - fix attempt broke CI. Logs: <link>`
+- Post to the configured Slack channel: `❌ ${AGENT_CODENAME}: revert on <pr-url> - fix attempt broke CI. Logs: <link>`
 
 ### Step 8: Cleanup + report
 
@@ -186,7 +186,7 @@ Or `[REVIEW-FIX-IDLE]` if nothing to do.
 6. **Never close or dismiss review comments.** Only reply.
 7. **Never push to main.** Only to the existing PR branch.
 8. **Voice lock**: no em-dashes in commit messages, no LLM-garbage phrases.
-9. **If CI goes red after your fix, revert immediately and post to `#alfred`.**
+9. **If CI goes red after your fix, revert immediately and post to the configured Slack channel.**
 10. **If `claude` CLI is unavailable or unauthenticated**, exit with `[REVIEW-FIX-BLOCKED] claude CLI not available` and Slack-notify.
 
 ## Skills — invoke explicitly when they help

@@ -7,7 +7,7 @@ If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in yo
 ## At the end
 
 - A Slack app named `<your-fleet>-bot` in the workspace where you want the channel.
-- An **incoming webhook URL** scoped to one channel (e.g. `#alfred`, `#fleet`, `#dev-bots`).
+- An **incoming webhook URL** scoped to one channel (e.g. `#fleet`, `#dev-bots`, `#engineering-agents`).
 - *(Optional)* a **bot token** (`xoxb-…`) for things webhooks can't do: channel-topic updates, threaded replies, slash commands.
 - *(Optional)* an **app-level token** (`xapp-1-…`) for Socket Mode if you want to receive interactive messages back.
 

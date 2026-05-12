@@ -3,9 +3,9 @@ title: Operator CLI
 description: install.sh, deploy.sh, doctor.sh, hermes-claude, and the minimal alfred gate CLI.
 ---
 
-The public framework keeps the operator CLI intentionally small. The private
-reference fleet has richer `status`, `logs`, `pause`, `resume`, and metrics
-commands; alfred-os exposes only the stable public subset today.
+The public framework keeps the operator CLI intentionally small. Fleet-specific
+wrappers can add richer status, logs, pause, resume, and metrics commands on
+top of these stable primitives.
 
 ## `install.sh`
 
@@ -58,12 +58,15 @@ alfred agents
 alfred enable <codename>
 alfred disable <codename>
 alfred enabled-agents
+alfred engine status [codename]
+alfred engine set <codename> <claude|codex|hybrid>
 ```
 
 `alfred agents` reads `launchd/agents.conf` and shows schedule, load column,
 runner-gate enablement, and role text. `enable` / `disable` update
 `$HERMES_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
-such as Batman.
+such as Batman. `engine` persists per-agent Claude/Codex mode under
+`$HERMES_HOME/state/engines/<codename>`.
 
 ## State-machine Helpers
 

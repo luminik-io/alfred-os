@@ -28,10 +28,31 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | `HERMES_HOME` | everything | `$HOME/.hermes` |
 | `WORKSPACE_ROOT` | `agent_runner.WORKSPACE = WORKSPACE_ROOT/product` | `$HOME/code` |
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
+| `CLAUDE_CONFIG_DIR` | `claude` auth profile selection | (Claude default) |
 | `CODEX_BIN` | `agent_runner.codex_invoke` | `codex` (PATH) |
 | `CODEX_MODEL` | optional model override for `codex exec` | (Codex default) |
 | `CODEX_SANDBOX` | `codex exec --sandbox` | `read-only` |
 | `CODEX_APPROVAL_POLICY` | `codex exec -c approval_policy=...` | `never` |
+
+## Engine routing
+
+| Var | Used by | Default |
+|---|---|---|
+| `ALFRED_<CODENAME>_ENGINE` | per-agent engine choice | runner default |
+| `ALFRED_ENGINE` | fleet-wide engine override | (none) |
+| `ALFRED_REVIEW_ENGINE` | legacy review-agent override | (none) |
+| `ALFRED_<CODENAME>_MAX_TURNS` | optional per-agent Claude turn cap | runner default |
+| `ALFRED_<CODENAME>_CODEX_SANDBOX` | per-agent Codex sandbox | `CODEX_SANDBOX` |
+| `ALFRED_<CODENAME>_CODEX_WRITE` | shortcut for `workspace-write` | `0` |
+
+`bin/alfred engine status/set` persists per-agent engine choices under `$HERMES_HOME/state/engines/<codename>`.
+
+## Claude auth
+
+| Var | Used by | Default |
+|---|---|---|
+| `ALFRED_DISABLE_CLAUDE_AUTH_REPAIR` | disables automatic Claude auth refresh attempts | `0` |
+| `CLAUDE_CONFIG_DIR` | `bin/hermes-claude` and launchd env | (primary Claude profile) |
 
 ## Slack
 
@@ -40,6 +61,11 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | `SLACK_WEBHOOK_URL` | `slack_post` (env-var path, highest priority) | (none) |
 | `SLACK_WEBHOOK_SECRET_ID` | `slack_post` (AWS path) | `alfred/slack-webhook` |
 | `SLACK_WEBHOOK_SECRET_REGION` | `slack_post` (AWS path) | `us-east-1` |
+| `SLACK_BOT_TOKEN` | Block Kit / thread helpers | (none) |
+| `SLACK_BOT_TOKEN_SECRET_ID` | bot token AWS path | `alfred/slack-bot-token` |
+| `SLACK_BOT_TOKEN_SECRET_REGION` | bot token AWS region | `us-east-1` |
+| `SLACK_HOME_CHANNEL` | default bot channel | `alfred` |
+| `BATMAN_APPROVAL_CHANNEL` | legacy alias for `SLACK_HOME_CHANNEL` | (none) |
 
 Resolution order: env -> 30-day disk cache at `$HERMES_HOME/state/slack-webhook.cache` -> AWS Secrets Manager. First hit wins.
 
@@ -81,7 +107,7 @@ Set to `1` and any agent runner will emit `[<NAME>-DOCTOR-OK]` and exit 0 withou
 
 | Var | Used by | Default |
 |---|---|---|
-| `LABEL_STATE_SWEEP_REPOS` | `alfred-label-state sweep-claims` (default repo set) | (must pass `--repo`) |
+| `LABEL_STATE_SWEEP_REPOS` | `examples/bin/label_state.py sweep-claims` (default repo set) | (must pass `--repo`) |
 | `LABEL_STATE_BIN` | pre-push hook | (resolves via PATH then `$HERMES_HOME/bin/`) |
 | `LABEL_STATE_SKIP_DEDUP_CHECK` | pre-push hook | (enforce) |
 

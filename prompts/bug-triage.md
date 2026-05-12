@@ -79,7 +79,7 @@ For each issue you pick up this firing:
 3. Otherwise, classify severity per the table above. Apply exactly one `severity:*` label.
 4. If the issue has a reproducible code path AND concrete repro steps AND the severity is p0/p1/p2 (not p3), add `agent:implement` so the feature-dev agent can consume it.
 5. If the issue looks like a duplicate of an already-labeled issue in the same repo, comment `duplicate of #N` (link to the other issue), apply label `duplicate`, and do not also apply `agent:implement`.
-6. **Security P0 special case** — if severity is p0 AND the issue body mentions any of: auth, token, secret, credential, PII, injection (SQL/script/command), IDOR, SSRF, RCE — stop after labeling, post to `#alfred` via the Slack notifier with the issue URL and a one-line severity signal, then **exit the tick**. Do not triage any further issues this firing. Human takes over.
+6. **Security P0 special case** — if severity is p0 AND the issue body mentions any of: auth, token, secret, credential, PII, injection (SQL/script/command), IDOR, SSRF, RCE — stop after labeling, post to the configured Slack channel via the Slack notifier with the issue URL and a one-line severity signal, then **exit the tick**. Do not triage any further issues this firing. Human takes over.
 
 ## Labels this agent may apply
 
@@ -157,7 +157,7 @@ Append-only within a day. At the top of each run, `mkdir -p ${HERMES_HOME}/state
 3. Fetch open issues without severity labels and without `agent:implement`, across the in-scope repos, newest first. Take the top 5 globally.
 4. For each issue, run the per-issue decision flow. Append to the state file after each action.
 5. If a security P0 fired, exit the tick after the Slack signal — skip remaining issues.
-6. Slack-report to `#alfred`:
+6. Slack-report to the configured Slack channel:
    ```
    🐛 ${AGENT_CODENAME}: triaged <N> issues (<P0>/<P1>/<P2>/<P3>/<needs-info>/<duplicate>)
    - <repo>#<n> <title> → <label-action>
@@ -184,7 +184,7 @@ If the env var `BUG_TRIAGE_DRY_RUN=1` is set, do everything EXCEPT the `gh issue
 
 ## Escalation
 
-Stop and Slack `#alfred` (do not process further issues this run) if:
+Stop and Slack the configured channel (do not process further issues this run) if:
 - `gh auth status` fails.
 - An in-scope repo returns 404 (renamed or archived).
 - A security P0 fires (per the flow above).

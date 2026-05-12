@@ -46,6 +46,7 @@ from agent_runner import (
     codex_sandbox_for_agent,
     doctor_mode,
     engine_preflight_bins,
+    env_int,
     gh_json,
     invoke_agent_engine,
     is_globally_blocked,
@@ -131,7 +132,12 @@ def _build_state_machine_context() -> str:
 
 # Prompt path: operator drops the planner prompt at ${HERMES_HOME}/prompts/<codename>.md.
 PROMPT_PATH = HERMES_HOME / "prompts" / f"{AGENT}.md"
-DAILY_ISSUE_CAP = int(os.environ.get("ALFRED_DRAKE_DAILY_ISSUE_CAP", "50"))
+DAILY_ISSUE_CAP_DEFAULT = 200
+DAILY_ISSUE_CAP = env_int(
+    "ALFRED_DRAKE_DAILY_ISSUE_CAP",
+    default=DAILY_ISSUE_CAP_DEFAULT,
+    minimum=20,
+)
 
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
@@ -147,6 +153,7 @@ def _issues_authored_in_last_24h() -> int:
     last 24 hours. Used as a runner-level pre-flight cap; the prompt also
     re-checks this from inside the Claude session."""
     since = (_dt.datetime.now(_dt.UTC) - _dt.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    query_limit = min(max(DAILY_ISSUE_CAP + 50, 100), 1000)
     issues = gh_json(
         [
             "gh",
@@ -161,7 +168,7 @@ def _issues_authored_in_last_24h() -> int:
             "--json",
             "url",
             "--limit",
-            "100",
+            str(query_limit),
         ],
         default=[],
     )

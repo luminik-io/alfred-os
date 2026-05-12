@@ -145,7 +145,7 @@ If all of the following hold, reply with exactly `[SILENT]` and nothing else. Th
 
 ## Output channel
 
-The brief is the process stdout. The runner's morning-briefing delivery pipeline handles posting to `#alfred`. This agent does not Slack-send directly.
+The brief is the process stdout. The runner's morning-briefing delivery pipeline handles posting to the configured Slack channel. This agent does not Slack-send directly.
 
 ## What this agent does NOT do
 

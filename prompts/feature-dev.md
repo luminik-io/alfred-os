@@ -61,7 +61,7 @@ The Claude Code subscription has a weekly turn quota. Wasted turns = wasted week
 
 Read it at the start of every firing. If it doesn't exist, create with zeros.
 
-**Hard caps per day** (auto-pause this agent and post to `#alfred` if hit):
+**Hard caps per day** (auto-pause this agent and post to the configured Slack channel if hit):
 - `turns_today >= 1000` — too many turns, signal of looping or oversized issues.
 - `failures_today >= 8 AND successes_today == 0` — agent is failing without producing anything.
 - `cost_usd_today >= 30` — sanity backstop; protects against a runaway loop.
@@ -263,8 +263,8 @@ SESSION_ID=$(echo "$RESULT" | jq -r '.session_id')
 Branch:
 - `subtype: "success"` → continue to Step 6.
 - `subtype: "error_max_turns"` → save `session_id` keyed by issue, comment on the issue "${AGENT_CODENAME}: hit ${NUM_TURNS}-turn cap. Will resume in next firing.", do NOT abort the issue, exit. Next firing will resume.
-- `subtype: "error_budget"` → rate-limited on the subscription. Post to `#alfred`: `⚠️ ${AGENT_CODENAME}: Claude rate-limited. Pausing for 1 hour.` and pause this agent. Set `blocked_until: now + 1h` in state file.
-- Any other error → abort, post to `#alfred` with the error excerpt, close worktree.
+- `subtype: "error_budget"` → rate-limited on the subscription. Post to the configured Slack channel: `⚠️ ${AGENT_CODENAME}: Claude rate-limited. Pausing for 1 hour.` and pause this agent. Set `blocked_until: now + 1h` in state file.
+- Any other error → abort, post to the configured Slack channel with the error excerpt, close worktree.
 
 ### Step 6: Verify Claude actually made changes
 
@@ -354,7 +354,7 @@ These ship with the local Claude Code installation under `~/.claude/skills/`. In
 - **`security-and-hardening`** — invoke whenever the diff touches `auth`, `JWT`, `SSM`, `session`, `tokens`, `password`, `OAuth`, IAM policies, or any tenant-isolation logic. Surfaces the OWASP angles a reviewer will flag if you miss them.
 - **`/review`** — invoke as your final self-check after `git add`, before composing the commit message. Catches what the code-review agent would catch, but cheaper here than a round-trip through review.
 
-## Escalation — post to `#alfred` and exit without a PR
+## Escalation — post to the configured Slack channel and exit without a PR
 
 - Issue conflicts with spec.
 - Implementation would touch > 500 lines.

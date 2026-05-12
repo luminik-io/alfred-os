@@ -1,4 +1,4 @@
-"""Tests for the runner-side dedup helpers backporting luminik-io/alfred PR #129.
+"""Tests for the runner-side dedup helpers.
 
 Covers ``find_open_authored_pr_for_issue`` (label filter, substring
 guard, gh-failure fallback) and ``find_existing_worktree`` /

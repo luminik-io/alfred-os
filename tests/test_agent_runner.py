@@ -501,6 +501,7 @@ def test_invoke_agent_engine_codex_skips_claude():
     import agent_runner as ar
 
     calls: list[str] = []
+    extra_dir = Path("/tmp/source.git")
 
     def fake_claude(*args, **kwargs):
         calls.append("claude")
@@ -509,6 +510,7 @@ def test_invoke_agent_engine_codex_skips_claude():
     def fake_codex(*args, **kwargs):
         calls.append("codex")
         assert kwargs["sandbox"] == "workspace-write"
+        assert kwargs["add_dirs"] == [extra_dir]
         return ar.ClaudeResult(
             success=True,
             subtype="success",
@@ -530,6 +532,7 @@ def test_invoke_agent_engine_codex_skips_claude():
         claude_allowed_tools="Read",
         timeout=30,
         codex_sandbox="workspace-write",
+        codex_add_dirs=[extra_dir],
         claude_fn=fake_claude,
         codex_fn=fake_codex,
     )

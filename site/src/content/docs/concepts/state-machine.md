@@ -13,7 +13,7 @@ Two actors can race on the same issue:
 - One agent + the operator pushing a manual branch.
 - Two operators if you ever expand beyond solo (out of scope today, but the design accommodates it).
 
-Without a coordination primitive, you get duplicate work. The reference fleet hit this on day one of full autonomy: Lucius shipped a quick PR for issue #303 at 09:22; the operator opened a careful PR for the same issue at 11:30, neither aware of the other.
+Without a coordination primitive, you get duplicate work. A real failure mode: one agent ships a quick PR for an issue in the morning, then the operator opens a careful PR for the same issue later, neither aware of the other.
 
 ## The mechanism
 
@@ -65,7 +65,7 @@ The loser exits the firing without burning a Claude turn on duplicate work. The 
 
 A runner crashing between `claim_issue` and `release_issue` would normally leave an issue blocked indefinitely. `find_stale_claims()` reads claim comments and surfaces any in-flight claim with no matching release after `max_age_hours` (default 4). `force_release_stale_claim()` then transitions the issue back to `agent:implement` so the queue picks it up again.
 
-Wire it into your fleet's daily cleanup runner. The shipped CLI exposes this as `alfred-label-state sweep-claims [--max-age-hours N] [--dry-run]`.
+Wire it into your fleet's daily cleanup runner. The shipped `examples/bin/label_state.py` helper exposes this as `label-state sweep-claims [--max-age-hours N] [--dry-run]` once you copy or wrap it in your fleet.
 
 ## Operator overrides
 
@@ -73,16 +73,16 @@ Two ways to take an issue manually without racing an agent:
 
 ```sh
 # Mark a single issue do-not-pickup
-alfred-label-state claim <repo>#<N>
+label-state claim <repo>#<N>
 # ... do your work ...
-alfred-label-state release <repo>#<N>
+label-state release <repo>#<N>
 ```
 
 ```sh
 # Take a whole repo offline from the fleet
-alfred-label-state repo pause <repo>
+label-state repo pause <repo>
 # ... refactor in peace ...
-alfred-label-state repo resume <repo>
+label-state repo resume <repo>
 ```
 
 The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/alfred-os/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically. Push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.

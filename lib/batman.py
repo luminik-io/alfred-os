@@ -29,7 +29,7 @@ Anything we cannot parse falls back to a sensible default
 (``DEFAULT_ROLLOUT_ORDER``) — Batman flags malformed bodies via the
 plan post but never fails the firing on a parse error.
 
-Backport of luminik-io/alfred PRs #115 + #127 + #121 (parser scope-
+Backport from the predecessor fleet's Batman workflow (parser scope-
 widening guard).
 """
 
@@ -282,7 +282,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
       - ``### <Repo>`` H3 sections under ``## Acceptance Criteria``
         for per-repo criteria.
 
-    Scope-widening guard from luminik-io/alfred PR #121: when an
+    Scope-widening guard: when an
     explicit ``Affected Repos`` list is present and the criteria block
     contains a stray ``### frontend`` H3 not in the explicit list, the
     explicit list wins — a typo in the criteria section must NOT
@@ -415,7 +415,7 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
       delegate to ``parse_plan_from_issue(body)`` so legacy
       single-issue plans still parse correctly.
     - **Multi-issue bundle** (the ``agent:bundle:<slug>`` pattern from
-      luminik-io/alfred PR #127): each issue lives in its own product
+      predecessor fleet PR #127): each issue lives in its own product
       repo; that repo IS the issue's affected repo. Per-repo criteria
       come from each issue's body. Rollout order falls back to the
       configured ``BATMAN_ROLLOUT_ORDER`` (default

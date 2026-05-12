@@ -65,7 +65,7 @@ Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [
 | `alfred/sentry-dsn-agents` | Sentry DSN agent runners post events to |
 | `alfred/sentry-api-token` | Sentry API token for query operations |
 
-The secret ID prefix `alfred/` is a convention from the reference fleet. Adjust to your fleet's naming if you prefer (e.g. `myfleet/slack-webhook`). Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` to match.
+The secret ID prefix `alfred/` is the default convention. Adjust to your fleet's naming if you prefer (e.g. `myfleet/slack-webhook`). Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` to match.
 
 ## Key rotation
 

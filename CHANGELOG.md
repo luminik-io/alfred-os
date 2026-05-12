@@ -4,11 +4,11 @@ Notable changes to alfred-os. Format: [Keep a Changelog](https://keepachangelog.
 
 ## [Unreleased]
 
-Pivot from "extracted framework substrate" to "complete engineering agent fleet". The default install now ships 12 working agents the operator configures via an interactive `alfred init` wizard.
+Pivot from "extracted framework substrate" to "complete engineering agent fleet". The default install now ships 12 working agents the operator configures via an interactive `alfred-init` wizard.
 
 ### Added
 
-#### 2026-05-09 catch-up backport from `luminik-io/alfred`
+#### 2026-05-09 catch-up from the private predecessor fleet
 
 - **Role field on every agent.** `agents.conf` gets a 6th tab-separated column carrying a one-line operational descriptor; `render.sh` emits `ALFRED_<CODENAME>_ROLE` env vars; `agent_role()` / `codename_with_role()` surface the role in CLI + Slack post prefixes. Backport of alfred PR #123.
 - **Runner-level fleet gate file.** New `$HERMES_HOME/state/fleet/enabled.txt` plus `is_agent_enabled` / `enable_agent` / `disable_agent` helpers. Listed codenames are enabled; missing codenames fall back to each runner's default so opt-in agents can be gated without making normal launchd agents look disabled. New `bin/alfred` CLI ships `alfred enable / disable / agents / enabled-agents`. Backport of alfred PR #125 plus the 2026-05-09 gate-semantics cleanup.
@@ -18,6 +18,7 @@ Pivot from "extracted framework substrate" to "complete engineering agent fleet"
 - **STANDARD_LABELS bootstrap.** `batman-pr-open` and `agent:large-feature` ship by default; `gh_pr_create` auto-creates ad-hoc labels and surfaces gh stderr on failure. Backport of alfred PR #145.
 - **Fleet doctor.** New `bin/fleet-doctor.py` ships four read-only health checks (paused repos, global block, stale worktrees, fleet enable list) → single severity-stripe Slack thread. Backport of alfred PR #130 (slimmed for OSS).
 - **Runner safety hardening.** Batman and fleet-doctor now acquire the shared lock helper correctly; cleanup scopes `/tmp` sweeping to agent-owned prefixes instead of broad wildcard matches.
+- **Release-readiness hardening.** Lucius wraps GitHub issue content as untrusted input, checks issue author association before autonomous code execution, grants Codex the source `.git` directory for worktree commits, and opens salvaged WIP PRs as real GitHub drafts. Drake's daily cap guard now scales its GitHub search limit above the configured cap. Lock-owner checks now validate the recorded agent name when the caller knows it.
 
 
 #### Engineering agents (`bin/`)
@@ -51,8 +52,8 @@ Every codename is operator-customisable at install time. Default Batman names; r
 
 #### Operator surface
 
-- **`alfred init`** (`bin/alfred-init.py`): interactive 13-step wizard. Walks Slack-app creation with real test-post; AWS / env-var storage choice; multi-select agent enable; per-role codename prompt with Batman defaults; per-agent repo selection from `gh repo list`; per-agent special prompts (Huntress staging URL, Gordon ECS cluster); generates `agents.conf` + `~/.alfredrc` with banner-marked block; runs `deploy.sh` + `bin/doctor.sh`; smoke-test post. 27 tests covering helpers + doctor sentinel + non-interactive mode.
-- **`bin/alfred-label-state.py`** (operator CLI): `claim` / `release` / `dedup-check` / `status-issue` / `repo {pause,resume,list}` / `sweep-claims`.
+- **`alfred-init`** (`bin/alfred-init.py`): interactive 13-step wizard. Walks Slack-app creation with real test-post; AWS / env-var storage choice; multi-select agent enable; per-role codename prompt with Batman defaults; per-agent repo selection from `gh repo list`; per-agent special prompts (Huntress staging URL, Gordon ECS cluster); generates `agents.conf` + `~/.alfredrc` with banner-marked block; runs `deploy.sh` + `bin/doctor.sh`; smoke-test post. 27 tests covering helpers + doctor sentinel + non-interactive mode.
+- **`examples/bin/label_state.py`** (operator CLI example): `claim` / `release` / `dedup-check` / `status-issue` / `repo {pause,resume,list}` / `sweep-claims`.
 - **`examples/git-hooks/pre-push`**: refuses pushes that race in-flight agents.
 - **`install.sh`**: idempotent fresh-machine bootstrap (brew + npm + dirs + shell rc).
 
@@ -63,7 +64,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - `docs/STATE_MACHINE.md`: lifecycle Mermaid stateDiagram + race-resolution + stale-sweep + operator overrides.
 - `ARCHITECTURE.md`: per-firing flow Mermaid sequenceDiagram + design rationale.
 - `docs/SLACK_SETUP.md`, `docs/AWS_SETUP.md`, `docs/CLAUDE_CODE.md`, `docs/SKILLS.md`, `docs/LINUX.md`, `docs/TUTORIAL.md`.
-- Astro Starlight site at `site/`: 16 pages (getting-started / concepts / guides / reference / about), deployed to GitHub Pages on push to main. URL env-overridable.
+- Astro Starlight site at `site/`: 16 pages (getting-started / concepts / guides / reference / about), with GitHub Pages publishing gated by `ALFRED_OS_PUBLISH_PAGES`. URL env-overridable.
 
 #### Project hygiene
 
@@ -71,7 +72,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - `bin/scrub-check.sh`: reusable local + CI scrub scan for host-private paths, fleet identifiers, Slack tokens/webhooks, and AWS access key IDs.
 - `docs/RELEASE_CHECKLIST.md`: public release checklist with pre-tag gates, scrub requirements, and GitHub Release flow.
 - Release automation: tag → GitHub release with auto-extracted changelog notes + brew-formula sha256 echoed to logs.
-- `Formula/alfred-os.rb`: Homebrew formula skeleton.
+- `Formula/alfred-os.rb`: HEAD-only Homebrew formula until the first public release tarball has a checksum.
 - `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, issue templates, PR template, `dependabot.yml`, `pyproject.toml` (ruff + mypy), `.pre-commit-config.yaml`.
 
 ### Changed
@@ -79,7 +80,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - Repository renamed `luminik-io/pennyworth` → `luminik-io/alfred-os`. GitHub redirects in place. All env vars `PENNYWORTH_*` → `ALFRED_*` / `ALFRED_OS_*`. Operator config file `~/.pennyworthrc` → `~/.alfredrc`. Operator commands `pennyworth-*` → `alfred-*`.
 - `STANDARD_LABELS` includes the lifecycle labels; consumers no longer need to extend it for the state machine to work.
 - Per-repo configuration loaded from `~/.alfredrc.d/<codename>.toml` via stdlib `tomllib` (was PyYAML; PyYAML is not stdlib and shouldn't be required for a fresh install).
-- Doctor mode runs before env-config IDLE checks across all 12 agents — `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred init`.
+- Doctor mode runs before env-config IDLE checks across all 12 agents — `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred-init`.
 - `bin/doctor.sh` now falls back to the in-repo `bin/` and `lib/` paths before deploy, so a clean checkout can self-check without a pre-existing `$HERMES_HOME`.
 - All docs voice-swept: removed audience-marketing intros, outcome-fantasy framing, hire/replace framing, LLM filler vocab, marketing emoji, sign-offs, vanity stats, em-dashes. ~210 lines of marketing prose deleted across 39 files; technical content preserved.
 
@@ -98,11 +99,11 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - **Spend dashboards**: weekly recap rendered from per-agent spend files.
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
 - **MCP server bundling**: expose `claim_issue` / `release_issue` / `slack_post(severity)` as MCP tools.
-- **Real per-firing JSONL transcripts**: `claude_invoke_streaming` currently delegates to `claude_invoke`. The streaming impl with transcript file at `${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl` ships when `alfred logs --firing <id>` does.
+- **Real per-firing JSONL transcripts**: `claude_invoke_streaming` currently delegates to `claude_invoke`. The streaming impl with transcript file at `${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl` ships with the future transcript-viewer command.
 
 ## [0.1.0] - 2026-05-02
 
-Initial extraction from [`luminik-io/alfred`](https://github.com/luminik-io/alfred).
+Initial extraction from the private predecessor fleet.
 
 ### Added
 

@@ -2,7 +2,7 @@
 
 Fresh Mac to a working alfred-os fleet skeleton, ~30 minutes.
 
-For AWS IAM-per-agent, hermes-agent, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
+For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
 
 ## TL;DR
 
@@ -13,7 +13,7 @@ bash install.sh
 exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub auth
 claude                            # Claude Code first-run auth
-bash deploy.sh && bash bin/doctor.sh
+./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
 The rest of this doc explains what each step does and what to do when something fails.
@@ -35,6 +35,7 @@ What it does **not** do (deliberately):
 
 - Authenticate `gh` / `aws` / `claude`. Interactive flows you should see.
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
+- Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
 - Touch existing `~/.hermes` content.
 
@@ -113,7 +114,19 @@ echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.al
 
 For a full walkthrough of creating the Slack app + webhook, read [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md).
 
-### 6. Deploy + verify
+### 6. Configure the fleet
+
+Run the wizard to choose agents, repos, codenames, Slack settings, and schedules:
+
+```sh
+./bin/alfred-init.py
+```
+
+`alfred-init.py` writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, then runs `bash bin/doctor.sh`.
+
+### 7. Framework-only deploy + verify
+
+If you want to install the framework without enabling any agents yet:
 
 ```sh
 bash deploy.sh
@@ -124,7 +137,7 @@ bash bin/doctor.sh
 
 `doctor.sh` runs every agent's preflight under `HERMES_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
 
-### 7. Your first agent
+### 8. Your first custom agent
 
 Read `examples/bin/hello.py`, the smallest possible codename agent. Copy it to `bin/your-codename.py`, edit, add a line to `launchd/agents.conf`:
 
@@ -169,7 +182,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 
 ## Where to go next
 
-- [`BOOTSTRAP.md`](BOOTSTRAP.md): AWS IAM-per-agent, hermes-agent, prompt sync, troubleshooting.
+- [`BOOTSTRAP.md`](BOOTSTRAP.md): AWS IAM-per-agent, Slack, prompt sync, troubleshooting.
 - [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md): Slack app + webhook + (optional) bot token.
 - [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md): IAM users, scoped policies, Secrets Manager layout.
 - [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `hermes-claude`.

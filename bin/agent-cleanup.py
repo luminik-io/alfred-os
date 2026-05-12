@@ -264,7 +264,12 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
         old_pid = int(pid_file.read_text().strip())
         os.kill(old_pid, 0)
         pid_alive = True
-        identity_status = lock_pid_identity_status(lock_dir, old_pid)
+        expected_agent = lock_dir.name.removeprefix("agent-lock-")
+        identity_status = lock_pid_identity_status(
+            lock_dir,
+            old_pid,
+            expected_agent=expected_agent,
+        )
     except (ValueError, ProcessLookupError):
         pid_alive = False
     except OSError:
