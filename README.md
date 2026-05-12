@@ -38,6 +38,10 @@ fleet uses Hermes skills, MCP servers, gbrain memory, canon, dashboarding, or
 non-engineering departments, install and operate Hermes separately and point
 alfred-os at the same runtime root.
 
+See [`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe,
+including env hygiene, skills, MCP, gbrain, canon, scheduling boundaries, and
+troubleshooting.
+
 alfred-os is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
 ## System Shape
@@ -144,6 +148,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
+- [Hermes integration](docs/HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
 - [Linux](docs/LINUX.md): current macOS-only stance + interim cron / systemd patterns.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md): private-disclosure process.
