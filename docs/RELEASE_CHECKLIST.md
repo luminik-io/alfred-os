@@ -6,6 +6,13 @@ Use this before tagging a public alfred-os release.
 
 - Confirm `VERSION` has the intended version without a leading `v`.
 - Confirm `CHANGELOG.md` has a section for that version and the `[Unreleased]` section only contains future work.
+- Confirm GitHub Pages is set to workflow publishing, not branch/root publishing:
+
+  ```sh
+  gh api repos/luminik-io/alfred-os/pages --jq '.build_type'
+  # expected: workflow
+  ```
+
 - Run the local gates:
 
   ```sh
@@ -41,4 +48,11 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 
 3. Watch the `Release` workflow. It verifies `VERSION`, extracts notes from `CHANGELOG.md`, creates the GitHub Release, and prints the source tarball sha256 for Homebrew.
 4. Update `Formula/alfred-os.rb` with the printed sha256 before publishing the tap update.
-5. Smoke-test the published install path from a fresh directory.
+5. Re-run the `Site` workflow and verify the live docs page:
+
+   ```sh
+   gh workflow run site.yml --repo luminik-io/alfred-os --ref main
+   curl -fsSL https://luminik-io.github.io/alfred-os/ | grep -E 'Alfred-OS|Starlight'
+   ```
+
+6. Smoke-test the published install path from a fresh directory.

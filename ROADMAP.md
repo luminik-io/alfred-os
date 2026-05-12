@@ -2,7 +2,7 @@
 
 What's shipped, what's next, what's deliberately out of scope. Living doc; updated on every release.
 
-## Shipped (v0.2.0)
+## Shipped (v0.2.1)
 
 The default install ships a working engineering agent fleet. After `bash install.sh && ./bin/alfred-init.py`, an operator has:
 
@@ -38,9 +38,9 @@ The default install ships a working engineering agent fleet. After `bash install
 - Release automation (tag → GitHub release with auto-extracted changelog notes + brew sha256).
 - Code of conduct, security policy, support, issue templates, PR template, dependabot.
 - Astro Starlight docs site at `luminik-io.github.io/alfred-os` (env-overridable for custom domains).
-- HEAD-only Brew formula until the first public release tarball has a checksum.
+- Homebrew formula pinned to the latest public release tarball.
 
-## In flight (v0.2)
+## In flight (next release)
 
 - **Bot token operations**: `lib/slack_format.py` already supports threaded Block Kit messages when a bot token is configured. Follow-up work: `slack_set_channel_topic()` for fleet status, reactions API for ack-without-replying, and a documented daily-thread routing policy.
 - **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues for the same work"; complements the issue-claim state machine which catches "two actors on the same issue."

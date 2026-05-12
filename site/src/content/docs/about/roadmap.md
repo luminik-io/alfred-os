@@ -20,7 +20,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - Release automation (tag → GitHub release with auto-extracted changelog).
 - Project hygiene: COC, security, support, issue templates, PR template, dependabot.
 - pyproject.toml (ruff + mypy), pre-commit config.
-- HEAD-only Brew formula until the first public release tarball has a checksum.
+- Homebrew formula pinned to the latest public release tarball.
 - This Astro Starlight docs site.
 
 ## In flight (next release)

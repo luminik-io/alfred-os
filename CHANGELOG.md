@@ -6,7 +6,11 @@ Notable changes to alfred-os. Format: [Keep a Changelog](https://keepachangelog.
 
 ### Added
 
-- Nothing yet.
+- Publishing guide for GitHub Pages workflow mode, release-site verification, and optional custom-domain setup.
+
+### Changed
+
+- Refreshed README, roadmap, docs site status, and release checklist after the v0.2.1 public launch cleanup.
 
 ## [0.2.1] - 2026-05-12
 
@@ -142,5 +146,5 @@ Initial public framework extraction.
 
 [Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.2.1...HEAD
 [0.2.1]: https://github.com/luminik-io/alfred-os/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/luminik-io/alfred-os/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/luminik-io/alfred-os/releases/tag/v0.1.0
+[0.2.0]: https://github.com/luminik-io/alfred-os/compare/0c5d13c673f5954014cb5b5ccf3dc880c9563641...v0.2.0
+[0.1.0]: https://github.com/luminik-io/alfred-os/pull/2

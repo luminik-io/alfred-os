@@ -150,6 +150,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
 - [Hermes integration](docs/HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
 - [Linux](docs/LINUX.md): current macOS-only stance + interim cron / systemd patterns.
+- [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md): private-disclosure process.
 - [Release checklist](docs/RELEASE_CHECKLIST.md): pre-tag gates, scrub scan, GitHub Release flow.
@@ -176,7 +177,7 @@ See [Architecture → Codename pattern](https://luminik-io.github.io/alfred-os/c
 
 ## Status
 
-**v0.2.0**. Complete local engineering-agent fleet for one operator. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
+**v0.2.1**. Complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
 
 Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design constraints (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed; PRs that broaden scope get politely declined.
 

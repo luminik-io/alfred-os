@@ -78,6 +78,7 @@ export default defineConfig({
             { label: "Skills", slug: "guides/skills" },
             { label: "Hermes", slug: "guides/hermes" },
             { label: "Linux", slug: "guides/linux" },
+            { label: "Publishing", slug: "guides/publishing" },
           ],
         },
         {

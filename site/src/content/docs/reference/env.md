@@ -125,6 +125,7 @@ Set to `1` and any agent runner will emit `[<NAME>-DOCTOR-OK]` and exit 0 withou
 
 | Var | Used by | Default |
 |---|---|---|
+| `ALFRED_OS_PUBLISH_PAGES` | `.github/workflows/site.yml` deploy gate | (unset: build only) |
 | `ALFRED_OS_SITE_URL` | `site/astro.config.mjs` | `https://luminik-io.github.io` |
 | `ALFRED_OS_SITE_BASE` | same | `/alfred-os` |
 

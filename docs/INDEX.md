@@ -20,6 +20,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`SKILLS.md`](SKILLS.md): recommended Claude Code skills.
 - [`HERMES.md`](HERMES.md): optional Hermes, MCP, gbrain, canon, and skills integration.
 - [`LINUX.md`](LINUX.md): current macOS-only scheduler stance and Linux/systemd notes.
+- [`PUBLISHING.md`](PUBLISHING.md): GitHub Pages, release-site, and custom-domain operations.
 
 ## Reference
 
