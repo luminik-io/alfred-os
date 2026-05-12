@@ -714,6 +714,30 @@ def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch)
     assert out.stop_reason == "error"
 
 
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        "API Error: 429 Too Many Requests",
+        "provider quota exceeded for this account",
+        '{"type":"error","message":"rate_limit_exceeded"}',
+    ],
+)
+def test_codex_invoke_provider_limits_get_rate_limit_subtype(tmp_path, monkeypatch, stderr):
+    import agent_runner as ar
+
+    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr=stderr)
+
+    monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", tmp_path / "codex")
+    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+
+    out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
+
+    assert out.success is False
+    assert out.subtype == "error_rate_limit"
+    assert out.stop_reason == "error"
+
+
 def test_get_tier_from_labels_accepts_codex():
     import agent_runner as ar
 

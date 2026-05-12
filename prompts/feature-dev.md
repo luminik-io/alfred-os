@@ -4,9 +4,9 @@
   "Lucius" but the codename is just a label — the role is the canonical
   thing this prompt describes.
 
-  Placeholder convention: this file is loaded via agent_runner.load_prompt(),
-  which performs shell-style ${VAR} substitution against process env +
-  extra_vars. Required vars at runtime:
+  Placeholder convention: load this template via agent_runner.load_prompt()
+  before dispatch so shell-style ${VAR} tokens are substituted against
+  process env + extra_vars. Required vars at runtime:
 
     AGENT_CODENAME         display name used inside the prompt (e.g. "Lucius")
     GH_ORG                 github org that owns your fleet's product repos

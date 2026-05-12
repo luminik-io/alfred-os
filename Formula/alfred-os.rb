@@ -19,17 +19,27 @@ class AlfredOs < Formula
     # Install the framework files into a libexec subdir so we don't pollute
     # bin/ with internal helpers. Then drop a small launcher into bin/.
     libexec.install Dir["*"]
+    libexec.install ".alfredrc.example"
 
     # Operator-facing helpers go onto PATH.
     bin.install_symlink libexec/"bin/alfred" => "alfred"
     bin.install_symlink libexec/"bin/alfred-init.py" => "alfred-init"
-    bin.install_symlink libexec/"bin/doctor.sh" => "alfred-doctor"
-    bin.install_symlink libexec/"bin/hermes-claude" => "alfred-hermes-claude"
-    bin.install_symlink libexec/"install.sh" => "alfred-install"
-    bin.install_symlink libexec/"deploy.sh" => "alfred-deploy"
-
-    # The example label-state CLI ships as a runnable binary too.
     bin.install_symlink libexec/"examples/bin/label_state.py" => "alfred-label-state"
+
+    # Shell scripts compute their repo root from dirname "$0". Use wrappers
+    # instead of symlinks so $0 is the real libexec path after exec.
+    {
+      "alfred-doctor" => libexec/"bin/doctor.sh",
+      "alfred-hermes-claude" => libexec/"bin/hermes-claude",
+      "alfred-install" => libexec/"install.sh",
+      "alfred-deploy" => libexec/"deploy.sh",
+    }.each do |name, target|
+      (bin/name).write <<~EOS
+        #!/bin/bash
+        exec "#{target}" "$@"
+      EOS
+      chmod 0755, bin/name
+    end
   end
 
   def caveats
@@ -65,6 +75,7 @@ class AlfredOs < Formula
   test do
     # Smoke: lib/ is intact and doctor.sh at least executes. It exits clean
     # against an empty fleet.
+    assert_predicate libexec/".alfredrc.example", :exist?
     assert_predicate libexec/"lib/agent_runner.py", :exist?
     assert_match(/passed/, shell_output("bash #{libexec}/bin/doctor.sh"))
   end

@@ -54,8 +54,7 @@ def main() -> int:
     events = EventLog(agent=AGENT)
     events.emit("firing_started")
 
-    # The body of a real agent goes here. Patterns to crib from the
-    # reference fleet (luminik-io/alfred):
+    # The body of a real agent goes here. Useful patterns:
     #
     # - Pick an issue:           gh_json(["gh", "issue", "list", ...])
     # - Open a worktree:         make_worktree(local_repo, AGENT, target)

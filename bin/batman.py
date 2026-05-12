@@ -26,7 +26,7 @@ Wiring:
   - Honours the fleet enable file: if ``batman`` is not enabled there,
     the runner exits early with a one-line stderr note.
 
-Backport from the predecessor fleet's Batman bundle workflow. Skeleton-only — the
+Skeleton implementation of the Batman bundle workflow. Skeleton-only — the
 operator can extend the per-repo execution chain to taste.
 """
 

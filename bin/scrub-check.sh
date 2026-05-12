@@ -13,7 +13,7 @@ fi
 # CHANGELOG.md is allowed here so historical entries can mention prior
 # host-private paths, but is NOT exempt from the secret scan below — a
 # secret accidentally pasted into a changelog entry must still trip.
-PATH_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|CHANGELOG\.md|site/package-lock\.json|.*\.lock)$'
+PATH_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|site/package-lock\.json|.*\.lock)$'
 
 # Per-line allowlist for files that legitimately contain example codenames
 # matching one of the generic private-identifier patterns.
@@ -32,7 +32,11 @@ patterns=(
   "/Users/[A-Za-z0-9._-]+/\\.hermes"
   "/home/[A-Za-z0-9._-]+/Claude_Workspace"
   "luminik-internal"
+  "luminik-io/alfred([^A-Za-z0-9_-]|$)"
   "[A-Za-z0-9._%+-]+@luminik\\.io"
+  "private predecessor"
+  "predecessor fleet"
+  "reference fleet"
   "slack/(staging|prod|production)/"
   "e2e/(staging|prod|production)/"
 )

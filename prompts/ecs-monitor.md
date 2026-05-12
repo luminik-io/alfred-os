@@ -3,7 +3,7 @@
   Codename: operator-customizable. The starter fleet ships this role as a
   generic deployment-health monitor.
 
-  Placeholder convention: ${VAR} substitution via agent_runner.load_prompt().
+  Placeholder convention: load this template via agent_runner.load_prompt().
   Required vars at runtime:
 
     AGENT_CODENAME            display name (e.g. "gordon")

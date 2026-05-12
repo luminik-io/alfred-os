@@ -4,19 +4,25 @@ Notable changes to alfred-os. Format: [Keep a Changelog](https://keepachangelog.
 
 ## [Unreleased]
 
+### Added
+
+- Nothing yet.
+
+## [0.2.0] - 2026-05-12
+
 Pivot from "extracted framework substrate" to "complete engineering agent fleet". The default install now ships 12 working agents the operator configures via an interactive `alfred-init` wizard.
 
 ### Added
 
-#### 2026-05-09 catch-up from the private predecessor fleet
+#### 2026-05-09 public fleet release
 
-- **Role field on every agent.** `agents.conf` gets a 6th tab-separated column carrying a one-line operational descriptor; `render.sh` emits `ALFRED_<CODENAME>_ROLE` env vars; `agent_role()` / `codename_with_role()` surface the role in CLI + Slack post prefixes. Backport of alfred PR #123.
-- **Runner-level fleet gate file.** New `$HERMES_HOME/state/fleet/enabled.txt` plus `is_agent_enabled` / `enable_agent` / `disable_agent` helpers. Listed codenames are enabled; missing codenames fall back to each runner's default so opt-in agents can be gated without making normal launchd agents look disabled. New `bin/alfred` CLI ships `alfred enable / disable / agents / enabled-agents`. Backport of alfred PR #125 plus the 2026-05-09 gate-semantics cleanup.
-- **Slack threading + Block Kit + severity colour stripes.** New `lib/slack_format.py` with bot-token-aware `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. PR #141 attachment-deduplication guard baked in from day one. Honours `BATMAN_APPROVAL_CHANNEL` for routing. Backport of alfred PRs #126, #141.
-- **Bundle-label model + Batman skeleton.** New `lib/batman.py` with `Bundle` dataclass, all-or-nothing `claim_bundle`, best-effort `release_bundle`, loose-markdown `parse_plan_from_issue` / `parse_plan_from_bundle`. PR #121 scope-widening guard included. New `bin/batman.py` skeleton runner posts plan summaries; full execution chain deferred. Backport of alfred PRs #115, #127, #121.
-- **Runner-side dedup.** `find_open_authored_pr_for_issue` (with substring-false-positive guard) + `reuse_or_make_worktree` so partial work survives across firings of the same issue. Backport of alfred PR #129.
-- **STANDARD_LABELS bootstrap.** `batman-pr-open` and `agent:large-feature` ship by default; `gh_pr_create` auto-creates ad-hoc labels and surfaces gh stderr on failure. Backport of alfred PR #145.
-- **Fleet doctor.** New `bin/fleet-doctor.py` ships four read-only health checks (paused repos, global block, stale worktrees, fleet enable list) → single severity-stripe Slack thread. Backport of alfred PR #130 (slimmed for OSS).
+- **Role field on every agent.** `agents.conf` gets a 6th tab-separated column carrying a one-line operational descriptor; `render.sh` emits `ALFRED_<CODENAME>_ROLE` env vars; `agent_role()` / `codename_with_role()` surface the role in CLI + Slack post prefixes.
+- **Runner-level fleet gate file.** New `$HERMES_HOME/state/fleet/enabled.txt` plus `is_agent_enabled` / `enable_agent` / `disable_agent` helpers. Listed codenames are enabled; missing codenames fall back to each runner's default so opt-in agents can be gated without making normal launchd agents look disabled. New `bin/alfred` CLI ships `alfred enable / disable / agents / enabled-agents`.
+- **Slack threading + Block Kit + severity colour stripes.** New `lib/slack_format.py` with bot-token-aware `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Attachment duplicate-render guard baked in from day one. Honours `BATMAN_APPROVAL_CHANNEL` for routing.
+- **Bundle-label model + Batman skeleton.** New `lib/batman.py` with `Bundle` dataclass, all-or-nothing `claim_bundle`, best-effort `release_bundle`, loose-markdown `parse_plan_from_issue` / `parse_plan_from_bundle`. Scope-widening guard included. New `bin/batman.py` skeleton runner posts plan summaries; full execution chain deferred.
+- **Runner-side dedup.** `find_open_authored_pr_for_issue` (with substring-false-positive guard) + `reuse_or_make_worktree` so partial work survives across firings of the same issue.
+- **STANDARD_LABELS bootstrap.** `batman-pr-open` and `agent:large-feature` ship by default; `gh_pr_create` auto-creates ad-hoc labels and surfaces gh stderr on failure.
+- **Fleet doctor.** New `bin/fleet-doctor.py` ships four read-only health checks (paused repos, global block, stale worktrees, fleet enable list) → single severity-stripe Slack thread.
 - **Runner safety hardening.** Batman and fleet-doctor now acquire the shared lock helper correctly; cleanup scopes `/tmp` sweeping to agent-owned prefixes instead of broad wildcard matches.
 - **Release-readiness hardening.** Lucius wraps GitHub issue content as untrusted input, checks issue author association before autonomous code execution, grants Codex the source `.git` directory for worktree commits, and opens salvaged WIP PRs as real GitHub drafts. Drake's daily cap guard now scales its GitHub search limit above the configured cap. Lock-owner checks now validate the recorded agent name when the caller knows it.
 
@@ -41,13 +47,13 @@ Every codename is operator-customisable at install time. Default Batman names; r
 
 #### Engineering-agent prompts (`prompts/`)
 
-9 role-based prompts loaded by `agent_runner.load_prompt()` with `${VAR}` substitution: `feature-dev.md`, `planner.md`, `test-coverage.md`, `code-review.md`, `review-fix.md`, `bug-triage.md`, `ecs-monitor.md`, `post-deploy-smoke.md`, `cross-repo-coordinator.md`. 1989 lines total. Cross-codename refs use `${FEATURE_DEV_CODENAME}` / `${CODE_REVIEW_CODENAME}` etc. so renaming any agent stays consistent end-to-end.
+9 role-based prompt templates compatible with `agent_runner.load_prompt()` and `${VAR}` substitution: `feature-dev.md`, `planner.md`, `test-coverage.md`, `code-review.md`, `review-fix.md`, `bug-triage.md`, `ecs-monitor.md`, `post-deploy-smoke.md`, `cross-repo-coordinator.md`. Cross-codename refs use `${FEATURE_DEV_CODENAME}` / `${CODE_REVIEW_CODENAME}` etc. so renaming any agent can stay consistent end-to-end.
 
 #### Substrate (`lib/agent_runner.py`)
 
 - **Issue claim state machine**: `claim_issue` / `release_issue` / `find_stale_claims` / `force_release_stale_claim` / `is_repo_paused` / `set_repo_paused` / `list_paused_repos` / `issue_dedup_check`. Lifecycle labels `agent:in-flight` / `agent:pr-open` / `agent:done` plus operator-override `do-not-pickup`. Full doc at `docs/STATE_MACHINE.md` (with Mermaid stateDiagram).
 - **Slack severity routing**: `slack_post(text, severity="info" | "warn" | "alert")`. `info` is back-compat default; `warn` prefixes ⚠️; `alert` prefixes 🚨 + appends `<!here>`.
-- **`claude_invoke_streaming()` + `transcript_path()`**: streaming-API-compatible signatures (currently delegate to plain `claude_invoke`; the per-firing JSONL transcript writer ships in v0.2).
+- **`claude_invoke_streaming()` + `transcript_path()`**: streaming-API-compatible signatures (currently delegate to plain `claude_invoke`; the per-firing JSONL transcript writer ships in a future release).
 - **`TRANSCRIPTS_ROOT` + `PROMPTS_ROOT`** module constants.
 
 #### Operator surface
@@ -90,7 +96,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - `uv.lock` from version control (auto-generated; consumers run their own `uv sync` against `pyproject.toml`).
 - `sso-check-10` / `sso-check-22` from the default `agents.conf`. Operator-convenience reminders, not engineering. Mentioned in `docs/AWS_SETUP.md` for operators who use AWS SSO interactively.
 
-### Deferred (v0.2)
+### Deferred (v0.3)
 
 - **Bot token integration** (`xoxb-…`): unlocks `slack_set_channel_topic()`, `chat.postMessage` with `thread_ts` for daily-thread routing of `info`-tier messages, reactions API. Webhooks cannot do these.
 - **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues, same work."
@@ -103,7 +109,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 
 ## [0.1.0] - 2026-05-02
 
-Initial extraction from the private predecessor fleet.
+Initial public framework extraction.
 
 ### Added
 
@@ -116,5 +122,6 @@ Initial extraction from the private predecessor fleet.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/luminik-io/alfred-os/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/luminik-io/alfred-os/releases/tag/v0.1.0

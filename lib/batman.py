@@ -29,8 +29,7 @@ Anything we cannot parse falls back to a sensible default
 (``DEFAULT_ROLLOUT_ORDER``) — Batman flags malformed bodies via the
 plan post but never fails the firing on a parse error.
 
-Backport from the predecessor fleet's Batman workflow (parser scope-
-widening guard).
+Includes the parser scope-widening guard used by the bundle planner.
 """
 
 from __future__ import annotations
@@ -414,10 +413,10 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
     - **Solo bundle** (single issue, body encodes a multi-repo plan):
       delegate to ``parse_plan_from_issue(body)`` so legacy
       single-issue plans still parse correctly.
-    - **Multi-issue bundle** (the ``agent:bundle:<slug>`` pattern from
-      predecessor fleet PR #127): each issue lives in its own product
-      repo; that repo IS the issue's affected repo. Per-repo criteria
-      come from each issue's body. Rollout order falls back to the
+    - **Multi-issue bundle** (the ``agent:bundle:<slug>`` label pattern):
+      each issue lives in its own product repo;
+      that repo IS the issue's affected repo. Per-repo criteria come
+      from each issue's body. Rollout order falls back to the
       configured ``BATMAN_ROLLOUT_ORDER`` (default
       ``DEFAULT_ROLLOUT_ORDER``) filtered down to the affected set.
     """
