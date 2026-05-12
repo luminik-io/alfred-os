@@ -15,7 +15,7 @@ body:
     attributes:
       label: alfred-os version
       description: Output of `cat VERSION` from your clone.
-      placeholder: "0.2.0"
+      placeholder: "0.2.1"
     validations:
       required: true
 

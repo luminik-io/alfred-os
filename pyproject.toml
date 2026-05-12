@@ -1,6 +1,6 @@
 [project]
 name = "alfred-os"
-version = "0.2.0"
+version = "0.2.1"
 description = "A small framework for running a fleet of narrow-specialist Claude Code agents on a single Mac, dispatched by launchd, isolated by git worktree."
 readme = "README.md"
 license = { file = "LICENSE" }
