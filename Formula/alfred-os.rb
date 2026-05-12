@@ -1,8 +1,8 @@
 class AlfredOs < Formula
-  desc "Launchd-managed Claude Code agent fleet for solo founders"
+  desc "Local agent OS for solo builders"
   homepage "https://luminik-io.github.io/alfred-os"
-  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "5ba8c17538225d947a55f366d894b5576a9dd4a1f3d30a334c19e7495b6cc61d"
+  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.2.1.tar.gz"
+  sha256 "63e2c3d6a9bb49c66fb98b302d367c98325f9ba643f9fd1e0e21210ccdefd585"
   license "MIT"
   head "https://github.com/luminik-io/alfred-os.git", branch: "main"
 
