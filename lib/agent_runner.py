@@ -1819,8 +1819,11 @@ def codex_invoke(
     }
     session_id = _extract_codex_session_id(combined)
     if proc.returncode != 0:
-        tail = (stderr or stdout or "").strip()[-1000:]
-        subtype = "error_rate_limit" if "usage limit" in tail.lower() else "error"
+        tail = (result_text or stderr or stdout or "").strip()[-1000:]
+        classifier_text = f"{result_text}\n{stdout}\n{stderr}"
+        subtype = "error_rate_limit" if _RATE_LIMIT_RESULT_RE.search(classifier_text) else "error"
+        if subtype == "error" and _BUDGET_RESULT_RE.search(classifier_text):
+            subtype = "error_rate_limit"
         return ClaudeResult(
             success=False,
             subtype=subtype,

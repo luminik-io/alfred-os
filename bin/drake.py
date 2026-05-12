@@ -52,6 +52,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     list_paused_repos,
+    load_prompt,
     optional_env_int,
     preflight,
     run,
@@ -175,6 +176,25 @@ def _issues_authored_in_last_24h() -> int:
     return len(issues) if isinstance(issues, list) else 0
 
 
+def build_prompt() -> str:
+    return (
+        load_prompt(
+            PROMPT_PATH,
+            extra_vars={
+                "AGENT_CODENAME": AGENT.title(),
+                "FEATURE_DEV_CODENAME": os.environ.get(
+                    "AGENT_CODENAME_FEATURE_DEV", "lucius"
+                ).title(),
+                "GH_ORG": GH_ORG,
+                "HERMES_HOME": str(HERMES_HOME),
+                "PLANNER_REPOS": ",".join(DRAKE_REPOS),
+                "WORKSPACE_ROOT": str(WORKSPACE_ROOT),
+            },
+        )
+        + _build_state_machine_context()
+    )
+
+
 def main() -> int:
     with_lock(AGENT)
 
@@ -241,7 +261,7 @@ def main() -> int:
         spend.increment(failures_today=1, consecutive_failures=1)
         return 0
 
-    prompt = PROMPT_PATH.read_text() + _build_state_machine_context()
+    prompt = build_prompt()
 
     # Drake works in the workspace root so it can read across all product repos
     # without juggling paths. It only writes via gh; no file edits.

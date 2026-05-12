@@ -125,7 +125,7 @@ See [Architecture → Codename pattern](https://luminik-io.github.io/alfred-os/c
 
 ## Status
 
-**v0.1.0**. Initial public extraction from a fleet that has been running unattended for several months. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
+**v0.2.0**. Public release candidate for a complete local engineering-agent fleet. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
 
 Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design constraints (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed; PRs that broaden scope get politely declined.
 

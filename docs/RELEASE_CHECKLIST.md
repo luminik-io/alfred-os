@@ -24,7 +24,7 @@ Use this before tagging a public alfred-os release.
 
 `bash bin/scrub-check.sh` must pass before tagging. It scans tracked and untracked worktree files, excluding generated dependency trees and lockfiles, for:
 
-- Host-private paths or identifiers from local development machines or predecessor fleets.
+- Host-private paths or identifiers from local development machines or earlier private systems.
 - Real-looking Slack webhook URLs, Slack bot or app tokens, and AWS access key IDs.
 
 Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.slack.com/services/T.../B.../...`.

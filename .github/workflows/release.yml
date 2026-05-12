@@ -47,8 +47,8 @@ jobs:
           tag="${{ steps.tag.outputs.tag }}"
           tag_no_v="${tag#v}"
           # Extract the section between [<this-version>] and the next [<...] heading
-          awk -v ver="[$tag_no_v]" '
-            $0 ~ "^## " ver { found=1; next }
+          awk -v ver="$tag_no_v" '
+            $0 ~ "^## \\[" ver "\\]([[:space:]]|$)" { found=1; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > /tmp/release-notes.md

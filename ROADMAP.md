@@ -2,7 +2,7 @@
 
 What's shipped, what's next, what's deliberately out of scope. Living doc; updated on every release.
 
-## Shipped (v0.1.0)
+## Shipped (v0.2.0)
 
 The default install ships a working engineering agent fleet. After `bash install.sh && ./bin/alfred-init.py`, an operator has:
 

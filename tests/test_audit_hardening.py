@@ -260,6 +260,22 @@ def test_drake_daily_cap_query_limit_tracks_configured_cap(monkeypatch):
     assert cmd[cmd.index("--limit") + 1] == "250"
 
 
+def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
+    monkeypatch.setenv("GH_ORG", "luminik")
+    drake = load_bin_module("drake.py", monkeypatch)
+    prompt = tmp_path / "planner.md"
+    prompt.write_text("${AGENT_CODENAME} ${GH_ORG} ${PLANNER_REPOS} ${FEATURE_DEV_CODENAME}")
+    monkeypatch.setattr(drake, "GH_ORG", "luminik")
+    monkeypatch.setattr(drake, "PROMPT_PATH", prompt)
+    monkeypatch.setattr(drake, "DRAKE_REPOS", ["backend", "frontend"])
+    monkeypatch.setattr(drake, "_build_state_machine_context", lambda: "\nstate-context")
+    monkeypatch.setenv("AGENT_CODENAME_FEATURE_DEV", "custom-lucius")
+
+    text = drake.build_prompt()
+
+    assert text == "Drake luminik backend,frontend Custom-Lucius\nstate-context"
+
+
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
     huntress = load_bin_module("huntress.py", monkeypatch)
 
