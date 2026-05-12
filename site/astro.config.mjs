@@ -16,9 +16,11 @@ export default defineConfig({
       description:
         "Launchd-managed Claude Code agent fleet for solo founders. " +
         "One Mac, one operator, code shipping while you sleep.",
-      // logo: {
-      //   src: './src/assets/logo.svg',  // operator: drop a real logo here
-      // },
+      logo: {
+        src: "./src/assets/alfred-logo.png",
+        alt: "Alfred-OS logo",
+      },
+      favicon: "/favicon.png",
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/luminik-io/alfred-os" },
       ],
@@ -38,8 +40,14 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image",
-            content:
-              "https://opengraph.githubassets.com/1/luminik-io/alfred-os",
+            content: "https://alfred.luminik.io/brand/alfred-og.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content: "https://alfred.luminik.io/brand/alfred-og.png",
           },
         },
         {
@@ -47,6 +55,13 @@ export default defineConfig({
           attrs: {
             name: "twitter:card",
             content: "summary_large_image",
+          },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "apple-touch-icon",
+            href: "/apple-touch-icon.png",
           },
         },
       ],

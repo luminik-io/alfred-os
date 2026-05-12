@@ -1,5 +1,9 @@
 # alfred-os
 
+<p align="center">
+  <img src="assets/brand/alfred-logo.png" alt="Alfred-OS logo" width="180">
+</p>
+
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
 [![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
