@@ -299,7 +299,12 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
                 continue
             existing_pr = find_open_authored_pr_for_issue(repo, issue["number"])
             if existing_pr:
-                gh_issue_edit(repo, issue["number"], add_labels=["agent:pr-open"])
+                gh_issue_edit(
+                    repo,
+                    issue["number"],
+                    add_labels=["agent:pr-open"],
+                    remove_labels=["agent:implement"],
+                )
                 continue
             attempts = sum(1 for lbl in label_names if lbl.startswith(f"{AGENT}-attempt-"))
             if attempts >= 3:
@@ -398,6 +403,33 @@ def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str |
     )
 
 
+def block_author_trust_unavailable(repo: str, issue_num: int, trust_note: str, events) -> None:
+    gh_issue_comment(
+        repo,
+        issue_num,
+        f"{AGENT.title()}: blocked autonomous implementation because the issue author "
+        f"trust check could not be verified ({trust_note}). Marking needs:human-scope "
+        "so this issue does not starve the implement queue.",
+    )
+    gh_issue_edit(
+        repo,
+        issue_num,
+        add_labels=["needs:human-scope"],
+        remove_labels=["agent:implement"],
+    )
+    events.emit(
+        "firing_complete",
+        outcome="blocked-author-trust-unavailable",
+        issue=issue_num,
+    )
+    msg = (
+        f"[{AGENT.upper()}-BLOCKED] #{issue_num} author trust unavailable: "
+        f"{trust_note}. Moved to needs:human-scope."
+    )
+    print(msg)
+    slack_post(msg, severity="warn")
+
+
 def main() -> int:
     with_lock(AGENT)
 
@@ -460,17 +492,7 @@ def main() -> int:
     trusted, trust_note = issue_author_trusted(repo, issue)
     if not trusted:
         if not issue_author_trust_known(issue):
-            events.emit(
-                "firing_complete",
-                outcome="blocked-author-trust-unavailable",
-                issue=issue_num,
-            )
-            msg = (
-                f"[{AGENT.upper()}-BLOCKED] #{issue_num} author trust unavailable: "
-                f"{trust_note}. Leaving labels unchanged for retry."
-            )
-            print(msg)
-            slack_post(msg, severity="warn")
+            block_author_trust_unavailable(repo, issue_num, trust_note, events)
             return 0
 
         gh_issue_comment(
