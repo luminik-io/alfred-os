@@ -1,8 +1,8 @@
 class AlfredOs < Formula
   desc "Launchd-managed Claude Code agent fleet for solo founders"
   homepage "https://luminik-io.github.io/alfred-os"
-  # HEAD-only until the first public tag is cut. The release workflow prints
-  # the source tarball sha256; add url/sha256 here before publishing a tap.
+  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.2.0.tar.gz"
+  sha256 "5ba8c17538225d947a55f366d894b5576a9dd4a1f3d30a334c19e7495b6cc61d"
   license "MIT"
   head "https://github.com/luminik-io/alfred-os.git", branch: "main"
 
@@ -56,7 +56,8 @@ class AlfredOs < Formula
         alfred-hermes-claude   # swap between Claude Code accounts
         alfred-label-state     # operator CLI for the issue claim state machine
 
-      This formula is HEAD-only until the first public release tarball exists.
+      This formula installs the latest tagged release by default.
+      Use --HEAD if you want to track main.
 
       Next steps:
         1. alfred-install

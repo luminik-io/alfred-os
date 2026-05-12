@@ -63,11 +63,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.tag.outputs.tag }}"
-          gh release create "$tag" \
-            --repo "${{ github.repository }}" \
-            --title "$tag" \
-            --notes-file "${{ steps.notes.outputs.notes_file }}" \
-            --verify-tag
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --repo "${{ github.repository }}" \
+              --title "$tag" \
+              --notes-file "${{ steps.notes.outputs.notes_file }}" \
+              --latest
+          else
+            gh release create "$tag" \
+              --repo "${{ github.repository }}" \
+              --title "$tag" \
+              --notes-file "${{ steps.notes.outputs.notes_file }}" \
+              --verify-tag
+          fi
 
       - name: Compute source tarball checksum (for brew formula)
         run: |
