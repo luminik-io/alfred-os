@@ -37,7 +37,7 @@ The default install ships a working engineering agent fleet. After `bash install
 - CI (pytest 3.11/3.12/3.13 + ruff + mypy + shellcheck + scrub-check) on every PR.
 - Release automation (tag → GitHub release with auto-extracted changelog notes + brew sha256).
 - Code of conduct, security policy, support, issue templates, PR template, dependabot.
-- Astro Starlight docs site at `luminik-io.github.io/alfred-os` (env-overridable for custom domains).
+- Astro Starlight docs site at `alfred.luminik.io` (env-overridable for forks/custom domains).
 - Homebrew formula pinned to the latest public release tarball.
 
 ## In flight (next release)

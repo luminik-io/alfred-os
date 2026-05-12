@@ -74,10 +74,10 @@ threads. Two higher-level routing features remain follow-ups:
 1. **Daily-thread routing for `info`-tier**. The `fleet-recap-morning` cron posts an anchor message at 07:30; every `info` post during the day goes as a threaded reply under it. Main-channel timeline shrinks to one anchor + the day's `warn` and `alert` events.
 2. **Channel topic from fleet state**. `slack_set_channel_topic()` renders e.g. `Lucius: 17 ✅ / 3 ❌ today · Drake: 8 ok · 0 paused repos`. Glanceable status without opening a dashboard.
 
-Both tracked in [Roadmap](/alfred-os/about/roadmap/) under "in-flight."
+Both tracked in [Roadmap](/about/roadmap/) under "in-flight."
 
 ## See also
 
-- [Slack setup](/alfred-os/guides/slack/): webhook creation, AWS storage, optional bot-token path.
+- [Slack setup](/guides/slack/): webhook creation, AWS storage, optional bot-token path.
 - [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md): the full guide.
 - [`agent_runner.slack_post`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py): the source.

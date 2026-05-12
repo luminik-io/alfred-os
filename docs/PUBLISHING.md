@@ -31,7 +31,7 @@ workflow. It should not use the legacy "Deploy from a branch" Pages builder.
 5. Verify the deployed site:
 
    ```sh
-   curl -fsSL https://luminik-io.github.io/alfred-os/ | grep -E 'Alfred-OS|Starlight'
+   curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred-OS|Starlight'
    ```
 
 ## Common Failure: README Site
@@ -50,36 +50,38 @@ new browser session usually confirms the fixed deploy.
 
 ## Custom Domain
 
-The launch URL is intentionally the GitHub Pages project URL:
+The launch URL is:
 
 ```text
-https://luminik-io.github.io/alfred-os/
+https://alfred.luminik.io/
 ```
 
-For a cleaner branded URL later, prefer a subdomain:
+Current DNS shape:
 
 ```text
-https://alfred-os.luminik.io/
+alfred.luminik.io -> luminik-io.github.io
 ```
 
-Recommended Cloudflare + GitHub Pages shape:
+Recommended Route53 + GitHub Pages checks:
 
-1. Add a DNS-only `CNAME` record in Cloudflare:
+1. Ensure the Route53 record exists:
 
-   ```text
-   alfred-os.luminik.io -> luminik-io.github.io
+   ```sh
+   dig +short alfred.luminik.io CNAME
    ```
 
-2. Set the GitHub Pages custom domain to `alfred-os.luminik.io`.
+2. Ensure GitHub Pages has the same custom domain:
+
+   ```sh
+   gh api repos/luminik-io/alfred-os/pages --jq '{cname,html_url,https_enforced}'
+   ```
+
 3. Set repository variables:
 
    ```text
-   ALFRED_OS_SITE_URL=https://alfred-os.luminik.io
+   ALFRED_OS_SITE_URL=https://alfred.luminik.io
    ALFRED_OS_SITE_BASE=/
    ```
 
 4. Re-run the `Site` workflow and wait for GitHub Pages to issue the TLS
    certificate before enforcing HTTPS.
-
-Keep the default project URL until the public launch settles. It avoids DNS,
-TLS, and Cloudflare proxy coupling during the first announcement.

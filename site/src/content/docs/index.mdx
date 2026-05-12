@@ -6,7 +6,7 @@ hero:
   tagline: A framework for launchd-managed Claude Code agents on a single Mac.
   actions:
     - text: Install (30 min)
-      link: /alfred-os/getting-started/install/
+      link: /getting-started/install/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
@@ -88,25 +88,25 @@ slack_post('<result>', severity=...) report to the fleet's Slack channel
 <LinkCard
   title="Install in 30 minutes"
   description="Fresh-Mac setup: install.sh handles brew + npm + dirs + shell rc + auth checks."
-  href="/alfred-os/getting-started/install/"
+  href="/getting-started/install/"
 />
 
 <LinkCard
   title="Build your first agent"
   description="The Echo tutorial: pick → claim → invoke → act → release → report. The shape every richer codename inherits."
-  href="/alfred-os/getting-started/tutorial/"
+  href="/getting-started/tutorial/"
 />
 
 <LinkCard
   title="Read the architecture"
   description="Why launchd, why worktrees, why per-agent IAM. The design constraints that make alfred-os opinionated."
-  href="/alfred-os/concepts/architecture/"
+  href="/concepts/architecture/"
 />
 
 ## Status
 
 Alfred-OS is at v0.2.1. It ships a complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design constraints get reviewed; PRs that broaden scope get politely declined. Read [Contributing](/alfred-os/about/contributing/) before opening.
+Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design constraints get reviewed; PRs that broaden scope get politely declined. Read [Contributing](/about/contributing/) before opening.
 
 License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).

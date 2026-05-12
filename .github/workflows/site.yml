@@ -41,8 +41,8 @@ jobs:
       - name: Build site
         working-directory: site
         env:
-          ALFRED_OS_SITE_URL: ${{ vars.ALFRED_OS_SITE_URL || 'https://luminik-io.github.io' }}
-          ALFRED_OS_SITE_BASE: ${{ vars.ALFRED_OS_SITE_BASE || '/alfred-os' }}
+          ALFRED_OS_SITE_URL: ${{ vars.ALFRED_OS_SITE_URL || 'https://alfred.luminik.io' }}
+          ALFRED_OS_SITE_BASE: ${{ vars.ALFRED_OS_SITE_BASE || '/' }}
         run: npm run build
 
       # Publishing is gated so forks and private prep branches can build docs

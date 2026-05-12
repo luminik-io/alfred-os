@@ -11,11 +11,11 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - launchd plist template + render.sh + deploy.sh.
 - doctor.sh: fleet-wide preflight under `HERMES_DOCTOR=1`.
 - hermes-claude: two-account swap helper.
-- [Issue claim state machine](/alfred-os/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
-- [Slack severity routing](/alfred-os/concepts/severity-routing/) (`info` / `warn` / `alert`).
+- [Issue claim state machine](/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
+- [Slack severity routing](/concepts/severity-routing/) (`info` / `warn` / `alert`).
 - `install.sh` + `INSTALL.md` for fresh-machine bootstrap.
 - Setup walkthroughs: Slack, AWS, Claude Code, skills, Linux stance, your-first-agent tutorial.
-- [Operator CLI](/alfred-os/reference/cli/): label-state + pre-push hook.
+- [Operator CLI](/reference/cli/): label-state + pre-push hook.
 - CI (pytest + ruff + mypy + shellcheck + scrub-check) on every PR.
 - Release automation (tag → GitHub release with auto-extracted changelog).
 - Project hygiene: COC, security, support, issue templates, PR template, dependabot.

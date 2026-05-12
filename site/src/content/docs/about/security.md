@@ -43,7 +43,7 @@ Out of scope:
 
 For consumer fleets:
 
-1. **Per-agent IAM**, never operator SSO. See [AWS setup](/alfred-os/guides/aws/).
+1. **Per-agent IAM**, never operator SSO. See [AWS setup](/guides/aws/).
 2. **Secrets via AWS Secrets Manager**, not env files committed to home.
 3. **Pre-push hook installed** in every operator-touched repo.
 4. **Read every skill before installing.** Skills run with `claude`'s permissions.

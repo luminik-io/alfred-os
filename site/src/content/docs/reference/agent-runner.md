@@ -119,7 +119,7 @@ def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool
 
 ## Issue claim state machine
 
-See [State machine](/alfred-os/concepts/state-machine/) for design.
+See [State machine](/concepts/state-machine/) for design.
 
 ```python
 def claim_issue(repo_slug: str, num: int, *,

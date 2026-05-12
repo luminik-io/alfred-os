@@ -11,6 +11,7 @@ Notable changes to alfred-os. Format: [Keep a Changelog](https://keepachangelog.
 ### Changed
 
 - Refreshed README, roadmap, docs site status, and release checklist after the v0.2.1 public launch cleanup.
+- Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
 
 ## [0.2.1] - 2026-05-12
 

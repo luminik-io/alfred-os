@@ -3,13 +3,13 @@ title: Your first agent
 description: Build Echo, a working alfred-os agent, end-to-end in 30 minutes.
 ---
 
-By the end you'll have a codename agent **Echo** that picks the oldest open issue with a specific label, asks Claude for a one-line summary, posts it as an issue comment, and reports to Slack. Fires every 30 minutes via `launchd`, isolated in a per-firing git worktree, claiming the issue via the [state machine](/alfred-os/concepts/state-machine/) before posting.
+By the end you'll have a codename agent **Echo** that picks the oldest open issue with a specific label, asks Claude for a one-line summary, posts it as an issue comment, and reports to Slack. Fires every 30 minutes via `launchd`, isolated in a per-firing git worktree, claiming the issue via the [state machine](/concepts/state-machine/) before posting.
 
 Condensed companion to [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md). Full agent source at [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred-os/blob/main/examples/bin/echo_summarise.py); copy-paste-ready.
 
 ## Prerequisites
 
-You've completed [Install](/alfred-os/getting-started/install/). `bash bin/doctor.sh` shows `0 passed, 0 failed`. `gh auth login` and `claude` are authenticated.
+You've completed [Install](/getting-started/install/). `bash bin/doctor.sh` shows `0 passed, 0 failed`. `gh auth login` and `claude` are authenticated.
 
 ## 1. Pick a target repo
 
@@ -97,16 +97,16 @@ Every framework primitive Echo uses scales up to a richer agent without changing
 - `doctor_mode()`: `bash bin/doctor.sh` doesn't burn turns or commit side effects.
 - `is_globally_blocked()`: fleet-wide rate-limit poison pill.
 - `SpendState(AGENT)`: per-agent per-day spend tracking.
-- `claim_issue()` / `release_issue()`: [issue claim state machine](/alfred-os/concepts/state-machine/).
+- `claim_issue()` / `release_issue()`: [issue claim state machine](/concepts/state-machine/).
 - `claude_invoke()`: structured `claude -p` invocation, parses turns/cost/session_id/result.
 - `gh_issue_comment()`: gh CLI wrapper.
-- `slack_post(text, severity=)`: webhook post with [severity routing](/alfred-os/concepts/severity-routing/).
+- `slack_post(text, severity=)`: webhook post with [severity routing](/concepts/severity-routing/).
 - `EventLog`: per-firing JSONL audit log.
 
 For richer agents (write code, open PRs, multi-step prompts, max-turns resume), see the shipped runners under `bin/` and the examples in `examples/bin/`.
 
 ## Next
 
-- [Issue claim state machine](/alfred-os/concepts/state-machine/): what `claim_issue` actually does
-- [Slack setup](/alfred-os/guides/slack/): wire your channel
-- [agent_runner API reference](/alfred-os/reference/agent-runner/): every primitive available
+- [Issue claim state machine](/concepts/state-machine/): what `claim_issue` actually does
+- [Slack setup](/guides/slack/): wire your channel
+- [agent_runner API reference](/reference/agent-runner/): every primitive available

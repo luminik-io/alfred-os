@@ -44,7 +44,7 @@ alfred-host         read-only on alfred/* secrets (catch-all for fleet-wide conf
 
 The operator's SSO (which has admin everywhere) is never used by scheduled agents. AWS-aware runners read role-specific variables such as `ALFRED_GORDON_AWS_PROFILE`, strip inherited `AWS_*` credentials, and set `AWS_PROFILE` only around the AWS subprocess they own.
 
-See [AWS setup](/alfred-os/guides/aws/) for templates.
+See [AWS setup](/guides/aws/) for templates.
 
 ### 4. Spend caps + fleet-wide poison pill
 
@@ -62,7 +62,7 @@ Two reasons it matters:
 1. **Operational legibility.** Codenames appear in PR titles, Slack messages, commit-trailer metadata. A coherent cast makes scanning your `#fleet` channel readable.
 2. **Design forcing function.** "What does Bane do?" is a sharper question than "what does the test agent do?". Narrow scopes per codename force you to decide.
 
-See [codename pattern](/alfred-os/concepts/codename-pattern/) for more.
+See [codename pattern](/concepts/codename-pattern/) for more.
 
 ## What this rules out
 
@@ -78,7 +78,7 @@ See [codename pattern](/alfred-os/concepts/codename-pattern/) for more.
 - **Parallel codename agents on a single Mac**, each with its own IAM, spend cap, and Slack reporting, none stepping on the others.
 - **The whole fleet pausable in seconds** via `launchctl bootout` per-agent, or by keeping your own wrapper around the same launchd calls.
 - **Reboot survival**. macOS restart, WiFi flap, gh API outage: the fleet picks up where it left off on the next firing.
-- **Cooperative coordination via GitHub** (the [issue claim state machine](/alfred-os/concepts/state-machine/)): no shared database, no shared filesystem, just labels + structured comments.
+- **Cooperative coordination via GitHub** (the [issue claim state machine](/concepts/state-machine/)): no shared database, no shared filesystem, just labels + structured comments.
 
 ## Read order for new contributors
 

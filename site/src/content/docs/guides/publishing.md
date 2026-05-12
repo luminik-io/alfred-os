@@ -18,7 +18,7 @@ ALFRED_OS_PUBLISH_PAGES=true
 Optional custom-domain variables:
 
 ```text
-ALFRED_OS_SITE_URL=https://alfred-os.luminik.io
+ALFRED_OS_SITE_URL=https://alfred.luminik.io
 ALFRED_OS_SITE_BASE=/
 ```
 
@@ -31,7 +31,7 @@ gh api repos/luminik-io/alfred-os/pages --jq '{build_type,status,html_url}'
 Expected:
 
 ```json
-{"build_type":"workflow","status":"built","html_url":"https://luminik-io.github.io/alfred-os/"}
+{"build_type":"workflow","status":"built","html_url":"https://alfred.luminik.io/"}
 ```
 
 If the page shows the README instead of this Starlight site, switch Pages to
@@ -50,13 +50,13 @@ has the branch-built page cached.
 For a branded URL, prefer:
 
 ```text
-https://alfred-os.luminik.io/
+https://alfred.luminik.io/
 ```
 
-In Cloudflare, add a DNS-only `CNAME` from `alfred-os.luminik.io` to
+In Route53, add a `CNAME` from `alfred.luminik.io` to
 `luminik-io.github.io`, set the same custom domain in GitHub Pages, then set
-`ALFRED_OS_SITE_URL=https://alfred-os.luminik.io` and
+`ALFRED_OS_SITE_URL=https://alfred.luminik.io` and
 `ALFRED_OS_SITE_BASE=/`.
 
-Keep the project URL for the first launch unless you specifically want to spend
-launch-day attention on DNS and certificate propagation.
+GitHub can take a few minutes to issue the TLS certificate. Keep HTTPS
+unenforced until GitHub reports the certificate is ready.
