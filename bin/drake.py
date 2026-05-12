@@ -259,6 +259,7 @@ def main() -> int:
         timeout=1800,  # 30 min cap; Drake reads + greps + creates, no compile
         codex_timeout=1800,
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+        codex_bypass_approvals_and_sandbox=True,
         codex_add_dirs=[WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
     )
