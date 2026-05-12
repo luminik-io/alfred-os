@@ -270,6 +270,7 @@ def test_lucius_unknown_author_trust_moves_issue_out_of_queue(monkeypatch):
     assert "does not starve the implement queue" in comments[0][0][2]
     assert events.items[0][1]["outcome"] == "blocked-author-trust-unavailable"
     assert "Moved to needs:human-scope" in posts[0][0][0]
+    assert "maintainer" not in posts[0][0][0]
 
 
 def test_lock_pid_identity_requires_matching_metadata(monkeypatch, tmp_path):
