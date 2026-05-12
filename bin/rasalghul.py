@@ -478,7 +478,6 @@ Ship-ready: yes / no - <one sentence>
         timeout=900,
         codex_timeout=900,
         codex_sandbox="read-only",
-        codex_bypass_approvals_and_sandbox=True,
         codex_add_dirs=[tmp, WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
     )
