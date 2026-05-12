@@ -148,7 +148,7 @@ To add a role not in the default set (e.g., `arsenal` for "deploy-time security 
 
 The existing primitives in `lib/agent_runner.py` cover the common patterns: lock, preflight, spend, gh, slack, claim/release, claude_invoke, event log. Read [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md) before writing the script.
 
-## Roadmap categories (not in v0.1)
+## Roadmap categories (post-v0.2)
 
 The default install is engineering-only. Future categories tracked in [`ROADMAP.md`](../ROADMAP.md):
 
@@ -158,7 +158,7 @@ The default install is engineering-only. Future categories tracked in [`ROADMAP.
 - **Finance-ops agents** — invoice generation, bank reconciliation, subscription audit. Generates drafts; never moves money.
 - **Product-ops / SRE agents** — uptime monitoring, release notes, customer-health signals.
 
-These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are out of scope for v0.1. PRs that propose individual agents in these categories are welcome; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are out of scope for the v0.2 engineering release. PRs that propose individual agents in these categories are welcome; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ## Inspect and gate
 

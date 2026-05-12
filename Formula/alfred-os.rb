@@ -63,7 +63,10 @@ class AlfredOs < Formula
         2. exec $SHELL                     # pick up ~/.alfredrc
         3. gh auth login                   # GitHub
         4. claude                          # Claude Code first-run auth
-        5. alfred-deploy && alfred-doctor
+        5. alfred-init                     # configure agents, deploy, run doctor
+
+      Framework-only smoke test:
+        alfred-deploy && alfred-doctor
 
       Docs:
         https://luminik-io.github.io/alfred-os

@@ -52,7 +52,7 @@ The default install ships a working engineering agent fleet. After `bash install
 
 ## Future categories (post-v0.2, out of scope today)
 
-These are agent categories the framework supports in principle but the v0.1 release ships zero of. Each requires its own integration surface and is bigger than a single PR. Tracked here so contributors know where to slot proposals.
+These are agent categories the framework supports in principle but the v0.2 engineering release ships zero of. Each requires its own integration surface and is bigger than a single PR. Tracked here so contributors know where to slot proposals.
 
 - **Sales / SDR agents**: prospect identification, LinkedIn / event-page scraping, outreach drafts. Human-in-the-loop on send.
 - **Content agents**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.

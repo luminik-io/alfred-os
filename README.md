@@ -10,6 +10,18 @@ A local engineering-fleet runtime: launchd-managed Claude Code-first agents on a
 
 Docs site: https://luminik-io.github.io/alfred-os
 
+## Why use it
+
+Alfred-OS is for the operator who wants a small agent fleet working while they
+sleep without turning their product into a hosted agent platform.
+
+- Label a GitHub issue, then let a narrow codename agent draft the plan, write
+  the code, open the PR, review the PR, or fix review comments.
+- Run on your own always-on Mac and your own Claude Code subscription. No
+  hosted scheduler, no shared queue, no API-key-only model gateway.
+- Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
+  report, hard spend caps, and an explicit GitHub state machine.
+
 ## Relationship to Hermes
 
 alfred-os core does not install or run a separate Hermes agent process. The
@@ -159,7 +171,7 @@ See [Architecture → Codename pattern](https://luminik-io.github.io/alfred-os/c
 
 ## Status
 
-**v0.2.0**. Public release candidate for a complete local engineering-agent fleet. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
+**v0.2.0**. Complete local engineering-agent fleet for one operator. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
 
 Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design constraints (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed; PRs that broaden scope get politely declined.
 
