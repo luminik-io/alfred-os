@@ -49,7 +49,7 @@ jobs:
       # Set repo variable ALFRED_OS_PUBLISH_PAGES=true when the site is ready to publish.
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
 
