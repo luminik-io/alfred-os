@@ -111,7 +111,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   warn "Linux support requires a systemd port; tracked but not yet shipped."
   warn "If you want to proceed anyway, set ALFRED_FORCE_LINUX=1."
   if [[ "${ALFRED_FORCE_LINUX:-}" != "1" ]]; then
-    die "Refusing to install on non-macOS host. See docs/LINUX.md (when it lands)."
+    die "Refusing to install on non-macOS host. See docs/LINUX.md."
   fi
 fi
 ok "macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown')"

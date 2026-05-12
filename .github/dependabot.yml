@@ -7,7 +7,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "07:00"
-      timezone: "Europe/Oslo"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     labels:
       - "deps"
@@ -23,7 +23,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "07:00"
-      timezone: "Europe/Oslo"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     labels:
       - "deps"
@@ -39,7 +39,7 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "07:00"
-      timezone: "Europe/Oslo"
+      timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     labels:
       - "deps"

@@ -14,10 +14,10 @@ Provides the primitives every codename agent needs:
 - ``slack_post()`` — webhook-based Slack notification with disk caching.
 - ``ensure_labels()`` / ``gh_pr_create()`` / ``gh_issue_*()`` — gh CLI wrappers.
 
-Consumers (e.g. luminik-io/alfred) write a thin role runner such as
-``bin/lucius.py`` or ``bin/huntress.py`` that imports from this module,
-declares a ``PreflightSpec``, and calls ``claude_invoke()``. The runner does
-no LLM-orchestration work itself; all
+Consumers write a thin role runner such as ``bin/lucius.py`` or
+``bin/huntress.py`` that imports from this module, declares a
+``PreflightSpec``, and calls ``claude_invoke()``. The runner does no
+LLM-orchestration work itself; all
 real work happens inside a CLI subprocess against the operator's configured
 Claude Code subscription, optional Codex login, or any wrapper binary they
 configure.
@@ -254,8 +254,7 @@ GH_REPO_TO_LOCAL: dict[str, str] = {}
 #
 # Without these defaults, the first PR-create call against a fresh repo
 # would fail with "could not add label" and return None silently; the
-# operator then got "PR open failed" with no breadcrumb. (Same root
-# cause as luminik-io/alfred Issue #142.)
+# operator then got "PR open failed" with no breadcrumb.
 STANDARD_LABELS: list[tuple[str, str, str]] = [
     (
         "batman-pr-open",
@@ -909,7 +908,11 @@ class AgentLock:
             try:
                 old_pid = int(pid_file.read_text().strip())
                 os.kill(old_pid, 0)
-                identity_status = lock_pid_identity_status(self._lock_dir, old_pid)
+                identity_status = lock_pid_identity_status(
+                    self._lock_dir,
+                    old_pid,
+                    expected_agent=self.name,
+                )
                 if identity_status is True:
                     return False
                 lock_age = self._lock_age_seconds()
@@ -1600,8 +1603,8 @@ def claude_invoke_streaming(
 ) -> ClaudeResult:
     """Streaming counterpart of :func:`claude_invoke`. Same return shape.
 
-    The full implementation in the alfred reference fleet pipes
-    ``--output-format stream-json`` through a parser that writes a
+    A full streaming implementation can pipe ``--output-format stream-json``
+    through a parser that writes a
     per-firing JSONL transcript to
     ``${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``
     so post-hoc tool / skill aggregation works in downstream fleet CLIs.
@@ -1960,6 +1963,7 @@ def gh_pr_create(
     head: str | None = None,
     labels: list[str] | None = None,
     base: str = "main",
+    draft: bool = False,
 ) -> str | None:
     """Open a PR. Pre-ensures labels exist. Returns PR URL or None on failure.
 
@@ -2013,6 +2017,8 @@ def gh_pr_create(
     ]
     if head:
         cmd.extend(["--head", head])
+    if draft:
+        cmd.append("--draft")
     for label in labels or []:
         cmd.extend(["--label", label])
     res = run(cmd, timeout=60)
@@ -2717,7 +2723,12 @@ def pid_start_key(pid: int) -> str:
     return res.stdout.strip() if res.returncode == 0 else ""
 
 
-def lock_pid_identity_status(lock_dir: Path, pid: int) -> bool | None:
+def lock_pid_identity_status(
+    lock_dir: Path,
+    pid: int,
+    *,
+    expected_agent: str | None = None,
+) -> bool | None:
     metadata_file = lock_dir / "metadata.json"
     if not metadata_file.exists():
         return None
@@ -2726,6 +2737,8 @@ def lock_pid_identity_status(lock_dir: Path, pid: int) -> bool | None:
     except (OSError, json.JSONDecodeError):
         return None
     if metadata.get("pid") != pid:
+        return False
+    if expected_agent is not None and metadata.get("agent") != expected_agent:
         return False
     expected_start = metadata.get("pid_start_key")
     if not expected_start:
@@ -2736,8 +2749,13 @@ def lock_pid_identity_status(lock_dir: Path, pid: int) -> bool | None:
     return actual_start == expected_start
 
 
-def lock_pid_identity_matches(lock_dir: Path, pid: int) -> bool:
-    return lock_pid_identity_status(lock_dir, pid) is True
+def lock_pid_identity_matches(
+    lock_dir: Path,
+    pid: int,
+    *,
+    expected_agent: str | None = None,
+) -> bool:
+    return lock_pid_identity_status(lock_dir, pid, expected_agent=expected_agent) is True
 
 
 def short(text: str, n: int = 300) -> str:
@@ -2747,10 +2765,10 @@ def short(text: str, n: int = 300) -> str:
 
 # ---------- Shared-agent brain helpers (additive, opt-in per agent) ----------
 #
-# These wrap the ported agentic-stack brain at ~/.hermes/shared/.agent/.
-# Existing agents work unchanged; new (or freshly-patched) agents can opt in
-# with one line each. See alfred:agents/engineering/SHARED_AGENT_INTEGRATION.md
-# for the per-agent integration contract.
+# These wrap an optional shared-agent brain mounted at ~/.hermes/shared/.agent/.
+# Existing agents work unchanged; new agents can opt in with one line each.
+# The brain is intentionally external to alfred-os so public installs stay
+# small and dependency-light.
 
 SHARED_AGENT = HERMES_HOME / "shared" / ".agent"
 
@@ -2899,8 +2917,8 @@ def assemble_shared_context(intent: str, budget: int = 16000) -> str:
 # without mounting the harness path itself. Every helper swallows
 # exceptions: a broken stream must NEVER take down a working agent.
 #
-# See shared/.agent/harness/event_stream.py in the private reference fleet for the
-# Event/EventStream contract and the type vocabulary.
+# If your fleet mounts a shared brain, its event_stream.py module owns the
+# Event/EventStream contract and type vocabulary.
 
 
 def emit(event_type: str, **payload) -> None:

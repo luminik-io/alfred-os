@@ -1,12 +1,8 @@
 class AlfredOs < Formula
   desc "Launchd-managed Claude Code agent fleet for solo founders"
   homepage "https://luminik-io.github.io/alfred-os"
-  # NOTE: bump `version`, `url`, and `sha256` on every release. The release
-  # workflow at .github/workflows/release.yml prints the tarball sha256 to the
-  # job log when a tag is pushed; copy it here.
-  version "0.1.0"
-  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "REPLACE_ME_AFTER_FIRST_RELEASE"
+  # HEAD-only until the first public tag is cut. The release workflow prints
+  # the source tarball sha256; add url/sha256 here before publishing a tap.
   license "MIT"
   head "https://github.com/luminik-io/alfred-os.git", branch: "main"
 
@@ -50,6 +46,8 @@ class AlfredOs < Formula
         alfred-hermes-claude   # swap between Claude Code accounts
         alfred-label-state     # operator CLI for the issue claim state machine
 
+      This formula is HEAD-only until the first public release tarball exists.
+
       Next steps:
         1. alfred-install
         2. exec $SHELL                     # pick up ~/.alfredrc
@@ -65,9 +63,8 @@ class AlfredOs < Formula
   end
 
   test do
-    # Smoke: VERSION matches the formula version, lib/ is intact, doctor.sh
-    # at least executes (it'll exit clean against an empty fleet).
-    assert_equal version.to_s, File.read("#{libexec}/VERSION").strip
+    # Smoke: lib/ is intact and doctor.sh at least executes. It exits clean
+    # against an empty fleet.
     assert_predicate libexec/"lib/agent_runner.py", :exist?
     assert_match(/passed/, shell_output("bash #{libexec}/bin/doctor.sh"))
   end

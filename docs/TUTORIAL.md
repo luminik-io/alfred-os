@@ -202,7 +202,7 @@ Within ~10 seconds you should see:
 
 Look at the issue in GitHub: there's a new comment from your gh user, the `agent:in-flight` label was added then replaced with `agent:done`, and three structured comments are visible in the issue: claim, release, and the actual summary.
 
-Look at `#alfred` in Slack: there's the success message.
+Look at your configured fleet channel in Slack: there's the success message.
 
 ## Step 7: confirm dedup actually works
 
@@ -232,11 +232,11 @@ launchctl bootstrap "gui/$(id -u)" \
   ~/Library/LaunchAgents/my.fleet.echo.plist
 ```
 
-Or, when you've installed the operator-facing CLI from the reference fleet, just:
+Or wrap the same `launchctl` calls if you want operator-facing helper commands:
 
 ```sh
-alfred pause echo
-alfred resume echo
+pause-agent echo
+resume-agent echo
 ```
 
 ## What you just learned
@@ -254,7 +254,7 @@ Every framework primitive Echo uses scales up to a richer agent without changing
 - `slack_post(text, severity=)`: webhook post with severity routing.
 - `EventLog`: per-firing JSONL audit log.
 
-For richer agents (write code, open PRs, multi-step prompts, max-turns resume), see [`examples/bin/`](../examples/bin/) and the reference fleet at [`luminik-io/alfred`](https://github.com/luminik-io/alfred).
+For richer agents (write code, open PRs, multi-step prompts, max-turns resume), see [`examples/bin/`](../examples/bin/) and the shipped runners under [`bin/`](../bin/).
 
 ## Next steps
 

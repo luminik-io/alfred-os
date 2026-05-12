@@ -22,7 +22,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "\n".join(
             [
                 "WORKSPACE_ROOT=$HOME/work space",
-                "OPERATOR_NAME=Prasad Subrahmanya",
+                "OPERATOR_NAME=Example Operator",
                 "export GH_ORG=acme",
                 "",
             ]
@@ -51,7 +51,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     data = json.loads(capture.read_text())
     assert data == {
         "workspace": f"{home}/work space",
-        "operator": "Prasad Subrahmanya",
+        "operator": "Example Operator",
         "gh_org": "acme",
     }
 

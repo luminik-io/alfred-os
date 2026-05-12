@@ -4,7 +4,7 @@ End-to-end setup for consuming alfred-os as the framework for your own launchd-m
 
 The fleet runs on a single always-on macOS host. A Mac Mini works. An old laptop with the lid open works. Not a server-class deployment.
 
-> Want the faster path? [`INSTALL.md`](INSTALL.md) is the from-zero TL;DR (~30 minutes, mostly automated by `install.sh`). Use BOOTSTRAP for per-agent IAM, hermes-agent integration, and troubleshooting.
+> Want the faster path? [`INSTALL.md`](INSTALL.md) is the from-zero TL;DR (~30 minutes, mostly automated by `install.sh`). Use BOOTSTRAP for per-agent IAM, Slack, first fleet configuration, and troubleshooting.
 
 > Rendered docs: [https://luminik-io.github.io/alfred-os](https://luminik-io.github.io/alfred-os).
 
@@ -26,8 +26,8 @@ Pro gives a few thousand turns per week against `claude -p`. Max raises the ceil
 ## 1. Clone and pick paths
 
 ```sh
-git clone https://github.com/<your-org>/<your-fleet-repo>.git ~/code/fleet
-cd ~/code/fleet
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
 ```
 
 Two environment variables drive every path. Set them in `~/.zshrc` (or your shell rc):
@@ -109,23 +109,17 @@ Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` if you keep secrets under a 
 
 The runtime caches the webhook at `$HERMES_HOME/state/slack-webhook.cache` with a 30-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner.py`](lib/agent_runner.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
 
-## 4. Hermes-agent (canon + optional scheduler + ACP)
+## 4. Configure the fleet
 
-Alfred-OS-driven fleets typically use [hermes-agent](https://github.com/NousResearch/hermes-agent) for three things:
-
-- **optional scheduler**: non-engineering departments may still use Hermes cron. The engineering fleet in this repo runs via launchd.
-- **canon**: shared writing-style and voice rules pulled in by every agent prompt.
-- **ACP** (Agent Control Protocol): the `#your-fleet-channel` Slack thread response surface (yes/no buttons, structured replies). Used by the personal-assistant and content departments more than engineering.
-
-Install hermes-agent per its README, then verify:
+Run the public wizard. It chooses which agents are enabled, which repos they watch, their codenames, schedules, Slack config, and optional AWS profile settings.
 
 ```sh
-hermes --version
+./bin/alfred-init.py
 ```
 
-Engineering agents in this repo run via launchd and do **not** require Hermes for their core loop. The non-engineering departments (content, sales, personal-assistant) use it as their scheduler.
+The wizard writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, and runs `bash bin/doctor.sh`.
 
-## 5. Deploy
+If you only want a framework-only deploy with no scheduled agents yet, skip the wizard and run:
 
 ```sh
 bash deploy.sh
@@ -141,8 +135,6 @@ Expected output:
   - my.fleet.nightwing
   - my.fleet.rasalghul
   - my.fleet.bane
-  - my.fleet.nightowl
-  ...
 [deploy] active jobs:
 -	0	my.fleet.lucius
 -	0	my.fleet.nightwing
@@ -151,7 +143,7 @@ Expected output:
 
 The script copies `lib/agent_runner.py` to `$HERMES_HOME/lib`, every regular file in `bin/` to `$HERMES_HOME/bin`, renders `launchd/_template.plist` for each entry in `launchd/agents.conf` and copies the result to `~/Library/LaunchAgents`, then re-loads each plist via `launchctl bootout` + `launchctl bootstrap`.
 
-## 6. Verify the host with `doctor.sh`
+## 5. Verify the host with `doctor.sh`
 
 Before firing any agent, sanity-check that every agent's preflight passes on this host:
 
@@ -166,19 +158,14 @@ doctor: checking configured agents
         HERMES_HOME=/Users/<you>/.hermes
         WORKSPACE_ROOT=/Users/<you>/code
 
-  agent-cleanup                  ✅ ok
-  agent-morning-brief            ✅ ok
-  my-deps-bot                    ✅ ok
-  ...
   drake                          ✅ ok
-  nightowl                       ✅ ok
   lucius                         ✅ ok
-  ...
+  rasalghul                      ✅ ok
 
-doctor: 14 passed, 0 failed
+doctor: 3 passed, 0 failed
 ```
 
-Any failure prints the `[<AGENT>-PREFLIGHT-FAILED]` block naming each gap: missing env var, missing CLI binary, dead AWS profile, expired `gh auth`, missing repo checkout. Fix and re-run until you see 14 passed.
+Any failure prints the `[<AGENT>-PREFLIGHT-FAILED]` block naming each gap: missing env var, missing CLI binary, dead AWS profile, expired `gh auth`, missing repo checkout. Fix and re-run until every configured agent passes. A framework-only deploy with no `agents.conf` reports `0 passed, 0 failed`.
 
 `HERMES_DOCTOR=1` is the env var the agents themselves check; `doctor.sh` sets it and invokes every agent. You can also run a single agent in doctor mode:
 
@@ -187,9 +174,9 @@ HERMES_DOCTOR=1 ~/.hermes/bin/lucius.py
 # [LUCIUS-DOCTOR-OK]
 ```
 
-This is also the right command after you rotate AWS keys, refresh `aws sso login`, swap Claude account via `hermes-claude swap`, or change anything in IAM policy: re-run `doctor.sh` and confirm 14 passed.
+This is also the right command after you rotate AWS keys, refresh `aws sso login`, swap Claude account via `hermes-claude swap`, or change anything in IAM policy: re-run `doctor.sh` and confirm every configured agent passes.
 
-## 7. First firing: dry run
+## 6. First firing: dry run
 
 The plists ship with `RunAtLoad = false`, so deploying does not immediately fire any agent. To test a single agent without it shipping a PR:
 

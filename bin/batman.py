@@ -26,7 +26,7 @@ Wiring:
   - Honours the fleet enable file: if ``batman`` is not enabled there,
     the runner exits early with a one-line stderr note.
 
-Backport of luminik-io/alfred PR #115 + PR #127. Skeleton-only — the
+Backport from the predecessor fleet's Batman bundle workflow. Skeleton-only — the
 operator can extend the per-repo execution chain to taste.
 """
 

@@ -11,7 +11,7 @@ The framework's scheduling layer. Three files, fully documented.
 
 ## `agents.conf` format
 
-Each non-comment, non-blank line is a record with five tab-separated fields:
+Each non-comment, non-blank line is a record with up to six tab-separated fields:
 
 | Field | What |
 |---|---|
@@ -20,14 +20,15 @@ Each non-comment, non-blank line is a record with five tab-separated fields:
 | 3. schedule | one of: `interval:<seconds>` / `cron:<HH>:<MM>` (daily) / `cron:<weekday>:<HH>:<MM>` (weekly; 0=Sun) |
 | 4. needs_java | `yes` or `no`. `yes` prepends openjdk@21 + fnm bins to PATH and sets JAVA_HOME |
 | 5. log_stem | basename used for `/tmp/<stem>.{stdout,stderr}`. Empty falls back to label |
+| 6. role | one-line operational descriptor surfaced in `alfred agents` and Slack post prefixes |
 
 Example:
 
 ```
-my.fleet.lucius	lucius.py	interval:1200	yes
-my.fleet.bane	bane.py	cron:2:00	yes
-my.fleet.gordon	gordon.py	cron:8:00	no
-my.fleet.weekly-cleanup	cleanup.py	cron:0:21:00	no
+my.fleet.lucius	lucius.py	interval:1200	yes			Feature developer
+my.fleet.bane	bane.py	cron:2:00	yes			Test coverage
+my.fleet.gordon	gordon.py	cron:8:00	no			Deploy health
+my.fleet.weekly-cleanup	cleanup.py	cron:0:21:00	no	my.fleet.cleanup	Weekly cleanup
 ```
 
 Tabs are required between fields. Trailing empty fields can be omitted.
@@ -50,6 +51,7 @@ Tabs are required between fields. Trailing empty fields can be omitted.
 | `__HOME__` | `$HOME` at render time |
 | `__LOG_STEM__` | `agents.conf` field 5 (or label if empty) |
 | `__AGENT_SHORT__` | label suffix, rendered as `AGENT_CODENAME` |
+| `__AGENT_ROLE_BLOCK__` | `ALFRED_<CODENAME>_ROLE` env var rendered from field 6 when present |
 
 `launchd` does not source shell rc files. The rendered plist calls
 `agent-launch`, which sources `~/.alfredrc` at firing time and then execs the
@@ -67,7 +69,7 @@ agent script from `$HERMES_HOME/bin`.
 Pause persists across `deploy.sh` invocations via marker files at `$HERMES_HOME/state/_paused/<short-name>` (where `short-name` is the label minus the `<prefix>.` prefix).
 
 ```sh
-# Manual (the reference fleet wraps this in `alfred pause <agent>`):
+# Manual pause:
 launchctl bootout "gui/$(id -u)/my.fleet.lucius"
 mkdir -p $HERMES_HOME/state/_paused
 date -u +"%Y-%m-%dT%H:%M:%SZ" > $HERMES_HOME/state/_paused/lucius

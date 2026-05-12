@@ -69,7 +69,7 @@ SMOKE_EMAIL=$(echo "$SECRET" | python3 -c "import json,sys; print(json.load(sys.
 SMOKE_PASSWORD=$(echo "$SECRET" | python3 -c "import json,sys; print(json.load(sys.stdin)['password'])")
 ```
 
-If the secret is missing or malformed: post to `#alfred` and exit `[POST-DEPLOY-SMOKE-BLOCKED] missing test account secret`.
+If the secret is missing or malformed: post to the configured Slack channel and exit `[POST-DEPLOY-SMOKE-BLOCKED] missing test account secret`.
 
 ### Step 3: Run Playwright
 

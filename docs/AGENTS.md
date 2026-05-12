@@ -7,7 +7,7 @@ The agents shipped in alfred-os are engineering-focused. Each is a narrow specia
 ```mermaid
 flowchart LR
     subgraph operator[Operator]
-        slack["#alfred Slack"]
+        slack["configured Slack channel"]
         ops_cli["alfred CLI"]
     end
 
@@ -168,7 +168,5 @@ bash deploy.sh                # sync bin/lib; render + bootstrap if agents.conf 
 bash bin/doctor.sh            # preflight configured Python agents
 ```
 
-The private reference fleet has richer `status`, `logs`, `pause`, `resume`,
-`run`, and metrics commands. They are not part of the public CLI yet. For
-issue-claim operator overrides, copy or wrap `examples/bin/label_state.py`
+For issue-claim operator overrides, copy or wrap `examples/bin/label_state.py`
 in your own fleet.

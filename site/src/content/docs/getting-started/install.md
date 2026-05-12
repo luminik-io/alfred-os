@@ -14,10 +14,10 @@ bash install.sh
 exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
-bash deploy.sh && bash bin/doctor.sh
+./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-You should see `0 passed, 0 failed` from doctor on a clean install. The framework is ready; you haven't pointed any codename agents at it yet.
+`alfred-init.py` writes the fleet config, runs deploy, and runs doctor. For a framework-only install with no agents configured, run `bash deploy.sh && bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
 
 ## What `install.sh` does
 
@@ -36,6 +36,7 @@ What it does **not** do (deliberately):
 
 - Authenticate `gh` / `aws` / `claude`. Interactive flows you should see.
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
+- Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
 
 ## Non-interactive

@@ -17,7 +17,7 @@ The maintainer responds "go ahead" or "not now, here's why." Don't write the pro
 
 ## Changing a prompt
 
-Prompts in `agents/<dept>/prompts/*.md` are the canonical source. After editing a prompt, redeploy the fleet so the live `$HERMES_HOME` copy and rendered launchd jobs match the repo:
+Prompts in `prompts/*.md` are examples for the shipped agent roles. Operators can also keep fleet-specific prompts in `$HERMES_HOME/prompts/<codename>.md`. After editing a prompt that a scheduled agent reads, redeploy the fleet so the live `$HERMES_HOME` copy and rendered launchd jobs match the repo:
 
 ```sh
 bash deploy.sh
@@ -49,13 +49,21 @@ Body explains why, not what. The diff already shows what.
 
 ## Testing changes to the runtime library
 
-`infra/agents/lib/agent_runner.py` is shared by every agent. Test changes by:
+`lib/agent_runner.py` is shared by every agent. Test changes by:
 
 1. Editing the lib in this repo.
-2. Running `bash infra/agents/deploy.sh` (it's idempotent).
-3. Firing the smallest agent that exercises the changed code path. Bat-Signal is good for `slack_post` changes; Bane is good for spend-state changes; Lucius for `make_worktree` changes.
+2. Running `bash deploy.sh` (it's idempotent).
+3. Running the local checks:
 
-No formal test suite. The runtime is short enough to read end-to-end. Production firings are the integration test.
+```sh
+uv run --with pytest pytest tests/
+uv run --with 'ruff>=0.6' ruff check .
+uv run --with 'ruff>=0.6' ruff format --check .
+uv run --with 'mypy>=1.10' mypy lib/
+bash bin/scrub-check.sh
+```
+
+4. Firing the smallest agent that exercises the changed code path. `hello.py` is good for `slack_post` changes; Bane is good for spend-state changes; Lucius for `make_worktree` changes.
 
 ## OSS-readiness pass
 

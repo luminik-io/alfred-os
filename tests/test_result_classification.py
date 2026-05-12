@@ -113,7 +113,7 @@ def test_extra_usage_envelope_with_is_error_classified() -> None:
         "stop_reason": "stop_sequence",
         "num_turns": 1,
         "total_cost_usd": 0.0,
-        "result": "You're out of extra usage · resets 5:50pm (Europe/Oslo)",
+        "result": "You're out of extra usage · resets 5:50pm (UTC)",
     }
     r = _build_claude_result(raw)
     assert r.success is False

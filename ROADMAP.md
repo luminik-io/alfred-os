@@ -4,10 +4,10 @@ What's shipped, what's next, what's deliberately out of scope. Living doc; updat
 
 ## Shipped (v0.1.0)
 
-The default install ships a working engineering agent fleet. After `bash install.sh && alfred init`, an operator has:
+The default install ships a working engineering agent fleet. After `bash install.sh && ./bin/alfred-init.py`, an operator has:
 
 **Substrate**
-- `lib/agent_runner.py`: preflight, lock, spend, claude_invoke, gh, slack, event-log, commit-trailer.
+- `lib/agent_runner.py`: preflight, lock, spend, Claude/Codex engine adapters, gh, slack, event-log, commit-trailer.
 - Issue claim state machine: `agent:in-flight` → `agent:pr-open` → `agent:done` with race resolution + stale-claim sweep.
 - Slack severity routing: `info` / `warn` / `alert`.
 - launchd plist template + render.sh + agents.conf format.
@@ -28,8 +28,9 @@ The default install ships a working engineering agent fleet. After `bash install
 - `agent-morning-brief`, `fleet-recap`: Slack digest cron.
 
 **Operator surface**
-- `alfred init`: interactive installer wizard (Slack webhook, AWS choice, agent selection, per-role codename, repo selection).
-- `alfred` CLI: `status / logs / metrics / pause / resume / run / doctor / deploy / claim / release / dedup-check / status-issue / repo / sweep-claims / install-hooks`.
+- `alfred-init`: interactive installer wizard (Slack webhook, AWS choice, agent selection, per-role codename, repo selection).
+- `alfred` CLI: `agents / enable / disable / enabled-agents / engine status / engine set`.
+- Example state-machine CLI (`examples/bin/label_state.py`): `claim / release / dedup-check / status-issue / repo / sweep-claims`.
 - Pre-push git hook (`examples/git-hooks/pre-push`): refuses pushes that race in-flight agents.
 
 **Project hygiene**
@@ -37,11 +38,11 @@ The default install ships a working engineering agent fleet. After `bash install
 - Release automation (tag → GitHub release with auto-extracted changelog notes + brew sha256).
 - Code of conduct, security policy, support, issue templates, PR template, dependabot.
 - Astro Starlight docs site at `luminik-io.github.io/alfred-os` (env-overridable for custom domains).
-- Brew formula skeleton.
+- HEAD-only Brew formula until the first public release tarball has a checksum.
 
 ## In flight (v0.2)
 
-- **Bot token integration** (`xoxb-…`): unlocks `slack_set_channel_topic()` for fleet status, `chat.postMessage` with `thread_ts` for daily-thread routing of `info`-tier messages, reactions API for ack-without-replying.
+- **Bot token operations**: `lib/slack_format.py` already supports threaded Block Kit messages when a bot token is configured. Follow-up work: `slack_set_channel_topic()` for fleet status, reactions API for ack-without-replying, and a documented daily-thread routing policy.
 - **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues for the same work"; complements the issue-claim state machine which catches "two actors on the same issue."
 - **`claim_pr` / `release_pr`**: extend the state machine to PR-level work (review-fix agents that race to land patches on the same PR).
 - **`render-systemd.sh`**: first-class Linux scheduling. See [`docs/LINUX.md`](docs/LINUX.md).
@@ -77,7 +78,7 @@ Not bugs. Design decisions.
 - **Multi-tenant.** One operator, one Mac, one config.
 - **Web UI.** Slack is the human surface.
 - **Long-running orchestration loop.** Cron is the orchestrator. Long-running Python has worse failure isolation.
-- **LLM routing / model selection at the framework layer.** Claude Code does this.
+- **Hosted LLM gateway.** Alfred-OS has local CLI engine adapters and simple per-agent engine selection; it does not run a hosted inference service.
 - **Browser automation built in.** If your fleet needs a browser, install Playwright in your codename's bin script.
 - **Vector DB for memory.** A doc-shaped memory layer is the operator's choice. The framework doesn't ship one.
 - **Anything Anthropic ships natively.** Agent Teams, Memory Tool, MCP server registry: when those mature, lean on them rather than re-implement.

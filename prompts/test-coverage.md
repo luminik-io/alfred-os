@@ -108,7 +108,7 @@ Set terminal `workdir` to `${WT}`. Timeout 600 (gradle is slow).
 Parse JSON result:
 - `subtype: "success"` → continue.
 - `subtype: "error_max_turns"` → check if a commit landed; if yes, continue; if no, abort.
-- Other error → abort, post to `#alfred`, cleanup.
+- Other error → abort, post to the configured Slack channel, cleanup.
 
 Check `/tmp/${AGENT_CODENAME}-bug.txt` — if Claude wrote a bug there:
 - File a GitHub issue in the same repo with labels `bug` + `needs:triage` (the bug-triage agent will pick it up).
@@ -187,8 +187,8 @@ Invoke each via the `Skill` tool. Each costs a few turns; pick deliberately.
 ## Escalation
 
 - Test exposes a real bug → file an issue with `bug` + `needs:triage`, no PR.
-- Coverage report file missing or unparseable → post to `#alfred`, exit (operations territory).
-- Pre-push gate fails for unrelated reasons → don't push, post to `#alfred`.
+- Coverage report file missing or unparseable → post to the configured Slack channel, exit (operations territory).
+- Pre-push gate fails for unrelated reasons → don't push, post to the configured Slack channel.
 
 ## What this agent does NOT do
 

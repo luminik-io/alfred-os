@@ -76,7 +76,7 @@ Look at the issue on GitHub:
 - The `agent:in-flight` label briefly appeared, then was replaced with `agent:done`.
 - Three structured comments: claim, release, and the actual summary.
 
-Check `#alfred` (or your channel) in Slack: the success message is there.
+Check your configured fleet channel in Slack: the success message is there.
 
 ## 7. Confirm dedup actually works
 
@@ -103,7 +103,7 @@ Every framework primitive Echo uses scales up to a richer agent without changing
 - `slack_post(text, severity=)`: webhook post with [severity routing](/alfred-os/concepts/severity-routing/).
 - `EventLog`: per-firing JSONL audit log.
 
-For richer agents (write code, open PRs, multi-step prompts, max-turns resume), see the reference fleet at [`luminik-io/alfred`](https://github.com/luminik-io/alfred) and the runners under `bin/`.
+For richer agents (write code, open PRs, multi-step prompts, max-turns resume), see the shipped runners under `bin/` and the examples in `examples/bin/`.
 
 ## Next
 

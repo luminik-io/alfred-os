@@ -203,8 +203,8 @@ def test_home_channel_batman_approval_alias_wins_over_slack_home(monkeypatch):
     import slack_format as sf
 
     monkeypatch.setenv("SLACK_HOME_CHANNEL", "fleet-ops")
-    monkeypatch.setenv("BATMAN_APPROVAL_CHANNEL", "#alfred-approvals")
-    assert sf._home_channel() == "alfred-approvals"
+    monkeypatch.setenv("BATMAN_APPROVAL_CHANNEL", "#fleet-approvals")
+    assert sf._home_channel() == "fleet-approvals"
 
 
 def test_truncate_aggressive_with_marker():
