@@ -3,7 +3,7 @@
 #
 # What this script does (idempotent — safe to re-run):
 #   1. Checks macOS (the framework currently runs on launchd; Linux users
-#      should follow docs/LINUX.md when it lands).
+#      should follow docs/LINUX.md for the current limitations).
 #   2. Installs Homebrew if missing.
 #   3. Installs the CLI tools every alfred-os fleet needs: python@3.11, git,
 #      gh, jq, awscli, uv (fast Python runner used by the test suite).

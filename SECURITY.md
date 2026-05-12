@@ -4,7 +4,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.** Report privately so we can patch before disclosure.
 
-Preferred: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) on this repository. Backup: email the maintainer listed in `pyproject.toml` `[project] authors`.
+Preferred: open a [private security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) on this repository. Do not include exploit details in public issues, PRs, or discussions.
 
 Acknowledgement target: 72 hours. Patch (or documented trade-off) target for critical / high severity: 14 days.
 
@@ -54,4 +54,4 @@ For consumer fleets running alfred-os in production:
 
 ## Disclosure history
 
-No vulnerabilities have been disclosed yet (project is at v0.1.0). Previous disclosures will be listed here with links to the GitHub Security Advisory.
+No vulnerabilities have been disclosed yet. Previous disclosures will be listed here with links to the GitHub Security Advisory.

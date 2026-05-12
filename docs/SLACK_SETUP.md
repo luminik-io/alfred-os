@@ -1,6 +1,8 @@
 # Slack setup
 
-Alfred-OS posts agent reports to a Slack channel via an **incoming webhook**. This doc covers creating the Slack app, getting the webhook URL, and (optionally) provisioning a bot token for richer integration later.
+Alfred-OS posts simple agent reports via an **incoming webhook**. Agents that
+use `lib/slack_format.py` can also post Block Kit firing threads via an
+optional Slack bot token. This doc covers both paths.
 
 If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in your environment (or in AWS Secrets Manager; see below). Skip to [§ Wiring it up](#wiring-it-up).
 
@@ -8,10 +10,13 @@ If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in yo
 
 - A Slack app named `<your-fleet>-bot` in the workspace where you want the channel.
 - An **incoming webhook URL** scoped to one channel (e.g. `#fleet`, `#dev-bots`, `#engineering-agents`).
-- *(Optional)* a **bot token** (`xoxb-…`) for things webhooks can't do: channel-topic updates, threaded replies, slash commands.
+- *(Optional)* a **bot token** (`xoxb-...`) for Block Kit firing threads and
+  other Web API calls webhooks cannot do.
 - *(Optional)* an **app-level token** (`xapp-1-…`) for Socket Mode if you want to receive interactive messages back.
 
-The framework needs only the webhook URL today. Bot/app tokens are for features tracked in follow-ups.
+The webhook URL is enough for plain `slack_post()` messages. The bot token is
+used today by `firing_thread_root`, `firing_thread_reply`, and
+`firing_thread_close` in `lib/slack_format.py`.
 
 ## 1. Create the Slack app
 
@@ -118,8 +123,8 @@ slack_post("Staging deploy drifted from main", severity="alert")  # 🚨 + <!her
 
 Required when you want to:
 
-- Update the channel topic from the fleet's `fleet-recap` (e.g. "Lucius: 17 ✅ / 3 ❌ today").
-- Post threaded replies (so daily-thread routing for `info`-tier messages becomes possible).
+- Post Block Kit firing roots and threaded replies via `lib/slack_format.py`.
+- Update the channel topic from your fleet's recap script.
 - React to messages programmatically.
 
 Webhooks cannot do any of those. They're write-only, single-channel, and don't expose the full Web API. A bot token (`xoxb-…`) does.
@@ -127,9 +132,11 @@ Webhooks cannot do any of those. They're write-only, single-channel, and don't e
 To provision:
 
 1. Same Slack app → **Features → OAuth & Permissions**.
-2. Under **Scopes → Bot Token Scopes**, add (at minimum):
+2. Under **Scopes → Bot Token Scopes**, add:
    - `chat:write`: post messages
-   - `channels:manage`: edit channel topic
+   - `channels:read`: resolve public channels when needed
+   - `groups:read`: resolve private channels when needed
+   - `channels:manage`: only if your fleet edits channel topics
 3. Click **Install to Workspace** at the top of the page → **Allow**.
 4. Copy the **Bot User OAuth Token** (starts with `xoxb-`).
 5. Store it in AWS Secrets Manager:
@@ -140,7 +147,20 @@ To provision:
      --secret-string 'xoxb-...' --region us-east-1
    ```
 
-The framework helpers that consume the bot token are tracked for a follow-up; for now the secret sits ready.
+Wire the token through env or AWS:
+
+```sh
+# simplest path
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_HOME_CHANNEL=alfred
+
+# AWS path used when SLACK_BOT_TOKEN is unset
+SLACK_BOT_TOKEN_SECRET_ID=alfred/slack-bot-token
+SLACK_BOT_TOKEN_SECRET_REGION=us-east-1
+```
+
+`SLACK_HOME_CHANNEL` can be a channel name or ID. If posting by name fails in
+your workspace, use the channel ID (`C...`) from Slack's channel details.
 
 ## Optional: app-level token (`xapp-1-`)
 

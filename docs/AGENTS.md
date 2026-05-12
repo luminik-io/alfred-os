@@ -41,10 +41,13 @@ flowchart LR
     gordon -- "drift / Sentry" --> slack
 
     lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & automerge -. "status" .-> slack
-    ops_cli -. "pause / resume / claim" .-> issues
+    ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-Solid arrows are state transitions (someone modifies the issue or PR). Dashed arrows are observability (someone reports). Operator interaction is via the `alfred` CLI and Slack.
+Solid arrows are state transitions (someone modifies the issue or PR). Dashed
+arrows are observability (someone reports). Operator interaction is via the
+`alfred` CLI, Slack, and the optional `examples/bin/label_state.py` helper for
+issue-claim overrides.
 
 ## Default topology (engineering)
 
@@ -161,9 +164,11 @@ These categories require their own integration surface (Apollo, Reddit, Gmail, W
 
 ```sh
 alfred agents                 # configured agents, schedule, enable state, role
+alfred status                 # local fleet health, locks, pauses, approval waits
 alfred enable <codename>      # add codename to the runner gate
 alfred disable <codename>     # remove codename from the runner gate
 alfred enabled-agents         # print the current runner-gate list
+alfred shipped --period weekly # summarize merged PRs, issues, LOC, config changes
 bash deploy.sh                # sync bin/lib; render + bootstrap if agents.conf exists
 bash bin/doctor.sh            # preflight configured Python agents
 ```

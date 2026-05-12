@@ -434,7 +434,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         return 0
 
     msg = (
-        f"🐦 {AGENT.title()}: triaged {len(summary_lines)} issue(s) (turns={result.num_turns})\n"
+        f"🐦 {AGENT.title()}: triaged {len(summary_lines)} issue(s) (engine={engine_used}, turns={result.num_turns})\n"
         + "\n".join(summary_lines)
     )
     print(msg)

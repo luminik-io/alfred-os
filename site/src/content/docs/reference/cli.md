@@ -58,15 +58,20 @@ alfred agents
 alfred enable <codename>
 alfred disable <codename>
 alfred enabled-agents
+alfred status
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
+alfred shipped --period weekly
 ```
 
 `alfred agents` reads `launchd/agents.conf` and shows schedule, load column,
 runner-gate enablement, and role text. `enable` / `disable` update
 `$HERMES_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
 such as Batman. `engine` persists per-agent Claude/Codex mode under
-`$HERMES_HOME/state/engines/<codename>`.
+`$HERMES_HOME/state/engines/<codename>`. `status` reports local locks, pauses,
+recent firings, and Batman approval waits. `shipped` reports merged PRs,
+issues, LOC, and model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS`
+or explicit `--repo` values.
 
 ## State-machine Helpers
 
