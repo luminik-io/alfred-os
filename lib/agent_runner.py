@@ -427,10 +427,9 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
     Severity routing (``severity=`` keyword, default ``info``):
 
       ``info``   Posted as-is. The bulk of fleet telemetry — agent shipped,
-                 merged, swept, no-op. Threading-by-day is deferred until
-                 a bot token integration ships (incoming webhooks cannot
-                 post threaded replies — that requires
-                 ``chat.postMessage`` with a ``xoxb-`` token + ``thread_ts``).
+                 merged, swept, no-op. Incoming webhooks cannot post threaded
+                 replies; agents that need Block Kit threads use
+                 ``lib.slack_format`` with a ``xoxb-`` bot token.
       ``warn``   Prefixed with ⚠️ if not already. Use for: rate-limit hit
                  on one provider, max-turns hit, soft-failure, salvaged
                  partial work.

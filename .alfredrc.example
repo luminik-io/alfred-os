@@ -36,6 +36,8 @@ OPERATOR_GH_HANDLE=
 
 # Where the runtime lives — state/, worktrees/, lib/, bin/. Defaults to
 # ~/.hermes when unset. The launchd plists are rendered with this path.
+# No Hermes daemon is required; this name is compatibility with the
+# original internal fleet.
 HERMES_HOME=
 
 # Parent directory of the per-repo product checkouts. Defaults to
@@ -53,6 +55,13 @@ WORKSPACE_ROOT=
 # Override only if you keep your secrets under a different prefix.
 # SLACK_WEBHOOK_SECRET_ID=alfred/slack-webhook
 # SLACK_WEBHOOK_SECRET_REGION=us-east-1
+
+# Optional bot-token path for Block Kit/threaded firing posts via
+# lib/slack_format.py. Webhook-only fleets can leave these unset.
+# SLACK_BOT_TOKEN=xoxb-...
+# SLACK_BOT_TOKEN_SECRET_ID=alfred/slack-bot-token
+# SLACK_BOT_TOKEN_SECRET_REGION=us-east-1
+# SLACK_HOME_CHANNEL=alfred
 
 # ----------------------------------------------------------------------
 # Claude Code
@@ -74,3 +83,7 @@ WORKSPACE_ROOT=
 # Skip the dedup-check pre-push hook globally. Use sparingly — the hook
 # is what prevents you from racing your own agents.
 # LABEL_STATE_SKIP_DEDUP_CHECK=0
+
+# Comma-separated repos for `alfred shipped` daily/weekly reports. Bare names
+# resolve through GH_ORG; owner/repo slugs work as-is.
+# ALFRED_SHIPPED_SUMMARY_REPOS=backend,frontend,mobile

@@ -329,6 +329,7 @@ def main() -> int:
     fixes_landed = 0
     fix_summary = []
     total_turns = 0
+    engine_counts: dict[str, int] = {}
 
     for c in comments:
         cbody = c["body"]
@@ -382,6 +383,7 @@ def main() -> int:
             on_fallback=_on_engine_fallback,
         )
         total_turns += result.num_turns
+        engine_counts[engine_used] = engine_counts.get(engine_used, 0) + 1
         events.emit(
             "llm_invoke_done",
             engine=engine_used,
@@ -441,12 +443,15 @@ def main() -> int:
     save_fixed_ids(fixed_ids)
     spend.increment(firings_today=1, turns_today=total_turns)
     remove_worktree(repo, wt)
+    engine_summary = (
+        ", ".join(f"{engine}:{count}" for engine, count in sorted(engine_counts.items())) or "none"
+    )
 
     if fixes_landed == 0:
         # No fixes landed but the firing completed cleanly. Count as no-op
         # success so success-rate metrics don't show a misleading 0%.
         spend.increment(successes_today=1)
-        msg = f"{AGENT.title()}: no fixes landed on PR {pr_num} (turns={total_turns}, candidates={len(comments)})"
+        msg = f"{AGENT.title()}: no fixes landed on PR {pr_num} (engines={engine_summary}, turns={total_turns}, candidates={len(comments)})"
         print(msg)
         events.emit("firing_complete", outcome="no-fixes-landed", candidates=len(comments))
         return 0
@@ -454,7 +459,8 @@ def main() -> int:
     spend.increment(fixes_landed=fixes_landed, successes_today=1)
     msg = (
         f"✅ {AGENT.title()}: cleared {fixes_landed} comment(s) on "
-        f"https://github.com/{GH_ORG}/{repo}/pull/{pr_num}\n" + "\n".join(fix_summary)
+        f"https://github.com/{GH_ORG}/{repo}/pull/{pr_num} "
+        f"(engines={engine_summary}, turns={total_turns})\n" + "\n".join(fix_summary)
     )
     print(msg)
     slack_post(msg)

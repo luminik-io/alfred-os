@@ -73,6 +73,18 @@ def test_discover_agents_handles_fleet_recap_sh(tmp_path, init_mod):
     assert "fleet_recap_evening" in out
 
 
+def test_discover_agents_handles_scheduled_utilities(tmp_path, init_mod):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "fleet-doctor.py").write_text("# doctor\n")
+    (bin_dir / "shipped-summary-daily.sh").write_text("#!/bin/sh\n")
+    (bin_dir / "shipped-summary-weekly.sh").write_text("#!/bin/sh\n")
+    out = init_mod.discover_agents(bin_dir)
+    assert "fleet_doctor" in out
+    assert "shipped_summary_daily" in out
+    assert "shipped_summary_weekly" in out
+
+
 def test_discover_agents_returns_empty_for_missing_dir(tmp_path, init_mod):
     assert init_mod.discover_agents(tmp_path / "does-not-exist") == []
 
@@ -129,6 +141,19 @@ def test_render_agents_conf_fleet_recap_shares_script(init_mod, tmp_path):
     # The labels stay distinct so launchd doesn't collide them.
     assert "alfred.fleet-recap-morning\t" in text
     assert "alfred.fleet-recap-evening\t" in text
+
+
+def test_render_agents_conf_schedules_health_and_shipped_reports(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("fleet_doctor", "shipped_summary_daily", "shipped_summary_weekly"),
+    )
+    text = init_mod.render_agents_conf(state)
+    assert "alfred.fleet-doctor\tfleet-doctor.py\tcron:7:30" in text
+    assert "alfred.shipped-summary-daily\tshipped-summary-daily.sh\tcron:7:35" in text
+    assert "alfred.shipped-summary-weekly\tshipped-summary-weekly.sh\tcron:1:7:35" in text
+    assert text.count("\talfred.shipped-summary\tshipped summary") == 2
 
 
 def test_render_agents_conf_custom_codename(init_mod, tmp_path):

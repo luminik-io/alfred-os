@@ -110,17 +110,35 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
         False,
         "cron:7:00",
     ),
+    "fleet_doctor": (
+        "fleet-doctor",
+        "fleet doctor (daily local health snapshot)",
+        False,
+        "cron:7:30",
+    ),
     "fleet_recap_morning": (
         "fleet-recap-morning",
         "fleet recap morning (7:30 status post)",
         False,
-        "cron:7:30",
+        "cron:7:45",
     ),
     "fleet_recap_evening": (
         "fleet-recap-evening",
         "fleet recap evening (22:00 status post)",
         False,
         "cron:22:00",
+    ),
+    "shipped_summary_daily": (
+        "shipped-summary-daily",
+        "shipped summary daily (merged PRs, issues, LOC)",
+        False,
+        "cron:7:35",
+    ),
+    "shipped_summary_weekly": (
+        "shipped-summary-weekly",
+        "shipped summary weekly (merged PRs, issues, LOC)",
+        False,
+        "cron:1:7:35",
     ),
 }
 
@@ -373,10 +391,13 @@ def render_agents_conf(state: WizardState) -> str:
         codename = state.codename_for(role)
         default_codename, desc, _, _ = AGENT_CATALOG[role]
         schedule = state.role_to_schedule.get(role, AGENT_CATALOG[role][3])
-        # fleet-recap-morning/evening share fleet-recap.sh + log stem.
+        # Paired schedule rows share one implementation + log stem.
         if role.startswith("fleet_recap_"):
             script = "fleet-recap.sh"
             log_stem = "alfred.fleet-recap"
+        elif role.startswith("shipped_summary_"):
+            script = f"{default_codename}.sh"
+            log_stem = "alfred.shipped-summary"
         else:
             # Script names are stable role implementations. Custom codenames
             # change the launchd label and AGENT_CODENAME, not the file name.
