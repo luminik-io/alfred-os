@@ -216,6 +216,30 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
         assert agent in res.stdout
 
 
+def test_cli_status_reports_local_snapshot(tmp_path):
+    hermes = tmp_path / "hermes"
+    launchd = hermes / "launchd"
+    launchd.mkdir(parents=True)
+    (launchd / "agents.conf").write_text(
+        "my.fleet.batman\tbatman.py\tinterval:5400\tno\t\tBundle coordinator\n"
+    )
+    wait_dir = hermes / "state" / "batman" / "approval-waits"
+    wait_dir.mkdir(parents=True)
+    (wait_dir / "firing.json").write_text(
+        '{"firing_id":"abc","pid":0,"created_at":"2026-05-12T10:00:00Z","issues":[{"number":504}]}'
+    )
+    env = {
+        "HERMES_HOME": str(hermes),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("status", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    assert "alfred-status @" in res.stdout
+    assert "approval wait dead #504" in res.stdout
+
+
 def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
     hermes = tmp_path / "hermes"
     launchd = hermes / "launchd"

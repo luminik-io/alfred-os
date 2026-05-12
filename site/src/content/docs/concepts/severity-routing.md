@@ -68,7 +68,8 @@ Today's `slack_post` uses an incoming webhook. Webhooks have two limits:
 - Cannot post threaded replies (no `thread_ts`).
 - Cannot update the channel topic (read-only on channel state).
 
-When alfred-os ships bot-token integration (`xoxb-…`), two follow-ups land:
+Bot-token posting exists in `lib/slack_format.py` for per-firing Block Kit
+threads. Two higher-level routing features remain follow-ups:
 
 1. **Daily-thread routing for `info`-tier**. The `fleet-recap-morning` cron posts an anchor message at 07:30; every `info` post during the day goes as a threaded reply under it. Main-channel timeline shrinks to one anchor + the day's `warn` and `alert` events.
 2. **Channel topic from fleet state**. `slack_set_channel_topic()` renders e.g. `Lucius: 17 ✅ / 3 ❌ today · Drake: 8 ok · 0 paused repos`. Glanceable status without opening a dashboard.

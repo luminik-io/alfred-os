@@ -36,13 +36,23 @@ Recommendation: Pro to validate, Max once you've got 2+ daily codenames. The two
 
 ## Two-account swap (`hermes-claude`)
 
-Two Anthropic accounts? `bin/hermes-claude` symlinks `~/.claude` to either `~/.claude-primary/` or `~/.claude-secondary/` so launchd-spawned `claude` uses whichever you point at.
+Two Anthropic accounts? `bin/hermes-claude` flips the launchd
+`CLAUDE_CONFIG_DIR` env var so launchd-spawned `claude` uses either the
+primary default `~/.claude/` or a secondary config such as
+`~/.claude-secondary/`.
 
 ```sh
 hermes-claude status      # which account is active
-hermes-claude primary     # symlink to primary
-hermes-claude secondary   # symlink to secondary
+hermes-claude primary     # unset CLAUDE_CONFIG_DIR, use ~/.claude
+hermes-claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
 hermes-claude swap        # toggle
+```
+
+Set up the secondary account once:
+
+```sh
+mkdir -p ~/.claude-secondary
+CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
 ```
 
 Typical use: run on `primary`, hit the cap (Slack alert from `set_global_block`), `hermes-claude swap`, fleet resumes on `secondary`'s quota.

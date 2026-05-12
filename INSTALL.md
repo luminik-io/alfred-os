@@ -38,6 +38,9 @@ What it does **not** do (deliberately):
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
 - Touch existing `~/.hermes` content.
+- Install a separate Hermes agent. In alfred-os, `HERMES_HOME` is the runtime
+  root name. Install Hermes separately only if your fleet uses Hermes skills,
+  MCP, gbrain, canon, or dashboarding.
 
 If you want a non-interactive run:
 
@@ -133,7 +136,11 @@ bash deploy.sh
 bash bin/doctor.sh
 ```
 
-`deploy.sh` copies `lib/` and `bin/` into `$HERMES_HOME`, renders the launchd plists from `launchd/_template.plist` + `launchd/agents.conf`, and bootstraps each plist via `launchctl bootstrap`. With no agents in `agents.conf` (the default), nothing fires.
+`deploy.sh` copies `lib/` and `bin/` into `$HERMES_HOME`. In a fresh checkout
+there is no `launchd/agents.conf`, so this is framework-only and nothing
+fires. After `alfred-init.py` creates `launchd/agents.conf`, deploy also
+renders plists from `launchd/_template.plist` and bootstraps them via
+`launchctl bootstrap`.
 
 `doctor.sh` runs every agent's preflight under `HERMES_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
 
@@ -152,7 +159,7 @@ Then [`BOOTSTRAP.md`](BOOTSTRAP.md) for the full pattern: per-agent IAM, Slack r
 ## Troubleshooting `install.sh`
 
 **"Refusing to install on non-macOS host."**
-You're on Linux. The `launchd` scheduling layer is macOS-only today. A `systemd` port is on the roadmap but not shipped. Override: `ALFRED_FORCE_LINUX=1`. You're on your own.
+You're on Linux. The `launchd` scheduling layer is macOS-only today. A `systemd` port is on the roadmap but not shipped. Override with `ALFRED_FORCE_LINUX=1` only if you are reading code, running tests, or manually driving agents. See [`docs/LINUX.md`](docs/LINUX.md).
 
 **"npm not found; skipping Claude Code install."**
 The `node` brew install should bring `npm` along. If you skipped brew (`--skip-brew`), install Node manually then run install.sh again with `--skip-brew`.

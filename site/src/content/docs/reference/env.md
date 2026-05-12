@@ -23,6 +23,9 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 
 ## Runtime paths
 
+`HERMES_HOME` is the alfred-os runtime root. The name is historical; it does
+not mean `hermes-agent` is installed or required.
+
 | Var | Used by | Default |
 |---|---|---|
 | `HERMES_HOME` | everything | `$HOME/.hermes` |
@@ -46,6 +49,13 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | `ALFRED_<CODENAME>_CODEX_WRITE` | shortcut for `workspace-write` | `0` |
 
 `bin/alfred engine status/set` persists per-agent engine choices under `$HERMES_HOME/state/engines/<codename>`.
+
+## Shipped summaries
+
+| Var | Used by | Default |
+|---|---|---|
+| `ALFRED_SHIPPED_SUMMARY_REPOS` | `alfred shipped` / `alfred-shipped-summary.py` watched repo list | (none) |
+| `ALFRED_SHIPPED_SUMMARY_QUERY_LIMIT` | per-window GitHub query limit | `1000` |
 
 ## Claude auth
 

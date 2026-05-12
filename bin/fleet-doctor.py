@@ -18,22 +18,24 @@ unit tests can target it in isolation):
 4. ``check_enabled_agents``   — ``$HERMES_HOME/state/fleet/enabled.txt``
                                 contents; surfaces the configured fleet
                                 so the operator sees the gating state.
+5. ``check_paused_agents``    — pause markers under
+                                ``$HERMES_HOME/state/_paused``.
+6. ``check_spend_state``      — today's spend and failure-streak files.
 
-The skeleton intentionally ships these four — paused / global-block /
-stale-worktrees / enabled-agents — because they're the ones whose
-inputs are already shipped by alfred-os's agent_runner today. Port
-operators can extend with additional checks (oauth expiry, daily
-spend caps, failure streaks, bundle-queue depth) without changing the
-``Finding`` contract.
+The checks use only local state already written by alfred-os. Port operators
+can extend with network checks (OAuth expiry, queue depth, deploy drift)
+without changing the ``Finding`` contract.
 
 Health snapshot runner for local fleets.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -142,11 +144,81 @@ def check_enabled_agents() -> Finding:
     )
 
 
+def check_paused_agents() -> Finding:
+    pause_dir = STATE_ROOT / "_paused"
+    if not pause_dir.is_dir():
+        return Finding("paused-agents", "green", "no paused agents")
+    markers = sorted(path for path in pause_dir.iterdir() if path.is_file())
+    if not markers:
+        return Finding("paused-agents", "green", "no paused agents")
+
+    import time
+
+    now = time.time()
+    parts: list[str] = []
+    old = 0
+    for marker in markers[:8]:
+        try:
+            hours = int((now - marker.stat().st_mtime) // 3600)
+        except OSError:
+            hours = 0
+        if hours >= 24:
+            old += 1
+        parts.append(f"{marker.name} ({hours}h)")
+    suffix = " (some >24h)" if old else ""
+    more = f", +{len(markers) - 8} more" if len(markers) > 8 else ""
+    return Finding("paused-agents", "yellow", f"Paused agents{suffix}: {', '.join(parts)}{more}")
+
+
+def _today_spend_files() -> list[Path]:
+    today = datetime.now().strftime("%Y-%m-%d")
+    return sorted(STATE_ROOT.glob(f"*/spend-{today}.json"))
+
+
+def check_spend_state() -> Finding:
+    files = [path for path in _today_spend_files() if not path.parent.name.startswith("_")]
+    if not files:
+        return Finding("spend-state", "green", "no spend files for today yet")
+
+    yellow: list[str] = []
+    alerts: list[str] = []
+    for path in files:
+        agent = path.parent.name
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            yellow.append(f"{agent}: unreadable spend file")
+            continue
+        consecutive = int(data.get("consecutive_failures") or 0)
+        failures = int(data.get("failures_today") or 0)
+        successes = int(data.get("successes_today") or 0)
+        blocked_until = str(data.get("blocked_until") or "").strip()
+        if consecutive >= 8:
+            alerts.append(f"{agent}: {consecutive} consecutive failures")
+        elif consecutive or failures:
+            yellow.append(f"{agent}: {failures} fail / {successes} ok")
+        if blocked_until:
+            try:
+                parsed = datetime.fromisoformat(blocked_until.replace("Z", "+00:00"))
+                if parsed.astimezone(UTC) > datetime.now(UTC):
+                    yellow.append(f"{agent}: blocked until {blocked_until}")
+            except ValueError:
+                yellow.append(f"{agent}: invalid blocked_until={blocked_until}")
+
+    if alerts:
+        return Finding("spend-state", "alert", "; ".join(alerts[:6]))
+    if yellow:
+        return Finding("spend-state", "yellow", "; ".join(yellow[:6]))
+    return Finding("spend-state", "green", f"{len(files)} spend file(s), no failure streaks")
+
+
 CHECKS = [
     check_paused_repos,
     check_global_block,
     check_stale_worktrees,
     check_enabled_agents,
+    check_paused_agents,
+    check_spend_state,
 ]
 
 
@@ -210,7 +282,6 @@ def main() -> int:
     findings = run_all_checks()
     sev = overall_severity(findings)
     body = format_summary(findings)
-    from datetime import UTC, datetime
 
     firing_id = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     summary = f"fleet snapshot · {sev}"

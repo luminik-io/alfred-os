@@ -8,10 +8,12 @@ way the runner does at startup.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -103,6 +105,53 @@ def test_check_enabled_agents_lists_codenames():
     assert result.severity == "green"
     assert "batman" in result.message
     assert "lucius" in result.message
+
+
+def test_check_paused_agents_yellow_for_marker():
+    import agent_runner as ar
+
+    pause_dir = ar.STATE_ROOT / "_paused"
+    pause_dir.mkdir(parents=True)
+    (pause_dir / "lucius").write_text("paused\n")
+    fd = _load_doctor()
+
+    result = fd.check_paused_agents()
+
+    assert result.severity == "yellow"
+    assert "lucius" in result.message
+
+
+def test_check_spend_state_alerts_on_failure_streak():
+    import agent_runner as ar
+
+    spend_dir = ar.STATE_ROOT / "lucius"
+    spend_dir.mkdir(parents=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    (spend_dir / f"spend-{today}.json").write_text(
+        json.dumps({"consecutive_failures": 8, "failures_today": 8, "successes_today": 0})
+    )
+    fd = _load_doctor()
+
+    result = fd.check_spend_state()
+
+    assert result.severity == "alert"
+    assert "8 consecutive failures" in result.message
+
+
+def test_check_spend_state_warns_on_active_block():
+    import agent_runner as ar
+
+    spend_dir = ar.STATE_ROOT / "drake"
+    spend_dir.mkdir(parents=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    blocked = (datetime.now(UTC) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (spend_dir / f"spend-{today}.json").write_text(json.dumps({"blocked_until": blocked}))
+    fd = _load_doctor()
+
+    result = fd.check_spend_state()
+
+    assert result.severity == "yellow"
+    assert "blocked until" in result.message
 
 
 def test_overall_severity_worst_wins():

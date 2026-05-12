@@ -3,7 +3,11 @@ title: Slack
 description: Create the app, mint the webhook, store it, post your first message.
 ---
 
-Alfred-OS posts agent reports to a Slack channel via an incoming webhook. `slack_post()` resolves the URL via env -> 30-day disk cache -> AWS Secrets Manager, so steady-state firings don't pay an AWS round-trip every time.
+Alfred-OS posts simple agent reports via an incoming webhook. `slack_post()`
+resolves the URL via env -> 30-day disk cache -> AWS Secrets Manager, so
+steady-state firings don't pay an AWS round-trip every time. Agents that use
+`lib/slack_format.py` can also post Block Kit firing threads with an optional
+Slack bot token.
 
 Full guide at [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md). Highlights:
 
@@ -71,7 +75,16 @@ You should see the message in your channel.
 
 ## Optional: bot token (`xoxb-`)
 
-Required when you're ready for channel-topic updates and threaded-reply daily-thread routing. See [Slack setup → Optional: bot token](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-bot-token-xoxb-).
+Required for `firing_thread_root`, `firing_thread_reply`, and
+`firing_thread_close` in `lib/slack_format.py`.
+
+```sh
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_HOME_CHANNEL=alfred
+```
+
+Or store the token in AWS Secrets Manager at `alfred/slack-bot-token` and leave
+`SLACK_BOT_TOKEN` unset. See [Slack setup → Optional: bot token](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-bot-token-xoxb-).
 
 ## Optional: app-level token (`xapp-1-`)
 

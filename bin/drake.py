@@ -401,7 +401,7 @@ def main() -> int:
         events.emit(
             "firing_complete", outcome="ok", turns=result.num_turns, cost_usd=result.cost_usd
         )
-        msg = f"📋 {AGENT.title()} firing complete (turns={result.num_turns}, cost=${result.cost_usd:.2f})\n{short(report, 1500)}"
+        msg = f"📋 {AGENT.title()} firing complete (engine={engine_used}, turns={result.num_turns}, cost=${result.cost_usd:.2f})\n{short(report, 1500)}"
         print(msg)
         slack_post(msg)
         return 0
@@ -411,7 +411,7 @@ def main() -> int:
     spend.increment(failures_today=1, consecutive_failures=1)
     msg = (
         f"⚠️ {AGENT.title()} returned success but emitted no [DRAKE-*] sentinel. "
-        f"turns={result.num_turns}. Tail: {short(text[-400:], 400)}"
+        f"engine={engine_used} turns={result.num_turns}. Tail: {short(text[-400:], 400)}"
     )
     print(msg)
     slack_post(msg, severity="warn")

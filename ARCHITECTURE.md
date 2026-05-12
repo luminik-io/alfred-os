@@ -6,11 +6,11 @@ This document explains why alfred-os has the shape it has. Read [`README.md`](RE
 
 ```mermaid
 sequenceDiagram
-    participant launchd
-    participant runner as bin/&lt;codename&gt;.py
-    participant lib as lib/agent_runner.py
-    participant claude as claude -p
-    participant gh as gh CLI
+    participant launchd as launchd
+    participant runner as agent runner
+    participant lib as agent runner lib
+    participant claude as Claude Code CLI
+    participant gh as GitHub CLI
     participant slack as Slack webhook
 
     launchd->>runner: fire (every N min)
@@ -22,7 +22,7 @@ sequenceDiagram
     lib->>gh: add agent:in-flight label
     lib->>gh: post claim comment
     runner->>lib: make_worktree(repo, agent, issue)
-    runner->>claude: claude -p '&lt;prompt&gt;' --max-turns N
+    runner->>claude: invoke prompt with max turns
     claude-->>runner: ClaudeResult (turns, cost, session_id, result_text)
     runner->>gh: gh pr create
     runner->>lib: release_issue(transition_to=agent:pr-open, pr_url=...)
@@ -31,6 +31,20 @@ sequenceDiagram
 ```
 
 Every box outside the host is reached by stdlib subprocess + HTTP. No persistent connection. State on disk under `${HERMES_HOME}/state/`.
+
+## Hermes Boundary
+
+alfred-os uses `HERMES_HOME` as a runtime-root name, not as proof that the
+Hermes agent must be installed. The core loop in this repo is:
+
+```text
+launchd -> bin/role.py -> lib/agent_runner.py -> claude/codex/gh/slack
+```
+
+That loop runs without a Hermes daemon. The original internal fleet also uses
+Hermes for skills, MCP, gbrain memory, canon, dashboarding, and other
+departments. Those are compatible with alfred-os, but they are not required by
+the core launchd engineering fleet.
 
 ## Why this shape
 
@@ -187,9 +201,20 @@ Env vars beat profiles in the AWS credential chain, so any leaked `AWS_*` from t
 
 ## Claude account fallback
 
-When the primary Claude subscription hits its weekly cap, scheduled agents can fall back to a second Anthropic account by pointing `CLAUDE_CONFIG_DIR` at a separate config dir (e.g. `~/.claude-secondary/`). The launchd plists honor `EnvironmentVariables`, so flipping the routing for launchd-spawned agents is a matter of `launchctl setenv CLAUDE_CONFIG_DIR ~/.claude-secondary` and re-loading. The operator's interactive Claude Code sessions keep using the primary config because they don't read that env var.
+When the primary Claude subscription hits its weekly cap, scheduled agents can
+use a second Anthropic account by pointing `CLAUDE_CONFIG_DIR` at a separate
+config dir, such as `~/.claude-secondary/`. The `hermes-claude` helper wraps
+the settled local pattern:
 
-[NEEDS-OPERATOR-INPUT] The fallback config dir is supported by launchd environment variables, but each fleet still needs to decide whether the switch is manual (`launchctl setenv`) or wrapped by an operator CLI command.
+```sh
+CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
+hermes-claude secondary
+hermes-claude primary
+```
+
+The helper flips the launchd global env var via `launchctl setenv`, so the next
+agent firing uses the selected account. In-flight runs keep their existing auth,
+and interactive Claude sessions keep using the operator's normal shell config.
 
 ## Failure modes and recovery
 

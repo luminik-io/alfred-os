@@ -17,6 +17,11 @@ Every agent firing is a fresh `launchd` event, not a tick in a long-running proc
 - ❌ No in-process state. Anything an agent needs to remember between firings goes through `$HERMES_HOME/state/<agent>/*.json`.
 - ❌ Cold start cost. ~1-2s of Python import + agent_runner setup per firing. Acceptable at the 20-min cadence.
 
+`HERMES_HOME` is the runtime-root name, not a requirement that the Hermes agent
+daemon be installed. The core loop is `launchd -> bin/role.py ->
+lib/agent_runner.py -> claude/codex/gh/slack`. Hermes skills, MCP, gbrain,
+canon, and dashboarding are optional integrations for fleets that want them.
+
 ### 2. Per-firing git worktree isolation
 
 Every `claude -p` invocation gets its own worktree:

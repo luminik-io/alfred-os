@@ -582,8 +582,9 @@ Ship-ready: yes / no - <one sentence>
         p0_count=len(p0_findings),
         p1_count=len(p1_findings),
         split_comments=posted_split,
+        engine=engine_used,
     )
-    msg = f"{AGENT.title()}: reviewed https://github.com/{GH_ORG}/{repo}/pull/{pr_num} (turns={result.num_turns}, split={posted_split} P0/P1 sub-comments)"
+    msg = f"{AGENT.title()}: reviewed https://github.com/{GH_ORG}/{repo}/pull/{pr_num} (engine={engine_used}, turns={result.num_turns}, split={posted_split} P0/P1 sub-comments)"
     print(msg)
     slack_post(msg)
     events.emit("firing_complete", outcome="review-posted")

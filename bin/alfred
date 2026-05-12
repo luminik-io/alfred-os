@@ -24,6 +24,10 @@ Subcommands today:
                               Persist an engine override in
                               $HERMES_HOME/state/engines/<agent>.
                               Alias: provider.
+  alfred status               Show local fleet health, locks, pauses, and
+                              approval waits.
+  alfred shipped              Summarize merged PRs, issues, LOC, and
+                              model/config changes.
 
 The runner-level fleet gate file lives at
 ``$HERMES_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
@@ -39,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -300,6 +305,36 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_shipped(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-shipped-summary.py"
+    cmd = [sys.executable, str(script), "--period", args.period]
+    if args.days is not None:
+        cmd.extend(["--days", str(args.days)])
+    if args.since:
+        cmd.extend(["--since", args.since])
+    if args.until:
+        cmd.extend(["--until", args.until])
+    for repo in args.repo or []:
+        cmd.extend(["--repo", repo])
+    if args.json:
+        cmd.append("--json")
+    if args.slack:
+        cmd.append("--slack")
+    if args.no_file_scan:
+        cmd.append("--no-file-scan")
+    return subprocess.run(cmd, check=False).returncode
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-status.py"
+    cmd = [sys.executable, str(script)]
+    if args.json:
+        cmd.append("--json")
+    if args.slack:
+        cmd.append("--slack")
+    return subprocess.run(cmd, check=False).returncode
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="alfred", description="alfred-os operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
@@ -318,6 +353,11 @@ def main(argv: list[str] | None = None) -> int:
     p_enabled = sub.add_parser("enabled-agents", help="print the list of enabled codenames")
     p_enabled.set_defaults(func=cmd_enabled_agents)
 
+    p_status = sub.add_parser("status", help="show local fleet health")
+    p_status.add_argument("--json", action="store_true")
+    p_status.add_argument("--slack", action="store_true")
+    p_status.set_defaults(func=cmd_status)
+
     p_engine = sub.add_parser("engine", aliases=["provider"], help="manage per-agent engines")
     engine_sub = p_engine.add_subparsers(dest="engine_command", required=True)
     p_engine_status = engine_sub.add_parser("status", help="show resolved engine state")
@@ -327,6 +367,17 @@ def main(argv: list[str] | None = None) -> int:
     p_engine_set.add_argument("agent")
     p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid", "both"])
     p_engine_set.set_defaults(func=cmd_engine_set)
+
+    p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
+    p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")
+    p_shipped.add_argument("--days", type=int)
+    p_shipped.add_argument("--since")
+    p_shipped.add_argument("--until")
+    p_shipped.add_argument("--repo", action="append")
+    p_shipped.add_argument("--json", action="store_true")
+    p_shipped.add_argument("--slack", action="store_true")
+    p_shipped.add_argument("--no-file-scan", action="store_true")
+    p_shipped.set_defaults(func=cmd_shipped)
 
     args = p.parse_args(argv)
     return args.func(args)

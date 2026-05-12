@@ -13,12 +13,15 @@ Alfred-OS doesn't talk to the Anthropic API directly. It shells out to `claude`.
 
 ## Optional Codex routing
 
-If the `codex` CLI is installed and authenticated, agents can route a task through `route_llm("codex", ...)` or call `codex_invoke()` directly. This is intended for review-style work, not unconstrained write access:
+If the `codex` CLI is installed and authenticated, agents can route a task through `route_llm("codex", ...)` or call `codex_invoke()` directly. The default posture is review-safe. Write-capable agents must deliberately opt into writable worktrees and, when needed for autonomous `gh` or keychain access, the Codex bypass flag:
 
 - Default sandbox: `read-only`
 - Default approval policy: `never`
 - Artifacts: `$HERMES_HOME/state/codex/<agent>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`
 - Unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`) are rejected up front.
+- Builder agents that use Codex should run in a disposable worktree and pass
+  `bypass_approvals_and_sandbox=True` only when they need autonomous write or
+  GitHub CLI access.
 
 Environment overrides:
 
@@ -31,7 +34,7 @@ CODEX_APPROVAL_POLICY=never
 
 `deploy.sh` links an interactive-shell `codex` binary into `~/.local/bin/codex` when one exists. Rendered launchd plists include `~/.local/bin` in PATH, so Codex can stay optional without pinning app-bundle paths into agent config.
 
-Use Codex alongside Claude when you want an independent reviewer or when Claude quota is scarce. Keep feature-writing agents on Claude until you have deliberately designed a Codex write sandbox for that codename.
+Use Codex alongside Claude when you want an independent reviewer or when Claude quota is scarce. Keep feature-writing agents on Claude until you have deliberately designed the Codex write path, commit verification, and PR creation boundary for that codename.
 
 ## Install
 
@@ -84,30 +87,26 @@ When the subscription cap trips mid-firing, the framework treats it as a fleet-w
 
 Two Anthropic accounts? `bin/hermes-claude` points the launchd-spawned `claude` at either one without re-authenticating each time.
 
-The mechanism: `~/.claude/` is the auth dir. `hermes-claude` keeps two snapshots (`~/.claude-primary/` and `~/.claude-secondary/`) and symlinks `~/.claude` to whichever you're using.
+The mechanism: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`. By default it
+is unset and Claude Code uses `~/.claude/`. `hermes-claude` flips the launchd
+global env var between the primary default and `~/.claude-secondary/`.
 
 ```sh
 hermes-claude status      # which account is active right now
-hermes-claude primary     # symlink ~/.claude → ~/.claude-primary
-hermes-claude secondary   # symlink ~/.claude → ~/.claude-secondary
+hermes-claude primary     # unset CLAUDE_CONFIG_DIR, use ~/.claude
+hermes-claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
 hermes-claude swap        # toggle
 ```
 
 Typical usage: run on `primary` until it hits the weekly cap (Slack alert from `set_global_block`), `hermes-claude swap`, fleet resumes on `secondary`'s quota.
 
-To populate the snapshots, log in twice and snapshot the auth dir twice:
+To populate the secondary config, log in once with `CLAUDE_CONFIG_DIR` pointed
+at the secondary directory:
 
 ```sh
-# Account A
-claude                                # log in
-mv ~/.claude ~/.claude-primary
-
-# Account B
-claude                                # log in (creates fresh ~/.claude)
-mv ~/.claude ~/.claude-secondary
-
-# Now hermes-claude can swap between them
-hermes-claude primary
+mkdir -p ~/.claude-secondary
+CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
+hermes-claude secondary
 ```
 
 ## CLAUDE_BIN env var

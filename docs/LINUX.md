@@ -21,14 +21,16 @@ If you want to read the code, write your own agents, run the test suite, or use 
 - `lib/agent_runner.py`: every primitive (preflight, lock, spend, claude_invoke, gh, slack, claim_issue/release_issue, severity routing) works unchanged.
 - `tests/`: `pytest` runs the full test suite on Linux.
 - `bin/doctor.sh`: works (bash + grep).
-- `bin/hermes-claude`: works (symlink swapping).
+- `bin/hermes-claude`: works for launchd-style env switching only on macOS;
+  on Linux, set `CLAUDE_CONFIG_DIR` directly in your shell, cron, or systemd unit.
 - `examples/bin/label_state.py`: works.
 - `examples/git-hooks/pre-push`: works (operator-side, runs in your shell).
 
 What doesn't work:
 
-- `launchd/render.sh`: generates `.plist` files. Linux doesn't have plists.
-- `deploy.sh`: calls `launchctl bootstrap`. Fails with command-not-found.
+- `launchd/render.sh`: generates `.plist` files. Linux doesn't have launchd.
+- `deploy.sh`: can copy framework files and render plists, but it skips
+  `launchctl bootstrap` on non-macOS hosts. It does not give Linux a scheduler.
 - `install.sh` macOS check: refuses to run unless you set `ALFRED_FORCE_LINUX=1`.
 
 ## Running alfred-os-shaped agents on Linux today

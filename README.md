@@ -12,11 +12,43 @@ Docs site: https://luminik-io.github.io/alfred-os
 
 ## Relationship to Hermes
 
-alfred-os does not require an external Hermes install. The runtime directory is named `HERMES_HOME` for compatibility with the fleet it was extracted from; by default it is just `~/.hermes`, where alfred-os stores deployed scripts, state, logs, and worktrees.
+alfred-os core does not install or run a separate Hermes agent process. The
+launchd fleet works with local Python scripts, `gh`, `git`, and the configured
+LLM CLIs.
+
+The variable name `HERMES_HOME` is retained for compatibility with the original
+internal fleet alfred-os was extracted from. In alfred-os, it is just the runtime root:
+by default `~/.hermes`, where deployed scripts, state, logs, Codex artifacts,
+and worktrees live.
+
+Hermes integrations are still valuable, but optional in this repo. If your
+fleet uses Hermes skills, MCP servers, gbrain memory, canon, dashboarding, or
+non-engineering departments, install and operate Hermes separately and point
+alfred-os at the same runtime root.
 
 alfred-os is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
-## Design notes
+## System Shape
+
+```mermaid
+flowchart LR
+    issue["GitHub issue or PR"] --> schedule["launchd or manual firing"]
+    schedule --> runner["bin/role.py"]
+    runner --> shared["lib/agent_runner.py"]
+    shared --> lock["lock, preflight, spend caps"]
+    shared --> worktree["isolated git worktree"]
+    shared --> engine{"engine"}
+    engine --> claude["Claude Code CLI"]
+    engine --> codex["Codex CLI"]
+    shared --> github["GitHub issues, branches, PRs"]
+    shared --> slack["Slack webhook or bot token"]
+    shared --> state["HERMES_HOME state"]
+```
+
+One firing is one short-lived process. The OS scheduler owns cadence, the
+runner owns safety rails, and the LLM CLI only receives the bounded task.
+
+## Design Notes
 
 Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work:
 
@@ -73,7 +105,9 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 | [`lib/agent_runner.py`](lib/agent_runner.py) | Shared library. Preflight, lock, spend, claude_invoke, codex_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, runner gate helpers, dedup helpers (`find_open_authored_pr_for_issue`, `reuse_or_make_worktree`), slack severity routing. |
 | [`lib/slack_format.py`](lib/slack_format.py) | Block Kit + bot-token Slack helpers: per-firing `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Severity colour stripes. |
 | [`lib/batman.py`](lib/batman.py) | Bundle primitives for the multi-repo coordinator: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
-| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred enabled-agents`, `alfred engine status/set`. |
+| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred enabled-agents`, `alfred engine status/set`. |
+| [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
+| [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Skeleton multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a plan to Slack. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/`](bin/) | Operator helpers: `doctor.sh` (host validator), `hermes-claude` (two-account swap). |
