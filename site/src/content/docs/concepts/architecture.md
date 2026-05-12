@@ -50,7 +50,7 @@ Two layers:
 
 ### 5. Codename pattern
 
-One agent script per narrow specialist. Named after a coherent fictional cast (the reference fleet uses Batman side-characters: Lucius, Drake, Bane, Rasalghul, Robin, Nightwing, Huntress, Gordon).
+One agent script per narrow specialist. Named after a coherent fictional cast. The shipped examples use Batman side-characters: Lucius, Drake, Bane, Rasalghul, Robin, Nightwing, Huntress, Gordon.
 
 Two reasons it matters:
 
@@ -63,15 +63,15 @@ See [codename pattern](/alfred-os/concepts/codename-pattern/) for more.
 
 - Multi-tenant deployments. Alfred-OS is single-operator by design.
 - Long-running orchestration loops. The OS scheduler is the orchestrator.
-- LLM routing / model selection at the framework layer. Claude Code does this.
+- Hosted LLM gateway. Alfred-OS has local CLI engine adapters and simple per-agent engine selection; it does not run inference for you.
 - Browser automation runtimes. If your fleet needs Playwright, install it in the codename's bin script.
-- Vector databases for memory. The reference fleet uses gbrain (a doc-shaped layer); alfred-os doesn't ship one.
+- Vector databases for memory. Some fleets use a doc-shaped memory layer; alfred-os doesn't ship one.
 - Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing.
 
 ## What this enables
 
 - **Parallel codename agents on a single Mac**, each with its own IAM, spend cap, and Slack reporting, none stepping on the others.
-- **The whole fleet pausable in seconds** via `alfred pause all` (in the reference fleet) or `launchctl bootout` per-agent.
+- **The whole fleet pausable in seconds** via `launchctl bootout` per-agent, or by keeping your own wrapper around the same launchd calls.
 - **Reboot survival**. macOS restart, WiFi flap, gh API outage: the fleet picks up where it left off on the next firing.
 - **Cooperative coordination via GitHub** (the [issue claim state machine](/alfred-os/concepts/state-machine/)): no shared database, no shared filesystem, just labels + structured comments.
 
@@ -81,4 +81,4 @@ See [codename pattern](/alfred-os/concepts/codename-pattern/) for more.
 2. [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py): module docstring + public API
 3. [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred-os/blob/main/examples/bin/echo_summarise.py): the smallest "real" agent showing the full pattern
 4. [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md): the cooperative coordination primitive
-5. The reference fleet at [`luminik-io/alfred`](https://github.com/luminik-io/alfred): a complete production application of alfred-os
+5. [`examples/bin/`](https://github.com/luminik-io/alfred-os/tree/main/examples/bin): small runnable agents you can copy into a fleet

@@ -20,7 +20,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - Release automation (tag → GitHub release with auto-extracted changelog).
 - Project hygiene: COC, security, support, issue templates, PR template, dependabot.
 - pyproject.toml (ruff + mypy), pre-commit config.
-- Brew formula skeleton.
+- HEAD-only Brew formula until the first public release tarball has a checksum.
 - This Astro Starlight docs site.
 
 ## In flight (next release)
@@ -30,7 +30,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - **`claim_pr` / `release_pr`**. Extend the state machine to PR-level work.
 - **`render-systemd.sh`**. First-class Linux scheduling.
 - **Spend dashboards**. Render a weekly recap from per-agent spend files.
-- **`alfred-os-init` template**. `npm create vite`-style scaffolding for a new fleet.
+- **`alfred new-codename` scaffold**. Single command to add a fresh codename agent.
 
 ## Considered, not yet committed
 
@@ -45,7 +45,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - Multi-tenant.
 - Web UI.
 - Long-running orchestration loop.
-- LLM routing / model selection at the framework layer.
+- Hosted model gateway.
 - Browser automation built in.
 - Vector DB for memory.
 - Anything Anthropic ships natively (Agent Teams, Memory Tool, MCP server registry).

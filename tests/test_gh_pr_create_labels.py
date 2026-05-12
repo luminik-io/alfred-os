@@ -1,7 +1,7 @@
 """Tests for ``gh_pr_create`` label handling and stderr surfacing.
 
-Backport of luminik-io/alfred PR #145 / Issue #142 — silent-None-return
-on label-not-found made PR-open failures opaque.
+Regression coverage for the gh_pr_create label bootstrap path, where
+label-not-found failures used to make PR-open failures opaque.
 """
 
 from __future__ import annotations
@@ -90,6 +90,29 @@ def test_gh_pr_create_logs_stderr_on_failure(monkeypatch, tmp_path, capsys):
     err = capsys.readouterr().err
     assert "[gh_pr_create] FAILED" in err
     assert "could not add label" in err
+
+
+def test_gh_pr_create_can_open_draft_pr(monkeypatch, tmp_path):
+    import agent_runner as ar
+
+    body = tmp_path / "body.md"
+    body.write_text("test")
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kw):
+        cmds.append(list(cmd))
+        if cmd[:3] == ["gh", "pr", "create"]:
+            return subprocess.CompletedProcess(
+                cmd, 0, "https://github.com/myorg/backend/pull/125\n", ""
+            )
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(ar, "run", fake_run)
+    url = ar.gh_pr_create("backend", title="t", body_file=body, draft=True)
+
+    assert url == "https://github.com/myorg/backend/pull/125"
+    pr_create = next(c for c in cmds if c[:3] == ["gh", "pr", "create"])
+    assert "--draft" in pr_create
 
 
 def test_gh_pr_create_does_not_recreate_standard_labels(monkeypatch, tmp_path):

@@ -26,7 +26,7 @@ operators can extend with additional checks (oauth expiry, daily
 spend caps, failure streaks, bundle-queue depth) without changing the
 ``Finding`` contract.
 
-Backport of luminik-io/alfred PR #130 (slimmed for OSS).
+Backport from the predecessor fleet's health snapshot runner, slimmed for OSS.
 """
 
 from __future__ import annotations

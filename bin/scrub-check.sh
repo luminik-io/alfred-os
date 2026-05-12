@@ -16,10 +16,8 @@ fi
 PATH_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|CHANGELOG\.md|site/package-lock\.json|.*\.lock)$'
 
 # Per-line allowlist for files that legitimately contain example codenames
-# matching one of our private-identifier patterns (e.g. "my.fleet.<example>").
-# Used for agents.conf* example files and the test suite that exercises
-# AWS profile mapping with fictional codenames.
-PER_LINE_ALLOW_RE='^(\./)?(launchd/agents\.conf\.example|infra/agents/launchd/agents\.conf\.example|tests/test_alfred_init\.py)$'
+# matching one of the generic private-identifier patterns.
+PER_LINE_ALLOW_RE='^(\./)?(launchd/agents\.conf\.example|tests/test_alfred_init\.py)$'
 
 # Secret allowlist: nothing should be exempt from the secret-pattern scan
 # (Slack tokens, AWS access keys). The list is intentionally smaller than
@@ -27,20 +25,16 @@ PER_LINE_ALLOW_RE='^(\./)?(launchd/agents\.conf\.example|infra/agents/launchd/ag
 # a changelog entry trips the scan.
 SECRET_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|.*\.lock)$'
 
-SKIP_PATH_RE='^(\./)?(\.git/|site/node_modules/|infra/agents/launchd/_generated/)'
+SKIP_PATH_RE='^(\./)?(\.git/|site/node_modules/)'
 
 patterns=(
-  "/Users/operator"
-  "/Users/prasad"
-  "/home/prasad"
+  "/Users/[A-Za-z0-9._-]+/Claude_Workspace"
+  "/Users/[A-Za-z0-9._-]+/\\.hermes"
+  "/home/[A-Za-z0-9._-]+/Claude_Workspace"
   "luminik-internal"
-  "prasad@luminik\\.io"
-  "C0ATTT5DDGA"
-  "T024P63979U"
-  "huntress-cron"
-  "slack/staging/"
-  "e2e/staging/"
-  "my\\.fleet\\.huntress\\b"
+  "[A-Za-z0-9._%+-]+@luminik\\.io"
+  "slack/(staging|prod|production)/"
+  "e2e/(staging|prod|production)/"
 )
 
 secret_patterns=(

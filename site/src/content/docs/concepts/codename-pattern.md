@@ -58,7 +58,7 @@ Without the codename, "the test agent" tends to creep: "well, while it's there, 
 
 ## Pick your own cast
 
-The reference fleet uses Batman side-characters because the operator likes Batman. Pick anything coherent:
+The shipped examples use Batman side-characters because the original operator liked Batman. Pick anything coherent:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Hermes (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
@@ -82,7 +82,7 @@ Each codename has:
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/alfred-os/guides/aws/).
 - **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
 
-[Tutorial](/alfred-os/getting-started/tutorial/) for an end-to-end build of one codename. The reference fleet's [`agents/engineering/CLAUDE.md`](https://github.com/luminik-io/alfred/blob/main/agents/engineering/CLAUDE.md) for a complete cast in production.
+[Tutorial](/alfred-os/getting-started/tutorial/) for an end-to-end build of one codename. Use [`docs/AGENTS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AGENTS.md) for the default cast map and role boundaries.
 
 ## Anti-patterns
 

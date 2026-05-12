@@ -200,7 +200,7 @@ for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
     os.environ.pop(k, None)
 ```
 
-This is what `gordon.py` in the reference fleet does. See `bin/gordon.py` (when you fork the framework into a fleet).
+This is what the shipped `bin/gordon.py` runner does when AWS monitoring is enabled.
 
 ## 5. Rotate keys
 

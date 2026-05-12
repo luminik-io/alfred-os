@@ -58,7 +58,7 @@ pre-commit install
 
 ## Codename proposals
 
-For a new codename in the reference fleet (`luminik-io/alfred`), open the issue there, not here. Alfred-OS is the framework; codenames are fleet-specific.
+For a production codename that is specific to your own fleet, keep it in your fleet repo. Alfred-OS is the framework; codenames are fleet-specific unless they demonstrate a reusable pattern.
 
 For a new example codename in `examples/bin/`, open a feature request issue with the codename + role + 100-line sketch. We'll respond with the design call before you write the PR.
 

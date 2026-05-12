@@ -2,7 +2,7 @@
 
 Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface for a specific purpose: code review, refactoring, browser testing, security checks. Alfred-OS does not ship skills itself. Consumer agents pick the ones they want.
 
-This doc lists the skills the reference fleet uses, what they're for, and the install commands.
+This doc lists a recommended skill set for an autonomous engineering fleet, what each skill is for, and the install commands.
 
 ## Where skills live
 
@@ -81,13 +81,7 @@ Installs all CodeRabbit skills into `~/.claude/skills/`. Note: the security audi
 
 ### Vercel React best practices
 
-```sh
-git clone https://github.com/vercel/community-skills.git /tmp/vrbp
-cp -R /tmp/vrbp/vercel-react-best-practices ~/.claude/skills/
-rm -rf /tmp/vrbp
-```
-
-(Source URL placeholder. Verify against the latest published location before mass-deploying.)
+Vercel's React guidance moves over time. Install this only after verifying the current published source for your Claude Code setup, or omit it and rely on your own frontend prompt conventions.
 
 ## Skill-install automation
 
@@ -123,7 +117,7 @@ Run on every fresh host. Idempotent: `git clone` fails loud if the dir exists, t
 
 ## Per-agent skill matrix
 
-Document which skills each codename invokes in your fleet's `agents/<dept>/CLAUDE.md`. The reference fleet's matrix:
+Document which skills each codename invokes in your fleet's own agent prompts or runbooks. A typical engineering-fleet matrix:
 
 | Codename | Skills it invokes |
 |---|---|

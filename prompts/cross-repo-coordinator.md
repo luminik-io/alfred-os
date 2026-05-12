@@ -49,7 +49,7 @@ Triggered when an issue in `${GH_ORG}/${ORCHESTRATOR_REPO}` gets label `agent:cr
 
 1. **Never skip the rollout order.** If backend ships before frontend, the FE might break on a contract it doesn't understand yet. Order matters.
 2. **Always deploy to staging first**, verify, THEN propose prod.
-3. **No force-pushes, no force-merges.** If a repo's CI fails mid-rollout, halt everything. Post to `#alfred`. Wait for the operator.
+3. **No force-pushes, no force-merges.** If a repo's CI fails mid-rollout, halt everything. Post to the configured Slack channel. Wait for the operator.
 4. **Every cross-repo change gets a design doc link.** If the issue doesn't have one, demand one.
 
 ## Output
@@ -60,7 +60,7 @@ Triggered when an issue in `${GH_ORG}/${ORCHESTRATOR_REPO}` gets label `agent:cr
 
 ## Escalation
 
-Post to `#alfred` (and WhatsApp if your fleet wires that path) if:
+Post to the configured Slack channel (and WhatsApp if your fleet wires that path) if:
 - Any repo's CI fails after 2 retries during rollout
 - Contract mismatch surfaces post-merge (API returns wrong shape)
 - Multi-repo staging-deploy workflow fails

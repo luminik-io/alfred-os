@@ -36,7 +36,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: site
-        run: npm install
+        run: npm ci
 
       - name: Build site
         working-directory: site
@@ -45,8 +45,8 @@ jobs:
           ALFRED_OS_SITE_BASE: ${{ vars.ALFRED_OS_SITE_BASE || '/alfred-os' }}
         run: npm run build
 
-      # Keep Pages publishing disabled while alfred-os is still private launch prep.
-      # Set repo variable ALFRED_OS_PUBLISH_PAGES=true when the site is ready to publish.
+      # Publishing is gated so forks and private prep branches can build docs
+      # without deploying. Set ALFRED_OS_PUBLISH_PAGES=true for public releases.
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
         uses: actions/upload-pages-artifact@v5
