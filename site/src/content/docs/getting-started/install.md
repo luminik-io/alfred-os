@@ -23,7 +23,7 @@ claude                            # Claude Code first-run auth
 
 Idempotent (safe to re-run). On a fresh Mac:
 
-1. Verifies macOS. Linux support is on the roadmap; see [Linux](/alfred-os/guides/linux/).
+1. Verifies macOS. Linux support is on the roadmap; see [Linux](/guides/linux/).
 2. Installs Homebrew if missing.
 3. `brew install`s `python@3.11`, `git`, `gh`, `jq`, `awscli`, `node`, `uv`.
 4. `npm install -g @anthropic-ai/claude-code`.
@@ -60,13 +60,13 @@ Per-stage skips: `--skip-brew`, `--skip-npm`.
 
 Point alfred-os at your fleet's Slack channel and (optionally) AWS:
 
-- [Slack setup](/alfred-os/guides/slack/): create the app, mint the webhook.
-- [AWS setup](/alfred-os/guides/aws/): IAM-per-agent, Secrets Manager.
-- [Claude Code](/alfred-os/guides/claude-code/): Pro vs Max sizing, two-account swap.
+- [Slack setup](/guides/slack/): create the app, mint the webhook.
+- [AWS setup](/guides/aws/): IAM-per-agent, Secrets Manager.
+- [Claude Code](/guides/claude-code/): Pro vs Max sizing, two-account swap.
 
 Then write your first codename agent:
 
-- [Tutorial: your first agent in 30 minutes](/alfred-os/getting-started/tutorial/): builds Echo end-to-end.
+- [Tutorial: your first agent in 30 minutes](/getting-started/tutorial/): builds Echo end-to-end.
 
 ## Troubleshooting
 

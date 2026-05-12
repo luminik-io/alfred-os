@@ -4,12 +4,11 @@ import starlight from "@astrojs/starlight";
 
 // Alfred-OS site config.
 //
-// Default URL assumes deployment to luminik-io.github.io/alfred-os (project
-// pages). When a dedicated org and CNAME exist (alfred-os.dev or similar),
-// override `site` and clear `base`.
+// Default URL assumes the public custom domain. Forks can override these with
+// ALFRED_OS_SITE_URL / ALFRED_OS_SITE_BASE when deploying under a project path.
 export default defineConfig({
-  site: process.env.ALFRED_OS_SITE_URL ?? "https://luminik-io.github.io",
-  base: process.env.ALFRED_OS_SITE_BASE ?? "/alfred-os",
+  site: process.env.ALFRED_OS_SITE_URL ?? "https://alfred.luminik.io",
+  base: process.env.ALFRED_OS_SITE_BASE ?? "/",
   trailingSlash: "ignore",
   integrations: [
     starlight({

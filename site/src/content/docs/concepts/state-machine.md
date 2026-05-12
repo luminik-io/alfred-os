@@ -119,4 +119,4 @@ RELEASE_COMMENT_PREFIX: str
 PAUSED_REPOS_FILE: Path
 ```
 
-See [agent_runner API reference](/alfred-os/reference/agent-runner/) for the full module surface.
+See [agent_runner API reference](/reference/agent-runner/) for the full module surface.

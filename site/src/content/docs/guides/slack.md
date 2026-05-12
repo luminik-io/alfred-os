@@ -52,7 +52,7 @@ aws --profile <admin> secretsmanager create-secret \
   --region us-east-1
 ```
 
-The framework's default secret ID is `alfred/slack-webhook`. See [AWS setup](/alfred-os/guides/aws/) for the IAM policy your scheduled-agent identity needs.
+The framework's default secret ID is `alfred/slack-webhook`. See [AWS setup](/guides/aws/) for the IAM policy your scheduled-agent identity needs.
 
 ### Option C: Both
 
@@ -71,7 +71,7 @@ You should see the message in your channel.
 
 ## Severity routing
 
-`slack_post(text, severity="info" | "warn" | "alert")`. See [Severity routing](/alfred-os/concepts/severity-routing/).
+`slack_post(text, severity="info" | "warn" | "alert")`. See [Severity routing](/concepts/severity-routing/).
 
 ## Optional: bot token (`xoxb-`)
 

@@ -52,7 +52,7 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 
    ```sh
    gh workflow run site.yml --repo luminik-io/alfred-os --ref main
-   curl -fsSL https://luminik-io.github.io/alfred-os/ | grep -E 'Alfred-OS|Starlight'
+   curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred-OS|Starlight'
    ```
 
 6. Smoke-test the published install path from a fresh directory.

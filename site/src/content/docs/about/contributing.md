@@ -7,9 +7,9 @@ Full guide at [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/m
 
 ## Read first
 
-- [Architecture](/alfred-os/concepts/architecture/): the design rationale.
-- [Roadmap](/alfred-os/about/roadmap/): what's in flight and what's out.
-- The constraints in [Architecture → "What this rules out"](/alfred-os/concepts/architecture/#what-this-rules-out).
+- [Architecture](/concepts/architecture/): the design rationale.
+- [Roadmap](/about/roadmap/): what's in flight and what's out.
+- The constraints in [Architecture → "What this rules out"](/concepts/architecture/#what-this-rules-out).
 
 PRs that fit get reviewed. PRs that broaden scope get politely declined.
 

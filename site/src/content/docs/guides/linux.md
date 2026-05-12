@@ -63,7 +63,7 @@ This is what a `systemd/render.sh` would generate. Until that ships, you're hand
 
 ## Roadmap for first-class Linux support
 
-See [Roadmap](/alfred-os/about/roadmap/). The structure of the work:
+See [Roadmap](/about/roadmap/). The structure of the work:
 
 1. `systemd/_template.service` + `systemd/_template.timer`.
 2. `systemd/render.sh` mirroring `launchd/render.sh`.
@@ -71,7 +71,7 @@ See [Roadmap](/alfred-os/about/roadmap/). The structure of the work:
 4. `install.sh` Linux branch (apt/dnf/pacman).
 5. Round-trip test on Ubuntu LTS + Fedora.
 
-If you want to do this work, see [Contributing](/alfred-os/about/contributing/). PRs reviewed. If you want to fund it, file an issue with your willingness to sponsor.
+If you want to do this work, see [Contributing](/about/contributing/). PRs reviewed. If you want to fund it, file an issue with your willingness to sponsor.
 
 ## WSL2 and Docker
 

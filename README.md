@@ -1,14 +1,14 @@
 # alfred-os
 
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
-[![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://luminik-io.github.io/alfred-os/)
+[![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
 A local engineering-fleet runtime: launchd-managed Claude Code-first agents on a single Mac, with optional Codex routing for review-style work. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide rate-limit block.
 
-Docs site: https://luminik-io.github.io/alfred-os
+Docs site: https://alfred.luminik.io
 
 ## Why use it
 
@@ -155,7 +155,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 - [Security](SECURITY.md): private-disclosure process.
 - [Release checklist](docs/RELEASE_CHECKLIST.md): pre-tag gates, scrub scan, GitHub Release flow.
 
-Rendered version: https://luminik-io.github.io/alfred-os/.
+Rendered version: https://alfred.luminik.io/.
 
 ## Codename pattern
 
@@ -163,7 +163,7 @@ The framework expects one agent script per narrow specialist, named after a cohe
 
 The cast matters for two reasons. Codenames appear in PR titles, Slack messages, and commit-trailer metadata; a coherent cast makes the fleet's channel scannable. And narrow scopes per codename are a forcing function for design quality. "What does Bane do?" is a sharper question than "what does the test agent do?".
 
-See [Architecture → Codename pattern](https://luminik-io.github.io/alfred-os/concepts/codename-pattern/) for more.
+See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/) for more.
 
 ## What alfred-os does NOT do
 

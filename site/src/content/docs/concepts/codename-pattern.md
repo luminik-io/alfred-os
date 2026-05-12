@@ -79,10 +79,10 @@ Each codename has:
 - **A bin script**: `bin/<role>.py`. Imports from `agent_runner`. ~150-300 lines.
 - **A launchd entry**: one line in `launchd/agents.conf` (label, script, schedule, java flag).
 - **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$HERMES_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
-- **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/alfred-os/guides/aws/).
+- **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
 
-[Tutorial](/alfred-os/getting-started/tutorial/) for an end-to-end build of one codename. Use [`docs/AGENTS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AGENTS.md) for the default cast map and role boundaries.
+[Tutorial](/getting-started/tutorial/) for an end-to-end build of one codename. Use [`docs/AGENTS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AGENTS.md) for the default cast map and role boundaries.
 
 ## Anti-patterns
 
