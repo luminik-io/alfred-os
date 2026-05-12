@@ -8,6 +8,24 @@ Notable changes to alfred-os. Format: [Keep a Changelog](https://keepachangelog.
 
 - Nothing yet.
 
+## [0.2.1] - 2026-05-12
+
+Patch release for the first public launch cleanup pass.
+
+### Added
+
+- Checked-in CodeQL workflow for GitHub Actions, Python, Ruby, and JavaScript/TypeScript, with PR, push, scheduled, and manual dispatch triggers.
+- Optional Hermes integration guide in `docs/HERMES.md` and the docs site.
+
+### Fixed
+
+- Stopped Lucius from logging GitHub issue-author trust details to stdout or Slack, resolving the CodeQL clear-text logging alerts on `bin/lucius.py`.
+- Fixed GitHub Pages manual dispatch so the site can be republished without a code change.
+
+### Changed
+
+- Public repository metadata now uses the sharper `alfred-os` positioning, squash-only PR merges, auto-update branches, and Dependabot security updates.
+
 ## [0.2.0] - 2026-05-12
 
 Pivot from "extracted framework substrate" to "complete engineering agent fleet". The default install now ships 12 working agents the operator configures via an interactive `alfred-init` wizard.
@@ -122,6 +140,7 @@ Initial public framework extraction.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/luminik-io/alfred-os/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/luminik-io/alfred-os/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/luminik-io/alfred-os/releases/tag/v0.1.0
