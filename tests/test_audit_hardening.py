@@ -200,6 +200,78 @@ def test_lucius_issue_author_trust_allows_repo_members(monkeypatch):
     assert note == "trusted: author=maintainer, association=MEMBER"
 
 
+def test_lucius_existing_authored_pr_removes_issue_from_implement_queue(monkeypatch):
+    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "backend")
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    edits = []
+    monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
+    monkeypatch.setattr(
+        lucius,
+        "gh_json",
+        lambda cmd, default=None: [
+            {
+                "number": 42,
+                "title": "Already done",
+                "url": "https://github.com/acme/backend/issues/42",
+                "labels": [{"name": "agent:implement"}],
+                "createdAt": "2026-05-09T10:00:00Z",
+                "body": "",
+                "author": {"login": "maintainer"},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        lucius,
+        "find_open_authored_pr_for_issue",
+        lambda repo, issue_num: {"url": "https://github.com/acme/backend/pull/7"},
+    )
+    monkeypatch.setattr(lucius, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)))
+
+    assert lucius.pick_issue() == (None, None)
+    assert edits == [
+        (
+            ("backend", 42),
+            {"add_labels": ["agent:pr-open"], "remove_labels": ["agent:implement"]},
+        )
+    ]
+
+
+def test_lucius_unknown_author_trust_moves_issue_out_of_queue(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+
+    class FakeEvents:
+        def __init__(self):
+            self.items = []
+
+        def emit(self, *a, **kw):
+            self.items.append((a, kw))
+
+    events = FakeEvents()
+    comments = []
+    edits = []
+    posts = []
+    monkeypatch.setattr(lucius, "gh_issue_comment", lambda *a, **kw: comments.append((a, kw)))
+    monkeypatch.setattr(lucius, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)))
+    monkeypatch.setattr(lucius, "slack_post", lambda *a, **kw: posts.append((a, kw)))
+
+    lucius.block_author_trust_unavailable(
+        "backend",
+        42,
+        "unverified: author=maintainer, authorAssociation not exposed",
+        events,
+    )
+
+    assert edits == [
+        (
+            ("backend", 42),
+            {"add_labels": ["needs:human-scope"], "remove_labels": ["agent:implement"]},
+        )
+    ]
+    assert "does not starve the implement queue" in comments[0][0][2]
+    assert events.items[0][1]["outcome"] == "blocked-author-trust-unavailable"
+    assert "Moved to needs:human-scope" in posts[0][0][0]
+
+
 def test_lock_pid_identity_requires_matching_metadata(monkeypatch, tmp_path):
     sys.path.insert(0, str(ROOT / "lib"))
     import agent_runner as ar
