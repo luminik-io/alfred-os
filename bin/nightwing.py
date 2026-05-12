@@ -378,6 +378,7 @@ def main() -> int:
             timeout=600,
             codex_timeout=600,
             codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
+            codex_bypass_approvals_and_sandbox=True,
             on_fallback=_on_engine_fallback,
         )
         total_turns += result.num_turns
