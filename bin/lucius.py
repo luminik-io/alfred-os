@@ -423,8 +423,8 @@ def block_author_trust_unavailable(repo: str, issue_num: int, trust_note: str, e
         issue=issue_num,
     )
     msg = (
-        f"[{AGENT.upper()}-BLOCKED] #{issue_num} author trust unavailable: "
-        f"{trust_note}. Moved to needs:human-scope."
+        f"[{AGENT.upper()}-BLOCKED] #{issue_num} author trust unavailable. "
+        "Moved to needs:human-scope."
     )
     print(msg)
     slack_post(msg, severity="warn")
@@ -509,7 +509,7 @@ def main() -> int:
             remove_labels=["agent:implement"],
         )
         events.emit("firing_complete", outcome="blocked-untrusted-author", issue=issue_num)
-        msg = f"[{AGENT.upper()}-BLOCKED] #{issue_num} untrusted issue author: {trust_note}"
+        msg = f"[{AGENT.upper()}-BLOCKED] #{issue_num} untrusted issue author."
         print(msg)
         slack_post(msg, severity="warn")
         return 0
