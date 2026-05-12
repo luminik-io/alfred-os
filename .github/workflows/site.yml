@@ -48,14 +48,14 @@ jobs:
       # Publishing is gated so forks and private prep branches can build docs
       # without deploying. Set ALFRED_OS_PUBLISH_PAGES=true for public releases.
       - name: Upload Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
 
   deploy:
     name: Deploy to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
     environment:
