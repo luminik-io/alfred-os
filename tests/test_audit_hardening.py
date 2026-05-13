@@ -36,6 +36,7 @@ def test_robin_rejects_triages_outside_candidate_set(monkeypatch):
     valid, rejected = robin.validated_triages(
         [
             {"repo": "backend", "number": 10, "severity": "severity:p1"},
+            {"repo": "luminik-io/frontend", "number": 20, "severity": "severity:p2"},
             {"repo": "backend", "number": 999, "severity": "severity:p1"},
             {"repo": "other", "number": 20, "severity": "severity:p1"},
             {"repo": "frontend", "number": "20", "severity": "severity:p1"},
@@ -44,8 +45,65 @@ def test_robin_rejects_triages_outside_candidate_set(monkeypatch):
         candidates,
     )
 
-    assert valid == [{"repo": "backend", "number": 10, "severity": "severity:p1"}]
+    assert valid == [
+        {"repo": "backend", "number": 10, "severity": "severity:p1"},
+        {"repo": "frontend", "number": 20, "severity": "severity:p2"},
+    ]
     assert len(rejected) == 4
+
+
+def test_robin_parse_triage_payload_accepts_fenced_json_with_trailing_reasoning(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+    payload = """```json
+{
+  "triages": [
+    {"repo": "specs", "number": 139, "severity": "severity:p1", "extra_labels": ["agent:implement"], "comment": ""}
+  ]
+}
+```
+
+Reasoning: specs drift is never security P0.
+"""
+
+    parsed = robin.parse_triage_payload(payload)
+
+    assert parsed["triages"][0]["repo"] == "specs"
+
+
+def test_robin_parse_triage_payload_accepts_prose_before_fenced_json(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+    payload = """All five are specs-drift issues.
+
+```json
+{
+  "triages": [
+    {"repo": "specs", "number": 135, "severity": "severity:p1", "extra_labels": ["agent:implement"], "comment": "Move to implementer."}
+  ]
+}
+```
+"""
+
+    parsed = robin.parse_triage_payload(payload)
+
+    assert parsed["triages"][0]["number"] == 135
+
+
+def test_robin_parse_triage_payload_skips_unrelated_json_before_triages(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+    payload = """Debug note: {"note": "not the triage payload"}
+
+```json
+{
+  "triages": [
+    {"repo": "specs", "number": 135, "severity": "severity:p1", "extra_labels": ["agent:implement"], "comment": ""}
+  ]
+}
+```
+"""
+
+    parsed = robin.parse_triage_payload(payload)
+
+    assert parsed["triages"][0]["repo"] == "specs"
 
 
 def test_automerge_blocks_ship_ready_review_older_than_commit(monkeypatch):

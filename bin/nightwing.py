@@ -132,6 +132,7 @@ def comment_severity(body: str) -> str | None:
         p1_section = _extract_markdown_section(body, r"Should fix before merge\s+\(P1\)")
         if p1_section and _section_has_finding(p1_section):
             return "P1"
+        return None
 
     if re.search(r"\b(P0|critical|blocking|must fix|🛑|⛔)", body, re.IGNORECASE):
         return "P0"

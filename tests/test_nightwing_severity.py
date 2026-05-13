@@ -50,3 +50,21 @@ def test_p0_security_comment_still_requires_manual_gate(nightwing) -> None:
 
     assert nightwing.comment_severity(body) == "P0"
     assert nightwing.SECURITY_KEYWORDS.search(body)
+
+
+def test_ship_ready_review_with_p0_and_p1_none_is_not_p0(nightwing) -> None:
+    body = """Rasalghul - review
+
+## Blockers (P0)
+None.
+
+## Should fix before merge (P1)
+None.
+
+## Worth considering (P2)
+- Add CDI-level coverage when practical.
+
+Ship-ready: yes - No P0/P1 issues found.
+"""
+
+    assert nightwing.comment_severity(body) is None

@@ -171,6 +171,16 @@ def candidate_keys(candidates: list[tuple[str, dict]]) -> set[tuple[str, int]]:
     return keys
 
 
+def normalize_repo_slug(repo: str) -> str:
+    repo = repo.strip()
+    prefix = f"{GH_ORG}/"
+    if repo.startswith(prefix):
+        return repo[len(prefix) :]
+    if "/" in repo:
+        return repo.rsplit("/", 1)[-1]
+    return repo
+
+
 def validated_triages(
     triages: object,
     candidates: list[tuple[str, dict]],
@@ -192,6 +202,7 @@ def validated_triages(
         if not isinstance(repo, str) or not isinstance(num, int) or isinstance(num, bool):
             rejected.append(f"triage[{idx}] has invalid repo/number")
             continue
+        repo = normalize_repo_slug(repo)
         key = (repo, num)
         if key not in allowed:
             rejected.append(f"triage[{idx}] targets non-candidate {repo}#{num}")
@@ -200,8 +211,52 @@ def validated_triages(
             rejected.append(f"triage[{idx}] duplicates {repo}#{num}")
             continue
         seen.add(key)
+        item = dict(item)
+        item["repo"] = repo
         valid.append(item)
     return valid, rejected
+
+
+def parse_triage_payload(text: str) -> dict:
+    """Parse Robin's LLM JSON payload, tolerating fenced JSON and short prose wrappers."""
+    stripped = (text or "").strip()
+    if not stripped:
+        raise json.JSONDecodeError("empty triage payload", "", 0)
+
+    candidates = [stripped]
+    fenced = re.findall(r"```(?:json)?\s*(.*?)```", stripped, flags=re.IGNORECASE | re.DOTALL)
+    candidates.extend(block.strip() for block in fenced if block.strip())
+
+    fence_stripped = (
+        re.sub(r"^```(?:json)?\s*", "", stripped, flags=re.IGNORECASE).rstrip("`").rstrip()
+    )
+    if fence_stripped and fence_stripped not in candidates:
+        candidates.append(fence_stripped)
+
+    decoder = json.JSONDecoder()
+    starts = [idx for idx, ch in enumerate(stripped) if ch in "{["]
+    candidates.extend(stripped[idx:] for idx in starts)
+
+    last_error: Exception | None = None
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            try:
+                parsed, _end = decoder.raw_decode(candidate)
+            except json.JSONDecodeError as raw_exc:
+                last_error = raw_exc
+                continue
+        if isinstance(parsed, list):
+            return {"triages": parsed}
+        if isinstance(parsed, dict) and "triages" in parsed:
+            return parsed
+        last_error = AttributeError("triage payload does not contain triages")
+
+    if last_error:
+        raise last_error
+    raise json.JSONDecodeError("no JSON object found in triage payload", stripped, 0)
 
 
 def main() -> int:
@@ -357,20 +412,25 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
         return 0
 
-    # Parse the LLM JSON response
+    # Parse the LLM JSON response. Claude/Codex sometimes wrap valid JSON in
+    # a code fence or one short reasoning sentence; keep the contract strict
+    # after extraction.
     text = (result.result_text or "").strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text).rstrip("`").rstrip()
-    if text.endswith("```"):
-        text = text[:-3].rstrip()
-
     try:
-        parsed = json.loads(text)
-        raw_triages = parsed.get("triages", [])
+        parsed = parse_triage_payload(text)
+        raw_triages = parsed.get("triages")
     except (json.JSONDecodeError, AttributeError) as e:
-        msg = f"❌ {AGENT.title()}: could not parse {engine_used} JSON output ({e}). First line: {short(text.splitlines()[0] if text else '', 100)}"
+        msg = f"❌ {AGENT.title()}: could not parse {engine_used} triage JSON ({e}). First line: {short(text.splitlines()[0] if text else '', 100)}"
         print(msg)
         slack_post(msg)
         events.emit("firing_complete", outcome="parse-error")
+        return 0
+
+    if not isinstance(raw_triages, list):
+        msg = f"❌ {AGENT.title()}: triages is not a list"
+        print(msg)
+        slack_post(msg)
+        events.emit("firing_complete", outcome="bad-triages-type")
         return 0
 
     triages, rejected_triages = validated_triages(raw_triages, candidates)
