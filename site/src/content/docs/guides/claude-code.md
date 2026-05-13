@@ -34,19 +34,19 @@ A typical Lucius firing on a small backend issue burns 30-80 turns. Lucius alone
 
 Recommendation: Pro to validate, Max once you've got 2+ daily codenames. The two-account swap pattern below also lets you split spend.
 
-## Two-account swap (`hermes-claude`)
+## Two-account swap (`alfred claude`)
 
-Two Anthropic accounts? `bin/hermes-claude` flips the launchd
+Two Anthropic accounts? `alfred claude` flips the launchd
 `CLAUDE_CONFIG_DIR` env var so launchd-spawned `claude` uses either the
 primary `~/.claude/` directory or a secondary config such as
 `~/.claude-secondary/`. Primary is set explicitly so older `~/.claude.json`
 files cannot accidentally win Claude Code's default profile lookup.
 
 ```sh
-hermes-claude status      # which account is active
-hermes-claude primary     # set CLAUDE_CONFIG_DIR=~/.claude
-hermes-claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
-hermes-claude swap        # toggle
+alfred claude status      # which account is active
+alfred claude primary     # set CLAUDE_CONFIG_DIR=~/.claude
+alfred claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
+alfred claude swap        # toggle
 ```
 
 Set up the secondary account once:
@@ -56,7 +56,7 @@ mkdir -p ~/.claude-secondary
 CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
 ```
 
-Typical use: run on `primary`, hit the cap (Slack alert from `set_global_block`), `hermes-claude swap`, fleet resumes on `secondary`'s quota.
+Typical use: run on `primary`, hit the cap (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
 
 ## CLAUDE_BIN
 

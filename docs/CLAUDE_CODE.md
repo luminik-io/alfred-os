@@ -1,6 +1,6 @@
 # Claude Code
 
-Alfred-OS runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`hermes-claude`), and the optional Codex path.
+Alfred-OS runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`alfred claude`), and the optional Codex path.
 
 ## What "Claude Code" is
 
@@ -79,28 +79,28 @@ Claude Code is metered against your **subscription quota**, not API tokens. Two 
 
 A "turn" is roughly one model response. A typical Lucius firing on a small backend issue burns 30-80 turns. A multi-file refactor can hit 150+. Empirically, Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. Add Bane (test coverage), Drake (planner), Ra's (review), Nightwing (review-fix), and you exceed Pro quota in a day.
 
-Recommendation: start on Pro to validate the framework, upgrade to Max once you've got more than 2 codenames firing daily. The `hermes-claude` swap pattern below also lets you split spend across two accounts.
+Recommendation: start on Pro to validate the framework, upgrade to Max once you've got more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you split spend across two accounts.
 
 When the subscription cap trips mid-firing, the framework treats it as a fleet-wide event. `set_global_block(hours=1, reason="...")` poisons the run-permission file at `$HERMES_HOME/state/global-blocked-until.json`. Every other agent's first preflight check sees the block and exits silently. After an hour, the block expires and the fleet resumes.
 
-## The `hermes-claude` swap pattern
+## The `alfred claude` swap pattern
 
-Two Anthropic accounts? `bin/hermes-claude` points the launchd-spawned `claude` at either one without re-authenticating each time.
+Two Anthropic accounts? `alfred claude` points the launchd-spawned `claude` at either one without re-authenticating each time. The lower-level `hermes-claude` helper remains available for existing scripts, but `alfred claude` is the operator-facing command.
 
 The mechanism: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`.
-`hermes-claude` flips the launchd global env var between the primary
+`alfred claude` flips the launchd global env var between the primary
 `~/.claude/` directory and `~/.claude-secondary/`. Primary is explicit so
 older `~/.claude.json` files cannot accidentally win Claude Code's default
 profile lookup.
 
 ```sh
-hermes-claude status      # which account is active right now
-hermes-claude primary     # set CLAUDE_CONFIG_DIR=~/.claude
-hermes-claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
-hermes-claude swap        # toggle
+alfred claude status      # which account is active right now
+alfred claude primary     # set CLAUDE_CONFIG_DIR=~/.claude
+alfred claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
+alfred claude swap        # toggle
 ```
 
-Typical usage: run on `primary` until it hits the weekly cap (Slack alert from `set_global_block`), `hermes-claude swap`, fleet resumes on `secondary`'s quota.
+Typical usage: run on `primary` until it hits the weekly cap (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
 
 To populate the secondary config, log in once with `CLAUDE_CONFIG_DIR` pointed
 at the secondary directory:
@@ -108,7 +108,7 @@ at the secondary directory:
 ```sh
 mkdir -p ~/.claude-secondary
 CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
-hermes-claude secondary
+alfred claude secondary
 ```
 
 ## CLAUDE_BIN env var
@@ -147,7 +147,7 @@ The plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alf
 Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/codex` over an app-bundle path.
 
 **`error_rate_limit` immediately on every firing.**
-You've blown the weekly cap. `cat $HERMES_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `hermes-claude swap`, or upgrade to Max.
+You've blown the weekly cap. `cat $HERMES_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `alfred claude swap`, or upgrade to Max.
 
 **`error_max_turns` on every firing of one agent.**
 That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/lucius.py`), or scope-cap the issues that agent picks up.

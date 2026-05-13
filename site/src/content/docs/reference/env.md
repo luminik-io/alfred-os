@@ -31,7 +31,7 @@ not mean `hermes-agent` is installed or required.
 | `HERMES_HOME` | everything | `$HOME/.hermes` |
 | `WORKSPACE_ROOT` | `agent_runner.WORKSPACE = WORKSPACE_ROOT/product` | `$HOME/code` |
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
-| `CLAUDE_CONFIG_DIR` | `claude` auth profile selection | Set by `hermes-claude` for scheduled agents |
+| `CLAUDE_CONFIG_DIR` | `claude` auth profile selection | Set by `alfred claude` for scheduled agents |
 | `CODEX_BIN` | `agent_runner.codex_invoke` | `codex` (PATH) |
 | `CODEX_MODEL` | optional model override for `codex exec` | (Codex default) |
 | `CODEX_SANDBOX` | `codex exec --sandbox` | `read-only` |
@@ -62,7 +62,7 @@ not mean `hermes-agent` is installed or required.
 | Var | Used by | Default |
 |---|---|---|
 | `ALFRED_DISABLE_CLAUDE_AUTH_REPAIR` | disables automatic Claude auth refresh attempts | `0` |
-| `CLAUDE_CONFIG_DIR` | `bin/hermes-claude` and launchd env | `$HOME/.claude` for primary |
+| `CLAUDE_CONFIG_DIR` | `alfred claude` and launchd env | `$HOME/.claude` for primary |
 
 ## Slack
 

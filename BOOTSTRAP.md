@@ -179,7 +179,7 @@ HERMES_DOCTOR=1 ~/.hermes/bin/lucius.py
 # [LUCIUS-DOCTOR-OK]
 ```
 
-This is also the right command after you rotate AWS keys, refresh `aws sso login`, swap Claude account via `hermes-claude swap`, or change anything in IAM policy: re-run `doctor.sh` and confirm every configured agent passes.
+This is also the right command after you rotate AWS keys, refresh `aws sso login`, swap Claude account via `alfred claude swap`, or change anything in IAM policy: re-run `doctor.sh` and confirm every configured agent passes.
 
 ## 6. First firing: dry run
 

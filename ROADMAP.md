@@ -11,7 +11,7 @@ The default install ships a working engineering agent fleet. After `bash install
 - Issue claim state machine: `agent:in-flight` → `agent:pr-open` → `agent:done` with race resolution + stale-claim sweep.
 - Slack severity routing: `info` / `warn` / `alert`.
 - launchd plist template + render.sh + agents.conf format.
-- `bin/doctor.sh`, `bin/hermes-claude`, `deploy.sh`.
+- `bin/doctor.sh`, `alfred claude`, `deploy.sh`.
 
 **Engineering agents** (Batman codenames by default; renameable per role at install time)
 - `lucius`: feature dev (picks `agent:implement` issues, opens PRs).

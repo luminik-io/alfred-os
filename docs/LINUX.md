@@ -21,8 +21,9 @@ If you want to read the code, write your own agents, run the test suite, or use 
 - `lib/agent_runner.py`: every primitive (preflight, lock, spend, claude_invoke, gh, slack, claim_issue/release_issue, severity routing) works unchanged.
 - `tests/`: `pytest` runs the full test suite on Linux.
 - `bin/doctor.sh`: works (bash + grep).
-- `bin/hermes-claude`: works for launchd-style env switching only on macOS;
-  on Linux, set `CLAUDE_CONFIG_DIR` directly in your shell, cron, or systemd unit.
+- `alfred claude` / `bin/hermes-claude`: launchd-style env switching is
+  macOS-only; on Linux, set `CLAUDE_CONFIG_DIR` directly in your shell, cron,
+  or systemd unit.
 - `examples/bin/label_state.py`: works.
 - `examples/git-hooks/pre-push`: works (operator-side, runs in your shell).
 

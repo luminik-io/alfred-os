@@ -11,7 +11,8 @@ Full doc at [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/
 
 - `lib/agent_runner.py`: every primitive runs unchanged.
 - `tests/`: `pytest` runs the full test suite.
-- `bin/doctor.sh`, `bin/hermes-claude`: work.
+- `bin/doctor.sh`: works.
+- `alfred claude` / `bin/hermes-claude`: launchd-style env switching is macOS-only.
 - `examples/bin/label_state.py`, `examples/git-hooks/pre-push`: work.
 
 ## What doesn't

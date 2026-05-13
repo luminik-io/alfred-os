@@ -203,13 +203,13 @@ Env vars beat profiles in the AWS credential chain, so any leaked `AWS_*` from t
 
 When the primary Claude subscription hits its weekly cap, scheduled agents can
 use a second Anthropic account by pointing `CLAUDE_CONFIG_DIR` at a separate
-config dir, such as `~/.claude-secondary/`. The `hermes-claude` helper wraps
+config dir, such as `~/.claude-secondary/`. The `alfred claude` command wraps
 the settled local pattern:
 
 ```sh
 CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
-hermes-claude secondary
-hermes-claude primary
+alfred claude secondary
+alfred claude primary
 ```
 
 The helper flips the launchd global env var via `launchctl setenv`, so the next
