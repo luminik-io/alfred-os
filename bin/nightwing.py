@@ -93,8 +93,51 @@ SECURITY_KEYWORDS = re.compile(
     r"\b(auth|secret|token|sql injection|xss|csrf|ssrf|password|oauth|injection|sanitiz)",
     re.IGNORECASE,
 )
-P0P1_KEYWORDS = re.compile(r"\b(P0|P1|blocking|must fix|critical|🛑|⛔)", re.IGNORECASE)
 ALREADY_FIXED = re.compile(rf"{AGENT}.*fixed in", re.IGNORECASE)
+
+
+def _extract_markdown_section(body: str, heading_pattern: str) -> str:
+    match = re.search(rf"^##\s+{heading_pattern}.*$", body, re.IGNORECASE | re.MULTILINE)
+    if not match:
+        return ""
+    rest = body[match.end() :]
+    next_heading = re.search(r"^##\s+", rest, re.MULTILINE)
+    return rest[: next_heading.start()] if next_heading else rest
+
+
+def _section_has_finding(section: str) -> bool:
+    for line in section.splitlines():
+        text = line.strip()
+        if not text.startswith(("-", "*")):
+            continue
+        item = text.lstrip("-* ").strip().lower().rstrip(".")
+        if item and item not in {"none", "n/a", "na"}:
+            return True
+    return False
+
+
+def comment_severity(body: str) -> str | None:
+    """Classify reviewer comment severity without treating "P0: None" as P0."""
+    stripped = body.lstrip()
+    review_agent = re.escape(REVIEW_AGENT_NAME)
+    if re.match(rf"^{review_agent}\s+P0:", stripped, re.IGNORECASE):
+        return "P0"
+    if re.match(rf"^{review_agent}\s+P1:", stripped, re.IGNORECASE):
+        return "P1"
+
+    p0_section = _extract_markdown_section(body, r"Blockers\s+\(P0\)")
+    if p0_section:
+        if _section_has_finding(p0_section):
+            return "P0"
+        p1_section = _extract_markdown_section(body, r"Should fix before merge\s+\(P1\)")
+        if p1_section and _section_has_finding(p1_section):
+            return "P1"
+
+    if re.search(r"\b(P0|critical|blocking|must fix|🛑|⛔)", body, re.IGNORECASE):
+        return "P0"
+    if re.search(r"\bP1\b", body, re.IGNORECASE):
+        return "P1"
+    return None
 
 
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
@@ -200,7 +243,8 @@ def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, No
                 )
                 if not (is_bot_reviewer or is_review_agent):
                     continue
-                if not P0P1_KEYWORDS.search(body):
+                severity = comment_severity(body)
+                if not severity:
                     continue
                 if ALREADY_FIXED.search(body):
                     continue
@@ -214,6 +258,7 @@ def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, No
                         "line": c.get("line"),
                         "body": body,
                         "user": user,
+                        "severity": severity,
                     }
                 )
             if unresolved:
@@ -337,11 +382,14 @@ def main() -> int:
         cline = c["line"]
         cuser = c["user"]
         cid = c["id"]
+        severity = c.get("severity") or comment_severity(cbody) or "P1"
 
-        # Security gate: surface to operator instead of auto-fixing
-        if SECURITY_KEYWORDS.search(cbody):
+        # Security gate: true P0 security findings need manual review. P1
+        # comments may mention secrets or auth as context and should still be
+        # eligible for the surgical auto-fix path.
+        if severity == "P0" and SECURITY_KEYWORDS.search(cbody):
             slack_post(
-                f"⛔ {AGENT.title()} P0 security flag - manual review needed: comment {cid} "
+                f"⛔ {AGENT.title()} {severity} security flag - manual review needed: comment {cid} "
                 f"on PR {pr_num} ({cuser}, {cpath}:{cline})"
             )
             continue

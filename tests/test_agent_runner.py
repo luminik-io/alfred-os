@@ -599,6 +599,60 @@ def test_invoke_agent_engine_hybrid_falls_back_on_provider_limit():
     assert fallback_seen == ["error_rate_limit"]
 
 
+def test_invoke_agent_engine_hybrid_falls_back_on_claude_auth_error():
+    import agent_runner as ar
+
+    calls: list[str] = []
+    fallback_seen: list[str] = []
+
+    def fake_claude(*args, **kwargs):
+        calls.append("claude")
+        return ar.ClaudeResult(
+            success=False,
+            subtype="error_authentication",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="401 invalid authentication credentials",
+            raw={},
+            stop_reason="error",
+            error_message="401 invalid authentication credentials",
+        )
+
+    def fake_codex(*args, **kwargs):
+        calls.append("codex")
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="codex ok",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="robin",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+        on_fallback=lambda result: fallback_seen.append(result.subtype),
+    )
+
+    assert out.success is True
+    assert out.result_text == "codex ok"
+    assert engine_used == "codex-fallback"
+    assert calls == ["claude", "codex"]
+    assert fallback_seen == ["error_authentication"]
+
+
 def test_codex_invoke_rejects_unsupported_claude_controls():
     import agent_runner as ar
 
