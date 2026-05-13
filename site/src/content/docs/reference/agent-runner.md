@@ -11,19 +11,19 @@ Categorised by what the operator-facing primitive does. For deep semantics, read
 
 ```python
 HOME: Path                   # operator's home directory
-HERMES_HOME: Path            # runtime root, default ~/.hermes
+ALFRED_HOME: Path            # runtime root, default ~/.alfred
 WORKSPACE_ROOT: Path         # parent of per-repo checkouts, default ~/code
 WORKSPACE: Path              # WORKSPACE_ROOT / "product" (back-compat alias)
 GH_ORG: str                  # GitHub org slug; required for gh helpers
 
-STATE_ROOT: Path             # HERMES_HOME / "state"
-WORKTREE_ROOT: Path          # HERMES_HOME / "worktrees"
-LIB_DIR: Path                # HERMES_HOME / "lib"
-BIN_DIR: Path                # HERMES_HOME / "bin"
+STATE_ROOT: Path             # ALFRED_HOME / "state"
+WORKTREE_ROOT: Path          # ALFRED_HOME / "worktrees"
+LIB_DIR: Path                # ALFRED_HOME / "lib"
+BIN_DIR: Path                # ALFRED_HOME / "bin"
 
 CLAUDE_BIN: str              # path to the claude CLI; default "claude"
 CODEX_BIN: str               # path to the codex CLI; default "codex"
-CODEX_TRANSCRIPTS_ROOT: Path # HERMES_HOME / "state" / "codex"
+CODEX_TRANSCRIPTS_ROOT: Path # ALFRED_HOME / "state" / "codex"
 
 GH_REPO_TO_LOCAL: dict[str, str]   # consumer-extended slug → local-dir map
 STANDARD_LABELS: list[tuple]       # consumer-extended label set for ensure_labels
@@ -47,7 +47,7 @@ class PreflightSpec:
     env_vars: list[str] = []             # required env vars
 
 def preflight(spec: PreflightSpec) -> None
-def doctor_mode() -> bool                # reads HERMES_DOCTOR env
+def doctor_mode() -> bool                # reads ALFRED_DOCTOR env
 ```
 
 `preflight` raises `PreflightFailed` (a `RuntimeError`) on any gap. The runner's main pattern:
@@ -99,7 +99,7 @@ def slack_post(text: str, *,
 # "alert" (🚨 prefix + appends <!here>).
 ```
 
-Webhook URL resolution: `SLACK_WEBHOOK_URL` env -> 30-day disk cache at `$HERMES_HOME/state/slack-webhook.cache` -> AWS Secrets Manager (`SLACK_WEBHOOK_SECRET_ID`, default `alfred/slack-webhook`).
+Webhook URL resolution: `SLACK_WEBHOOK_URL` env -> 30-day disk cache at `$ALFRED_HOME/state/slack-webhook.cache` -> AWS Secrets Manager (`SLACK_WEBHOOK_SECRET_ID`, default `alfred/slack-webhook`).
 
 ## GitHub helpers
 
@@ -202,7 +202,7 @@ def codex_invoke(prompt: str, *,
                  add_dirs: list[Path] | None = None) -> ClaudeResult
 ```
 
-The OSS streaming variant currently delegates to `claude_invoke()` while preserving the future call shape. `codex_invoke()` shells out to `codex exec`, rejects unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`), defaults to `read-only` + `approval_policy=never`, and writes final-message/stdout/stderr artifacts to `$HERMES_HOME/state/codex/<agent>/<YYYY-MM>/`.
+The OSS streaming variant currently delegates to `claude_invoke()` while preserving the future call shape. `codex_invoke()` shells out to `codex exec`, rejects unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`), defaults to `read-only` + `approval_policy=never`, and writes final-message/stdout/stderr artifacts to `$ALFRED_HOME/state/codex/<agent>/<YYYY-MM>/`.
 
 ## Event log + commit trailer + handoff table
 

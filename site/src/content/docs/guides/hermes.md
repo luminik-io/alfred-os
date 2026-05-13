@@ -16,13 +16,14 @@ the engineering agent state machine and launchd jobs.
 | Alfred | launchd, role runners, worktrees, issue claims, PR loops, Slack reports |
 | Hermes | chat gateway, cron prompts, ACP, MCP tools, skills, memory, dashboards |
 
-`HERMES_HOME` is the shared runtime-root name. It defaults to `~/.hermes`, but
-the name alone does not mean Hermes is installed.
+`ALFRED_HOME` is Alfred's runtime root. It defaults to `~/.alfred`.
+Keep Hermes configuration in Hermes-owned files and pass Alfred paths through
+`ALFRED_HOME`.
 
 ## Minimal shared env
 
 ```sh
-HERMES_HOME="$HOME/.hermes"
+ALFRED_HOME="$HOME/.alfred"
 WORKSPACE_ROOT="$HOME/code"
 GH_ORG="your-github-org"
 ACP_ARGS="--acp --stdio"
@@ -47,6 +48,7 @@ Risky:
 
 - launchd and Hermes cron both fire the same feature-dev runner.
 - Hermes shells into an Alfred worktree while a runner owns the issue claim.
+- Hermes mutates `ALFRED_HOME/state` directly.
 
 ## Skills and MCP
 

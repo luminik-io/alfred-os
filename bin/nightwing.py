@@ -18,7 +18,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(
+    0,
+    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
+)
 from agent_runner import (
     GH_ORG,
     STATE_ROOT,

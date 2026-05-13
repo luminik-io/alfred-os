@@ -10,7 +10,7 @@ top of these stable primitives.
 ## `install.sh`
 
 Fresh-machine bootstrap. Detects macOS, brew-installs CLI deps, npm-installs
-Claude Code, creates `$HERMES_HOME` + `$WORKSPACE_ROOT`, drops `~/.alfredrc`
+Claude Code, creates `$ALFRED_HOME` + `$WORKSPACE_ROOT`, drops `~/.alfredrc`
 from the template, and appends a source block to your shell rc.
 
 ```sh
@@ -19,7 +19,7 @@ bash install.sh [--non-interactive] [--skip-brew] [--skip-npm]
 
 ## `deploy.sh`
 
-Syncs `lib/` and `bin/` into `$HERMES_HOME`. If `launchd/agents.conf` exists,
+Syncs `lib/` and `bin/` into `$ALFRED_HOME`. If `launchd/agents.conf` exists,
 it renders plists from `launchd/_template.plist`, installs them under
 `~/Library/LaunchAgents/`, and bootstraps each unpaused job. Without
 `agents.conf`, it performs a framework-only deploy.
@@ -30,7 +30,7 @@ bash deploy.sh
 
 ## `bin/doctor.sh`
 
-Runs configured Python agents under `HERMES_DOCTOR=1`. On a fresh checkout
+Runs configured Python agents under `ALFRED_DOCTOR=1`. On a fresh checkout
 with no `launchd/agents.conf`, it reports `0 passed, 0 failed`.
 
 ```sh
@@ -51,7 +51,7 @@ alfred claude probe
 
 ## `alfred`
 
-Minimal runner-gate CLI. Installed into `$HERMES_HOME/bin/alfred` by
+Minimal runner-gate CLI. Installed into `$ALFRED_HOME/bin/alfred` by
 `deploy.sh` and symlinked to `~/.local/bin/alfred`.
 
 ```sh
@@ -70,9 +70,9 @@ alfred shipped --period weekly
 
 `alfred agents` reads `launchd/agents.conf` and shows schedule, load column,
 runner-gate enablement, and role text. `enable` / `disable` update
-`$HERMES_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
+`$ALFRED_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
 such as Batman. `engine` persists per-agent Claude/Codex mode under
-`$HERMES_HOME/state/engines/<codename>`. `status` reports local locks, pauses,
+`$ALFRED_HOME/state/engines/<codename>`. `status` reports local locks, pauses,
 recent firings, and Batman approval waits. `shipped` reports merged PRs,
 issues, LOC, and model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS`
 or explicit `--repo` values.

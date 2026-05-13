@@ -13,8 +13,8 @@ REPO = Path(__file__).resolve().parent.parent
 
 def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     home = tmp_path / "home"
-    hermes = tmp_path / "hermes"
-    bin_dir = hermes / "bin"
+    alfred = tmp_path / "alfred"
+    bin_dir = alfred / "bin"
     home.mkdir()
     bin_dir.mkdir(parents=True)
     capture = tmp_path / "capture.json"
@@ -42,7 +42,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
 
     res = subprocess.run(
         ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
-        env={**os.environ, "HOME": str(home), "HERMES_HOME": str(hermes)},
+        env={**os.environ, "HOME": str(home), "ALFRED_HOME": str(alfred)},
         capture_output=True,
         text=True,
         timeout=10,
@@ -58,9 +58,9 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
 
 def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     home = tmp_path / "home"
-    hermes = tmp_path / "hermes"
-    bin_dir = hermes / "bin"
-    launchd_dir = hermes / "launchd"
+    alfred = tmp_path / "alfred"
+    bin_dir = alfred / "bin"
+    launchd_dir = alfred / "launchd"
     home.mkdir()
     bin_dir.mkdir(parents=True)
     launchd_dir.mkdir(parents=True)
@@ -74,7 +74,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "#!/usr/bin/env python3\n"
         "import json, os\n"
         f"open({str(capture)!r}, 'w').write(json.dumps({{\n"
-        "  'doctor': os.environ.get('HERMES_DOCTOR'),\n"
+        "  'doctor': os.environ.get('ALFRED_DOCTOR'),\n"
         "  'codename': os.environ.get('AGENT_CODENAME'),\n"
         "  'label': os.environ.get('LAUNCHD_LABEL'),\n"
         "  'custom': os.environ.get('CUSTOM_FROM_RC'),\n"
@@ -88,7 +88,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         env={
             **os.environ,
             "HOME": str(home),
-            "HERMES_HOME": str(hermes),
+            "ALFRED_HOME": str(alfred),
             "WORKSPACE_ROOT": str(tmp_path / "code"),
         },
         capture_output=True,
@@ -109,7 +109,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
 def test_deploy_removes_stale_managed_plists(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"
-    hermes = tmp_path / "hermes"
+    alfred = tmp_path / "alfred"
     fakebin = tmp_path / "fakebin"
     src.mkdir()
     home.mkdir()
@@ -127,7 +127,7 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     (src / "launchd" / "agents.conf").write_text(
         "alfred.new\tprobe.py\tinterval:60\tno\talfred.new\tNew helper\n"
     )
-    managed = hermes / "launchd" / "managed-labels.txt"
+    managed = alfred / "launchd" / "managed-labels.txt"
     managed.parent.mkdir(parents=True)
     managed.write_text("alfred.old\n")
     launch_agents = home / "Library" / "LaunchAgents"
@@ -148,7 +148,7 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
         env={
             **os.environ,
             "HOME": str(home),
-            "HERMES_HOME": str(hermes),
+            "ALFRED_HOME": str(alfred),
             "WORKSPACE_ROOT": str(tmp_path / "code"),
             "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
         },
@@ -171,7 +171,7 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
 def test_deploy_defers_reload_for_running_jobs(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"
-    hermes = tmp_path / "hermes"
+    alfred = tmp_path / "alfred"
     fakebin = tmp_path / "fakebin"
     src.mkdir()
     home.mkdir()
@@ -207,7 +207,7 @@ def test_deploy_defers_reload_for_running_jobs(tmp_path):
         env={
             **os.environ,
             "HOME": str(home),
-            "HERMES_HOME": str(hermes),
+            "ALFRED_HOME": str(alfred),
             "WORKSPACE_ROOT": str(tmp_path / "code"),
             "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
         },

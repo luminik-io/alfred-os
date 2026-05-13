@@ -48,7 +48,7 @@ The default install ships a working engineering agent fleet. After `bash install
 - **`render-systemd.sh`**: first-class Linux scheduling. See [`docs/LINUX.md`](docs/LINUX.md).
 - **Spend dashboards**: render a weekly recap (turns, cost, success rate per agent) for `fleet-recap`.
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
-- **MCP server bundling**: expose `claim_issue` / `release_issue` / `slack_post(severity)` as MCP tools so other Claude Code consumers can call them directly. Pending feasibility check on the `${HERMES_HOME}` coupling.
+- **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional, not a required Hermes dependency.
 
 ## Future categories (post-v0.2, out of scope today)
 

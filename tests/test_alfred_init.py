@@ -6,7 +6,7 @@ Covers the deterministic, side-effect-free helpers:
     - env_assignments_for (per-role env-var map)
     - read_alfredrc / upsert_alfredrc (idempotent rc append)
     - _resolve_repo_selection (repo selection grammar)
-    - main() with HERMES_DOCTOR=1 (short-circuit sentinel)
+    - main() with ALFRED_DOCTOR=1 (short-circuit sentinel)
 
 The interactive prompt path, subprocess shells, and Slack/AWS HTTP calls
 are NOT exercised — those need a live operator + accounts.
@@ -106,7 +106,7 @@ def _state_with(
     schedules=None,
 ):
     state = init_mod.WizardState(
-        hermes_home=tmp_path / "hermes",
+        alfred_home=tmp_path / "alfred",
         alfredrc=tmp_path / ".alfredrc",
         repo_root=tmp_path / "repo",
         gh_org=gh_org,
@@ -327,7 +327,7 @@ def test_load_config_round_trip(tmp_path, init_mod):
 
 def test_apply_config_overrides(init_mod, tmp_path):
     state = init_mod.WizardState(
-        hermes_home=tmp_path / "hermes",
+        alfred_home=tmp_path / "alfred",
         alfredrc=tmp_path / ".alfredrc",
         repo_root=tmp_path,
     )
@@ -356,7 +356,7 @@ def test_apply_config_overrides(init_mod, tmp_path):
 
 
 def test_doctor_sentinel(monkeypatch, capsys, init_mod):
-    monkeypatch.setenv("HERMES_DOCTOR", "1")
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
     rc = init_mod.main([])
     captured = capsys.readouterr()
     assert "[ALFRED-INIT-DOCTOR-OK]" in captured.out
@@ -364,14 +364,14 @@ def test_doctor_sentinel(monkeypatch, capsys, init_mod):
 
 
 # ---------------------------------------------------------------------------
-# Subprocess invocation also honours HERMES_DOCTOR (the path doctor.sh hits).
+# Subprocess invocation also honours ALFRED_DOCTOR (the path doctor.sh hits).
 # ---------------------------------------------------------------------------
 
 
 def test_doctor_sentinel_via_subprocess():
     repo_root = Path(__file__).resolve().parent.parent
     src = repo_root / "bin" / "alfred-init.py"
-    env = dict(os.environ, HERMES_DOCTOR="1")
+    env = dict(os.environ, ALFRED_DOCTOR="1")
     cp = subprocess.run(
         [sys.executable, str(src)], capture_output=True, text=True, env=env, timeout=10
     )

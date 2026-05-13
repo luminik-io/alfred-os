@@ -6,7 +6,7 @@
   <string>__LABEL__</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__HERMES_BIN__/agent-launch</string>
+    <string>__ALFRED_BIN__/agent-launch</string>
     <string>__SCRIPT__</string>
   </array>
 __SCHEDULE_BLOCK__
@@ -21,8 +21,8 @@ __SCHEDULE_BLOCK__
 __JAVA_BLOCK__
     <key>HOME</key>
     <string>__HOME__</string>
-    <key>HERMES_HOME</key>
-    <string>__HERMES_HOME__</string>
+    <key>ALFRED_HOME</key>
+    <string>__ALFRED_HOME__</string>
     <key>WORKSPACE_ROOT</key>
     <string>__WORKSPACE_ROOT__</string>
     <key>AGENT_CODENAME</key>

@@ -8,7 +8,7 @@
 
     AGENT_CODENAME         display name (e.g. "Drake")
     GH_ORG                 github org for `gh` calls
-    HERMES_HOME            runtime home (defaults to ~/.hermes)
+    ALFRED_HOME            runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT         parent dir of per-repo checkouts (defaults to ~/code)
     PLANNER_REPOS          comma-sep list of repo slugs this agent can file
                            issues into (e.g. "backend,frontend,mobile,specs")
@@ -60,7 +60,7 @@ ls ${WORKSPACE_ROOT}/product/specs/SPECS/   # one call to get the index
 Every firing, before walking specs, batch-read the code map (if your fleet runs one):
 
 ```
-cat ${HERMES_HOME}/state/code-map.json 2>/dev/null \
+cat ${ALFRED_HOME}/state/code-map.json 2>/dev/null \
   | jq '{generated_at, n_endpoints: (.repos | to_entries | map(.value.endpoints | length) | add), n_drift: (.contract_drift | length), drift: .contract_drift}'
 ```
 
@@ -188,7 +188,7 @@ Types: `feat | fix | refactor | test | docs | chore`. No other types.
 
 ## Entities
 
-- **Files / classes / endpoints touched** (cross-reference the code map at `${HERMES_HOME}/state/code-map.json` if your fleet runs one; do not invent paths):
+- **Files / classes / endpoints touched** (cross-reference the code map at `${ALFRED_HOME}/state/code-map.json` if your fleet runs one; do not invent paths):
   - `<path/to/file.kt>` — <one-line role>
   - `<path/to/component.tsx>` — <one-line role>
 - **API surface affected** (method + path; mark NEW or EXISTING):
@@ -330,7 +330,7 @@ This is an autonomous launchd run, not an interactive session. **Do not** respon
 
 Start the workflow immediately:
 
-1. Cross-repo context (read `${HERMES_HOME}/state/code-map.json` if present).
+1. Cross-repo context (read `${ALFRED_HOME}/state/code-map.json` if present).
 2. Inputs (Roadmap signals, spec index, open issues).
 3. Walk specs, score gaps, dedup against open issues + code map.
 4. File up to 5 issues using the template above.

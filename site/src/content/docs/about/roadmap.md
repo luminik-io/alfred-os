@@ -9,7 +9,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 
 - Framework substrate: preflight, lock, spend, claude_invoke, gh, slack, event-log, commit-trailer, handoff-table.
 - launchd plist template + render.sh + deploy.sh.
-- doctor.sh: fleet-wide preflight under `HERMES_DOCTOR=1`.
+- doctor.sh: fleet-wide preflight under `ALFRED_DOCTOR=1`.
 - `alfred claude`: two-account swap helper.
 - [Issue claim state machine](/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
 - [Slack severity routing](/concepts/severity-routing/) (`info` / `warn` / `alert`).

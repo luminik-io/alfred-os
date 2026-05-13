@@ -3,8 +3,8 @@
 
 The reporter is deliberately generic: it reads the operator's
 ``launchd/agents.conf`` when present, falls back to the sample fleet, and
-aggregates local state from ``$HERMES_HOME/state`` plus per-agent locks under
-``/tmp``. It does not require a Hermes daemon.
+aggregates local state from ``$ALFRED_HOME/state`` plus per-agent locks under
+``/tmp``.
 """
 
 from __future__ import annotations
@@ -21,13 +21,16 @@ from pathlib import Path
 from typing import Any
 
 _HERE = Path(__file__).resolve().parent
-for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) / "lib"):
+for candidate in (
+    _HERE.parent / "lib",
+    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
 import agent_runner  # noqa: E402
 
-HERMES_HOME = agent_runner.HERMES_HOME
+ALFRED_HOME = agent_runner.ALFRED_HOME
 STATE_ROOT = agent_runner.STATE_ROOT
 PAUSE_DIR = STATE_ROOT / "_paused"
 
@@ -148,7 +151,7 @@ def _codename_from_label(label: str) -> str:
 
 def _agents_conf_candidates() -> list[Path]:
     return [
-        HERMES_HOME / "launchd" / "agents.conf",
+        ALFRED_HOME / "launchd" / "agents.conf",
         _HERE.parent / "launchd" / "agents.conf",
         _HERE.parent / "launchd" / "agents.conf.example",
     ]
@@ -421,7 +424,7 @@ def global_state() -> dict[str, Any]:
 def render_table(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> str:
     lines = [
         f"alfred-status @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S %Z')}",
-        f"hermes_home={HERMES_HOME}",
+        f"alfred_home={ALFRED_HOME}",
         "",
         "global:",
         f"  scheduler: {globals_['host_scheduler']}",

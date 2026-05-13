@@ -14,11 +14,10 @@ Every agent firing is a fresh `launchd` event, not a tick in a long-running proc
 - ✅ Failure isolation. A crashing firing doesn't poison the next one.
 - ✅ OS-level reliability. macOS reboots, system updates, sleep cycles. `launchd` handles all of them.
 - ✅ Per-firing observability. Stdout/stderr to per-agent files; the operator's grep-and-tail muscle memory works.
-- ❌ No in-process state. Anything an agent needs to remember between firings goes through `$HERMES_HOME/state/<agent>/*.json`.
+- ❌ No in-process state. Anything an agent needs to remember between firings goes through `$ALFRED_HOME/state/<agent>/*.json`.
 - ❌ Cold start cost. ~1-2s of Python import + agent_runner setup per firing. Acceptable at the 20-min cadence.
 
-`HERMES_HOME` is the runtime-root name, not a requirement that the Hermes agent
-daemon be installed. The core loop is `launchd -> bin/role.py ->
+`ALFRED_HOME` is the runtime root. The core loop is `launchd -> bin/role.py ->
 lib/agent_runner.py -> claude/codex/gh/slack`. Hermes skills, MCP, gbrain,
 canon, and dashboarding are optional integrations for fleets that want them.
 
@@ -27,7 +26,7 @@ canon, and dashboarding are optional integrations for fleets that want them.
 Every `claude -p` invocation gets its own worktree:
 
 ```
-~/.hermes/worktrees/eng-<codename>-<repo>-<issue>-<ts>/
+~/.alfred/worktrees/eng-<codename>-<repo>-<issue>-<ts>/
 ```
 
 The worktree is created via `git worktree add` from a fresh `origin/main` (or whatever the agent designates), and `git worktree remove --force` after. Concurrent firings on different issues do not see each other's edits. A crashed firing can't corrupt the operator's main checkout because they're literally different directories pointing at different branches.

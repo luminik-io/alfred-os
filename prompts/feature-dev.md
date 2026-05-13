@@ -10,7 +10,7 @@
 
     AGENT_CODENAME         display name used inside the prompt (e.g. "Lucius")
     GH_ORG                 github org that owns your fleet's product repos
-    HERMES_HOME            runtime home (defaults to ~/.hermes)
+    ALFRED_HOME            runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT         parent dir of per-repo checkouts (defaults to ~/code)
     FEATURE_DEV_REPOS      comma-sep list of repo slugs this agent works in
                            (e.g. "backend,frontend,mobile,nango,agents")
@@ -46,7 +46,7 @@ For each repo `<slug>` in `${FEATURE_DEV_REPOS}`, the local checkout lives at `$
 
 The Claude Code subscription has a weekly turn quota. Wasted turns = wasted week. Every firing follows these rules.
 
-**Daily-spend state file**: `${HERMES_HOME}/state/${AGENT_CODENAME}/spend-$(date +%Y-%m-%d).json`. Shape:
+**Daily-spend state file**: `${ALFRED_HOME}/state/${AGENT_CODENAME}/spend-$(date +%Y-%m-%d).json`. Shape:
 ```json
 {
   "firings_today": 12,
@@ -80,7 +80,7 @@ After every firing — successful or not — update the state file before exitin
 Before picking an issue, batch-read the code map (cheap, one cat):
 
 ```
-CODE_MAP="${HERMES_HOME}/state/code-map.json"
+CODE_MAP="${ALFRED_HOME}/state/code-map.json"
 test -s "$CODE_MAP" && jq '{generated_at, n_endpoints: (.repos | to_entries | map(.value.endpoints | length) | add), drift: .contract_drift}' "$CODE_MAP"
 ```
 
@@ -160,7 +160,7 @@ Add label `${AGENT_CODENAME}-attempt-N+1` (where N is current `PRIOR_ATTEMPTS`) 
 ISSUE_NUM=<num>
 REPO_SLUG=<one of ${FEATURE_DEV_REPOS}>
 TS=$(date +%s)
-WT=${HERMES_HOME}/worktrees/eng-${AGENT_CODENAME}-${REPO_SLUG}-${ISSUE_NUM}-${TS}
+WT=${ALFRED_HOME}/worktrees/eng-${AGENT_CODENAME}-${REPO_SLUG}-${ISSUE_NUM}-${TS}
 cd ${WORKSPACE_ROOT}/product/${REPO_SLUG}
 git fetch origin main
 git worktree add -b feat/issue-${ISSUE_NUM} ${WT} main
@@ -340,7 +340,7 @@ If nothing to do (no `agent:implement` issues open across all in-scope repos), e
 6. **Voice lock**: no em-dashes in commit messages or PR bodies, no LLM-garbage phrases, no fabricated numbers.
 7. **Department-prefix the PR label** — every PR gets `agent:authored`.
 8. **One issue per firing.** Don't try to chain multiple issues in one run.
-9. **Never invoke `claude -p` from prod or with prod paths.** All work happens in `${HERMES_HOME}/worktrees/`.
+9. **Never invoke `claude -p` from prod or with prod paths.** All work happens in `${ALFRED_HOME}/worktrees/`.
 10. **If `claude` CLI is not installed or not authenticated**, exit immediately with `[FEATURE-DEV-BLOCKED] claude CLI not available - run 'claude auth status' to check.` and Slack-notify.
 
 ## Skills — invoke explicitly when they help

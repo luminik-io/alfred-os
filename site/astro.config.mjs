@@ -90,6 +90,7 @@ export default defineConfig({
             { label: "Slack", slug: "guides/slack" },
             { label: "AWS", slug: "guides/aws" },
             { label: "Skills", slug: "guides/skills" },
+            { label: "Integrations", slug: "guides/integrations" },
             { label: "Hermes", slug: "guides/hermes" },
             { label: "Linux", slug: "guides/linux" },
             { label: "Publishing", slug: "guides/publishing" },

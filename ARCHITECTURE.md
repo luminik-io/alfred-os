@@ -30,28 +30,28 @@ sequenceDiagram
     runner->>lib: remove_worktree
 ```
 
-Every box outside the host is reached by stdlib subprocess + HTTP. No persistent connection. State on disk under `${HERMES_HOME}/state/`.
+Every box outside the host is reached by stdlib subprocess + HTTP. No persistent connection. State on disk under `${ALFRED_HOME}/state/`.
 
-## Hermes Boundary
+## Runtime and Integration Boundary
 
-Alfred uses `HERMES_HOME` as a runtime-root name, not as proof that the
-Hermes agent must be installed. The core loop in this repo is:
+Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to
+`~/.alfred`. The Hermes agent is not installed or required. The core loop in
+this repo is:
 
 ```text
 launchd -> bin/role.py -> lib/agent_runner.py -> claude/codex/gh/slack
 ```
 
-That loop runs without a Hermes daemon. The original internal fleet also uses
-Hermes for skills, MCP, gbrain memory, canon, dashboarding, and other
-departments. Those are compatible with Alfred, but they are not required by
-the core launchd engineering fleet.
+That loop runs without Hermes, gbrain, MCP, skills, or a dashboard service.
+Those companion tools are compatible with Alfred, but they sit outside the
+core launchd engineering fleet. See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 ## Why this shape
 
 Alfred is built for one operator. One Mac Mini in a closet, one Anthropic Claude Pro / Max subscription, one founder merging the PRs. Every design decision falls out of those three constraints.
 
 - **No GitHub Actions for the agent loop.** Earlier versions ran each agent as a workflow file (`agent-feature.yml`, `agent-tests.yml`, etc.) that called `anthropic-ai/claude-code-action`. That setup needed a paid Anthropic API key, doubled the spend, and made the Mac's existing Pro subscription dead weight. It was retired on 2026-04-24.
-- **No cloud queue, no shared service.** The fleet writes to plain JSON files in `~/.hermes/state/`. There is no Redis, no SQS, no Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.
+- **No cloud queue, no shared service.** The fleet writes to plain JSON files in `~/.alfred/state/`. There is no Redis, no SQS, no Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.
 - **No multi-tenancy.** Hardcoding "your account, your repos, your channel" is fine when the user is the maintainer.
 
 ## The codename pattern
@@ -96,8 +96,8 @@ Concurrent firings must never clobber each other or the operator's main checkout
 
 ```py
 # lib/agent_runner.py
-WORKTREE_ROOT = HERMES / "worktrees"
-# wt = ~/.hermes/worktrees/<agent>-<repo>-<issue>-<ts>/
+WORKTREE_ROOT = ALFRED_HOME / "worktrees"
+# wt = ~/.alfred/worktrees/<agent>-<repo>-<issue>-<ts>/
 ```
 
 In a fleet script such as `bin/lucius.py`:
@@ -119,7 +119,7 @@ The worktree is removed at the end of the firing, success or failure. If a firin
 Every agent maintains a per-day spend file:
 
 ```
-~/.hermes/state/<agent>/spend-YYYY-MM-DD.json
+~/.alfred/state/<agent>/spend-YYYY-MM-DD.json
 ```
 
 Tracked fields, per `agent_runner.py`:
@@ -172,7 +172,7 @@ The pre-flight `claude -p "reply OK"` canary that earlier versions used was remo
 
 Every meaningful event posts to `#your-fleet-channel`. Successes, failures, rate limits, salvaged WIP PRs, "no work to do" silences. The Slack channel doubles as the human surface and the audit log: one place to scroll back through and see what the fleet did overnight.
 
-The webhook is fetched from AWS Secrets Manager and cached at `~/.hermes/state/slack-webhook.cache` with a 30-day TTL. Cache lives outside `/tmp` so it survives reboots, and the long TTL avoids depending on a healthy AWS SSO session for routine Slack posts. From `agent_runner.py`:
+The webhook is fetched from AWS Secrets Manager and cached at `~/.alfred/state/slack-webhook.cache` with a 30-day TTL. Cache lives outside `/tmp` so it survives reboots, and the long TTL avoids depending on a healthy AWS SSO session for routine Slack posts. From `agent_runner.py`:
 
 ```py
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"

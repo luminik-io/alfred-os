@@ -26,25 +26,22 @@ sleep without turning their product into a hosted agent platform.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine.
 
-## Relationship to Hermes
+## Runtime and integrations
 
-Alfred core does not install or run a separate Hermes agent process. The
-launchd fleet works with local Python scripts, `gh`, `git`, and the configured
-LLM CLIs.
+Alfred core does not install or run Hermes, gbrain, or any other external agent
+gateway. The launchd fleet works with local Python scripts, `gh`, `git`, and
+the configured LLM CLIs.
 
-The variable name `HERMES_HOME` is retained for compatibility with the original
-internal fleet Alfred was extracted from. In Alfred, it is just the runtime root:
-by default `~/.hermes`, where deployed scripts, state, logs, Codex artifacts,
-and worktrees live.
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
+where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
+worktrees live. Alfred OS uses `ALFRED_HOME` only for its runtime path.
 
-Hermes integrations are still valuable, but optional in this repo. If your
-fleet uses Hermes skills, MCP servers, gbrain memory, canon, dashboarding, or
-non-engineering departments, install and operate Hermes separately and point
-Alfred at the same runtime root.
+Hermes, gbrain, MCP servers, canon files, dashboards, and skill packs can be
+useful companion layers, but they are not bundled into Alfred and should not be
+required for a clean OSS install.
 
-See [`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe,
-including env hygiene, skills, MCP, gbrain, canon, scheduling boundaries, and
-troubleshooting.
+See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the bundling policy and
+[`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe.
 
 Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
@@ -62,7 +59,7 @@ flowchart LR
     engine --> codex["Codex CLI"]
     shared --> github["GitHub issues, branches, PRs"]
     shared --> slack["Slack webhook or bot token"]
-    shared --> state["HERMES_HOME state"]
+    shared --> state["ALFRED_HOME state"]
 ```
 
 One firing is one short-lived process. The OS scheduler owns cadence, the
@@ -82,7 +79,7 @@ Alfred's shape:
 launchd plist (every N min)
    │
    ▼
-${HERMES_HOME}/bin/<role>.py        one file per agent role
+${ALFRED_HOME}/bin/<role>.py        one file per agent role
    │
    ▼
 agent_runner module                 lock + preflight + spend + claude/codex invoke + gh + slack
@@ -132,7 +129,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
-| [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${HERMES_HOME}`. If `launchd/agents.conf` exists, render plists and bootstrap `launchd`; otherwise do a framework-only deploy. |
+| [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${ALFRED_HOME}`. If `launchd/agents.conf` exists, render plists and bootstrap `launchd`; otherwise do a framework-only deploy. |
 | [`install.sh`](install.sh) | Fresh-machine bootstrap: brew + npm + dirs + shell rc. Idempotent. |
 | [`examples/bin/hello.py`](examples/bin/hello.py) | Smallest possible codename agent: preflight + Slack post. |
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference: pick / claim / claude / act / release / report. |
@@ -152,6 +149,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
+- [Integrations](docs/INTEGRATIONS.md): what Alfred does and does not bundle.
 - [Hermes integration](docs/HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
 - [Linux](docs/LINUX.md): current macOS-only stance + interim cron / systemd patterns.
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
@@ -176,7 +174,7 @@ See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/coden
 - ❌ Long-running orchestration loops. The OS scheduler is the orchestrator.
 - ❌ Hosted model gateways. Alfred shells out to local CLIs (`claude`, optional `codex`, optional Ollama); it does not run a multi-tenant inference gateway.
 - ❌ Browser automation runtimes. If your fleet needs a browser, install Playwright in your codename agent's bin script.
-- ❌ Vector databases for memory. Some fleets use a doc-shaped memory layer. Alfred doesn't ship one; that's a per-fleet decision.
+- ❌ Bundled vector databases or memory stores. Some fleets use gbrain or a doc-shaped memory layer. Alfred doesn't ship one; that's a per-fleet decision.
 - ❌ Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing in Alfred.
 
 ## Status

@@ -17,7 +17,7 @@ The maintainer responds "go ahead" or "not now, here's why." Don't write the pro
 
 ## Changing a prompt
 
-Prompts in `prompts/*.md` are examples for the shipped agent roles. Operators can also keep fleet-specific prompts in `$HERMES_HOME/prompts/<codename>.md`. After editing a prompt that a scheduled agent reads, redeploy the fleet so the live `$HERMES_HOME` copy and rendered launchd jobs match the repo:
+Prompts in `prompts/*.md` are examples for the shipped agent roles. Operators can also keep fleet-specific prompts in `$ALFRED_HOME/prompts/<codename>.md`. After editing a prompt that a scheduled agent reads, redeploy the fleet so the live `$ALFRED_HOME` copy and rendered launchd jobs match the repo:
 
 ```sh
 bash deploy.sh

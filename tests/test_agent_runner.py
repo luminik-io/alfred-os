@@ -18,14 +18,14 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _isolated_hermes_home(tmp_path, monkeypatch):
-    """Point HERMES_HOME at a clean tmp dir before importing agent_runner.
+def _isolated_alfred_home(tmp_path, monkeypatch):
+    """Point ALFRED_HOME at a clean tmp dir before importing agent_runner.
 
     State files (locks, spend, slack-cache, event logs) all live under
-    HERMES_HOME, so this fixture is what keeps tests from polluting the
-    operator's real ~/.hermes/.
+    ALFRED_HOME, so this fixture is what keeps tests from polluting the
+    operator's real ~/.alfred/.
     """
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     # Force a fresh import so module-level constants pick up the env vars.
     for mod in list(sys.modules):
@@ -40,7 +40,7 @@ def test_preflight_passes_when_env_and_bins_resolve(monkeypatch):
 
     spec = ar.PreflightSpec(
         agent="test",
-        env_vars=["HERMES_HOME"],
+        env_vars=["ALFRED_HOME"],
         bins=["python3"],  # always present in CI
     )
     # Should not raise
@@ -50,11 +50,11 @@ def test_preflight_passes_when_env_and_bins_resolve(monkeypatch):
 def test_preflight_raises_on_missing_env(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.delenv("HERMES_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="test", env_vars=["HERMES_HOME"])
+    spec = ar.PreflightSpec(agent="test", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert posted == []
@@ -77,12 +77,12 @@ def test_preflight_suppresses_slack_when_not_under_launchd(monkeypatch):
 
     monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
     monkeypatch.delenv("ALFRED_PREFLIGHT_FORCE_SLACK", raising=False)
-    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
-    monkeypatch.delenv("HERMES_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert posted == []
@@ -93,12 +93,12 @@ def test_preflight_suppresses_slack_when_launchd_env_is_placeholder(monkeypatch)
 
     monkeypatch.setenv("XPC_SERVICE_NAME", "0")
     monkeypatch.delenv("ALFRED_PREFLIGHT_FORCE_SLACK", raising=False)
-    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
-    monkeypatch.delenv("HERMES_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert posted == []
@@ -108,12 +108,12 @@ def test_preflight_posts_slack_under_launchd(monkeypatch):
     import agent_runner as ar
 
     monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
-    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
-    monkeypatch.delenv("HERMES_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert len(posted) == 1
@@ -125,12 +125,12 @@ def test_preflight_posts_slack_when_doctor_env_is_false(monkeypatch, doctor_valu
     import agent_runner as ar
 
     monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
-    monkeypatch.setenv("HERMES_DOCTOR", doctor_value)
-    monkeypatch.delenv("HERMES_HOME", raising=False)
+    monkeypatch.setenv("ALFRED_DOCTOR", doctor_value)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert len(posted) == 1
@@ -141,12 +141,12 @@ def test_preflight_force_slack_env_overrides_manual_suppression(monkeypatch):
 
     monkeypatch.delenv("XPC_SERVICE_NAME", raising=False)
     monkeypatch.setenv("ALFRED_PREFLIGHT_FORCE_SLACK", "1")
-    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
-    monkeypatch.delenv("HERMES_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
     posted: list[str] = []
     monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: posted.append(msg))
 
-    spec = ar.PreflightSpec(agent="lucius", env_vars=["HERMES_HOME"])
+    spec = ar.PreflightSpec(agent="lucius", env_vars=["ALFRED_HOME"])
     with pytest.raises(ar.PreflightFailed):
         ar.preflight(spec)
     assert len(posted) == 1
@@ -214,7 +214,7 @@ def test_maybe_set_global_block_ignores_codex_provider_limits(monkeypatch):
 def test_doctor_mode_default_false(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.delenv("HERMES_DOCTOR", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
     assert ar.doctor_mode() is False
 
 
@@ -236,7 +236,7 @@ def test_doctor_mode_default_false(monkeypatch):
 def test_doctor_mode_env_values(monkeypatch, val, expected):
     import agent_runner as ar
 
-    monkeypatch.setenv("HERMES_DOCTOR", val)
+    monkeypatch.setenv("ALFRED_DOCTOR", val)
     assert ar.doctor_mode() is expected
 
 
@@ -356,7 +356,7 @@ def test_handoff_table_validate_flags_unknowns():
 
 
 def test_event_log_writes_jsonl(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     # Re-import after env update
     for m in list(sys.modules):
         if m == "agent_runner":
@@ -383,15 +383,15 @@ def test_event_log_writes_jsonl(tmp_path, monkeypatch):
     assert records[2]["files_changed"] == 12
 
 
-def test_event_log_default_path_under_hermes_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+def test_event_log_default_path_under_alfred_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     for m in list(sys.modules):
         if m == "agent_runner":
             del sys.modules[m]
     import agent_runner as ar
 
     ev = ar.EventLog(agent="bane")
-    # Path should be under {HERMES_HOME}/state/bane/events/<firing-id>.jsonl
+    # Path should be under {ALFRED_HOME}/state/bane/events/<firing-id>.jsonl
     assert "state/bane/events" in str(ev.path)
     assert ev.firing_id  # auto-generated
 

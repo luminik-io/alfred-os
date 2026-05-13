@@ -31,7 +31,10 @@ import re
 import sys
 from datetime import UTC, datetime
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(
+    0,
+    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
+)
 from agent_runner import (
     GH_ORG,
     PreflightFailed,

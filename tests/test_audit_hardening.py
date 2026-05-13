@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_bin_module(name: str, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("HERMES_HOME", str(ROOT))
+    monkeypatch.setenv("ALFRED_HOME", str(ROOT))
     sys.path.insert(0, str(ROOT / "lib"))
     spec = importlib.util.spec_from_file_location(name.replace("-", "_"), ROOT / "bin" / name)
     assert spec and spec.loader

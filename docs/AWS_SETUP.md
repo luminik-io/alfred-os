@@ -172,7 +172,7 @@ aws --profile "$AWS_ADMIN_PROFILE" secretsmanager update-secret \
   --region us-east-1
 
 # Force the agents to re-fetch on next firing
-rm -f "$HERMES_HOME/state/slack-webhook.cache"
+rm -f "$ALFRED_HOME/state/slack-webhook.cache"
 ```
 
 Read (verifies `<agent>-cron`'s policy works):

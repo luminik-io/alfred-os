@@ -10,12 +10,12 @@
 #
 # Substitutions:
 #   __LABEL__              - launchd job label
-#   __SCRIPT__             - script filename in HERMES_BIN, passed to agent-launch
+#   __SCRIPT__             - script filename in ALFRED_BIN, passed to agent-launch
 #   __SCHEDULE_BLOCK__     - either StartInterval or StartCalendarInterval
 #   __PATH__               - colon-joined PATH for the EnvironmentVariables block
 #   __JAVA_BLOCK__         - JAVA_HOME entry (empty when needs_java=no)
-#   __HERMES_BIN__         - $HERMES_HOME/bin
-#   __HERMES_HOME__        - resolves at render time from $HERMES_HOME or ~/.hermes
+#   __ALFRED_BIN__         - $ALFRED_HOME/bin
+#   __ALFRED_HOME__        - resolves at render time from $ALFRED_HOME or ~/.alfred
 #   __WORKSPACE_ROOT__  - resolves at render time from $WORKSPACE_ROOT
 #   __HOME__               - $HOME at render time
 #   __LOG_STEM__           - basename for /tmp/<stem>.{stdout,stderr}
@@ -27,7 +27,7 @@
 #                            human-readable role next to the codename.
 #
 # launchd does not interpolate env vars inside plists, so these
-# substitutions happen here at deploy time. Override HERMES_HOME or
+# substitutions happen here at deploy time. Override ALFRED_HOME or
 # WORKSPACE_ROOT in the shell that runs render.sh to re-target the
 # generated plists at a non-default layout.
 
@@ -73,8 +73,9 @@ load_env_file() {
 
 load_env_file "$HOME/.alfredrc"
 
-: "${HERMES_HOME:=$HOME/.hermes}"
+: "${ALFRED_HOME:=$HOME/.alfred}"
 : "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/code}}"
+export ALFRED_HOME WORKSPACE_ROOT
 
 # Detect openjdk@21 install path at render time so this works across
 # Apple Silicon (`/opt/homebrew`), Intel Macs (`/usr/local`), and Linux
@@ -157,17 +158,17 @@ render_one() {
     java_block=""
   fi
 
-  local hermes_bin="$HERMES_HOME/bin"
+  local alfred_bin="$ALFRED_HOME/bin"
   local out="$OUT_DIR/$label.plist"
 
   python3 - "$TEMPLATE" "$out" \
       "$label" "$script" "$schedule_block" "$path_value" "$java_block" \
-      "$hermes_bin" "$HERMES_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" \
+      "$alfred_bin" "$ALFRED_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" \
       "$agent_short" "$role" <<'PY'
 import sys
 from xml.sax.saxutils import escape
 template_path, out_path, label, script, schedule_block, path_value, java_block, \
-    hermes_bin, hermes_home, workspace_root, home_dir, log_stem, gh_org, \
+    alfred_bin, alfred_home, workspace_root, home_dir, log_stem, gh_org, \
     agent_short, role = sys.argv[1:]
 with open(template_path) as f:
     txt = f.read()
@@ -187,8 +188,8 @@ mapping = {
     "__SCHEDULE_BLOCK__": schedule_block,
     "__PATH__": path_value,
     "__JAVA_BLOCK__": java_block,
-    "__HERMES_BIN__": hermes_bin,
-    "__HERMES_HOME__": hermes_home,
+    "__ALFRED_BIN__": alfred_bin,
+    "__ALFRED_HOME__": alfred_home,
     "__WORKSPACE_ROOT__": workspace_root,
     "__AGENT_SHORT__": agent_short,
     "__GH_ORG_BLOCK__": (

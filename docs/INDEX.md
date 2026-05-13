@@ -18,7 +18,8 @@ Current map of the public docs. Trust code first, then this index.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): incoming webhook and optional bot-token setup.
 - [`AWS_SETUP.md`](AWS_SETUP.md): per-agent IAM and Secrets Manager setup.
 - [`SKILLS.md`](SKILLS.md): recommended Claude Code skills.
-- [`HERMES.md`](HERMES.md): optional Hermes, MCP, gbrain, canon, and skills integration.
+- [`INTEGRATIONS.md`](INTEGRATIONS.md): what Alfred does and does not bundle.
+- [`HERMES.md`](HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
 - [`LINUX.md`](LINUX.md): current macOS-only scheduler stance and Linux/systemd notes.
 - [`PUBLISHING.md`](PUBLISHING.md): GitHub Pages, release-site, and custom-domain operations.
 

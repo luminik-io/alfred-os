@@ -8,10 +8,10 @@
 #   3. Installs the CLI tools every alfred-os fleet needs: python@3.11, git,
 #      gh, jq, awscli, uv (fast Python runner used by the test suite).
 #   4. Installs Claude Code (the @anthropic-ai/claude-code CLI) via npm.
-#   5. Creates $HERMES_HOME and $WORKSPACE_ROOT if missing.
+#   5. Creates $ALFRED_HOME and $WORKSPACE_ROOT if missing.
 #   6. Drops a starter ~/.alfredrc from .alfredrc.example and
 #      prompts for the values it cannot infer.
-#   7. Appends HERMES_HOME + WORKSPACE_ROOT exports to your shell rc so
+#   7. Appends ~/.alfredrc sourcing to your shell rc so
 #      every new shell sees them (skipped if already present).
 #   8. Prints the exact next 3 commands you should run.
 #
@@ -24,7 +24,7 @@
 #   - Create a Slack incoming webhook. Same reason.
 #   - Run deploy.sh. The launchd plist install side-effects; the operator
 #     should pull the trigger after reading what's about to load.
-#   - Touch any pre-existing ~/.hermes content if you already have one.
+#   - Touch runtime data outside ~/.alfred.
 #
 # Non-interactive mode: set ALFRED_NONINTERACTIVE=1 and the script
 # uses defaults for every prompt. Set GH_ORG / OPERATOR_NAME /
@@ -67,7 +67,7 @@ Environment overrides:
   GH_ORG          Pre-fill the GitHub org/user for your fleet
   OPERATOR_NAME   Display name used in agent prompts
   OPERATOR_EMAIL  Operator email used in agent prompts
-  HERMES_HOME     Runtime root (default: \$HOME/.hermes)
+  ALFRED_HOME     Runtime root (default: \$HOME/.alfred)
   WORKSPACE_ROOT  Where you check out repos (default: \$HOME/code)
 
   ALFRED_NONINTERACTIVE=1   Same as --non-interactive
@@ -181,14 +181,14 @@ fi
 # 5. Runtime directories
 # --------------------------------------------------------------------------
 step "Runtime directories"
-HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
 
-if [[ ! -d "$HERMES_HOME" ]]; then
-  mkdir -p "$HERMES_HOME"/{bin,lib,state,worktrees}
-  ok "created $HERMES_HOME (with bin/ lib/ state/ worktrees/)"
+if [[ ! -d "$ALFRED_HOME" ]]; then
+  mkdir -p "$ALFRED_HOME"/{bin,lib,state,worktrees}
+  ok "created $ALFRED_HOME (with bin/ lib/ state/ worktrees/)"
 else
-  ok "$HERMES_HOME already exists"
+  ok "$ALFRED_HOME already exists"
 fi
 
 if [[ ! -d "$WORKSPACE_ROOT" ]]; then
@@ -221,7 +221,7 @@ else
     -e "s|^GH_ORG=.*|GH_ORG=${GH_ORG_VAL}|" \
     -e "s|^OPERATOR_NAME=.*|OPERATOR_NAME=${OPERATOR_NAME_VAL}|" \
     -e "s|^OPERATOR_EMAIL=.*|OPERATOR_EMAIL=${OPERATOR_EMAIL_VAL}|" \
-    -e "s|^HERMES_HOME=.*|HERMES_HOME=${HERMES_HOME}|" \
+    -e "s|^ALFRED_HOME=.*|ALFRED_HOME=${ALFRED_HOME}|" \
     -e "s|^WORKSPACE_ROOT=.*|WORKSPACE_ROOT=${WORKSPACE_ROOT}|" \
     "$RC_FILE"
   chmod 600 "$RC_FILE"
@@ -285,7 +285,7 @@ ${C_GREEN}===> Install complete.${C_OFF}
 
 Next steps (run them in this order):
 
-  1. Open a fresh shell so HERMES_HOME and WORKSPACE_ROOT are loaded:
+  1. Open a fresh shell so ALFRED_HOME and WORKSPACE_ROOT are loaded:
        ${C_BLUE}exec \$SHELL${C_OFF}
 
   2. Authenticate the CLIs that need it:

@@ -8,7 +8,7 @@
 
     AGENT_CODENAME         display name (e.g. "Ra's al Ghul")
     GH_ORG                 github org for `gh` calls
-    HERMES_HOME            runtime home (defaults to ~/.hermes)
+    ALFRED_HOME            runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT         parent dir of per-repo checkouts (defaults to ~/code)
     CODE_REVIEW_REPOS      comma-sep list of repo slugs the agent reviews PRs in
 -->
@@ -81,7 +81,7 @@ gh api /repos/${GH_ORG}/${SLUG}/pulls/${PR_NUM}/comments --jq '[.[] | select(.us
 Before delegating to Claude, dump the cross-repo code map plus a per-PR drift slice:
 
 ```
-CODE_MAP="${HERMES_HOME}/state/code-map.json"
+CODE_MAP="${ALFRED_HOME}/state/code-map.json"
 cp "$CODE_MAP" "${TMPDIR}/code-map.json" 2>/dev/null || echo "{}" > "${TMPDIR}/code-map.json"
 ```
 

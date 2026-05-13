@@ -16,7 +16,7 @@ Each non-comment, non-blank line is a record with up to six tab-separated fields
 | Field | What |
 |---|---|
 | 1. label | launchd job label (also the .plist filename stem) |
-| 2. script | python file in `$HERMES_HOME/bin/` to invoke |
+| 2. script | python file in `$ALFRED_HOME/bin/` to invoke |
 | 3. schedule | one of: `interval:<seconds>` / `cron:<HH>:<MM>` (daily) / `cron:<weekday>:<HH>:<MM>` (weekly; 0=Sun) |
 | 4. needs_java | `yes` or `no`. `yes` prepends openjdk@21 + fnm bins to PATH and sets JAVA_HOME |
 | 5. log_stem | basename used for `/tmp/<stem>.{stdout,stderr}`. Empty falls back to label |
@@ -45,8 +45,8 @@ Tabs are required between fields. Trailing empty fields can be omitted.
 | `__PATH__` | colon-joined PATH for EnvironmentVariables (varies by `needs_java`) |
 | `__JAVA_BLOCK__` | JAVA_HOME entry (empty when `needs_java=no`) |
 | `__GH_ORG_BLOCK__` | GH_ORG entry (omitted if env unset) |
-| `__HERMES_BIN__` | `$HERMES_HOME/bin` |
-| `__HERMES_HOME__` | resolved at render time |
+| `__ALFRED_BIN__` | `$ALFRED_HOME/bin` |
+| `__ALFRED_HOME__` | resolved at render time |
 | `__WORKSPACE_ROOT__` | resolved at render time |
 | `__HOME__` | `$HOME` at render time |
 | `__LOG_STEM__` | `agents.conf` field 5 (or label if empty) |
@@ -55,7 +55,7 @@ Tabs are required between fields. Trailing empty fields can be omitted.
 
 `launchd` does not source shell rc files. The rendered plist calls
 `agent-launch`, which sources `~/.alfredrc` at firing time and then execs the
-agent script from `$HERMES_HOME/bin`.
+agent script from `$ALFRED_HOME/bin`.
 
 ## Adding an agent
 
@@ -66,16 +66,16 @@ agent script from `$HERMES_HOME/bin`.
 
 ## Pause / resume
 
-Pause persists across `deploy.sh` invocations via marker files at `$HERMES_HOME/state/_paused/<short-name>` (where `short-name` is the label minus the `<prefix>.` prefix).
+Pause persists across `deploy.sh` invocations via marker files at `$ALFRED_HOME/state/_paused/<short-name>` (where `short-name` is the label minus the `<prefix>.` prefix).
 
 ```sh
 # Manual pause:
 launchctl bootout "gui/$(id -u)/my.fleet.lucius"
-mkdir -p $HERMES_HOME/state/_paused
-date -u +"%Y-%m-%dT%H:%M:%SZ" > $HERMES_HOME/state/_paused/lucius
+mkdir -p $ALFRED_HOME/state/_paused
+date -u +"%Y-%m-%dT%H:%M:%SZ" > $ALFRED_HOME/state/_paused/lucius
 
 # Resume:
-rm $HERMES_HOME/state/_paused/lucius
+rm $ALFRED_HOME/state/_paused/lucius
 launchctl bootstrap "gui/$(id -u)" \
   ~/Library/LaunchAgents/my.fleet.lucius.plist
 ```
@@ -84,7 +84,7 @@ launchctl bootstrap "gui/$(id -u)" \
 
 Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/my.fleet.lucius.std{out,err}` to watch a firing live.
 
-`/tmp/` is wiped on macOS reboot. The framework's per-firing JSONL transcripts (under `$HERMES_HOME/state/transcripts/`) survive, so post-hoc analysis isn't dependent on `/tmp/`.
+`/tmp/` is wiped on macOS reboot. The framework's per-firing JSONL transcripts (under `$ALFRED_HOME/state/transcripts/`) survive, so post-hoc analysis isn't dependent on `/tmp/`.
 
 ## RunAtLoad
 

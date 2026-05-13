@@ -3,10 +3,10 @@
 
 Demonstrates the canonical pattern every launchd-managed agent follows:
 
-    1. Resolve agent_runner from $HERMES_HOME/lib (set by the launchd plist)
+    1. Resolve agent_runner from $ALFRED_HOME/lib (set by the launchd plist)
     2. Acquire a per-agent mutex with with_lock()
     3. Run preflight() and exit clean on missing host config
-    4. Short-circuit when HERMES_DOCTOR=1 (so doctor.sh can exercise the
+    4. Short-circuit when ALFRED_DOCTOR=1 (so doctor.sh can exercise the
        agent without doing real work)
     5. Open an EventLog for this firing
     6. Do whatever this codename does
@@ -22,8 +22,8 @@ from __future__ import annotations
 import os
 import sys
 
-# The launchd plist sets HERMES_HOME; bare invocation falls back to ~/.hermes.
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+# The launchd plist sets ALFRED_HOME; bare invocation falls back to ~/.alfred.
+sys.path.insert(0, (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib")
 from agent_runner import (  # noqa: E402
     EventLog, PreflightFailed, PreflightSpec,
     doctor_mode, preflight, slack_post, with_lock,

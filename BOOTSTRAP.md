@@ -33,20 +33,19 @@ cd ~/code/alfred-os
 Two environment variables drive every path. Set them in `~/.zshrc` (or your shell rc):
 
 ```sh
-export HERMES_HOME="$HOME/.hermes"
+export ALFRED_HOME="$HOME/.alfred"
 export WORKSPACE_ROOT="$HOME/code"   # parent dir of your forked product repos
 ```
 
-`HERMES_HOME` is the runtime root: deployed agent binaries land in `$HERMES_HOME/bin`, the shared library in `$HERMES_HOME/lib`, state in `$HERMES_HOME/state`, per-firing worktrees in `$HERMES_HOME/worktrees`.
+`ALFRED_HOME` is the runtime root: deployed agent binaries land in `$ALFRED_HOME/bin`, the shared library in `$ALFRED_HOME/lib`, state in `$ALFRED_HOME/state`, per-firing worktrees in `$ALFRED_HOME/worktrees`.
 
-This name is historical compatibility with the original internal Alfred/Hermes fleet.
-Alfred core does not require a separate Hermes install unless you choose to
-use optional Hermes features such as skills, MCP, gbrain memory, canon, or
+Alfred core does not require a separate Hermes install unless you choose to use
+optional companion features such as skills, MCP, gbrain memory, canon, or
 dashboarding.
 
 `WORKSPACE_ROOT` is the parent directory of your canonical product checkouts. Lucius and Bane look here for repo CLAUDE.md files and grep targets before invoking `claude -p`.
 
-All framework paths are env-driven via `HERMES_HOME` and `WORKSPACE_ROOT`. No source edits needed.
+All framework paths are env-driven via `ALFRED_HOME` and `WORKSPACE_ROOT`. No source edits needed.
 
 ## 2. AWS setup: one IAM user per scheduled agent
 
@@ -112,7 +111,7 @@ aws --profile <admin-profile> secretsmanager create-secret \
 
 Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` if you keep secrets under a different prefix.
 
-The runtime caches the webhook at `$HERMES_HOME/state/slack-webhook.cache` with a 30-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner.py`](lib/agent_runner.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
+The runtime caches the webhook at `$ALFRED_HOME/state/slack-webhook.cache` with a 30-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner.py`](lib/agent_runner.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
 
 ## 4. Configure the fleet
 
@@ -146,7 +145,7 @@ Expected output:
 ...
 ```
 
-The script copies `lib/agent_runner.py` to `$HERMES_HOME/lib`, every regular file in `bin/` to `$HERMES_HOME/bin`, renders `launchd/_template.plist` for each entry in `launchd/agents.conf` and copies the result to `~/Library/LaunchAgents`, then re-loads each plist via `launchctl bootout` + `launchctl bootstrap`.
+The script copies `lib/agent_runner.py` to `$ALFRED_HOME/lib`, every regular file in `bin/` to `$ALFRED_HOME/bin`, renders `launchd/_template.plist` for each entry in `launchd/agents.conf` and copies the result to `~/Library/LaunchAgents`, then re-loads each plist via `launchctl bootout` + `launchctl bootstrap`.
 
 ## 5. Verify the host with `doctor.sh`
 
@@ -160,7 +159,7 @@ Expected output:
 
 ```
 doctor: checking configured agents
-        HERMES_HOME=/Users/<you>/.hermes
+        ALFRED_HOME=/Users/<you>/.alfred
         WORKSPACE_ROOT=/Users/<you>/code
 
   drake                          ✅ ok
@@ -172,10 +171,10 @@ doctor: 3 passed, 0 failed
 
 Any failure prints the `[<AGENT>-PREFLIGHT-FAILED]` block naming each gap: missing env var, missing CLI binary, dead AWS profile, expired `gh auth`, missing repo checkout. Fix and re-run until every configured agent passes. A framework-only deploy with no `agents.conf` reports `0 passed, 0 failed`.
 
-`HERMES_DOCTOR=1` is the env var the agents themselves check; `doctor.sh` sets it and invokes every agent. You can also run a single agent in doctor mode:
+`ALFRED_DOCTOR=1` is the env var the agents themselves check; `doctor.sh` sets it and invokes every agent. You can also run a single agent in doctor mode:
 
 ```sh
-HERMES_DOCTOR=1 ~/.hermes/bin/lucius.py
+ALFRED_DOCTOR=1 ~/.alfred/bin/lucius.py
 # [LUCIUS-DOCTOR-OK]
 ```
 
@@ -216,7 +215,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
 
 **`codex: command not found` in the launchd log.** Rerun `deploy.sh` after installing Codex. If `codex` is visible in your interactive shell, deploy links it into `~/.local/bin/codex`, which the renderer adds to launchd PATH. Otherwise set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
 
-**Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id <your/webhook/path> --region us-east-1` against the agent's profile (`AWS_PROFILE=<your-codename>-cron`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.hermes/state/slack-webhook.cache`.
+**Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id <your/webhook/path> --region us-east-1` against the agent's profile (`AWS_PROFILE=<your-codename>-cron`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.alfred/state/slack-webhook.cache`.
 
 **`AccessDeniedException` from AWS.** The agent is using the wrong profile. Confirm `~/.aws/credentials` has the named profile and that the agent's prompt uses `env -u ... AWS_PROFILE=<your-codename>-cron`. The operator's SSO env vars beat profiles in the AWS credential chain. The `env -u` strips them.
 
@@ -226,9 +225,9 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
 ```
 Common errors: file not executable (`chmod +x`), wrong shebang (`#!/usr/bin/env python3` requires Python on PATH), socket address conflict (label already loaded; `bootout` first).
 
-**Claude rate limit (`error_rate_limit` or `error_budget`).** The whole fleet is now in a global block for one hour. Inspect `~/.hermes/state/global-blocked-until.json`. Wait, or delete the file to clear the block manually. Then look at why one agent burned the weekly cap. Usually a runaway loop on a too-large issue. Lucius's hard cap is 5000 turns/day; tighten if needed.
+**Claude rate limit (`error_rate_limit` or `error_budget`).** The whole fleet is now in a global block for one hour. Inspect `~/.alfred/state/global-blocked-until.json`. Wait, or delete the file to clear the block manually. Then look at why one agent burned the weekly cap. Usually a runaway loop on a too-large issue. Lucius's hard cap is 5000 turns/day; tighten if needed.
 
-**Prompt change did not take effect.** Re-run deploy and confirm the rendered launchd job points at the deployed binary under `$HERMES_HOME/bin`:
+**Prompt change did not take effect.** Re-run deploy and confirm the rendered launchd job points at the deployed binary under `$ALFRED_HOME/bin`:
 ```sh
 bash deploy.sh
 launchctl print gui/$(id -u)/my.fleet.lucius

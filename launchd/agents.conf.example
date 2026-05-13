@@ -4,7 +4,7 @@
 # tab-separated fields:
 #
 #   1. label       - launchd job label (also the .plist filename stem)
-#   2. script      - python file in HERMES_HOME/bin/ to invoke
+#   2. script      - python file in ALFRED_HOME/bin/ to invoke
 #   3. schedule    - one of:
 #                      interval:<seconds>
 #                      cron:<HH>:<MM>                 (daily)

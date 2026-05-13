@@ -40,14 +40,14 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from agent_runner import HERMES_HOME, codename_with_role, run
+from agent_runner import ALFRED_HOME, codename_with_role, run
 
 SLACK_API = "https://slack.com/api"
 
-# ``$HERMES_HOME/state/slack-bot-token.cache`` — written on first AWS
+# ``$ALFRED_HOME/state/slack-bot-token.cache`` — written on first AWS
 # resolution, refreshed via TTL. Mirrors the webhook cache in
 # ``slack_post`` so the operator only re-touches AWS when secrets rotate.
-TOKEN_CACHE = HERMES_HOME / "state" / "slack-bot-token.cache"
+TOKEN_CACHE = ALFRED_HOME / "state" / "slack-bot-token.cache"
 TOKEN_CACHE_TTL = 30 * 24 * 3600  # 30 days
 
 # Default Slack channel for fleet-wide firing posts.

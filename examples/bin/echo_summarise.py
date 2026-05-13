@@ -24,7 +24,7 @@ issue claim state machine, and severity-aware Slack reporting.
 Required env (preflight will fail loud if missing):
     GH_ORG              — your fleet's GitHub org/user
     ECHO_REPO_SLUG      — <org>/<repo> Echo operates against
-    HERMES_HOME         — set by the launchd plist
+    ALFRED_HOME         — set by the launchd plist
     WORKSPACE_ROOT      — set by the launchd plist
 
 Cron suggestion: every 30 minutes.
@@ -36,7 +36,7 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(0, (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib")
 from agent_runner import (
     EventLog,
     PreflightFailed,

@@ -23,12 +23,11 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 
 ## Runtime paths
 
-`HERMES_HOME` is the Alfred runtime root. The name is historical; it does
-not mean `hermes-agent` is installed or required.
+`ALFRED_HOME` is the Alfred runtime root.
 
 | Var | Used by | Default |
 |---|---|---|
-| `HERMES_HOME` | everything | `$HOME/.hermes` |
+| `ALFRED_HOME` | everything | `$HOME/.alfred` |
 | `WORKSPACE_ROOT` | `agent_runner.WORKSPACE = WORKSPACE_ROOT/product` | `$HOME/code` |
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
 | `CLAUDE_CONFIG_DIR` | `claude` auth profile selection | Set by `alfred claude` for scheduled agents |
@@ -48,7 +47,7 @@ not mean `hermes-agent` is installed or required.
 | `ALFRED_<CODENAME>_CODEX_SANDBOX` | per-agent Codex sandbox | `CODEX_SANDBOX` |
 | `ALFRED_<CODENAME>_CODEX_WRITE` | shortcut for `workspace-write` | `0` |
 
-`bin/alfred engine status/set` persists per-agent engine choices under `$HERMES_HOME/state/engines/<codename>`.
+`bin/alfred engine status/set` persists per-agent engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 
 ## Shipped summaries
 
@@ -77,7 +76,7 @@ not mean `hermes-agent` is installed or required.
 | `SLACK_HOME_CHANNEL` | default bot channel | `alfred` |
 | `BATMAN_APPROVAL_CHANNEL` | legacy alias for `SLACK_HOME_CHANNEL` | (none) |
 
-Resolution order: env -> 30-day disk cache at `$HERMES_HOME/state/slack-webhook.cache` -> AWS Secrets Manager. First hit wins.
+Resolution order: env -> 30-day disk cache at `$ALFRED_HOME/state/slack-webhook.cache` -> AWS Secrets Manager. First hit wins.
 
 ## AWS
 
@@ -91,7 +90,7 @@ Resolution order: env -> 30-day disk cache at `$HERMES_HOME/state/slack-webhook.
 
 | Var | Used by | Default |
 |---|---|---|
-| `HERMES_DOCTOR` | every agent's `doctor_mode()` check | `0` |
+| `ALFRED_DOCTOR` | every agent's `doctor_mode()` check | `0` |
 
 Set to `1` and any agent runner will emit `[<NAME>-DOCTOR-OK]` and exit 0 without side effects.
 
@@ -118,7 +117,7 @@ Set to `1` and any agent runner will emit `[<NAME>-DOCTOR-OK]` and exit 0 withou
 | Var | Used by | Default |
 |---|---|---|
 | `LABEL_STATE_SWEEP_REPOS` | `examples/bin/label_state.py sweep-claims` (default repo set) | (must pass `--repo`) |
-| `LABEL_STATE_BIN` | pre-push hook | (resolves via PATH then `$HERMES_HOME/bin/`) |
+| `LABEL_STATE_BIN` | pre-push hook | (resolves via PATH then `$ALFRED_HOME/bin/`) |
 | `LABEL_STATE_SKIP_DEDUP_CHECK` | pre-push hook | (enforce) |
 
 ## Site build

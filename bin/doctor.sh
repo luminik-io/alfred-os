@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # doctor.sh - run preflight checks for every agent without burning a Claude turn.
 #
-# For each configured Python script, we set HERMES_DOCTOR=1 and invoke the
+# For each configured Python script, we set ALFRED_DOCTOR=1 and invoke the
 # script. Each agent runs its preflight() and, on success, exits with a
 # [<AGENT>-DOCTOR-OK] sentinel before doing any real work. On preflight miss
 # the agent exits with a [<AGENT>-PREFLIGHT-FAILED] sentinel naming each gap.
@@ -46,9 +46,9 @@ load_env_file() {
 
 load_env_file "$HOME/.alfredrc"
 
-: "${HERMES_HOME:=$HOME/.hermes}"
+: "${ALFRED_HOME:=$HOME/.alfred}"
 : "${WORKSPACE_ROOT:=$HOME/code}"
-export HERMES_HOME WORKSPACE_ROOT HERMES_DOCTOR=1
+export ALFRED_HOME WORKSPACE_ROOT ALFRED_DOCTOR=1
 
 if [ -d "$REPO_DIR/lib" ]; then
   PYTHONPATH="$REPO_DIR/lib${PYTHONPATH:+:$PYTHONPATH}"
@@ -132,8 +132,8 @@ configured_agents() {
   local conf=""
   if [ -f "$REPO_DIR/launchd/agents.conf" ]; then
     conf="$REPO_DIR/launchd/agents.conf"
-  elif [ -f "$HERMES_HOME/launchd/agents.conf" ]; then
-    conf="$HERMES_HOME/launchd/agents.conf"
+  elif [ -f "$ALFRED_HOME/launchd/agents.conf" ]; then
+    conf="$ALFRED_HOME/launchd/agents.conf"
   fi
   if [ -n "$conf" ]; then
     awk -F'\t' '
@@ -173,7 +173,7 @@ PY
 }
 
 echo "doctor: checking configured agents"
-echo "        HERMES_HOME=$HERMES_HOME"
+echo "        ALFRED_HOME=$ALFRED_HOME"
 echo "        WORKSPACE_ROOT=$WORKSPACE_ROOT"
 echo
 
@@ -182,8 +182,8 @@ fail=0
 while IFS=$'\t' read -r label script_name; do
   [ -n "$label" ] || continue
   [ -n "$script_name" ] || continue
-  if [ -f "$HERMES_HOME/bin/$script_name" ]; then
-    script="$HERMES_HOME/bin/$script_name"
+  if [ -f "$ALFRED_HOME/bin/$script_name" ]; then
+    script="$ALFRED_HOME/bin/$script_name"
     launch_arg="$script_name"
   elif [ -f "$SCRIPT_DIR/$script_name" ]; then
     script="$SCRIPT_DIR/$script_name"
@@ -199,16 +199,16 @@ while IFS=$'\t' read -r label script_name; do
   # Each agent's preflight should complete in well under 30s. Capture stdout
   # so we can inspect the sentinel without flooding the terminal. Use the
   # detected timeout helper so this works on a fresh Mac without coreutils.
-  launcher="$HERMES_HOME/bin/agent-launch"
+  launcher="$ALFRED_HOME/bin/agent-launch"
   if [ ! -x "$launcher" ]; then
     launcher="$SCRIPT_DIR/agent-launch"
   fi
   if [ -x "$launcher" ]; then
-    output=$(_run_with_timeout 30 env HERMES_DOCTOR=1 \
+    output=$(_run_with_timeout 30 env ALFRED_DOCTOR=1 \
       AGENT_CODENAME="${label##*.}" LAUNCHD_LABEL="$label" \
       "$launcher" "$launch_arg" 2>&1) || true
   else
-    output=$(_run_with_timeout 30 env HERMES_DOCTOR=1 \
+    output=$(_run_with_timeout 30 env ALFRED_DOCTOR=1 \
       AGENT_CODENAME="${label##*.}" LAUNCHD_LABEL="$label" \
       python3 "$script" 2>&1) || true
   fi

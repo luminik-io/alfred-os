@@ -27,7 +27,7 @@ Idempotent (safe to re-run). On a fresh Mac:
 2. Installs Homebrew if missing.
 3. `brew install`s `python@3.11`, `git`, `gh`, `jq`, `awscli`, `node`, `uv`.
 4. `npm install -g @anthropic-ai/claude-code`.
-5. Creates `$HERMES_HOME` (default `~/.hermes`) and `$WORKSPACE_ROOT` (default `~/code`).
+5. Creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`).
 6. Drops `~/.alfredrc` from the template, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
 7. Appends a source-line to your shell rc so every new shell loads `~/.alfredrc`.
 8. Reports auth status for `gh`, `aws`, `claude`.
@@ -38,7 +38,7 @@ What it does **not** do (deliberately):
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
-- Install a separate Hermes agent. `HERMES_HOME` is the Alfred runtime
+- Install a separate Hermes agent. `ALFRED_HOME` is the Alfred runtime
   root name. Install Hermes separately only if your fleet uses Hermes skills,
   MCP, gbrain, canon, or dashboarding.
 

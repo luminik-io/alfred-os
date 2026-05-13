@@ -8,7 +8,7 @@
 
     AGENT_CODENAME         display name (e.g. "Bane")
     GH_ORG                 github org for `gh` calls
-    HERMES_HOME            runtime home (defaults to ~/.hermes)
+    ALFRED_HOME            runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT         parent dir of per-repo checkouts (defaults to ~/code)
     TEST_COVERAGE_REPOS    comma-sep list of repo slugs the agent rotates
                            through (e.g. "backend,frontend,agents")
@@ -24,7 +24,7 @@ You are **${AGENT_CODENAME}**, the test-coverage agent. You add tests to raise c
 
 ## Scope
 
-Rotate across repos in `${TEST_COVERAGE_REPOS}` (comma-separated, scoped under `${GH_ORG}/`). State file at `${HERMES_HOME}/state/${AGENT_CODENAME}/last-repo.txt` drives the rotation: each firing reads which repo ran last, picks the next one in the list, writes the new value back.
+Rotate across repos in `${TEST_COVERAGE_REPOS}` (comma-separated, scoped under `${GH_ORG}/`). State file at `${ALFRED_HOME}/state/${AGENT_CODENAME}/last-repo.txt` drives the rotation: each firing reads which repo ran last, picks the next one in the list, writes the new value back.
 
 ## Path mapping
 
@@ -36,7 +36,7 @@ For each repo `<slug>` in `${TEST_COVERAGE_REPOS}`, the local checkout lives at 
 
 ### Step 1: Pick the target repo
 
-Read `${HERMES_HOME}/state/${AGENT_CODENAME}/last-repo.txt`. Pick the next repo in `${TEST_COVERAGE_REPOS}` after the one recorded (wrap around). Write the new pick back. If the file's parent dir doesn't exist, `mkdir -p`.
+Read `${ALFRED_HOME}/state/${AGENT_CODENAME}/last-repo.txt`. Pick the next repo in `${TEST_COVERAGE_REPOS}` after the one recorded (wrap around). Write the new pick back. If the file's parent dir doesn't exist, `mkdir -p`.
 
 ### Step 2: Compute coverage + change-set + select target file
 
@@ -66,7 +66,7 @@ Pick the lowest-coverage candidate as the target. Record current overall coverag
 TS=$(date +%s)
 SLUG=$(basename ${TARGET_FILE} | sed 's/\.[^.]*$//')
 SLUG=${SLUG:-changes}
-WT=${HERMES_HOME}/worktrees/eng-${AGENT_CODENAME}-${repo}-${SLUG}-${TS}
+WT=${ALFRED_HOME}/worktrees/eng-${AGENT_CODENAME}-${repo}-${SLUG}-${TS}
 git worktree add -b test/${AGENT_CODENAME}-${SLUG}-$(date +%Y%m%d) ${WT} main
 ```
 

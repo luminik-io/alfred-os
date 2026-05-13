@@ -29,6 +29,7 @@ SKIP_PATH_RE='^(\./)?(\.git/|site/node_modules/)'
 
 patterns=(
   "/Users/[A-Za-z0-9._-]+/Claude_Workspace"
+  "/Users/[A-Za-z0-9._-]+/\\.alfred"
   "/Users/[A-Za-z0-9._-]+/\\.hermes"
   "/home/[A-Za-z0-9._-]+/Claude_Workspace"
   "luminik-internal"

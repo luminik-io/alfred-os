@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """code-map-refresh - scan configured repos and write a JSON code map.
 
-Produces ${HERMES_HOME}/state/code-map.json with per-repo HEAD SHA, plus
+Produces ${ALFRED_HOME}/state/code-map.json with per-repo HEAD SHA, plus
 optional per-repo extracts:
   - JAX-RS endpoints (Kotlin/Quarkus)
   - Hono / TS sub-router routes
@@ -35,9 +35,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(
+    0,
+    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
+)
 from agent_runner import (
-    HERMES_HOME,
+    ALFRED_HOME,
     WORKSPACE,
     PreflightFailed,
     PreflightSpec,
@@ -48,7 +51,7 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "code-map-refresh")
-CODE_MAP_PATH = HERMES_HOME / "state" / "code-map.json"
+CODE_MAP_PATH = ALFRED_HOME / "state" / "code-map.json"
 
 REPOS = [r.strip() for r in os.environ.get("ALFRED_CODE_MAP_REPOS", "").split(",") if r.strip()]
 BACKEND_REPO = os.environ.get("ALFRED_CODE_MAP_BACKEND_REPO", "").strip()

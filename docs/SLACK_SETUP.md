@@ -72,7 +72,7 @@ Reload your shell (`exec $SHELL`). `slack_post()` reads this directly.
 
 ### Option B: AWS Secrets Manager (recommended for prod)
 
-Store the URL as a secret and let `slack_post()` resolve it via the env -> cache -> AWS chain (cached at `$HERMES_HOME/state/slack-webhook.cache` for 30 days):
+Store the URL as a secret and let `slack_post()` resolve it via the env -> cache -> AWS chain (cached at `$ALFRED_HOME/state/slack-webhook.cache` for 30 days):
 
 ```sh
 aws --profile <admin-profile> secretsmanager create-secret \
@@ -86,7 +86,7 @@ The default secret ID is `alfred/slack-webhook`. Override via `SLACK_WEBHOOK_SEC
 
 You also need an IAM identity that scheduled agents use, with `secretsmanager:GetSecretValue` on `arn:…:secret:alfred/slack-webhook-*`. See [`AWS_SETUP.md`](AWS_SETUP.md).
 
-**Pros**: rotation is `aws secretsmanager update-secret` + `rm ~/.hermes/state/slack-webhook.cache`, value never lives in shell rc, audit logs on every fetch.
+**Pros**: rotation is `aws secretsmanager update-secret` + `rm ~/.alfred/state/slack-webhook.cache`, value never lives in shell rc, audit logs on every fetch.
 **Cons**: requires AWS account.
 
 ### Option C: Both (env var as override, AWS as default)
@@ -189,7 +189,7 @@ Do this when you accidentally paste the URL somewhere it shouldn't be (chat, scr
    aws --profile <admin> secretsmanager update-secret \
      --secret-id alfred/slack-webhook \
      --secret-string '<new-url>' --region us-east-1
-   rm -f $HERMES_HOME/state/slack-webhook.cache
+   rm -f $ALFRED_HOME/state/slack-webhook.cache
    ```
 
 The next agent firing fetches the new value.
@@ -200,6 +200,6 @@ Once the webhook is stored, every agent that imports `slack_post` from `agent_ru
 
 Common gotchas:
 
-- **Posts go nowhere.** Cache might be stale (URL rotated). `rm $HERMES_HOME/state/slack-webhook.cache` and retry.
+- **Posts go nowhere.** Cache might be stale (URL rotated). `rm $ALFRED_HOME/state/slack-webhook.cache` and retry.
 - **Posts go to the wrong channel.** A webhook is locked to a single channel at creation time. Mint a new webhook and rotate.
 - **Posts come from a generic name like "incoming-webhook".** App settings → **Basic Information → Display Information** → set name + icon. Applies to all channels the app posts to.

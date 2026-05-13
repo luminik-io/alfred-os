@@ -23,7 +23,10 @@ from pathlib import Path
 from typing import Any
 
 _HERE = Path(__file__).resolve().parent
-for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) / "lib"):
+for candidate in (
+    _HERE.parent / "lib",
+    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
@@ -289,7 +292,7 @@ def model_related_prs(
 def current_model_defaults() -> list[str]:
     candidates = [
         Path(os.environ["ALFRED_AGENTS_CONF"]) if os.environ.get("ALFRED_AGENTS_CONF") else None,
-        Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
+        Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
         / "launchd"
         / "agents.conf",
         _HERE.parent / "launchd" / "agents.conf",

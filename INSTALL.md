@@ -26,7 +26,7 @@ Idempotent (safe to re-run). On a fresh Mac:
 2. Installs Homebrew if missing.
 3. `brew install`s `git`, `gh`, `jq`, `awscli`, `python@3.11`, `node`, `uv`.
 4. `npm install -g @anthropic-ai/claude-code`.
-5. Creates `$HERMES_HOME` (default `~/.hermes`) and `$WORKSPACE_ROOT` (default `~/code`).
+5. Creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`).
 6. Drops `~/.alfredrc` from `.alfredrc.example`, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
 7. Appends a source-line to your shell rc (`~/.zshrc` / `~/.bashrc`) so every new shell loads `~/.alfredrc`.
 8. Reports auth status for `gh`, `aws`, `claude`.
@@ -37,10 +37,9 @@ What it does **not** do (deliberately):
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
-- Touch existing `~/.hermes` content.
-- Install a separate Hermes agent. In Alfred, `HERMES_HOME` is the runtime
-  root name. Install Hermes separately only if your fleet uses Hermes skills,
-  MCP, gbrain, canon, or dashboarding.
+- Touch runtime data outside `~/.alfred`.
+- Install Hermes, gbrain, MCP servers, or skill bundles. Those are optional
+  companion integrations; see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 If you want a non-interactive run:
 
@@ -75,10 +74,10 @@ Watch for two things:
 exec $SHELL
 ```
 
-Confirms `HERMES_HOME` and `WORKSPACE_ROOT` are set in this session:
+Confirms `ALFRED_HOME` and `WORKSPACE_ROOT` are set in this session:
 
 ```sh
-echo "$HERMES_HOME $WORKSPACE_ROOT"
+echo "$ALFRED_HOME $WORKSPACE_ROOT"
 ```
 
 ### 4. Authenticate the CLIs
@@ -136,13 +135,13 @@ bash deploy.sh
 bash bin/doctor.sh
 ```
 
-`deploy.sh` copies `lib/` and `bin/` into `$HERMES_HOME`. In a fresh checkout
+`deploy.sh` copies `lib/` and `bin/` into `$ALFRED_HOME`. In a fresh checkout
 there is no `launchd/agents.conf`, so this is framework-only and nothing
 fires. After `alfred-init.py` creates `launchd/agents.conf`, deploy also
 renders plists from `launchd/_template.plist` and bootstraps them via
 `launchctl bootstrap`.
 
-`doctor.sh` runs every agent's preflight under `HERMES_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
+`doctor.sh` runs every agent's preflight under `ALFRED_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
 
 ### 8. Your first custom agent
 
@@ -181,7 +180,7 @@ The npm global install dir might not be on PATH. Run `npm config get prefix`, ap
 | Path | What it is | Safe to delete |
 |---|---|---|
 | `~/.alfredrc` | Operator config: sourced by every shell | After re-running install.sh |
-| `~/.hermes/` | Runtime root (state, worktrees, deployed bin/lib) | Yes, `deploy.sh` repopulates |
+| `~/.alfred/` | Runtime root (state, worktrees, deployed bin/lib) | Yes, `deploy.sh` repopulates |
 | `~/code/` | Default workspace root | If you set a different `WORKSPACE_ROOT` |
 | `~/.zshrc` (or `.bashrc`) | One source-block appended | Manually edit to remove |
 
@@ -194,6 +193,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 - [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md): IAM users, scoped policies, Secrets Manager layout.
 - [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `alfred claude`.
 - [`docs/SKILLS.md`](docs/SKILLS.md): recommended Claude Code skills for an autonomous fleet.
+- [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md): optional Hermes, gbrain, MCP, and dashboard boundaries.
 - [`docs/STATE_MACHINE.md`](docs/STATE_MACHINE.md): issue claim lifecycle and dedup primitives.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): design rationale.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how to propose changes.

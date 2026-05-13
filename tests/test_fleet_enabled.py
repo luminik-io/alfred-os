@@ -16,8 +16,8 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _isolated_hermes_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+def _isolated_alfred_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     for mod in list(sys.modules):
         if mod == "agent_runner" or mod.startswith("agent_runner."):
@@ -158,7 +158,7 @@ def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.
 
 def test_cli_enable_then_enabled_agents_round_trip(tmp_path):
     env = {
-        "HERMES_HOME": str(tmp_path / "hermes"),
+        "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
     res = _run_cli("enable", "batman", env_extra=env)
@@ -172,7 +172,7 @@ def test_cli_enable_then_enabled_agents_round_trip(tmp_path):
 
 def test_cli_disable_idempotent(tmp_path):
     env = {
-        "HERMES_HOME": str(tmp_path / "hermes"),
+        "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
     # Disabling something that was never enabled is fine.
@@ -182,7 +182,7 @@ def test_cli_disable_idempotent(tmp_path):
 
 def test_cli_enabled_agents_announces_missing_file(tmp_path):
     env = {
-        "HERMES_HOME": str(tmp_path / "hermes"),
+        "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
     res = _run_cli("enabled-agents", env_extra=env)
@@ -192,13 +192,13 @@ def test_cli_enabled_agents_announces_missing_file(tmp_path):
 
 def test_cli_engine_set_supports_batman(tmp_path):
     env = {
-        "HERMES_HOME": str(tmp_path / "hermes"),
+        "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
     res = _run_cli("engine", "set", "batman", "codex", env_extra=env)
     assert res.returncode == 0, res.stderr
     assert "batman engine set to codex" in res.stdout
-    assert (tmp_path / "hermes" / "state" / "engines" / "batman").read_text().strip() == "codex"
+    assert (tmp_path / "alfred" / "state" / "engines" / "batman").read_text().strip() == "codex"
 
     status = _run_cli("engine", "status", "batman", env_extra=env)
     assert status.returncode == 0, status.stderr
@@ -207,7 +207,7 @@ def test_cli_engine_set_supports_batman(tmp_path):
 
 def test_cli_engine_status_lists_known_agents(tmp_path):
     env = {
-        "HERMES_HOME": str(tmp_path / "hermes"),
+        "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
     res = _run_cli("engine", "status", env_extra=env)
@@ -217,19 +217,19 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
 
 
 def test_cli_status_reports_local_snapshot(tmp_path):
-    hermes = tmp_path / "hermes"
-    launchd = hermes / "launchd"
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
     launchd.mkdir(parents=True)
     (launchd / "agents.conf").write_text(
         "my.fleet.batman\tbatman.py\tinterval:5400\tno\t\tBundle coordinator\n"
     )
-    wait_dir = hermes / "state" / "batman" / "approval-waits"
+    wait_dir = alfred / "state" / "batman" / "approval-waits"
     wait_dir.mkdir(parents=True)
     (wait_dir / "firing.json").write_text(
         '{"firing_id":"abc","pid":0,"created_at":"2026-05-12T10:00:00Z","issues":[{"number":504}]}'
     )
     env = {
-        "HERMES_HOME": str(hermes),
+        "ALFRED_HOME": str(alfred),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
 
@@ -241,21 +241,21 @@ def test_cli_status_reports_local_snapshot(tmp_path):
 
 
 def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
-    hermes = tmp_path / "hermes"
-    launchd = hermes / "launchd"
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
     launchd.mkdir(parents=True)
     (launchd / "agents.conf").write_text(
         "my.fleet.marshall\tlucius.py\tinterval:1200\tyes\t\tCustom feature engineer\n"
     )
     env = {
-        "HERMES_HOME": str(hermes),
+        "ALFRED_HOME": str(alfred),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
 
     res = _run_cli("engine", "set", "marshall", "codex", env_extra=env)
     assert res.returncode == 0, res.stderr
     assert "marshall engine set to codex" in res.stdout
-    assert (hermes / "state" / "engines" / "marshall").read_text().strip() == "codex"
+    assert (alfred / "state" / "engines" / "marshall").read_text().strip() == "codex"
 
     status = _run_cli("engine", "status", "marshall", env_extra=env)
     assert status.returncode == 0, status.stderr
@@ -264,7 +264,7 @@ def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
 
 def test_cli_review_engine_alias_is_not_exposed(tmp_path):
     env = {
-        "HERMES_HOME": str(tmp_path / "hermes"),
+        "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
     help_res = _run_cli("--help", env_extra=env)
@@ -277,18 +277,18 @@ def test_cli_review_engine_alias_is_not_exposed(tmp_path):
 
 
 def test_cli_agents_does_not_disable_default_agents_when_gate_file_exists(tmp_path):
-    hermes = tmp_path / "hermes"
-    launchd = hermes / "launchd"
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
     launchd.mkdir(parents=True)
     (launchd / "agents.conf").write_text(
         "my.fleet.batman\tbatman.py\tinterval:5400\tno\t\tBundle coordinator\n"
         "my.fleet.lucius\tlucius.py\tinterval:1200\tyes\t\tFeature dev\n"
     )
-    gate = hermes / "state" / "fleet"
+    gate = alfred / "state" / "fleet"
     gate.mkdir(parents=True)
     (gate / "enabled.txt").write_text("batman\n")
     env = {
-        "HERMES_HOME": str(hermes),
+        "ALFRED_HOME": str(alfred),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
     }
 

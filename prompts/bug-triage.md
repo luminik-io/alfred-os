@@ -8,7 +8,7 @@
 
     AGENT_CODENAME         display name (e.g. "Robin")
     GH_ORG                 github org for `gh` calls
-    HERMES_HOME            runtime home (defaults to ~/.hermes)
+    ALFRED_HOME            runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT         parent dir of per-repo checkouts (defaults to ~/code)
     BUG_TRIAGE_REPOS       comma-sep list of repo slugs the agent watches
     FEATURE_DEV_CODENAME   codename of the feature-dev agent (default "Lucius")
@@ -49,7 +49,7 @@ GitHub slug for `gh` commands; local-checkout name for shell paths. Don't combin
        --limit 50
    done
    ```
-3. **Daily state file** at `${HERMES_HOME}/state/${AGENT_CODENAME}/dedup-<YYYY-MM-DD>.json` — tracks `{count: N, recent: [{repo, number, firing_ts}]}`. Create it if missing. Purge files older than 7 days at the start of each run.
+3. **Daily state file** at `${ALFRED_HOME}/state/${AGENT_CODENAME}/dedup-<YYYY-MM-DD>.json` — tracks `{count: N, recent: [{repo, number, firing_ts}]}`. Create it if missing. Purge files older than 7 days at the start of each run.
 4. **Issue body + linked artifacts** — logs, screenshots, repros referenced from the body. If the body links to a file in another in-scope repo you already have checked out under `${WORKSPACE_ROOT}/product/`, read it locally.
 
 ## Skills — invoke explicitly when they help
@@ -129,12 +129,12 @@ ${AGENT_CODENAME} paused this tick. Human triage required.
 ## Budget and rate limits
 
 - **Max 5 issues per firing.** Pick the newest 5 that match the filter, process in order, stop.
-- **Max 20 issues per rolling 24 hours.** Track via `${HERMES_HOME}/state/${AGENT_CODENAME}/dedup-<date>.json`. Before processing issue N+1 this firing, check that the day's cumulative count is < 20. If it's at 20, exit with `[BUG-TRIAGE-DAILY-CAP-HIT]` and Slack `⚠️ ${AGENT_CODENAME}: daily 20-issue cap reached, skipping remainder`.
+- **Max 20 issues per rolling 24 hours.** Track via `${ALFRED_HOME}/state/${AGENT_CODENAME}/dedup-<date>.json`. Before processing issue N+1 this firing, check that the day's cumulative count is < 20. If it's at 20, exit with `[BUG-TRIAGE-DAILY-CAP-HIT]` and Slack `⚠️ ${AGENT_CODENAME}: daily 20-issue cap reached, skipping remainder`.
 - **Max 1 comment per issue per firing.** If this agent already commented on an issue (check `gh issue view <n> --json comments --jq '.comments[].author.login'` for the agent bot user) this tick, skip it.
 
 ## State file shape
 
-`${HERMES_HOME}/state/${AGENT_CODENAME}/dedup-<YYYY-MM-DD>.json`:
+`${ALFRED_HOME}/state/${AGENT_CODENAME}/dedup-<YYYY-MM-DD>.json`:
 
 ```json
 {
@@ -148,7 +148,7 @@ ${AGENT_CODENAME} paused this tick. Human triage required.
 }
 ```
 
-Append-only within a day. At the top of each run, `mkdir -p ${HERMES_HOME}/state/${AGENT_CODENAME}/` and delete files older than 7 days.
+Append-only within a day. At the top of each run, `mkdir -p ${ALFRED_HOME}/state/${AGENT_CODENAME}/` and delete files older than 7 days.
 
 ## Workflow — each firing
 

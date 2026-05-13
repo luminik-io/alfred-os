@@ -41,7 +41,7 @@ Codenames show up in:
 - Commit trailers (`Agent-Codename: lucius`)
 - Slack messages (`✅ Lucius shipped: <url>`)
 - Issue labels (`lucius-attempt-1`, `lucius-pr-open`)
-- Worktree paths (`~/.hermes/worktrees/eng-lucius-backend-303-...`)
+- Worktree paths (`~/.alfred/worktrees/eng-lucius-backend-303-...`)
 - Logs (`/tmp/my.fleet.lucius.stdout`)
 
 If your cast is "agent-1 / agent-2 / agent-3" or "feature-dev / test-coverage / review", scanning the firehose becomes laborious. A coherent fictional cast (Batman, Greek mythology, The Wire) makes "Lucius failed on #303" instantly readable.
@@ -78,7 +78,7 @@ Each codename has:
 
 - **A bin script**: `bin/<role>.py`. Imports from `agent_runner`. ~150-300 lines.
 - **A launchd entry**: one line in `launchd/agents.conf` (label, script, schedule, java flag).
-- **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$HERMES_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
+- **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$ALFRED_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
 

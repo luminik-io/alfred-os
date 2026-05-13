@@ -30,16 +30,15 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 
 Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by `launchd`, isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
 
-`HERMES_HOME` is the runtime-root name inherited from the original internal
-Alfred/Hermes fleet. Alfred core does not install or run a Hermes agent process. Hermes
-skills, MCP, gbrain, canon, and dashboarding remain compatible optional
-integrations.
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`.
+Hermes, gbrain, MCP servers, skills, canon, and dashboards are compatible
+optional integrations, not core requirements.
 
 ```
 launchd plist (every N min)
    │
    ▼
-${HERMES_HOME}/bin/<role>.py         one stable role runner per agent
+${ALFRED_HOME}/bin/<role>.py         one stable role runner per agent
    │
    ▼
 agent_runner module                  lock + preflight + spend + claude_invoke + gh + slack
@@ -81,7 +80,7 @@ slack_post('<result>', severity=...) report to the fleet's Slack channel
   <Card title="Web UI" icon="error">Slack is the human surface.</Card>
   <Card title="Long-running loops" icon="error">The OS scheduler is the orchestrator.</Card>
   <Card title="Hosted model gateway" icon="error">Engines are local CLI adapters, not a hosted inference service.</Card>
-  <Card title="Hermes distribution" icon="error">Hermes integrations are optional; this repo ships the launchd fleet core.</Card>
+  <Card title="Hermes or gbrain bundle" icon="error">Integrations are optional; this repo ships the launchd fleet core.</Card>
   <Card title="Browser runtimes" icon="error">If you need Playwright, install it in your codename script.</Card>
   <Card title="Vector DBs" icon="error">A doc-shaped memory layer is your choice, not the framework's.</Card>
 </CardGrid>

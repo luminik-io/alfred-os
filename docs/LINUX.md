@@ -8,7 +8,7 @@ Per-firing isolation depends on a few `launchd` properties:
 
 - **Per-user agents**, not system services. Operator can edit/reload plists without sudo.
 - **`KeepAlive`-free fire-and-forget.** `StartInterval` / `StartCalendarInterval` triggers a one-shot run; the process exits and `launchd` is happy. No process-supervisor restarting a crashing agent in a tight loop.
-- **`bootstrap` / `bootout` semantics**. Paused agents stay paused across operator login/logout cycles via the marker file at `$HERMES_HOME/state/_paused/<agent>`.
+- **`bootstrap` / `bootout` semantics**. Paused agents stay paused across operator login/logout cycles via the marker file at `$ALFRED_HOME/state/_paused/<agent>`.
 - **stdout / stderr to per-agent files** at `/tmp/<label>.{stdout,stderr}`. Operator's grep-and-tail muscle memory.
 - **`EnvironmentVariables` block** in the plist. Per-agent env without polluting the operator's shell.
 
@@ -43,7 +43,7 @@ Skip the framework's launchd bits entirely. Write each agent as a bash script:
 
 ```text
 # crontab -e
-*/20 * * * * /usr/bin/env HERMES_HOME=$HOME/.hermes WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
+*/20 * * * * /usr/bin/env ALFRED_HOME=$HOME/.alfred WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
 ```
 
 You lose the per-agent stdout/stderr separation and the `_paused/` marker pattern, but the framework primitives all work. Shape your stable role runner, such as `bin/lucius.py`, exactly as the macOS examples show.
@@ -60,9 +60,9 @@ Description=alfred-os Lucius (feature-dev agent)
 [Service]
 Type=oneshot
 EnvironmentFile=%h/.alfredrc
-ExecStart=/usr/bin/env python3 %h/.hermes/bin/lucius.py
-StandardOutput=append:%h/.hermes/logs/lucius.stdout
-StandardError=append:%h/.hermes/logs/lucius.stderr
+ExecStart=/usr/bin/env python3 %h/.alfred/bin/lucius.py
+StandardOutput=append:%h/.alfred/logs/lucius.stdout
+StandardError=append:%h/.alfred/logs/lucius.stderr
 ```
 
 ```ini

@@ -8,5 +8,6 @@ if [ -f "${HOME}/.alfredrc" ]; then
   . "${HOME}/.alfredrc"
 fi
 
-HERMES_HOME="${HERMES_HOME:-${HOME}/.hermes}"
-exec "${HERMES_HOME}/bin/alfred-shipped-summary.py" --period daily --slack "$@"
+ALFRED_HOME="${ALFRED_HOME:-${HOME}/.alfred}"
+export ALFRED_HOME
+exec "${ALFRED_HOME}/bin/alfred-shipped-summary.py" --period daily --slack "$@"

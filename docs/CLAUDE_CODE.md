@@ -17,7 +17,7 @@ If the `codex` CLI is installed and authenticated, agents can route a task throu
 
 - Default sandbox: `read-only`
 - Default approval policy: `never`
-- Artifacts: `$HERMES_HOME/state/codex/<agent>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`
+- Artifacts: `$ALFRED_HOME/state/codex/<agent>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}`
 - Unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`) are rejected up front.
 - Builder agents that use Codex should run in a disposable worktree and pass
   `bypass_approvals_and_sandbox=True` only when they need autonomous write or
@@ -81,7 +81,7 @@ A "turn" is roughly one model response. A typical Lucius firing on a small backe
 
 Recommendation: start on Pro to validate the framework, upgrade to Max once you've got more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you split spend across two accounts.
 
-When the subscription cap trips mid-firing, the framework treats it as a fleet-wide event. `set_global_block(hours=1, reason="...")` poisons the run-permission file at `$HERMES_HOME/state/global-blocked-until.json`. Every other agent's first preflight check sees the block and exits silently. After an hour, the block expires and the fleet resumes.
+When the subscription cap trips mid-firing, the framework treats it as a fleet-wide event. `set_global_block(hours=1, reason="...")` poisons the run-permission file at `$ALFRED_HOME/state/global-blocked-until.json`. Every other agent's first preflight check sees the block and exits silently. After an hour, the block expires and the fleet resumes.
 
 ## The `alfred claude` swap pattern
 
@@ -148,13 +148,13 @@ The plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alf
 Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/codex` over an app-bundle path.
 
 **`error_rate_limit` immediately on every firing.**
-You've blown the weekly cap. `cat $HERMES_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `alfred claude swap`, or upgrade to Max.
+You've blown the weekly cap. `cat $ALFRED_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `alfred claude swap`, or upgrade to Max.
 
 **`error_max_turns` on every firing of one agent.**
 That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/lucius.py`), or scope-cap the issues that agent picks up.
 
 **`session_id` resume doesn't work.**
-The framework writes `last_session_id_per_target` into the agent's spend file (`$HERMES_HOME/state/<agent>/spend-YYYY-MM-DD.json`). If this is empty, resume isn't being attempted. Check the agent's prompt; it should pass `--resume <session_id>` when re-firing on the same issue after a max-turns event.
+The framework writes `last_session_id_per_target` into the agent's spend file (`$ALFRED_HOME/state/<agent>/spend-YYYY-MM-DD.json`). If this is empty, resume isn't being attempted. Check the agent's prompt; it should pass `--resume <session_id>` when re-firing on the same issue after a max-turns event.
 
 **Different model than expected.**
 `claude -p` uses whatever model your account defaults to. To pin a model per agent, pass `--model claude-opus-4-7` (or your target) in the agent's `claude_invoke_streaming()` call. Don't pin it framework-wide. Different agents have different cost/quality tradeoffs.

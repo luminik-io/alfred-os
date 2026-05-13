@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# alfred-os — deploy framework files into ${HERMES_HOME}/{lib,bin}/.
+# alfred-os — deploy framework files into ${ALFRED_HOME}/{lib,bin}/.
 #
 # If launchd/agents.conf exists in this checkout, this script also renders
 # and installs those launchd jobs. Without agents.conf it stays framework-only,
@@ -8,7 +8,7 @@
 # Idempotent. Safe to re-run.
 #
 # Env vars (defaults shown):
-#   HERMES_HOME      = $HOME/.hermes
+#   ALFRED_HOME      = $HOME/.alfred
 #   WORKSPACE_ROOT   = $HOME/code
 # (Both flow into rendered launchd plists for any consumer that ships agents.)
 
@@ -45,37 +45,37 @@ load_env_file() {
 
 load_env_file "$HOME/.alfredrc"
 
-: "${HERMES_HOME:=$HOME/.hermes}"
+: "${ALFRED_HOME:=$HOME/.alfred}"
 : "${WORKSPACE_ROOT:=$HOME/code}"
-export HERMES_HOME WORKSPACE_ROOT
+export ALFRED_HOME WORKSPACE_ROOT
 
-HERMES_BIN="$HERMES_HOME/bin"
-HERMES_LIB="$HERMES_HOME/lib"
-HERMES_LAUNCHD="$HERMES_HOME/launchd"
+RUNTIME_BIN="$ALFRED_HOME/bin"
+RUNTIME_LIB="$ALFRED_HOME/lib"
+RUNTIME_LAUNCHD="$ALFRED_HOME/launchd"
 LOCAL_BIN="${HOME}/.local/bin"
 
-mkdir -p "$HERMES_BIN" "$HERMES_LIB" "$HERMES_LAUNCHD" "$LOCAL_BIN"
+mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$LOCAL_BIN"
 
-echo "[alfred-os/deploy] HERMES_HOME=$HERMES_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
+echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
 echo "[alfred-os/deploy] copying lib/"
-cp "$REPO_DIR/lib/"*.py "$HERMES_LIB/"
-chmod 644 "$HERMES_LIB/"*.py
+cp "$REPO_DIR/lib/"*.py "$RUNTIME_LIB/"
+chmod 644 "$RUNTIME_LIB/"*.py
 
 echo "[alfred-os/deploy] copying bin/ (every regular file)"
 for f in "$REPO_DIR/bin/"*; do
   [ -f "$f" ] || continue
-  cp "$f" "$HERMES_BIN/"
-  chmod +x "$HERMES_BIN/$(basename "$f")"
+  cp "$f" "$RUNTIME_BIN/"
+  chmod +x "$RUNTIME_BIN/$(basename "$f")"
 done
 
-if [ -f "$HERMES_BIN/alfred" ]; then
-  ln -sfn "$HERMES_BIN/alfred" "$LOCAL_BIN/alfred"
+if [ -f "$RUNTIME_BIN/alfred" ]; then
+  ln -sfn "$RUNTIME_BIN/alfred" "$LOCAL_BIN/alfred"
   echo "[alfred-os/deploy] linked alfred → $LOCAL_BIN/alfred"
 fi
 
-if [ -f "$HERMES_BIN/alfred-init.py" ]; then
-  ln -sfn "$HERMES_BIN/alfred-init.py" "$LOCAL_BIN/alfred-init"
+if [ -f "$RUNTIME_BIN/alfred-init.py" ]; then
+  ln -sfn "$RUNTIME_BIN/alfred-init.py" "$LOCAL_BIN/alfred-init"
   echo "[alfred-os/deploy] linked alfred-init → $LOCAL_BIN/alfred-init"
 fi
 
@@ -101,7 +101,7 @@ fi
 
 CONF="$REPO_DIR/launchd/agents.conf"
 if [ -f "$CONF" ]; then
-  cp "$CONF" "$HERMES_LAUNCHD/agents.conf"
+  cp "$CONF" "$RUNTIME_LAUNCHD/agents.conf"
   OUT_DIR="$REPO_DIR/launchd/_generated"
   echo "[alfred-os/deploy] rendering launchd plists from $CONF"
   bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"
@@ -114,7 +114,7 @@ if [ -f "$CONF" ]; then
     CURRENT_LABELS="$(mktemp -t alfred-os-labels-XXXXXX)"
     PREVIOUS_LABELS="$(mktemp -t alfred-os-previous-labels-XXXXXX)"
     MANAGED_LABELS_TMP="$(mktemp -t alfred-os-managed-labels-XXXXXX)"
-    MANAGED_LABELS_FILE="$HERMES_LAUNCHD/managed-labels.txt"
+    MANAGED_LABELS_FILE="$RUNTIME_LAUNCHD/managed-labels.txt"
     trap 'rm -f "$CURRENT_LABELS" "$PREVIOUS_LABELS" "$MANAGED_LABELS_TMP"' EXIT
     for plist in "$OUT_DIR"/*.plist; do
       [ -f "$plist" ] || continue
@@ -167,7 +167,7 @@ if [ -f "$CONF" ]; then
       agent="${label##*.}"
       dest="$LAUNCH_AGENTS_DIR/$label.plist"
       cp "$plist" "$dest"
-      if [ -f "$HERMES_HOME/state/_paused/$agent" ]; then
+      if [ -f "$ALFRED_HOME/state/_paused/$agent" ]; then
         echo "  - $label paused; installed but not bootstrapped"
         launchctl bootout "gui/$UID_VALUE" "$dest" >/dev/null 2>&1 || true
         continue

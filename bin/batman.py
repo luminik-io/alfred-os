@@ -38,7 +38,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) / "lib"):
+for candidate in (
+    _HERE.parent / "lib",
+    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+):
     if candidate.exists():
         candidate_path = str(candidate)
         if candidate_path in sys.path:
@@ -200,7 +203,7 @@ def main() -> int:
 
     spec = PreflightSpec(
         agent=CODENAME,
-        env_vars=["HERMES_HOME", "WORKSPACE_ROOT", "GH_ORG"],
+        env_vars=["ALFRED_HOME", "WORKSPACE_ROOT", "GH_ORG"],
         bins=["gh", "git"],
         require_gh_auth=True,
     )

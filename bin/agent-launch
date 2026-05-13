@@ -3,7 +3,7 @@
 #
 # launchd does not source shell rc files. This wrapper loads ~/.alfredrc at
 # firing time, exports its KEY=VALUE entries, then execs the requested agent
-# script from ${HERMES_HOME}/bin. That keeps secrets and per-agent env outside
+# script from ${ALFRED_HOME}/bin. That keeps secrets and per-agent env outside
 # the plist while still making scheduled jobs see the same config as the
 # operator shell.
 
@@ -46,14 +46,14 @@ load_env_file() {
 
 load_env_file "$HOME/.alfredrc"
 
-: "${HERMES_HOME:=$HOME/.hermes}"
+: "${ALFRED_HOME:=$HOME/.alfred}"
 : "${WORKSPACE_ROOT:=$HOME/code}"
 
-export HERMES_HOME WORKSPACE_ROOT
+export ALFRED_HOME WORKSPACE_ROOT
 
 case "$SCRIPT" in
   */*) TARGET="$SCRIPT" ;;
-  *) TARGET="$HERMES_HOME/bin/$SCRIPT" ;;
+  *) TARGET="$ALFRED_HOME/bin/$SCRIPT" ;;
 esac
 
 if [ ! -x "$TARGET" ]; then

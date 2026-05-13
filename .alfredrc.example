@@ -34,11 +34,10 @@ OPERATOR_GH_HANDLE=
 # Workspace + runtime paths (already supported by agent_runner)
 # ----------------------------------------------------------------------
 
-# Where the runtime lives — state/, worktrees/, lib/, bin/. Defaults to
-# ~/.hermes when unset. The launchd plists are rendered with this path.
-# No Hermes daemon is required; this name is compatibility with the
-# original internal fleet.
-HERMES_HOME=
+# Where the Alfred runtime lives — state/, worktrees/, lib/, bin/.
+# Defaults to ~/.alfred when unset. The launchd plists are rendered with
+# this path.
+ALFRED_HOME=
 
 # Parent directory of the per-repo product checkouts. Defaults to
 # ~/code when unset. agent_runner.WORKSPACE = WORKSPACE_ROOT/product.

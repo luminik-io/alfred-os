@@ -50,8 +50,8 @@ class AlfredOs < Formula
         alfred                 # operator CLI, including `alfred claude`
         alfred-init            # interactive fleet configuration wizard
         alfred-install         # one-time fresh-machine setup (brew + npm + dirs + rc)
-        alfred-deploy          # sync lib/+bin/ into $HERMES_HOME; renders plists when agents.conf exists
-        alfred-doctor          # preflight configured agents under HERMES_DOCTOR=1
+        alfred-deploy          # sync lib/+bin/ into $ALFRED_HOME; renders plists when agents.conf exists
+        alfred-doctor          # preflight configured agents under ALFRED_DOCTOR=1
         alfred-label-state     # operator CLI for the issue claim state machine
 
       This formula installs the latest tagged release by default.

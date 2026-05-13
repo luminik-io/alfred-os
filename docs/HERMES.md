@@ -1,278 +1,204 @@
-# Hermes integration
+# Hermes Integration
 
-Alfred does not require Hermes. The core runtime is local Python, launchd,
-GitHub CLI, git worktrees, Slack delivery, and model CLIs such as Claude Code
-and Codex.
+Alfred does not require Hermes.
 
-Hermes is still a useful companion if you already use it as a personal agent
-gateway. Treat Hermes as the operator layer and Alfred as the engineering
-fleet layer.
+The OSS runtime is local Python, `launchd`, git worktrees, GitHub CLI, model
+CLIs, and optional Slack delivery. Hermes is a companion operator layer for
+people who already want chat gateways, MCP servers, skills, memory, or
+dashboards around their local agents.
 
 ## Boundary
 
-| Layer | Owns | Does not own |
-|---|---|---|
-| Alfred | launchd jobs, role runners, worktrees, issue claims, PR loops, Slack reports, spend guards | Hermes gateway, MCP server registry, gbrain, personal canon |
-| Hermes | chat gateway, cron prompts, ACP dispatch, MCP tools, skills, memory, dashboards | Alfred state machine, launchd plists, per-agent worktrees |
+| Tool | Owns | Should not own |
+| --- | --- | --- |
+| Alfred | launchd jobs, role runners, worktrees, issue claims, PR loops, Slack firing reports, spend guards, local state under `ALFRED_HOME` | Hermes gateway config, MCP registry, private memory, personal canon |
+| Hermes | chat gateway, cron prompts, ACP dispatch, MCP tools, skills, memory, dashboards | Alfred's launchd plists, issue-claim mutations, per-agent worktrees |
 
-`HERMES_HOME` is the shared runtime-root name. In a plain Alfred install it
-defaults to `~/.hermes`, but that does not mean Hermes is installed. In a
-Hermes-backed setup, both tools can point at the same root:
+`ALFRED_HOME` is Alfred's runtime root. A fresh install defaults it to
+`~/.alfred`.
 
-```sh
-export HERMES_HOME="$HOME/.hermes"
+```bash
+export ALFRED_HOME="$HOME/.alfred"
 export WORKSPACE_ROOT="$HOME/code"
-export GH_ORG="your-github-org"
 ```
+
+Keep Hermes configuration in Hermes-owned files and pass Alfred paths through
+`ALFRED_HOME`.
 
 ## Recommended Layout
 
+Keep Alfred and Hermes data separate unless you have a specific reason to
+share:
+
 ```text
+~/.alfred/
+|-- bin/
+|-- lib/
+|-- state/
+|-- worktrees/
+`-- prompts/
+
 ~/.hermes/
-|-- .env                         # local secrets and runtime env, never commit
-|-- bin/                         # Alfred deployed role runners and CLIs
-|-- lib/                         # Alfred deployed Python runtime
-|-- state/                       # claims, locks, reports, transcripts, caches
-|-- logs/                        # Hermes gateway logs and local cron logs
-|-- skills/                      # optional Hermes / Claude skill bundles
-|-- canon/                       # optional operator canon
-`-- hermes-agent/                # optional Hermes checkout / venv
+|-- .env
+|-- skills/
+|-- canon/
+|-- logs/
+`-- hermes-agent/
+
+~/.gbrain/
+`-- brain.pglite
 ```
 
-Do not copy a whole `~/.hermes` directory between machines. It can contain
-Slack webhooks, API keys, OAuth tokens, cookies, private transcripts, and
-machine-specific launchd state. Copy only explicit bundles such as skills or
-docs after reviewing their contents.
+Do not copy a whole `~/.alfred` or `~/.hermes` directory between machines. Both
+can contain tokens, transcripts, cached webhooks, local worktrees, and
+operator-specific state.
 
 ## Install Order
 
-1. Install and authenticate the tools Alfred needs:
+1. Install Alfred first and verify it works:
 
-   ```sh
-   gh auth login
-   claude
-   codex --version
-   ```
-
-2. Install Alfred:
-
-   ```sh
-   git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-   cd ~/code/alfred-os
+   ```bash
    bash install.sh
    exec "$SHELL"
-   ./bin/alfred-init.py
+   bash deploy.sh
+   bash bin/doctor.sh
    ```
 
-3. Install Hermes separately only if you want Hermes features:
+2. Install Hermes separately only if you want Hermes features:
 
-   - chat gateway to Slack, WhatsApp, or another surface
-   - Hermes cron prompts
-   - ACP dispatch
-   - MCP tools
+   - chat gateway
+   - MCP tool registry
+   - skill bundles
    - gbrain or another memory layer
-   - personal canon or dashboards
+   - dashboards or phone/chat control
 
-4. Point both systems at the same runtime root:
+3. Wire Hermes to read from Alfred, not replace Alfred:
 
-   ```sh
-   export HERMES_HOME="$HOME/.hermes"
-   bash ~/code/alfred-os/deploy.sh
-   ```
-
-5. Run both health checks:
-
-   ```sh
+   ```bash
    alfred status
-   alfred-doctor
-   hermes mcp list
+   alfred shipped --since 1d
+   python "$ALFRED_HOME/bin/fleet-doctor.py"
    ```
 
-## Environment
+For write-heavy roles, keep `launchd` as the owner and let Hermes observe.
 
-Keep Hermes and Alfred env files boring. Quote values that contain spaces.
-Prefer named profiles over direct AWS keys.
+## Env Hygiene
 
-```sh
-HERMES_HOME="$HOME/.hermes"
+Keep env files boring. Quote values that contain spaces.
+
+```bash
+# ~/.alfredrc
+ALFRED_HOME="$HOME/.alfred"
 WORKSPACE_ROOT="$HOME/code"
-GH_ORG="your-github-org"
-
-# ACP / stdio args must be quoted or shell sourcing will split them.
+GH_ORG="your-org"
+SLACK_HOME_CHANNEL="alfred"
 ACP_ARGS="--acp --stdio"
+```
 
-# Prefer profiles for local scheduled work.
+Avoid direct long-lived AWS access keys in shared env files. Prefer named
+profiles:
+
+```bash
 AWS_PROFILE_FOR_HERMES="hermes-alfred"
-
-# Optional if a local script calls the Gemini Developer API directly.
-GEMINI_API_KEY="..."
-
-# Optional if a local script writes to Google Sheets or GCP.
-GOOGLE_APPLICATION_CREDENTIALS="$HOME/.hermes/gcp-key.json"
 ```
 
-Avoid keeping these active in `~/.hermes/.env` unless a specific script truly
-requires them:
-
-```sh
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_SESSION_TOKEN=...
-```
-
-Those variables override named AWS profiles and can make a profile-backed agent
-fail with stale signatures. Alfred runners that touch AWS strip direct AWS
-env leakage before profile-specific calls, but the cleanest local setup is still
-profile-first.
+If both Alfred and Hermes need cloud credentials, give them separate least-privilege
+profiles. This keeps a chat-gateway task from inheriting a write-heavy agent
+role by accident.
 
 ## Skills
 
-Alfred does not ship skills. A Hermes-backed operator can keep skills under
-`~/.hermes/skills` and expose them through Hermes or Claude Code.
+Alfred does not ship Hermes skills. If you use Hermes as a skills host, keep
+skills in the Hermes-managed directory or your Claude Code skills directory.
 
-For a teammate handoff, package only the reviewed skills:
+Good practice:
 
-```sh
-cd ~/.hermes/skills
-tar -czf ~/hermes-skills.tar.gz \
-  claude-code \
-  codex \
-  hermes-agent \
-  github-auth \
-  github-code-review \
-  github-issues \
-  github-pr-workflow \
-  github-repo-management \
-  native-mcp \
-  systematic-debugging \
-  test-driven-development
-```
+- review third-party skills before installing them
+- pin skill versions where possible
+- do not include private canon, transcripts, or customer data in public bundles
+- treat skills as executable instructions, not docs
 
-Install on the new machine:
+## MCP, gbrain, and Canon
 
-```sh
-mkdir -p ~/.hermes/skills
-tar -xzf ~/hermes-skills.tar.gz -C ~/.hermes/skills
-hermes skills list
-```
+Hermes MCP servers are optional. Alfred agents should still work when MCP is
+offline.
 
-If a skill came from a third-party repository, pin or record the commit you
-reviewed. Skills can run commands through the agent, so treat them like code
-dependencies.
+Clean shape:
 
-## MCP, gbrain, And Canon
+1. Keep canonical company/product context outside Alfred's mutable state.
+2. Let gbrain or Hermes index that context.
+3. Let interactive sessions query it.
+4. Keep scheduled Alfred runners deterministic: GitHub issue, repo checkout,
+   prompt, state files, Slack result.
 
-Hermes MCP servers are optional. Alfred agents should keep working without
-them, but a richer local fleet can use MCP for context lookups.
+Examples:
 
-Recommended pattern:
-
-1. Keep product facts in code and docs the agent can read directly.
-2. Keep canonical operator facts in a separate canon file or memory system.
-3. Let Hermes expose MCP tools to interactive sessions.
-4. Let scheduled Alfred agents receive only the narrow context they need.
-
-Example checks:
-
-```sh
+```bash
 hermes mcp list
 hermes mcp test gbrain
 gbrain query "what is the current product positioning?"
 ```
 
 If Hermes reports `StdioServerParameters is not defined`, the local MCP Python
-package is usually stale or broken:
+package is usually stale:
 
-```sh
+```bash
 hermes update
 ~/.hermes/hermes-agent/venv/bin/pip install -U mcp
 hermes mcp test gbrain
 ```
 
-## Scheduling Patterns
+That is a Hermes repair, not an Alfred runtime requirement.
 
-Use one scheduler for each agent role.
+## Scheduling Rules
 
 Good:
 
-- Alfred launchd fires engineering agents.
-- Hermes cron posts daily operator summaries.
-- Hermes cron calls `alfred shipped --since 1d` for a human report.
+- launchd fires Alfred agents.
+- Hermes posts daily operator summaries.
+- Hermes calls read-only Alfred commands such as `alfred status` or
+  `alfred shipped --since 1d`.
+- Hermes links to Alfred Slack threads or dashboards.
 
 Risky:
 
 - launchd and Hermes cron both fire the same feature-dev runner.
-- Hermes cron shells into an Alfred worktree while the launchd runner owns
-  the issue claim.
+- Hermes shells into an Alfred worktree while a runner owns the issue claim.
+- Hermes mutates `ALFRED_HOME/state` directly.
 
-If you want Hermes to drive an Alfred command, prefer read-only commands:
-
-```sh
-alfred status
-alfred agents
-alfred shipped --since 1d
-python "$HERMES_HOME/bin/fleet-doctor.py"
-```
-
-For write-heavy agent roles, keep launchd as the owner and let Hermes observe.
-
-## Observability
-
-Useful local checks:
-
-```sh
-alfred status
-launchctl list | grep -i alfred
-tail -n 100 "$HERMES_HOME/logs/gateway.log"
-find "$HERMES_HOME/state" -maxdepth 3 -type f | sort | tail
-```
-
-If Slack messages do not appear, check:
-
-1. `SLACK_WEBHOOK_URL` or the AWS secret backing it.
-2. `$HERMES_HOME/state/slack-webhook.cache`.
-3. Hermes gateway connection logs, if Hermes owns chat delivery.
-4. Alfred runner logs and per-firing Slack helper output.
+If you need Hermes to start real Alfred work, prefer a GitHub label or issue
+comment that Alfred picks up on its next scheduled run.
 
 ## Troubleshooting
 
-**`HERMES_HOME` is unset.** Source `~/.alfredrc` or export it before invoking a
-runner manually:
+**`ALFRED_HOME` is unset.** Source `~/.alfredrc` or export it before invoking an
+Alfred script directly.
 
-```sh
+```bash
 source ~/.alfredrc
+bash bin/doctor.sh
 ```
 
-**Shell sourcing fails around ACP args.** Quote the value:
+**Hermes cannot see Alfred status.** Confirm Hermes shells inherit the same
+`ALFRED_HOME`, `WORKSPACE_ROOT`, and `GH_ORG` values as your operator shell.
 
-```sh
-ACP_ARGS="--acp --stdio"
-```
+**gbrain is unavailable.** Scheduled Alfred runners should keep working. Fix the
+gbrain/Hermes side separately and avoid making memory availability a hard
+preflight for engineering agents.
 
-**AWS profile fails even after login.** Remove stale direct AWS env vars from
-the active shell and env files:
+**Hermes falls back to a different model.** That is an operator-layer decision.
+Alfred's model choice lives in Alfred env vars and per-agent engine state.
 
-```sh
-unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN
-aws sts get-caller-identity --profile hermes-alfred
-```
+## What Not To Commit
 
-**Hermes falls back from Claude to Gemini.** That is expected when the Claude
-subscription cap is exhausted. Treat OAuth refresh and subscription quota as
-separate issues.
+Do not commit:
 
-**A teammate is missing skills.** Do not send the whole runtime directory.
-Package the reviewed skill directories, unpack them into `~/.hermes/skills`,
-then run `hermes skills list`.
+- `~/.alfred/state`
+- `~/.alfred/worktrees`
+- `~/.hermes/.env`
+- `~/.hermes/logs`
+- `~/.gbrain`
+- private canon, transcripts, issue data, or Slack exports
 
-## Public Repo Rule
-
-Public Alfred examples must stay generic. Do not commit:
-
-- personal workspace paths
-- company-only repo names
-- Slack channel IDs or webhook URLs
-- AWS account IDs, access keys, or secret names tied to a private fleet
-- private canon, gbrain exports, transcripts, or issue data
-
-Use `bash bin/scrub-check.sh` before opening a release PR.
+Public Alfred docs can mention Hermes and gbrain as optional integrations, but
+must not imply either is installed by default.

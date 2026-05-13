@@ -34,13 +34,13 @@ Subcommands:
       whose latest unreleased claim comment is older than N hours.
 
 Doctor-mode contract:
-    When ``HERMES_DOCTOR=1`` is set, prints the OK sentinel and exits 0
+    When ``ALFRED_DOCTOR=1`` is set, prints the OK sentinel and exits 0
     so a fleet-wide ``doctor.sh`` sweep stays at 100%/100% without
     needing to special-case this binary.
 
 Layout note:
     Drop this file in your fleet's ``bin/`` directory, copy via
-    ``deploy.sh`` to ``${HERMES_HOME}/bin/``, and dispatch from your
+    ``deploy.sh`` to ``${ALFRED_HOME}/bin/``, and dispatch from your
     operator-facing wrapper. See the project's README for an
     end-to-end example.
 """
@@ -55,7 +55,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(0, (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib")
 from agent_runner import (
     PAUSED_REPOS_FILE,
     find_stale_claims,
@@ -261,7 +261,7 @@ def _default_sweep_repos() -> list[str]:
 
 
 def main() -> int:
-    if os.environ.get("HERMES_DOCTOR") == "1":
+    if os.environ.get("ALFRED_DOCTOR") == "1":
         print("[LABEL-STATE-DOCTOR-OK]")
         return 0
     parser = argparse.ArgumentParser(prog="label-state")

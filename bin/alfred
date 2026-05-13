@@ -22,7 +22,7 @@ Subcommands today:
                               agent or the configured LLM runner fleet.
   alfred engine set <agent> <claude|codex|hybrid>
                               Persist an engine override in
-                              $HERMES_HOME/state/engines/<agent>.
+                              $ALFRED_HOME/state/engines/<agent>.
                               Alias: provider.
   alfred claude [status|primary|secondary|swap|probe]
                               Show or change the Claude account used by
@@ -33,7 +33,7 @@ Subcommands today:
                               model/config changes.
 
 The runner-level fleet gate file lives at
-``$HERMES_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
+``$ALFRED_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
 Missing codenames fall back to each runner's default: stable agents are
 default-enabled, while opt-in agents such as Batman default to disabled
 until explicitly enabled.
@@ -54,12 +54,15 @@ from datetime import datetime
 from pathlib import Path
 
 # Resolve lib/ relative to the script regardless of how it was invoked.
-# In the fleet layout the script lives in ``$HERMES_HOME/bin/`` and the
-# library in ``$HERMES_HOME/lib/``; in a checkout the script lives in
+# In the fleet layout the script lives in ``$ALFRED_HOME/bin/`` and the
+# library in ``$ALFRED_HOME/lib/``; in a checkout the script lives in
 # ``<repo>/bin/`` and the library in ``<repo>/lib/``. Add both candidate
 # parents to sys.path so either layout works without packaging.
 _HERE = Path(__file__).resolve().parent
-for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) / "lib"):
+for candidate in (
+    _HERE.parent / "lib",
+    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
@@ -79,11 +82,11 @@ def _default_enabled(codename: str) -> bool:
 def _agents_conf_path() -> Path:
     """Return the path to ``agents.conf``.
 
-    Prefers ``$HERMES_HOME/launchd/agents.conf`` (deployed location);
+    Prefers ``$ALFRED_HOME/launchd/agents.conf`` (deployed location);
     falls back to ``<repo>/launchd/agents.conf`` for in-checkout use.
     """
     candidates = [
-        Path(os.environ.get("HERMES_HOME", "")) / "launchd" / "agents.conf",
+        Path(os.environ.get("ALFRED_HOME", "")) / "launchd" / "agents.conf",
         _HERE.parent / "launchd" / "agents.conf",
         _HERE.parent / "launchd" / "agents.conf.example",
     ]

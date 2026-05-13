@@ -8,7 +8,7 @@
 
     AGENT_CODENAME         display name (e.g. "Nightwing")
     GH_ORG                 github org for `gh` calls
-    HERMES_HOME            runtime home (defaults to ~/.hermes)
+    ALFRED_HOME            runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT         parent dir of per-repo checkouts (defaults to ~/code)
     REVIEW_FIX_REPOS       comma-sep list of repo slugs the agent watches PRs in
     CODE_REVIEW_CODENAME   codename of the code-review agent whose comments
@@ -86,7 +86,7 @@ If a candidate comment touches auth, IAM, AWS Secrets Manager, sessions, tokens,
 
 ```
 TS=$(date +%s)
-WT=${HERMES_HOME}/worktrees/eng-${AGENT_CODENAME}-${LOCAL_REPO}-${PR_NUM}-${TS}
+WT=${ALFRED_HOME}/worktrees/eng-${AGENT_CODENAME}-${LOCAL_REPO}-${PR_NUM}-${TS}
 cd ${WORKSPACE_ROOT}/product/${LOCAL_REPO}
 git fetch origin <head-ref>
 git worktree add ${WT} <head-ref>

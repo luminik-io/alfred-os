@@ -14,6 +14,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - Refreshed README, roadmap, docs site status, and release checklist after the v0.2.1 public launch cleanup.
 - Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
 - Moved Claude account routing fully into `alfred claude`; the standalone helper is no longer shipped.
+- Standardized the public runtime root on `ALFRED_HOME` / `~/.alfred` across code, examples, tests, docs, and the docs site.
 
 ## [0.2.1] - 2026-05-12
 
@@ -42,7 +43,7 @@ Pivot from "extracted framework substrate" to "complete engineering agent fleet"
 #### 2026-05-09 public fleet release
 
 - **Role field on every agent.** `agents.conf` gets a 6th tab-separated column carrying a one-line operational descriptor; `render.sh` emits `ALFRED_<CODENAME>_ROLE` env vars; `agent_role()` / `codename_with_role()` surface the role in CLI + Slack post prefixes.
-- **Runner-level fleet gate file.** New `$HERMES_HOME/state/fleet/enabled.txt` plus `is_agent_enabled` / `enable_agent` / `disable_agent` helpers. Listed codenames are enabled; missing codenames fall back to each runner's default so opt-in agents can be gated without making normal launchd agents look disabled. New `bin/alfred` CLI ships `alfred enable / disable / agents / enabled-agents`.
+- **Runner-level fleet gate file.** New `$ALFRED_HOME/state/fleet/enabled.txt` plus `is_agent_enabled` / `enable_agent` / `disable_agent` helpers. Listed codenames are enabled; missing codenames fall back to each runner's default so opt-in agents can be gated without making normal launchd agents look disabled. New `bin/alfred` CLI ships `alfred enable / disable / agents / enabled-agents`.
 - **Slack threading + Block Kit + severity colour stripes.** New `lib/slack_format.py` with bot-token-aware `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Attachment duplicate-render guard baked in from day one. Honours `BATMAN_APPROVAL_CHANNEL` for routing.
 - **Bundle-label model + Batman skeleton.** New `lib/batman.py` with `Bundle` dataclass, all-or-nothing `claim_bundle`, best-effort `release_bundle`, loose-markdown `parse_plan_from_issue` / `parse_plan_from_bundle`. Scope-widening guard included. New `bin/batman.py` skeleton runner posts plan summaries; full execution chain deferred.
 - **Runner-side dedup.** `find_open_authored_pr_for_issue` (with substring-false-positive guard) + `reuse_or_make_worktree` so partial work survives across firings of the same issue.
@@ -64,7 +65,7 @@ Pivot from "extracted framework substrate" to "complete engineering agent fleet"
 - **gordon** (deploy health): daily ECS task-def vs `main` HEAD diff + top-N Sentry issues. Quiet on healthy days.
 - **automerge**: squash-merges clean `agent:authored` PRs (CI green, no unresolved P0 reviewer comments, latest review ends "Ship-ready: yes").
 - **agent-cleanup**: daily housekeeping (clean stale worktrees, stuck locks, stale `agent:in-flight` claims via `force_release_stale_claim`). Dirty or unknown worktrees are skipped and reported.
-- **code-map-refresh**: cross-repo contract scan. Writes `${HERMES_HOME}/state/code-map.json` for other agents.
+- **code-map-refresh**: cross-repo contract scan. Writes `${ALFRED_HOME}/state/code-map.json` for other agents.
 - **agent-morning-brief**: daily Slack post — yesterday's PRs, in-flight work, doctor status.
 - **fleet-recap.sh**: 07:30 + 22:00 Slack digest (per-agent firings / cost / success rate).
 
@@ -112,7 +113,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - `STANDARD_LABELS` includes the lifecycle labels; consumers no longer need to extend it for the state machine to work.
 - Per-repo configuration loaded from `~/.alfredrc.d/<codename>.toml` via stdlib `tomllib` (was PyYAML; PyYAML is not stdlib and shouldn't be required for a fresh install).
 - Doctor mode runs before env-config IDLE checks across all 12 agents — `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred-init`.
-- `bin/doctor.sh` now falls back to the in-repo `bin/` and `lib/` paths before deploy, so a clean checkout can self-check without a pre-existing `$HERMES_HOME`.
+- `bin/doctor.sh` now falls back to the in-repo `bin/` and `lib/` paths before deploy, so a clean checkout can self-check without a pre-existing `$ALFRED_HOME`.
 - All docs voice-swept: removed audience-marketing intros, outcome-fantasy framing, hire/replace framing, LLM filler vocab, marketing emoji, sign-offs, vanity stats, em-dashes. ~210 lines of marketing prose deleted across 39 files; technical content preserved.
 
 ### Removed
@@ -130,7 +131,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - **Spend dashboards**: weekly recap rendered from per-agent spend files.
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
 - **MCP server bundling**: expose `claim_issue` / `release_issue` / `slack_post(severity)` as MCP tools.
-- **Real per-firing JSONL transcripts**: `claude_invoke_streaming` currently delegates to `claude_invoke`. The streaming impl with transcript file at `${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl` ships with the future transcript-viewer command.
+- **Real per-firing JSONL transcripts**: `claude_invoke_streaming` currently delegates to `claude_invoke`. The streaming impl with transcript file at `${ALFRED_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl` ships with the future transcript-viewer command.
 
 ## [0.1.0] - 2026-05-02
 
@@ -139,10 +140,10 @@ Initial public framework extraction.
 ### Added
 
 - `lib/agent_runner.py`: preflight, lock, spend, claude_invoke, gh, slack, event-log, commit-trailer, handoff-table primitives.
-- `bin/doctor.sh`: host validator (preflight every agent under `HERMES_DOCTOR=1`).
+- `bin/doctor.sh`: host validator (preflight every agent under `ALFRED_DOCTOR=1`).
 - `alfred claude`: account-routing helper for two Claude accounts.
 - `launchd/_template.plist` + `launchd/render.sh` + `launchd/agents.conf.example`: plist generation.
-- `deploy.sh`: copy lib + bin into `$HERMES_HOME`, render plists, bootstrap launchd.
+- `deploy.sh`: copy lib + bin into `$ALFRED_HOME`, render plists, bootstrap launchd.
 - `examples/bin/hello.py`: minimal codename-agent reference.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.

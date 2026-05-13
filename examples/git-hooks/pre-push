@@ -12,7 +12,7 @@
 # Resolution order for the label-state CLI:
 #   1. ``$LABEL_STATE_BIN`` env var
 #   2. The first ``label-state`` on PATH
-#   3. ``${HERMES_HOME:-$HOME/.hermes}/bin/label-state``
+#   3. ``${ALFRED_HOME:-$HOME/.alfred}/bin/label-state``
 # If none resolve, the hook exits 0 (fail-open) so a host without the
 # CLI installed can still push.
 #
@@ -31,7 +31,7 @@ if [[ -z "$cli" ]]; then
   cli="$(command -v label-state 2>/dev/null || true)"
 fi
 if [[ -z "$cli" || ! -x "$cli" ]]; then
-  cli="${HERMES_HOME:-$HOME/.hermes}/bin/label-state"
+  cli="${ALFRED_HOME:-$HOME/.alfred}/bin/label-state"
 fi
 if [[ ! -x "$cli" ]]; then
   exit 0  # fail-open

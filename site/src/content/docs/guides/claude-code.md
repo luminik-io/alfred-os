@@ -68,7 +68,7 @@ CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
 
 ## Optional Codex
 
-Set `CODEX_BIN` if `codex` is not on the `launchd` PATH. `codex_invoke()` defaults to a read-only sandbox and writes artifacts under `$HERMES_HOME/state/codex/`.
+Set `CODEX_BIN` if `codex` is not on the `launchd` PATH. `codex_invoke()` defaults to a read-only sandbox and writes artifacts under `$ALFRED_HOME/state/codex/`.
 
 ```sh
 CODEX_BIN=$HOME/.local/bin/codex

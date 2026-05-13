@@ -8,7 +8,7 @@
 
     AGENT_CODENAME            display name (e.g. "gordon")
     GH_ORG                    github org for `gh` calls
-    HERMES_HOME               runtime home (defaults to ~/.hermes)
+    ALFRED_HOME               runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT            parent dir of per-repo checkouts
     ALFRED_GORDON_REPOS       comma-sep list of repo slugs whose CI to check
     ALFRED_GORDON_AWS_PROFILE scoped AWS profile name (e.g. "deploy-monitor-cron")

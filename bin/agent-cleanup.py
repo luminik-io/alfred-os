@@ -26,9 +26,12 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(
+    0,
+    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
+)
 from agent_runner import (
-    HERMES_HOME,
+    ALFRED_HOME,
     STATE_ROOT,
     WORKSPACE,
     WORKTREE_ROOT,
@@ -80,7 +83,7 @@ def configured_tmp_prefixes() -> list[str]:
     prefixes.update(t.strip() for t in raw.split(",") if t.strip())
 
     conf_candidates = [
-        HERMES_HOME / "launchd" / "agents.conf",
+        ALFRED_HOME / "launchd" / "agents.conf",
         Path(__file__).resolve().parent.parent / "launchd" / "agents.conf",
     ]
     for conf in conf_candidates:

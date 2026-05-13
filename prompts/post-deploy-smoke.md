@@ -8,7 +8,7 @@
 
     AGENT_CODENAME              display name (e.g. "Huntress")
     GH_ORG                      github org for `gh` calls
-    HERMES_HOME                 runtime home (defaults to ~/.hermes)
+    ALFRED_HOME                 runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT              parent dir of per-repo checkouts
     SMOKE_AWS_PROFILE           scoped AWS profile name (e.g. "smoke-cron")
     SMOKE_REGION                AWS region (e.g. "us-east-1")

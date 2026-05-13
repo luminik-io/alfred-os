@@ -35,7 +35,7 @@ Fastest path:
 
 1. **`bash bin/doctor.sh`**: preflight every agent. Most config issues surface here.
 2. **`tail -f /tmp/<your-fleet>.<agent>.std{out,err}`**: per-agent logs from launchd.
-3. **`cat $HERMES_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`**: current-day spend + last error subtype.
+3. **`cat $ALFRED_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`**: current-day spend + last error subtype.
 4. **`gh issue view <N> -R <repo> --json comments`**: claim/release comment trail. Often reveals "why didn't my agent pick this up".
 5. **Re-read [`INSTALL.md`](INSTALL.md) "Troubleshooting"**: top install/auth gotchas.
 

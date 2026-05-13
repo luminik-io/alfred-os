@@ -11,7 +11,7 @@ BIN = ROOT / "bin" / "alfred-shipped-summary.py"
 
 def load_module(monkeypatch, tmp_path, *, gh_org: str = "myorg"):
     monkeypatch.setenv("GH_ORG", gh_org)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     for name in list(sys.modules):
         if name == "agent_runner" or name.startswith("agent_runner"):
             del sys.modules[name]

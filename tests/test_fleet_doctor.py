@@ -23,8 +23,8 @@ DOCTOR = REPO / "bin" / "fleet-doctor.py"
 
 
 @pytest.fixture(autouse=True)
-def _isolated_hermes_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+def _isolated_alfred_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     for mod in list(sys.modules):
         if mod.startswith("agent_runner") or mod in ("slack_format", "fleet_doctor"):
@@ -177,14 +177,14 @@ def test_format_summary_drops_empty_buckets():
 
 
 def test_doctor_smoke_runs_in_doctor_mode(tmp_path):
-    """HERMES_DOCTOR=1 should print the OK sentinel and exit 0 without
+    """ALFRED_DOCTOR=1 should print the OK sentinel and exit 0 without
     running the real checks (so a fresh-install doctor.sh probe does
     not mutate state or hit the network)."""
     env = {
         **os.environ,
-        "HERMES_HOME": str(tmp_path / "hermes"),
+        "ALFRED_HOME": str(tmp_path / "alfred"),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
-        "HERMES_DOCTOR": "1",
+        "ALFRED_DOCTOR": "1",
     }
     res = subprocess.run(
         [sys.executable, str(DOCTOR)],

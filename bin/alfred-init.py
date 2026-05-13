@@ -8,7 +8,7 @@ provisioning, agent selection, codename + repo + schedule wiring,
 agents.conf generation, deploy.sh, doctor.sh, smoke test.
 
 Wizard order (each step is idempotent — re-running won't duplicate):
-    0. Preflight       — HERMES_HOME, ~/.alfredrc, GH_ORG must exist.
+    0. Preflight       — ALFRED_HOME, ~/.alfredrc, GH_ORG must exist.
     1. Claude Code     — `claude --version` + non-interactive auth probe.
     2. GitHub          — `gh auth status` + cache `gh repo list <GH_ORG>`.
     3. Slack webhook   — guide the operator, validate, test-post, store
@@ -26,7 +26,7 @@ Wizard order (each step is idempotent — re-running won't duplicate):
 
 Override paths:
     ALFRED_NONINTERACTIVE=1   accept defaults everywhere
-    HERMES_DOCTOR=1               print [ALFRED-INIT-DOCTOR-OK] and exit
+    ALFRED_DOCTOR=1               print [ALFRED-INIT-DOCTOR-OK] and exit
     --non-interactive             same as the env var
     --config <path>               read answers from JSON (skip prompts)
     --agents <comma>              skip the agent multi-select
@@ -208,7 +208,7 @@ def note(msg: str) -> None:
 
 @dataclass
 class WizardState:
-    hermes_home: Path
+    alfred_home: Path
     alfredrc: Path
     repo_root: Path
     gh_org: str = ""
@@ -466,11 +466,11 @@ def slack_post(webhook: str, text: str, *, timeout: int = 10) -> tuple[bool, str
 
 def step_0_preflight(state: WizardState) -> None:
     step("Preflight")
-    if not state.hermes_home.is_dir():
-        fail(f"HERMES_HOME ({state.hermes_home}) not found.")
+    if not state.alfred_home.is_dir():
+        fail(f"ALFRED_HOME ({state.alfred_home}) not found.")
         fail("Run `bash install.sh` first.")
         sys.exit(1)
-    ok(f"HERMES_HOME: {state.hermes_home}")
+    ok(f"ALFRED_HOME: {state.alfred_home}")
     if not state.alfredrc.exists():
         fail(f"~/.alfredrc not found at {state.alfredrc}.")
         fail("Run `bash install.sh` first.")
@@ -951,7 +951,7 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
 
 
 def main(argv: Iterable[str] | None = None) -> int:
-    if os.environ.get("HERMES_DOCTOR"):
+    if os.environ.get("ALFRED_DOCTOR"):
         print("[ALFRED-INIT-DOCTOR-OK]")
         return 0
 
@@ -959,16 +959,16 @@ def main(argv: Iterable[str] | None = None) -> int:
     non_interactive = args.non_interactive or bool(os.environ.get("ALFRED_NONINTERACTIVE"))
 
     repo_root = args.repo_root or Path(__file__).resolve().parent.parent
-    hermes_home = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes"))
+    alfred_home = Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred"))
     alfredrc = Path(os.environ.get("ALFREDRC") or (Path.home() / ".alfredrc"))
 
     print(f"{STYLE.BLUE}alfred-init{STYLE.OFF} agent fleet configuration.")
     print(f"  Repo:        {repo_root}")
-    print(f"  HERMES_HOME: {hermes_home}")
+    print(f"  ALFRED_HOME: {alfred_home}")
     print(f"  ~/.alfredrc: {alfredrc}")
     print()
 
-    state = WizardState(hermes_home=hermes_home, alfredrc=alfredrc, repo_root=repo_root)
+    state = WizardState(alfred_home=alfred_home, alfredrc=alfredrc, repo_root=repo_root)
 
     if args.config:
         apply_config_overrides(state, load_config(args.config))

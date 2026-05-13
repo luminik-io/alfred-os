@@ -58,5 +58,5 @@ def test_operator_cli_owns_claude_probe():
     )
 
     assert "status,primary,secondary,swap,probe" in result.stdout
-    removed_helper = "hermes" + "-claude"
+    removed_helper = "alfred" + "-claude"
     assert not Path("bin", removed_helper).exists()

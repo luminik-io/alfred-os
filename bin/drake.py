@@ -4,7 +4,7 @@
 Reads specs + roadmap + code-reality, identifies the next well-scoped gap, and
 files GitHub issues that the implement agent (default: Lucius) can pick up. The
 dedup gate, scope rules, and issue template all live in the prompt at
-${HERMES_HOME}/prompts/<codename>.md (operator-supplied); this runner is the
+${ALFRED_HOME}/prompts/<codename>.md (operator-supplied); this runner is the
 harness that loads the prompt, dispatches a Claude Code subprocess, enforces
 fleet-wide spend / global-block / daily-cap, and reports.
 
@@ -31,10 +31,13 @@ import datetime as _dt
 import os
 import sys
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(
+    0,
+    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
+)
 from agent_runner import (
+    ALFRED_HOME,
     GH_ORG,
-    HERMES_HOME,
     WORKSPACE_ROOT,
     EventLog,
     PreflightFailed,
@@ -131,8 +134,8 @@ def _build_state_machine_context() -> str:
     return "\n## State-machine snapshot (live)\n\n" + "\n".join(parts) + "\n"
 
 
-# Prompt path: operator drops the planner prompt at ${HERMES_HOME}/prompts/<codename>.md.
-PROMPT_PATH = HERMES_HOME / "prompts" / f"{AGENT}.md"
+# Prompt path: operator drops the planner prompt at ${ALFRED_HOME}/prompts/<codename>.md.
+PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
 DAILY_ISSUE_CAP_DEFAULT = 200
 DAILY_ISSUE_CAP = env_int(
     "ALFRED_DRAKE_DAILY_ISSUE_CAP",
@@ -186,7 +189,7 @@ def build_prompt() -> str:
                     "AGENT_CODENAME_FEATURE_DEV", "lucius"
                 ).title(),
                 "GH_ORG": GH_ORG,
-                "HERMES_HOME": str(HERMES_HOME),
+                "ALFRED_HOME": str(ALFRED_HOME),
                 "PLANNER_REPOS": ",".join(DRAKE_REPOS),
                 "WORKSPACE_ROOT": str(WORKSPACE_ROOT),
             },

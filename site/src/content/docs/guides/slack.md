@@ -97,4 +97,4 @@ If you accidentally paste the URL somewhere it shouldn't be:
 1. https://api.slack.com/apps → your app → **Incoming Webhooks** → trash icon on the compromised URL.
 2. Add a new webhook to the same channel.
 3. Update wherever you stored it (env var or AWS).
-4. `rm $HERMES_HOME/state/slack-webhook.cache` so the next firing re-fetches.
+4. `rm $ALFRED_HOME/state/slack-webhook.cache` so the next firing re-fetches.

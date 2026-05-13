@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Daily morning brief - sums up yesterday's agent activity. Posts to Slack.
 
-Reads spend files from ${HERMES_HOME}/state/<agent>/spend-YYYY-MM-DD.json
+Reads spend files from ${ALFRED_HOME}/state/<agent>/spend-YYYY-MM-DD.json
 for every agent in ALFRED_MORNING_BRIEF_AGENTS, plus PRs labeled
 agent:authored across ALFRED_MORNING_BRIEF_REPOS.
 """
@@ -13,7 +13,10 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(
+    0,
+    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
+)
 from agent_runner import (
     GH_ORG,
     STATE_ROOT,

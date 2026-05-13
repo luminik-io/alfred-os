@@ -25,7 +25,7 @@ Full doc at [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/
 ### Option 1: cron + a wrapper script
 
 ```text
-*/20 * * * * /usr/bin/env HERMES_HOME=$HOME/.hermes WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
+*/20 * * * * /usr/bin/env ALFRED_HOME=$HOME/.alfred WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
 ```
 
 You lose per-agent stdout/stderr separation and the `_paused/` marker pattern, but the framework primitives all work.
@@ -40,9 +40,9 @@ Description=alfred-os Lucius
 [Service]
 Type=oneshot
 EnvironmentFile=%h/.alfredrc
-ExecStart=/usr/bin/env python3 %h/.hermes/bin/lucius.py
-StandardOutput=append:%h/.hermes/logs/lucius.stdout
-StandardError=append:%h/.hermes/logs/lucius.stderr
+ExecStart=/usr/bin/env python3 %h/.alfred/bin/lucius.py
+StandardOutput=append:%h/.alfred/logs/lucius.stdout
+StandardError=append:%h/.alfred/logs/lucius.stderr
 ```
 
 ```ini

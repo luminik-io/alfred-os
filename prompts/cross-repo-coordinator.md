@@ -8,7 +8,7 @@
 
     AGENT_CODENAME              display name (e.g. "Alfred")
     GH_ORG                      github org for `gh` calls
-    HERMES_HOME                 runtime home (defaults to ~/.hermes)
+    ALFRED_HOME                 runtime home (defaults to ~/.alfred)
     WORKSPACE_ROOT              parent dir of per-repo checkouts
     ORCHESTRATOR_REPO           the repo where coordination issues live
                                 (e.g. "alfred")

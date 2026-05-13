@@ -91,7 +91,7 @@ The pre-push hook in `examples/git-hooks/pre-push` enforces this symmetrically: 
 
 ## Repo pause file
 
-`set_repo_paused()` writes to `${HERMES_HOME}/state/paused-repos.json`:
+`set_repo_paused()` writes to `${ALFRED_HOME}/state/paused-repos.json`:
 
 ```json
 {"paused": ["my-backend-repo", "experimental-prototype"]}

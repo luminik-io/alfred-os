@@ -54,7 +54,7 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(0, (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib")
 from agent_runner import (  # noqa: E402
     EventLog, PreflightFailed, PreflightSpec,
     SpendState, claim_issue, claude_invoke, doctor_mode, gh_issue_comment,
@@ -269,7 +269,7 @@ For richer agents (write code, open PRs, multi-step prompts, max-turns resume), 
 
 **`claude_invoke` exits 0 but `result.subtype == "error_max_turns"`.** Echo uses 5 turns, which is enough for a one-line summary. If you saw this on a different prompt, raise `max_turns=`.
 
-**Slack post returns `True` but you don't see the message.** Webhook cache may be stale. `rm $HERMES_HOME/state/slack-webhook.cache` and retry.
+**Slack post returns `True` but you don't see the message.** Webhook cache may be stale. `rm $ALFRED_HOME/state/slack-webhook.cache` and retry.
 
 **`launchctl kickstart` fails with "Could not find specified service."** The plist isn't loaded. `bash deploy.sh` again. The launchctl bootstrap step is idempotent.
 

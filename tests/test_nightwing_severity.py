@@ -13,7 +13,7 @@ LIB_DIR = ROOT / "lib"
 
 @pytest.fixture
 def nightwing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
     sys.path.insert(0, str(LIB_DIR))
     module_name = "nightwing_under_test"

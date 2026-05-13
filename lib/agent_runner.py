@@ -22,10 +22,10 @@ real work happens inside a CLI subprocess against the operator's configured
 Claude Code subscription, optional Codex login, or any wrapper binary they
 configure.
 
-Path defaults assume a single macOS host. ``HERMES_HOME`` defaults to
-``~/.hermes`` and ``WORKSPACE_ROOT`` to ``~/code``; both are env-var
-overridable. ``GH_ORG`` is required for any helper that targets GitHub
-(e.g. ``gh_pr_create``); set it once in the launchd plist's
+Path defaults assume a single host. ``ALFRED_HOME`` defaults to ``~/.alfred``
+and ``WORKSPACE_ROOT`` to ``~/code``; both are env-var overridable.
+``GH_ORG`` is required for any helper that targets GitHub (e.g.
+``gh_pr_create``); set it once in the launchd plist's
 ``EnvironmentVariables`` block.
 """
 
@@ -49,13 +49,11 @@ from typing import Any
 # --------------------------------------------------------------------------
 # Path resolution
 #
-# Two env vars override the defaults so a fresh user can clone this repo
-# and run it without editing source. Both fall back to the Mac-Mini layout
-# the agents originally shipped on, which means existing deployments need
-# zero migration.
+# Env vars override the defaults so a fresh user can clone this repo and run
+# it without editing source. ``ALFRED_HOME`` is the public runtime root.
 #
-#   HERMES_HOME       - where the agent runtime lives (state/, worktrees/,
-#                       lib/, bin/, shared/.agent/). Defaults to ~/.hermes.
+#   ALFRED_HOME       - where the agent runtime lives (state/, worktrees/,
+#                       lib/, bin/, shared/.agent/). Defaults to ~/.alfred.
 #   WORKSPACE_ROOT    - root of the per-repo product checkouts (every
 #                       <repo> in GH_REPO_TO_LOCAL is a child directory).
 #                       Defaults to ~/code.
@@ -67,14 +65,13 @@ from typing import Any
 #                       whatever is on $PATH. Only used by llm-tier:codex.
 # --------------------------------------------------------------------------
 HOME = Path(os.path.expanduser("~"))
-HERMES_HOME = Path(os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")))
+ALFRED_HOME = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 
 WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT") or os.path.expanduser("~/code"))
 
 # Back-compat alias: alfred-era bin scripts import WORKSPACE and use it as
 # the root containing per-repo checkouts under product/. Keep that shape.
 # New consumers can ignore this and reference WORKSPACE_ROOT directly.
-HERMES = HERMES_HOME
 WORKSPACE = WORKSPACE_ROOT / "product"
 
 # GitHub org/user slug for repo-targeting helpers (gh_pr_create, gh_issue_*).
@@ -84,13 +81,13 @@ WORKSPACE = WORKSPACE_ROOT / "product"
 GH_ORG = os.environ.get("GH_ORG", "").strip()
 
 # Convenience constants used by the bin/ scripts
-STATE_ROOT = HERMES_HOME / "state"
-WORKTREE_ROOT = HERMES_HOME / "worktrees"
+STATE_ROOT = ALFRED_HOME / "state"
+WORKTREE_ROOT = ALFRED_HOME / "worktrees"
 WORKTREES_ROOT = WORKTREE_ROOT  # plural alias matching docs / launchd discussion
-LIB_DIR = HERMES_HOME / "lib"
-BIN_DIR = HERMES_HOME / "bin"
+LIB_DIR = ALFRED_HOME / "lib"
+BIN_DIR = ALFRED_HOME / "bin"
 TRANSCRIPTS_ROOT = STATE_ROOT / "transcripts"
-PROMPTS_ROOT = HERMES_HOME / "prompts"
+PROMPTS_ROOT = ALFRED_HOME / "prompts"
 
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
@@ -173,7 +170,7 @@ def agent_engine(
     1. ``ALFRED_<AGENT>_ENGINE``
     2. optional legacy env var, such as ``ALFRED_REVIEW_ENGINE``
     3. ``ALFRED_ENGINE`` for fleet-wide testing
-    4. ``${HERMES_HOME}/state/engines/<agent>``
+    4. ``${ALFRED_HOME}/state/engines/<agent>``
     5. optional legacy state file
     6. default
     """
@@ -417,7 +414,7 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
 
     1. ``SLACK_WEBHOOK_URL`` env var — simplest path; set it once in your
        launchd plist or shell profile.
-    2. Disk cache at ``${HERMES_HOME}/state/slack-webhook.cache`` (30-day TTL)
+    2. Disk cache at ``${ALFRED_HOME}/state/slack-webhook.cache`` (30-day TTL)
        — written by step 3 the first time it succeeds, so subsequent calls
        skip the AWS round-trip.
     3. AWS Secrets Manager — secret id from ``SLACK_WEBHOOK_SECRET_ID``
@@ -526,7 +523,7 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
 # leave half-finished side effects. With it, the firing exits in milliseconds
 # with a single Slack line naming the missing piece.
 #
-# doctor.sh sets HERMES_DOCTOR=1 and runs every agent so the operator can
+# doctor.sh sets ALFRED_DOCTOR=1 and runs every agent so the operator can
 # verify a fresh setup without burning Claude turns.
 
 
@@ -539,7 +536,7 @@ class PreflightSpec:
     """
 
     agent: str
-    env_vars: list[str] = field(default_factory=lambda: ["HERMES_HOME", "WORKSPACE_ROOT"])
+    env_vars: list[str] = field(default_factory=lambda: ["ALFRED_HOME", "WORKSPACE_ROOT"])
     bins: list[str] = field(default_factory=list)
     aws_profile: str | None = None
     require_gh_auth: bool = False
@@ -559,6 +556,10 @@ def _env_value_enabled(name: str) -> bool:
     return bool(value and value.strip().lower() not in {"", "0", "false", "no", "off"})
 
 
+def _env_present(name: str) -> bool:
+    return bool(os.environ.get(name))
+
+
 def preflight(spec: PreflightSpec) -> None:
     """Validate the host before doing real work. Raise PreflightFailed on miss.
 
@@ -569,11 +570,11 @@ def preflight(spec: PreflightSpec) -> None:
 
     misses: list[str] = []
 
-    # 1. Required env vars. HERMES_HOME / WORKSPACE_ROOT default to user-home
-    #    paths so missing env is rare on the canonical Mac Mini; a fresh fork
-    #    on Linux or in a container will surface it here.
+    # 1. Required env vars. ALFRED_HOME / WORKSPACE_ROOT default to user-home
+    #    paths in code, but preflight still requires explicit configuration so
+    #    launchd jobs, shells, and cloned hosts agree on the same directories.
     for var in spec.env_vars:
-        if not os.environ.get(var):
+        if not _env_present(var):
             misses.append(f"env var `{var}` is unset")
 
     # 2. Required CLI binaries on PATH. Anything with a `/` is treated as a
@@ -648,7 +649,7 @@ def preflight(spec: PreflightSpec) -> None:
     print(f"{sentinel} {len(misses)} issue(s):\n  {detail}")
     headline = misses[0] + (f" (+{len(misses) - 1} more)" if len(misses) > 1 else "")
     suppress_slack = (
-        _env_value_enabled("HERMES_DOCTOR")
+        _env_value_enabled("ALFRED_DOCTOR")
         or spec.agent == "test"
         or (
             not _env_value_enabled("XPC_SERVICE_NAME")
@@ -661,13 +662,13 @@ def preflight(spec: PreflightSpec) -> None:
 
 
 def doctor_mode() -> bool:
-    """True when running under doctor.sh (HERMES_DOCTOR=1).
+    """True when running under doctor.sh (ALFRED_DOCTOR=1).
 
     Agents check this after preflight passes and exit 0 with a [<AGENT>-DOCTOR-OK]
     sentinel instead of doing real work. Lets the operator verify a fresh setup
     without burning Claude turns or making side effects.
     """
-    return _env_value_enabled("HERMES_DOCTOR")
+    return _env_value_enabled("ALFRED_DOCTOR")
 
 
 # ---------- Prompt loading + variable substitution ----------
@@ -696,6 +697,8 @@ def load_prompt(path: Path | str, *, extra_vars: dict[str, str] | None = None) -
     p = Path(path)
     text = p.read_text()
     mapping = dict(os.environ)
+    mapping.setdefault("ALFRED_HOME", str(ALFRED_HOME))
+    mapping.setdefault("WORKSPACE_ROOT", str(WORKSPACE_ROOT))
     if extra_vars:
         mapping.update(extra_vars)
     return string.Template(text).safe_substitute(mapping)
@@ -1606,7 +1609,7 @@ def claude_invoke_streaming(
     A full streaming implementation can pipe ``--output-format stream-json``
     through a parser that writes a
     per-firing JSONL transcript to
-    ``${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``
+    ``${ALFRED_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``
     so post-hoc tool / skill aggregation works in downstream fleet CLIs.
 
     The OSS framework currently delegates to plain :func:`claude_invoke`
@@ -1637,7 +1640,7 @@ def claude_invoke_streaming(
 def transcript_path(agent: str, firing_id: str) -> Path:
     """Resolve the transcript file path for an (agent, firing_id) pair.
 
-    Convention: ``${HERMES_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``.
+    Convention: ``${ALFRED_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``.
     Currently no transcripts are written (see :func:`claude_invoke_streaming`),
     but the path resolver ships now so consumer agents and downstream log
     viewers don't need to change when streaming lands.
@@ -2216,7 +2219,7 @@ LIFECYCLE_LABELS: list[tuple[str, str, str]] = [
 def is_repo_paused(repo_slug: str) -> bool:
     """Operator-override: is this repo currently paused?
 
-    Reads ``${HERMES_HOME}/state/paused-repos.json`` (JSON of shape
+    Reads ``${ALFRED_HOME}/state/paused-repos.json`` (JSON of shape
     ``{"paused": ["repo-slug", ...]}``). Missing or unparseable file is
     treated as "no repos paused" (fail-open). Pausing a repo causes every
     consumer's pick_* helper to skip it without disturbing cross-repo work.
@@ -2256,7 +2259,7 @@ def set_repo_paused(repo_slug: str, paused: bool) -> list[str]:
 # Fleet-wide agent enable/disable
 #
 # Runner-level gate for opt-in agents. State lives at
-# ``$HERMES_HOME/state/fleet/enabled.txt`` — newline-separated codenames,
+# ``$ALFRED_HOME/state/fleet/enabled.txt`` — newline-separated codenames,
 # ``#`` comments allowed. Operators edit this with vi at 2am, so a flat
 # text file beats JSON for survival under "I just want to add one line".
 #
@@ -2768,12 +2771,12 @@ def short(text: str, n: int = 300) -> str:
 
 # ---------- Shared-agent brain helpers (additive, opt-in per agent) ----------
 #
-# These wrap an optional shared-agent brain mounted at ~/.hermes/shared/.agent/.
+# These wrap an optional shared-agent brain mounted at ~/.alfred/shared/.agent/.
 # Existing agents work unchanged; new agents can opt in with one line each.
 # The brain is intentionally external to alfred-os so public installs stay
 # small and dependency-light.
 
-SHARED_AGENT = HERMES_HOME / "shared" / ".agent"
+SHARED_AGENT = ALFRED_HOME / "shared" / ".agent"
 
 
 def _shared_agent_available() -> bool:

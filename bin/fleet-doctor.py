@@ -8,18 +8,18 @@ fallback otherwise) summarising findings as green / yellow / red.
 Checks (each is a small pure function returning a ``Finding`` tuple so
 unit tests can target it in isolation):
 
-1. ``check_paused_repos``     — ``$HERMES_HOME/state/paused-repos.json``;
+1. ``check_paused_repos``     — ``$ALFRED_HOME/state/paused-repos.json``;
                                 yellow if any repo is paused.
 2. ``check_global_block``     — fleet-wide rate-limit poison pill;
                                 red when active.
-3. ``check_stale_worktrees``  — ``$HERMES_HOME/worktrees/`` entries
+3. ``check_stale_worktrees``  — ``$ALFRED_HOME/worktrees/`` entries
                                 with mtime >24h ago (heuristic for
                                 stuck firings).
-4. ``check_enabled_agents``   — ``$HERMES_HOME/state/fleet/enabled.txt``
+4. ``check_enabled_agents``   — ``$ALFRED_HOME/state/fleet/enabled.txt``
                                 contents; surfaces the configured fleet
                                 so the operator sees the gating state.
 5. ``check_paused_agents``    — pause markers under
-                                ``$HERMES_HOME/state/_paused``.
+                                ``$ALFRED_HOME/state/_paused``.
 6. ``check_spend_state``      — today's spend and failure-streak files.
 
 The checks use only local state already written by alfred-os. Port operators
@@ -39,7 +39,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-for candidate in (_HERE.parent / "lib", Path(os.environ.get("HERMES_HOME", "")) / "lib"):
+for candidate in (
+    _HERE.parent / "lib",
+    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+):
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Huntress - post-deploy E2E smoke against a staging URL.
 
-Operator drops their own Playwright tests at ${HERMES_HOME}/tests/huntress/
+Operator drops their own Playwright tests at ${ALFRED_HOME}/tests/huntress/
 (the working directory the runner shells `npx playwright test` in). The
 target URL is read from ALFRED_HUNTRESS_TARGET_URL.
 
@@ -27,9 +27,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")) + "/lib")
+sys.path.insert(
+    0,
+    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
+)
 from agent_runner import (
-    HERMES_HOME,
+    ALFRED_HOME,
     WORKSPACE,
     EventLog,
     PreflightFailed,
@@ -46,7 +49,7 @@ AGENT = os.environ.get("AGENT_CODENAME", "huntress")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
 HUNTRESS_DIR = Path(
-    os.environ.get("ALFRED_HUNTRESS_TESTS_DIR", str(HERMES_HOME / "tests" / "huntress"))
+    os.environ.get("ALFRED_HUNTRESS_TESTS_DIR", str(ALFRED_HOME / "tests" / "huntress"))
 )
 TARGET_URL = os.environ.get("ALFRED_HUNTRESS_TARGET_URL", "")
 AWS_PROFILE = os.environ.get("ALFRED_HUNTRESS_AWS_PROFILE", "")
