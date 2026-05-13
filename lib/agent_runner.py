@@ -139,6 +139,7 @@ def set_global_block(hours: int, reason: str) -> str:
 
 
 PROVIDER_LIMIT_SUBTYPES = {"error_budget", "error_rate_limit"}
+HYBRID_FALLBACK_SUBTYPES = PROVIDER_LIMIT_SUBTYPES | {"error_authentication"}
 
 
 def normalize_engine(raw: str | None, *, default: str = "hybrid") -> str:
@@ -1947,7 +1948,7 @@ def invoke_agent_engine(
         return _invoke_codex(), "codex"
 
     result = _invoke_claude()
-    if mode == "hybrid" and result.subtype in PROVIDER_LIMIT_SUBTYPES:
+    if mode == "hybrid" and result.subtype in HYBRID_FALLBACK_SUBTYPES:
         if on_fallback:
             on_fallback(result)
         return _invoke_codex(), "codex-fallback"
