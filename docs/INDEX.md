@@ -1,4 +1,4 @@
-# alfred-os docs index
+# Alfred docs index
 
 Current map of the public docs. Trust code first, then this index.
 

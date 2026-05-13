@@ -1,6 +1,6 @@
 ---
 title: Issue claim state machine
-description: How alfred-os prevents two actors from doing the same work twice on the same GitHub issue.
+description: How Alfred prevents two actors from doing the same work twice on the same GitHub issue.
 ---
 
 Full doc at [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md). This page is the executive summary.

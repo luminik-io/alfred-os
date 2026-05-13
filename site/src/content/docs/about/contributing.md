@@ -33,7 +33,7 @@ pre-commit install
 ## What we accept
 
 - **Bug fixes**: always welcome. File the bug first if you didn't.
-- **Test coverage**: always welcome. Alfred-OS aims for 100% on `agent_runner.py` over time.
+- **Test coverage**: always welcome. Alfred aims for 100% on `agent_runner.py` over time.
 - **Doc fixes / clarifications**: always welcome.
 - **New examples** under `examples/bin/`: welcome if they show a useful pattern not already covered.
 - **In-flight roadmap items**: welcome if you've sketched the design in the related issue first.
@@ -58,7 +58,7 @@ pre-commit install
 
 ## Codename proposals
 
-For a production codename that is specific to your own fleet, keep it in your fleet repo. Alfred-OS is the framework; codenames are fleet-specific unless they demonstrate a reusable pattern.
+For a production codename that is specific to your own fleet, keep it in your fleet repo. Alfred is the framework; codenames are fleet-specific unless they demonstrate a reusable pattern.
 
 For a new example codename in `examples/bin/`, open a feature request issue with the codename + role + 100-line sketch. We'll respond with the design call before you write the PR.
 

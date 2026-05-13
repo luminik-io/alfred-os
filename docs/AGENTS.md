@@ -1,6 +1,6 @@
 # Agents
 
-The agents shipped in alfred-os are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; the operator can rename any agent during `alfred-init` or by editing `~/.alfredrc` later.
+The agents shipped in Alfred are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; the operator can rename any agent during `alfred-init` or by editing `~/.alfredrc` later.
 
 ## Fleet map
 

@@ -1,6 +1,6 @@
 ---
 title: Your first agent
-description: Build Echo, a working alfred-os agent, end-to-end in 30 minutes.
+description: Build Echo, a working Alfred agent, end-to-end in 30 minutes.
 ---
 
 By the end you'll have a codename agent **Echo** that picks the oldest open issue with a specific label, asks Claude for a one-line summary, posts it as an issue comment, and reports to Slack. Fires every 30 minutes via `launchd`, isolated in a per-firing git worktree, claiming the issue via the [state machine](/concepts/state-machine/) before posting.

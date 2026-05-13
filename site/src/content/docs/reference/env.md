@@ -23,7 +23,7 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 
 ## Runtime paths
 
-`HERMES_HOME` is the alfred-os runtime root. The name is historical; it does
+`HERMES_HOME` is the Alfred runtime root. The name is historical; it does
 not mean `hermes-agent` is installed or required.
 
 | Var | Used by | Default |

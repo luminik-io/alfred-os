@@ -1,12 +1,12 @@
 # Bootstrap
 
-End-to-end setup for consuming alfred-os as the framework for your own launchd-managed Claude Code fleet on a fresh Mac. Plan ~60 minutes the first time, most of it on AWS IAM and the Anthropic Claude Code CLI.
+End-to-end setup for consuming Alfred as the framework for your own launchd-managed Claude Code fleet on a fresh Mac. Plan ~60 minutes the first time, most of it on AWS IAM and the Anthropic Claude Code CLI.
 
 The fleet runs on a single always-on macOS host. A Mac Mini works. An old laptop with the lid open works. Not a server-class deployment.
 
 > Want the faster path? [`INSTALL.md`](INSTALL.md) is the from-zero TL;DR (~30 minutes, mostly automated by `install.sh`). Use BOOTSTRAP for per-agent IAM, Slack, first fleet configuration, and troubleshooting.
 
-> Rendered docs: [https://luminik-io.github.io/alfred-os](https://luminik-io.github.io/alfred-os).
+> Rendered docs: [https://alfred.luminik.io](https://alfred.luminik.io).
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ export WORKSPACE_ROOT="$HOME/code"   # parent dir of your forked product repos
 `HERMES_HOME` is the runtime root: deployed agent binaries land in `$HERMES_HOME/bin`, the shared library in `$HERMES_HOME/lib`, state in `$HERMES_HOME/state`, per-firing worktrees in `$HERMES_HOME/worktrees`.
 
 This name is historical compatibility with the original internal Alfred/Hermes fleet.
-alfred-os core does not require a separate Hermes install unless you choose to
+Alfred core does not require a separate Hermes install unless you choose to
 use optional Hermes features such as skills, MCP, gbrain memory, canon, or
 dashboarding.
 

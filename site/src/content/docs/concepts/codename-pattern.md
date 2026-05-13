@@ -3,7 +3,7 @@ title: Codename pattern
 description: Narrow-specialist agents named after a fictional cast.
 ---
 
-Alfred-OS expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels + GitHub state, not in-process calls.
+Alfred expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels + GitHub state, not in-process calls.
 
 ## What "narrow specialist" means
 

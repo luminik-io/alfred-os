@@ -1,6 +1,6 @@
 class AlfredOs < Formula
   desc "Local agent OS for solo builders"
-  homepage "https://luminik-io.github.io/alfred-os"
+  homepage "https://alfred.luminik.io"
   url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.2.1.tar.gz"
   sha256 "63e2c3d6a9bb49c66fb98b302d367c98325f9ba643f9fd1e0e21210ccdefd585"
   license "MIT"
@@ -30,7 +30,6 @@ class AlfredOs < Formula
     # instead of symlinks so $0 is the real libexec path after exec.
     {
       "alfred-doctor" => libexec/"bin/doctor.sh",
-      "alfred-hermes-claude" => libexec/"bin/hermes-claude",
       "alfred-install" => libexec/"install.sh",
       "alfred-deploy" => libexec/"deploy.sh",
     }.each do |name, target|
@@ -44,7 +43,7 @@ class AlfredOs < Formula
 
   def caveats
     <<~EOS
-      Alfred-OS installed to:
+      Alfred installed to:
         #{libexec}
 
       Available commands:
@@ -53,7 +52,6 @@ class AlfredOs < Formula
         alfred-install         # one-time fresh-machine setup (brew + npm + dirs + rc)
         alfred-deploy          # sync lib/+bin/ into $HERMES_HOME; renders plists when agents.conf exists
         alfred-doctor          # preflight configured agents under HERMES_DOCTOR=1
-        alfred-hermes-claude   # compatibility wrapper; prefer `alfred claude`
         alfred-label-state     # operator CLI for the issue claim state machine
 
       This formula installs the latest tagged release by default.
@@ -70,7 +68,7 @@ class AlfredOs < Formula
         alfred-deploy && alfred-doctor
 
       Docs:
-        https://luminik-io.github.io/alfred-os
+        https://alfred.luminik.io
         #{libexec}/INSTALL.md
         #{libexec}/BOOTSTRAP.md
     EOS

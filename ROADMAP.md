@@ -78,7 +78,7 @@ Not bugs. Design decisions.
 - **Multi-tenant.** One operator, one Mac, one config.
 - **Web UI.** Slack is the human surface.
 - **Long-running orchestration loop.** Cron is the orchestrator. Long-running Python has worse failure isolation.
-- **Hosted LLM gateway.** Alfred-OS has local CLI engine adapters and simple per-agent engine selection; it does not run a hosted inference service.
+- **Hosted LLM gateway.** Alfred has local CLI engine adapters and simple per-agent engine selection; it does not run a hosted inference service.
 - **Browser automation built in.** If your fleet needs a browser, install Playwright in your codename's bin script.
 - **Vector DB for memory.** A doc-shaped memory layer is the operator's choice. The framework doesn't ship one.
 - **Anything Anthropic ships natively.** Agent Teams, Memory Tool, MCP server registry: when those mature, lean on them rather than re-implement.

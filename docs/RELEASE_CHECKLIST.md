@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this before tagging a public alfred-os release.
+Use this before tagging a public Alfred release.
 
 ## Preflight
 
@@ -52,7 +52,7 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 
    ```sh
    gh workflow run site.yml --repo luminik-io/alfred-os --ref main
-   curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred-OS|Starlight'
+   curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred|Starlight'
    ```
 
 6. Smoke-test the published install path from a fresh directory.

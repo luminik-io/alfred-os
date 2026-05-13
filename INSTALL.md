@@ -1,6 +1,6 @@
 # Install
 
-Fresh Mac to a working alfred-os fleet skeleton, ~30 minutes.
+Fresh Mac to a working Alfred fleet skeleton, ~30 minutes.
 
 For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
 
@@ -38,7 +38,7 @@ What it does **not** do (deliberately):
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
 - Touch existing `~/.hermes` content.
-- Install a separate Hermes agent. In alfred-os, `HERMES_HOME` is the runtime
+- Install a separate Hermes agent. In Alfred, `HERMES_HOME` is the runtime
   root name. Install Hermes separately only if your fleet uses Hermes skills,
   MCP, gbrain, canon, or dashboarding.
 

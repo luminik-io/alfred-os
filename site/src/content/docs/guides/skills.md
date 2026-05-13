@@ -3,7 +3,7 @@ title: Claude Code skills
 description: Recommended skill set for an autonomous engineering fleet, install commands, per-agent matrix.
 ---
 
-Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface. Alfred-OS doesn't ship skills itself; consumer agents pick what they need.
+Skills are small bundles (markdown + optional scripts) that extend Claude Code's tool surface. Alfred doesn't ship skills itself; consumer agents pick what they need.
 
 Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SKILLS.md). Highlights:
 
@@ -77,4 +77,4 @@ The fleet's IAM-per-agent + per-firing-worktree-isolation patterns limit blast r
 
 ## Where skills live in the framework's mental model
 
-Skills are operator-installed, not framework-bundled. Alfred-OS ships zero skills by default. Consumer fleets pick. Keeps the framework pluralist (different fleets, different stacks) and small (no skill maintenance burden on us).
+Skills are operator-installed, not framework-bundled. Alfred ships zero skills by default. Consumer fleets pick. Keeps the framework pluralist (different fleets, different stacks) and small (no skill maintenance burden on us).

@@ -1,12 +1,12 @@
 ---
-title: Alfred-OS
+title: Alfred
 description: Launchd-managed Claude Code agent fleet for one operator, one Mac.
 template: splash
 hero:
   tagline: A framework for launchd-managed Claude Code agents on a single Mac.
   image:
     file: ../../assets/alfred-logo.png
-    alt: Alfred-OS shield logo
+    alt: Alfred shield logo
   actions:
     - text: Install (30 min)
       link: /getting-started/install/
@@ -28,10 +28,10 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 - **In-memory state** can't survive an OS reboot. macOS restarts every few weeks.
 - **Chat-first interfaces** put the operator on the critical path.
 
-Alfred-OS's shape: each agent is a fresh subprocess in its own git worktree, dispatched by `launchd`, isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
+Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by `launchd`, isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
 
 `HERMES_HOME` is the runtime-root name inherited from the original internal
-Alfred/Hermes fleet. alfred-os core does not install or run a Hermes agent process. Hermes
+Alfred/Hermes fleet. Alfred core does not install or run a Hermes agent process. Hermes
 skills, MCP, gbrain, canon, and dashboarding remain compatible optional
 integrations.
 
@@ -102,13 +102,13 @@ slack_post('<result>', severity=...) report to the fleet's Slack channel
 
 <LinkCard
   title="Read the architecture"
-  description="Why launchd, why worktrees, why per-agent IAM. The design constraints that make alfred-os opinionated."
+  description="Why launchd, why worktrees, why per-agent IAM. The design constraints that make Alfred opinionated."
   href="/concepts/architecture/"
 />
 
 ## Status
 
-Alfred-OS is at v0.2.1. It ships a complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
+Alfred is at v0.2.1. It ships a complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
 
 Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design constraints get reviewed; PRs that broaden scope get politely declined. Read [Contributing](/about/contributing/) before opening.
 

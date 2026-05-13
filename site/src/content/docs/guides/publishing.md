@@ -3,7 +3,7 @@ title: Publishing
 description: GitHub Pages release checks, custom-domain setup, and the README/Jekyll fallback fix.
 ---
 
-Alfred-OS publishes this docs site through the `Site` workflow. The repo should
+Alfred publishes this docs site through the `Site` workflow. The repo should
 use GitHub Actions as the Pages source, not the legacy branch/root Pages
 builder.
 

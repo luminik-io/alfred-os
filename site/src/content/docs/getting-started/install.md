@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Fresh-machine setup for alfred-os in about 30 minutes.
+description: Fresh-machine setup for Alfred in about 30 minutes.
 ---
 
 This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md). For the full doc with every troubleshooting case, read it on GitHub.
@@ -38,7 +38,7 @@ What it does **not** do (deliberately):
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
-- Install a separate Hermes agent. `HERMES_HOME` is the alfred-os runtime
+- Install a separate Hermes agent. `HERMES_HOME` is the Alfred runtime
   root name. Install Hermes separately only if your fleet uses Hermes skills,
   MCP, gbrain, canon, or dashboarding.
 
@@ -58,7 +58,7 @@ Per-stage skips: `--skip-brew`, `--skip-npm`.
 
 ## After install
 
-Point alfred-os at your fleet's Slack channel and (optionally) AWS:
+Point Alfred at your fleet's Slack channel and (optionally) AWS:
 
 - [Slack setup](/guides/slack/): create the app, mint the webhook.
 - [AWS setup](/guides/aws/): IAM-per-agent, Secrets Manager.
@@ -72,6 +72,6 @@ Then write your first codename agent:
 
 Full list in [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common:
 
-- **"Refusing to install on non-macOS host"**: alfred-os's scheduling layer is `launchd`. Linux requires the systemd port for scheduled fleets; `ALFRED_FORCE_LINUX=1` is only for tests, code reading, and manual agent runs.
+- **"Refusing to install on non-macOS host"**: Alfred's scheduling layer is `launchd`. Linux requires the systemd port for scheduled fleets; `ALFRED_FORCE_LINUX=1` is only for tests, code reading, and manual agent runs.
 - **`claude: command not found` from launchd**: the plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`.
 - **`gh auth login` browser doesn't open**: use the device-code flow: `gh auth login --hostname github.com --git-protocol https --web`.

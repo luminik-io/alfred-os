@@ -1,6 +1,6 @@
 # Slack setup
 
-Alfred-OS posts simple agent reports via an **incoming webhook**. Agents that
+Alfred posts simple agent reports via an **incoming webhook**. Agents that
 use `lib/slack_format.py` can also post Block Kit firing threads via an
 optional Slack bot token. This doc covers both paths.
 
@@ -21,7 +21,7 @@ used today by `firing_thread_root`, `firing_thread_reply`, and
 ## 1. Create the Slack app
 
 1. Go to https://api.slack.com/apps → **Create New App** → **From scratch**.
-2. Name it (e.g. `alfred-bot`, `alfred-os-fleet`, `<yourstartup>-agents`).
+2. Name it (e.g. `alfred-bot`, `alfred-fleet`, `<yourstartup>-agents`).
 3. Pick the workspace that owns the channel you want to post to.
 4. Click **Create App**.
 
@@ -47,7 +47,7 @@ https://hooks.slack.com/services/T.../B.../...........
 
 ```sh
 curl -X POST -H 'Content-Type: application/json' \
-  --data '{"text":"hello from alfred-os setup"}' \
+  --data '{"text":"hello from Alfred setup"}' \
   'https://hooks.slack.com/services/T.../B.../...........'
 ```
 
@@ -93,14 +93,14 @@ You also need an IAM identity that scheduled agents use, with `secretsmanager:Ge
 
 Set `SLACK_WEBHOOK_URL` only when you want to override the AWS-stored value (e.g. testing a webhook rotation). Leave it unset normally and let AWS resolution handle it.
 
-## 5. Verify in alfred-os
+## 5. Verify in Alfred
 
 ```sh
 python3 - <<'PY'
 import sys
 sys.path.insert(0, "lib")
 from agent_runner import slack_post
-ok = slack_post("alfred-os setup test: channel migration confirmed")
+ok = slack_post("Alfred setup test: channel migration confirmed")
 print("posted:", ok)
 PY
 ```

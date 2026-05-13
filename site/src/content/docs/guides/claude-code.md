@@ -3,7 +3,7 @@ title: Claude Code
 description: Install, Pro vs Max sizing, two-account swap, troubleshooting.
 ---
 
-Alfred-OS runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. Codex can be enabled as an optional review engine.
+Alfred runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. Codex can be enabled as an optional review engine.
 
 Full guide at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md). Highlights:
 

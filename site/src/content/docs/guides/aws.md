@@ -3,7 +3,7 @@ title: AWS
 description: IAM-per-agent, Secrets Manager naming, scoped policy templates.
 ---
 
-Alfred-OS uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sentry tokens, third-party API keys) and **per-agent IAM** (one scoped IAM identity per scheduled agent).
+Alfred uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sentry tokens, third-party API keys) and **per-agent IAM** (one scoped IAM identity per scheduled agent).
 
 If you don't need either, skip this. Put `SLACK_WEBHOOK_URL` in `~/.alfredrc` directly. The framework runs fine without an AWS account.
 
