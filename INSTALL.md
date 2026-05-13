@@ -192,7 +192,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 - [`BOOTSTRAP.md`](BOOTSTRAP.md): AWS IAM-per-agent, Slack, prompt sync, troubleshooting.
 - [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md): Slack app + webhook + (optional) bot token.
 - [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md): IAM users, scoped policies, Secrets Manager layout.
-- [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `hermes-claude`.
+- [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `alfred claude`.
 - [`docs/SKILLS.md`](docs/SKILLS.md): recommended Claude Code skills for an autonomous fleet.
 - [`docs/STATE_MACHINE.md`](docs/STATE_MACHINE.md): issue claim lifecycle and dedup primitives.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): design rationale.

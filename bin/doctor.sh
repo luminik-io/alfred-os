@@ -8,7 +8,7 @@
 #
 # This is the canonical "is this host configured correctly?" check for both
 # fresh forks and post-rotation verification (after AWS SSO refresh, after
-# changing IAM policies, after `hermes-claude swap`, etc.).
+# changing IAM policies, after `alfred claude swap`, etc.).
 #
 # Exit code is 0 when every agent reports DOCTOR-OK, 1 if any agent fails.
 

@@ -79,8 +79,8 @@ if [ -f "$HERMES_BIN/alfred-init.py" ]; then
   echo "[alfred-os/deploy] linked alfred-init → $LOCAL_BIN/alfred-init"
 fi
 
-# hermes-claude is invoked interactively from $PATH (not by launchd jobs),
-# so expose it under ~/.local/bin via a stable symlink that survives redeploys.
+# hermes-claude is the compatibility helper behind `alfred claude`.
+# Keep exposing it for existing scripts and operator muscle memory.
 if [ -f "$HERMES_BIN/hermes-claude" ]; then
   ln -sfn "$HERMES_BIN/hermes-claude" "$LOCAL_BIN/hermes-claude"
   echo "[alfred-os/deploy] linked hermes-claude → $LOCAL_BIN/hermes-claude"

@@ -24,6 +24,9 @@ Subcommands today:
                               Persist an engine override in
                               $HERMES_HOME/state/engines/<agent>.
                               Alias: provider.
+  alfred claude [status|primary|secondary|swap]
+                              Show or change the Claude account used by
+                              launchd-spawned agents.
   alfred status               Show local fleet health, locks, pauses, and
                               approval waits.
   alfred shipped              Summarize merged PRs, issues, LOC, and
@@ -335,6 +338,12 @@ def cmd_status(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def cmd_claude(args: argparse.Namespace) -> int:
+    script = _HERE / "hermes-claude"
+    cmd = [str(script), *args.claude_args]
+    return subprocess.run(cmd, check=False).returncode
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="alfred", description="alfred-os operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
@@ -367,6 +376,10 @@ def main(argv: list[str] | None = None) -> int:
     p_engine_set.add_argument("agent")
     p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid", "both"])
     p_engine_set.set_defaults(func=cmd_engine_set)
+
+    p_claude = sub.add_parser("claude", help="manage Claude Code account routing")
+    p_claude.add_argument("claude_args", nargs="*", metavar="{status,primary,secondary,swap}")
+    p_claude.set_defaults(func=cmd_claude)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
     p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")

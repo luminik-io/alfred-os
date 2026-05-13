@@ -48,12 +48,12 @@ class AlfredOs < Formula
         #{libexec}
 
       Available commands:
-        alfred                 # minimal runner-gate CLI
+        alfred                 # operator CLI, including `alfred claude`
         alfred-init            # interactive fleet configuration wizard
         alfred-install         # one-time fresh-machine setup (brew + npm + dirs + rc)
         alfred-deploy          # sync lib/+bin/ into $HERMES_HOME; renders plists when agents.conf exists
         alfred-doctor          # preflight configured agents under HERMES_DOCTOR=1
-        alfred-hermes-claude   # swap between Claude Code accounts
+        alfred-hermes-claude   # compatibility wrapper; prefer `alfred claude`
         alfred-label-state     # operator CLI for the issue claim state machine
 
       This formula installs the latest tagged release by default.

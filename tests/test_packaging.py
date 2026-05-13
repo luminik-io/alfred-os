@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tomllib
 import zipfile
 from pathlib import Path
@@ -34,3 +35,15 @@ def test_wheel_smoke_import_and_console_script(tmp_path):
         assert "alfred_os_cli.py" in names
         entry_points = next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
         assert "alfred-os = alfred_os_cli:main" in zf.read(entry_points).decode()
+
+
+def test_operator_cli_exposes_claude_wrapper():
+    result = subprocess.run(
+        [sys.executable, "bin/alfred", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "claude" in result.stdout
+    assert "manage Claude Code account routing" in result.stdout

@@ -9,12 +9,15 @@
 # Claude Code sessions in iTerm / Cursor / VS Code are unaffected because
 # they don't go through launchd.
 #
-# Usage:
-#   hermes-claude              show current routing + which agents are firing
-#   hermes-claude status       same as bare invocation
-#   hermes-claude primary      route agents to ~/.claude/
-#   hermes-claude secondary    route agents to ~/.claude-secondary/
-#   hermes-claude swap         flip primary <-> secondary
+# Operator usage:
+#   alfred claude              show current routing + which agents are firing
+#   alfred claude status       same as bare invocation
+#   alfred claude primary      route agents to ~/.claude/
+#   alfred claude secondary    route agents to ~/.claude-secondary/
+#   alfred claude swap         flip primary <-> secondary
+#
+# Compatibility usage:
+#   hermes-claude {status|primary|secondary|swap}
 #
 # After switching, in-flight agent runs keep using their old auth until they
 # finish; the next firing picks up the new env automatically. No restart needed.
@@ -67,7 +70,7 @@ show_status() {
   fi
   echo "Live launchd agents: $agent_count"
   echo ""
-  echo "Switch with: hermes-claude {primary|secondary|swap}"
+  echo "Switch with: alfred claude {primary|secondary|swap}"
 }
 
 set_primary() {
@@ -104,7 +107,7 @@ case "${1:-status}" in
     ;;
   *)
     echo "ERROR: unknown command: $1" >&2
-    echo "Usage: hermes-claude {status|primary|secondary|swap}" >&2
+    echo "Usage: alfred claude {status|primary|secondary|swap}" >&2
     exit 1
     ;;
 esac

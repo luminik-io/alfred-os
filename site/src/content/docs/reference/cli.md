@@ -1,6 +1,6 @@
 ---
 title: Operator CLI
-description: install.sh, deploy.sh, doctor.sh, hermes-claude, and the minimal alfred gate CLI.
+description: install.sh, deploy.sh, doctor.sh, and the alfred operator CLI.
 ---
 
 The public framework keeps the operator CLI intentionally small. Fleet-specific
@@ -37,16 +37,18 @@ with no `launchd/agents.conf`, it reports `0 passed, 0 failed`.
 bash bin/doctor.sh
 ```
 
-## `bin/hermes-claude`
+## `alfred claude`
 
 Swap which Claude account `claude -p` uses.
 
 ```sh
-bin/hermes-claude status
-bin/hermes-claude primary
-bin/hermes-claude secondary
-bin/hermes-claude swap
+alfred claude status
+alfred claude primary
+alfred claude secondary
+alfred claude swap
 ```
+
+`bin/hermes-claude` remains as the compatibility helper behind this command.
 
 ## `alfred`
 
@@ -59,6 +61,8 @@ alfred enable <codename>
 alfred disable <codename>
 alfred enabled-agents
 alfred status
+alfred claude status
+alfred claude swap
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
 alfred shipped --period weekly
