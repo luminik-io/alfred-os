@@ -87,13 +87,15 @@ When the subscription cap trips mid-firing, the framework treats it as a fleet-w
 
 Two Anthropic accounts? `bin/hermes-claude` points the launchd-spawned `claude` at either one without re-authenticating each time.
 
-The mechanism: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`. By default it
-is unset and Claude Code uses `~/.claude/`. `hermes-claude` flips the launchd
-global env var between the primary default and `~/.claude-secondary/`.
+The mechanism: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`.
+`hermes-claude` flips the launchd global env var between the primary
+`~/.claude/` directory and `~/.claude-secondary/`. Primary is explicit so
+older `~/.claude.json` files cannot accidentally win Claude Code's default
+profile lookup.
 
 ```sh
 hermes-claude status      # which account is active right now
-hermes-claude primary     # unset CLAUDE_CONFIG_DIR, use ~/.claude
+hermes-claude primary     # set CLAUDE_CONFIG_DIR=~/.claude
 hermes-claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
 hermes-claude swap        # toggle
 ```

@@ -38,12 +38,13 @@ Recommendation: Pro to validate, Max once you've got 2+ daily codenames. The two
 
 Two Anthropic accounts? `bin/hermes-claude` flips the launchd
 `CLAUDE_CONFIG_DIR` env var so launchd-spawned `claude` uses either the
-primary default `~/.claude/` or a secondary config such as
-`~/.claude-secondary/`.
+primary `~/.claude/` directory or a secondary config such as
+`~/.claude-secondary/`. Primary is set explicitly so older `~/.claude.json`
+files cannot accidentally win Claude Code's default profile lookup.
 
 ```sh
 hermes-claude status      # which account is active
-hermes-claude primary     # unset CLAUDE_CONFIG_DIR, use ~/.claude
+hermes-claude primary     # set CLAUDE_CONFIG_DIR=~/.claude
 hermes-claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
 hermes-claude swap        # toggle
 ```
