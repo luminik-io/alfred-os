@@ -1,7 +1,7 @@
-# alfred-os
+# Alfred
 
 <p align="center">
-  <img src="assets/brand/alfred-logo.png" alt="Alfred-OS logo" width="180">
+  <img src="assets/brand/alfred-logo.png" alt="Alfred logo" width="180">
 </p>
 
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
@@ -16,7 +16,7 @@ Docs site: https://alfred.luminik.io
 
 ## Why use it
 
-Alfred-OS is for the operator who wants a small agent fleet working while they
+Alfred is for the operator who wants a small agent fleet working while they
 sleep without turning their product into a hosted agent platform.
 
 - Label a GitHub issue, then let a narrow codename agent draft the plan, write
@@ -28,25 +28,25 @@ sleep without turning their product into a hosted agent platform.
 
 ## Relationship to Hermes
 
-alfred-os core does not install or run a separate Hermes agent process. The
+Alfred core does not install or run a separate Hermes agent process. The
 launchd fleet works with local Python scripts, `gh`, `git`, and the configured
 LLM CLIs.
 
 The variable name `HERMES_HOME` is retained for compatibility with the original
-internal fleet alfred-os was extracted from. In alfred-os, it is just the runtime root:
+internal fleet Alfred was extracted from. In Alfred, it is just the runtime root:
 by default `~/.hermes`, where deployed scripts, state, logs, Codex artifacts,
 and worktrees live.
 
 Hermes integrations are still valuable, but optional in this repo. If your
 fleet uses Hermes skills, MCP servers, gbrain memory, canon, dashboarding, or
 non-engineering departments, install and operate Hermes separately and point
-alfred-os at the same runtime root.
+Alfred at the same runtime root.
 
 See [`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe,
 including env hygiene, skills, MCP, gbrain, canon, scheduling boundaries, and
 troubleshooting.
 
-alfred-os is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
+Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
 ## System Shape
 
@@ -76,7 +76,7 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 - In-memory state can't survive an OS reboot. macOS restarts every few weeks.
 - Chat-first interfaces put the operator on the critical path.
 
-Alfred-OS's shape:
+Alfred's shape:
 
 ```
 launchd plist (every N min)
@@ -125,12 +125,12 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 | [`lib/agent_runner.py`](lib/agent_runner.py) | Shared library. Preflight, lock, spend, claude_invoke, codex_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, runner gate helpers, dedup helpers (`find_open_authored_pr_for_issue`, `reuse_or_make_worktree`), slack severity routing. |
 | [`lib/slack_format.py`](lib/slack_format.py) | Block Kit + bot-token Slack helpers: per-firing `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Severity colour stripes. |
 | [`lib/batman.py`](lib/batman.py) | Bundle primitives for the multi-repo coordinator: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
-| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred enabled-agents`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap`. |
+| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred enabled-agents`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Skeleton multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a plan to Slack. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
-| [`bin/`](bin/) | Operator helpers: `doctor.sh` (host validator), `hermes-claude` (compatibility helper behind `alfred claude`). |
+| [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
 | [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${HERMES_HOME}`. If `launchd/agents.conf` exists, render plists and bootstrap `launchd`; otherwise do a framework-only deploy. |
 | [`install.sh`](install.sh) | Fresh-machine bootstrap: brew + npm + dirs + shell rc. Idempotent. |
@@ -169,19 +169,19 @@ The cast matters for two reasons. Codenames appear in PR titles, Slack messages,
 
 See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/) for more.
 
-## What alfred-os does NOT do
+## What Alfred does not do
 
 - ❌ Multi-tenant. Single operator, one Mac, one config.
 - ❌ A web UI. Slack is the human surface.
 - ❌ Long-running orchestration loops. The OS scheduler is the orchestrator.
-- ❌ Hosted model gateways. alfred-os shells out to local CLIs (`claude`, optional `codex`, optional Ollama); it does not run a multi-tenant inference gateway.
+- ❌ Hosted model gateways. Alfred shells out to local CLIs (`claude`, optional `codex`, optional Ollama); it does not run a multi-tenant inference gateway.
 - ❌ Browser automation runtimes. If your fleet needs a browser, install Playwright in your codename agent's bin script.
-- ❌ Vector databases for memory. Some fleets use a doc-shaped memory layer. Alfred-OS doesn't ship one; that's a per-fleet decision.
-- ❌ Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing in alfred-os.
+- ❌ Vector databases for memory. Some fleets use a doc-shaped memory layer. Alfred doesn't ship one; that's a per-fleet decision.
+- ❌ Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing in Alfred.
 
 ## Status
 
-**v0.2.1**. Complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make alfred-os multi-tenant.
+**v0.2.1**. Complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork. There is no roadmap to make Alfred multi-tenant.
 
 Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design constraints (see [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed; PRs that broaden scope get politely declined.
 
@@ -189,6 +189,6 @@ Maintained on weekends. Issues triaged on a best-effort basis. PRs that match th
 
 MIT. See [`LICENSE`](LICENSE).
 
-## Why "alfred-os"
+## Why the repo slug is `alfred-os`
 
-Alfred-OS is named after Bruce Wayne's butler, the one who keeps the cave running while the mission is in flight. The default codenames are bat-themed, and the framework that lets the cave function is `alfred-os`.
+Alfred is named after Bruce Wayne's butler, the one who keeps the cave running while the mission is in flight. The default codenames are bat-themed, and the framework that lets the cave function is `alfred-os`.

@@ -31,7 +31,7 @@ workflow. It should not use the legacy "Deploy from a branch" Pages builder.
 5. Verify the deployed site:
 
    ```sh
-   curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred-OS|Starlight'
+   curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred|Starlight'
    ```
 
 ## Common Failure: README Site

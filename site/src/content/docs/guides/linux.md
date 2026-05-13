@@ -3,7 +3,7 @@ title: Linux
 description: Current macOS-only stance, what works on Linux today, the systemd port roadmap.
 ---
 
-Short answer: not yet. Alfred-OS's scheduling layer is `launchd`, which is macOS-only.
+Short answer: not yet. Alfred's scheduling layer is `launchd`, which is macOS-only.
 
 Full doc at [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/LINUX.md). Highlights:
 
@@ -12,7 +12,7 @@ Full doc at [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/
 - `lib/agent_runner.py`: every primitive runs unchanged.
 - `tests/`: `pytest` runs the full test suite.
 - `bin/doctor.sh`: works.
-- `alfred claude` / `bin/hermes-claude`: launchd-style env switching is macOS-only.
+- `alfred claude`: launchd-style env switching is macOS-only.
 - `examples/bin/label_state.py`, `examples/git-hooks/pre-push`: work.
 
 ## What doesn't
@@ -79,6 +79,6 @@ If you want to do this work, see [Contributing](/about/contributing/). PRs revie
 Both work for the framework code; neither is actively tested.
 
 - **WSL2**: same as Linux. Cron or systemd-user. Watch out for cross-filesystem worktree slowness if you mount Windows drives.
-- **Docker**: alfred-os is not container-friendly. The host-scheduler dependency would need a real port.
+- **Docker**: Alfred is not container-friendly. The host-scheduler dependency would need a real port.
 
 If you want to run agents inside containers (a per-firing image with isolated tooling), that's compatible: write your codename's `bin/<name>.py` to `docker run --rm ... claude -p ...`. The framework doesn't care.

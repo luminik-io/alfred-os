@@ -2,7 +2,7 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
-// Alfred-OS site config.
+// Alfred site config.
 //
 // Default URL assumes the public custom domain. Forks can override these with
 // ALFRED_OS_SITE_URL / ALFRED_OS_SITE_BASE when deploying under a project path.
@@ -12,13 +12,13 @@ export default defineConfig({
   trailingSlash: "ignore",
   integrations: [
     starlight({
-      title: "Alfred-OS",
+      title: "Alfred",
       description:
         "Launchd-managed Claude Code agent fleet for solo founders. " +
         "One Mac, one operator, code shipping while you sleep.",
       logo: {
         src: "./src/assets/alfred-logo.png",
-        alt: "Alfred-OS logo",
+        alt: "Alfred logo",
       },
       favicon: "/favicon.png",
       social: [
@@ -69,7 +69,7 @@ export default defineConfig({
         {
           label: "Getting started",
           items: [
-            { label: "What is alfred-os?", slug: "" },
+            { label: "What is Alfred?", slug: "" },
             { label: "Install", slug: "getting-started/install" },
             { label: "Your first agent", slug: "getting-started/tutorial" },
           ],

@@ -1,6 +1,6 @@
 # Linux support
 
-Short answer: not yet. Alfred-OS's scheduling layer is `launchd`, which is macOS-only. The framework code itself (`agent_runner.py`, the helper scripts) is Python and Bash and runs fine on Linux. But without a scheduling layer that mirrors `launchd`'s per-user agent semantics, the fleet isn't a fleet.
+Short answer: not yet. Alfred's scheduling layer is `launchd`, which is macOS-only. The framework code itself (`agent_runner.py`, the helper scripts) is Python and Bash and runs fine on Linux. But without a scheduling layer that mirrors `launchd`'s per-user agent semantics, the fleet isn't a fleet.
 
 ## Why launchd specifically
 
@@ -21,9 +21,8 @@ If you want to read the code, write your own agents, run the test suite, or use 
 - `lib/agent_runner.py`: every primitive (preflight, lock, spend, claude_invoke, gh, slack, claim_issue/release_issue, severity routing) works unchanged.
 - `tests/`: `pytest` runs the full test suite on Linux.
 - `bin/doctor.sh`: works (bash + grep).
-- `alfred claude` / `bin/hermes-claude`: launchd-style env switching is
-  macOS-only; on Linux, set `CLAUDE_CONFIG_DIR` directly in your shell, cron,
-  or systemd unit.
+- `alfred claude`: launchd-style env switching is macOS-only; on Linux, set
+  `CLAUDE_CONFIG_DIR` directly in your shell, cron, or systemd unit.
 - `examples/bin/label_state.py`: works.
 - `examples/git-hooks/pre-push`: works (operator-side, runs in your shell).
 
@@ -34,7 +33,7 @@ What doesn't work:
   `launchctl bootstrap` on non-macOS hosts. It does not give Linux a scheduler.
 - `install.sh` macOS check: refuses to run unless you set `ALFRED_FORCE_LINUX=1`.
 
-## Running alfred-os-shaped agents on Linux today
+## Running Alfred-shaped agents on Linux today
 
 Until the systemd port lands, two options:
 

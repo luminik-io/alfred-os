@@ -1,4 +1,4 @@
-# Alfred-OS docs site
+# Alfred docs site
 
 Astro Starlight site for [alfred-os](https://github.com/luminik-io/alfred-os).
 

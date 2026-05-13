@@ -1,17 +1,19 @@
 # Changelog
 
-Notable changes to alfred-os. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
 
 - Publishing guide for GitHub Pages workflow mode, release-site verification, and optional custom-domain setup.
+- `alfred claude probe` for a first-class Claude Code auth smoke test.
 
 ### Changed
 
 - Refreshed README, roadmap, docs site status, and release checklist after the v0.2.1 public launch cleanup.
 - Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
+- Moved Claude account routing fully into `alfred claude`; the standalone helper is no longer shipped.
 
 ## [0.2.1] - 2026-05-12
 
@@ -138,7 +140,7 @@ Initial public framework extraction.
 
 - `lib/agent_runner.py`: preflight, lock, spend, claude_invoke, gh, slack, event-log, commit-trailer, handoff-table primitives.
 - `bin/doctor.sh`: host validator (preflight every agent under `HERMES_DOCTOR=1`).
-- `bin/hermes-claude`: swap helper for two Claude accounts.
+- `alfred claude`: account-routing helper for two Claude accounts.
 - `launchd/_template.plist` + `launchd/render.sh` + `launchd/agents.conf.example`: plist generation.
 - `deploy.sh`: copy lib + bin into `$HERMES_HOME`, render plists, bootstrap launchd.
 - `examples/bin/hello.py`: minimal codename-agent reference.

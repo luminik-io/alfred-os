@@ -1,6 +1,6 @@
 # Architecture
 
-This document explains why alfred-os has the shape it has. Read [`README.md`](README.md) for the elevator pitch and [`BOOTSTRAP.md`](BOOTSTRAP.md) for the setup. This is the design rationale.
+This document explains why Alfred has the shape it has. Read [`README.md`](README.md) for the elevator pitch and [`BOOTSTRAP.md`](BOOTSTRAP.md) for the setup. This is the design rationale.
 
 ## Per-firing flow
 
@@ -34,7 +34,7 @@ Every box outside the host is reached by stdlib subprocess + HTTP. No persistent
 
 ## Hermes Boundary
 
-alfred-os uses `HERMES_HOME` as a runtime-root name, not as proof that the
+Alfred uses `HERMES_HOME` as a runtime-root name, not as proof that the
 Hermes agent must be installed. The core loop in this repo is:
 
 ```text
@@ -43,12 +43,12 @@ launchd -> bin/role.py -> lib/agent_runner.py -> claude/codex/gh/slack
 
 That loop runs without a Hermes daemon. The original internal fleet also uses
 Hermes for skills, MCP, gbrain memory, canon, dashboarding, and other
-departments. Those are compatible with alfred-os, but they are not required by
+departments. Those are compatible with Alfred, but they are not required by
 the core launchd engineering fleet.
 
 ## Why this shape
 
-alfred-os is built for one operator. One Mac Mini in a closet, one Anthropic Claude Pro / Max subscription, one founder merging the PRs. Every design decision falls out of those three constraints.
+Alfred is built for one operator. One Mac Mini in a closet, one Anthropic Claude Pro / Max subscription, one founder merging the PRs. Every design decision falls out of those three constraints.
 
 - **No GitHub Actions for the agent loop.** Earlier versions ran each agent as a workflow file (`agent-feature.yml`, `agent-tests.yml`, etc.) that called `anthropic-ai/claude-code-action`. That setup needed a paid Anthropic API key, doubled the spend, and made the Mac's existing Pro subscription dead weight. It was retired on 2026-04-24.
 - **No cloud queue, no shared service.** The fleet writes to plain JSON files in `~/.hermes/state/`. There is no Redis, no SQS, no Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.
@@ -60,7 +60,7 @@ Codenames are Batman side-characters in the shipped defaults: Batman for multi-r
 
 Same codename across repos means "same role applied to that repo's code," not "one agent spans repos." Lucius in `<your-backend-repo>` and Lucius in `<your-frontend-repo>` are two separate processes running the same prompt against different codebases. They never share state.
 
-This is the opposite of the CrewAI / AutoGen design, where a generalist agent decomposes tasks across roles at runtime. alfred-os wires the roles at deploy time. The decomposition is the launchd schedule. The negotiation channel is the consumer's Slack channel.
+This is the opposite of the CrewAI / AutoGen design, where a generalist agent decomposes tasks across roles at runtime. Alfred wires the roles at deploy time. The decomposition is the launchd schedule. The negotiation channel is the consumer's Slack channel.
 
 Why narrow specialists rather than one general agent: each role gets a different turn budget, a different IAM scope, a different tool list, a different escalation rule, a different failure-mode taxonomy. Lucius is allowed `Read,Edit,Write,Bash,Grep` and 80 turns; Robin gets `Read,Bash` and 30 turns. Generalist prompts that try to cover every case end up with the worst spend profile of all the cases combined.
 
@@ -88,7 +88,7 @@ The review session runs against a stricter critique prompt: "Critique this plan.
 
 The same shape applies to a quality-review gate after implementation: dispatch the implemented files to a review-only Claude Code session, apply feedback, fix issues. Only after both gates pass does the work land as a commit.
 
-This is alfred-os's main answer to the question "what stops a single autonomous agent from confidently shipping bad code." The reviewer is a separate session with no investment in the original plan, run on the same model. The cost is one extra `claude -p` call per task. The catch is that you have to believe the reviewer is uncorrelated with the executor - same model, same prompt template would defeat the gate. Different mode (read-only, critique-focused) is enough in practice.
+This is Alfred's main answer to the question "what stops a single autonomous agent from confidently shipping bad code." The reviewer is a separate session with no investment in the original plan, run on the same model. The cost is one extra `claude -p` call per task. The catch is that you have to believe the reviewer is uncorrelated with the executor - same model, same prompt template would defeat the gate. Different mode (read-only, critique-focused) is enough in practice.
 
 ## Worktree isolation per firing
 

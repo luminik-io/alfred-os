@@ -47,3 +47,16 @@ def test_operator_cli_exposes_claude_wrapper():
 
     assert "claude" in result.stdout
     assert "manage Claude Code account routing" in result.stdout
+
+
+def test_operator_cli_owns_claude_probe():
+    result = subprocess.run(
+        [sys.executable, "bin/alfred", "claude", "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "status,primary,secondary,swap,probe" in result.stdout
+    removed_helper = "hermes" + "-claude"
+    assert not Path("bin", removed_helper).exists()

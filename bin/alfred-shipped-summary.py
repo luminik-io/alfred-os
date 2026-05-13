@@ -405,7 +405,7 @@ def render_slack(data: dict[str, Any]) -> str:
     deletions = sum(int(pr.get("deletions") or 0) for pr in prs)
     changed_files = sum(int(pr.get("changedFiles") or 0) for pr in prs)
     lines = [
-        f"*Alfred-OS shipped - {data['period']['label']}*",
+        f"*Alfred shipped - {data['period']['label']}*",
         (
             f"`{len(prs)} PRs merged | {len(opened)} issues opened | "
             f"{len(closed)} issues closed | +{additions}/-{deletions} LOC | "

@@ -48,7 +48,7 @@ Save as `bin/echo.py` in your fleet repo:
 
 ```python
 #!/usr/bin/env python3
-"""Echo - the simplest useful alfred-os agent. Summarises issues."""
+"""Echo - the simplest useful Alfred agent. Summarises issues."""
 from __future__ import annotations
 
 import os

@@ -46,9 +46,8 @@ alfred claude status
 alfred claude primary
 alfred claude secondary
 alfred claude swap
+alfred claude probe
 ```
-
-`bin/hermes-claude` remains as the compatibility helper behind this command.
 
 ## `alfred`
 
@@ -63,6 +62,7 @@ alfred enabled-agents
 alfred status
 alfred claude status
 alfred claude swap
+alfred claude probe
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
 alfred shipped --period weekly

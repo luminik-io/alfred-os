@@ -1,19 +1,19 @@
 ---
 title: Hermes integration
-description: Optional Hermes setup for operators who want MCP, skills, gbrain, canon, or a chat gateway around Alfred-OS.
+description: Optional Hermes setup for operators who want MCP, skills, gbrain, canon, or a chat gateway around Alfred.
 ---
 
-Alfred-OS does not require Hermes. The core runtime is local Python, launchd,
+Alfred does not require Hermes. The core runtime is local Python, launchd,
 GitHub CLI, git worktrees, Slack delivery, and local model CLIs.
 
 Hermes is useful when you want an operator layer around the engineering fleet:
 chat gateway, cron prompts, ACP dispatch, MCP tools, gbrain, canon, or
-dashboards. In that setup Hermes observes or dispatches, while Alfred-OS owns
+dashboards. In that setup Hermes observes or dispatches, while Alfred owns
 the engineering agent state machine and launchd jobs.
 
 | Layer | Owns |
 |---|---|
-| Alfred-OS | launchd, role runners, worktrees, issue claims, PR loops, Slack reports |
+| Alfred | launchd, role runners, worktrees, issue claims, PR loops, Slack reports |
 | Hermes | chat gateway, cron prompts, ACP, MCP tools, skills, memory, dashboards |
 
 `HERMES_HOME` is the shared runtime-root name. It defaults to `~/.hermes`, but
@@ -39,18 +39,18 @@ Use one scheduler for each role.
 
 Good:
 
-- Alfred-OS launchd fires engineering agents.
+- Alfred launchd fires engineering agents.
 - Hermes cron posts daily summaries.
 - Hermes cron runs read-only commands like `alfred status` or `alfred shipped`.
 
 Risky:
 
 - launchd and Hermes cron both fire the same feature-dev runner.
-- Hermes shells into an Alfred-OS worktree while a runner owns the issue claim.
+- Hermes shells into an Alfred worktree while a runner owns the issue claim.
 
 ## Skills and MCP
 
-Alfred-OS ships no skills by default. Keep reviewed skills under
+Alfred ships no skills by default. Keep reviewed skills under
 `~/.hermes/skills` or your Claude Code skills directory, and pin third-party
 skill sources the same way you pin code dependencies.
 

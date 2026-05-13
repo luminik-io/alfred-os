@@ -3,7 +3,7 @@ title: Slack
 description: Create the app, mint the webhook, store it, post your first message.
 ---
 
-Alfred-OS posts simple agent reports via an incoming webhook. `slack_post()`
+Alfred posts simple agent reports via an incoming webhook. `slack_post()`
 resolves the URL via env -> 30-day disk cache -> AWS Secrets Manager, so
 steady-state firings don't pay an AWS round-trip every time. Agents that use
 `lib/slack_format.py` can also post Block Kit firing threads with an optional
@@ -25,7 +25,7 @@ Copy the URL. It's a secret. Anyone with it can post to your channel.
 
 ```sh
 curl -X POST -H 'Content-Type: application/json' \
-  --data '{"text":"hello from alfred-os setup"}' \
+  --data '{"text":"hello from Alfred setup"}' \
   'https://hooks.slack.com/services/T.../B.../...'
 ```
 
@@ -64,7 +64,7 @@ Set `SLACK_WEBHOOK_URL` only to override the AWS-stored value (e.g. testing a ro
 import sys
 sys.path.insert(0, "lib")
 from agent_runner import slack_post
-slack_post("alfred-os setup test", severity="info")
+slack_post("Alfred setup test", severity="info")
 ```
 
 You should see the message in your channel.

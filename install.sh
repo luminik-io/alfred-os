@@ -107,7 +107,7 @@ ask() {
 # --------------------------------------------------------------------------
 step "Checking host"
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  warn "Alfred-OS currently runs on macOS only (launchd-based scheduling)."
+  warn "Alfred currently runs on macOS only (launchd-based scheduling)."
   warn "Linux support requires a systemd port; tracked but not yet shipped."
   warn "If you want to proceed anyway, set ALFRED_FORCE_LINUX=1."
   if [[ "${ALFRED_FORCE_LINUX:-}" != "1" ]]; then

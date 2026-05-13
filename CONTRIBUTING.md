@@ -1,6 +1,6 @@
 # Contributing
 
-Alfred-OS is the framework behind one operator's production fleet. PRs welcome. The maintainer's bar: "does this make alfred-os a better framework for narrow-specialist launchd-managed Claude Code agents". Not "does this support every adjacent use case". Changes that add configurability at the cost of more moving parts get declined.
+Alfred is the framework behind one operator's production fleet. PRs welcome. The maintainer's bar: "does this make Alfred a better framework for narrow-specialist launchd-managed Claude Code agents". Not "does this support every adjacent use case". Changes that add configurability at the cost of more moving parts get declined.
 
 ## Proposing a new codename agent
 

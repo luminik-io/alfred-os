@@ -79,13 +79,6 @@ if [ -f "$HERMES_BIN/alfred-init.py" ]; then
   echo "[alfred-os/deploy] linked alfred-init → $LOCAL_BIN/alfred-init"
 fi
 
-# hermes-claude is the compatibility helper behind `alfred claude`.
-# Keep exposing it for existing scripts and operator muscle memory.
-if [ -f "$HERMES_BIN/hermes-claude" ]; then
-  ln -sfn "$HERMES_BIN/hermes-claude" "$LOCAL_BIN/hermes-claude"
-  echo "[alfred-os/deploy] linked hermes-claude → $LOCAL_BIN/hermes-claude"
-fi
-
 if command -v claude >/dev/null 2>&1; then
   CLAUDE_SOURCE="$(command -v claude)"
   if [ "$CLAUDE_SOURCE" != "$LOCAL_BIN/claude" ]; then

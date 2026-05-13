@@ -24,7 +24,7 @@ Subcommands today:
                               Persist an engine override in
                               $HERMES_HOME/state/engines/<agent>.
                               Alias: provider.
-  alfred claude [status|primary|secondary|swap]
+  alfred claude [status|primary|secondary|swap|probe]
                               Show or change the Claude account used by
                               launchd-spawned agents.
   alfred status               Show local fleet health, locks, pauses, and
@@ -45,9 +45,12 @@ it that way — no external deps.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Resolve lib/ relative to the script regardless of how it was invoked.
@@ -65,6 +68,8 @@ import agent_runner  # noqa: E402
 OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
 ENGINE_SCRIPTS = tuple(f"{agent}.py" for agent in ENGINE_AGENTS)
+PRIMARY_CLAUDE_DIR = Path.home() / ".claude"
+SECONDARY_CLAUDE_DIR = Path.home() / ".claude-secondary"
 
 
 def _default_enabled(codename: str) -> bool:
@@ -338,14 +343,173 @@ def cmd_status(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["launchctl", *args], check=False, capture_output=True, text=True)
+
+
+def _current_claude_dir() -> str:
+    if not shutil.which("launchctl"):
+        return os.environ.get("CLAUDE_CONFIG_DIR", "")
+    result = _launchctl(["getenv", "CLAUDE_CONFIG_DIR"])
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def _current_claude_label() -> str:
+    value = _current_claude_dir()
+    if not value or value == str(PRIMARY_CLAUDE_DIR):
+        return "primary (~/.claude)"
+    if value == str(SECONDARY_CLAUDE_DIR):
+        return "secondary (~/.claude-secondary)"
+    return f"custom ({value})"
+
+
+def _claude_auth_mtime(path: Path) -> str:
+    auth_file = path / ".claude.json"
+    if not auth_file.exists():
+        return "no .claude.json"
+    return datetime.fromtimestamp(auth_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+
+
+def _count_launchd_agents() -> int | None:
+    if not shutil.which("launchctl"):
+        return None
+    result = _launchctl(["list"])
+    if result.returncode != 0:
+        return None
+    prefix = os.environ.get("FLEET_LABEL_PREFIX", "")
+    count = 0
+    for line in result.stdout.splitlines():
+        if not line.strip() or line.startswith("PID"):
+            continue
+        label = line.split()[-1]
+        if prefix:
+            count += int(label.startswith(prefix))
+        else:
+            count += int(any(token in label for token in ("agent", "fleet", "alfred")))
+    return count
+
+
+def _claude_status() -> int:
+    print(f"Current routing for launchd-spawned agents: {_current_claude_label()}")
+    print("")
+    print("Auth dir state:")
+    for label, directory in (
+        ("primary:", PRIMARY_CLAUDE_DIR),
+        ("secondary:", SECONDARY_CLAUDE_DIR),
+    ):
+        if directory.exists():
+            print(f"  {label:<12} {directory}   (last touched: {_claude_auth_mtime(directory)})")
+        else:
+            print(f"  {label:<12} {directory}   (NOT PRESENT)")
+    print("")
+    agent_count = _count_launchd_agents()
+    if agent_count is None:
+        print("Live launchd agents: unavailable (launchctl not found)")
+    else:
+        print(f"Live launchd agents: {agent_count}")
+    print("")
+    print("Switch with: alfred claude {primary|secondary|swap}")
+    print("Verify real API auth with: alfred claude probe")
+    return 0
+
+
+def _set_claude_dir(path: Path, label: str) -> int:
+    if not shutil.which("launchctl"):
+        print(
+            "alfred claude: launchctl is not available; set CLAUDE_CONFIG_DIR "
+            f"to {path} in your shell, cron, or systemd unit.",
+            file=sys.stderr,
+        )
+        return 2
+    if label == "secondary" and not path.exists():
+        print(f"ERROR: {path} not present. Set it up first:", file=sys.stderr)
+        print(f"  CLAUDE_CONFIG_DIR={path} claude   # then complete login", file=sys.stderr)
+        return 2
+    result = _launchctl(["setenv", "CLAUDE_CONFIG_DIR", str(path)])
+    if result.returncode != 0:
+        print(result.stderr.strip() or "alfred claude: launchctl setenv failed", file=sys.stderr)
+        return result.returncode
+    print(
+        f"Agents now route to {label.upper()} ({path}). "
+        "Next firing of each agent picks this up."
+    )
+    return 0
+
+
+def _swap_claude_dir() -> int:
+    if _current_claude_dir() == str(SECONDARY_CLAUDE_DIR):
+        return _set_claude_dir(PRIMARY_CLAUDE_DIR, "primary")
+    return _set_claude_dir(SECONDARY_CLAUDE_DIR, "secondary")
+
+
+def _probe_claude_auth() -> int:
+    print(f"Probing Claude Code API auth for {_current_claude_label()}")
+    print("This sends one tiny non-interactive Claude request when auth is healthy.")
+    env = os.environ.copy()
+    current = _current_claude_dir()
+    if current:
+        env["CLAUDE_CONFIG_DIR"] = current
+    cmd = [
+        "claude",
+        "-p",
+        "Reply exactly ALFRED_CLAUDE_OK",
+        "--output-format",
+        "json",
+        "--max-turns",
+        "1",
+        "--model",
+        "claude-haiku-4-5",
+    ]
+    try:
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=90, env=env)
+    except FileNotFoundError:
+        print("Claude probe: failed")
+        print("claude binary not found on PATH", file=sys.stderr)
+        return 1
+    except subprocess.TimeoutExpired:
+        print("Claude probe: failed")
+        print("claude probe timed out after 90s", file=sys.stderr)
+        return 1
+
+    payload = result.stdout.strip() or result.stderr.strip()
+    try:
+        data = json.loads(payload)
+        body = str(data.get("result") or "")
+        summary = (
+            f"exit_json subtype={data.get('subtype')} is_error={data.get('is_error')} "
+            f"api_error_status={data.get('api_error_status')} result={body[:300]}"
+        )
+    except json.JSONDecodeError:
+        body = payload
+        summary = payload[-500:]
+    if result.returncode == 0 and "ALFRED_CLAUDE_OK" in body:
+        print("Claude probe: ok")
+        return 0
+    print("Claude probe: failed")
+    print(summary)
+    return 1
+
+
 def cmd_claude(args: argparse.Namespace) -> int:
-    script = _HERE / "hermes-claude"
-    cmd = [str(script), *args.claude_args]
-    return subprocess.run(cmd, check=False).returncode
+    command = args.claude_command
+    if command in ("status", ""):
+        return _claude_status()
+    if command in ("primary", "main"):
+        return _set_claude_dir(PRIMARY_CLAUDE_DIR, "primary")
+    if command in ("secondary", "2"):
+        return _set_claude_dir(SECONDARY_CLAUDE_DIR, "secondary")
+    if command in ("swap", "toggle"):
+        return _swap_claude_dir()
+    if command == "probe":
+        return _probe_claude_auth()
+    print("Usage: alfred claude {status|primary|secondary|swap|probe}", file=sys.stderr)
+    return 2
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="alfred", description="alfred-os operator CLI")
+    p = argparse.ArgumentParser(prog="alfred", description="Alfred operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
 
     p_agents = sub.add_parser("agents", help="list configured agents")
@@ -378,7 +542,12 @@ def main(argv: list[str] | None = None) -> int:
     p_engine_set.set_defaults(func=cmd_engine_set)
 
     p_claude = sub.add_parser("claude", help="manage Claude Code account routing")
-    p_claude.add_argument("claude_args", nargs="*", metavar="{status,primary,secondary,swap}")
+    p_claude.add_argument(
+        "claude_command",
+        nargs="?",
+        default="status",
+        metavar="{status,primary,secondary,swap,probe}",
+    )
     p_claude.set_defaults(func=cmd_claude)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")

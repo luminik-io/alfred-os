@@ -5,7 +5,7 @@ description = "A small framework for running a fleet of narrow-specialist Claude
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-  { name = "Alfred-OS contributors" },
+  { name = "Alfred contributors" },
 ]
 requires-python = ">=3.11"
 keywords = ["claude-code", "agents", "launchd", "automation"]
@@ -35,7 +35,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://luminik-io.github.io/alfred-os"
+Homepage = "https://alfred.luminik.io"
 Repository = "https://github.com/luminik-io/alfred-os"
 Issues = "https://github.com/luminik-io/alfred-os/issues"
 Changelog = "https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md"

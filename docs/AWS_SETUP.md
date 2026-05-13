@@ -1,11 +1,11 @@
 # AWS setup
 
-Alfred-OS uses AWS for two optional things:
+Alfred uses AWS for two optional things:
 
 1. **Secrets Manager**: stores the Slack webhook URL and any per-fleet credentials (Sentry tokens, third-party API keys) so they don't live in shell rc files. Resolution is cached on disk for 30 days; AWS is only hit when the cache expires or is missing.
 2. **Per-agent IAM**: every scheduled agent that needs AWS access gets its own scoped IAM user with a narrow inline policy. The operator's SSO chain is never used by scheduled agents.
 
-If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in `~/.alfredrc`. Alfred-OS runs fine without an AWS account.
+If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in `~/.alfredrc`. Alfred runs fine without an AWS account.
 
 ## Why per-agent IAM
 

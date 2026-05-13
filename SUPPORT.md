@@ -5,7 +5,7 @@
 | You want | Channel |
 |---|---|
 | **Help getting started** | Read [`INSTALL.md`](INSTALL.md) → [`docs/TUTORIAL.md`](docs/TUTORIAL.md) → [`BOOTSTRAP.md`](BOOTSTRAP.md). Most setup questions are answered there. |
-| **Bug report** | [Open an issue](https://github.com/luminik-io/alfred-os/issues/new?template=bug.yml) using the bug template. Include: alfred-os version, macOS version, the exact command, full output. |
+| **Bug report** | [Open an issue](https://github.com/luminik-io/alfred-os/issues/new?template=bug.yml) using the bug template. Include: Alfred version, macOS version, the exact command, full output. |
 | **Feature request** | [Open an issue](https://github.com/luminik-io/alfred-os/issues/new?template=feature.yml) using the feature template. Be specific about the use case before the proposed solution. |
 | **Question / discussion** | [Open an issue](https://github.com/luminik-io/alfred-os/issues/new?template=question.yml) with the `question` label, OR use [GitHub Discussions](https://github.com/luminik-io/alfred-os/discussions) when enabled. |
 | **Security vulnerability** | Do **not** open a public issue. See [`SECURITY.md`](SECURITY.md) for the private-disclosure process. |
@@ -22,7 +22,7 @@ Weekend-maintained project. Realistic expectations:
 
 ## Out of scope for support
 
-- **Multi-tenant deployments.** Alfred-OS is single-operator by design.
+- **Multi-tenant deployments.** Alfred is single-operator by design.
 - **Hosted SaaS.** Framework, not a service. We won't run agents for you.
 - **Linux fleets.** First-class Linux support is on the roadmap but not shipped. See [`docs/LINUX.md`](docs/LINUX.md) for interim cron / systemd patterns.
 - **Custom Claude Code installs.** If `npm install -g @anthropic-ai/claude-code` doesn't work for you, talk to Anthropic. The CLI is theirs.

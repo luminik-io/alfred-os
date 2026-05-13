@@ -1,6 +1,6 @@
 # Claude Code
 
-Alfred-OS runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`alfred claude`), and the optional Codex path.
+Alfred runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`alfred claude`), and the optional Codex path.
 
 ## What "Claude Code" is
 
@@ -9,7 +9,7 @@ The official Anthropic CLI for Claude. Two surfaces:
 - `claude`: interactive REPL. Used once during install for auth.
 - `claude -p '<prompt>'`: non-interactive single-prompt invocation. **What every agent uses.** Returns a structured JSON result the framework parses (turns, cost, success/failure subtype, session id for resume).
 
-Alfred-OS doesn't talk to the Anthropic API directly. It shells out to `claude`. The CLI handles model selection, billing, rate-limit signalling, retries, MCP plumbing. Re-implementing any of that is out of scope.
+Alfred doesn't talk to the Anthropic API directly. It shells out to `claude`. The CLI handles model selection, billing, rate-limit signalling, retries, MCP plumbing. Re-implementing any of that is out of scope.
 
 ## Optional Codex routing
 
@@ -85,7 +85,7 @@ When the subscription cap trips mid-firing, the framework treats it as a fleet-w
 
 ## The `alfred claude` swap pattern
 
-Two Anthropic accounts? `alfred claude` points the launchd-spawned `claude` at either one without re-authenticating each time. The lower-level `hermes-claude` helper remains available for existing scripts, but `alfred claude` is the operator-facing command.
+Two Anthropic accounts? `alfred claude` points the launchd-spawned `claude` at either one without re-authenticating each time.
 
 The mechanism: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`.
 `alfred claude` flips the launchd global env var between the primary
@@ -98,6 +98,7 @@ alfred claude status      # which account is active right now
 alfred claude primary     # set CLAUDE_CONFIG_DIR=~/.claude
 alfred claude secondary   # set CLAUDE_CONFIG_DIR=~/.claude-secondary
 alfred claude swap        # toggle
+alfred claude probe       # run a tiny real auth check
 ```
 
 Typical usage: run on `primary` until it hits the weekly cap (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.

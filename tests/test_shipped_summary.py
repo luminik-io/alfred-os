@@ -236,7 +236,7 @@ def test_render_slack_includes_shipping_totals_and_model_section(monkeypatch, tm
 
     text = mod.render_slack(data)
 
-    assert "*Alfred-OS shipped - 2026-05-09*" in text
+    assert "*Alfred shipped - 2026-05-09*" in text
     assert "1 PRs merged | 1 issues opened | 1 issues closed | +12/-3 LOC | 2 files" in text
     assert "*Query warnings*" in text
     assert "alfred: merged PR query hit limit 2" in text

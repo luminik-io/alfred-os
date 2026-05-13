@@ -252,7 +252,7 @@ def _default_sweep_repos() -> list[str]:
 
     Reads ``LABEL_STATE_SWEEP_REPOS`` (comma-separated) or falls back to
     an empty list (in which case the caller must pass ``--repo``).
-    Alfred-OS clean: no hardcoded repo names in the framework.
+    Alfred clean: no hardcoded repo names in the framework.
     """
     raw = os.environ.get("LABEL_STATE_SWEEP_REPOS", "").strip()
     if not raw:
