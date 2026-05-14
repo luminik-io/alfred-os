@@ -40,6 +40,10 @@ export default defineConfig({
       lastUpdated: true,
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 4 },
       customCss: ["./src/styles/custom.css"],
+      components: {
+        // Append a DataRavel Inc. copyright line under the default page footer.
+        Footer: "./src/components/Footer.astro",
+      },
       head: [
         {
           tag: "meta",

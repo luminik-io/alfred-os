@@ -1,0 +1,27 @@
+---
+// Wraps Starlight's default page footer (last-updated, pagination, edit link)
+// and appends a project copyright line. Copyright holder matches the repo
+// LICENSE file: DataRavel Inc.
+import Default from "@astrojs/starlight/components/Footer.astro";
+---
+
+<Default />
+<div class="alfred-site-footer">
+  <p>
+    &copy; 2026 DataRavel Inc. Alfred is open source under the
+    <a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE">MIT License</a>.
+  </p>
+</div>
+
+<style>
+  .alfred-site-footer {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  .alfred-site-footer p {
+    margin: 0;
+  }
+</style>
