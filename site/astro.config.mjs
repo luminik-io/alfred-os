@@ -69,8 +69,41 @@ const MERMAID_ZOOM_SCRIPT = `
     const stage = document.createElement("div");
     stage.className = "mermaid-zoom-stage";
     const clone = svg.cloneNode(true);
-    clone.removeAttribute("id");
+    // Mermaid scopes its themed <style> rules under the SVG's id
+    // (#mermaid-xxx .node rect { fill: ... }). Dropping the id silently
+    // unstyles the clone to raw black-on-white SVG defaults. Instead, give
+    // the clone a fresh unique id and rewrite the scoped selectors in its
+    // <style> block to match, so the theme colors survive the clone.
+    const oldId = clone.getAttribute("id");
+    const newId = "mermaid-zoom-svg-" + Math.random().toString(36).slice(2, 9);
+    clone.setAttribute("id", newId);
+    if (oldId) {
+      clone.querySelectorAll("style").forEach((s) => {
+        s.textContent = s.textContent.split("#" + oldId).join("#" + newId);
+      });
+    }
     clone.removeAttribute("style");
+    // Mermaid renders the SVG as width="100%" sized by an inline max-width
+    // style. Stripped of that style, and with no sized container in the
+    // overlay, width="100%" collapses the clone to a few pixels. Give it
+    // explicit pixel dimensions from its viewBox, scaled to fit the
+    // viewport while keeping aspect ratio.
+    const vb = (clone.getAttribute("viewBox") || "").split(/[\\s,]+/).map(Number);
+    let baseW, baseH;
+    if (vb.length === 4 && vb[2] > 0 && vb[3] > 0) {
+      const fit = Math.min(
+        (window.innerWidth * 0.86) / vb[2],
+        (window.innerHeight * 0.78) / vb[3]
+      );
+      baseW = Math.round(vb[2] * fit);
+      baseH = Math.round(vb[3] * fit);
+    } else {
+      const r = svg.getBoundingClientRect();
+      baseW = Math.round(r.width) || 320;
+      baseH = Math.round(r.height) || 200;
+    }
+    clone.setAttribute("width", String(baseW));
+    clone.setAttribute("height", String(baseH));
     stage.appendChild(clone);
     const hint = document.createElement("div");
     hint.className = "mermaid-zoom-hint";
@@ -123,13 +156,15 @@ export default defineConfig({
     mermaid({
       theme: "default",
       autoTheme: true,
-      // astro-mermaid v2 nests raw mermaid options under mermaidConfig.
+      // astro-mermaid swaps only the `theme` name (default/dark) on the
+      // light/dark toggle; any themeVariables here apply to BOTH themes.
+      // Keep only theme-neutral values: lineColor reads fine on light and
+      // dark backgrounds alike. Text and node-fill colors are left to
+      // mermaid's stock default/dark themes so diagram text stays legible
+      // in light mode (dark-tuned overrides made it near-invisible).
       mermaidConfig: {
         themeVariables: {
-          primaryColor: "#141d33",
           lineColor: "#4a78ff",
-          textColor: "#dfe5f2",
-          primaryBorderColor: "#2a3450",
         },
       },
     }),
