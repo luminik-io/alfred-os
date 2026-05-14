@@ -32,6 +32,27 @@ Three tiers:
 
 Unknown severity values are coerced to `info`. Existing callers without a `severity=` kwarg keep their previous behaviour exactly: back-compat default.
 
+```mermaid
+flowchart TB
+    call["slack_post(text, severity=...)"]
+    sev{"severity"}
+    info["post text as-is"]
+    warn["prefix the warning glyph<br/>if not already present"]
+    alert["prefix the alert glyph<br/>+ append &lt;!here&gt;"]
+    coerce["coerce unknown -> info"]
+    webhook["POST to Slack incoming webhook"]
+
+    call --> sev
+    sev -- "info (default)" --> info
+    sev -- "warn" --> warn
+    sev -- "alert" --> alert
+    sev -- "anything else" --> coerce
+    info --> webhook
+    warn --> webhook
+    alert --> webhook
+    coerce --> webhook
+```
+
 ## What you actually get
 
 In Slack, the channel timeline now reads like:

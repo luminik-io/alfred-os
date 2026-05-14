@@ -21,11 +21,11 @@ claude                            # Claude Code first-run auth
 
 ## What `install.sh` does
 
-Idempotent (safe to re-run). On a fresh Mac:
+Idempotent (safe to re-run). It detects the host OS and picks a lane — Homebrew on macOS, apt on Debian/Ubuntu.
 
-1. Verifies macOS. Linux support is on the roadmap; see [Linux](/guides/linux/).
-2. Installs Homebrew if missing.
-3. `brew install`s `python@3.11`, `git`, `gh`, `jq`, `awscli`, `node`, `uv`.
+1. Detects the host: macOS (Homebrew) or Debian/Ubuntu Linux (apt). See [Linux](/guides/linux/) for the systemd path.
+2. Installs the package-manager prerequisites — Homebrew if missing on macOS; on Linux, `apt-get install`s the base packages.
+3. Installs `python@3.11`, `git`, `gh`, `jq`, `node`, `uv` (plus `awscli` on macOS; install AWS CLI v2 manually on Linux).
 4. `npm install -g @anthropic-ai/claude-code`.
 5. Creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`).
 6. Drops `~/.alfredrc` from the template, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
@@ -72,6 +72,6 @@ Then write your first codename agent:
 
 Full list in [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common:
 
-- **"Refusing to install on non-macOS host"**: Alfred's scheduling layer is `launchd`. Linux requires the systemd port for scheduled fleets; `ALFRED_FORCE_LINUX=1` is only for tests, code reading, and manual agent runs.
+- **`install.sh` stops on an unsupported host**: the apt lane targets Debian/Ubuntu. Other Linux distros need their packages installed by hand; the framework itself is distro-agnostic once the prerequisites are present.
 - **`claude: command not found` from launchd**: the plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`.
 - **`gh auth login` browser doesn't open**: use the device-code flow: `gh auth login --hostname github.com --git-protocol https --web`.

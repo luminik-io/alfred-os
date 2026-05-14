@@ -5,6 +5,60 @@ description: Design rationale for launchd, worktrees, IAM-per-agent, codename pa
 
 Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md). This page is the executive summary.
 
+## The runtime boundary
+
+Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to `~/.alfred`. The core loop is four hops, and every box outside the host is reached by a stdlib subprocess or an HTTP call. There is no persistent connection and no long-lived process.
+
+```mermaid
+flowchart LR
+    launchd["launchd<br/><i>every N min</i>"]
+    role["bin/&lt;role&gt;.py<br/><i>one stable runner per agent</i>"]
+    runner["lib/agent_runner.py<br/><i>lock · preflight · spend · invoke · gh · slack</i>"]
+    engine["claude -p / codex exec<br/><i>the LLM work, fresh subprocess</i>"]
+    gh["GitHub CLI"]
+    slack["Slack webhook"]
+    state[("$ALFRED_HOME/state/<br/><i>JSON files on disk</i>")]
+
+    launchd --> role --> runner --> engine
+    runner --> gh
+    runner --> slack
+    runner <--> state
+```
+
+State that lives outside the operator's filesystem becomes state the operator has to operate. Alfred keeps all of it in plain JSON files under `$ALFRED_HOME/state/`. No Redis, no SQS, no Postgres. Hermes, gbrain, MCP servers, skills, canon, and dashboards are compatible optional integrations, not core requirements.
+
+## One firing, end to end
+
+A single Lucius firing is the canonical trace. Every richer codename is a variation on this shape.
+
+```mermaid
+sequenceDiagram
+    participant launchd as launchd
+    participant runner as agent runner
+    participant lib as agent_runner lib
+    participant claude as Claude Code CLI
+    participant gh as GitHub CLI
+    participant slack as Slack webhook
+
+    launchd->>runner: fire (every N min)
+    runner->>lib: with_lock(AGENT)
+    runner->>lib: preflight(spec)
+    runner->>lib: SpendState / is_globally_blocked
+    runner->>gh: pick_issue(): oldest agent:implement
+    runner->>lib: claim_issue(repo, num, codename, firing_id)
+    lib->>gh: add agent:in-flight label
+    lib->>gh: post claim comment
+    runner->>lib: make_worktree(repo, agent, issue)
+    runner->>claude: invoke prompt with max turns
+    claude-->>runner: ClaudeResult (turns, cost, session_id, text)
+    runner->>gh: gh pr create
+    runner->>lib: release_issue(transition_to=agent:pr-open, pr_url)
+    runner->>slack: slack_post('shipped', severity=info)
+    runner->>lib: remove_worktree
+```
+
+If a firing crashes anywhere in that trace, the next firing starts clean: it reads its inputs from scratch and `make_worktree` prunes any orphaned worktree first. There is no resume protocol to debug.
+
 ## Five non-negotiables
 
 ### 1. launchd, not loops
@@ -31,6 +85,28 @@ Every `claude -p` invocation gets its own worktree:
 
 The worktree is created via `git worktree add` from a fresh `origin/main` (or whatever the agent designates), and `git worktree remove --force` after. Concurrent firings on different issues do not see each other's edits. A crashed firing can't corrupt the operator's main checkout because they're literally different directories pointing at different branches.
 
+```mermaid
+flowchart TB
+    main[("canonical checkout<br/>~/code/backend<br/><i>operator edits here</i>")]
+
+    subgraph wt["$ALFRED_HOME/worktrees/"]
+        w1["eng-lucius-backend-303-...<br/>branch: agent/lucius/303"]
+        w2["eng-lucius-backend-318-...<br/>branch: agent/lucius/318"]
+        w3["eng-bane-backend-291-...<br/>branch: agent/bane/291"]
+    end
+
+    main -. "git worktree add<br/>from origin/main" .-> w1
+    main -. "git worktree add" .-> w2
+    main -. "git worktree add" .-> w3
+    w1 -- "claude -p, cwd pinned" --> w1
+    w2 -- "claude -p, cwd pinned" --> w2
+    w3 -- "claude -p, cwd pinned" --> w3
+    w1 -. "remove on exit" .-> x1[" "]
+    style x1 fill:none,stroke:none
+```
+
+Three Lucius firings against three issues create three worktrees and three branches. None can `git push` to another firing's branch, and none can edit a file the operator is actively editing in the canonical checkout. The worktree is removed at the end of the firing, success or failure.
+
 ### 3. Per-agent IAM
 
 Every agent that touches AWS gets its own scoped IAM user:
@@ -51,6 +127,31 @@ Two layers:
 
 - **Per-agent per-day caps** in `SpendState(AGENT)`. Tracks turns, cost, success rate. Each agent's runner enforces its own ceiling and self-pauses if exceeded.
 - **Fleet-wide rate-limit block.** When any agent hits Anthropic's `error_rate_limit` or `error_budget`, it calls `set_global_block(hours=1, reason=...)`. Every other agent's `is_globally_blocked()` check at the top of `main()` exits silently for the next hour. Stops the stampede.
+
+```mermaid
+flowchart TB
+    fire["agent fires"]
+    gblock{"is_globally_blocked()?"}
+    skip["print [AGENT-GLOBAL-BLOCKED]<br/>exit 0, no Slack post"]
+    cap{"turns_today &gt;= cap?<br/>consecutive_failures &gt;= 8?"}
+    pause["Slack-post the reason<br/>launchctl bootout this agent"]
+    work["claim issue, run claude -p"]
+    rl{"claude returned<br/>error_rate_limit / error_budget?"}
+    setblock["set_global_block(hours=1)<br/>writes global-blocked-until.json"]
+    done["release issue, Slack-post outcome"]
+
+    fire --> gblock
+    gblock -- yes --> skip
+    gblock -- no --> cap
+    cap -- yes --> pause
+    cap -- no --> work
+    work --> rl
+    rl -- yes --> setblock
+    rl -- no --> done
+    setblock --> done
+```
+
+The wall hit by Lucius at 22:46 silences Bane's nightly run, Gordon's morning brief, and Huntress's next smoke until the block expires. Without it, the whole fleet would spend the next hour firing into the rate-limit wall and burning turns to learn the wall is still there.
 
 ### 5. Codename pattern
 

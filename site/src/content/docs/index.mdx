@@ -34,20 +34,20 @@ Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispat
 Hermes, gbrain, MCP servers, skills, canon, and dashboards are compatible
 optional integrations, not core requirements.
 
-```
-launchd plist (every N min)
-   │
-   ▼
-${ALFRED_HOME}/bin/<role>.py         one stable role runner per agent
-   │
-   ▼
-agent_runner module                  lock + preflight + spend + claude_invoke + gh + slack
-   │
-   ▼
-claude -p '<prompt>' --max-turns N   the LLM work, in a fresh subprocess
-   │
-   ▼
-slack_post('<result>', severity=...) report to the fleet's Slack channel
+```mermaid
+flowchart TB
+    launchd["launchd plist<br/><i>every N min</i>"]
+    role["$ALFRED_HOME/bin/&lt;role&gt;.py<br/><i>one stable role runner per agent</i>"]
+    runner["agent_runner module<br/><i>lock · preflight · spend · claude_invoke · gh · slack</i>"]
+    engine["claude -p '&lt;prompt&gt;' --max-turns N<br/><i>the LLM work, in a fresh subprocess</i>"]
+    gh["GitHub<br/><i>issues, PRs, state-machine labels</i>"]
+    slack["Slack channel<br/><i>the operator's read surface</i>"]
+    state[("$ALFRED_HOME/state/<br/><i>JSON on disk, no DB</i>")]
+
+    launchd --> role --> runner --> engine
+    runner -- "claim / release / PR" --> gh
+    runner -- "slack_post(severity=...)" --> slack
+    runner <--> state
 ```
 
 ## What you get
@@ -103,6 +103,18 @@ slack_post('<result>', severity=...) report to the fleet's Slack channel
   title="Read the architecture"
   description="Why launchd, why worktrees, why per-agent IAM. The design constraints that make Alfred opinionated."
   href="/concepts/architecture/"
+/>
+
+<LinkCard
+  title="How it works"
+  description="One agent firing traced end to end: launchd trigger, the gates before any spend, claim, isolate, invoke, branch on outcome."
+  href="/concepts/how-it-works/"
+/>
+
+<LinkCard
+  title="Meet the fleet"
+  description="The default engineering roster: Lucius, Drake, Bane, Ra's al Ghul, and the rest. What each codename does and how work flows between them."
+  href="/concepts/fleet/"
 />
 
 ## Status

@@ -109,8 +109,7 @@ Set to `1` and any agent runner will emit `[<NAME>-DOCTOR-OK]` and exit 0 withou
 |---|---|---|
 | `ALFRED_NONINTERACTIVE` | `install.sh` (use defaults for every prompt) | (interactive) |
 | `ALFRED_SKIP_NPM` | skip Claude Code install | (run) |
-| `ALFRED_SKIP_BREW` | skip brew install | (run) |
-| `ALFRED_FORCE_LINUX` | override the macOS check | (refuse) |
+| `ALFRED_SKIP_BREW` | skip brew install (macOS lane) | (run) |
 
 ## label-state CLI
 
