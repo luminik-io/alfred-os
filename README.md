@@ -15,6 +15,13 @@ A local engineering-fleet runtime: Claude Code-first agents scheduled by the hos
 
 Docs site: https://alfred.luminik.io
 
+<!-- TODO(operator): a hero GIF or annotated screenshot belongs here, directly
+     under the intro — the single biggest "what is this" signal for someone
+     landing cold. Good candidates: an asciinema recording of
+     `examples/bin/echo_summarise.py --dry-run` (safe to record, no secrets),
+     or a screenshot of `alfred status`. The "Quick start" section below has
+     the dry-run output as text; a recorded version is the visual upgrade. -->
+
 ## Why use it
 
 Alfred is for the operator who wants a small agent fleet working while they
@@ -22,31 +29,74 @@ sleep without turning their product into a hosted agent platform.
 
 - Label a GitHub issue, then let a narrow codename agent draft the plan, write
   the code, open the PR, review the PR, or fix review comments.
-- Run on your own always-on Mac and your own Claude Code subscription. No
-  hosted scheduler, no shared queue, no API-key-only model gateway.
+- Run on your own always-on Mac or Linux box and your own Claude Code
+  subscription. No hosted scheduler, no shared queue, no API-key-only model
+  gateway.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine.
 
-## Runtime and integrations
+## Quick start
 
-Alfred core does not install or run Hermes, gbrain, or any other external agent
-gateway. The launchd fleet works with local Python scripts, `gh`, `git`, and
-the configured LLM CLIs.
+Two ways in. The dry-run needs nothing installed and shows you the whole
+firing lifecycle; the full install wires up a real scheduled fleet.
 
-`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
-where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
-worktrees live. Alfred OS uses `ALFRED_HOME` only for its runtime path.
+### Try it in 2 minutes (dry-run)
 
-Hermes, gbrain, MCP servers, canon files, dashboards, and skill packs can be
-useful companion layers, but they are not bundled into Alfred and should not be
-required for a clean OSS install.
+Want to watch an agent fire before configuring anything? Dry-run mode runs the
+whole firing lifecycle — pick, claim, worktree, invoke, act, release, report —
+with every side-effecting boundary stubbed. No LLM call, no spend, no Slack
+post, no GitHub mutation, no real repo. It works with **zero host config**: no
+`gh` auth, no AWS, no Slack, no Claude.
 
-See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the bundling policy and
-[`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe.
+```sh
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
+PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
+```
 
-Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
+You get a narrated, step-numbered trace of the full lifecycle and an exit code
+of 0:
 
-## System Shape
+```text
+[dry-run]  1. (start) echo dry-run firing — no LLM, no spend, no gh/slack/git side effects
+[dry-run]  2. (preflight) preflight reported config gaps — continuing (dry-run)
+[dry-run]  3. (pick) would `gh issue list --label agent:summarise`; using a synthetic issue instead
+[dry-run]  4. (gh) would claim dry-run-org/dry-run-repo#0 for echo: add agent:in-flight, post claim comment
+[dry-run]  5. (llm) would invoke claude with prompt of 464 chars, model=(cli-default), max_turns=5
+[dry-run]  6. (spend) would increment real ledger (firings_today+=1, turns_today+=3); dry-run ledger only
+[dry-run]  7. (gh) would `gh issue comment #0` on dry-run-org/dry-run-repo: **Echo (auto-summary):** ...
+[dry-run]  8. (gh) would release dry-run-org/dry-run-repo#0 for echo: outcome=success, remove agent:in-flight, add agent:done
+[dry-run] 10. (spend) would increment real ledger (successes_today+=1); dry-run ledger only
+[dry-run] 11. (slack) would post to Slack (severity=info): Echo summarised dry-run-org/dry-run-repo#0: ...
+```
+
+The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the
+`ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
+for what is stubbed versus real.
+
+<!-- TODO(operator): a screenshot of a real #alfred Slack thread — severity
+     stripe, firing root + replies + close — is the other half of "what it
+     looks like running". Drop it here or in docs/. -->
+
+### Full install
+
+About 30 minutes from a fresh Mac or Debian/Ubuntu host.
+
+```sh
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
+bash install.sh
+exec $SHELL                       # pick up ~/.alfredrc
+gh auth login                     # GitHub
+claude                            # Claude Code first-run auth
+./bin/alfred-init.py              # choose agents, repos, codenames, Slack
+```
+
+`alfred-init.py` writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs doctor. For a framework-only install with no agents configured, use `bash deploy.sh && bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
+
+Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md). On Linux, see [`docs/LINUX.md`](docs/LINUX.md) for the `systemd --user` path.
+
+## System shape
 
 ```mermaid
 flowchart LR
@@ -66,7 +116,7 @@ flowchart LR
 One firing is one short-lived process. The OS scheduler owns cadence, the
 runner owns safety rails, and the LLM CLI only receives the bounded task.
 
-## Design Notes
+## Design notes
 
 Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work:
 
@@ -74,76 +124,45 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 - In-memory state can't survive an OS reboot. A long-lived host restarts every few weeks.
 - Chat-first interfaces put the operator on the critical path.
 
-Alfred's shape:
+Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, the `agent_runner` module wraps each firing in a lock, preflight, spend cap, and isolated worktree, and `claude -p` (or `codex exec`) does the bounded LLM work in a fresh subprocess. Spend is tracked per agent per day. When any agent hits Anthropic's rate limit, every other agent skips for an hour. The framework code never touches the LLM directly: the runner is plain Python, the model writes the code. The [System shape](#system-shape) diagram above traces one firing end to end; [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
 
-```
-launchd plist (every N min)
-   │
-   ▼
-${ALFRED_HOME}/bin/<role>.py        one file per agent role
-   │
-   ▼
-agent_runner module                 lock + preflight + spend + claude/codex invoke + gh + slack
-   │
-   ▼
-claude -p '<prompt>' --max-turns N    the LLM work, in a fresh subprocess
-                                      N is the caller's value or the
-                                      framework default ("effectively
-                                      unlimited"); the wall-clock
-                                      timeout is the real ceiling
-   │
-   ▼
-slack_post('<result>', severity=…)  report to the fleet's Slack channel
-```
+## Runtime and integrations
 
-Each firing is a fresh subprocess in its own worktree. Spend tracked per agent per day. When any agent hits Anthropic's rate limit, every other agent skips for an hour. The framework code never touches the LLM directly; the runner is plain Python, the model writes the code.
+Alfred core does not install or run Hermes, gbrain, or any other external agent
+gateway. The fleet works with local Python scripts, `gh`, `git`, and the
+configured LLM CLIs.
 
-## Quick start
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
+where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
+worktrees live. Alfred OS uses `ALFRED_HOME` only for its runtime path.
 
-About 30 minutes from a fresh Mac.
+Hermes, gbrain, MCP servers, canon files, dashboards, and skill packs can be
+useful companion layers, but they are not bundled into Alfred and should not be
+required for a clean OSS install.
 
-```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
-bash install.sh
-exec $SHELL                       # pick up ~/.alfredrc
-gh auth login                     # GitHub
-claude                            # Claude Code first-run auth
-./bin/alfred-init.py              # choose agents, repos, codenames, Slack
-```
+See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the bundling policy and
+[`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe.
 
-`alfred-init.py` writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs doctor. For a framework-only install with no agents configured, use `bash deploy.sh && bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
-
-Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md).
-
-### Try it in 2 minutes (dry-run)
-
-Want to watch an agent fire before configuring anything? Dry-run mode runs the whole firing lifecycle — pick, claim, worktree, invoke, act, release, report — with every side-effecting boundary stubbed. No LLM call, no spend, no Slack post, no GitHub mutation, no real repo. It works with **zero host config**: no `gh` auth, no AWS, no Slack, no Claude.
-
-```sh
-git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
-cd ~/code/alfred-os
-PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
-```
-
-You get a narrated, step-numbered trace of the full lifecycle and an exit code of 0. The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the `ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md) for what is stubbed versus real.
+Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
 ## What's in here
 
 | Path | What it is |
 |---|---|
-| [`lib/agent_runner.py`](lib/agent_runner.py) | Shared library. Preflight, lock, spend, claude_invoke, codex_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, runner gate helpers, dedup helpers (`find_open_authored_pr_for_issue`, `reuse_or_make_worktree`), slack severity routing. |
+| [`lib/agent_runner.py`](lib/agent_runner.py) | Shared library. Preflight, lock, spend, claude_invoke, codex_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, runner gate helpers, dedup helpers (`find_open_authored_pr_for_issue`, `reuse_or_make_worktree`), slack severity routing, dry-run seam. |
 | [`lib/slack_format.py`](lib/slack_format.py) | Block Kit + bot-token Slack helpers: per-firing `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Severity colour stripes. |
 | [`lib/batman.py`](lib/batman.py) | Bundle primitives for the multi-repo coordinator: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
-| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred enabled-agents`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`. |
+| [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
+| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Skeleton multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a plan to Slack. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
-| [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${ALFRED_HOME}`. If `launchd/agents.conf` exists, render plists and bootstrap `launchd`; otherwise do a framework-only deploy. |
-| [`install.sh`](install.sh) | Fresh-machine bootstrap: brew + npm + dirs + shell rc. Idempotent. |
+| [`systemd/`](systemd/) | `_template.service` + `_template.timer` + `render.sh` (TSV → `systemd --user` units) for the Linux path. |
+| [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${ALFRED_HOME}`. If `launchd/agents.conf` exists, render units and bootstrap the host scheduler; otherwise do a framework-only deploy. |
+| [`install.sh`](install.sh) | Fresh-machine bootstrap: Homebrew (macOS) or apt (Debian/Ubuntu) + npm + dirs + shell rc. Idempotent. |
 | [`examples/bin/hello.py`](examples/bin/hello.py) | Smallest possible codename agent: preflight + Slack post. |
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference: pick / claim / claude / act / release / report. |
 | [`examples/bin/label_state.py`](examples/bin/label_state.py) | Operator CLI for the issue claim state machine. |
@@ -153,7 +172,7 @@ You get a narrated, step-numbered trace of the full lifecycle and an exit code o
 
 ## Documentation
 
-- [Install](INSTALL.md): fresh-Mac walkthrough.
+- [Install](INSTALL.md): fresh-machine walkthrough.
 - [Bootstrap](BOOTSTRAP.md): operations guide (AWS IAM, Slack, troubleshooting).
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
 - [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
@@ -183,7 +202,7 @@ See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/coden
 
 ## What Alfred does not do
 
-- ❌ Multi-tenant. Single operator, one Mac, one config.
+- ❌ Multi-tenant. Single operator, one host, one config.
 - ❌ A web UI. Slack is the human surface.
 - ❌ Long-running orchestration loops. The OS scheduler is the orchestrator.
 - ❌ Hosted model gateways. Alfred shells out to local CLIs (`claude`, optional `codex`, optional Ollama); it does not run a multi-tenant inference gateway.
@@ -199,7 +218,7 @@ Maintained on weekends. Issues triaged on a best-effort basis. PRs that match th
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE). Copyright (c) 2026 DataRavel Inc.
 
 ## Why the repo slug is `alfred-os`
 
