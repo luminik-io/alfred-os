@@ -254,7 +254,7 @@ GH_REPO_TO_LOCAL: dict[str, str] = {}
 # The defaults below ship the labels Batman + the bundle model rely on so
 # every PR-create / issue-edit path "just works" on a fresh product repo:
 #
-#   batman-pr-open      , set by Batman when a bundle PR exists in the
+#   batman-pr-open:      set by Batman when a bundle PR exists in the
 #                          repo; cleared on merge.
 #   agent:large-feature , issue label that opts the issue into Batman's
 #                          bundle search (multi-repo feature work).

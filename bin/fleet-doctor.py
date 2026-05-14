@@ -8,19 +8,19 @@ fallback otherwise) summarising findings as green / yellow / red.
 Checks (each is a small pure function returning a ``Finding`` tuple so
 unit tests can target it in isolation):
 
-1. ``check_paused_repos``    , ``$ALFRED_HOME/state/paused-repos.json``;
+1. ``check_paused_repos``:    ``$ALFRED_HOME/state/paused-repos.json``;
                                 yellow if any repo is paused.
-2. ``check_global_block``    , fleet-wide rate-limit poison pill;
+2. ``check_global_block``:    fleet-wide rate-limit poison pill;
                                 red when active.
 3. ``check_stale_worktrees`` , ``$ALFRED_HOME/worktrees/`` entries
                                 with mtime >24h ago (heuristic for
                                 stuck firings).
-4. ``check_enabled_agents``  , ``$ALFRED_HOME/state/fleet/enabled.txt``
+4. ``check_enabled_agents``:  ``$ALFRED_HOME/state/fleet/enabled.txt``
                                 contents; surfaces the configured fleet
                                 so the operator sees the gating state.
-5. ``check_paused_agents``   , pause markers under
+5. ``check_paused_agents``:   pause markers under
                                 ``$ALFRED_HOME/state/_paused``.
-6. ``check_spend_state``     , today's spend and failure-streak files.
+6. ``check_spend_state``:     today's spend and failure-streak files.
 
 The checks use only local state already written by alfred-os. Port operators
 can extend with network checks (OAuth expiry, queue depth, deploy drift)

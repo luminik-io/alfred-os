@@ -22,10 +22,10 @@ demonstrates: gh CLI integration, claude_invoke result handling, the
 issue claim state machine, and severity-aware Slack reporting.
 
 Required env (preflight will fail loud if missing):
-    GH_ORG             , your fleet's GitHub org/user
-    ECHO_REPO_SLUG     , <org>/<repo> Echo operates against
-    ALFRED_HOME        , set by the launchd plist
-    WORKSPACE_ROOT     , set by the launchd plist
+    GH_ORG:             your fleet's GitHub org/user
+    ECHO_REPO_SLUG:     <org>/<repo> Echo operates against
+    ALFRED_HOME:        set by the launchd plist
+    WORKSPACE_ROOT:     set by the launchd plist
 
 Cron suggestion: every 30 minutes.
     my.fleet.echo    echo_summarise.py    interval:1800    no

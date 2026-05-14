@@ -8,21 +8,21 @@ provisioning, agent selection, codename + repo + schedule wiring,
 agents.conf generation, deploy.sh, doctor.sh, smoke test.
 
 Wizard order (each step is idempotent, re-running won't duplicate):
-    0. Preflight      , ALFRED_HOME, ~/.alfredrc, GH_ORG must exist.
-    1. Claude Code    , `claude --version` + non-interactive auth probe.
-    2. GitHub         , `gh auth status` + cache `gh repo list <GH_ORG>`.
-    3. Slack webhook  , guide the operator, validate, test-post, store
+    0. Preflight:      ALFRED_HOME, ~/.alfredrc, GH_ORG must exist.
+    1. Claude Code:    `claude --version` + non-interactive auth probe.
+    2. GitHub:         `gh auth status` + cache `gh repo list <GH_ORG>`.
+    3. Slack webhook:  guide the operator, validate, test-post, store
                          (env or AWS Secrets Manager).
     4. AWS (optional) , per-agent IAM profiles for Huntress / Gordon if
                          the operator wants them.
-    5. Pick agents    , multi-select discovered from bin/*.py.
-    6. Codenames      , per-role codename (default = canonical Batman name).
-    7. Repos          , per-agent repo selection out of `gh repo list`.
-    8. Schedule       , sensible defaults; press 'a' to customize.
+    5. Pick agents:    multi-select discovered from bin/*.py.
+    6. Codenames:      per-role codename (default = canonical Batman name).
+    7. Repos:          per-agent repo selection out of `gh repo list`.
+    8. Schedule:       sensible defaults; press 'a' to customize.
     9. Generate config, write agents.conf + per-agent env to ~/.alfredrc.
-   10. Deploy         , `bash deploy.sh`.
-   11. Doctor         , `bash bin/doctor.sh`.
-   12. Smoke test     , final Slack post + summary.
+   10. Deploy:         `bash deploy.sh`.
+   11. Doctor:         `bash bin/doctor.sh`.
+   12. Smoke test:     final Slack post + summary.
 
 Override paths:
     ALFRED_NONINTERACTIVE=1   accept defaults everywhere
@@ -164,9 +164,7 @@ ALFREDRC_BANNER = "# alfred-init, generated below this line. Safe to re-run."
 # "alfred-init" and "generated" (older releases used an em-dash, current
 # uses a comma). upsert_alfredrc relies on this so an upgrade rewrites the
 # existing managed block in place instead of appending a duplicate.
-ALFREDRC_BANNER_RE = re.compile(
-    r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
-)
+ALFREDRC_BANNER_RE = re.compile(r"# alfred-init.{1,4}generated below this line\. Safe to re-run\.")
 
 
 # ---------------------------------------------------------------------------
@@ -894,10 +892,10 @@ def step_12_smoke(state: WizardState) -> None:
             print(f"    {codename:<22s} ({desc.split(' (')[0]:<32s}) → {sched}")
     print()
     print("  Operator commands:")
-    print("    alfred agents         , configured agents + runner-gate state")
+    print("    alfred agents:         configured agents + runner-gate state")
     print("    alfred enable <agent> , add an opt-in codename to the runner gate")
     print("    alfred disable <agent>, remove a codename from the runner gate")
-    print("    bash bin/doctor.sh    , preflight configured Python agents")
+    print("    bash bin/doctor.sh:    preflight configured Python agents")
     print()
     print("  Read docs/AGENTS.md for the full codename topology.")
     print("  Read INSTALL.md if anything went sideways.")
