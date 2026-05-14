@@ -8,6 +8,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`../INSTALL.md`](../INSTALL.md): from-zero local install.
 - [`../BOOTSTRAP.md`](../BOOTSTRAP.md): full operations setup for a first fleet.
 - [`TUTORIAL.md`](TUTORIAL.md): build the Echo example agent end-to-end.
+- [`DRY_RUN.md`](DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
 
 ## Operating Model
 

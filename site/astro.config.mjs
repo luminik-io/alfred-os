@@ -85,6 +85,7 @@ export default defineConfig({
             { label: "What is Alfred?", slug: "" },
             { label: "Install", slug: "getting-started/install" },
             { label: "Your first agent", slug: "getting-started/tutorial" },
+            { label: "Dry-run mode", slug: "getting-started/dry-run" },
           ],
         },
         {
