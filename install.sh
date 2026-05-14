@@ -381,7 +381,11 @@ APPEND_BLOCK='# alfred-os, added by install.sh
 if [[ ! -f "$SHELL_RC" ]]; then
   printf '%s\n' "$APPEND_BLOCK" > "$SHELL_RC"
   ok "created $SHELL_RC with alfred-os source line"
-elif grep -qF "alfred-os, added by install.sh" "$SHELL_RC"; then
+elif grep -qE 'alfred-os.{1,4}added by install\.sh' "$SHELL_RC"; then
+  # Pattern, not a literal: older releases used an em-dash between
+  # "alfred-os" and "added", current uses a comma. Recognising both keeps
+  # this check idempotent across upgrades, so we never append a second
+  # source-block to a shell rc that already has one.
   ok "$SHELL_RC already sources ~/.alfredrc"
 else
   printf '\n%s\n' "$APPEND_BLOCK" >> "$SHELL_RC"

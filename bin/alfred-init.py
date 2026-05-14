@@ -160,6 +160,13 @@ CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SLACK_WEBHOOK_RE = re.compile(r"^https://hooks\.slack\.com/services/")
 
 ALFREDRC_BANNER = "# alfred-init, generated below this line. Safe to re-run."
+# Matches the banner whatever separator a past release used between
+# "alfred-init" and "generated" (older releases used an em-dash, current
+# uses a comma). upsert_alfredrc relies on this so an upgrade rewrites the
+# existing managed block in place instead of appending a duplicate.
+ALFREDRC_BANNER_RE = re.compile(
+    r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -318,10 +325,11 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
     if not kvs:
         return
     existing = path.read_text() if path.exists() else ""
-    # Strip any prior alfred-init block so we re-emit fresh values.
-    if ALFREDRC_BANNER in existing:
-        head, _, _ = existing.partition(ALFREDRC_BANNER)
-        existing = head.rstrip() + "\n"
+    # Strip any prior alfred-init block (current or older-release banner) so
+    # we re-emit fresh values instead of accumulating a duplicate section.
+    prior = ALFREDRC_BANNER_RE.search(existing)
+    if prior:
+        existing = existing[: prior.start()].rstrip() + "\n"
     block = [ALFREDRC_BANNER]
     for k, v in kvs.items():
         block.append(f"{k}={v}")
