@@ -107,28 +107,69 @@ const MERMAID_ZOOM_SCRIPT = `
     stage.appendChild(clone);
     const hint = document.createElement("div");
     hint.className = "mermaid-zoom-hint";
-    hint.textContent = "scroll to zoom \\u00b7 drag to pan \\u00b7 esc to close";
+    hint.textContent = "scroll or pinch to zoom \\u00b7 drag to pan \\u00b7 esc to close";
     overlay.appendChild(stage);
     overlay.appendChild(hint);
     document.body.appendChild(overlay);
     let scale = 1, tx = 0, ty = 0, dragging = false, sx = 0, sy = 0;
+    const clamp = (s) => Math.min(8, Math.max(0.5, s));
     const apply = () => {
       stage.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
     };
     overlay.addEventListener("wheel", (e) => {
       e.preventDefault();
-      scale = Math.min(8, Math.max(0.5, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      scale = clamp(scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
       apply();
     }, { passive: false });
+    // Pointer events cover both mouse drag-pan and touch. Touch pinch-zoom
+    // needs two tracked pointers: with one down we pan, with two down we
+    // scale by the ratio of their current to starting separation. CSS sets
+    // touch-action: none on the stage, so the browser hands us every touch
+    // instead of running its own pan/zoom.
+    const pointers = new Map();
+    let pinchStartDist = 0, pinchStartScale = 1;
+    const dist2 = () => {
+      const p = [...pointers.values()];
+      return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+    };
     stage.addEventListener("pointerdown", (e) => {
-      dragging = true; sx = e.clientX - tx; sy = e.clientY - ty;
-      stage.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // setPointerCapture can throw if the pointer is no longer active;
+      // it is a nice-to-have for drag tracking, not worth aborting on.
+      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+      if (pointers.size === 1) {
+        dragging = true; sx = e.clientX - tx; sy = e.clientY - ty;
+      } else if (pointers.size === 2) {
+        dragging = false;
+        pinchStartDist = dist2();
+        pinchStartScale = scale;
+      }
     });
     stage.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      tx = e.clientX - sx; ty = e.clientY - sy; apply();
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size >= 2) {
+        if (pinchStartDist > 0) {
+          scale = clamp(pinchStartScale * (dist2() / pinchStartDist));
+          apply();
+        }
+      } else if (dragging) {
+        tx = e.clientX - sx; ty = e.clientY - sy; apply();
+      }
     });
-    stage.addEventListener("pointerup", () => { dragging = false; });
+    const release = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchStartDist = 0;
+      if (pointers.size === 1) {
+        // One finger left after a pinch: resume panning from it.
+        const p = [...pointers.values()][0];
+        dragging = true; sx = p.x - tx; sy = p.y - ty;
+      } else if (pointers.size === 0) {
+        dragging = false;
+      }
+    };
+    stage.addEventListener("pointerup", release);
+    stage.addEventListener("pointercancel", release);
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
     document.addEventListener("keydown", onKey);
   }
