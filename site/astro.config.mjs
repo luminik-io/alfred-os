@@ -118,7 +118,6 @@ export default defineConfig({
             { label: "Integrations", slug: "guides/integrations" },
             { label: "Hermes", slug: "guides/hermes" },
             { label: "Linux", slug: "guides/linux" },
-            { label: "Publishing", slug: "guides/publishing" },
           ],
         },
         {
