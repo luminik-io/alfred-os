@@ -107,7 +107,9 @@ fi
 # set. Units live in ~/.config/systemd/user; the .timer triggers the .service.
 deploy_linux_systemd() {
   local conf="$1"
-  local systemd_user_dir="$HOME/.config/systemd/user"
+  # Honor ALFRED_SYSTEMD_USER_DIR so deploy installs to the same directory
+  # lib/scheduler.py resolves units from; the default matches the scheduler's.
+  local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local out_dir="$REPO_DIR/systemd/_generated"
   local pause_dir="$ALFRED_HOME/state/_paused"
   mkdir -p "$systemd_user_dir"
@@ -139,6 +141,16 @@ deploy_linux_systemd() {
       echo "  - $label removed (not present in current agents.conf)"
     fi
   done
+
+  # An agents.conf with zero active rows (every line commented out) renders
+  # no units. The reaper above still ran, so anything previously installed is
+  # cleaned up; there is just nothing to install. Skip the copy/enable rather
+  # than letting an unmatched glob reach `cp`.
+  if [ -z "$keep_list" ]; then
+    echo "[alfred-os/deploy] no agents in $conf; nothing to install"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    return 0
+  fi
 
   echo "[alfred-os/deploy] installing systemd units into $systemd_user_dir"
   cp "$out_dir"/*.service "$out_dir"/*.timer "$systemd_user_dir/"
