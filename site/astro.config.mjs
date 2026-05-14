@@ -19,6 +19,15 @@ export default defineConfig({
     mermaid({
       theme: "default",
       autoTheme: true,
+      // astro-mermaid v2 nests raw mermaid options under mermaidConfig.
+      mermaidConfig: {
+        themeVariables: {
+          primaryColor: "#141d33",
+          lineColor: "#4a78ff",
+          textColor: "#dfe5f2",
+          primaryBorderColor: "#2a3450",
+        },
+      },
     }),
     starlight({
       title: "Alfred",
@@ -47,7 +56,7 @@ export default defineConfig({
       head: [
         {
           tag: "meta",
-          attrs: { name: "theme-color", content: "#0d1117" },
+          attrs: { name: "theme-color", content: "#0d1322" },
         },
         {
           tag: "meta",

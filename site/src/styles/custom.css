@@ -1,46 +1,378 @@
-/* Alfred site overrides on top of Starlight defaults. */
+/* Alfred site overrides on top of Starlight defaults.
+   Design system: logo-derived navy + brightened brand accent, restrained
+   glassmorphism on floating chrome only, flat elevated surfaces everywhere
+   else. Legibility first — this is a docs site. */
 
+/* ------------------------------------------------------------------ */
+/* Color tokens — dark mode (default)                                  */
+/* ------------------------------------------------------------------ */
 :root {
-  --sl-color-accent-low: #1e2841;
-  --sl-color-accent: #4a72e0;
-  --sl-color-accent-high: #c5d3ff;
+  /* Backgrounds */
+  --sl-color-bg: #0d1322;
+  --sl-color-bg-nav: #0a0f1c;
+  --sl-color-bg-sidebar: #0a0f1c;
+  --sl-color-bg-inline-code: #161f38;
+  --alfred-bg-elevated: #141d33;
+  --alfred-bg-code: #0b1120;
+
+  /* Text */
+  --sl-color-white: #f4f7ff;
+  --sl-color-gray-1: #dfe5f2;
+  --sl-color-gray-2: #b9c2d8;
+  --sl-color-gray-3: #8893ad;
+  --sl-color-gray-4: #6c7795;
+  --sl-color-gray-5: #2a3450;
+  --sl-color-gray-6: #1a2238;
+
+  /* Accent */
+  --sl-color-accent-low: #1a2c5c;
+  --sl-color-accent: #4a78ff;
+  --sl-color-accent-high: #b9ccff;
+  --alfred-accent-glow: rgba(74, 120, 255, 0.35);
+
+  /* Borders / glass */
+  --alfred-border: rgba(120, 150, 220, 0.14);
+  --alfred-border-strong: rgba(120, 150, 220, 0.24);
+
+  /* Severity */
+  --alfred-info: #4a78ff;
+  --alfred-warn: #f5a524;
+  --alfred-alert: #ff5d6c;
+  --alfred-ok: #2dd4a7;
 
   --sl-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --sl-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* ------------------------------------------------------------------ */
+/* Color tokens — light mode                                           */
+/* ------------------------------------------------------------------ */
 :root[data-theme="light"] {
-  --sl-color-accent-low: #d6e0ff;
+  --sl-color-bg: #f7f9fc;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #ffffff;
+  --sl-color-bg-inline-code: #e9eef8;
+  --alfred-bg-elevated: #ffffff;
+  --alfred-bg-code: #f1f4fb;
+
+  --sl-color-white: #0d1322;
+  --sl-color-gray-1: #1f2a44;
+  --sl-color-gray-2: #44506b;
+  --sl-color-gray-3: #66718c;
+  --sl-color-gray-5: #d4dbe9;
+  --sl-color-gray-6: #e6ebf4;
+
+  /* #2855c8 — darkened for AA contrast on white. Do NOT use #4a78ff here. */
+  --sl-color-accent-low: #d8e2ff;
   --sl-color-accent: #2855c8;
-  --sl-color-accent-high: #1e2841;
+  --sl-color-accent-high: #14245c;
+  --alfred-accent-glow: rgba(40, 85, 200, 0.18);
+
+  --alfred-border: rgba(20, 30, 60, 0.10);
+  --alfred-border-strong: rgba(20, 30, 60, 0.18);
+
+  --alfred-info: #2855c8;
+  --alfred-warn: #b7791f;
+  --alfred-alert: #d92d3c;
+  --alfred-ok: #0f9d77;
 }
 
-/* Make code blocks slightly tighter and more readable. */
+/* ------------------------------------------------------------------ */
+/* Glassmorphism — RESTRAINED. Floating chrome only.                   */
+/* ------------------------------------------------------------------ */
+.alfred-glass {
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  border: 1px solid var(--alfred-border);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Solid fallback where backdrop-filter is unsupported. */
+@supports not (backdrop-filter: blur(1px)) {
+  .alfred-glass {
+    background: var(--sl-color-bg-nav);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Site header — glass at ~88% opacity                                 */
+/* ------------------------------------------------------------------ */
+.header {
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 88%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  border-bottom: 1px solid var(--alfred-border);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .header {
+    background: var(--sl-color-bg-nav);
+  }
+}
+
+.header .site-title img,
+.header a[href] img {
+  filter: drop-shadow(0 0 12px var(--alfred-accent-glow));
+}
+
+/* ------------------------------------------------------------------ */
+/* Left nav sidebar — flat, solid, hairline border                     */
+/* ------------------------------------------------------------------ */
+.sidebar {
+  background: var(--sl-color-bg-sidebar);
+  border-inline-end: 1px solid var(--alfred-border);
+}
+
+/* Bottom clearance so last items clear the fixed copyright bar. */
+.sidebar-content,
+nav.sidebar .sidebar-content {
+  padding-bottom: 2.5rem;
+}
+
+/* Group labels — uppercase, small, muted. */
+.sidebar-content .top-level > li > details > summary > .group-label > span,
+.sidebar-content summary .group-label span,
+.sidebar ul.top-level > li > details > summary span.large {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--sl-color-gray-3);
+  font-weight: 600;
+}
+
+/* Active sidebar item — 2px accent left-bar + accent-low background. */
+.sidebar a[aria-current="page"],
+.sidebar a[aria-current="page"]:hover {
+  background: var(--sl-color-accent-low);
+  border-inline-start: 2px solid var(--sl-color-accent);
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+
+.sidebar a {
+  transition: color 150ms ease;
+}
+
+/* ------------------------------------------------------------------ */
+/* Right ToC — flat elevated card                                      */
+/* ------------------------------------------------------------------ */
+.right-sidebar {
+  padding-bottom: 2.5rem;
+}
+
+.right-sidebar starlight-toc nav,
+mobile-starlight-toc nav {
+  background: var(--alfred-bg-elevated);
+  border: 1px solid var(--alfred-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.right-sidebar a {
+  transition: color 150ms ease;
+}
+
+/* ------------------------------------------------------------------ */
+/* Mobile nav drawer — glass                                           */
+/* ------------------------------------------------------------------ */
+@media (max-width: 50rem) {
+  #starlight__sidebar,
+  .sidebar-pane {
+    background: color-mix(in srgb, var(--sl-color-bg-nav) 78%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+    backdrop-filter: blur(14px) saturate(1.15);
+  }
+
+  @supports not (backdrop-filter: blur(1px)) {
+    #starlight__sidebar,
+    .sidebar-pane {
+      background: var(--sl-color-bg-nav);
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Typography                                                          */
+/* ------------------------------------------------------------------ */
+.sl-markdown-content {
+  line-height: 1.7;
+}
+
+.sl-markdown-content h1,
+.content-panel h1 {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sl-markdown-content h2 {
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin-top: 2.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--alfred-border);
+}
+
+.sl-markdown-content h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.sl-markdown-content a {
+  transition: color 150ms ease;
+}
+
+/* ------------------------------------------------------------------ */
+/* Code blocks — flat elevated, no blur                                */
+/* ------------------------------------------------------------------ */
 .expressive-code {
   font-size: 0.92rem;
 }
 
-/* Hero slot lift for the landing page. */
+.expressive-code .frame pre {
+  background: var(--alfred-bg-code);
+  border: 1px solid var(--alfred-border);
+  border-radius: 0.5rem;
+}
+
+.expressive-code .frame.has-title:not(.is-terminal) .header,
+.expressive-code .frame.is-terminal .header {
+  border-color: var(--alfred-border);
+}
+
+/* ------------------------------------------------------------------ */
+/* Cards — one premium flourish                                        */
+/* ------------------------------------------------------------------ */
+.sl-card,
+.card {
+  position: relative;
+  background: var(--alfred-bg-elevated);
+  border: 1px solid var(--alfred-border);
+  overflow: hidden;
+}
+
+.sl-card::before,
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 45%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sl-card,
+  .card {
+    transition:
+      transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      border-color 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .sl-card:hover,
+  .card:hover {
+    transform: translateY(-2px);
+    border-top-color: var(--sl-color-accent);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Mermaid frames — flat elevated panel. The specificity here intentionally
+   beats astro-mermaid's injected `[data-theme=...] pre.mermaid[data-processed]`
+   rule so our elevated surface wins. */
+/* ------------------------------------------------------------------ */
+.sl-markdown-content pre.mermaid {
+  border: 1px solid var(--alfred-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+/* Beat astro-mermaid's runtime-injected
+   `[data-theme=...] pre.mermaid[data-processed]` background rule. */
+:root[data-theme="dark"] .sl-markdown-content pre.mermaid[data-processed],
+:root[data-theme="light"] .sl-markdown-content pre.mermaid[data-processed] {
+  background-color: var(--alfred-bg-elevated);
+}
+
+/* ------------------------------------------------------------------ */
+/* Splash hero — single static radial glow                             */
+/* ------------------------------------------------------------------ */
 .hero {
   padding-top: 1rem;
 }
 
-.hero h1 {
-  letter-spacing: -0.02em;
+.hero > img,
+.hero > .hero-html {
+  position: relative;
 }
 
-/* Subtle visual divider for the codename pattern callouts. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    circle at 50% 35%,
+    var(--alfred-accent-glow),
+    transparent 60%
+  );
+}
+
+.hero {
+  position: relative;
+}
+
+.hero h1 {
+  letter-spacing: -0.02em;
+  color: var(--sl-color-white);
+}
+
+.hero .actions a.primary {
+  box-shadow: 0 10px 24px -10px var(--alfred-accent-glow);
+}
+
+/* ------------------------------------------------------------------ */
+/* Starlight Aside callouts — severity token mapping                   */
+/* ------------------------------------------------------------------ */
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--alfred-info);
+  --sl-color-asides-border: var(--alfred-info);
+  background-color: color-mix(in srgb, var(--alfred-info) 8%, transparent);
+}
+
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: var(--alfred-warn);
+  --sl-color-asides-border: var(--alfred-warn);
+  background-color: color-mix(in srgb, var(--alfred-warn) 8%, transparent);
+}
+
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: var(--alfred-alert);
+  --sl-color-asides-border: var(--alfred-alert);
+  background-color: color-mix(in srgb, var(--alfred-alert) 8%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* Codename pattern callout                                            */
+/* ------------------------------------------------------------------ */
 .codename-callout {
   border-left: 3px solid var(--sl-color-accent);
   padding: 0.6rem 1rem;
-  background: var(--sl-color-bg-nav);
+  background: var(--alfred-bg-elevated);
   border-radius: 0 4px 4px 0;
   margin: 1rem 0;
 }
 
-/* Slim copyright bar pinned to the bottom of the viewport on every page
-   (markup in src/components/Footer.astro). Translucent blurred background so
-   content stays legible as it scrolls underneath. */
+/* ------------------------------------------------------------------ */
+/* Fixed copyright bar — glass treatment                               */
+/* ------------------------------------------------------------------ */
 .alfred-copyright-bar {
   position: fixed;
   bottom: 0;
@@ -51,14 +383,25 @@
   text-align: center;
   font-size: var(--sl-text-xs);
   color: var(--sl-color-gray-2);
-  background: color-mix(in srgb, var(--sl-color-bg) 82%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-top: 1px solid color-mix(in srgb, var(--sl-color-gray-5) 60%, transparent);
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 78%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  border-top: 1px solid var(--alfred-border);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.3);
 }
+
+@supports not (backdrop-filter: blur(1px)) {
+  .alfred-copyright-bar {
+    background: var(--sl-color-bg-nav);
+  }
+}
+
 .alfred-copyright-bar p {
   margin: 0;
 }
+
 .alfred-copyright-bar a {
   color: var(--sl-color-text-accent);
 }
