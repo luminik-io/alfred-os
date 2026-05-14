@@ -17,10 +17,15 @@ const SECTIONS: { prefix: string; label: string }[] = [
 ];
 
 export const GET: APIRoute = async ({ site }) => {
-  const base = (site ?? new URL("https://alfred.luminik.io")).href.replace(/\/$/, "");
+  const origin = site ?? new URL("https://alfred.luminik.io");
   const docs = await getCollection("docs");
 
-  const url = (id: string) => `${base}/${id}`.replace(/\/$/, "") + (id ? "/" : "/");
+  // Page URLs must include the configured `base` path (ALFRED_OS_SITE_BASE),
+  // not just the origin — a fork hosting under e.g. /docs/ needs every link
+  // prefixed so crawlers and LLMs following llms.txt hit the right paths.
+  // import.meta.env.BASE_URL is the build-time `base`, always "/"-bounded.
+  const url = (id: string) =>
+    new URL(`${import.meta.env.BASE_URL}${id}/`.replace(/\/{2,}/g, "/"), origin).href;
   const root = docs.find((d) => d.id === "");
   const summary =
     root?.data.description ??
