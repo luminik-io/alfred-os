@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``batman`` — multi-repo feature coordinator.
+"""``batman``, multi-repo feature coordinator.
 
 Picks the oldest open ``agent:large-feature`` issue across the
 configured product repos. When the issue carries an
@@ -26,7 +26,7 @@ Wiring:
   - Honours the fleet enable file: if ``batman`` is not enabled there,
     the runner exits early with a one-line stderr note.
 
-Skeleton implementation of the Batman bundle workflow. Skeleton-only — the
+Skeleton implementation of the Batman bundle workflow. Skeleton-only, the
 operator can extend the per-repo execution chain to taste.
 """
 
@@ -76,7 +76,7 @@ BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
 def _scan_repos() -> list[str]:
     """Comma-separated list of local repo names Batman searches.
 
-    Empty when unset — a fresh install opts out of cross-repo
+    Empty when unset, a fresh install opts out of cross-repo
     discovery until the operator wires it explicitly. This keeps the
     skeleton runner from blasting ``gh search`` against nothing
     sensible.
@@ -170,7 +170,7 @@ def _bundle_for_issue(issue: dict) -> Bundle:
 
     If the issue carries an ``agent:bundle:<slug>`` label, every
     sibling sharing that label is pulled in. Otherwise it's a bundle
-    of one — the issue itself.
+    of one, the issue itself.
     """
     label = _bundle_label(issue)
     if not label:

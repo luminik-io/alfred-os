@@ -374,7 +374,7 @@ def main() -> int:
 
     if "[DRAKE-SCOPE-REJECTED]" in text:
         # Drake encountered a spec section too vague to plan against.
-        # Treat as a soft signal — not a failure, since Drake correctly
+        # Treat as a soft signal, not a failure, since Drake correctly
         # refused to file a low-quality issue. Surface to Slack so the
         # operator sees which spec area needs sharpening.
         spend.set(consecutive_failures=0)

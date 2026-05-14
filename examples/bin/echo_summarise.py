@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Echo — issue summariser. Reference codename agent showing the full
+"""Echo, issue summariser. Reference codename agent showing the full
 alfred-os lifecycle: pick → claim → invoke claude → act → release →
 report.
 
@@ -10,7 +10,7 @@ launchd/agents.conf.
 What it does:
     1. Picks the oldest open issue carrying the `agent:summarise` label
        in the repo named by ECHO_REPO_SLUG.
-    2. Claims it via the state machine (claim_issue) — refuses if
+    2. Claims it via the state machine (claim_issue), refuses if
        another agent is already working it.
     3. Asks `claude -p` for a one-line summary.
     4. Posts the summary as an issue comment.
@@ -22,10 +22,10 @@ demonstrates: gh CLI integration, claude_invoke result handling, the
 issue claim state machine, and severity-aware Slack reporting.
 
 Required env (preflight will fail loud if missing):
-    GH_ORG              — your fleet's GitHub org/user
-    ECHO_REPO_SLUG      — <org>/<repo> Echo operates against
-    ALFRED_HOME         — set by the launchd plist
-    WORKSPACE_ROOT      — set by the launchd plist
+    GH_ORG:             your fleet's GitHub org/user
+    ECHO_REPO_SLUG:     <org>/<repo> Echo operates against
+    ALFRED_HOME:        set by the launchd plist
+    WORKSPACE_ROOT:     set by the launchd plist
 
 Cron suggestion: every 30 minutes.
     my.fleet.echo    echo_summarise.py    interval:1800    no
@@ -90,9 +90,8 @@ def pick_issue() -> dict | None:
     """Find the oldest open issue with the agent:summarise label.
 
     In dry-run mode there is no gh auth and no real repo, so we hand back a
-    clearly-synthetic issue. That keeps the rest of the firing lifecycle —
-    claim, invoke, comment, release — exercising real code paths against
-    stubbed side effects.
+    clearly-synthetic issue. That keeps the rest of the firing lifecycle (claim, invoke, comment,
+    release) exercising real code paths against stubbed side effects.
     """
     if is_dry_run():
         dry_run_log(
@@ -103,7 +102,7 @@ def pick_issue() -> dict | None:
             "number": 0,
             "title": "[dry-run] Example issue: flaky retry in worker pool",
             "body": (
-                "[dry-run] synthetic issue body — the worker pool retries a "
+                "[dry-run] synthetic issue body, the worker pool retries a "
                 "failed job without backoff, hammering the queue. See "
                 "worker/pool.py around the retry loop."
             ),
@@ -168,7 +167,7 @@ def main() -> int:
 
     if is_dry_run():
         dry_run_log(
-            "start", f"{AGENT} dry-run firing — no LLM, no spend, no gh/slack/git side effects"
+            "start", f"{AGENT} dry-run firing, no LLM, no spend, no gh/slack/git side effects"
         )
 
     try:
@@ -178,7 +177,7 @@ def main() -> int:
         # narrate it and keep going so the full lifecycle still flows. A real
         # firing still exits clean on a config gap.
         if is_dry_run():
-            dry_run_log("preflight", "preflight reported config gaps — continuing (dry-run)")
+            dry_run_log("preflight", "preflight reported config gaps, continuing (dry-run)")
         else:
             return 0
     if doctor_mode():
@@ -212,7 +211,7 @@ def main() -> int:
     result = claude_invoke(
         prompt,
         workdir=os.path.expanduser("~"),
-        allowed_tools="",  # no tools — pure text
+        allowed_tools="",  # no tools, pure text
         max_turns=5,
         timeout=120,
     )

@@ -217,7 +217,7 @@ def test_slack_post_dry_run_logs_the_line(monkeypatch, capsys):
 
 
 def test_gh_mutators_dry_run_make_no_subprocess(monkeypatch):
-    """gh helpers stub out cleanly even with NOTHING configured — no GH_ORG,
+    """gh helpers stub out cleanly even with NOTHING configured, no GH_ORG,
     no gh auth. ``_full_repo`` falls back to a clearly-fake org placeholder."""
     import agent_runner as ar
 
@@ -284,7 +284,7 @@ def test_make_worktree_dry_run_uses_throwaway_repo(monkeypatch):
     monkeypatch.setenv("ALFRED_DRY_RUN", "1")
     wt, branch = ar.make_worktree("backend", "lucius", "275")
 
-    # A real, self-contained git repo in a temp dir — never the operator's
+    # A real, self-contained git repo in a temp dir, never the operator's
     # configured WORKSPACE checkout, never WORKTREE_ROOT.
     assert wt.exists()
     assert str(ar.WORKSPACE) not in str(wt)

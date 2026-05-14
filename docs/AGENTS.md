@@ -78,7 +78,7 @@ The default install ships these agents. Schedules are sensible defaults; overrid
 Two reasons:
 
 1. **Operational legibility.** A coherent fictional cast makes scanning the Slack channel faster than `agent-1 / agent-2 / agent-3` or `feature-dev / test-coverage / review`. Once you've worked with Lucius for a week, "Lucius failed on #303" is instantly readable.
-2. **Design forcing function.** "What does *Bane* do?" is a sharper question than "what does the test agent do?". Naming the role after a *character* — who has a personality, a domain, a relationship to other characters — forces narrow scope per codename.
+2. **Design forcing function.** "What does *Bane* do?" is a sharper question than "what does the test agent do?". Naming the role after a *character* (who has a personality, a domain, a relationship to other characters) forces narrow scope per codename.
 
 ### Picking your own cast
 
@@ -86,7 +86,7 @@ If you want to rename, pick something coherent. Some examples:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Hermes (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
-- **Tolkien**: Aragorn, Legolas, Gimli, Gandalf — careful about lore consistency.
+- **Tolkien**: Aragorn, Legolas, Gimli, Gandalf. Be careful about lore consistency.
 - **Your favourite anime, novel, podcast, board game**.
 
 Constraints:
@@ -96,7 +96,7 @@ Constraints:
 - Pronounceable. You'll say "lucius shipped #303" out loud at some point.
 - Consistent across the fleet. Don't mix Batman + Star Wars; pick one universe.
 
-The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-morning-brief`, `fleet-recap`) are infrastructure and ship with plain-English names. You can rename these too if you want every agent in your cast — but most operators leave them alone.
+The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-morning-brief`, `fleet-recap`) are infrastructure and ship with plain-English names. You can rename these too if you want every agent in your cast, but most operators leave them alone.
 
 ## How the codename gets wired
 
@@ -152,11 +152,11 @@ The existing primitives in `lib/agent_runner.py` cover the common patterns: lock
 
 The default install is engineering-only. Future categories tracked in [`ROADMAP.md`](../ROADMAP.md):
 
-- **Sales / SDR agents** — prospect identification, LinkedIn / event-page scraping, outreach drafts. Human-in-the-loop on send.
-- **Content agents** — blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
-- **Personal-assistant agents** — inbox triage, calendar, daily digest. Generates Gmail drafts; never sends.
-- **Finance-ops agents** — invoice generation, bank reconciliation, subscription audit. Generates drafts; never moves money.
-- **Product-ops / SRE agents** — uptime monitoring, release notes, customer-health signals.
+- **Sales / SDR agents**: prospect identification, LinkedIn / event-page scraping, outreach drafts. Human-in-the-loop on send.
+- **Content agents**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
+- **Personal-assistant agents**: inbox triage, calendar, daily digest. Generates Gmail drafts; never sends.
+- **Finance-ops agents**: invoice generation, bank reconciliation, subscription audit. Generates drafts; never moves money.
+- **Product-ops / SRE agents**: uptime monitoring, release notes, customer-health signals.
 
 These categories require their own integration surface (Apollo, Reddit, Gmail, Wise, Sentry, etc.) and are out of scope for the v0.2 engineering release. PRs that propose individual agents in these categories are welcome; see [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 

@@ -228,7 +228,7 @@ def _loaded_label_set() -> set[str]:
     label is the timer unit name with the ``.timer`` suffix stripped.
 
     Returns an empty set on hosts where the scheduler binary is unavailable
-    rather than crashing — the table then renders every row as "not loaded".
+    rather than crashing, the table then renders every row as "not loaded".
     """
     if IS_LINUX:
         try:

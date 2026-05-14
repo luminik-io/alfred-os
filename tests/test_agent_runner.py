@@ -253,7 +253,7 @@ def test_load_prompt_substitutes_env_and_extras(monkeypatch, tmp_path):
 
 
 def test_load_prompt_leaves_unset_vars_as_literal(tmp_path):
-    """A missing var should NOT silently substitute empty string — that's
+    """A missing var should NOT silently substitute empty string, that's
     a foot-gun for `gh repo view ${REPO_SLUG}` calls. Use preflight to
     surface missing config explicitly."""
     import agent_runner as ar

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""alfred-init — interactive fleet configuration wizard.
+"""alfred-init, interactive fleet configuration wizard.
 
 Run after `git clone` + `bash install.sh`. install.sh handles dependency
 install (brew, gh, claude, aws, python, node, runtime dirs, ~/.alfredrc
@@ -7,22 +7,22 @@ template). alfred-init handles configuration: auth checks, Slack webhook
 provisioning, agent selection, codename + repo + schedule wiring,
 agents.conf generation, deploy.sh, doctor.sh, smoke test.
 
-Wizard order (each step is idempotent — re-running won't duplicate):
-    0. Preflight       — ALFRED_HOME, ~/.alfredrc, GH_ORG must exist.
-    1. Claude Code     — `claude --version` + non-interactive auth probe.
-    2. GitHub          — `gh auth status` + cache `gh repo list <GH_ORG>`.
-    3. Slack webhook   — guide the operator, validate, test-post, store
+Wizard order (each step is idempotent, re-running won't duplicate):
+    0. Preflight:      ALFRED_HOME, ~/.alfredrc, GH_ORG must exist.
+    1. Claude Code:    `claude --version` + non-interactive auth probe.
+    2. GitHub:         `gh auth status` + cache `gh repo list <GH_ORG>`.
+    3. Slack webhook:  guide the operator, validate, test-post, store
                          (env or AWS Secrets Manager).
-    4. AWS (optional)  — per-agent IAM profiles for Huntress / Gordon if
+    4. AWS (optional) , per-agent IAM profiles for Huntress / Gordon if
                          the operator wants them.
-    5. Pick agents     — multi-select discovered from bin/*.py.
-    6. Codenames       — per-role codename (default = canonical Batman name).
-    7. Repos           — per-agent repo selection out of `gh repo list`.
-    8. Schedule        — sensible defaults; press 'a' to customize.
-    9. Generate config — write agents.conf + per-agent env to ~/.alfredrc.
-   10. Deploy          — `bash deploy.sh`.
-   11. Doctor          — `bash bin/doctor.sh`.
-   12. Smoke test      — final Slack post + summary.
+    5. Pick agents:    multi-select discovered from bin/*.py.
+    6. Codenames:      per-role codename (default = canonical Batman name).
+    7. Repos:          per-agent repo selection out of `gh repo list`.
+    8. Schedule:       sensible defaults; press 'a' to customize.
+    9. Generate config, write agents.conf + per-agent env to ~/.alfredrc.
+   10. Deploy:         `bash deploy.sh`.
+   11. Doctor:         `bash bin/doctor.sh`.
+   12. Smoke test:     final Slack post + summary.
 
 Override paths:
     ALFRED_NONINTERACTIVE=1   accept defaults everywhere
@@ -32,7 +32,7 @@ Override paths:
     --agents <comma>              skip the agent multi-select
 
 Pure stdlib. The operator reads this file when something breaks; keep it
-that way — no external deps, no clever indirection.
+that way, no external deps, no clever indirection.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Constants — the canonical Batman-codename map.
+# Constants, the canonical Batman-codename map.
 # ---------------------------------------------------------------------------
 
 # role-key -> (default codename, one-line description, operates_on_repos,
@@ -159,7 +159,12 @@ SPECIAL_PROMPTS = {
 CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SLACK_WEBHOOK_RE = re.compile(r"^https://hooks\.slack\.com/services/")
 
-ALFREDRC_BANNER = "# alfred-init — generated below this line. Safe to re-run."
+ALFREDRC_BANNER = "# alfred-init, generated below this line. Safe to re-run."
+# Matches the banner whatever separator a past release used between
+# "alfred-init" and "generated" (older releases used an em-dash, current
+# uses a comma). upsert_alfredrc relies on this so an upgrade rewrites the
+# existing managed block in place instead of appending a duplicate.
+ALFREDRC_BANNER_RE = re.compile(r"# alfred-init.{1,4}generated below this line\. Safe to re-run\.")
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +207,7 @@ def note(msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Config dataclass — single source of truth for what the wizard collects.
+# Config dataclass, single source of truth for what the wizard collects.
 # ---------------------------------------------------------------------------
 
 
@@ -284,7 +289,7 @@ def have(binary: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# .alfredrc IO — append-only with idempotent guard markers.
+# .alfredrc IO, append-only with idempotent guard markers.
 # ---------------------------------------------------------------------------
 
 
@@ -318,10 +323,11 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
     if not kvs:
         return
     existing = path.read_text() if path.exists() else ""
-    # Strip any prior alfred-init block so we re-emit fresh values.
-    if ALFREDRC_BANNER in existing:
-        head, _, _ = existing.partition(ALFREDRC_BANNER)
-        existing = head.rstrip() + "\n"
+    # Strip any prior alfred-init block (current or older-release banner) so
+    # we re-emit fresh values instead of accumulating a duplicate section.
+    prior = ALFREDRC_BANNER_RE.search(existing)
+    if prior:
+        existing = existing[: prior.start()].rstrip() + "\n"
     block = [ALFREDRC_BANNER]
     for k, v in kvs.items():
         block.append(f"{k}={v}")
@@ -342,7 +348,7 @@ def discover_agents(bin_dir: Path) -> list[str]:
     A runner is "present" when the role script in AGENT_CATALOG exists.
     Custom codenames change the launchd label and AGENT_CODENAME, not the
     stable role script. Order is the
-    canonical AGENT_CATALOG order — operators see them in the same order
+    canonical AGENT_CATALOG order, operators see them in the same order
     every run.
     """
     if not bin_dir.is_dir():
@@ -381,7 +387,7 @@ def render_agents_conf(state: WizardState) -> str:
     comment so the operator can find their way back later.
     """
     lines = [
-        "# agents.conf — generated by alfred-init.",
+        "# agents.conf, generated by alfred-init.",
         "# Tab-separated. Re-run `alfred-init` to regenerate.",
         "#",
         "# label\tscript\tschedule\tneeds_java\tlog_stem\trole",
@@ -497,7 +503,7 @@ def step_1_claude(*, non_interactive: bool) -> None:
         fail(f"`claude --version` failed: {cp.stderr.strip()}")
         sys.exit(1)
     ok(f"claude: {cp.stdout.strip() or '(installed)'}")
-    # Light auth probe — bounded, doesn't burn a real turn if it errors.
+    # Light auth probe, bounded, doesn't burn a real turn if it errors.
     try:
         probe = run(["claude", "-p", "--max-turns", "1"], input_str="say hi\n", timeout=30)
     except subprocess.TimeoutExpired:
@@ -694,7 +700,7 @@ def step_5_pick_agents(
     print("  Available agents (default: all enabled):")
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
-        print(f"    [x] {codename:<20s} — {desc}")
+        print(f"    [x] {codename:<20s}, {desc}")
     print()
     if non_interactive:
         state.enabled_roles = list(available)
@@ -886,10 +892,10 @@ def step_12_smoke(state: WizardState) -> None:
             print(f"    {codename:<22s} ({desc.split(' (')[0]:<32s}) → {sched}")
     print()
     print("  Operator commands:")
-    print("    alfred agents          — configured agents + runner-gate state")
-    print("    alfred enable <agent>  — add an opt-in codename to the runner gate")
-    print("    alfred disable <agent> — remove a codename from the runner gate")
-    print("    bash bin/doctor.sh     — preflight configured Python agents")
+    print("    alfred agents:         configured agents + runner-gate state")
+    print("    alfred enable <agent> , add an opt-in codename to the runner gate")
+    print("    alfred disable <agent>, remove a codename from the runner gate")
+    print("    bash bin/doctor.sh:    preflight configured Python agents")
     print()
     print("  Read docs/AGENTS.md for the full codename topology.")
     print("  Read INSTALL.md if anything went sideways.")

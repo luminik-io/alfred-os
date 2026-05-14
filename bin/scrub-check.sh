@@ -11,7 +11,7 @@ fi
 
 # Path-leak allowlist: files exempt from the path / private-identifier scan.
 # CHANGELOG.md is allowed here so historical entries can mention prior
-# host-private paths, but is NOT exempt from the secret scan below — a
+# host-private paths, but is NOT exempt from the secret scan below, a
 # secret accidentally pasted into a changelog entry must still trip.
 PATH_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|site/package-lock\.json|.*\.lock)$'
 

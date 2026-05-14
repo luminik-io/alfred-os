@@ -6,7 +6,7 @@ Per-repo pre-push commands load from ${HOME}/.alfredrc.d/<codename>.yaml
 
 Reviewer comment matching: bot reviewers (CodeRabbit, Codex/ChatGPT, any
 "[bot]" login) are detected by login. The prose-style review agent (default:
-Ras al Ghul) is detected by the body prefix "<reviewer-codename>.title()" — set
+Ras al Ghul) is detected by the body prefix "<reviewer-codename>.title()", set
 ALFRED_NIGHTWING_REVIEW_AGENT to match the codename your review agent uses.
 """
 

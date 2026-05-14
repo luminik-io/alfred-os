@@ -1,4 +1,4 @@
-"""Result classification — provider-error envelope detection.
+"""Result classification, provider-error envelope detection.
 
 Pins ``_build_claude_result``'s behaviour for the four common failure
 shapes (auth, budget, rate-limit, overload) plus the false-positive
@@ -9,13 +9,13 @@ Each test poses a synthetic raw final-event dict, runs it through
 success boolean.
 
 Three families of assertions:
-  1. Real envelope detection — when the API flags is_error=true and the
+  1. Real envelope detection, when the API flags is_error=true and the
      body shape matches a known pattern, classification must pin the
      specific subtype (not the generic ``error_api`` fallback).
-  2. False-positive guards — healthy completions that mention "rate-
+  2. False-positive guards, healthy completions that mention "rate-
      limit" / "/login" / etc. in implementation prose must NOT be
      reclassified.
-  3. Defensive path — when is_error is false but the body carries a
+  3. Defensive path, when is_error is false but the body carries a
      tight CLI-error signal (e.g. "Please run /login"), reclassify.
 """
 
@@ -147,7 +147,7 @@ def test_bedrock_throttle_envelope_classified_as_overload() -> None:
 
 
 def test_healthy_prose_mentioning_rate_limit_not_misclassified() -> None:
-    """Engineering work commonly mentions "rate-limit" — adding handling,
+    """Engineering work commonly mentions "rate-limit", adding handling,
     fixing 429 retry, etc. A healthy completion summarising that work
     must NOT be flipped to error_rate_limit."""
     cases = [
@@ -171,7 +171,7 @@ def test_healthy_prose_mentioning_rate_limit_not_misclassified() -> None:
 
 
 def test_healthy_prose_mentioning_overload_words_not_misclassified() -> None:
-    """The overload regex is strict — it requires a JSON envelope OR an
+    """The overload regex is strict, it requires a JSON envelope OR an
     explicit "API Error overloaded_error" / 529 / Bedrock-in-envelope.
     Bare "throttling" or "service unavailable" in prose must not match.
     """
@@ -237,7 +237,7 @@ def test_overload_without_is_error_caught_by_strict_envelope() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Healthy baseline — sanity check that the new layer doesn't break
+# Healthy baseline, sanity check that the new layer doesn't break
 # already-working classifications.
 # ---------------------------------------------------------------------------
 
@@ -314,7 +314,7 @@ def test_rate_limit_regex_matches_real_signals() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Auth-retry helper — gates the post-401 quarantine+retry path inside
+# Auth-retry helper, gates the post-401 quarantine+retry path inside
 # claude_invoke.
 # ---------------------------------------------------------------------------
 
@@ -386,7 +386,7 @@ def test_should_retry_claude_auth_does_not_retry_twice(monkeypatch) -> None:
 def test_should_retry_skipped_when_no_credential_file_to_quarantine(monkeypatch) -> None:
     """When ``_quarantine_stale_claude_credentials`` returns False (no
     file to move, or operator disabled the repair via env var), the
-    helper must not signal a retry — there's nothing to fix, retrying
+    helper must not signal a retry, there's nothing to fix, retrying
     would loop on the same 401."""
     import agent_runner as ar
 

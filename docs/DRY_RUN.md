@@ -1,12 +1,12 @@
 # Dry-run mode
 
 Dry-run is a low-commitment "watch it work" path. It runs the **whole** agent
-firing lifecycle — preflight, lock, pick, claim, worktree, prompt build, engine
-invoke, result branching, PR-create / release, Slack report — but stubs every
+firing lifecycle (preflight, lock, pick, claim, worktree, prompt build, engine
+invoke, result branching, PR-create / release, Slack report) but stubs every
 side-effecting boundary so the run costs nothing.
 
-A developer with **nothing configured** — no `gh` auth, no AWS, no Slack, no
-Claude — can run a dry-run firing and watch the sequence end to end, exiting 0.
+A developer with **nothing configured**, meaning no `gh` auth, no AWS, no Slack,
+and no Claude, can run a dry-run firing and watch the sequence end to end, exiting 0.
 The output is a narrated, step-numbered trace, legible enough to record with
 asciinema.
 
@@ -39,8 +39,8 @@ Two equivalent switches:
   ```
 
 A runner that sees `--dry-run` calls `agent_runner.set_dry_run()`, which writes
-`ALFRED_DRY_RUN=1` back into the process environment so every downstream seam —
-and any subprocess-spawned child — agrees on the mode.
+`ALFRED_DRY_RUN=1` back into the process environment so every downstream seam,
+and any subprocess-spawned child, agrees on the mode.
 
 From a fresh checkout (no deploy needed), put `lib/` on `PYTHONPATH`:
 
@@ -65,20 +65,20 @@ checked at exactly these seams in [`lib/agent_runner.py`](../lib/agent_runner.py
 | `set_global_block` | Write the fleet-wide rate-limit poison pill | Log the block it would set and return the `until` string; the file is never written, so real scheduled agents are not blocked. |
 | `slack_post` | POST to the Slack webhook | Log `[dry-run] ... would post to Slack (severity=...): <message>` to stdout and return `True`. |
 | `claim_issue`, `release_issue`, `force_release_stale_claim`, `gh_issue_edit`, `gh_issue_comment`, `gh_pr_comment`, `gh_pr_create`, `ensure_labels` | Run `gh` to mutate GitHub | Log the `gh` call that would run and return success (a fake PR URL for `gh_pr_create`). No `gh` subprocess is spawned. |
-| `make_worktree`, `make_worktree_from_branch`, `remove_worktree` | `git worktree add` against the operator's checkout; the runner may `git push` | Create a self-contained throwaway git repo in a temp dir — with an `origin/main` ref and one commit ahead on the firing branch — so a runner that inspects the worktree sees a coherent state. Nothing is fetched from or pushed to a real remote. The temp dir is removed at the end. |
+| `make_worktree`, `make_worktree_from_branch`, `remove_worktree` | `git worktree add` against the operator's checkout; the runner may `git push` | Create a self-contained throwaway git repo in a temp dir (with an `origin/main` ref and one commit ahead on the firing branch) so a runner that inspects the worktree sees a coherent state. Nothing is fetched from or pushed to a real remote. The temp dir is removed at the end. |
 
 "No config at all" cases the runners stub with clearly-labelled fake data:
 
-- **`pick_issue`** — there is no `gh` auth and no real repo, so each runner
+- **`pick_issue`**: there is no `gh` auth and no real repo, so each runner
   returns a single synthetic issue (number `0`, title and body prefixed
   `[dry-run]`). The rest of the firing then exercises real code paths against
   the stubbed boundaries above.
-- **Missing `GH_ORG`** — `_full_repo` falls back to a `dry-run-org/<repo>`
+- **Missing `GH_ORG`**: `_full_repo` falls back to a `dry-run-org/<repo>`
   placeholder instead of raising, so a missing org can't crash the narrated
   lifecycle.
-- **Missing repo env vars** (`ECHO_REPO_SLUG`, `ALFRED_LUCIUS_REPOS`) — the
+- **Missing repo env vars** (`ECHO_REPO_SLUG`, `ALFRED_LUCIUS_REPOS`): the
   runners fall back to a `dry-run-repo` / `dry-run-org/dry-run-repo` slug.
-- **Preflight gaps** — `preflight()` still runs and still reports what is
+- **Preflight gaps**: `preflight()` still runs and still reports what is
   missing, but in dry-run the runner narrates the gap and continues instead of
   exiting. A real firing still exits clean on a config gap.
 
@@ -86,11 +86,11 @@ checked at exactly these seams in [`lib/agent_runner.py`](../lib/agent_runner.py
 
 ```
 $ PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
-[dry-run]  1. (start) echo dry-run firing — no LLM, no spend, no gh/slack/git side effects
+[dry-run]  1. (start) echo dry-run firing, no LLM, no spend, no gh/slack/git side effects
 [ECHO-PREFLIGHT-FAILED] 2 issue(s):
   - env var `ECHO_REPO_SLUG` is unset
   - env var `GH_ORG` is unset
-[dry-run]  2. (preflight) preflight reported config gaps — continuing (dry-run)
+[dry-run]  2. (preflight) preflight reported config gaps, continuing (dry-run)
 [dry-run]  3. (pick) would `gh issue list --label agent:summarise`; using a synthetic issue instead
 [dry-run]  4. (gh) would claim dry-run-org/dry-run-repo#0 for echo (...): add agent:in-flight, post claim comment
 [dry-run]  5. (llm) would invoke claude with prompt of 464 chars, model=(cli-default), max_turns=5
@@ -126,7 +126,7 @@ runner fully demoable with zero config, do three things in your `bin/*.py`:
        preflight(PREFLIGHT)
    except PreflightFailed:
        if is_dry_run():
-           dry_run_log("preflight", "preflight reported config gaps — continuing (dry-run)")
+           dry_run_log("preflight", "preflight reported config gaps, continuing (dry-run)")
        else:
            return 0
    ```

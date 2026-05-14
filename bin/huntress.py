@@ -255,7 +255,7 @@ def main() -> int:
         events.emit("firing_complete", outcome="green")
         return 0
 
-    # Anything past this point is some flavour of Playwright non-zero exit —
+    # Anything past this point is some flavour of Playwright non-zero exit:
     # parse-failed, regression, or selector drift.
     spend.increment(failures_today=1, consecutive_failures=1)
 

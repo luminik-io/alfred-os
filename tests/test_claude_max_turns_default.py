@@ -1,8 +1,8 @@
 """Guard the no-cap-by-default policy at the CLI invocation layer.
 
-Background — Claude Code's ``-p`` (non-interactive) mode applies a hidden
+Background, Claude Code's ``-p`` (non-interactive) mode applies a hidden
 40-turn default when ``--max-turns`` is omitted. That default is far too
-tight for our agents — Lucius routinely needs 60-150 turns on cross-file
+tight for our agents, Lucius routinely needs 60-150 turns on cross-file
 work, Drake's healthy planning runs hit 60+. ``claude_invoke`` always
 passes an explicit ``--max-turns``: caller's value if given, otherwise
 ``_CLAUDE_UNLIMITED_TURNS`` (999). The wall-clock ``timeout`` is the
@@ -16,7 +16,7 @@ These tests pin two invariants:
 2. When the caller passes a finite cap, the wrapper forwards that exact
    value (no silent override or clamp at this layer).
 
-We don't actually invoke Claude — we monkey-patch ``run`` to capture the
+We don't actually invoke Claude, we monkey-patch ``run`` to capture the
 argv and short-circuit before the subprocess starts.
 """
 
@@ -41,13 +41,13 @@ def _stub_completed_process(
 
 
 def test_unlimited_turns_constant_is_high_enough_to_be_effectively_unlimited() -> None:
-    """We picked 999. Don't accidentally lower it without realising — it
+    """We picked 999. Don't accidentally lower it without realising, it
     must stay well clear of the longest legitimate planning run we have
     observed (Lucius routinely needs 60-150 turns on cross-file work)."""
     assert agent_runner._CLAUDE_UNLIMITED_TURNS >= 200, (
         "_CLAUDE_UNLIMITED_TURNS should stay well above the longest "
         "observed planner run. 999 was chosen as 'effectively unlimited' "
-        "for any normal agent firing — bounded by wall-clock timeout."
+        "for any normal agent firing, bounded by wall-clock timeout."
     )
 
 
@@ -91,7 +91,7 @@ def test_claude_invoke_passes_unlimited_when_max_turns_is_none() -> None:
 
 def test_claude_invoke_forwards_explicit_max_turns_unchanged() -> None:
     """When the operator opts into a specific cap (debug knob), the
-    wrapper must forward that exact value — no silent override to the
+    wrapper must forward that exact value, no silent override to the
     'unlimited' default."""
     captured: dict = {}
 
@@ -164,7 +164,7 @@ def test_env_int_clamps_in_range(monkeypatch) -> None:
 
 
 def test_env_int_clamps_out_of_range_default(monkeypatch) -> None:
-    """An out-of-range ``default`` must be clamped too — the safety
+    """An out-of-range ``default`` must be clamped too, the safety
     guarantee is unconditional. Codex P2 review (PR #13): the unset /
     unparseable paths previously returned ``default`` as-is, defeating
     the clamp the docstring promises.

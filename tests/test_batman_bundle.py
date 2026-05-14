@@ -1,4 +1,4 @@
-"""Tests for ``lib/batman.py`` — bundle primitives + plan parsing.
+"""Tests for ``lib/batman.py``, bundle primitives + plan parsing.
 
 The pure-data helpers (Bundle, PlanShape, parse_plan_from_issue,
 parse_plan_from_bundle) are deterministic and tested directly. The
@@ -238,7 +238,7 @@ def test_claim_bundle_all_or_nothing_releases_on_failure(monkeypatch):
 
     monkeypatch.setattr(ar, "claim_issue", fake_claim)
     monkeypatch.setattr(ar, "release_issue", fake_release)
-    # batman.py imported its own references at import time — patch them
+    # batman.py imported its own references at import time, patch them
     # too so the monkeypatch takes effect inside claim_bundle.
     monkeypatch.setattr(bm, "claim_issue", fake_claim)
     monkeypatch.setattr(bm, "release_issue", fake_release)
@@ -366,7 +366,7 @@ def test_list_large_features_returns_empty_when_scan_repos_unset(monkeypatch):
 
 def test_list_large_features_filters_to_scan_repos(monkeypatch):
     """Org-wide gh search results get post-filtered against the URL
-    prefix derived from BATMAN_SCAN_REPOS — issues in repos outside
+    prefix derived from BATMAN_SCAN_REPOS, issues in repos outside
     the scan list are dropped silently."""
     monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend,frontend")
     monkeypatch.setenv("GH_ORG", "myorg")

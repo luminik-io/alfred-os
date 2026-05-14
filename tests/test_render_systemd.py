@@ -1,4 +1,4 @@
-"""Smoke tests for systemd/render.sh — the Linux scheduler renderer.
+"""Smoke tests for systemd/render.sh, the Linux scheduler renderer.
 
 These mirror tests/test_render_role.py (the launchd renderer tests) for the
 systemd --user lane. render.sh reads ``agents.conf`` from a caller-controlled
@@ -82,7 +82,7 @@ def test_render_daily_cron_maps_to_oncalendar(tmp_path):
 
 
 def test_render_weekly_cron_maps_to_oncalendar_with_weekday(tmp_path):
-    # cron:<weekday>:<HH>:<MM> — weekday 1 == Monday.
+    # cron:<weekday>:<HH>:<MM>, weekday 1 == Monday.
     conf = "my.fleet.weekly\tweekly.py\tcron:1:8:15\tno\n"
     out_dir = _render(tmp_path, conf)
     timer = (out_dir / "my.fleet.weekly.timer").read_text()
@@ -131,7 +131,7 @@ def test_render_omits_java_home_when_needs_java_no(tmp_path):
     service = (out_dir / "my.fleet.plain.service").read_text()
     assert "JAVA_HOME" not in service
     # A needs_java=yes agent still renders a unit file even when java is
-    # absent — the renderer just skips the JAVA_HOME line and warns.
+    # absent, the renderer just skips the JAVA_HOME line and warns.
     java_conf = "my.fleet.bane\tbane.py\tcron:2:00\tyes\t\tNightly test author\n"
     java_out = _render(tmp_path, java_conf)
     java_service = (java_out / "my.fleet.bane.service").read_text()

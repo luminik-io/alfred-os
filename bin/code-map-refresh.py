@@ -21,7 +21,7 @@ Configuration via env vars (all optional - omit a slot to skip that scan):
                                 emit api_calls (matched against server set)
 
 Honest scope: regex-based, not tree-sitter. Loud false positives, quiet
-false negatives — drift is advisory, not a gate.
+false negatives, drift is advisory, not a gate.
 """
 
 from __future__ import annotations

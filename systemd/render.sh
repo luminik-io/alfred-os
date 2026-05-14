@@ -9,7 +9,7 @@
 # consumes the rendered copies on Linux hosts; on macOS the launchd
 # renderer is used instead.
 #
-# agents.conf is the single source of truth for both schedulers — the same
+# agents.conf is the single source of truth for both schedulers, the same
 # tab-separated six-column schema feeds launchd/render.sh and this script.
 # Columns: label, script, schedule, needs_java, log_stem, role.
 #
@@ -271,7 +271,7 @@ PY
 }
 
 # Bash treats tab as a whitespace IFS char and collapses consecutive tabs
-# into one separator — which corrupts empty middle columns. Pre-expand each
+# into one separator, which corrupts empty middle columns. Pre-expand each
 # record into a non-whitespace field separator (\x1f) so read preserves
 # empties.
 awk -F'\t' '

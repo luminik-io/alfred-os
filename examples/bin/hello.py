@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hello — the smallest possible alfred-os codename agent.
+"""Hello, the smallest possible alfred-os codename agent.
 
 Demonstrates the canonical pattern every launchd-managed agent follows:
 
@@ -54,7 +54,7 @@ def main() -> int:
     with_lock(AGENT)
 
     if is_dry_run():
-        dry_run_log("start", f"{AGENT} dry-run firing — no LLM, no spend, no side effects")
+        dry_run_log("start", f"{AGENT} dry-run firing, no LLM, no spend, no side effects")
 
     try:
         preflight(PREFLIGHT)
@@ -63,7 +63,7 @@ def main() -> int:
         # with nothing configured"). Narrate it and keep going so the rest
         # of the lifecycle still flows. A real firing still exits clean.
         if is_dry_run():
-            dry_run_log("preflight", "preflight reported config gaps — continuing (dry-run)")
+            dry_run_log("preflight", "preflight reported config gaps, continuing (dry-run)")
         else:
             return 0
 

@@ -2,15 +2,15 @@
 
 The legacy webhook surface in ``agent_runner.slack_post`` is
 incoming-webhook only: text, no threads, no severity colour. Webhooks
-cannot post threaded replies — that requires ``chat.postMessage`` with
+cannot post threaded replies, that requires ``chat.postMessage`` with
 a ``xoxb-`` bot token + ``thread_ts``. This module is the bot-token
 sibling.
 
 Three public entry points: ``firing_thread_root`` posts a header block
-carrying ``codename (role) — summary``, ``firing_thread_reply`` posts
+carrying ``codename (role), summary``, ``firing_thread_reply`` posts
 in-thread updates, ``firing_thread_close`` summarises with outcome +
 duration. All three return ``False`` (or ``None`` for the root) on
-missing token / network error / no channel — silent-skip pattern, so
+missing token / network error / no channel, silent-skip pattern, so
 a fleet without Slack configured still runs.
 
 Every post carries a severity-colour attachment (green / yellow / red)
@@ -44,7 +44,7 @@ from agent_runner import ALFRED_HOME, codename_with_role, run
 
 SLACK_API = "https://slack.com/api"
 
-# ``$ALFRED_HOME/state/slack-bot-token.cache`` — written on first AWS
+# ``$ALFRED_HOME/state/slack-bot-token.cache``, written on first AWS
 # resolution, refreshed via TTL. Mirrors the webhook cache in
 # ``slack_post`` so the operator only re-touches AWS when secrets rotate.
 TOKEN_CACHE = ALFRED_HOME / "state" / "slack-bot-token.cache"
@@ -77,11 +77,11 @@ _TRUNC = "...[truncated]"
 
 @dataclass
 class ThreadHandle:
-    """One per firing — stash on the firing's per-run state and pass to
+    """One per firing, stash on the firing's per-run state and pass to
     every ``firing_thread_reply`` / ``firing_thread_close`` call so all
     replies thread to the same root.
 
-    ``channel`` is the resolved Slack channel id (``C0123ABC...``) — we
+    ``channel`` is the resolved Slack channel id (``C0123ABC...``), we
     keep the id, not the human-readable name, so later API calls don't
     have to re-resolve. ``ts`` is the message timestamp
     ``chat.postMessage`` returned; Slack's threading model uses it as
@@ -151,11 +151,11 @@ def _home_channel(channel: str | None = None) -> str:
     Resolution order (first non-empty wins):
 
       1. caller-supplied ``channel`` argument
-      2. ``BATMAN_APPROVAL_CHANNEL`` env var — historical name read by
+      2. ``BATMAN_APPROVAL_CHANNEL`` env var, historical name read by
          the alfred Batman approval flow; honoured here so a fleet
          that already routes Batman posts to a non-default channel
          keeps that routing for every firing thread.
-      3. ``SLACK_HOME_CHANNEL`` env var — canonical name.
+      3. ``SLACK_HOME_CHANNEL`` env var, canonical name.
       4. literal ``alfred`` fallback.
 
     Strips any leading ``#`` so the API accepts it.
@@ -188,10 +188,10 @@ def _coerce_severity(severity: str) -> str:
 def _api_post(method: str, payload: dict, *, token: str) -> dict:
     """Tiny ``application/json`` Slack Web API wrapper.
 
-    Block Kit requires a JSON body — ``form-encoded`` requests Slack
+    Block Kit requires a JSON body, ``form-encoded`` requests Slack
     accepts for plain text get rejected for ``blocks`` /
     ``attachments``. Returns the parsed response or ``{"ok": False}``
-    on transport failure — never raises.
+    on transport failure, never raises.
     """
     url = f"{SLACK_API}/{method}"
     headers = {
@@ -229,15 +229,15 @@ def _get_permalink(channel: str, ts: str, *, token: str) -> str | None:
 
 
 def _now_utc_short() -> str:
-    """``2026-05-09 14:32 UTC`` — short, easy to scan in Slack context."""
+    """``2026-05-09 14:32 UTC``, short, easy to scan in Slack context."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _format_root_text(codename: str, summary_one_liner: str, severity: str) -> str:
-    """Header-block plain text: ``<emoji> <codename> (<role>) — <summary>``."""
+    """Header-block plain text: ``<emoji> <codename> (<role>), <summary>``."""
     label = codename_with_role(codename)
     emoji = SEVERITY_EMOJI[severity]
-    raw = f"{emoji} {label} — {summary_one_liner}".strip()
+    raw = f"{emoji} {label}, {summary_one_liner}".strip()
     return _truncate(raw, HEADER_MAX)
 
 
@@ -255,12 +255,12 @@ def firing_thread_root(
     Returns a ``ThreadHandle`` on success, ``None`` on any failure
     (missing bot token, missing channel, transport error, Slack-side
     refusal). Callers that need any visibility at all should fall back
-    to ``slack_post`` on the ``None`` branch — the legacy webhook path
+    to ``slack_post`` on the ``None`` branch, the legacy webhook path
     still posts top-level even without the bot token.
 
     Block layout:
 
-      header   ``<emoji> <codename> (<role>) — <one-liner>``
+      header   ``<emoji> <codename> (<role>), <one-liner>``
       divider
       context  ``firing_id=<id> · <UTC start ts>``
       [body]   optional mrkdwn section, only when ``body`` is supplied.
@@ -305,7 +305,7 @@ def firing_thread_root(
         }
     ]
     # Top-level ``text`` is required by chat.postMessage but renders as
-    # PLAIN TEXT above the attachment in modern Slack clients — when we
+    # PLAIN TEXT above the attachment in modern Slack clients, when we
     # also put the same string in the attachment's header block, the
     # message appears DUPLICATED back-to-back. Use a terse generic
     # notification preview here so the channel UI shows only the Block
@@ -345,13 +345,13 @@ def firing_thread_reply(
 ) -> bool:
     """Post an in-thread reply with a severity-colour attachment.
 
-    Returns ``False`` on missing handle (caller never got a thread root
-    — silent skip) or any API error. Severity colour stripe goes on the
-    attachment so the reply carries the same green/yellow/red as the
-    root.
+     Returns ``False`` on missing handle (caller never got a thread root,
+    silent skip) or any API error. Severity colour stripe goes on the
+     attachment so the reply carries the same green/yellow/red as the
+     root.
 
-    Callers can pass ``None`` for the handle to express "post nothing,
-    we have no thread" — useful for try-and-fall-through flows.
+     Callers can pass ``None`` for the handle to express "post nothing,
+     we have no thread", useful for try-and-fall-through flows.
     """
     if handle is None:
         return False

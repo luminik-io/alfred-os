@@ -27,7 +27,7 @@ import scheduler  # noqa: E402
 
 def test_scheduler_detects_a_known_value():
     # On any CI host this module loads, SCHEDULER is one of the three known
-    # values — never an arbitrary string.
+    # values, never an arbitrary string.
     assert scheduler.SCHEDULER in ("launchd", "systemd", "none")
 
 

@@ -21,10 +21,10 @@ claude                            # Claude Code first-run auth
 
 ## What `install.sh` does
 
-Idempotent (safe to re-run). It detects the host OS and picks a lane — Homebrew on macOS, apt on Debian/Ubuntu.
+Idempotent (safe to re-run). It detects the host OS and picks a lane: Homebrew on macOS, apt on Debian/Ubuntu.
 
 1. Detects the host: macOS (Homebrew) or Debian/Ubuntu Linux (apt). See [Linux](/guides/linux/) for the systemd path.
-2. Installs the package-manager prerequisites — Homebrew if missing on macOS; on Linux, `apt-get install`s the base packages.
+2. Installs the package-manager prerequisites: Homebrew if missing on macOS; on Linux, `apt-get install`s the base packages.
 3. Installs `python@3.11`, `git`, `gh`, `jq`, `node`, `uv` (plus `awscli` on macOS; install AWS CLI v2 manually on Linux).
 4. `npm install -g @anthropic-ai/claude-code`.
 5. Creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`).

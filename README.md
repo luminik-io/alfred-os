@@ -11,12 +11,12 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-A local engineering-fleet runtime: Claude Code-first agents scheduled by the host's per-user scheduler — `launchd` on macOS, `systemd --user` on Linux — with optional Codex routing for review-style work. Each firing runs as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide rate-limit block.
+A local engineering-fleet runtime: Claude Code-first agents scheduled by the host's per-user scheduler (`launchd` on macOS, `systemd --user` on Linux) with optional Codex routing for review-style work. Each firing runs as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide rate-limit block.
 
 Docs site: https://alfred.luminik.io
 
 <!-- TODO(operator): a hero GIF or annotated screenshot belongs here, directly
-     under the intro — the single biggest "what is this" signal for someone
+     under the intro: the single biggest "what is this" signal for someone
      landing cold. Good candidates: an asciinema recording of
      `examples/bin/echo_summarise.py --dry-run` (safe to record, no secrets),
      or a screenshot of `alfred status`. The "Quick start" section below has
@@ -43,7 +43,7 @@ firing lifecycle; the full install wires up a real scheduled fleet.
 ### Try it in 2 minutes (dry-run)
 
 Want to watch an agent fire before configuring anything? Dry-run mode runs the
-whole firing lifecycle — pick, claim, worktree, invoke, act, release, report —
+whole firing lifecycle (pick, claim, worktree, invoke, act, release, report)
 with every side-effecting boundary stubbed. No LLM call, no spend, no Slack
 post, no GitHub mutation, no real repo. It works with **zero host config**: no
 `gh` auth, no AWS, no Slack, no Claude.
@@ -58,8 +58,8 @@ You get a narrated, step-numbered trace of the full lifecycle and an exit code
 of 0:
 
 ```text
-[dry-run]  1. (start) echo dry-run firing — no LLM, no spend, no gh/slack/git side effects
-[dry-run]  2. (preflight) preflight reported config gaps — continuing (dry-run)
+[dry-run]  1. (start) echo dry-run firing, no LLM, no spend, no gh/slack/git side effects
+[dry-run]  2. (preflight) preflight reported config gaps, continuing (dry-run)
 [dry-run]  3. (pick) would `gh issue list --label agent:summarise`; using a synthetic issue instead
 [dry-run]  4. (gh) would claim dry-run-org/dry-run-repo#0 for echo: add agent:in-flight, post claim comment
 [dry-run]  5. (llm) would invoke claude with prompt of 464 chars, model=(cli-default), max_turns=5
@@ -74,8 +74,8 @@ The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the
 `ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
 for what is stubbed versus real.
 
-<!-- TODO(operator): a screenshot of a real #alfred Slack thread — severity
-     stripe, firing root + replies + close — is the other half of "what it
+<!-- TODO(operator): a screenshot of a real #alfred Slack thread (severity
+     stripe, firing root + replies + close) is the other half of "what it
      looks like running". Drop it here or in docs/. -->
 
 ### Full install
@@ -184,7 +184,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
 - [Integrations](docs/INTEGRATIONS.md): what Alfred does and does not bundle.
 - [Hermes integration](docs/HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
-- [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers — install, deploy, and operate.
+- [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers. Install, deploy, and operate.
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md): private-disclosure process.
@@ -202,21 +202,21 @@ See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/coden
 
 ## Design boundaries
 
-Alfred has a deliberate shape. These are not missing features — they are the design.
+Alfred has a deliberate shape. These are not missing features; they are the design.
 
-- **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS — it is software you install and run yourself.
-- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process — better failure isolation, and it survives reboots.
+- **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
+- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` / optional `codex` / optional Ollama on your own subscription. It does not run a hosted inference service.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
-- **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script — the core stays lean.
+- **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
-The engineering fleet ships today. Content, sales, and ops departments — plus a memory layer and a local `alfred serve` UI — are the roadmap: [`ROADMAP.md`](ROADMAP.md).
+The engineering fleet ships today. Content, sales, and ops departments, plus a memory layer and a local `alfred serve` UI, are the roadmap: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
 **v0.2.1**. A complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design boundaries above (see also [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed. Want to take Alfred somewhere new — a new department, a substrate change? Open a discussion first.
+Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design boundaries above (see also [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed. Want to take Alfred somewhere new, like a new department or a substrate change? Open a discussion first.
 
 ## License
 

@@ -1,6 +1,6 @@
 """Guard the no-cap-by-default policy at the agent runner layer.
 
-Background — agents in ``bin/`` previously hardcoded per-firing ``max_turns``
+Background, agents in ``bin/`` previously hardcoded per-firing ``max_turns``
 ceilings (e.g. ``max_turns=40``) that produced no-output runs on cross-file
 work. The runners now pass ``optional_env_int(...)`` which returns None
 unless the operator explicitly opts into a debug knob via the

@@ -6,7 +6,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
-- `--dry-run` / `ALFRED_DRY_RUN` mode: run a full agent firing lifecycle — pick, claim, worktree, invoke, act, release, report — with every side-effecting boundary stubbed. No LLM call, no spend, no Slack post, no GitHub or git mutation. Works with zero host config so a developer can watch an agent fire end-to-end before configuring anything. Threaded through `lib/agent_runner.py` behind a single `is_dry_run()` seam; supported by `examples/bin/hello.py`, `examples/bin/echo_summarise.py`, and `bin/lucius.py`. See `docs/DRY_RUN.md`.
+- `--dry-run` / `ALFRED_DRY_RUN` mode: run a full agent firing lifecycle (pick, claim, worktree, invoke, act, release, report) with every side-effecting boundary stubbed. No LLM call, no spend, no Slack post, no GitHub or git mutation. Works with zero host config so a developer can watch an agent fire end-to-end before configuring anything. Threaded through `lib/agent_runner.py` behind a single `is_dry_run()` seam; supported by `examples/bin/hello.py`, `examples/bin/echo_summarise.py`, and `bin/lucius.py`. See `docs/DRY_RUN.md`.
 - Linux support via `systemd --user` timers. `install.sh` now has a Debian/Ubuntu apt lane alongside the macOS Homebrew lane, `deploy.sh` renders and installs systemd units on Linux hosts, and a new `systemd/` directory holds `_template.service`, `_template.timer`, and `render.sh` (same `agents.conf` schema as the launchd renderer).
 - `alfred pause` / `alfred resume` / `alfred run` operator verbs, backed by a host-scheduler abstraction (`lib/scheduler.py`) that drives launchd on macOS and `systemd --user` on Linux.
 - `alfred agents` now shows a real scheduler-load column (launchd or systemd), distinct from the configured on/off column.
@@ -73,7 +73,7 @@ Pivot from "extracted framework substrate" to "complete engineering agent fleet"
 - **automerge**: squash-merges clean `agent:authored` PRs (CI green, no unresolved P0 reviewer comments, latest review ends "Ship-ready: yes").
 - **agent-cleanup**: daily housekeeping (clean stale worktrees, stuck locks, stale `agent:in-flight` claims via `force_release_stale_claim`). Dirty or unknown worktrees are skipped and reported.
 - **code-map-refresh**: cross-repo contract scan. Writes `${ALFRED_HOME}/state/code-map.json` for other agents.
-- **agent-morning-brief**: daily Slack post — yesterday's PRs, in-flight work, doctor status.
+- **agent-morning-brief**: daily Slack post covering yesterday's PRs, in-flight work, doctor status.
 - **fleet-recap.sh**: 07:30 + 22:00 Slack digest (per-agent firings / cost / success rate).
 
 Every codename is operator-customisable at install time. Default Batman names; runtime codename via `AGENT_CODENAME` env (set by the launchd plist). Repo lists, AWS profiles, ECS clusters, Sentry orgs all env-driven.
@@ -119,7 +119,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - Repository renamed `luminik-io/pennyworth` → `luminik-io/alfred-os`. GitHub redirects in place. All env vars `PENNYWORTH_*` → `ALFRED_*` / `ALFRED_OS_*`. Operator config file `~/.pennyworthrc` → `~/.alfredrc`. Operator commands `pennyworth-*` → `alfred-*`.
 - `STANDARD_LABELS` includes the lifecycle labels; consumers no longer need to extend it for the state machine to work.
 - Per-repo configuration loaded from `~/.alfredrc.d/<codename>.toml` via stdlib `tomllib` (was PyYAML; PyYAML is not stdlib and shouldn't be required for a fresh install).
-- Doctor mode runs before env-config IDLE checks across all 12 agents — `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred-init`.
+- Doctor mode runs before env-config IDLE checks across all 12 agents: `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred-init`.
 - `bin/doctor.sh` now falls back to the in-repo `bin/` and `lib/` paths before deploy, so a clean checkout can self-check without a pre-existing `$ALFRED_HOME`.
 - All docs voice-swept: removed audience-marketing intros, outcome-fantasy framing, hire/replace framing, LLM filler vocab, marketing emoji, sign-offs, vanity stats, em-dashes. ~210 lines of marketing prose deleted across 39 files; technical content preserved.
 

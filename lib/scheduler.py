@@ -16,7 +16,7 @@ On macOS those map to ``launchctl print`` / ``bootout`` / ``bootstrap`` /
 ``.service``), plus an explicit ``stop`` before ``start`` on the
 ``.service`` itself for ``kickstart -k`` semantics.
 
-Pure stdlib. The operator reads this file when something breaks — keep it
+Pure stdlib. The operator reads this file when something breaks, keep it
 that way.
 """
 

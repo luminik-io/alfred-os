@@ -1,4 +1,4 @@
-"""Smoke tests for launchd/render.sh — role-column wiring.
+"""Smoke tests for launchd/render.sh, role-column wiring.
 
 These shell out to bash. The render script reads ``agents.conf`` from a
 caller-controlled path and writes plists into a caller-controlled output
