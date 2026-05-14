@@ -1,0 +1,49 @@
+# AGENTS.md
+
+Guidance for AI coding agents working in this repository. Humans: read
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and [`ARCHITECTURE.md`](ARCHITECTURE.md)
+first; this file is the short version those agents need.
+
+## What this repo is
+
+Alfred OS is the open-source runtime for a fleet of autonomous Claude Code
+agents on a single host. The OS scheduler (launchd on macOS, systemd on Linux)
+fires each agent; `lib/agent_runner.py` wraps every firing in a lock,
+preflight, spend cap, and an isolated git worktree. Agents are one Python file
+per role under `bin/`, named after a coherent fictional cast (the codename
+pattern). `examples/` holds the reference agents the tutorial builds.
+
+## Design boundaries (do not cross without a discussion)
+
+- **Single operator.** One person, one host, one config. Not multi-tenant, not
+  a hosted SaaS.
+- **The OS schedules; Alfred runs.** No long-running orchestration loop.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex`.
+- **Lean on the platform.** Adopt Anthropic-native capabilities rather than
+  re-implement them.
+
+Scope-broadening changes get declined. If a change touches these boundaries,
+open a discussion before writing code. See [`ROADMAP.md`](ROADMAP.md).
+
+## Conventions
+
+- **No em-dashes** in prose or comments. Use periods, commas, colons, or
+  parentheses.
+- **No `Co-Authored-By` or AI-attribution trailers** on commits. Conventional
+  commit messages (`feat:`, `fix:`, `docs:`, `chore:`).
+- One codename per PR, with prompt + tests + docs. Keep PRs scoped.
+- This is a public repo: no host paths, no cloud account IDs, no secrets, no
+  personal handles. `bin/scrub-check.sh` enforces this.
+
+## Checks before opening a PR
+
+```sh
+uv run --with 'ruff>=0.6' ruff check .
+uv run --with 'ruff>=0.6' ruff format --check .
+uv run --with 'mypy>=1.10' mypy lib/
+uv run --with pytest pytest tests/ -v
+bash bin/scrub-check.sh
+```
+
+Shell scripts must pass `shellcheck -S warning`. The docs site
+(`site/`) must `npm run build` cleanly if you touch it.

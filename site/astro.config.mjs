@@ -7,8 +7,46 @@ import mermaid from "astro-mermaid";
 //
 // Default URL assumes the public custom domain. Forks can override these with
 // ALFRED_OS_SITE_URL / ALFRED_OS_SITE_BASE when deploying under a project path.
+const SITE_URL = process.env.ALFRED_OS_SITE_URL ?? "https://alfred.luminik.io";
+
+// JSON-LD structured data, injected on every page. WebSite + SoftwareApplication
+// describe the project itself (not the individual page), so a site-wide graph
+// is correct. Helps search engines and AI crawlers classify Alfred as a free,
+// open-source developer tool rather than guessing from prose.
+const STRUCTURED_DATA = JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      name: "Alfred",
+      url: SITE_URL,
+      description:
+        "Documentation for Alfred OS, the open-source runtime for a fleet of " +
+        "autonomous Claude Code agents on a single machine you own.",
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "Alfred",
+      alternateName: "Alfred OS",
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "macOS, Linux",
+      url: SITE_URL,
+      description:
+        "A local agent-fleet runtime for solo builders. Claude Code agents " +
+        "scheduled by launchd or systemd, each firing isolated in its own git " +
+        "worktree, with per-agent IAM and per-day spend caps.",
+      downloadUrl: "https://github.com/luminik-io/alfred-os",
+      softwareHelp: SITE_URL,
+      license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      author: { "@type": "Organization", name: "DataRavel Inc." },
+    },
+  ],
+});
+
 export default defineConfig({
-  site: process.env.ALFRED_OS_SITE_URL ?? "https://alfred.luminik.io",
+  site: SITE_URL,
   base: process.env.ALFRED_OS_SITE_BASE ?? "/",
   trailingSlash: "ignore",
   integrations: [
@@ -85,6 +123,11 @@ export default defineConfig({
             rel: "apple-touch-icon",
             href: "/apple-touch-icon.png",
           },
+        },
+        {
+          tag: "script",
+          attrs: { type: "application/ld+json" },
+          content: STRUCTURED_DATA,
         },
       ],
       sidebar: [
