@@ -69,7 +69,19 @@ const MERMAID_ZOOM_SCRIPT = `
     const stage = document.createElement("div");
     stage.className = "mermaid-zoom-stage";
     const clone = svg.cloneNode(true);
-    clone.removeAttribute("id");
+    // Mermaid scopes its themed <style> rules under the SVG's id
+    // (#mermaid-xxx .node rect { fill: ... }). Dropping the id silently
+    // unstyles the clone to raw black-on-white SVG defaults. Instead, give
+    // the clone a fresh unique id and rewrite the scoped selectors in its
+    // <style> block to match, so the theme colors survive the clone.
+    const oldId = clone.getAttribute("id");
+    const newId = "mermaid-zoom-svg-" + Math.random().toString(36).slice(2, 9);
+    clone.setAttribute("id", newId);
+    if (oldId) {
+      clone.querySelectorAll("style").forEach((s) => {
+        s.textContent = s.textContent.split("#" + oldId).join("#" + newId);
+      });
+    }
     clone.removeAttribute("style");
     // Mermaid renders the SVG as width="100%" sized by an inline max-width
     // style. Stripped of that style, and with no sized container in the
