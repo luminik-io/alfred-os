@@ -34,15 +34,15 @@ Unknown severity values are coerced to `info`. Existing callers without a `sever
 
 ```mermaid
 flowchart TB
-    call["slack_post(text, severity=...)"]
+    entry["slack_post(text, severity)"]
     sev{"severity"}
     info["post text as-is"]
     warn["prefix the warning glyph<br/>if not already present"]
-    alert["prefix the alert glyph<br/>+ append &lt;!here&gt;"]
-    coerce["coerce unknown -> info"]
+    alert["prefix the alert glyph<br/>append the @here mention"]
+    coerce["coerce unknown value to info"]
     webhook["POST to Slack incoming webhook"]
 
-    call --> sev
+    entry --> sev
     sev -- "info (default)" --> info
     sev -- "warn" --> warn
     sev -- "alert" --> alert

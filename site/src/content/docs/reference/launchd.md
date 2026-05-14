@@ -18,9 +18,9 @@ flowchart LR
     conf["launchd/agents.conf<br/><i>one TSV row per agent</i>"]
     tmpl["launchd/_template.plist<br/><i>__TOKEN__ placeholders</i>"]
     render["render.sh<br/><i>token substitution</i>"]
-    plists["~/Library/LaunchAgents/<br/>my.fleet.&lt;codename&gt;.plist"]
+    plists["~/Library/LaunchAgents/<br/>my.fleet.{codename}.plist"]
     lc["launchctl bootstrap"]
-    sched["launchd timer<br/><i>fires bin/&lt;role&gt;.py on schedule</i>"]
+    sched["launchd timer<br/><i>fires bin/{role}.py on schedule</i>"]
 
     conf --> render
     tmpl --> render

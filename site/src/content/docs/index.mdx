@@ -37,9 +37,9 @@ optional integrations, not core requirements.
 ```mermaid
 flowchart TB
     launchd["launchd plist<br/><i>every N min</i>"]
-    role["$ALFRED_HOME/bin/&lt;role&gt;.py<br/><i>one stable role runner per agent</i>"]
+    role["$ALFRED_HOME/bin/{role}.py<br/><i>one stable role runner per agent</i>"]
     runner["agent_runner module<br/><i>lock · preflight · spend · claude_invoke · gh · slack</i>"]
-    engine["claude -p '&lt;prompt&gt;' --max-turns N<br/><i>the LLM work, in a fresh subprocess</i>"]
+    engine["claude -p {prompt} --max-turns N<br/><i>the LLM work, in a fresh subprocess</i>"]
     gh["GitHub<br/><i>issues, PRs, state-machine labels</i>"]
     slack["Slack channel<br/><i>the operator's read surface</i>"]
     state[("$ALFRED_HOME/state/<br/><i>JSON on disk, no DB</i>")]

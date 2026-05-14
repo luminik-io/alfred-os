@@ -15,7 +15,7 @@ Everything above the scheduler is portable Python and Bash. The host-scheduler d
 flowchart TB
     subgraph portable["Portable core (every host)"]
         runner["lib/agent_runner.py"]
-        bins["bin/&lt;role&gt;.py"]
+        bins["bin/{role}.py"]
         tests["tests/"]
         doctor["bin/doctor.sh"]
         sched["lib/scheduler.py<br/><i>launchd / systemd adapter</i>"]

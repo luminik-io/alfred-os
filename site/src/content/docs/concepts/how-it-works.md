@@ -78,7 +78,7 @@ sequenceDiagram
     git->>fs: git worktree add from origin/main
     runner->>runner: build prompt (issue body + repo context)
     runner->>claude: claude_invoke_streaming(prompt, workdir=wt, max_turns=N)
-    claude->>fs: read, edit, write files; run tests
+    claude->>fs: read, edit, write files, run tests
     claude-->>runner: ClaudeResult (success, turns, cost, session_id, text)
     runner->>git: git rev-list origin/main..HEAD
     git-->>runner: commit count

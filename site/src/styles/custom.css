@@ -37,3 +37,34 @@
   border-radius: 0 4px 4px 0;
   margin: 1rem 0;
 }
+
+/* Slim copyright bar pinned to the bottom of the viewport on every page
+   (markup in src/components/Footer.astro). Translucent blurred background so
+   content stays legible as it scrolls underneath. */
+.alfred-copyright-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  padding: 0.4rem 1rem;
+  text-align: center;
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-2);
+  background: color-mix(in srgb, var(--sl-color-bg) 82%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid color-mix(in srgb, var(--sl-color-gray-5) 60%, transparent);
+}
+.alfred-copyright-bar p {
+  margin: 0;
+}
+.alfred-copyright-bar a {
+  color: var(--sl-color-text-accent);
+}
+
+/* Clearance for the fixed copyright bar so the last line of content is never
+   hidden behind it. */
+.sl-markdown-content {
+  padding-bottom: 2.5rem;
+}

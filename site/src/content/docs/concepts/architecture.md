@@ -12,7 +12,7 @@ Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to `~/.a
 ```mermaid
 flowchart LR
     launchd["launchd<br/><i>every N min</i>"]
-    role["bin/&lt;role&gt;.py<br/><i>one stable runner per agent</i>"]
+    role["bin/{role}.py<br/><i>one stable runner per agent</i>"]
     runner["lib/agent_runner.py<br/><i>lock · preflight · spend · invoke · gh · slack</i>"]
     engine["claude -p / codex exec<br/><i>the LLM work, fresh subprocess</i>"]
     gh["GitHub CLI"]
@@ -133,7 +133,7 @@ flowchart TB
     fire["agent fires"]
     gblock{"is_globally_blocked()?"}
     skip["print [AGENT-GLOBAL-BLOCKED]<br/>exit 0, no Slack post"]
-    cap{"turns_today &gt;= cap?<br/>consecutive_failures &gt;= 8?"}
+    cap{"turns_today over cap?<br/>8+ consecutive failures?"}
     pause["Slack-post the reason<br/>launchctl bootout this agent"]
     work["claim issue, run claude -p"]
     rl{"claude returned<br/>error_rate_limit / error_budget?"}
