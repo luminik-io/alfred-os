@@ -274,8 +274,8 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
     Skip paused repos.
 
     In dry-run mode there is no gh auth and no real repo, so we hand back a
-    clearly-synthetic issue. The rest of the firing — claim, worktree,
-    invoke, push/PR, release — still exercises real code paths against
+    clearly-synthetic issue. The rest of the firing, claim, worktree,
+    invoke, push/PR, release, still exercises real code paths against
     stubbed side effects.
     """
     if is_dry_run():
@@ -292,7 +292,7 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
             "labels": [{"name": "agent:implement"}],
             "createdAt": "2026-01-01T00:00:00Z",
             "body": (
-                "[dry-run] synthetic issue body — the CLI has no way to bound a "
+                "[dry-run] synthetic issue body, the CLI has no way to bound a "
                 "long-running call. Add a --timeout flag wired into the request path."
             ),
             "author": {"login": "dry-run-user"},
@@ -480,7 +480,7 @@ def main() -> int:
     if is_dry_run():
         dry_run_log(
             "start",
-            f"{AGENT} dry-run firing — no LLM, no spend, no gh/slack/git side effects",
+            f"{AGENT} dry-run firing, no LLM, no spend, no gh/slack/git side effects",
         )
 
     try:
@@ -490,7 +490,7 @@ def main() -> int:
         # is expected; narrate it and keep going so the full lifecycle still
         # flows. A real firing still exits clean on a config gap.
         if is_dry_run():
-            dry_run_log("preflight", "preflight reported config gaps — continuing (dry-run)")
+            dry_run_log("preflight", "preflight reported config gaps, continuing (dry-run)")
         else:
             return 0
 
@@ -502,7 +502,7 @@ def main() -> int:
         print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_LUCIUS_REPOS)")
         return 0
 
-    # Per-firing event log — every meaningful step gets a record so a Slack
+    # Per-firing event log, every meaningful step gets a record so a Slack
     # post-mortem on a confused firing reads as `tail events.jsonl | jq`.
     events = EventLog(agent=AGENT)
     events.emit("firing_started")

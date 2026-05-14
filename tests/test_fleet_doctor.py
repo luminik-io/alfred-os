@@ -1,4 +1,4 @@
-"""Tests for ``bin/fleet-doctor.py`` — read-only health checks.
+"""Tests for ``bin/fleet-doctor.py``, read-only health checks.
 
 We import the script as a module so the helper functions are
 unit-testable without shelling out. The import path is set up the same

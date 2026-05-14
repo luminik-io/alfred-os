@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# alfred-os — fresh-machine bootstrap.
+# alfred-os, fresh-machine bootstrap.
 #
 # Supported hosts:
-#   - macOS — full fleet, launchd-scheduled.
-#   - Debian/Ubuntu Linux — full fleet, systemd --user-scheduled. apt for the
+#   - macOS, full fleet, launchd-scheduled.
+#   - Debian/Ubuntu Linux, full fleet, systemd --user-scheduled. apt for the
 #     CLI tools; uv installs from the official script.
 #
-# What this script does (idempotent — safe to re-run):
+# What this script does (idempotent, safe to re-run):
 #   1. Detects the host OS (macOS or Debian/Ubuntu Linux) and picks the
 #      package-manager lane. Other hosts are refused with a clear message.
 #   2. macOS: installs Homebrew if missing. Linux: uses apt-get.
@@ -119,12 +119,12 @@ step "Checking host"
 case "$(uname -s)" in
   Darwin)
     ALFRED_OS="darwin"
-    ok "macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown') — launchd scheduling"
+    ok "macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown'), launchd scheduling"
     ;;
   Linux)
     ALFRED_OS="linux"
     if [[ ! -r /etc/os-release ]]; then
-      die "/etc/os-release not readable — cannot identify this Linux distro. Debian/Ubuntu required."
+      die "/etc/os-release not readable, cannot identify this Linux distro. Debian/Ubuntu required."
     fi
     # shellcheck disable=SC1091
     . /etc/os-release
@@ -135,9 +135,9 @@ case "$(uname -s)" in
         ;;
     esac
     if ! command -v apt-get >/dev/null 2>&1; then
-      die "apt-get not found — Debian/Ubuntu apt is required. See docs/LINUX.md."
+      die "apt-get not found, Debian/Ubuntu apt is required. See docs/LINUX.md."
     fi
-    ok "${PRETTY_NAME:-Debian/Ubuntu Linux} — systemd --user scheduling"
+    ok "${PRETTY_NAME:-Debian/Ubuntu Linux}, systemd --user scheduling"
     ;;
   *)
     die "Unsupported host: $(uname -s). alfred-os runs on macOS or Debian/Ubuntu Linux. See docs/LINUX.md."
@@ -221,7 +221,7 @@ install_linux_packages() {
   elif ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get install -y gh >/dev/null 2>&1; then
     ok "gh installed from distro repo"
   else
-    note "gh not in distro repo — adding GitHub's official apt repo"
+    note "gh not in distro repo, adding GitHub's official apt repo"
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       | ${SUDO} dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
     ${SUDO} chmod a+r /usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -232,7 +232,7 @@ install_linux_packages() {
     ok "gh installed from GitHub apt repo"
   fi
 
-  # uv (Astral): no apt package — install from the official script into
+  # uv (Astral): no apt package, install from the official script into
   # ~/.local/bin. Idempotent: the installer no-ops if uv is current.
   if command -v uv >/dev/null 2>&1; then
     ok "uv already installed"
@@ -265,7 +265,7 @@ install_linux_packages() {
 
   # AWS CLI v2 is operator-installed when scheduled fleet jobs need it.
   if ! command -v aws >/dev/null 2>&1; then
-    warn "AWS CLI not on PATH — install AWS CLI v2 manually if scheduled jobs touch AWS:"
+    warn "AWS CLI not on PATH, install AWS CLI v2 manually if scheduled jobs touch AWS:"
     warn "  https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
   fi
 }
@@ -371,7 +371,7 @@ case "${SHELL:-}" in
 esac
 
 # shellcheck disable=SC2016
-APPEND_BLOCK='# alfred-os — added by install.sh
+APPEND_BLOCK='# alfred-os, added by install.sh
 [[ -f ~/.alfredrc ]] && {
   set -a
   source ~/.alfredrc
@@ -381,7 +381,7 @@ APPEND_BLOCK='# alfred-os — added by install.sh
 if [[ ! -f "$SHELL_RC" ]]; then
   printf '%s\n' "$APPEND_BLOCK" > "$SHELL_RC"
   ok "created $SHELL_RC with alfred-os source line"
-elif grep -qF "alfred-os — added by install.sh" "$SHELL_RC"; then
+elif grep -qF "alfred-os, added by install.sh" "$SHELL_RC"; then
   ok "$SHELL_RC already sources ~/.alfredrc"
 else
   printf '\n%s\n' "$APPEND_BLOCK" >> "$SHELL_RC"
@@ -396,7 +396,7 @@ if command -v gh >/dev/null 2>&1; then
   if gh auth status >/dev/null 2>&1; then
     ok "gh authenticated"
   else
-    warn "gh not authenticated yet — run: gh auth login"
+    warn "gh not authenticated yet, run: gh auth login"
   fi
 fi
 if command -v aws >/dev/null 2>&1; then

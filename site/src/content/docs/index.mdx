@@ -4,7 +4,7 @@ description: A local agent-fleet runtime for solo builders. Claude Code agents s
 template: splash
 head:
   - tag: title
-    content: Alfred — the solo builder's agent OS
+    content: "Alfred: the solo builder's agent OS"
 hero:
   tagline: A framework for Claude Code agents scheduled by launchd or systemd, on one machine you own.
   image:
@@ -78,16 +78,16 @@ flowchart TB
 
 ## Where it's going
 
-The engineering fleet ships today. The harness underneath is department-agnostic — the private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That's the roadmap: Alfred OS as the solo builder's whole agent OS.
+The engineering fleet ships today. The harness underneath is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That's the roadmap: Alfred OS as the solo builder's whole agent OS.
 
 <CardGrid>
   <Card title="Content" icon="document">Blog, LinkedIn, SEO drafts; site-page generation. Human-in-the-loop on publish.</Card>
   <Card title="Sales / SDR" icon="rocket">Prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.</Card>
-  <Card title="Ops departments" icon="setting">Personal-assistant, finance, product-ops — drafts-only on anything that sends, publishes, or pays.</Card>
+  <Card title="Ops departments" icon="setting">Personal-assistant, finance, and product-ops: drafts-only on anything that sends, publishes, or pays.</Card>
   <Card title="Memory + alfred serve" icon="puzzle">A recall/reflect layer so agents compound what they learn, plus a local read-only UI over fleet state.</Card>
 </CardGrid>
 
-Alfred stays single-operator and local by design — not multi-tenant, not a hosted SaaS. The full [roadmap](/about/roadmap/) has what's in flight and the design boundaries that hold.
+Alfred stays single-operator and local by design. It is not multi-tenant and not a hosted SaaS. The full [roadmap](/about/roadmap/) has what's in flight and the design boundaries that hold.
 
 ## Quick start
 
@@ -125,6 +125,6 @@ Alfred stays single-operator and local by design — not multi-tenant, not a hos
 
 Alfred is at v0.2.1. It ships a complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design boundaries get reviewed. Want to take Alfred somewhere new — a new department, a substrate change? Open a discussion first. Read [Contributing](/about/contributing/) before opening.
+Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design boundaries get reviewed. Want to take Alfred somewhere new (a new department, a substrate change)? Open a discussion first. Read [Contributing](/about/contributing/) before opening.
 
 License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).

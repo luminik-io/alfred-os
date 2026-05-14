@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# alfred-os — deploy framework files into ${ALFRED_HOME}/{lib,bin}/.
+# alfred-os, deploy framework files into ${ALFRED_HOME}/{lib,bin}/.
 #
 # If launchd/agents.conf exists in this checkout, this script also renders
 # and installs the scheduled jobs for the host OS: launchd plists on macOS,

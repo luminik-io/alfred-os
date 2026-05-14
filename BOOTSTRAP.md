@@ -6,7 +6,7 @@ The fleet runs on a single always-on host. A Mac Mini works. An old laptop with 
 
 > Want the faster path? [`INSTALL.md`](INSTALL.md) is the from-zero TL;DR (~30 minutes, mostly automated by `install.sh`). Use BOOTSTRAP for per-agent IAM, Slack, first fleet configuration, and troubleshooting.
 
-> This guide is written for the macOS (`launchd`) path. The Linux (`systemd --user`) path is the same shape — `install.sh`, `deploy.sh`, and the `alfred` CLI all detect the host — with apt instead of Homebrew and `systemctl --user` instead of `launchctl`. See [`docs/LINUX.md`](docs/LINUX.md) for the Linux specifics, then come back here for per-agent IAM, Slack, and prompt engineering.
+> This guide is written for the macOS (`launchd`) path. The Linux (`systemd --user`) path is the same shape (`install.sh`, `deploy.sh`, and the `alfred` CLI all detect the host) with apt instead of Homebrew and `systemctl --user` instead of `launchctl`. See [`docs/LINUX.md`](docs/LINUX.md) for the Linux specifics, then come back here for per-agent IAM, Slack, and prompt engineering.
 
 > Rendered docs: [https://alfred.luminik.io](https://alfred.luminik.io).
 
@@ -14,7 +14,7 @@ The fleet runs on a single always-on host. A Mac Mini works. An old laptop with 
 
 | Tool | Why | Install |
 |---|---|---|
-| macOS 13+ or Debian/Ubuntu Linux | `launchd` per-user agents (macOS) or `systemd --user` timers (Linux) for per-firing scheduling | n/a — see [`docs/LINUX.md`](docs/LINUX.md) for the Linux path |
+| macOS 13+ or Debian/Ubuntu Linux | `launchd` per-user agents (macOS) or `systemd --user` timers (Linux) for per-firing scheduling | n/a (see [`docs/LINUX.md`](docs/LINUX.md) for the Linux path) |
 | Python 3.11+ | The agent runners and `agent_runner.py` library | `brew install python@3.11` |
 | Node via fnm | Frontend pre-push checks; `claude` CLI lives under fnm by default in this repo | `brew install fnm && fnm install --lts` |
 | `git` 2.40+ | Worktree commands the agents lean on | `brew install git` |

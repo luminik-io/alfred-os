@@ -91,7 +91,7 @@ def test_disable_agent_idempotent_when_not_present():
     import agent_runner as ar
 
     # Disabling a never-enabled agent must not raise and must not change
-    # state — idempotent contract per the helper docstring.
+    # state, idempotent contract per the helper docstring.
     ar.enable_agent("lucius")
     out = ar.disable_agent("never-listed")
     assert out == ["lucius"]

@@ -8,7 +8,7 @@ across the bundle, plan parsing from issue bodies. The execution chain
 ``bin/batman.py`` so it can be skinned per-fleet without touching
 testable primitives.
 
-Key contract — bundle = atomic unit:
+Key contract, bundle = atomic unit:
 
 - ``claim_bundle`` is all-or-nothing: claim every issue in the bundle or
   release every previously-claimed issue and return False. A bundle is
@@ -26,7 +26,7 @@ Plan-shape parsing accepts the loose markdown shape Drake produces:
     per-repo criteria
 
 Anything we cannot parse falls back to a sensible default
-(``DEFAULT_ROLLOUT_ORDER``) — Batman flags malformed bodies via the
+(``DEFAULT_ROLLOUT_ORDER``), Batman flags malformed bodies via the
 plan post but never fails the firing on a parse error.
 
 Includes the parser scope-widening guard used by the bundle planner.
@@ -39,7 +39,7 @@ from dataclasses import dataclass
 
 from agent_runner import GH_ORG, GH_REPO_TO_LOCAL, claim_issue, gh_json, release_issue
 
-# Label conventions — must match what Drake files and what `gh` searches.
+# Label conventions, must match what Drake files and what `gh` searches.
 BUNDLE_LABEL_PREFIX = "agent:bundle:"
 LARGE_FEATURE_LABEL = "agent:large-feature"
 
@@ -57,7 +57,7 @@ DEFAULT_ROLLOUT_ORDER = [
 ]
 
 
-# ``https://github.com/<owner>/<repo>/issues/<n>`` — the URL shape
+# ``https://github.com/<owner>/<repo>/issues/<n>``, the URL shape
 # ``gh search issues --json url`` returns. Capture owner + repo so we
 # can route claim / release calls back to the right repo.
 _ISSUE_URL_RE = re.compile(
@@ -67,7 +67,7 @@ _ISSUE_URL_RE = re.compile(
 
 def _gh_repo_from_url(url: str) -> str | None:
     """Extract ``<repo>`` from an issue URL, scoped to the configured
-    ``GH_ORG``. Returns None for cross-org URLs or malformed input —
+    ``GH_ORG``. Returns None for cross-org URLs or malformed input;
     callers route those to the failure branch rather than crashing.
     """
     if not url:
@@ -92,7 +92,7 @@ class Bundle:
 
     @property
     def primary_issue(self) -> dict:
-        """Oldest issue by ``createdAt`` — the focal point for plan
+        """Oldest issue by ``createdAt``, the focal point for plan
         post threading and CLI display."""
         return min(self.issues, key=lambda i: i["createdAt"])
 
@@ -112,7 +112,7 @@ def list_issues_by_bundle_label(bundle_label: str) -> list[dict]:
     ``agent:bundle:<slug>`` label.
 
     Returns ``[]`` on missing GH_ORG, no matches, or any gh search
-    failure — never raises.
+    failure, never raises.
     """
     if not GH_ORG:
         return []
@@ -181,7 +181,7 @@ def release_bundle(
     outcome: str,
     transition_to: str | None = None,
 ) -> None:
-    """Release every issue in the bundle. Best-effort — a per-issue
+    """Release every issue in the bundle. Best-effort, a per-issue
     failure does not abort the rest. Used on every termination path.
 
     ``transition_to`` is the lifecycle label every issue moves to (e.g.
@@ -232,7 +232,7 @@ def _normalize_repo_token(token: str) -> str | None:
 
     When ``GH_REPO_TO_LOCAL`` is empty (the default for fresh
     alfred-os installs), the token is accepted as-is iff it looks
-    like a plausible repo name (``[\\w.-]+``) — operators who haven't
+    like a plausible repo name (``[\\w.-]+``), operators who haven't
     populated the map shouldn't have plan parsing silently drop every
     repo. They get whatever they typed.
     """
@@ -284,7 +284,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     Scope-widening guard: when an
     explicit ``Affected Repos`` list is present and the criteria block
     contains a stray ``### frontend`` H3 not in the explicit list, the
-    explicit list wins — a typo in the criteria section must NOT
+    explicit list wins, a typo in the criteria section must NOT
     silently expand the PR set.
 
     Returns ``PlanShape`` with a sensible default rollout when nothing
@@ -307,7 +307,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                     affected.append(local)
         elif low.startswith("rollout order:") or low.startswith("rollout:"):
             payload = stripped.split(":", 1)[1]
-            # Do NOT include "-" in the splitter character class — repo
+            # Do NOT include "-" in the splitter character class, repo
             # names like "data-acquisition" contain hyphens, so splitting
             # on "-" silently drops them. The user-typed arrow ("->") is
             # handled by ">" alone; a stray leading "-" from bullet-style
@@ -338,7 +338,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                 if local and local not in affected:
                     affected.append(local)
 
-    # 2b. ## Rollout (Order) H2 block — same shape relaxation as the
+    # 2b. ## Rollout (Order) H2 block, same shape relaxation as the
     # inline parser. Also accepts the explicit "## Rollout order"
     # header that Drake emits.
     if not rollout_override:
@@ -437,7 +437,7 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
         body = (issue.get("body") or "").strip()
         # If the issue body itself has a ``### <repo>`` H3 (common when
         # an author templates the full spec into every per-repo issue),
-        # prefer that. Otherwise the whole body becomes the criteria —
+        # prefer that. Otherwise the whole body becomes the criteria;
         # per-repo bundle issues usually contain only their own scope.
         per_repo = parse_plan_from_issue(body)
         criteria_by_repo[local] = per_repo.repo_criteria.get(local) or body

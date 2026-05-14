@@ -361,7 +361,7 @@ Title: {pr_title}
 Body:
 {pr_body}
 
-The diff is at {tmp}/diff.patch — read it.
+The diff is at {tmp}/diff.patch, read it.
 Working directory: {local_path} (you can grep the surrounding repo for context).
 Workspace root for cross-repo grep: {WORKSPACE_ROOT}
 
@@ -564,7 +564,7 @@ Ship-ready: yes / no - <one sentence>
         return 0
 
     # Split P0/P1 findings into per-finding sub-comments so the review-to-fix
-    # agent (default: Nightwing) can address each one independently — it dedups
+    # agent (default: Nightwing) can address each one independently, it dedups
     # by comment-id.
     p0_findings = _extract_section(text, "## Blockers (P0)")
     p1_findings = _extract_section(text, "## Should fix before merge (P1)")

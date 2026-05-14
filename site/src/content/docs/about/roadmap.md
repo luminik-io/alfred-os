@@ -32,22 +32,22 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - **Spend dashboards**. Render a weekly recap from per-agent spend files.
 - **`alfred new-codename` scaffold**. Single command to add a fresh codename agent.
 
-## Beyond engineering — the solo builder's agent OS
+## Beyond engineering: the solo builder's agent OS
 
-The default install ships the engineering fleet. The harness underneath it is department-agnostic — the private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That's the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
+The default install ships the engineering fleet. The harness underneath it is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That's the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
 
-- **Content** — blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
-- **Sales / SDR** — prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
-- **Personal assistant** — inbox triage, calendar, daily digest. Drafts only.
-- **Finance ops** — invoice generation, bank reconciliation, subscription audit. Drafts only.
-- **Product ops / SRE** — uptime monitoring, release notes, customer-health signals.
+- **Content**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
+- **Sales / SDR**: prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
+- **Personal assistant**: inbox triage, calendar, daily digest. Drafts only.
+- **Finance ops**: invoice generation, bank reconciliation, subscription audit. Drafts only.
+- **Product ops / SRE**: uptime monitoring, release notes, customer-health signals.
 
 Each department is its own integration surface and per-codename prompt design. One codename per PR, with prompt + tests + docs.
 
 ## On the horizon
 
-- **A memory layer** — a recall/reflect layer so an agent starts a firing with what the last firings learned. Optional, zero-dependency, per-fleet.
-- **`alfred serve`** — a local read-model + UI over `state/` and per-firing transcripts: live firing feed, cost and success trends, the trace tree for one firing. Read-only and local.
+- **A memory layer**: a recall/reflect layer so an agent starts a firing with what the last firings learned. Optional, zero-dependency, per-fleet.
+- **`alfred serve`**: a local read-model + UI over `state/` and per-firing transcripts: live firing feed, cost and success trends, the trace tree for one firing. Read-only and local.
 
 ## Considered, not committed
 
@@ -59,13 +59,13 @@ Each department is its own integration surface and per-codename prompt design. O
 
 ## Design boundaries
 
-Not missing features — the design.
+These are the design, not missing features.
 
 - **Single operator.** One person, one host, one config. Not multi-tenant, not a hosted SaaS.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` on your own subscription.
 - **Lean on the platform.** Adopt Anthropic-native capabilities (Agent Teams, the Memory Tool) rather than re-implement them.
-- **Browser automation is per-codename**, installed in the codename's own bin script.
+- **Browser automation is per-codename**: installed in the codename's own bin script.
 
 ## Influence
 

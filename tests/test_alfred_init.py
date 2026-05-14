@@ -9,7 +9,7 @@ Covers the deterministic, side-effect-free helpers:
     - main() with ALFRED_DOCTOR=1 (short-circuit sentinel)
 
 The interactive prompt path, subprocess shells, and Slack/AWS HTTP calls
-are NOT exercised — those need a live operator + accounts.
+are NOT exercised, those need a live operator + accounts.
 
 Run via `pytest tests/test_alfred_init.py`.
 """
@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 # ---------------------------------------------------------------------------
-# Module loader — bin/alfred-init.py has a hyphen, so import via spec.
+# Module loader, bin/alfred-init.py has a hyphen, so import via spec.
 # ---------------------------------------------------------------------------
 
 
@@ -235,7 +235,7 @@ def test_upsert_alfredrc_idempotent(tmp_path, init_mod):
     # The pre-existing block survived.
     assert "GH_ORG=acme" in second
     # The marker block exists exactly once.
-    assert second.count("alfred-init — generated") == 1
+    assert second.count("alfred-init, generated") == 1
 
 
 def test_upsert_alfredrc_updates_values(tmp_path, init_mod):

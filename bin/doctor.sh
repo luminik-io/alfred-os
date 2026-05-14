@@ -295,7 +295,7 @@ while IFS=$'\t' read -r label script_name; do
     # The agent's code ran and its preflight() deliberately reported missing
     # host configuration (GH auth, repo checkouts, scoped secrets). In --dev
     # mode this is a known gap on a dev box, not a code defect, so surface it
-    # without failing. Crashes never reach this branch — a broken import
+    # without failing. Crashes never reach this branch, a broken import
     # exits without emitting the sentinel and lands in "unexpected output".
     if [ "$DEV_MODE" -eq 1 ]; then
       printf "⚠️  config gap (--dev: not fatal)\n"
@@ -320,6 +320,6 @@ done < <(configured_agents | sort -u)
 echo
 echo "doctor: $pass passed, $fail failed"
 if [ "$DEV_MODE" -eq 1 ]; then
-  echo "doctor: --dev mode — config gaps above (⚠️) were not counted as failures."
+  echo "doctor: --dev mode, config gaps above (⚠️) were not counted as failures."
 fi
 [ "$fail" -eq 0 ]

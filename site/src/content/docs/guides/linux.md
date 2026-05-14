@@ -1,15 +1,15 @@
 ---
 title: Linux
-description: Alfred runs on Debian/Ubuntu Linux via systemd --user timers — install, deploy, and operate the fleet.
+description: Alfred runs on Debian/Ubuntu Linux via systemd --user timers. Install, deploy, and operate the fleet.
 ---
 
-Alfred runs on Linux. The scheduling layer is `systemd --user` timers — the Linux analogue of macOS `launchd` per-user agents. `install.sh`, `deploy.sh`, `bin/doctor.sh`, `alfred-status`, and the `alfred` CLI all detect the host OS and pick the right path. Supported distros: **Debian and Ubuntu** (apt).
+Alfred runs on Linux. The scheduling layer is `systemd --user` timers, the Linux analogue of macOS `launchd` per-user agents. `install.sh`, `deploy.sh`, `bin/doctor.sh`, `alfred-status`, and the `alfred` CLI all detect the host OS and pick the right path. Supported distros: **Debian and Ubuntu** (apt).
 
 Full reference: [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/LINUX.md).
 
 ## The scheduler is the only OS-specific layer
 
-Everything above the scheduler is portable Python and Bash. The host-scheduler dependency is isolated to the render scripts, the unit templates, and the `lib/scheduler.py` abstraction — `launchd` on macOS, `systemd --user` on Linux. `agents.conf` is the single source of truth for both.
+Everything above the scheduler is portable Python and Bash. The host-scheduler dependency is isolated to the render scripts, the unit templates, and the `lib/scheduler.py` abstraction (`launchd` on macOS, `systemd --user` on Linux). `agents.conf` is the single source of truth for both.
 
 ```mermaid
 flowchart TB
@@ -67,7 +67,7 @@ bash install.sh
 
 On Linux, `install.sh` confirms the host is Debian/Ubuntu (`/etc/os-release`), `apt-get install`s the prerequisites, installs `uv` from the official installer (and uses it to provision Python 3.11 if the distro default is newer), runs `npm install -g @anthropic-ai/claude-code`, then seeds `$ALFRED_HOME`, `$WORKSPACE_ROOT`, and `~/.alfredrc`.
 
-AWS CLI v2 is **not** auto-installed — apt ships v1.x. Install it from Amazon if your fleet jobs touch AWS.
+AWS CLI v2 is **not** auto-installed; apt ships v1.x. Install it from Amazon if your fleet jobs touch AWS.
 
 ## Deploy
 
@@ -75,7 +75,7 @@ AWS CLI v2 is **not** auto-installed — apt ships v1.x. Install it from Amazon 
 bash deploy.sh
 ```
 
-On Linux, `deploy.sh` copies `lib/` and `bin/` into `$ALFRED_HOME`, renders `systemd/` units from `agents.conf`, reaps units for removed rows, copies the units into `~/.config/systemd/user/`, runs `daemon-reload`, and `enable --now`s each timer — skipping any agent whose pause marker is set.
+On Linux, `deploy.sh` copies `lib/` and `bin/` into `$ALFRED_HOME`, renders `systemd/` units from `agents.conf`, reaps units for removed rows, copies the units into `~/.config/systemd/user/`, runs `daemon-reload`, and `enable --now`s each timer, skipping any agent whose pause marker is set.
 
 ## Operate
 
@@ -92,7 +92,7 @@ bash bin/doctor.sh --dev   # preflight; --dev tolerates host-config gaps
 
 Raw `systemctl --user list-timers` and `journalctl --user -u <label>` still work if you prefer them.
 
-## `linger` — keeping the fleet alive across logout
+## `linger`: keeping the fleet alive across logout
 
 `systemd --user` units only run while the user has an active session unless **linger** is enabled. For an always-on agent host, enable it once:
 
@@ -100,11 +100,11 @@ Raw `systemctl --user list-timers` and `journalctl --user -u <label>` still work
 sudo loginctl enable-linger "$USER"
 ```
 
-This is the one piece `deploy.sh` does **not** do for you — it needs `sudo` and is a deliberate operator decision.
+This is the one piece `deploy.sh` does **not** do for you. It needs `sudo` and is a deliberate operator decision.
 
 ## WSL2 and Docker
 
-- **WSL2**: same path as Linux on distros that enable systemd (recent Ubuntu does by default). Keep `WORKSPACE_ROOT` on a Linux path, not `/mnt/c/...` — cross-filesystem worktrees are slow and Windows file-locking confuses `git worktree`.
-- **Docker**: still not container-friendly — the host-scheduler assumption means hosting the scheduler outside the container. Running individual agents *inside* containers is fine, though: point your codename's `bin/<name>.py` at `docker run --rm ... claude -p ...`.
+- **WSL2**: same path as Linux on distros that enable systemd (recent Ubuntu does by default). Keep `WORKSPACE_ROOT` on a Linux path, not `/mnt/c/...`. Cross-filesystem worktrees are slow and Windows file-locking confuses `git worktree`.
+- **Docker**: still not container-friendly. The host-scheduler assumption means hosting the scheduler outside the container. Running individual agents *inside* containers is fine, though: point your codename's `bin/<name>.py` at `docker run --rm ... claude -p ...`.
 
 One thing still macOS-shaped: `alfred claude` switches the Claude Code account via `launchctl setenv`, which has no systemd equivalent. On Linux, set `CLAUDE_CONFIG_DIR` directly in `~/.alfredrc`.

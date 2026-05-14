@@ -76,7 +76,7 @@ def test_find_open_authored_pr_skips_human_authored(monkeypatch):
 
 
 def test_find_open_authored_pr_substring_false_positive(monkeypatch):
-    """Issue #27 must not be locked by a PR that closes #2750 — gh's
+    """Issue #27 must not be locked by a PR that closes #2750, gh's
     text search substring-matches."""
     import agent_runner as ar
 
@@ -98,7 +98,7 @@ def test_find_open_authored_pr_substring_false_positive(monkeypatch):
 
 
 def test_find_open_authored_pr_handles_gh_failure(monkeypatch):
-    """A transient gh failure must NOT lock the picker — return None."""
+    """A transient gh failure must NOT lock the picker, return None."""
     import agent_runner as ar
 
     monkeypatch.setattr(ar, "gh_json", lambda *a, **kw: [])

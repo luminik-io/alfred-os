@@ -1,10 +1,10 @@
 /* Alfred site overrides on top of Starlight defaults.
    Design system: logo-derived navy + brightened brand accent, restrained
    glassmorphism on floating chrome only, flat elevated surfaces everywhere
-   else. Legibility first — this is a docs site. */
+   else. Legibility first, this is a docs site. */
 
 /* ------------------------------------------------------------------ */
-/* Color tokens — dark mode (default)                                  */
+/* Color tokens, dark mode (default)                                  */
 /* ------------------------------------------------------------------ */
 :root {
   /* Backgrounds */
@@ -45,7 +45,7 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Color tokens — light mode                                           */
+/* Color tokens, light mode                                           */
 /* ------------------------------------------------------------------ */
 :root[data-theme="light"] {
   --sl-color-bg: #f7f9fc;
@@ -62,7 +62,7 @@
   --sl-color-gray-5: #d4dbe9;
   --sl-color-gray-6: #e6ebf4;
 
-  /* #2855c8 — darkened for AA contrast on white. Do NOT use #4a78ff here. */
+  /* #2855c8, darkened for AA contrast on white. Do NOT use #4a78ff here. */
   --sl-color-accent-low: #d8e2ff;
   --sl-color-accent: #2855c8;
   --sl-color-accent-high: #14245c;
@@ -78,7 +78,7 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Glassmorphism — RESTRAINED. Floating chrome only.                   */
+/* Glassmorphism, RESTRAINED. Floating chrome only.                   */
 /* ------------------------------------------------------------------ */
 .alfred-glass {
   background: color-mix(in srgb, var(--sl-color-bg-nav) 78%, transparent);
@@ -98,7 +98,7 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Site header — glass at ~88% opacity                                 */
+/* Site header, glass at ~88% opacity                                 */
 /* ------------------------------------------------------------------ */
 /* Scoped to the `header` element specifically: Starlight's site header
    is `<header class="header">`, but Expressive Code code-frame title
@@ -126,7 +126,7 @@ header.header a[href] img {
 }
 
 /* ------------------------------------------------------------------ */
-/* Left nav sidebar — flat, solid, hairline border                     */
+/* Left nav sidebar, flat, solid, hairline border                     */
 /* ------------------------------------------------------------------ */
 .sidebar {
   background: var(--sl-color-bg-sidebar);
@@ -139,7 +139,7 @@ nav.sidebar .sidebar-content {
   padding-bottom: 2.5rem;
 }
 
-/* Group labels — uppercase, small, muted. */
+/* Group labels, uppercase, small, muted. */
 .sidebar-content .top-level > li > details > summary > .group-label > span,
 .sidebar-content summary .group-label span,
 .sidebar ul.top-level > li > details > summary span.large {
@@ -150,7 +150,7 @@ nav.sidebar .sidebar-content {
   font-weight: 600;
 }
 
-/* Active sidebar item — 2px accent left-bar + accent-low background. */
+/* Active sidebar item, 2px accent left-bar + accent-low background. */
 .sidebar a[aria-current="page"],
 .sidebar a[aria-current="page"]:hover {
   background: var(--sl-color-accent-low);
@@ -164,7 +164,7 @@ nav.sidebar .sidebar-content {
 }
 
 /* ------------------------------------------------------------------ */
-/* Right ToC — flat elevated card                                      */
+/* Right ToC, flat elevated card                                      */
 /* ------------------------------------------------------------------ */
 .right-sidebar {
   padding-bottom: 2.5rem;
@@ -183,7 +183,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mobile nav drawer — glass                                           */
+/* Mobile nav drawer, glass                                           */
 /* ------------------------------------------------------------------ */
 @media (max-width: 50rem) {
   #starlight__sidebar,
@@ -234,7 +234,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Code blocks — flat elevated, no blur                                */
+/* Code blocks, flat elevated, no blur                                */
 /* ------------------------------------------------------------------ */
 .expressive-code {
   font-size: 0.92rem;
@@ -252,7 +252,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Cards — one premium flourish                                        */
+/* Cards, one premium flourish                                        */
 /* ------------------------------------------------------------------ */
 .sl-card,
 .card {
@@ -287,7 +287,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mermaid frames — flat elevated panel. The specificity here intentionally
+/* Mermaid frames, flat elevated panel. The specificity here intentionally
    beats astro-mermaid's injected `[data-theme=...] pre.mermaid[data-processed]`
    rule so our elevated surface wins. */
 /* ------------------------------------------------------------------ */
@@ -305,7 +305,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Splash hero — single static radial glow                             */
+/* Splash hero, single static radial glow                             */
 /* ------------------------------------------------------------------ */
 .hero {
   padding-top: 1rem;
@@ -343,7 +343,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Starlight Aside callouts — severity token mapping                   */
+/* Starlight Aside callouts, severity token mapping                   */
 /* ------------------------------------------------------------------ */
 .starlight-aside--note {
   --sl-color-asides-text-accent: var(--alfred-info);
@@ -375,7 +375,7 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Fixed copyright bar — glass treatment                               */
+/* Fixed copyright bar, glass treatment                               */
 /* ------------------------------------------------------------------ */
 .alfred-copyright-bar {
   position: fixed;

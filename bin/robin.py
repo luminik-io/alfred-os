@@ -55,7 +55,7 @@ PREFLIGHT = PreflightSpec(
 TRIAGE_REPOS = [r.strip() for r in os.environ.get("ALFRED_ROBIN_REPOS", "").split(",") if r.strip()]
 
 # Persistent dedup ledger. The same issue can survive a label-add failure
-# (gh returns success but the label is missing on next read — eventual
+# (gh returns success but the label is missing on next read, eventual
 # consistency or a rate-limit retry that didn't replay), so the on-disk
 # ledger is the local-truth backstop. If we've touched the issue in the
 # last TOUCHED_TTL_DAYS days, skip regardless of GitHub state.
@@ -487,7 +487,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
     spend.increment(triaged_today=len(triages))
 
     # Reset consecutive_failures and count this firing as a success even when
-    # no triages applied — the firing completed without error.
+    # no triages applied, the firing completed without error.
     spend.increment(successes_today=1)
     spend.set(consecutive_failures=0)
 

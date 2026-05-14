@@ -218,7 +218,7 @@ PY
 }
 
 # Bash treats tab as a whitespace IFS char and collapses consecutive tabs
-# into one separator — which corrupts empty middle columns (an unset
+# into one separator, which corrupts empty middle columns (an unset
 # log_stem with a role still set turns into "log_stem=<role>, role=<empty>").
 # Pre-expand each record into a non-whitespace field separator (\x1f) so
 # read preserves empties.

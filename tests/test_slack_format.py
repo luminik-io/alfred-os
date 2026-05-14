@@ -1,4 +1,4 @@
-"""Tests for ``lib/slack_format.py`` — Block Kit threading helpers.
+"""Tests for ``lib/slack_format.py``, Block Kit threading helpers.
 
 We don't hit the real Slack API; we monkeypatch ``_api_post`` and
 ``_resolve_bot_token`` so the tests stay deterministic and offline.

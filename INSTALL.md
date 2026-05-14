@@ -158,13 +158,13 @@ Then [`BOOTSTRAP.md`](BOOTSTRAP.md) for the full pattern: per-agent IAM, Slack r
 ## Troubleshooting `install.sh`
 
 **"Unsupported host" or "Only Debian/Ubuntu Linux is supported."**
-`install.sh` runs on macOS and Debian/Ubuntu Linux. Other Linux distros are not supported by the installer — the framework itself is distro-agnostic, so you can install the prerequisites by hand and then run `bash deploy.sh` directly. See [`docs/LINUX.md`](docs/LINUX.md).
+`install.sh` runs on macOS and Debian/Ubuntu Linux. Other Linux distros are not supported by the installer, but the framework itself is distro-agnostic, so you can install the prerequisites by hand and then run `bash deploy.sh` directly. See [`docs/LINUX.md`](docs/LINUX.md).
 
 **"npm not found; skipping Claude Code install."**
 On macOS the `node` brew install brings `npm` along; on Linux it comes from the `nodejs` / `npm` apt packages. If you skipped package install (`--skip-brew`), install Node manually then re-run `install.sh` with `--skip-brew`.
 
 **`openjdk-21-jdk` is not available on this Linux host.**
-`openjdk-21-jdk` ships in Ubuntu 24.04+ and Debian 13+. `install.sh` does not install the JDK — only `needs_java=yes` agents need it. On an older release, install a JDK 21 manually and put `java` on `PATH` before running `deploy.sh`. See [`docs/LINUX.md`](docs/LINUX.md).
+`openjdk-21-jdk` ships in Ubuntu 24.04+ and Debian 13+. `install.sh` does not install the JDK; only `needs_java=yes` agents need it. On an older release, install a JDK 21 manually and put `java` on `PATH` before running `deploy.sh`. See [`docs/LINUX.md`](docs/LINUX.md).
 
 **Permissions errors on Homebrew install.**
 Apple Silicon installs to `/opt/homebrew`; Intel to `/usr/local`. Both prompt for sudo on first install. If you cancel mid-flow, run install.sh again. It's idempotent.

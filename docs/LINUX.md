@@ -5,7 +5,7 @@ Linux analogue of macOS `launchd` per-user agents. `install.sh`, `deploy.sh`,
 `bin/doctor.sh`, `alfred-status`, and the `alfred` CLI all detect the host OS
 and pick the right path. Supported distros: Debian and Ubuntu (apt).
 
-If you are on macOS, you do not need this doc — `install.sh` handles it.
+If you are on macOS, you do not need this doc; `install.sh` handles it.
 
 ## How the launchd / systemd mapping works
 
@@ -22,7 +22,7 @@ is a real mapping, not a translation shim:
 | `StandardOutPath` / `StandardErrorPath` | `StandardOutput=append:` / `StandardError=append:` | per-agent stdout/stderr to `/tmp/<stem>.{stdout,stderr}` |
 | `EnvironmentVariables` block | `Environment=` lines | per-agent env without polluting the operator shell |
 
-`agents.conf` is the single source of truth for both schedulers — the same
+`agents.conf` is the single source of truth for both schedulers: the same
 six tab-separated columns (`label`, `script`, `schedule`, `needs_java`,
 `log_stem`, `role`) feed `launchd/render.sh` and `systemd/render.sh`.
 
@@ -69,7 +69,7 @@ On Linux, `deploy.sh`:
    `systemd/_generated/`.
 3. Reaps units for `agents.conf` rows that were removed.
 4. Copies the units into `~/.config/systemd/user/`, runs
-   `systemctl --user daemon-reload`, and `enable --now`s each timer —
+   `systemctl --user daemon-reload`, and `enable --now`s each timer,
    skipping any agent whose pause marker is set at
    `$ALFRED_HOME/state/_paused/<codename>`.
 
@@ -98,7 +98,7 @@ Note that agents also write to `/tmp/<log_stem>.{stdout,stderr}` (the
 `StandardOutput=append:` lines), so the macOS grep-and-tail muscle memory
 carries over.
 
-## `linger` — keeping the fleet alive across logout
+## `linger`: keeping the fleet alive across logout
 
 `systemd --user` units only run while the user has an active session unless
 **linger** is enabled. For an always-on agent host, enable it once:
@@ -109,7 +109,7 @@ sudo loginctl enable-linger "$USER"
 
 Without linger, the timers stop when you log out and resume when you log
 back in. With it, they run continuously like macOS `launchd` agents. This is
-the one piece `deploy.sh` does **not** do for you — it needs `sudo` and is a
+the one piece `deploy.sh` does **not** do for you. It needs `sudo` and is a
 deliberate operator decision.
 
 ## Java agents
@@ -159,7 +159,7 @@ the LLM call.
 The framework primitives in `lib/agent_runner.py` (preflight, lock, spend,
 claude_invoke, gh, slack, claim_issue/release_issue, severity routing) are
 plain Python and Bash and have always run on Linux. `tests/` runs the full
-`pytest` suite on Linux CI. If you hit a Linux-specific bug, file an issue —
+`pytest` suite on Linux CI. If you hit a Linux-specific bug, file an issue.
 Linux is a supported host now, so Linux bugs are real bugs.
 
 One thing that is still macOS-shaped: `alfred claude` switches the Claude

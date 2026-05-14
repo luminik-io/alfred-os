@@ -349,7 +349,7 @@ def is_mergeable(
         )
         if not is_reviewer:
             continue
-        # Only P0 — auto-merge ignores P1+ (the fix agent handles those over time)
+        # Only P0, auto-merge ignores P1+ (the fix agent handles those over time)
         is_p0 = "P0" in body and not body.startswith(REVIEW_P1_PREFIX)
         if not is_p0:
             continue

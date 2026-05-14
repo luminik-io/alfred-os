@@ -1,18 +1,18 @@
 """
-alfred-os — shared library for launchd-managed Claude Code agents.
+alfred-os: shared library for launchd-managed Claude Code agents.
 
 Provides the primitives every codename agent needs:
 
-- ``preflight()`` / ``doctor_mode()`` — fail loud and early on mis-configured hosts.
-- ``with_lock()`` / ``AgentLock`` — mkdir-atomic per-agent mutex.
-- ``SpendState`` — per-agent per-day firings / turns / cost / failure tracking.
-- ``is_globally_blocked()`` / ``set_global_block()`` — fleet-wide rate-limit poison pill.
-- ``run()`` / ``gh_json()`` — `subprocess` wrappers with sane defaults and clear errors.
-- ``claude_invoke()`` — call ``claude -p`` and parse the structured result.
-- ``codex_invoke()`` — optional ``codex exec`` subprocess for review-style tasks.
-- ``make_worktree()`` / ``remove_worktree()`` — per-firing git-worktree isolation.
-- ``slack_post()`` — webhook-based Slack notification with disk caching.
-- ``ensure_labels()`` / ``gh_pr_create()`` / ``gh_issue_*()`` — gh CLI wrappers.
+- ``preflight()`` / ``doctor_mode()``: fail loud and early on mis-configured hosts.
+- ``with_lock()`` / ``AgentLock``: mkdir-atomic per-agent mutex.
+- ``SpendState``: per-agent per-day firings / turns / cost / failure tracking.
+- ``is_globally_blocked()`` / ``set_global_block()``: fleet-wide rate-limit poison pill.
+- ``run()`` / ``gh_json()``: ``subprocess`` wrappers with sane defaults and clear errors.
+- ``claude_invoke()``: call ``claude -p`` and parse the structured result.
+- ``codex_invoke()``: optional ``codex exec`` subprocess for review-style tasks.
+- ``make_worktree()`` / ``remove_worktree()``: per-firing git-worktree isolation.
+- ``slack_post()``: webhook-based Slack notification with disk caching.
+- ``ensure_labels()`` / ``gh_pr_create()`` / ``gh_issue_*()``: gh CLI wrappers.
 
 Consumers write a thin role runner such as ``bin/lucius.py`` or
 ``bin/huntress.py`` that imports from this module, declares a
@@ -99,7 +99,7 @@ ENGINE_CHOICES = {"claude", "codex", "hybrid"}
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"
 SLACK_WEBHOOK_CACHE_TTL = 30 * 24 * 3600  # 30 days; the webhook URL itself is stable
 
-# Shared rate-limit blocker — when ANY agent hits Anthropic's error_rate_limit
+# Shared rate-limit blocker, when ANY agent hits Anthropic's error_rate_limit
 # or error_budget, all agents respect the block until the timeout passes.
 # Otherwise each scheduled agent would keep firing into the rate-limit wall.
 GLOBAL_BLOCKED_FILE = STATE_ROOT / "global-blocked-until.json"
@@ -130,7 +130,7 @@ def set_global_block(hours: int, reason: str) -> str:
     from datetime import timedelta
 
     until = (datetime.now(UTC) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    # Dry-run: never write the fleet-wide poison pill — a dry-run firing must
+    # Dry-run: never write the fleet-wide poison pill, a dry-run firing must
     # not be able to block real scheduled agents. Report the until-string the
     # caller expects so its happy-path messaging still renders.
     if is_dry_run():
@@ -246,7 +246,7 @@ def maybe_set_global_block_for_result(
 # itself (so ``"backend"`` resolves to ``WORKSPACE_ROOT/product/backend``).
 GH_REPO_TO_LOCAL: dict[str, str] = {}
 
-# STANDARD_LABELS — labels that ``ensure_labels()`` will create on the
+# STANDARD_LABELS, labels that ``ensure_labels()`` will create on the
 # target repo if missing. Each tuple: (name, hex-color-no-hash, description).
 # Consumers can ``STANDARD_LABELS.extend(...)`` from their bin/*.py to add
 # fleet-specific labels.
@@ -254,9 +254,9 @@ GH_REPO_TO_LOCAL: dict[str, str] = {}
 # The defaults below ship the labels Batman + the bundle model rely on so
 # every PR-create / issue-edit path "just works" on a fresh product repo:
 #
-#   batman-pr-open       — set by Batman when a bundle PR exists in the
+#   batman-pr-open      , set by Batman when a bundle PR exists in the
 #                          repo; cleared on merge.
-#   agent:large-feature  — issue label that opts the issue into Batman's
+#   agent:large-feature , issue label that opts the issue into Batman's
 #                          bundle search (multi-repo feature work).
 #
 # Without these defaults, the first PR-create call against a fresh repo
@@ -316,8 +316,8 @@ def env_int(name: str, default: int, *, minimum: int = 1, maximum: int | None = 
     """Read a small integer knob from env without letting bad values break scheduled runs.
 
     Missing / non-integer values fall back to ``default``. Result is always
-    clamped to the ``[minimum, maximum]`` range — including the fallback
-    path — so a typo in the launchd plist can't kneecap or unbound a
+    clamped to the ``[minimum, maximum]`` range, including the fallback
+    path, so a typo in the launchd plist can't kneecap or unbound a
     per-firing budget. A caller that supplies an out-of-range ``default``
     (e.g. ``default`` above ``maximum``) gets the clamped value, not the
     raw default; the safety guarantee is unconditional.
@@ -340,7 +340,7 @@ def optional_env_int(name: str, *, minimum: int = 1, maximum: int | None = None)
     """Read an optional integer knob; return None when unset or unparseable.
 
     Designed for "no default ceiling, but allow temporary debugging via env"
-    knobs — most prominently the per-firing ``max_turns`` budget on agents
+    knobs, most prominently the per-firing ``max_turns`` budget on agents
     where a hard cap produces no-output runs (the agent burns its whole
     budget surveying without ever reaching a sentinel). Callers pass the
     result straight to ``claude_invoke_streaming(max_turns=...)``; when
@@ -363,7 +363,7 @@ def optional_env_int(name: str, *, minimum: int = 1, maximum: int | None = None)
 
 # Claude Code's ``-p`` (non-interactive) mode applies a hidden 40-turn
 # default when ``--max-turns`` is omitted. That default is far too tight
-# for our agents — Lucius routinely needs 60-150 turns on cross-file work,
+# for our agents, Lucius routinely needs 60-150 turns on cross-file work,
 # Drake's healthy planning runs hit 60+. ``claude_invoke`` and
 # ``claude_invoke_streaming`` always pass an explicit ``--max-turns``: the
 # caller's value if given, otherwise this effectively-unlimited number,
@@ -427,19 +427,19 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
 
     Webhook URL resolution, in order:
 
-    1. ``SLACK_WEBHOOK_URL`` env var — simplest path; set it once in your
+    1. ``SLACK_WEBHOOK_URL`` env var, simplest path; set it once in your
        launchd plist or shell profile.
     2. Disk cache at ``${ALFRED_HOME}/state/slack-webhook.cache`` (30-day TTL)
-       — written by step 3 the first time it succeeds, so subsequent calls
+      , written by step 3 the first time it succeeds, so subsequent calls
        skip the AWS round-trip.
-    3. AWS Secrets Manager — secret id from ``SLACK_WEBHOOK_SECRET_ID``
+    3. AWS Secrets Manager, secret id from ``SLACK_WEBHOOK_SECRET_ID``
        (default ``alfred/slack-webhook``), region from
        ``SLACK_WEBHOOK_SECRET_REGION`` (default ``us-east-1``). Optional;
        lets you keep the URL out of plain env if you've already wired AWS.
 
     Severity routing (``severity=`` keyword, default ``info``):
 
-      ``info``   Posted as-is. The bulk of fleet telemetry — agent shipped,
+      ``info``   Posted as-is. The bulk of fleet telemetry, agent shipped,
                  merged, swept, no-op. Incoming webhooks cannot post threaded
                  replies; agents that need Block Kit threads use
                  ``lib.slack_format`` with a ``xoxb-`` bot token.
@@ -512,7 +512,7 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
             timeout=8,
         )
         if res.returncode != 0 or not res.stdout.strip():
-            # Silently skip — don't flood stderr on every call when Slack is
+            # Silently skip, don't flood stderr on every call when Slack is
             # unconfigured. Callers that need at-least-once read the False return.
             return False
         hook = res.stdout.strip()
@@ -642,7 +642,7 @@ def preflight(spec: PreflightSpec) -> None:
                 err = out.splitlines()[-1] if out else "no output"
                 misses.append(f"AWS profile `{spec.aws_profile}` not usable: {err[:120]}")
 
-    # 4. gh auth alive — every issue / PR / label operation needs it.
+    # 4. gh auth alive, every issue / PR / label operation needs it.
     if spec.require_gh_auth:
         try:
             gh = subprocess.run(
@@ -697,8 +697,8 @@ def doctor_mode() -> bool:
 #
 # ``--dry-run`` is a low-commitment "watch it work" path. Unlike doctor_mode
 # (which short-circuits a runner to a preflight-only check), dry-run runs the
-# WHOLE firing lifecycle — pick, claim, worktree, invoke, act, release, report
-# — but stubs every side-effecting boundary so it costs nothing:
+# WHOLE firing lifecycle, pick, claim, worktree, invoke, act, release, report
+#, but stubs every side-effecting boundary so it costs nothing:
 #
 #   * the LLM is never invoked (claude_invoke / codex_invoke return a clearly
 #     marked synthetic ClaudeResult);
@@ -711,8 +711,8 @@ def doctor_mode() -> bool:
 #     temp dir; nothing is pushed).
 #
 # Every stubbed boundary prints a ``[dry-run]`` line via ``dry_run_log`` so the
-# run reads like a narrated demo. A developer with NOTHING configured — no gh
-# auth, no AWS, no Slack, no Claude — can run a dry-run firing and watch the
+# run reads like a narrated demo. A developer with NOTHING configured, no gh
+# auth, no AWS, no Slack, no Claude, can run a dry-run firing and watch the
 # sequence end to end, exiting 0.
 #
 # Activation: the ``ALFRED_DRY_RUN`` env var (truthy) OR a runner that calls
@@ -725,7 +725,7 @@ _DRY_RUN_STEP = 0
 def is_dry_run() -> bool:
     """True when the firing is a dry-run (``ALFRED_DRY_RUN`` truthy).
 
-    Checked at every side-effecting boundary in this module — the single
+    Checked at every side-effecting boundary in this module, the single
     seam helper, not scattered conditionals. Runners that accept a
     ``--dry-run`` CLI flag call ``set_dry_run()`` to flip this on.
     """
@@ -749,8 +749,8 @@ def dry_run_log(step: str, message: str) -> None:
     """Print one narrated ``[dry-run]`` trace line to stdout.
 
     ``step`` is a short lifecycle tag (``slack``, ``gh``, ``git``, ``llm``,
-    ``spend``, ...). The output is deliberately legible and well-sequenced —
-    a dry-run firing is meant to be recorded with asciinema.
+    ``spend``, ...). The output is deliberately legible and well-sequenced.
+    A dry-run firing is meant to be recorded with asciinema.
     """
     global _DRY_RUN_STEP
     _DRY_RUN_STEP += 1
@@ -768,13 +768,13 @@ def dry_run_claude_result(
 
     Returned instead of shelling out to ``claude`` / ``codex``. ``success`` is
     True with ``subtype="success"`` so the lifecycle flows down the happy
-    path; ``cost_usd`` is always 0.0 — a dry-run never spends. The
+    path; ``cost_usd`` is always 0.0, a dry-run never spends. The
     ``result_text`` is explicitly labelled so a runner that echoes it (and a
     human watching the trace) can never mistake it for real model output.
     """
     label_model = model or "(cli-default)"
     text = (
-        f"[dry-run] synthetic {engine} result — no LLM was invoked. "
+        f"[dry-run] synthetic {engine} result, no LLM was invoked. "
         f"Would have called {engine} with a prompt of {len(prompt)} chars, "
         f"model={label_model}."
     )
@@ -904,7 +904,7 @@ class EventLog:
 
     def emit(self, event: str, **fields: Any) -> None:
         """Append one record. Never raises; a broken event log shouldn't
-        kill an agent firing — print to stderr and continue."""
+        kill an agent firing, print to stderr and continue."""
         record = {
             "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             "agent": self.agent,
@@ -971,7 +971,7 @@ class HandoffTable:
 
     Intentionally minimal: just a triple-keyed dict and validation helpers.
     The actual routing happens via labels and gh state, not via in-process
-    calls — this struct is documentation + a shape doctor.sh can inspect.
+    calls, this struct is documentation + a shape doctor.sh can inspect.
     """
 
     edges: dict[tuple[str, str], str] = field(default_factory=dict)
@@ -988,7 +988,7 @@ class HandoffTable:
         return [(src, outcome) for (src, outcome), dst in self.edges.items() if dst == codename]
 
     def validate(self, known_codenames: set[str]) -> list[str]:
-        """Return list of issues — orphan emitters / consumers / unknown agents."""
+        """Return list of issues, orphan emitters / consumers / unknown agents."""
         misses: list[str] = []
         for (src, outcome), dst in self.edges.items():
             if src not in known_codenames:
@@ -1052,7 +1052,7 @@ class AgentLock:
                     file=sys.stderr,
                 )
             try:
-                # Stale lock — try to clean and retry, but use exist_ok=False on
+                # Stale lock, try to clean and retry, but use exist_ok=False on
                 # the retry so two concurrent processes can't both succeed.
                 shutil.rmtree(self._lock_dir, ignore_errors=True)
                 try:
@@ -1144,7 +1144,7 @@ class SpendState:
                 exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
                 if datetime.now(UTC) < exp:
                     return f"blocked until {until}"
-                # Expired — clear
+                # Expired, clear
                 self.state["blocked_until"] = None
                 self.save()
             except ValueError:
@@ -1215,7 +1215,7 @@ def _make_dry_run_worktree(agent: str, local_repo: str, target: str, branch: str
     def _commit(message: str) -> list[str]:
         # ``--no-verify`` skips any host-global pre-commit hook; ``--no-gpg-sign``
         # skips signing. This is a throwaway synthetic repo in a temp dir, not a
-        # tracked checkout, so neither is meaningful here — and a host hook that
+        # tracked checkout, so neither is meaningful here, and a host hook that
         # rejects the synthetic identity must not break a dry-run.
         return ["git", "commit", "-q", "--no-verify", "--no-gpg-sign", "-m", message]
 
@@ -1270,8 +1270,8 @@ def make_worktree(
 
     # Dry-run: never touch the real checkout (it may not even exist on a
     # no-config dev box). Hand back a throwaway temp dir that is a real,
-    # self-contained git repo — with an ``origin/main`` ref and one commit
-    # ahead on ``branch`` — so a runner that inspects the worktree with
+    # self-contained git repo, with an ``origin/main`` ref and one commit
+    # ahead on ``branch``, so a runner that inspects the worktree with
     # ``git rev-list origin/main..HEAD`` / ``git log`` sees a coherent
     # state. Nothing is fetched from or pushed to a real remote.
     if is_dry_run():
@@ -1331,7 +1331,7 @@ def make_worktree_from_branch(local_repo: str, agent: str, head_ref: str, target
 
 
 def remove_worktree(local_repo: str, wt: Path) -> None:
-    # Dry-run: there is no registered git worktree to remove — make_worktree
+    # Dry-run: there is no registered git worktree to remove, make_worktree
     # handed back a throwaway temp dir. Clean that up directly instead.
     if is_dry_run():
         dry_run_log("git", f"would `git worktree remove --force {wt}`; removing temp dir instead")
@@ -1623,12 +1623,12 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
         the API explicitly flags the response as an error envelope, we
         trust it and the regex serves only as corroboration.
       * Without ``is_error=true`` we require a strict regex match against
-        a JSON error envelope shape — bare prose mentioning "throttling"
+        a JSON error envelope shape, bare prose mentioning "throttling"
         no longer flips a healthy stop_reason.
       * Rate-limit detection (``\\brate-limit\\b``) is the loose one and
         false-positives on engineering prose like "added rate-limit
         handling". result_text is mixed into its haystack only when
-        is_error=true. Auth + budget regexes scan the full haystack —
+        is_error=true. Auth + budget regexes scan the full haystack;
         their patterns are tight enough that implementation prose does
         not collide with them.
     """
@@ -1766,7 +1766,7 @@ def claude_invoke(
     On a one-time ``error_authentication`` classification we quarantine
     a stale ``~/.claude/.credentials.json`` (if any) and retry once,
     letting the CLI fall back to Keychain. ``_auth_retry`` is the
-    re-entry guard — set internally on the retry call so we can never
+    re-entry guard, set internally on the retry call so we can never
     loop. Disabled entirely by ``ALFRED_DISABLE_CLAUDE_AUTH_REPAIR=1``.
     """
     # Dry-run: never shell out to `claude`. Hand back a clearly-marked
@@ -1872,7 +1872,7 @@ def claude_invoke_streaming(
     The ``agent`` and ``firing_id`` keyword arguments are accepted (so
     callers don't have to change when streaming lands) but currently
     unused. ``max_turns=None`` is mapped to ``_CLAUDE_UNLIMITED_TURNS``
-    so the wall-clock ``timeout`` remains the only ceiling — passing a
+    so the wall-clock ``timeout`` remains the only ceiling, passing a
     finite integer is the operator's emergency / debug knob. The hidden
     40-turn ``-p``-mode default is never reached because we always emit
     ``--max-turns`` explicitly from ``claude_invoke``.
@@ -2466,7 +2466,7 @@ def find_open_authored_pr_for_issue(
 # serializes per-codename firings via with_lock) and auditable in the
 # rare contested case via the claim/release comment trail.
 #
-# Lifecycle labels (mutually exclusive — at most one at a time per issue):
+# Lifecycle labels (mutually exclusive, at most one at a time per issue):
 #   agent:in-flight   - Some agent is actively working it (claim_issue sets)
 #   agent:pr-open     - A PR exists (release_issue transitions to)
 #   agent:done        - Closed/shipped (set externally on merge)
@@ -2475,7 +2475,7 @@ def find_open_authored_pr_for_issue(
 #   do-not-pickup     - Operator override; agents skip this issue
 #   needs:human-scope - Escalated; not eligible for autonomous pickup
 #
-# Claim comments — HTML comments, machine-parseable, posted alongside
+# Claim comments, HTML comments, machine-parseable, posted alongside
 # the label change so the audit log survives even if the label is later
 # stripped or replaced manually:
 #   <!-- agent-claim:codename=<name> firing_id=<id> ts=<iso8601> -->
@@ -2492,7 +2492,7 @@ PAUSED_REPOS_FILE = STATE_ROOT / "paused-repos.json"
 
 # Framework-provided labels for the state machine. claim_issue ensures
 # these exist on the target repo on first call. Operators don't need to
-# extend STANDARD_LABELS for the lifecycle to work — it's self-contained.
+# extend STANDARD_LABELS for the lifecycle to work, it's self-contained.
 LIFECYCLE_LABELS: list[tuple[str, str, str]] = [
     (
         "agent:in-flight",
@@ -2553,7 +2553,7 @@ def set_repo_paused(repo_slug: str, paused: bool) -> list[str]:
 # Fleet-wide agent enable/disable
 #
 # Runner-level gate for opt-in agents. State lives at
-# ``$ALFRED_HOME/state/fleet/enabled.txt`` — newline-separated codenames,
+# ``$ALFRED_HOME/state/fleet/enabled.txt``, newline-separated codenames,
 # ``#`` comments allowed. Operators edit this with vi at 2am, so a flat
 # text file beats JSON for survival under "I just want to add one line".
 #
@@ -2570,7 +2570,7 @@ def _read_enabled_codenames() -> list[str]:
 
     Skips blank lines and ``#``-prefixed comments. Inline comments are
     also stripped (``batman # MVP burn-in``). Returns ``[]`` when the
-    file is missing or unreadable — callers decide the default-enabled
+    file is missing or unreadable, callers decide the default-enabled
     behaviour via ``is_agent_enabled``'s ``default`` keyword.
     """
     if not FLEET_ENABLED_FILE.exists():
@@ -2613,7 +2613,7 @@ def is_agent_enabled(codename: str, *, default: bool = True) -> bool:
 def list_enabled_agents() -> list[str]:
     """Return the parsed list of codenames in ``FLEET_ENABLED_FILE``.
 
-    Empty list when the file is missing — callers that want
+    Empty list when the file is missing, callers that want
     ``default-enabled`` semantics should consult ``is_agent_enabled``
     per codename.
     """
@@ -2638,7 +2638,7 @@ def _write_enabled_codenames(codenames: list[str]) -> None:
     Sorts for stable diffs and dedupes silently."""
     deduped = sorted({c.strip() for c in codenames if c and c.strip()})
     header = (
-        "# Fleet enable list — managed by `alfred enable/disable <agent>`.\n"
+        "# Fleet enable list, managed by `alfred enable/disable <agent>`.\n"
         "# One codename per line. Blank lines and `#`-comments are ignored.\n"
         "# Edit by hand at your own risk; the CLI is the supported path.\n"
     )

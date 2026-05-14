@@ -201,7 +201,7 @@ def check_ecs_drift() -> list[dict[str, Any]]:
         live_sha = _image_sha_from_tag(live_image) or ""
 
         repo_slug, branch = SERVICE_TO_REPO[name]
-        # NOTE: don't use `--jq .sha` here — gh_json json-parses stdout, and a
+        # NOTE: don't use `--jq .sha` here, gh_json json-parses stdout, and a
         # bare SHA is not valid JSON, so it would be silently dropped. Fetch
         # the full commit object and pluck .sha ourselves.
         commit = gh_json(

@@ -53,38 +53,38 @@ The default install ships a working engineering agent fleet. After `bash install
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
 - **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional, not a required Hermes dependency.
 
-## Beyond engineering — the solo builder's agent OS
+## Beyond engineering: the solo builder's agent OS
 
-The default install ships the **engineering fleet**. But the harness underneath it — `claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern — is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
+The default install ships the **engineering fleet**. But the harness underneath it (`claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern) is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
 
-Each department is its own integration surface (Apollo / Reddit / Gmail / Stripe / Sentry SDKs) and its own per-codename prompt design. They land incrementally — one codename per PR, with prompt + tests + docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Each department is its own integration surface (Apollo / Reddit / Gmail / Stripe / Sentry SDKs) and its own per-codename prompt design. They land incrementally, one codename per PR, with prompt + tests + docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-- **Content** — blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
-- **Sales / SDR** — prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
-- **Personal assistant** — inbox triage, calendar, daily digest. Drafts only; never sends.
-- **Finance ops** — invoice generation, bank reconciliation, subscription audit. Drafts only; never moves money.
-- **Product ops / SRE** — uptime monitoring, release notes, customer-health signals.
+- **Content**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
+- **Sales / SDR**: prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
+- **Personal assistant**: inbox triage, calendar, daily digest. Drafts only; never sends.
+- **Finance ops**: invoice generation, bank reconciliation, subscription audit. Drafts only; never moves money.
+- **Product ops / SRE**: uptime monitoring, release notes, customer-health signals.
 
 ## On the horizon
 
 Substrate work that makes a growing fleet observable and self-improving.
 
 - **A memory layer.** Today each firing is near-stateless apart from GitHub labels. A doc- or SQLite-shaped recall/reflect layer would let an agent start a firing with what the last firings on the same code learned. Optional, zero-dependency, per-fleet.
-- **`alfred serve` — a local read-model + UI.** A small local app over `state/` and the per-firing transcripts: a live firing feed, per-agent cost and success trends, the trace tree for one firing. Read-only and local — the operator's pane of glass, not a hosted dashboard.
+- **`alfred serve`, a local read-model + UI.** A small local app over `state/` and the per-firing transcripts: a live firing feed, per-agent cost and success trends, the trace tree for one firing. Read-only and local, the operator's pane of glass rather than a hosted dashboard.
 
 ## Considered, not committed
 
-- **First-class GitHub App** instead of the operator's `gh` PAT — scoped per-agent permissions. Bigger onboarding surface; defer until there's demonstrated demand.
+- **First-class GitHub App** instead of the operator's `gh` PAT, with scoped per-agent permissions. Bigger onboarding surface; defer until there's demonstrated demand.
 - **Pluggable spend backends** (filesystem / sqlite / Redis). Single-host is the design, so this stays speculative.
 - **Plugin system for skills.** Today skills are operator-installed Claude Code skills; a bundled `skills/` directory would push maintenance onto the framework.
 - **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience.
 
 ## Design boundaries
 
-Alfred has a deliberate shape. These are not missing features — they are the design.
+Alfred has a deliberate shape. These are not missing features; they are the design.
 
 - **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
-- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process — better failure isolation, and it survives reboots.
+- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` on your own subscription. It does not run inference for you.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script. The core stays lean.
@@ -95,4 +95,4 @@ Alfred has a deliberate shape. These are not missing features — they are the d
 - **Medium**: a well-scoped feature request with a real use case and a proposal.
 - **Low**: "would be cool if" comments.
 
-Want to take Alfred somewhere new — a new department, a substrate change? Open a discussion first, so the design fits before the code does.
+Want to take Alfred somewhere new, like a new department or a substrate change? Open a discussion first, so the design fits before the code does.
