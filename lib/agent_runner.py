@@ -698,7 +698,7 @@ def doctor_mode() -> bool:
 # ``--dry-run`` is a low-commitment "watch it work" path. Unlike doctor_mode
 # (which short-circuits a runner to a preflight-only check), dry-run runs the
 # WHOLE firing lifecycle, pick, claim, worktree, invoke, act, release, report
-#, but stubs every side-effecting boundary so it costs nothing:
+# , but stubs every side-effecting boundary so it costs nothing:
 #
 #   * the LLM is never invoked (claude_invoke / codex_invoke return a clearly
 #     marked synthetic ClaudeResult);
