@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import mermaid from "astro-mermaid";
 
 // Alfred site config.
 //
@@ -11,6 +12,14 @@ export default defineConfig({
   base: process.env.ALFRED_OS_SITE_BASE ?? "/",
   trailingSlash: "ignore",
   integrations: [
+    // astro-mermaid must run before starlight: it rewrites ```mermaid fenced
+    // blocks into a client-rendered <pre class="mermaid"> before Starlight's
+    // markdown pipeline turns them into static code blocks. autoTheme keeps
+    // diagrams in sync with Starlight's light/dark toggle.
+    mermaid({
+      theme: "default",
+      autoTheme: true,
+    }),
     starlight({
       title: "Alfred",
       description:
@@ -78,6 +87,8 @@ export default defineConfig({
           label: "Concepts",
           items: [
             { label: "Architecture", slug: "concepts/architecture" },
+            { label: "How it works", slug: "concepts/how-it-works" },
+            { label: "The agent fleet", slug: "concepts/fleet" },
             { label: "Codename pattern", slug: "concepts/codename-pattern" },
             { label: "Issue claim state machine", slug: "concepts/state-machine" },
             { label: "Severity routing", slug: "concepts/severity-routing" },

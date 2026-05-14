@@ -9,6 +9,28 @@ The framework's scheduling layer. Three files, fully documented.
 - [`launchd/agents.conf.example`](https://github.com/luminik-io/alfred-os/blob/main/launchd/agents.conf.example): TSV format documentation.
 - [`launchd/render.sh`](https://github.com/luminik-io/alfred-os/blob/main/launchd/render.sh): substitutes tokens, writes one plist per row.
 
+## The scheduling pipeline
+
+`agents.conf` is the single source of truth for which agents run and when. `deploy.sh` runs `render.sh` over it, producing one plist per row, then bootstraps each one into `launchd`.
+
+```mermaid
+flowchart LR
+    conf["launchd/agents.conf<br/><i>one TSV row per agent</i>"]
+    tmpl["launchd/_template.plist<br/><i>__TOKEN__ placeholders</i>"]
+    render["render.sh<br/><i>token substitution</i>"]
+    plists["~/Library/LaunchAgents/<br/>my.fleet.&lt;codename&gt;.plist"]
+    lc["launchctl bootstrap"]
+    sched["launchd timer<br/><i>fires bin/&lt;role&gt;.py on schedule</i>"]
+
+    conf --> render
+    tmpl --> render
+    render --> plists
+    plists --> lc
+    lc --> sched
+```
+
+The same shape ports to Linux: a `systemd/render.sh` would read the same `agents.conf` and emit `.service` + `.timer` units instead of plists. See [Linux](/guides/linux/) for the interim hand-rolled approach and the port roadmap.
+
 ## `agents.conf` format
 
 Each non-comment, non-blank line is a record with up to six tab-separated fields:

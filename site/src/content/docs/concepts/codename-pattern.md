@@ -82,7 +82,28 @@ Each codename has:
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
 
-[Tutorial](/getting-started/tutorial/) for an end-to-end build of one codename. Use [`docs/AGENTS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AGENTS.md) for the default cast map and role boundaries.
+The role implementation lives in `bin/<role>.py` (the filename never changes). The operator-chosen codename flows in at runtime through the launchd plist:
+
+```mermaid
+flowchart TB
+    init["alfred-init wizard<br/><i>operator picks codenames</i>"]
+    rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
+    conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
+    plist["my.fleet.marshall.plist<br/>EnvironmentVariables:<br/><code>AGENT_CODENAME=marshall</code>"]
+    runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
+    output["Slack: 'Marshall shipped: ...'<br/>PR title: 'feat(...): ... [Marshall]'<br/>worktree: eng-marshall-..."]
+
+    init --> rc
+    init --> conf
+    conf -- "render.sh" --> plist
+    plist -- "launchctl bootstrap" --> runner
+    rc -. "sourced by shell" .-> runner
+    runner --> output
+```
+
+Rename `lucius` to `marshall` and the bin script stays `lucius.py`; only the runtime codename in Slack messages, PR titles, log paths, worktree paths, and claim comments changes.
+
+[Tutorial](/getting-started/tutorial/) for an end-to-end build of one codename. The [agent fleet](/concepts/fleet/) page maps the default cast and how the roles hand work to each other.
 
 ## Anti-patterns
 

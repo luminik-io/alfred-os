@@ -17,7 +17,36 @@ Without a coordination primitive, you get duplicate work. A real failure mode: o
 
 ## The mechanism
 
-State carried entirely on GitHub labels + structured HTML comments. No shared database, no shared filesystem, no Slack lock. GitHub is the synchronisation point.
+State carried entirely on GitHub labels + structured HTML comments. No shared database, no shared filesystem, no Slack lock. GitHub is the synchronisation point. The lifecycle is single-host today, but the contract works the same way if you ever spread the fleet across machines.
+
+### Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> agent_implement : drake / human files
+
+    agent_implement : agent:implement
+    agent_implement --> agent_in_flight : claim_issue()
+    agent_implement --> needs_human_scope : 3+ failed attempts
+
+    agent_in_flight : agent:in-flight
+    agent_in_flight --> agent_implement : release(transition_to=None)
+    agent_in_flight --> agent_pr_open : release(transition_to=agent:pr-open)
+    agent_in_flight --> agent_implement : stale-claim sweep (>4h)
+    agent_in_flight --> race_yield : earlier claim detected
+    race_yield --> agent_implement : yield + post race-yielded comment
+
+    agent_pr_open : agent:pr-open
+    agent_pr_open --> agent_done : automerge / human merge
+    agent_pr_open --> agent_implement : PR closed without merge
+
+    agent_done : agent:done
+    needs_human_scope : needs:human-scope
+    do_not_pickup : do-not-pickup (sticky, orthogonal)
+
+    agent_done --> [*]
+    needs_human_scope --> [*]
+```
 
 ### Lifecycle labels (mutually exclusive)
 
@@ -60,6 +89,26 @@ Posted alongside every label change so the audit trail survives manual label edi
 5. The earlier claimant keeps the issue uncontested.
 
 The loser exits the firing without burning a Claude turn on duplicate work. The race window collapses from ~20 minutes (between agent pick + PR open) to the sub-second gap between read-labels and add-label.
+
+```mermaid
+sequenceDiagram
+    participant L as Lucius (firing A)
+    participant gh as GitHub issue #303
+    participant B as Lucius (firing B)
+
+    L->>gh: read labels (agent:implement)
+    B->>gh: read labels (agent:implement)
+    L->>gh: add agent:in-flight + claim comment (ts=T1)
+    B->>gh: add agent:in-flight + claim comment (ts=T2)
+    L->>gh: re-read comments
+    Note over L: only my claim, T1 is earliest
+    L->>gh: keep issue, make worktree
+    B->>gh: re-read comments
+    Note over B: A's claim at T1 < my T2 -> I lost
+    B->>gh: remove my agent:in-flight, restore agent:implement
+    B->>gh: post release: outcome=race-yielded-to=lucius:A
+    Note over B: exit firing, 0 Claude turns spent
+```
 
 ## Stale-claim sweep
 

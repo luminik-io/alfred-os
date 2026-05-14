@@ -7,6 +7,39 @@ Short answer: not yet. Alfred's scheduling layer is `launchd`, which is macOS-on
 
 Full doc at [`docs/LINUX.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/LINUX.md). Highlights:
 
+## The scheduler is the only macOS-specific layer
+
+Everything above the scheduler is portable Python. The launchd dependency is isolated to three files (`launchd/render.sh`, `launchd/_template.plist`, the `launchctl` calls in `deploy.sh`). A systemd port mirrors that layer and leaves the rest untouched.
+
+```mermaid
+flowchart TB
+    subgraph portable["Portable (runs on Linux today)"]
+        runner["lib/agent_runner.py"]
+        bins["bin/&lt;role&gt;.py"]
+        tests["tests/"]
+        doctor["bin/doctor.sh"]
+    end
+
+    subgraph mac["macOS only"]
+        lrender["launchd/render.sh"]
+        ltmpl["launchd/_template.plist"]
+        lctl["launchctl bootstrap (deploy.sh)"]
+    end
+
+    subgraph linux["Linux port (roadmap)"]
+        srender["systemd/render.sh"]
+        stmpl["_template.service + .timer"]
+        sctl["systemctl --user enable"]
+    end
+
+    conf["launchd/agents.conf<br/><i>shared source of truth</i>"]
+    conf --> lrender
+    conf --> srender
+    lrender --> ltmpl --> lctl --> bins
+    srender --> stmpl --> sctl --> bins
+    bins --> runner
+```
+
 ## What works on Linux today
 
 - `lib/agent_runner.py`: every primitive runs unchanged.
