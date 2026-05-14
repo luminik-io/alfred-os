@@ -71,6 +71,27 @@ const MERMAID_ZOOM_SCRIPT = `
     const clone = svg.cloneNode(true);
     clone.removeAttribute("id");
     clone.removeAttribute("style");
+    // Mermaid renders the SVG as width="100%" sized by an inline max-width
+    // style. Stripped of that style, and with no sized container in the
+    // overlay, width="100%" collapses the clone to a few pixels. Give it
+    // explicit pixel dimensions from its viewBox, scaled to fit the
+    // viewport while keeping aspect ratio.
+    const vb = (clone.getAttribute("viewBox") || "").split(/[\\s,]+/).map(Number);
+    let baseW, baseH;
+    if (vb.length === 4 && vb[2] > 0 && vb[3] > 0) {
+      const fit = Math.min(
+        (window.innerWidth * 0.86) / vb[2],
+        (window.innerHeight * 0.78) / vb[3]
+      );
+      baseW = Math.round(vb[2] * fit);
+      baseH = Math.round(vb[3] * fit);
+    } else {
+      const r = svg.getBoundingClientRect();
+      baseW = Math.round(r.width) || 320;
+      baseH = Math.round(r.height) || 200;
+    }
+    clone.setAttribute("width", String(baseW));
+    clone.setAttribute("height", String(baseH));
     stage.appendChild(clone);
     const hint = document.createElement("div");
     hint.className = "mermaid-zoom-hint";

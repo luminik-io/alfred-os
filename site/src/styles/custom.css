@@ -339,11 +339,12 @@ mobile-starlight-toc nav {
 }
 
 .mermaid-zoom-stage svg {
+  /* The zoom script sets explicit width/height attributes on the clone,
+     sized to fit the viewport from the viewBox. The max-* values here are
+     belt-and-braces caps only; the script owns sizing. */
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 92vw;
-  max-height: 86vh;
+  max-width: 96vw;
+  max-height: 92vh;
   padding: 1.25rem;
   background: var(--alfred-bg-elevated);
   border: 1px solid var(--alfred-border-strong);
