@@ -16,6 +16,14 @@ Copy this file, rename to bin/<your-codename>.py, replace the body of
 main(), and add an entry to your launchd/agents.conf:
 
     my.fleet.hello   hello.py   interval:3600   no
+
+Try it with zero host config:
+
+    ALFRED_DRY_RUN=1 python3 examples/bin/hello.py
+    python3 examples/bin/hello.py --dry-run
+
+In dry-run nothing is posted to Slack for real; the lifecycle is narrated
+to stdout and the process exits 0.
 """
 from __future__ import annotations
 
@@ -26,8 +34,13 @@ import sys
 sys.path.insert(0, (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib")
 from agent_runner import (  # noqa: E402
     EventLog, PreflightFailed, PreflightSpec,
-    doctor_mode, preflight, slack_post, with_lock,
+    doctor_mode, dry_run_log, is_dry_run, preflight, set_dry_run, slack_post, with_lock,
 )
+
+# Accept `--dry-run` as a CLI flag in addition to ALFRED_DRY_RUN=1. Do this
+# before anything else so every downstream agent_runner seam sees the mode.
+if "--dry-run" in sys.argv:
+    set_dry_run(True)
 
 AGENT = "hello"
 PREFLIGHT = PreflightSpec(
@@ -40,10 +53,19 @@ PREFLIGHT = PreflightSpec(
 def main() -> int:
     with_lock(AGENT)
 
+    if is_dry_run():
+        dry_run_log("start", f"{AGENT} dry-run firing — no LLM, no spend, no side effects")
+
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
-        return 0
+        # In dry-run a config gap is expected (the whole point is "run it
+        # with nothing configured"). Narrate it and keep going so the rest
+        # of the lifecycle still flows. A real firing still exits clean.
+        if is_dry_run():
+            dry_run_log("preflight", "preflight reported config gaps — continuing (dry-run)")
+        else:
+            return 0
 
     if doctor_mode():
         # doctor.sh exercises every agent up to here; emit the OK sentinel

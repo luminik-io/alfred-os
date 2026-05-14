@@ -130,6 +130,15 @@ def set_global_block(hours: int, reason: str) -> str:
     from datetime import timedelta
 
     until = (datetime.now(UTC) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Dry-run: never write the fleet-wide poison pill — a dry-run firing must
+    # not be able to block real scheduled agents. Report the until-string the
+    # caller expects so its happy-path messaging still renders.
+    if is_dry_run():
+        dry_run_log(
+            "block",
+            f"would set fleet-wide global block until {until} (reason: {reason}); skipped",
+        )
+        return until
     GLOBAL_BLOCKED_FILE.parent.mkdir(parents=True, exist_ok=True)
     GLOBAL_BLOCKED_FILE.write_text(json.dumps({"until": until, "reason": reason}))
     return until
@@ -277,6 +286,12 @@ def _full_repo(slug: str) -> str:
     """
     if "/" in slug:
         return slug
+    if GH_ORG:
+        return f"{GH_ORG}/{slug}"
+    # Dry-run with nothing configured: a missing GH_ORG must not crash the
+    # narrated lifecycle. Fall back to a clearly-fake org placeholder.
+    if is_dry_run():
+        return f"dry-run-org/{slug}"
     if not GH_ORG:
         raise RuntimeError(
             f"GH_ORG env var is unset; cannot resolve bare repo slug '{slug}' "
@@ -448,6 +463,13 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
         return False
     if severity not in _SLACK_SEVERITIES:
         severity = SLACK_SEVERITY_INFO
+
+    # Dry-run: never hit the webhook. Log the line that WOULD have been
+    # posted (severity included) and report success so callers that read
+    # the return value still see at-least-once semantics satisfied.
+    if is_dry_run():
+        dry_run_log("slack", f"would post to Slack (severity={severity}): {text}")
+        return True
     if severity == SLACK_SEVERITY_WARN:
         if not text.startswith(("⚠️", "❌", "⏸️")):
             text = f"⚠️  {text}"
@@ -669,6 +691,104 @@ def doctor_mode() -> bool:
     without burning Claude turns or making side effects.
     """
     return _env_value_enabled("ALFRED_DOCTOR")
+
+
+# ---------- Dry-run mode ----------
+#
+# ``--dry-run`` is a low-commitment "watch it work" path. Unlike doctor_mode
+# (which short-circuits a runner to a preflight-only check), dry-run runs the
+# WHOLE firing lifecycle — pick, claim, worktree, invoke, act, release, report
+# — but stubs every side-effecting boundary so it costs nothing:
+#
+#   * the LLM is never invoked (claude_invoke / codex_invoke return a clearly
+#     marked synthetic ClaudeResult);
+#   * SpendState never writes the real per-day ledger (a separate
+#     ``spend-dryrun-<date>.json`` is used instead);
+#   * Slack is never posted to for real (slack_post logs the line to stdout);
+#   * GitHub is never mutated (claim/release/PR-create/label-edit log instead
+#     of shelling out to ``gh``);
+#   * git is never mutated (make_worktree logs and hands back a throwaway
+#     temp dir; nothing is pushed).
+#
+# Every stubbed boundary prints a ``[dry-run]`` line via ``dry_run_log`` so the
+# run reads like a narrated demo. A developer with NOTHING configured — no gh
+# auth, no AWS, no Slack, no Claude — can run a dry-run firing and watch the
+# sequence end to end, exiting 0.
+#
+# Activation: the ``ALFRED_DRY_RUN`` env var (truthy) OR a runner that calls
+# ``set_dry_run()`` after parsing its own ``--dry-run`` CLI flag. ``set_dry_run``
+# writes the env var back so subprocess-spawned children and later checks agree.
+
+_DRY_RUN_STEP = 0
+
+
+def is_dry_run() -> bool:
+    """True when the firing is a dry-run (``ALFRED_DRY_RUN`` truthy).
+
+    Checked at every side-effecting boundary in this module — the single
+    seam helper, not scattered conditionals. Runners that accept a
+    ``--dry-run`` CLI flag call ``set_dry_run()`` to flip this on.
+    """
+    return _env_value_enabled("ALFRED_DRY_RUN")
+
+
+def set_dry_run(enabled: bool = True) -> None:
+    """Enable (or disable) dry-run mode for the rest of this process.
+
+    Writes ``ALFRED_DRY_RUN`` into ``os.environ`` so ``is_dry_run()`` and any
+    subprocess-spawned children agree. Runners call this once after parsing a
+    ``--dry-run`` CLI flag, before the lifecycle starts.
+    """
+    if enabled:
+        os.environ["ALFRED_DRY_RUN"] = "1"
+    else:
+        os.environ.pop("ALFRED_DRY_RUN", None)
+
+
+def dry_run_log(step: str, message: str) -> None:
+    """Print one narrated ``[dry-run]`` trace line to stdout.
+
+    ``step`` is a short lifecycle tag (``slack``, ``gh``, ``git``, ``llm``,
+    ``spend``, ...). The output is deliberately legible and well-sequenced —
+    a dry-run firing is meant to be recorded with asciinema.
+    """
+    global _DRY_RUN_STEP
+    _DRY_RUN_STEP += 1
+    print(f"[dry-run] {_DRY_RUN_STEP:>2}. ({step}) {message}", flush=True)
+
+
+def dry_run_claude_result(
+    prompt: str,
+    *,
+    model: str | None = None,
+    engine: str = "claude",
+    num_turns: int = 3,
+) -> ClaudeResult:
+    """Build a clearly-marked synthetic :class:`ClaudeResult` for dry-run.
+
+    Returned instead of shelling out to ``claude`` / ``codex``. ``success`` is
+    True with ``subtype="success"`` so the lifecycle flows down the happy
+    path; ``cost_usd`` is always 0.0 — a dry-run never spends. The
+    ``result_text`` is explicitly labelled so a runner that echoes it (and a
+    human watching the trace) can never mistake it for real model output.
+    """
+    label_model = model or "(cli-default)"
+    text = (
+        f"[dry-run] synthetic {engine} result — no LLM was invoked. "
+        f"Would have called {engine} with a prompt of {len(prompt)} chars, "
+        f"model={label_model}."
+    )
+    return ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=num_turns,
+        cost_usd=0.0,
+        session_id=f"dry-run-{engine}-session",
+        result_text=text,
+        raw={"dry_run": True, "engine": engine, "prompt_chars": len(prompt)},
+        stop_reason="end_turn",
+        error_message=None,
+    )
 
 
 # ---------- Prompt loading + variable substitution ----------
@@ -990,17 +1110,30 @@ class SpendState:
         self.state.setdefault("consecutive_failures", 0)
 
     def save(self) -> None:
-        tmp = self._path.with_suffix(".json.tmp")
+        # Dry-run: never touch the real per-day ledger. Write to a clearly
+        # separate ``spend-dryrun-<date>.json`` sibling so a dry-run firing
+        # can never inflate the agent's real firings / turns / cost counters
+        # or trip a daily cap.
+        path = self._path
+        if is_dry_run():
+            path = self._path.with_name(f"spend-dryrun-{today_str()}.json")
+        tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(self.state, indent=2))
-        tmp.rename(self._path)
+        tmp.rename(path)
 
     def increment(self, **kwargs) -> None:
         for k, v in kwargs.items():
             self.state[k] = self.state.get(k, 0) + v
+        if is_dry_run():
+            deltas = ", ".join(f"{k}+={v}" for k, v in kwargs.items())
+            dry_run_log("spend", f"would increment real ledger ({deltas}); dry-run ledger only")
         self.save()
 
     def set(self, **kwargs) -> None:
         self.state.update(kwargs)
+        if is_dry_run():
+            fields = ", ".join(f"{k}={v}" for k, v in kwargs.items())
+            dry_run_log("spend", f"would set real ledger ({fields}); dry-run ledger only")
         self.save()
 
     def is_blocked(self) -> str | None:
@@ -1027,6 +1160,10 @@ def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = No
     """Idempotent label creation. Silent on already-exists. Cached per process."""
     if labels is None:
         labels = STANDARD_LABELS
+    if is_dry_run():
+        names = ", ".join(name for name, _, _ in labels)
+        dry_run_log("gh", f"would ensure labels on {repo_slug}: {names}")
+        return
     cache_key = f"_ensure_labels_done_{repo_slug}"
     if globals().get(cache_key):
         return
@@ -1052,6 +1189,76 @@ def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = No
 # ---------- Worktree ----------
 
 
+def _make_dry_run_worktree(agent: str, local_repo: str, target: str, branch: str) -> Path:
+    """Build a self-contained throwaway git repo for a dry-run firing.
+
+    The result is a real git repo in a temp dir with:
+      * one commit on ``main`` (so an ``origin/main`` ref exists), and
+      * ``branch`` checked out, one synthetic commit ahead of ``main``.
+
+    A runner that inspects the worktree (``git rev-list origin/main..HEAD``,
+    ``git status --porcelain``, ``git log``) therefore sees a coherent
+    "engine committed one file" state without any real checkout, network,
+    or push. Falls back to a bare temp dir if git is unavailable; callers
+    must already tolerate a worktree they cannot inspect.
+    """
+    import tempfile
+
+    wt = Path(tempfile.mkdtemp(prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-"))
+    git_env = {
+        "GIT_AUTHOR_NAME": "Alfred Dry Run",
+        "GIT_AUTHOR_EMAIL": "dry-run@alfred-os.invalid",
+        "GIT_COMMITTER_NAME": "Alfred Dry Run",
+        "GIT_COMMITTER_EMAIL": "dry-run@alfred-os.invalid",
+    }
+
+    def _commit(message: str) -> list[str]:
+        # ``--no-verify`` skips any host-global pre-commit hook; ``--no-gpg-sign``
+        # skips signing. This is a throwaway synthetic repo in a temp dir, not a
+        # tracked checkout, so neither is meaningful here — and a host hook that
+        # rejects the synthetic identity must not break a dry-run.
+        return ["git", "commit", "-q", "--no-verify", "--no-gpg-sign", "-m", message]
+
+    # Local identity + no-sign config so the commits land even on a host with
+    # no global git identity configured.
+    setup_steps: list[list[str]] = [
+        ["git", "init", "-q", "-b", "main"],
+        ["git", "config", "commit.gpgsign", "false"],
+        ["git", "config", "user.name", "Alfred Dry Run"],
+        ["git", "config", "user.email", "dry-run@alfred-os.invalid"],
+    ]
+    for cmd in setup_steps:
+        if run(cmd, cwd=str(wt), timeout=15, env=git_env).returncode != 0:
+            return wt
+    readme = wt / "DRY_RUN.md"
+    readme.write_text(
+        f"# {agent} dry-run worktree\n\n"
+        f"Synthetic repo for a dry-run firing on target {target}. Not a real checkout.\n"
+    )
+    base_steps: list[list[str]] = [
+        ["git", "add", "DRY_RUN.md"],
+        _commit("chore: dry-run base commit"),
+        # An ``origin/main`` ref so ``origin/main..HEAD`` range queries resolve.
+        ["git", "update-ref", "refs/remotes/origin/main", "HEAD"],
+        ["git", "checkout", "-q", "-b", branch],
+    ]
+    for cmd in base_steps:
+        if run(cmd, cwd=str(wt), timeout=15, env=git_env).returncode != 0:
+            return wt
+    # One synthetic commit ahead of origin/main so commit-count checks pass.
+    (wt / "dry_run_change.txt").write_text(
+        f"[dry-run] synthetic change for {agent} target {target}\n"
+    )
+    ahead_steps: list[list[str]] = [
+        ["git", "add", "dry_run_change.txt"],
+        _commit(f"feat: [dry-run] synthetic implementation for {target}"),
+    ]
+    for cmd in ahead_steps:
+        if run(cmd, cwd=str(wt), timeout=15, env=git_env).returncode != 0:
+            return wt
+    return wt
+
+
 def make_worktree(
     local_repo: str, agent: str, target: str, base: str = "origin/main"
 ) -> tuple[Path, str]:
@@ -1060,6 +1267,22 @@ def make_worktree(
     ts = int(time.time())
     branch = f"{agent}/{target}-{ts}"
     wt = WORKTREE_ROOT / f"eng-{agent}-{local_repo}-{target}-{ts}"
+
+    # Dry-run: never touch the real checkout (it may not even exist on a
+    # no-config dev box). Hand back a throwaway temp dir that is a real,
+    # self-contained git repo — with an ``origin/main`` ref and one commit
+    # ahead on ``branch`` — so a runner that inspects the worktree with
+    # ``git rev-list origin/main..HEAD`` / ``git log`` sees a coherent
+    # state. Nothing is fetched from or pushed to a real remote.
+    if is_dry_run():
+        wt = _make_dry_run_worktree(agent, local_repo, target, branch)
+        dry_run_log(
+            "git",
+            f"would `git worktree add -b {branch} {wt}` from {base} in {repo_path}; "
+            f"using a self-contained throwaway repo instead (no fetch, no push)",
+        )
+        return wt, branch
+
     WORKTREE_ROOT.mkdir(exist_ok=True)
     run(["git", "fetch", "origin", "main"], cwd=str(repo_path), timeout=60)
     res = run(
@@ -1085,6 +1308,18 @@ def make_worktree_from_branch(local_repo: str, agent: str, head_ref: str, target
     repo_path = WORKSPACE / local_repo
     ts = int(time.time())
     wt = WORKTREE_ROOT / f"eng-{agent}-{local_repo}-{target}-{ts}"
+
+    if is_dry_run():
+        import tempfile
+
+        wt = Path(tempfile.mkdtemp(prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-"))
+        dry_run_log(
+            "git",
+            f"would `git worktree add {wt} origin/{head_ref}` in {repo_path}; "
+            f"using throwaway temp dir instead (no fetch)",
+        )
+        return wt
+
     WORKTREE_ROOT.mkdir(exist_ok=True)
     run(["git", "fetch", "origin", head_ref], cwd=str(repo_path), timeout=60)
     res = run(
@@ -1096,6 +1331,13 @@ def make_worktree_from_branch(local_repo: str, agent: str, head_ref: str, target
 
 
 def remove_worktree(local_repo: str, wt: Path) -> None:
+    # Dry-run: there is no registered git worktree to remove — make_worktree
+    # handed back a throwaway temp dir. Clean that up directly instead.
+    if is_dry_run():
+        dry_run_log("git", f"would `git worktree remove --force {wt}`; removing temp dir instead")
+        with contextlib.suppress(OSError):
+            shutil.rmtree(wt, ignore_errors=True)
+        return
     repo_path = WORKSPACE / local_repo
     run(["git", "worktree", "remove", "--force", str(wt)], cwd=str(repo_path), timeout=30)
 
@@ -1527,6 +1769,17 @@ def claude_invoke(
     re-entry guard — set internally on the retry call so we can never
     loop. Disabled entirely by ``ALFRED_DISABLE_CLAUDE_AUTH_REPAIR=1``.
     """
+    # Dry-run: never shell out to `claude`. Hand back a clearly-marked
+    # synthetic result so the rest of the lifecycle flows happy-path.
+    if is_dry_run():
+        dry_run_log(
+            "llm",
+            f"would invoke claude with prompt of {len(prompt)} chars, "
+            f"model={model or '(cli-default)'}, "
+            f"max_turns={max_turns if max_turns is not None else '(unlimited)'}",
+        )
+        return dry_run_claude_result(prompt, model=model, engine="claude")
+
     effective_max_turns = max_turns if max_turns is not None else _CLAUDE_UNLIMITED_TURNS
     cmd = [
         CLAUDE_BIN,
@@ -1702,6 +1955,17 @@ def codex_invoke(
     enforced. Default posture is review-safe: read-only sandbox and no approval
     prompts.
     """
+    # Dry-run: never shell out to `codex exec`. Hand back a clearly-marked
+    # synthetic result so the rest of the lifecycle flows happy-path.
+    if is_dry_run():
+        dry_run_log(
+            "llm",
+            f"would invoke codex with prompt of {len(prompt)} chars, "
+            f"model={model or CODEX_DEFAULT_MODEL or '(cli-default)'}, "
+            f"sandbox={sandbox or CODEX_DEFAULT_SANDBOX}",
+        )
+        return dry_run_claude_result(prompt, model=model, engine="codex")
+
     unsupported = {
         "allowed_tools": allowed_tools,
         "max_turns": max_turns,
@@ -1985,6 +2249,17 @@ def gh_pr_create(
     a future caller passing a brand-new label without first
     extending STANDARD_LABELS still gets a working PR.
     """
+    if is_dry_run():
+        fake_url = f"https://github.com/{_full_repo(repo_slug)}/pull/0"
+        label_part = f", labels={labels}" if labels else ""
+        dry_run_log(
+            "gh",
+            f"would `gh pr create` on {_full_repo(repo_slug)}: "
+            f"title={title!r}, head={head or '(default)'}, base={base}, "
+            f"draft={draft}{label_part} -> {fake_url}",
+        )
+        return fake_url
+
     if labels:
         ensure_labels(repo_slug)
         # Ad-hoc labels (anything passed in but not in STANDARD_LABELS)
@@ -2055,6 +2330,13 @@ def gh_issue_edit(
     add_labels: list[str] | None = None,
     remove_labels: list[str] | None = None,
 ) -> bool:
+    if is_dry_run():
+        dry_run_log(
+            "gh",
+            f"would `gh issue edit #{num}` on {_full_repo(repo_slug)}: "
+            f"add={add_labels or []}, remove={remove_labels or []}",
+        )
+        return True
     if add_labels:
         ensure_labels(repo_slug)
     cmd = ["gh", "issue", "edit", str(num), "-R", _full_repo(repo_slug)]
@@ -2067,6 +2349,12 @@ def gh_issue_edit(
 
 
 def gh_issue_comment(repo_slug: str, num: int, body: str) -> bool:
+    if is_dry_run():
+        dry_run_log(
+            "gh",
+            f"would `gh issue comment #{num}` on {_full_repo(repo_slug)}: {short(body, 200)}",
+        )
+        return True
     res = run(
         [
             "gh",
@@ -2084,6 +2372,12 @@ def gh_issue_comment(repo_slug: str, num: int, body: str) -> bool:
 
 
 def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool:
+    if is_dry_run():
+        dry_run_log(
+            "gh",
+            f"would `gh pr comment #{num}` on {_full_repo(repo_slug)}: {short(body, 200)}",
+        )
+        return True
     res = run(
         [
             "gh",
@@ -2431,6 +2725,13 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
       - Posts a structured claim comment with ``codename`` and
         ``firing_id`` for the audit trail.
     """
+    if is_dry_run():
+        dry_run_log(
+            "gh",
+            f"would claim {_full_repo(repo_slug)}#{num} for {codename} "
+            f"(firing_id={firing_id}): add agent:in-flight, post claim comment",
+        )
+        return True
     if is_repo_paused(repo_slug):
         return False
     state = _issue_state(repo_slug, num)
@@ -2497,6 +2798,16 @@ def release_issue(
             ``agent:implement`` queue so it can be re-picked.
         pr_url: optional URL recorded in the release comment for traceability.
     """
+    if is_dry_run():
+        target = transition_to or "agent:implement"
+        pr_part = f", pr={pr_url}" if pr_url else ""
+        dry_run_log(
+            "gh",
+            f"would release {_full_repo(repo_slug)}#{num} for {codename} "
+            f"(firing_id={firing_id}): outcome={outcome}{pr_part}, "
+            f"remove agent:in-flight, add {target}",
+        )
+        return True
     add: list[str] = []
     remove = ["agent:in-flight"]
     if transition_to:
@@ -2650,6 +2961,16 @@ def force_release_stale_claim(
     ``(codename, firing_id)`` so future claim detection can pair the release
     with the original claim. ``sweep_id`` remains in metadata for audit.
     """
+    if is_dry_run():
+        codename = released_codename or "cleanup"
+        firing_id = released_firing_id or sweep_id
+        dry_run_log(
+            "gh",
+            f"would force-release stale claim {_full_repo(repo_slug)}#{num} "
+            f"(original {codename}/{firing_id}, swept_by={sweep_id}): "
+            f"remove agent:in-flight, add agent:implement",
+        )
+        return True
     edited = gh_issue_edit(
         repo_slug, num, add_labels=["agent:implement"], remove_labels=["agent:in-flight"]
     )

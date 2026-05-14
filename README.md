@@ -116,6 +116,18 @@ claude                            # Claude Code first-run auth
 
 Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md).
 
+### Try it in 2 minutes (dry-run)
+
+Want to watch an agent fire before configuring anything? Dry-run mode runs the whole firing lifecycle — pick, claim, worktree, invoke, act, release, report — with every side-effecting boundary stubbed. No LLM call, no spend, no Slack post, no GitHub mutation, no real repo. It works with **zero host config**: no `gh` auth, no AWS, no Slack, no Claude.
+
+```sh
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
+PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
+```
+
+You get a narrated, step-numbered trace of the full lifecycle and an exit code of 0. The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the `ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md) for what is stubbed versus real.
+
 ## What's in here
 
 | Path | What it is |
@@ -144,6 +156,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 - [Install](INSTALL.md): fresh-Mac walkthrough.
 - [Bootstrap](BOOTSTRAP.md): operations guide (AWS IAM, Slack, troubleshooting).
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
+- [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
 - [Architecture](ARCHITECTURE.md): design rationale.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Claude Code](docs/CLAUDE_CODE.md): install, Pro vs Max, `alfred claude`.

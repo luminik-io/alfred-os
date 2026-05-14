@@ -6,6 +6,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
+- `--dry-run` / `ALFRED_DRY_RUN` mode: run a full agent firing lifecycle — pick, claim, worktree, invoke, act, release, report — with every side-effecting boundary stubbed. No LLM call, no spend, no Slack post, no GitHub or git mutation. Works with zero host config so a developer can watch an agent fire end-to-end before configuring anything. Threaded through `lib/agent_runner.py` behind a single `is_dry_run()` seam; supported by `examples/bin/hello.py`, `examples/bin/echo_summarise.py`, and `bin/lucius.py`. See `docs/DRY_RUN.md`.
 - Linux support via `systemd --user` timers. `install.sh` now has a Debian/Ubuntu apt lane alongside the macOS Homebrew lane, `deploy.sh` renders and installs systemd units on Linux hosts, and a new `systemd/` directory holds `_template.service`, `_template.timer`, and `render.sh` (same `agents.conf` schema as the launchd renderer).
 - `alfred pause` / `alfred resume` / `alfred run` operator verbs, backed by a host-scheduler abstraction (`lib/scheduler.py`) that drives launchd on macOS and `systemd --user` on Linux.
 - `alfred agents` now shows a real scheduler-load column (launchd or systemd), distinct from the configured on/off column.
