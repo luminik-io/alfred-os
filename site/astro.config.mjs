@@ -45,6 +45,72 @@ const STRUCTURED_DATA = JSON.stringify({
   ],
 });
 
+// Click-to-zoom for rendered mermaid diagrams. astro-mermaid has no zoom of
+// its own, and the dense flowcharts and sequence diagrams are hard to read
+// inline (especially on mobile). This is a small, dependency-free behaviour:
+// a delegated click on a rendered `pre.mermaid` opens the SVG in a full-screen
+// overlay with wheel-zoom and drag-pan; Escape or a backdrop click closes it.
+// The matching styles (.mermaid-zoom-*) live in src/styles/custom.css.
+const MERMAID_ZOOM_SCRIPT = `
+(() => {
+  if (typeof document === "undefined") return;
+  const OVERLAY_ID = "mermaid-zoom-overlay";
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  function close() {
+    const o = document.getElementById(OVERLAY_ID);
+    if (o) o.remove();
+    document.removeEventListener("keydown", onKey);
+  }
+  function open(svg) {
+    close();
+    const overlay = document.createElement("div");
+    overlay.id = OVERLAY_ID;
+    overlay.className = "mermaid-zoom-overlay";
+    const stage = document.createElement("div");
+    stage.className = "mermaid-zoom-stage";
+    const clone = svg.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.removeAttribute("style");
+    stage.appendChild(clone);
+    const hint = document.createElement("div");
+    hint.className = "mermaid-zoom-hint";
+    hint.textContent = "scroll to zoom \\u00b7 drag to pan \\u00b7 esc to close";
+    overlay.appendChild(stage);
+    overlay.appendChild(hint);
+    document.body.appendChild(overlay);
+    let scale = 1, tx = 0, ty = 0, dragging = false, sx = 0, sy = 0;
+    const apply = () => {
+      stage.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
+    };
+    overlay.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      scale = Math.min(8, Math.max(0.5, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      apply();
+    }, { passive: false });
+    stage.addEventListener("pointerdown", (e) => {
+      dragging = true; sx = e.clientX - tx; sy = e.clientY - ty;
+      stage.setPointerCapture(e.pointerId);
+    });
+    stage.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      tx = e.clientX - sx; ty = e.clientY - sy; apply();
+    });
+    stage.addEventListener("pointerup", () => { dragging = false; });
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", onKey);
+  }
+  document.addEventListener("click", (e) => {
+    if (document.getElementById(OVERLAY_ID)) return;
+    const pre = e.target.closest && e.target.closest("pre.mermaid");
+    if (!pre) return;
+    const svg = pre.querySelector("svg");
+    if (!svg) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    open(svg);
+  });
+})();
+`;
+
 export default defineConfig({
   site: SITE_URL,
   base: process.env.ALFRED_OS_SITE_BASE ?? "/",
@@ -128,6 +194,10 @@ export default defineConfig({
           tag: "script",
           attrs: { type: "application/ld+json" },
           content: STRUCTURED_DATA,
+        },
+        {
+          tag: "script",
+          content: MERMAID_ZOOM_SCRIPT,
         },
       ],
       sidebar: [

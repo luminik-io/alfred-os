@@ -304,6 +304,73 @@ mobile-starlight-toc nav {
   background-color: var(--alfred-bg-elevated);
 }
 
+/* Click-to-zoom for rendered diagrams. The behaviour script is injected via
+   the head config in astro.config.mjs; this is the affordance + the overlay. */
+.sl-markdown-content pre.mermaid[data-processed] {
+  cursor: zoom-in;
+}
+
+.mermaid-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Deliberately dark in both themes. A lightbox should dim the page so the
+     diagram pops; an 88%-of-near-white backdrop barely dims in light mode.
+     This is the logo's navy-950 at high opacity. */
+  background: rgba(8, 11, 20, 0.84);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  cursor: zoom-out;
+  overscroll-behavior: contain;
+}
+
+.mermaid-zoom-stage {
+  cursor: grab;
+  transform-origin: center center;
+  will-change: transform;
+  touch-action: none;
+}
+
+.mermaid-zoom-stage:active {
+  cursor: grabbing;
+}
+
+.mermaid-zoom-stage svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 92vw;
+  max-height: 86vh;
+  padding: 1.25rem;
+  background: var(--alfred-bg-elevated);
+  border: 1px solid var(--alfred-border-strong);
+  border-radius: 0.5rem;
+}
+
+.mermaid-zoom-hint {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.3rem 0.9rem;
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-3);
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 85%, transparent);
+  border: 1px solid var(--alfred-border);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mermaid-zoom-overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Splash hero — single static radial glow                             */
 /* ------------------------------------------------------------------ */
