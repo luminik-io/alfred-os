@@ -144,13 +144,15 @@ export default defineConfig({
     mermaid({
       theme: "default",
       autoTheme: true,
-      // astro-mermaid v2 nests raw mermaid options under mermaidConfig.
+      // astro-mermaid swaps only the `theme` name (default/dark) on the
+      // light/dark toggle; any themeVariables here apply to BOTH themes.
+      // Keep only theme-neutral values: lineColor reads fine on light and
+      // dark backgrounds alike. Text and node-fill colors are left to
+      // mermaid's stock default/dark themes so diagram text stays legible
+      // in light mode (dark-tuned overrides made it near-invisible).
       mermaidConfig: {
         themeVariables: {
-          primaryColor: "#141d33",
           lineColor: "#4a78ff",
-          textColor: "#dfe5f2",
-          primaryBorderColor: "#2a3450",
         },
       },
     }),
