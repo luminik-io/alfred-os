@@ -8,8 +8,21 @@ arg-parsing and pretty-printing.
 Subcommands today:
 
   alfred agents               List configured agents from ``agents.conf``
-                              with role, schedule, and resolved enable
-                              state.
+                              with role, schedule, resolved enable state,
+                              and whether the host scheduler currently has
+                              the unit loaded.
+  alfred pause <codename|all> Stop scheduled firings for an agent. Writes a
+                              marker at ``$ALFRED_HOME/state/_paused/<name>``
+                              so the pause survives ``deploy.sh``, then
+                              unloads the unit from the host scheduler
+                              (launchd on macOS, systemd --user on Linux).
+                              Already-running firings are not killed.
+  alfred resume <codename|all>
+                              Reverse a pause: remove the marker and reload
+                              the unit. No-op if the agent was not paused.
+  alfred run <codename>       Kick a single agent now (one-shot), killing
+                              any in-flight firing first. Honors the pause
+                              marker unless ``--force`` is passed.
   alfred enable <codename>    Add ``codename`` to the runner-level fleet
                               gate file.
                               Idempotent.
@@ -50,7 +63,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Resolve lib/ relative to the script regardless of how it was invoked.
@@ -67,6 +80,7 @@ for candidate in (
         sys.path.insert(0, str(candidate))
 
 import agent_runner  # noqa: E402
+import scheduler  # noqa: E402
 
 OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
@@ -153,21 +167,32 @@ def cmd_agents(_args: argparse.Namespace) -> int:
         print(f"alfred: no agents found at {conf}", file=sys.stderr)
         return 0
 
+    loaded_labels = scheduler.loaded_labels()
+    pause_dir = agent_runner.STATE_ROOT / "_paused"
     rows = []
     for a in agents:
         codename = _codename_from_label(a["label"])
         enabled = agent_runner.is_agent_enabled(codename, default=_default_enabled(codename))
+        if (pause_dir / codename).exists():
+            loaded = "paused"
+        elif a["disabled"] == "yes":
+            loaded = "off"
+        elif a["label"] in loaded_labels:
+            loaded = "yes"
+        else:
+            loaded = "no"
         rows.append(
             (
                 codename,
                 a["schedule"] or "-",
                 "off" if a["disabled"] == "yes" else "on",
+                loaded,
                 "yes" if enabled else "no",
                 a["role"] or "-",
             )
         )
 
-    headers = ("codename", "schedule", "loaded", "enabled", "role")
+    headers = ("codename", "schedule", "configured", "loaded", "enabled", "role")
     widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
     print(fmt.format(*headers))
@@ -211,6 +236,145 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
         return 0
     for c in enabled:
         print(c)
+    return 0
+
+
+# ----- scheduler-backed pause / resume / run -----
+#
+# alfred-os labels are operator-defined (``my.fleet.lucius``,
+# ``alfred.cleanup``, ...); there is no fixed prefix to bolt a codename
+# onto. So pause/resume/run accept a codename and resolve it to the full
+# label via agents.conf. The scheduler module handles the launchd/systemd
+# split underneath.
+
+
+def _label_map() -> dict[str, str]:
+    """codename -> full label, from agents.conf (commented rows included)."""
+    out: dict[str, str] = {}
+    for record in _parse_agents_conf(_agents_conf_path()):
+        codename = _codename_from_label(record["label"])
+        if codename:
+            out.setdefault(codename, record["label"])
+    return out
+
+
+def _resolve_label(name: str) -> str | None:
+    """Accept a codename or a full label; return the full label or None."""
+    mapping = _label_map()
+    if name in mapping:
+        return mapping[name]
+    # Already a full label present in agents.conf?
+    if name in mapping.values():
+        return name
+    return None
+
+
+def _pause_dir() -> Path:
+    return agent_runner.STATE_ROOT / "_paused"
+
+
+def _pause_one(codename: str, label: str) -> None:
+    pause_dir = _pause_dir()
+    pause_dir.mkdir(parents=True, exist_ok=True)
+    marker = pause_dir / codename
+    marker.write_text(datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n", encoding="utf-8")
+    if scheduler.unit_loaded(label):
+        scheduler.unit_unload(label)
+        print(f"  paused {codename} (was loaded; unloaded from {scheduler.SCHEDULER})")
+    else:
+        print(f"  paused {codename} (was not loaded; marker set)")
+
+
+def _resume_one(codename: str, label: str) -> int:
+    marker = _pause_dir() / codename
+    if marker.exists():
+        marker.unlink()
+    unit_path = scheduler.unit_file(label)
+    if unit_path is None or not unit_path.exists():
+        where = unit_path if unit_path is not None else "(no scheduler on this host)"
+        print(
+            f"  {codename}: no unit file at {where} — run `bash deploy.sh` first", file=sys.stderr
+        )
+        return 1
+    if scheduler.unit_loaded(label):
+        print(f"  resumed {codename} (already loaded; marker cleared)")
+        return 0
+    detail = scheduler.unit_load(label, unit_path)
+    suffix = f" ({detail})" if detail else ""
+    print(f"  resumed {codename}{suffix}")
+    return 0
+
+
+def cmd_pause(args: argparse.Namespace) -> int:
+    if not scheduler.supported():
+        print(
+            f"alfred pause: no supported host scheduler ({scheduler.SCHEDULER}); "
+            "pause/resume need launchd (macOS) or systemd --user (Linux).",
+            file=sys.stderr,
+        )
+        return 2
+    mapping = _label_map()
+    targets = sorted(mapping) if args.codename == "all" else [args.codename]
+    rc = 0
+    for codename in targets:
+        label = mapping.get(codename) or _resolve_label(codename)
+        if label is None:
+            print(f"alfred pause: unknown agent '{codename}'", file=sys.stderr)
+            rc = 1
+            continue
+        _pause_one(_codename_from_label(label), label)
+    return rc
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    if not scheduler.supported():
+        print(
+            f"alfred resume: no supported host scheduler ({scheduler.SCHEDULER}); "
+            "pause/resume need launchd (macOS) or systemd --user (Linux).",
+            file=sys.stderr,
+        )
+        return 2
+    mapping = _label_map()
+    targets = sorted(mapping) if args.codename == "all" else [args.codename]
+    rc = 0
+    for codename in targets:
+        label = mapping.get(codename) or _resolve_label(codename)
+        if label is None:
+            print(f"alfred resume: unknown agent '{codename}'", file=sys.stderr)
+            rc = 1
+            continue
+        rc = _resume_one(_codename_from_label(label), label) or rc
+    return rc
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    if not scheduler.supported():
+        print(
+            f"alfred run: no supported host scheduler ({scheduler.SCHEDULER}); "
+            "run needs launchd (macOS) or systemd --user (Linux).",
+            file=sys.stderr,
+        )
+        return 2
+    if args.codename == "all":
+        print(
+            "alfred run: 'all' is intentionally not supported (would stampede the host)",
+            file=sys.stderr,
+        )
+        return 2
+    label = _resolve_label(args.codename)
+    if label is None:
+        print(f"alfred run: unknown agent '{args.codename}'", file=sys.stderr)
+        return 1
+    codename = _codename_from_label(label)
+    if not args.force and (_pause_dir() / codename).exists():
+        print(f"  {codename}: paused; pass --force to override", file=sys.stderr)
+        return 1
+    if not scheduler.unit_loaded(label):
+        print(f"  {codename}: not loaded; run `alfred resume {codename}` first", file=sys.stderr)
+        return 1
+    detail = scheduler.unit_kickstart(label)
+    suffix = f" ({detail})" if detail else ""
+    print(f"  kicked {codename}{suffix}")
     return 0
 
 
@@ -434,10 +598,7 @@ def _set_claude_dir(path: Path, label: str) -> int:
     if result.returncode != 0:
         print(result.stderr.strip() or "alfred claude: launchctl setenv failed", file=sys.stderr)
         return result.returncode
-    print(
-        f"Agents now route to {label.upper()} ({path}). "
-        "Next firing of each agent picks this up."
-    )
+    print(f"Agents now route to {label.upper()} ({path}). Next firing of each agent picks this up.")
     return 0
 
 
@@ -466,7 +627,9 @@ def _probe_claude_auth() -> int:
         "claude-haiku-4-5",
     ]
     try:
-        result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=90, env=env)
+        result = subprocess.run(
+            cmd, check=False, capture_output=True, text=True, timeout=90, env=env
+        )
     except FileNotFoundError:
         print("Claude probe: failed")
         print("claude binary not found on PATH", file=sys.stderr)
@@ -528,6 +691,19 @@ def main(argv: list[str] | None = None) -> int:
 
     p_enabled = sub.add_parser("enabled-agents", help="print the list of enabled codenames")
     p_enabled.set_defaults(func=cmd_enabled_agents)
+
+    p_pause = sub.add_parser("pause", help="stop scheduled firings for an agent")
+    p_pause.add_argument("codename", help="agent codename, or 'all'")
+    p_pause.set_defaults(func=cmd_pause)
+
+    p_resume = sub.add_parser("resume", help="reverse a pause")
+    p_resume.add_argument("codename", help="agent codename, or 'all'")
+    p_resume.set_defaults(func=cmd_resume)
+
+    p_run = sub.add_parser("run", help="kick a single agent now (one-shot)")
+    p_run.add_argument("codename", help="agent codename")
+    p_run.add_argument("--force", action="store_true", help="run even if the agent is paused")
+    p_run.set_defaults(func=cmd_run)
 
     p_status = sub.add_parser("status", help="show local fleet health")
     p_status.add_argument("--json", action="store_true")

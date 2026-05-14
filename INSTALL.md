@@ -20,11 +20,11 @@ The rest of this doc explains what each step does and what to do when something 
 
 ## What `install.sh` does
 
-Idempotent (safe to re-run). On a fresh Mac:
+Idempotent (safe to re-run). On a fresh Mac or a fresh Debian/Ubuntu box:
 
-1. Verifies macOS. Linux support tracked but not shipped; `launchd` is the scheduling layer.
-2. Installs Homebrew if missing.
-3. `brew install`s `git`, `gh`, `jq`, `awscli`, `python@3.11`, `node`, `uv`.
+1. Detects the host: macOS (launchd scheduling) or Debian/Ubuntu Linux (`systemd --user` scheduling). Other hosts are refused. See [`docs/LINUX.md`](docs/LINUX.md) for the Linux specifics.
+2. macOS: installs Homebrew if missing. Linux: uses `apt-get`.
+3. macOS: `brew install`s `git`, `gh`, `jq`, `awscli`, `python@3.11`, `node`, `uv`. Linux: `apt-get install`s the equivalents; `uv` comes from its official installer and AWS CLI v2 is left to the operator.
 4. `npm install -g @anthropic-ai/claude-code`.
 5. Creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`).
 6. Drops `~/.alfredrc` from `.alfredrc.example`, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
@@ -157,14 +157,14 @@ Then [`BOOTSTRAP.md`](BOOTSTRAP.md) for the full pattern: per-agent IAM, Slack r
 
 ## Troubleshooting `install.sh`
 
-**"Refusing to install on non-macOS host."**
-You're on Linux. The `launchd` scheduling layer is macOS-only today. A `systemd` port is on the roadmap but not shipped. Override with `ALFRED_FORCE_LINUX=1` only if you are reading code, running tests, or manually driving agents. See [`docs/LINUX.md`](docs/LINUX.md).
+**"Unsupported host" or "Only Debian/Ubuntu Linux is supported."**
+`install.sh` runs on macOS and Debian/Ubuntu Linux. Other Linux distros are not supported by the installer — the framework itself is distro-agnostic, so you can install the prerequisites by hand and then run `bash deploy.sh` directly. See [`docs/LINUX.md`](docs/LINUX.md).
 
 **"npm not found; skipping Claude Code install."**
-The `node` brew install should bring `npm` along. If you skipped brew (`--skip-brew`), install Node manually then run install.sh again with `--skip-brew`.
+On macOS the `node` brew install brings `npm` along; on Linux it comes from the `nodejs` / `npm` apt packages. If you skipped package install (`--skip-brew`), install Node manually then re-run `install.sh` with `--skip-brew`.
 
-**"sed: -i: requires an extension argument" or similar on a non-macOS host.**
-This script uses BSD `sed` syntax. macOS only.
+**`openjdk-21-jdk` is not available on this Linux host.**
+`openjdk-21-jdk` ships in Ubuntu 24.04+ and Debian 13+. `install.sh` does not install the JDK — only `needs_java=yes` agents need it. On an older release, install a JDK 21 manually and put `java` on `PATH` before running `deploy.sh`. See [`docs/LINUX.md`](docs/LINUX.md).
 
 **Permissions errors on Homebrew install.**
 Apple Silicon installs to `/opt/homebrew`; Intel to `/usr/local`. Both prompt for sudo on first install. If you cancel mid-flow, run install.sh again. It's idempotent.

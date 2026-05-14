@@ -13,6 +13,10 @@ The default install ships a working engineering agent fleet. After `bash install
 - launchd plist template + render.sh + agents.conf format.
 - `bin/doctor.sh`, `alfred claude`, `deploy.sh`.
 
+**Cross-platform (unreleased, in `[Unreleased]`)**
+- Linux support via `systemd --user` timers: `systemd/` template + render.sh, `deploy.sh` host detection, `install.sh` Debian/Ubuntu apt lane.
+- `alfred pause` / `resume` / `run` operator verbs on a launchd/systemd scheduler abstraction (`lib/scheduler.py`). See [`docs/LINUX.md`](docs/LINUX.md).
+
 **Engineering agents** (Batman codenames by default; renameable per role at install time)
 - `lucius`: feature dev (picks `agent:implement` issues, opens PRs).
 - `drake`: issue planner (files `agent:implement` issues from specs / roadmap).
@@ -45,7 +49,6 @@ The default install ships a working engineering agent fleet. After `bash install
 - **Bot token operations**: `lib/slack_format.py` already supports threaded Block Kit messages when a bot token is configured. Follow-up work: `slack_set_channel_topic()` for fleet status, reactions API for ack-without-replying, and a documented daily-thread routing policy.
 - **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues for the same work"; complements the issue-claim state machine which catches "two actors on the same issue."
 - **`claim_pr` / `release_pr`**: extend the state machine to PR-level work (review-fix agents that race to land patches on the same PR).
-- **`render-systemd.sh`**: first-class Linux scheduling. See [`docs/LINUX.md`](docs/LINUX.md).
 - **Spend dashboards**: render a weekly recap (turns, cost, success rate per agent) for `fleet-recap`.
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
 - **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional, not a required Hermes dependency.

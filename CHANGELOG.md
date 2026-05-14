@@ -6,11 +6,17 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
+- Linux support via `systemd --user` timers. `install.sh` now has a Debian/Ubuntu apt lane alongside the macOS Homebrew lane, `deploy.sh` renders and installs systemd units on Linux hosts, and a new `systemd/` directory holds `_template.service`, `_template.timer`, and `render.sh` (same `agents.conf` schema as the launchd renderer).
+- `alfred pause` / `alfred resume` / `alfred run` operator verbs, backed by a host-scheduler abstraction (`lib/scheduler.py`) that drives launchd on macOS and `systemd --user` on Linux.
+- `alfred agents` now shows a real scheduler-load column (launchd or systemd), distinct from the configured on/off column.
+- `bin/doctor.sh --dev` flag: dev-install mode treats host-config preflight gaps as non-fatal while still failing hard on code defects. `install.sh` passes `--dev` on Linux.
 - Publishing guide for GitHub Pages workflow mode, release-site verification, and optional custom-domain setup.
 - `alfred claude probe` for a first-class Claude Code auth smoke test.
 
 ### Changed
 
+- `alfred-status` and `bin/doctor.sh` now read the `systemd --user` timer roster on Linux, falling back to the same agent-discovery logic the launchd path uses.
+- `docs/LINUX.md` rewritten: Linux is now a supported host, not a set of interim workarounds.
 - Refreshed README, roadmap, docs site status, and release checklist after the v0.2.1 public launch cleanup.
 - Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
 - Moved Claude account routing fully into `alfred claude`; the standalone helper is no longer shipped.
