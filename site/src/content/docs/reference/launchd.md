@@ -29,7 +29,7 @@ flowchart LR
     lc --> sched
 ```
 
-The same shape ports to Linux: a `systemd/render.sh` would read the same `agents.conf` and emit `.service` + `.timer` units instead of plists. See [Linux](/guides/linux/) for the interim hand-rolled approach and the port roadmap.
+The same shape runs on Linux: `systemd/render.sh` reads the same `agents.conf` and emits `.service` + `.timer` units instead of plists, and `lib/scheduler.py` abstracts `launchctl` vs `systemctl --user` behind one interface. See [Linux](/guides/linux/) for the systemd path.
 
 ## `agents.conf` format
 
