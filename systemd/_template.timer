@@ -1,0 +1,10 @@
+[Unit]
+Description=alfred-os __LABEL__ timer
+
+[Timer]
+__SCHEDULE_BLOCK__
+Unit=__LABEL__.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -10,9 +10,30 @@
 # fresh forks and post-rotation verification (after AWS SSO refresh, after
 # changing IAM policies, after `alfred claude swap`, etc.).
 #
+# Usage: doctor.sh [--dev]
+#   --dev   Dev-install mode. Agents whose preflight() reports unconfigured
+#           host state (missing GH auth, repo checkouts, secrets) are printed
+#           but do NOT fail the run. Code-correctness failures (an agent that
+#           crashes on import, a syntax error) still fail hard. install.sh
+#           passes --dev on Linux hosts, which are a local dev lane rather
+#           than a scheduled-fleet host.
+#
 # Exit code is 0 when every agent reports DOCTOR-OK, 1 if any agent fails.
+# In --dev mode the exit code stays a real gate: it is 0 only when no
+# code-correctness check failed.
 
 set -uo pipefail
+
+# --- arg parse -------------------------------------------------------------
+DEV_MODE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dev) DEV_MODE=1 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    *) echo "doctor.sh: unknown argument: $1 (see --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -91,6 +112,12 @@ prepend_path_if_dir "$JAVA_BIN"
 prepend_path_if_dir "/opt/homebrew/bin"
 prepend_path_if_dir "/opt/homebrew/sbin"
 prepend_path_if_dir "/usr/local/bin"
+# Linux openjdk-21 lives under /usr/lib/jvm rather than a Homebrew prefix.
+# These no-op on macOS (the directories do not exist) and mirror what
+# systemd/render.sh puts on a Linux agent's PATH.
+prepend_path_if_dir "/usr/lib/jvm/java-21-openjdk-amd64/bin"
+prepend_path_if_dir "/usr/lib/jvm/java-21-openjdk-arm64/bin"
+prepend_path_if_dir "/usr/lib/jvm/default-java/bin"
 export PATH
 
 # macOS does not ship GNU coreutils' `timeout`. Auto-detect a usable
@@ -169,6 +196,46 @@ for plist in sorted(Path(sys.argv[1]).glob("*.plist")):
     if candidate and str(candidate).endswith(".py"):
         print(f"{label}\t{Path(str(candidate)).name}")
 PY
+    return 0
+  fi
+
+  # Linux mirror of the macOS plist fallback: inspect systemd --user units
+  # under ~/.config/systemd/user and parse the ExecStart= line for the
+  # wrapped script. Matches the macOS behavior of discovering deployed
+  # agents when agents.conf is unreachable.
+  systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+  if [ -d "$systemd_user_dir" ]; then
+    python3 - "$systemd_user_dir" <<'PY'
+from pathlib import Path
+import shlex
+import sys
+
+for unit in sorted(Path(sys.argv[1]).glob("*.service")):
+    label = unit.stem
+    if not label.startswith(("alfred.", "my.fleet.")):
+        continue
+    try:
+        text = unit.read_text()
+    except OSError:
+        continue
+    candidate = None
+    for line in text.splitlines():
+        if not line.startswith("ExecStart="):
+            continue
+        try:
+            tokens = shlex.split(line[len("ExecStart="):])
+        except ValueError:
+            tokens = line[len("ExecStart="):].split()
+        if not tokens:
+            break
+        if tokens[0].endswith(".py"):
+            candidate = tokens[0]
+        elif Path(tokens[0]).name == "agent-launch" and len(tokens) > 1:
+            candidate = tokens[1]
+        break
+    if candidate and str(candidate).endswith(".py"):
+        print(f"{label}\t{Path(str(candidate)).name}")
+PY
   fi
 }
 
@@ -219,14 +286,31 @@ while IFS=$'\t' read -r label script_name; do
   elif echo "$output" | grep -qE "\[[A-Z0-9_-]+-LOCKED\]"; then
     printf "🟡 in flight\n"
     pass=$((pass + 1))
+  elif echo "$output" | grep -qE "\[[A-Za-z0-9_-]+-DISABLED\]"; then
+    # Opt-in agent that hasn't been enabled via `alfred enable <name>`.
+    # Disabled agents don't run, so a missing preflight is by design.
+    printf "⚪ disabled\n"
+    pass=$((pass + 1))
   elif echo "$output" | grep -q "PREFLIGHT-FAILED"; then
-    printf "❌ preflight failed\n"
-    echo "$output" | sed -n '/PREFLIGHT-FAILED/,/^$/p' | sed 's/^/      /'
-    fail=$((fail + 1))
+    # The agent's code ran and its preflight() deliberately reported missing
+    # host configuration (GH auth, repo checkouts, scoped secrets). In --dev
+    # mode this is a known gap on a dev box, not a code defect, so surface it
+    # without failing. Crashes never reach this branch — a broken import
+    # exits without emitting the sentinel and lands in "unexpected output".
+    if [ "$DEV_MODE" -eq 1 ]; then
+      printf "⚠️  config gap (--dev: not fatal)\n"
+      echo "$output" | sed -n '/PREFLIGHT-FAILED/,/^$/p' | sed 's/^/      /'
+      pass=$((pass + 1))
+    else
+      printf "❌ preflight failed\n"
+      echo "$output" | sed -n '/PREFLIGHT-FAILED/,/^$/p' | sed 's/^/      /'
+      fail=$((fail + 1))
+    fi
   else
     # Unexpected: preflight passed but the agent neither emitted DOCTOR-OK
     # nor exited cleanly. Most likely a script that pre-dates the preflight
-    # rollout or a runtime error.
+    # rollout or a runtime error. This is a code-correctness failure and
+    # stays hard even in --dev mode.
     printf "⚠️  unexpected output\n"
     echo "$output" | head -5 | sed 's/^/      /'
     fail=$((fail + 1))
@@ -235,4 +319,7 @@ done < <(configured_agents | sort -u)
 
 echo
 echo "doctor: $pass passed, $fail failed"
+if [ "$DEV_MODE" -eq 1 ]; then
+  echo "doctor: --dev mode — config gaps above (⚠️) were not counted as failures."
+fi
 [ "$fail" -eq 0 ]

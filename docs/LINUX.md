@@ -1,126 +1,169 @@
 # Linux support
 
-Short answer: not yet. Alfred's scheduling layer is `launchd`, which is macOS-only. The framework code itself (`agent_runner.py`, the helper scripts) is Python and Bash and runs fine on Linux. But without a scheduling layer that mirrors `launchd`'s per-user agent semantics, the fleet isn't a fleet.
+Alfred runs on Linux. The scheduling layer is `systemd --user` timers, the
+Linux analogue of macOS `launchd` per-user agents. `install.sh`, `deploy.sh`,
+`bin/doctor.sh`, `alfred-status`, and the `alfred` CLI all detect the host OS
+and pick the right path. Supported distros: Debian and Ubuntu (apt).
 
-## Why launchd specifically
+If you are on macOS, you do not need this doc — `install.sh` handles it.
 
-Per-firing isolation depends on a few `launchd` properties:
+## How the launchd / systemd mapping works
 
-- **Per-user agents**, not system services. Operator can edit/reload plists without sudo.
-- **`KeepAlive`-free fire-and-forget.** `StartInterval` / `StartCalendarInterval` triggers a one-shot run; the process exits and `launchd` is happy. No process-supervisor restarting a crashing agent in a tight loop.
-- **`bootstrap` / `bootout` semantics**. Paused agents stay paused across operator login/logout cycles via the marker file at `$ALFRED_HOME/state/_paused/<agent>`.
-- **stdout / stderr to per-agent files** at `/tmp/<label>.{stdout,stderr}`. Operator's grep-and-tail muscle memory.
-- **`EnvironmentVariables` block** in the plist. Per-agent env without polluting the operator's shell.
+`launchd` and `systemd --user` cover the same operational surface; the port
+is a real mapping, not a translation shim:
 
-systemd user units cover most of this (`Type=oneshot`, `OnCalendar=`, no `Restart=on-failure`), but the operational surface is different enough that supporting both well requires a real port, not a translation layer.
+| launchd | systemd --user | Purpose |
+|---|---|---|
+| `~/Library/LaunchAgents/<label>.plist` | `~/.config/systemd/user/<label>.{service,timer}` | per-agent unit on disk |
+| `StartInterval` / `StartCalendarInterval` | `OnUnitActiveSec=` / `OnCalendar=` | the schedule |
+| `RunAtLoad=false` + one-shot exit | `Type=oneshot` | fire-and-forget, no supervisor restart loop |
+| `launchctl bootstrap` / `bootout` | `systemctl --user enable --now` / `disable --now` | load / unload a unit |
+| `launchctl kickstart -k` | `systemctl --user stop` then `start` on the `.service` | one-shot run, killing any in-flight firing |
+| `StandardOutPath` / `StandardErrorPath` | `StandardOutput=append:` / `StandardError=append:` | per-agent stdout/stderr to `/tmp/<stem>.{stdout,stderr}` |
+| `EnvironmentVariables` block | `Environment=` lines | per-agent env without polluting the operator shell |
 
-## What works on Linux today
+`agents.conf` is the single source of truth for both schedulers — the same
+six tab-separated columns (`label`, `script`, `schedule`, `needs_java`,
+`log_stem`, `role`) feed `launchd/render.sh` and `systemd/render.sh`.
 
-If you want to read the code, write your own agents, run the test suite, or use the `agent_runner` primitives in a manually-driven script, all of that works on Linux:
+The rendered systemd units use systemd's `%h` specifier in place of the
+operator's literal home directory, so a unit file is host-agnostic.
 
-- `lib/agent_runner.py`: every primitive (preflight, lock, spend, claude_invoke, gh, slack, claim_issue/release_issue, severity routing) works unchanged.
-- `tests/`: `pytest` runs the full test suite on Linux.
-- `bin/doctor.sh`: works (bash + grep).
-- `alfred claude`: launchd-style env switching is macOS-only; on Linux, set
-  `CLAUDE_CONFIG_DIR` directly in your shell, cron, or systemd unit.
-- `examples/bin/label_state.py`: works.
-- `examples/git-hooks/pre-push`: works (operator-side, runs in your shell).
-
-What doesn't work:
-
-- `launchd/render.sh`: generates `.plist` files. Linux doesn't have launchd.
-- `deploy.sh`: can copy framework files and render plists, but it skips
-  `launchctl bootstrap` on non-macOS hosts. It does not give Linux a scheduler.
-- `install.sh` macOS check: refuses to run unless you set `ALFRED_FORCE_LINUX=1`.
-
-## Running Alfred-shaped agents on Linux today
-
-Until the systemd port lands, two options:
-
-### Option 1: cron + a wrapper script
-
-Skip the framework's launchd bits entirely. Write each agent as a bash script:
-
-```text
-# crontab -e
-*/20 * * * * /usr/bin/env ALFRED_HOME=$HOME/.alfred WORKSPACE_ROOT=$HOME/code GH_ORG=myorg python3 $HOME/code/myfleet/bin/lucius.py >> /tmp/lucius.log 2>&1
-```
-
-You lose the per-agent stdout/stderr separation and the `_paused/` marker pattern, but the framework primitives all work. Shape your stable role runner, such as `bin/lucius.py`, exactly as the macOS examples show.
-
-### Option 2: systemd user units (manually written)
-
-Drop a unit + timer per agent in `~/.config/systemd/user/`:
-
-```ini
-# ~/.config/systemd/user/alfred-os-lucius.service
-[Unit]
-Description=alfred-os Lucius (feature-dev agent)
-
-[Service]
-Type=oneshot
-EnvironmentFile=%h/.alfredrc
-ExecStart=/usr/bin/env python3 %h/.alfred/bin/lucius.py
-StandardOutput=append:%h/.alfred/logs/lucius.stdout
-StandardError=append:%h/.alfred/logs/lucius.stderr
-```
-
-```ini
-# ~/.config/systemd/user/alfred-os-lucius.timer
-[Unit]
-Description=alfred-os Lucius timer
-
-[Timer]
-OnUnitActiveSec=20min
-Unit=alfred-os-lucius.service
-
-[Install]
-WantedBy=timers.target
-```
-
-Enable + start:
+## Install
 
 ```sh
-systemctl --user daemon-reload
-systemctl --user enable --now alfred-os-lucius.timer
+git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
+cd ~/code/alfred-os
+bash install.sh
 ```
 
-Pause:
+`install.sh` on Linux:
+
+1. Confirms the host is Debian/Ubuntu (reads `/etc/os-release`).
+2. `apt-get install`s `git`, `gh`, `jq`, `python3-venv`, `python3-pip`,
+   `nodejs`, `npm`, plus `ca-certificates` / `curl` / `gnupg`.
+3. Installs `uv` from the official installer (no apt package), and uses it to
+   provision Python 3.11 if the distro ships a newer default.
+4. `npm install -g @anthropic-ai/claude-code`.
+5. Creates `$ALFRED_HOME` and `$WORKSPACE_ROOT`, seeds `~/.alfredrc`, and
+   appends the source-block to your shell rc.
+
+AWS CLI v2 is **not** auto-installed: apt's `awscli` is v1.x, and scheduled
+fleet jobs that touch AWS want v2. Install it manually from Amazon if you
+need it.
+
+`gh` falls back to GitHub's official apt repo when the distro does not ship
+a `gh` package.
+
+## Deploy
 
 ```sh
-systemctl --user disable --now alfred-os-lucius.timer
+bash deploy.sh
 ```
 
-Status:
+On Linux, `deploy.sh`:
+
+1. Copies `lib/` and `bin/` into `$ALFRED_HOME`, links `alfred` (and
+   `claude` / `codex` if present) into `~/.local/bin`.
+2. Renders `systemd/` units from `launchd/agents.conf` into
+   `systemd/_generated/`.
+3. Reaps units for `agents.conf` rows that were removed.
+4. Copies the units into `~/.config/systemd/user/`, runs
+   `systemctl --user daemon-reload`, and `enable --now`s each timer —
+   skipping any agent whose pause marker is set at
+   `$ALFRED_HOME/state/_paused/<codename>`.
+
+## Operating the fleet
+
+The `alfred` CLI is OS-agnostic; the same verbs work on Linux:
+
+```sh
+alfred agents              # roster, with a systemd-load column
+alfred pause lucius        # disable --now the timer, write the pause marker
+alfred resume lucius       # clear the marker, enable --now the timer
+alfred run lucius          # one-shot: stop + start the .service now
+alfred status              # health snapshot; reads the systemd timer roster
+bash bin/doctor.sh         # preflight every agent
+```
+
+Raw `systemctl` still works if you prefer it:
 
 ```sh
 systemctl --user list-timers
-journalctl --user -u alfred-os-lucius -n 50
+systemctl --user status my.fleet.lucius.timer
+journalctl --user -u my.fleet.lucius -n 50
 ```
 
-This is what a `systemd/render.sh` would generate. Until that ships, you're hand-rolling.
+Note that agents also write to `/tmp/<log_stem>.{stdout,stderr}` (the
+`StandardOutput=append:` lines), so the macOS grep-and-tail muscle memory
+carries over.
 
-## Roadmap for first-class Linux support
+## `linger` — keeping the fleet alive across logout
 
-Not committed to a date, but the structure of the work is clear:
+`systemd --user` units only run while the user has an active session unless
+**linger** is enabled. For an always-on agent host, enable it once:
 
-1. **`systemd/_template.service` + `systemd/_template.timer`**: analogous to `launchd/_template.plist`.
-2. **`systemd/render.sh`**: same TSV input as `launchd/agents.conf`, different output format.
-3. **`deploy.sh` host detection**: branch on `uname -s` and call the right renderer.
-4. **Operator wrapper**: shell helper that wraps `systemctl --user` calls in operator-friendly commands such as `pause-agent`.
-5. **`install.sh` Linux branch**: apt/dnf/pacman package install paths instead of brew.
-6. **Test the round-trip** on at least Ubuntu LTS and Fedora.
+```sh
+sudo loginctl enable-linger "$USER"
+```
 
-If you want to do this work, see [`CONTRIBUTING.md`](../CONTRIBUTING.md). PRs reviewed. If you want to fund the work, file an issue with your willingness to sponsor and we'll scope it together.
+Without linger, the timers stop when you log out and resume when you log
+back in. With it, they run continuously like macOS `launchd` agents. This is
+the one piece `deploy.sh` does **not** do for you — it needs `sudo` and is a
+deliberate operator decision.
+
+## Java agents
+
+Agents with `needs_java=yes` in `agents.conf` need a JDK 21 on the host.
+`systemd/render.sh` derives `JAVA_HOME` from `command -v java`, falling back
+to the Debian/Ubuntu `openjdk-21` layout under `/usr/lib/jvm`. Install it
+with:
+
+```sh
+sudo apt-get install -y openjdk-21-jdk
+```
+
+`openjdk-21-jdk` ships in Ubuntu 24.04+ and Debian 13+. On older releases,
+install a JDK 21 manually and put `java` on `PATH`. If a `needs_java=yes`
+agent renders with no JDK found, `render.sh` warns and omits `JAVA_HOME`
+rather than failing the whole render.
 
 ## WSL2
 
-WSL2 on Windows is a Linux kernel; the same constraints apply. Cron works, systemd-user works (in distros that enable it). Not actively tested, but no part of the framework should care.
+WSL2 on Windows is a Linux kernel; the same path applies. `systemd --user`
+works in distros that enable systemd (Ubuntu on WSL2 does by default on
+recent builds). Not actively tested in CI, but no part of the framework
+should care.
 
-Gotcha: path mapping. `WORKSPACE_ROOT` should be a `~/code` style Linux path, not `/mnt/c/Users/...`. Cross-filesystem worktrees are slow and Windows file-locking semantics confuse `git worktree`.
+Gotcha: path mapping. `WORKSPACE_ROOT` should be a `~/code`-style Linux
+path, not `/mnt/c/Users/...`. Cross-filesystem worktrees are slow and
+Windows file-locking semantics confuse `git worktree`.
 
 ## Docker
 
-Not container-friendly today. The launchd/systemd assumption means hosting the scheduler outside the container and shelling into it for each firing, at which point you've reimplemented `launchctl kickstart` poorly. A "alfred-os in a container" pattern would need the framework to expose its own minimal scheduler and abandon the host-scheduler dependency. Not on the roadmap.
+Still not container-friendly today. The launchd/systemd assumption means
+hosting the scheduler outside the container and shelling in for each firing,
+at which point you have reimplemented the host scheduler poorly. A
+"alfred-os in a container" pattern would need the framework to expose its
+own minimal scheduler and abandon the host-scheduler dependency. Not on the
+roadmap.
 
-If you want to run agents inside containers (e.g. a per-firing Docker image with isolated tooling), that's compatible: write your codename's `bin/<name>.py` to `docker run --rm ... claude -p ...` instead of calling `claude` directly. The framework doesn't care what shell you wrap around the LLM call.
+If you want to run agents inside containers (e.g. a per-firing Docker image
+with isolated tooling), that is compatible: write your codename's
+`bin/<name>.py` to `docker run --rm ... claude -p ...` instead of calling
+`claude` directly. The framework does not care what shell you wrap around
+the LLM call.
+
+## Anything else not working on Linux?
+
+The framework primitives in `lib/agent_runner.py` (preflight, lock, spend,
+claude_invoke, gh, slack, claim_issue/release_issue, severity routing) are
+plain Python and Bash and have always run on Linux. `tests/` runs the full
+`pytest` suite on Linux CI. If you hit a Linux-specific bug, file an issue —
+Linux is a supported host now, so Linux bugs are real bugs.
+
+One thing that is still macOS-shaped: `alfred claude` switches the Claude
+Code account by setting `CLAUDE_CONFIG_DIR` via `launchctl setenv`, which
+has no systemd equivalent. On Linux, set `CLAUDE_CONFIG_DIR` directly in
+`~/.alfredrc` (it flows into every rendered unit through `agent-launch`), or
+in the unit's `Environment=` block.

@@ -20,7 +20,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`SKILLS.md`](SKILLS.md): recommended Claude Code skills.
 - [`INTEGRATIONS.md`](INTEGRATIONS.md): what Alfred does and does not bundle.
 - [`HERMES.md`](HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
-- [`LINUX.md`](LINUX.md): current macOS-only scheduler stance and Linux/systemd notes.
+- [`LINUX.md`](LINUX.md): running the fleet on Debian/Ubuntu via `systemd --user` timers — install, deploy, operate, `linger`.
 - [`PUBLISHING.md`](PUBLISHING.md): GitHub Pages, release-site, and custom-domain operations.
 
 ## Reference

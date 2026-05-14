@@ -34,6 +34,14 @@ ALFRED_HOME = agent_runner.ALFRED_HOME
 STATE_ROOT = agent_runner.STATE_ROOT
 PAUSE_DIR = STATE_ROOT / "_paused"
 
+IS_LINUX = sys.platform.startswith("linux")
+# Linux uses systemd --user timers instead of launchd plists. The roster
+# source is kept distinct so status reports the actually-deployed fleet
+# regardless of which scheduler installed the units.
+SYSTEMD_USER_DIR = Path(
+    os.environ.get("ALFRED_SYSTEMD_USER_DIR", os.path.expanduser("~/.config/systemd/user"))
+)
+
 ENGINE_AWARE_AGENTS = {
     "bane",
     "batman",
@@ -212,7 +220,45 @@ def configured_agents() -> list[AgentRecord]:
     ]
 
 
-def _launchctl_loaded_set() -> set[str]:
+def _loaded_label_set() -> set[str]:
+    """Labels currently loaded into the host scheduler.
+
+    macOS: ``launchctl list`` (the label is the last column).
+    Linux: ``systemctl --user list-units`` for active ``*.timer`` units; the
+    label is the timer unit name with the ``.timer`` suffix stripped.
+
+    Returns an empty set on hosts where the scheduler binary is unavailable
+    rather than crashing — the table then renders every row as "not loaded".
+    """
+    if IS_LINUX:
+        try:
+            res = subprocess.run(
+                [
+                    "systemctl",
+                    "--user",
+                    "list-units",
+                    "--type=timer",
+                    "--state=active",
+                    "--no-legend",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (FileNotFoundError, subprocess.SubprocessError):
+            return set()
+        if res.returncode != 0:
+            return set()
+        labels: set[str] = set()
+        for line in res.stdout.splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            unit = parts[0]
+            if unit.endswith(".timer"):
+                labels.add(unit[: -len(".timer")])
+        return labels
+
     if platform.system() != "Darwin":
         return set()
     try:
@@ -226,7 +272,7 @@ def _launchctl_loaded_set() -> set[str]:
         return set()
     if res.returncode != 0:
         return set()
-    labels: set[str] = set()
+    labels = set()
     for line in res.stdout.splitlines():
         parts = line.split()
         if parts:
@@ -417,7 +463,13 @@ def global_state() -> dict[str, Any]:
     return {
         "global_block": _read_json(blocked) if blocked.exists() else None,
         "slack_webhook_cache_age_hours": webhook_age,
-        "host_scheduler": "launchd" if platform.system() == "Darwin" else "manual/non-macOS",
+        "host_scheduler": (
+            "launchd"
+            if platform.system() == "Darwin"
+            else "systemd --user"
+            if IS_LINUX
+            else "manual/non-macOS"
+        ),
     }
 
 
@@ -497,7 +549,12 @@ def render_slack(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> st
         s
         for s in snapshots
         if s.today_consecutive_failures >= 3
-        or (not s.loaded and not s.disabled and not s.paused and platform.system() == "Darwin")
+        or (
+            not s.loaded
+            and not s.disabled
+            and not s.paused
+            and (platform.system() == "Darwin" or IS_LINUX)
+        )
         or s.blocked_until
         or s.stale_lock
         or (s.approval_wait_issue_numbers and s.approval_wait_pid_alive is False)
@@ -518,7 +575,12 @@ def render_slack(snapshots: list[AgentSnapshot], globals_: dict[str, Any]) -> st
         lines.append("*Flagged:*")
         for s in flagged:
             why: list[str] = []
-            if not s.loaded and not s.disabled and not s.paused and platform.system() == "Darwin":
+            if (
+                not s.loaded
+                and not s.disabled
+                and not s.paused
+                and (platform.system() == "Darwin" or IS_LINUX)
+            ):
                 why.append("not loaded")
             if s.today_consecutive_failures >= 3:
                 why.append(f"{s.today_consecutive_failures} consecutive fails")
@@ -550,9 +612,7 @@ def main() -> int:
     args = parser.parse_args()
 
     records = configured_agents()
-    snapshots = [
-        snapshot_agent(record, loaded_labels=_launchctl_loaded_set()) for record in records
-    ]
+    snapshots = [snapshot_agent(record, loaded_labels=_loaded_label_set()) for record in records]
     globals_ = global_state()
 
     if args.json:

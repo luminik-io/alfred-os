@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # alfred-os — fresh-machine bootstrap.
 #
+# Supported hosts:
+#   - macOS — full fleet, launchd-scheduled.
+#   - Debian/Ubuntu Linux — full fleet, systemd --user-scheduled. apt for the
+#     CLI tools; uv installs from the official script.
+#
 # What this script does (idempotent — safe to re-run):
-#   1. Checks macOS (the framework currently runs on launchd; Linux users
-#      should follow docs/LINUX.md for the current limitations).
-#   2. Installs Homebrew if missing.
+#   1. Detects the host OS (macOS or Debian/Ubuntu Linux) and picks the
+#      package-manager lane. Other hosts are refused with a clear message.
+#   2. macOS: installs Homebrew if missing. Linux: uses apt-get.
 #   3. Installs the CLI tools every alfred-os fleet needs: python@3.11, git,
-#      gh, jq, awscli, uv (fast Python runner used by the test suite).
+#      gh, jq, uv (fast Python runner used by the test suite). macOS also
+#      installs awscli + node via brew; on Linux uv is fetched from its
+#      official installer and AWS CLI v2 is left to the operator.
 #   4. Installs Claude Code (the @anthropic-ai/claude-code CLI) via npm.
 #   5. Creates $ALFRED_HOME and $WORKSPACE_ROOT if missing.
 #   6. Drops a starter ~/.alfredrc from .alfredrc.example and
@@ -22,8 +29,9 @@
 #   - Create AWS IAM users or Secrets Manager entries. One-time decisions
 #     better made with eyes on the AWS console.
 #   - Create a Slack incoming webhook. Same reason.
-#   - Run deploy.sh. The launchd plist install side-effects; the operator
-#     should pull the trigger after reading what's about to load.
+#   - Run deploy.sh. Installing scheduled jobs (launchd plists on macOS,
+#     systemd --user timers on Linux) side-effects; the operator should pull
+#     the trigger after reading what's about to load.
 #   - Touch runtime data outside ~/.alfred.
 #
 # Non-interactive mode: set ALFRED_NONINTERACTIVE=1 and the script
@@ -103,25 +111,52 @@ ask() {
 }
 
 # --------------------------------------------------------------------------
-# 1. macOS check
+# 1. Host detection
 # --------------------------------------------------------------------------
+# ALFRED_OS picks the package-manager lane: "darwin" (Homebrew, launchd) or
+# "linux" (Debian/Ubuntu apt, systemd --user). Anything else is refused.
 step "Checking host"
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  warn "Alfred currently runs on macOS only (launchd-based scheduling)."
-  warn "Linux support requires a systemd port; tracked but not yet shipped."
-  warn "If you want to proceed anyway, set ALFRED_FORCE_LINUX=1."
-  if [[ "${ALFRED_FORCE_LINUX:-}" != "1" ]]; then
-    die "Refusing to install on non-macOS host. See docs/LINUX.md."
-  fi
-fi
-ok "macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+case "$(uname -s)" in
+  Darwin)
+    ALFRED_OS="darwin"
+    ok "macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown') — launchd scheduling"
+    ;;
+  Linux)
+    ALFRED_OS="linux"
+    if [[ ! -r /etc/os-release ]]; then
+      die "/etc/os-release not readable — cannot identify this Linux distro. Debian/Ubuntu required."
+    fi
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    case " ${ID:-} ${ID_LIKE:-} " in
+      *" debian "*|*" ubuntu "*) ;;
+      *)
+        die "Only Debian/Ubuntu Linux is supported (got ID=${ID:-?} ID_LIKE=${ID_LIKE:-}). See docs/LINUX.md."
+        ;;
+    esac
+    if ! command -v apt-get >/dev/null 2>&1; then
+      die "apt-get not found — Debian/Ubuntu apt is required. See docs/LINUX.md."
+    fi
+    ok "${PRETTY_NAME:-Debian/Ubuntu Linux} — systemd --user scheduling"
+    ;;
+  *)
+    die "Unsupported host: $(uname -s). alfred-os runs on macOS or Debian/Ubuntu Linux. See docs/LINUX.md."
+    ;;
+esac
 
 # --------------------------------------------------------------------------
-# 2. Homebrew
+# 2. Package manager
 # --------------------------------------------------------------------------
-if [[ -n "$SKIP_BREW" ]]; then
-  warn "Skipping Homebrew + brew packages per --skip-brew."
-else
+# sudo wrapper for the Linux lane: empty when already root, "sudo" otherwise.
+SUDO=""
+if [[ "$ALFRED_OS" == "linux" && "$(id -u)" -ne 0 ]]; then
+  if ! command -v sudo >/dev/null 2>&1; then
+    die "running as non-root and 'sudo' is not installed; install sudo or run as root."
+  fi
+  SUDO="sudo"
+fi
+
+install_darwin_packages() {
   step "Homebrew"
   if ! command -v brew >/dev/null 2>&1; then
     note "Installing Homebrew (will prompt for sudo password)"
@@ -135,10 +170,8 @@ else
   fi
   ok "brew $(brew --version | head -1)"
 
-  # --------------------------------------------------------------------
-  # 3. Brew packages
-  # --------------------------------------------------------------------
   step "Installing CLI dependencies"
+  local pkg
   declare -a packages=(
     git
     gh
@@ -157,6 +190,93 @@ else
       ok "$pkg installed"
     fi
   done
+}
+
+install_linux_packages() {
+  step "Installing CLI dependencies (apt)"
+  # Distro packages. node is pulled in for npm (Claude Code install). uv has
+  # no apt package, so it installs from the official script below. AWS CLI v2
+  # is intentionally not auto-installed: apt's awscli is v1.x and scheduled
+  # fleet jobs that touch AWS want v2.
+  local apt_pkgs="ca-certificates curl gnupg git jq python3-venv python3-pip nodejs npm"
+  note "apt-get update"
+  ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get update -qq
+  note "apt-get install -y ${apt_pkgs}"
+  # shellcheck disable=SC2086
+  ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get install -y ${apt_pkgs} >/dev/null
+  ok "apt packages installed"
+
+  # python3.11: Hermes-shaped agents pin 3.11, but recent Ubuntu/Debian ship a
+  # newer default. Prefer a uv-managed 3.11 (set up after uv installs below);
+  # if the distro happens to ship python3.11, that is fine too.
+  if command -v python3.11 >/dev/null 2>&1; then
+    ok "python3.11 present: $(python3.11 --version 2>/dev/null || echo '?')"
+  else
+    note "python3.11 not in apt; will be provisioned via 'uv python install 3.11'"
+  fi
+
+  # gh: prefer the distro package; fall back to GitHub's official apt repo.
+  if command -v gh >/dev/null 2>&1; then
+    ok "gh already installed"
+  elif ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get install -y gh >/dev/null 2>&1; then
+    ok "gh installed from distro repo"
+  else
+    note "gh not in distro repo — adding GitHub's official apt repo"
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | ${SUDO} dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+    ${SUDO} chmod a+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      | ${SUDO} tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+    ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get install -y gh >/dev/null
+    ok "gh installed from GitHub apt repo"
+  fi
+
+  # uv (Astral): no apt package — install from the official script into
+  # ~/.local/bin. Idempotent: the installer no-ops if uv is current.
+  if command -v uv >/dev/null 2>&1; then
+    ok "uv already installed"
+  else
+    note "installing uv from https://astral.sh/uv"
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  fi
+  if [[ -d "$HOME/.local/bin" ]]; then
+    case ":$PATH:" in
+      *":$HOME/.local/bin:"*) ;;
+      *) PATH="$HOME/.local/bin:$PATH"; export PATH ;;
+    esac
+  fi
+
+  # python3.11 via uv when the distro did not ship it. Keeps the runtime off
+  # the distro-release treadmill.
+  if ! command -v python3.11 >/dev/null 2>&1; then
+    if command -v uv >/dev/null 2>&1; then
+      if uv python find 3.11 >/dev/null 2>&1; then
+        ok "uv-managed python 3.11 already present"
+      else
+        note "uv python install 3.11"
+        uv python install 3.11
+        ok "python 3.11 installed via uv"
+      fi
+    else
+      warn "uv not on PATH after install; python3.11 not provisioned. Add ~/.local/bin to PATH and re-run."
+    fi
+  fi
+
+  # AWS CLI v2 is operator-installed when scheduled fleet jobs need it.
+  if ! command -v aws >/dev/null 2>&1; then
+    warn "AWS CLI not on PATH — install AWS CLI v2 manually if scheduled jobs touch AWS:"
+    warn "  https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+  fi
+}
+
+if [[ -n "$SKIP_BREW" ]]; then
+  warn "Skipping package install per --skip-brew."
+else
+  case "$ALFRED_OS" in
+    darwin) install_darwin_packages ;;
+    linux)  install_linux_packages ;;
+  esac
 fi
 
 # --------------------------------------------------------------------------
@@ -216,14 +336,25 @@ else
   OPERATOR_EMAIL_VAL="$(ask 'Operator email (used in prompts)' "${OPERATOR_EMAIL:-}")"
 
   cp "$TEMPLATE" "$RC_FILE"
-  # Fill in the prompted values. macOS sed needs an empty arg after -i.
-  sed -i '' \
-    -e "s|^GH_ORG=.*|GH_ORG=${GH_ORG_VAL}|" \
-    -e "s|^OPERATOR_NAME=.*|OPERATOR_NAME=${OPERATOR_NAME_VAL}|" \
-    -e "s|^OPERATOR_EMAIL=.*|OPERATOR_EMAIL=${OPERATOR_EMAIL_VAL}|" \
-    -e "s|^ALFRED_HOME=.*|ALFRED_HOME=${ALFRED_HOME}|" \
-    -e "s|^WORKSPACE_ROOT=.*|WORKSPACE_ROOT=${WORKSPACE_ROOT}|" \
-    "$RC_FILE"
+  # Fill in the prompted values. BSD sed (macOS) needs an empty extension arg
+  # after -i; GNU sed (Linux) does not accept one. Branch on $ALFRED_OS.
+  if [[ "$ALFRED_OS" == "darwin" ]]; then
+    sed -i '' \
+      -e "s|^GH_ORG=.*|GH_ORG=${GH_ORG_VAL}|" \
+      -e "s|^OPERATOR_NAME=.*|OPERATOR_NAME=${OPERATOR_NAME_VAL}|" \
+      -e "s|^OPERATOR_EMAIL=.*|OPERATOR_EMAIL=${OPERATOR_EMAIL_VAL}|" \
+      -e "s|^ALFRED_HOME=.*|ALFRED_HOME=${ALFRED_HOME}|" \
+      -e "s|^WORKSPACE_ROOT=.*|WORKSPACE_ROOT=${WORKSPACE_ROOT}|" \
+      "$RC_FILE"
+  else
+    sed -i \
+      -e "s|^GH_ORG=.*|GH_ORG=${GH_ORG_VAL}|" \
+      -e "s|^OPERATOR_NAME=.*|OPERATOR_NAME=${OPERATOR_NAME_VAL}|" \
+      -e "s|^OPERATOR_EMAIL=.*|OPERATOR_EMAIL=${OPERATOR_EMAIL_VAL}|" \
+      -e "s|^ALFRED_HOME=.*|ALFRED_HOME=${ALFRED_HOME}|" \
+      -e "s|^WORKSPACE_ROOT=.*|WORKSPACE_ROOT=${WORKSPACE_ROOT}|" \
+      "$RC_FILE"
+  fi
   chmod 600 "$RC_FILE"
   ok "wrote $RC_FILE (chmod 600)"
 fi
@@ -296,12 +427,14 @@ Next steps (run them in this order):
   3. Create a Slack incoming webhook for your fleet channel:
        See ${C_BLUE}docs/SLACK_SETUP.md${C_OFF}
 
-  4. Deploy the framework + verify:
+  4. Deploy the framework + verify (deploy.sh self-detects the host
+     scheduler: launchd plists on macOS, systemd --user timers on Linux):
        ${C_BLUE}bash deploy.sh${C_OFF}
        ${C_BLUE}bash bin/doctor.sh${C_OFF}
 
   5. Read ${C_BLUE}INSTALL.md${C_OFF} for the full first-fleet walkthrough,
      then ${C_BLUE}BOOTSTRAP.md${C_OFF} for the deeper-dive operations guide.
+     Linux specifics live in ${C_BLUE}docs/LINUX.md${C_OFF}.
 
 If anything in this script went sideways, please open an issue at
 https://github.com/luminik-io/alfred-os/issues with the output.

@@ -2,7 +2,8 @@
 # alfred-os — deploy framework files into ${ALFRED_HOME}/{lib,bin}/.
 #
 # If launchd/agents.conf exists in this checkout, this script also renders
-# and installs those launchd jobs. Without agents.conf it stays framework-only,
+# and installs the scheduled jobs for the host OS: launchd plists on macOS,
+# systemd --user timers on Linux. Without agents.conf it stays framework-only,
 # which is the clean default for a fresh clone.
 #
 # Idempotent. Safe to re-run.
@@ -10,7 +11,8 @@
 # Env vars (defaults shown):
 #   ALFRED_HOME      = $HOME/.alfred
 #   WORKSPACE_ROOT   = $HOME/code
-# (Both flow into rendered launchd plists for any consumer that ships agents.)
+# (Both flow into the rendered launchd plists / systemd units for any
+# consumer that ships agents.)
 
 set -euo pipefail
 
@@ -99,9 +101,82 @@ if command -v codex >/dev/null 2>&1; then
   echo "[alfred-os/deploy] linked codex → $LOCAL_BIN/codex"
 fi
 
+# Render + install the systemd --user units on Linux. Mirrors the launchd
+# path below: render from agents.conf, reap units for rows that were removed,
+# install the current set, and skip enabling any agent whose pause marker is
+# set. Units live in ~/.config/systemd/user; the .timer triggers the .service.
+deploy_linux_systemd() {
+  local conf="$1"
+  local systemd_user_dir="$HOME/.config/systemd/user"
+  local out_dir="$REPO_DIR/systemd/_generated"
+  local pause_dir="$ALFRED_HOME/state/_paused"
+  mkdir -p "$systemd_user_dir"
+
+  echo "[alfred-os/deploy] rendering systemd user units from $conf"
+  bash "$REPO_DIR/systemd/render.sh" "$out_dir"
+
+  # Build the keep-list (labels deployed this run) so the reaper can spot
+  # rows that were removed from agents.conf.
+  local keep_list="" unit_path label short_name
+  for unit_path in "$out_dir"/*.timer; do
+    [ -e "$unit_path" ] || continue
+    label="$(basename "$unit_path" .timer)"
+    keep_list="${keep_list}${label}
+"
+  done
+
+  echo "[alfred-os/deploy] reaping orphaned systemd units (rows removed from agents.conf)"
+  local existing
+  for existing in "$systemd_user_dir"/*.timer; do
+    [ -e "$existing" ] || continue
+    label="$(basename "$existing" .timer)"
+    # Only reap units we manage: a matching .service must exist and the
+    # label must not be in the current keep-list.
+    [ -f "$systemd_user_dir/$label.service" ] || continue
+    if ! printf '%s' "$keep_list" | grep -qx "$label"; then
+      systemctl --user disable --now "$label.timer" >/dev/null 2>&1 || true
+      rm -f "$existing" "$systemd_user_dir/$label.service"
+      echo "  - $label removed (not present in current agents.conf)"
+    fi
+  done
+
+  echo "[alfred-os/deploy] installing systemd units into $systemd_user_dir"
+  cp "$out_dir"/*.service "$out_dir"/*.timer "$systemd_user_dir/"
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+
+  for unit_path in "$out_dir"/*.timer; do
+    [ -e "$unit_path" ] || continue
+    label="$(basename "$unit_path" .timer)"
+    short_name="${label##*.}"
+    if [ -f "$pause_dir/$short_name" ]; then
+      # Operator-paused via 'alfred pause'. Disable so the unit isn't
+      # re-armed; the marker file stays the single source of truth.
+      systemctl --user disable --now "$label.timer" >/dev/null 2>&1 || true
+      echo "  - $label paused; installed but not enabled"
+      continue
+    fi
+    if systemctl --user enable --now "$label.timer" >/dev/null 2>&1; then
+      echo "  - $label enabled"
+    else
+      echo "  - $label (enable failed; see 'systemctl --user status $label.timer')"
+    fi
+  done
+
+  echo "[alfred-os/deploy] active timers:"
+  systemctl --user list-units --type=timer --state=active --no-legend 2>/dev/null \
+    | awk '{print "  " $1}' || echo "  (none)"
+}
+
 CONF="$REPO_DIR/launchd/agents.conf"
 if [ -f "$CONF" ]; then
   cp "$CONF" "$RUNTIME_LAUNCHD/agents.conf"
+
+  if [ "$(uname -s)" = "Linux" ]; then
+    deploy_linux_systemd "$CONF"
+    echo "[alfred-os/deploy] done"
+    exit 0
+  fi
+
   OUT_DIR="$REPO_DIR/launchd/_generated"
   echo "[alfred-os/deploy] rendering launchd plists from $CONF"
   bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"

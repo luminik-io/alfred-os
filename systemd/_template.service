@@ -1,0 +1,20 @@
+[Unit]
+Description=alfred-os __LABEL__
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=__ALFRED_BIN__/agent-launch __SCRIPT__
+StandardOutput=append:/tmp/__LOG_STEM__.stdout
+StandardError=append:/tmp/__LOG_STEM__.stderr
+WorkingDirectory=__HOME__
+Environment=PATH=__PATH__
+__JAVA_BLOCK__
+Environment=HOME=__HOME__
+Environment=ALFRED_HOME=__ALFRED_HOME__
+Environment=WORKSPACE_ROOT=__WORKSPACE_ROOT__
+Environment=AGENT_CODENAME=__AGENT_SHORT__
+Environment=LAUNCHD_LABEL=__LABEL__
+__GH_ORG_BLOCK__
+__ROLE_BLOCK__

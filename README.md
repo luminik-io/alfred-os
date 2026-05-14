@@ -8,9 +8,10 @@
 [![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
+![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-A local engineering-fleet runtime: launchd-managed Claude Code-first agents on a single Mac, with optional Codex routing for review-style work. `launchd` dispatches each firing as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide rate-limit block.
+A local engineering-fleet runtime: Claude Code-first agents scheduled by the host's per-user scheduler — `launchd` on macOS, `systemd --user` on Linux — with optional Codex routing for review-style work. Each firing runs as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide rate-limit block.
 
 Docs site: https://alfred.luminik.io
 
@@ -70,7 +71,7 @@ runner owns safety rails, and the LLM CLI only receives the bounded task.
 Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work:
 
 - Long-running loops have no failure isolation. One bad run trashes the others.
-- In-memory state can't survive an OS reboot. macOS restarts every few weeks.
+- In-memory state can't survive an OS reboot. A long-lived host restarts every few weeks.
 - Chat-first interfaces put the operator on the critical path.
 
 Alfred's shape:
@@ -151,7 +152,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
 - [Integrations](docs/INTEGRATIONS.md): what Alfred does and does not bundle.
 - [Hermes integration](docs/HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
-- [Linux](docs/LINUX.md): current macOS-only stance + interim cron / systemd patterns.
+- [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers — install, deploy, and operate.
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md): private-disclosure process.
