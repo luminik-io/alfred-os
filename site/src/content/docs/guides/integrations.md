@@ -6,6 +6,9 @@ description: What Alfred bundles, what stays optional, and how to think about co
 Alfred core should stay boring: local Python runners, `launchd` scheduling,
 git worktrees, GitHub CLI, model CLIs, and optional Slack delivery.
 
+The default model path uses local Claude Code / Codex CLI authentication. Alfred
+does not manage provider API keys.
+
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`.
 Alfred uses `ALFRED_HOME` only for its runtime path.
 

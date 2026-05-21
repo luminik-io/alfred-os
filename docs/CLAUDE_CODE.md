@@ -2,6 +2,8 @@
 
 Alfred runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`alfred claude`), and the optional Codex path.
 
+Default billing posture: Alfred uses the local CLI account you have already authenticated. It does not need Anthropic or OpenAI API keys for the normal Claude Code / Codex CLI flow.
+
 ## What "Claude Code" is
 
 The official Anthropic CLI for Claude. Two surfaces:
@@ -11,9 +13,11 @@ The official Anthropic CLI for Claude. Two surfaces:
 
 Alfred doesn't talk to the Anthropic API directly. It shells out to `claude`. The CLI handles model selection, billing, rate-limit signalling, retries, MCP plumbing. Re-implementing any of that is out of scope.
 
+Keep `ANTHROPIC_API_KEY` unset for subscription-backed Claude Code runs. Claude Code gives environment-variable API keys priority over Pro/Max subscription auth, which can move a firing onto API billing.
+
 ## Optional Codex routing
 
-If the `codex` CLI is installed and authenticated, agents can route a task through `route_llm("codex", ...)` or call `codex_invoke()` directly. The default posture is review-safe. Write-capable agents must deliberately opt into writable worktrees and, when needed for autonomous `gh` or keychain access, the Codex bypass flag:
+If the `codex` CLI is installed and authenticated, agents can route a task through `route_llm("codex", ...)` or call `codex_invoke()` directly. Authenticate Codex with your ChatGPT account if you want ChatGPT-plan usage rather than API-key usage. The default posture is review-safe. Write-capable agents must deliberately opt into writable worktrees and, when needed for autonomous `gh` or keychain access, the Codex bypass flag:
 
 - Default sandbox: `read-only`
 - Default approval policy: `never`
@@ -70,18 +74,18 @@ Should print a one-line response and exit 0.
 
 ## Pro vs Max sizing
 
-Claude Code is metered against your **subscription quota**, not API tokens. Two tiers:
+Claude Code can run against your **subscription usage** rather than direct API token billing when you log in with a Pro or Max account and avoid API-key env vars. Usage is shared with other Claude surfaces and reset behavior is controlled by Anthropic, so treat the table as sizing guidance, not a billing guarantee:
 
-| Tier | Approx weekly turns | Use case |
-|---|---|---|
-| Pro ($20/mo) | ~1500 | One operator, occasional agent runs, manual code work in parallel |
-| Max ($100/mo or $200/mo) | ~5000-10000+ | Continuous fleet, 6+ codename agents on 20-min cadences |
+| Tier | Use case |
+|---|---|
+| Pro | One operator, occasional agent runs, manual code work in parallel |
+| Max 5x / 20x | Continuous fleet, multiple codename agents on frequent cadences |
 
 A "turn" is roughly one model response. A typical Lucius firing on a small backend issue burns 30-80 turns. A multi-file refactor can hit 150+. Empirically, Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. Add Bane (test coverage), Drake (planner), Ra's (review), Nightwing (review-fix), and you exceed Pro quota in a day.
 
-Recommendation: start on Pro to validate the framework, upgrade to Max once you've got more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you split spend across two accounts.
+Recommendation: start on Pro to validate the framework, upgrade to Max once you've got more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you separate work across two accounts when you operate that way.
 
-When the subscription cap trips mid-firing, the framework treats it as a fleet-wide event. `set_global_block(hours=1, reason="...")` poisons the run-permission file at `$ALFRED_HOME/state/global-blocked-until.json`. Every other agent's first preflight check sees the block and exits silently. After an hour, the block expires and the fleet resumes.
+When the provider usage cap trips mid-firing, the framework treats it as a fleet-wide event. `set_global_block(hours=1, reason="...")` poisons the run-permission file at `$ALFRED_HOME/state/global-blocked-until.json`. Every other agent's first preflight check sees the block and exits silently. After an hour, the block expires and the fleet resumes.
 
 ## The `alfred claude` swap pattern
 
@@ -101,7 +105,7 @@ alfred claude swap        # toggle
 alfred claude probe       # run a tiny real auth check
 ```
 
-Typical usage: run on `primary` until it hits the weekly cap (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
+Typical usage: run on `primary` until it hits a usage cap or auth issue (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
 
 To populate the secondary config, log in once with `CLAUDE_CONFIG_DIR` pointed
 at the secondary directory:
@@ -129,9 +133,14 @@ which claude
 
 ## Cost vs token-API mental model
 
-A Max-subscription fleet shipping 10-20 PRs a day costs $100/mo flat. Same as if you only used Claude Code interactively for 1 hour a day.
+Under the default subscription-backed path, Alfred does not add token-metered charges by itself. It consumes the same Claude Code usage pool your terminal sessions consume.
 
-The subscription model does not pass through token costs. The fleet is bounded by the weekly turn quota, not USD-per-token. Per-day spend caps in `SpendState` are safety rails against runaway loops (e.g. a prompt accidentally entering a 500-turn while-loop), not bill-tracking. There is no incremental bill.
+Two caveats matter:
+
+1. If `ANTHROPIC_API_KEY` is present, Claude Code can use API billing instead of subscription auth.
+2. Anthropic usage credits can let paid-plan users continue after included usage limits at standard API pricing if they choose to enable and use that path.
+
+Per-day spend caps in `SpendState` are safety rails against runaway loops (e.g. a prompt accidentally entering a 500-turn while-loop), not authoritative provider billing records.
 
 If you need token-level billing (Bedrock, direct Anthropic API), override `CLAUDE_BIN` to a wrapper script that translates `claude -p` invocation into your API of choice. Out of scope for the default install.
 
@@ -148,7 +157,10 @@ The plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alf
 Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/codex` over an app-bundle path.
 
 **`error_rate_limit` immediately on every firing.**
-You've blown the weekly cap. `cat $ALFRED_HOME/state/global-blocked-until.json` shows when it expires. Either wait, swap to a second account via `alfred claude swap`, or upgrade to Max.
+You've hit a provider usage limit. `cat $ALFRED_HOME/state/global-blocked-until.json` shows Alfred's local cool-down. Either wait for the provider reset, swap to a second account via `alfred claude swap`, upgrade, or intentionally use provider-approved usage credits if that is your billing choice.
+
+**Unexpected API charges.**
+Check whether `ANTHROPIC_API_KEY` is set in your shell, launchd environment, or `~/.alfredrc`. For subscription-backed runs, unset it and re-run `claude /status` interactively to confirm the active account. If Codex is unexpectedly using API billing, check whether `OPENAI_API_KEY` is set or whether Codex was logged in through an API-key flow instead of ChatGPT-plan auth.
 
 **`error_max_turns` on every firing of one agent.**
 That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/lucius.py`), or scope-cap the issues that agent picks up.

@@ -668,6 +668,12 @@ def step_0_preflight(state: WizardState) -> None:
 
 def step_1_claude(*, non_interactive: bool) -> None:
     step("Claude Code auth")
+    if os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        warn(
+            "ANTHROPIC_API_KEY is set. Claude Code prioritizes API keys over "
+            "Pro/Max subscription auth, which can create API charges. Alfred "
+            "does not require this key; unset it for subscription-backed runs."
+        )
     if not have("claude"):
         fail("`claude` not on PATH. Install: npm install -g @anthropic-ai/claude-code")
         sys.exit(1)

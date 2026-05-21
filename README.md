@@ -22,9 +22,9 @@ sleep without turning their product into a hosted agent platform.
 
 - Label a GitHub issue, then let a narrow codename agent draft the plan, write
   the code, open the PR, review the PR, or fix review comments.
-- Run on your own always-on Mac or Linux box and your own Claude Code
-  subscription. No hosted scheduler, no shared queue, no API-key-only model
-  gateway.
+- Run on your own always-on Mac or Linux box and your own Claude Code or Codex
+  subscription-backed CLI auth. No hosted scheduler, no shared queue, no
+  provider API keys required by Alfred.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine.
 
@@ -216,7 +216,7 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 
 - **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / optional `codex` / optional Ollama on your own subscription. It does not run a hosted inference service.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / optional `codex` / optional Ollama on your own subscription-backed CLI auth. It does not run a hosted inference service and does not require provider API keys.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 

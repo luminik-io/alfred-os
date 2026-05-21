@@ -6,6 +6,9 @@ git worktrees, GitHub CLI, model CLIs, and optional Slack delivery.
 Everything else is an integration. Useful integrations are welcome, but they
 should not become required for a clean open-source install.
 
+The default model path is also intentionally plain: Alfred uses local Claude
+Code / Codex CLI authentication and does not manage provider API keys.
+
 ## Runtime Boundary
 
 `ALFRED_HOME` is the Alfred runtime root. A fresh install defaults it to

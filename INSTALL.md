@@ -110,7 +110,9 @@ Claude Code:
 claude
 ```
 
-First-run opens a browser to authenticate against your Anthropic account. Requires Pro or Max. The framework runs `claude -p` against your subscription's quota, no API key.
+First-run opens a browser to authenticate against your Anthropic account. For the default setup, use Claude Code through a Pro or Max subscription login. Alfred runs `claude -p` against the CLI account you authenticated and does not require an Anthropic API key.
+
+If `ANTHROPIC_API_KEY` is set in your shell or `~/.alfredrc`, Claude Code may prefer API billing over subscription auth. Unset it for subscription-backed Alfred runs.
 
 AWS (optional: only if you want Secrets Manager for Slack/credentials):
 
