@@ -28,7 +28,7 @@ const STRUCTURED_DATA = JSON.stringify({
       url: SITE_URL,
       description:
         "Documentation for Alfred, the open-source runtime for a local fleet " +
-        "of autonomous development agents on a single machine you own.",
+        "of autonomous development agents on a single machine you control.",
     },
     {
       "@type": "SoftwareApplication",
