@@ -29,7 +29,7 @@ export const GET: APIRoute = async ({ site }) => {
   const root = docs.find((d) => d.id === "");
   const summary =
     root?.data.description ??
-    "A local agent-fleet runtime for solo builders. Claude Code and Codex agents scheduled by launchd or systemd, on one machine you own.";
+    "A local agent-fleet runtime for solo builders. Claude Code and Codex agents scheduled by launchd or systemd, on a machine you control.";
 
   const lines: string[] = [
     "# Alfred",
@@ -37,7 +37,7 @@ export const GET: APIRoute = async ({ site }) => {
     `> ${summary}`,
     "",
     "Alfred is the open-source framework for running a local fleet of",
-    "autonomous development agents on a single machine you own. The host",
+    "autonomous development agents on a single machine you control. The host",
     "scheduler (launchd on macOS, systemd on Linux) fires each agent; the",
     "harness wraps every firing in a lock, preflight, spend cap, and an",
     "isolated git worktree. The engineering fleet ships today; content, sales,",

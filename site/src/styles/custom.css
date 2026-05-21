@@ -25,7 +25,7 @@
   --sl-color-gray-1: #dfe5f2;
   --sl-color-gray-2: #b9c2d8;
   --sl-color-gray-3: #8893ad;
-  --sl-color-gray-4: #6c7795;
+  --sl-color-gray-4: #7784a3;
   --sl-color-gray-5: #2a3450;
   --sl-color-gray-6: #1a2238;
 
@@ -77,9 +77,9 @@
   --alfred-border-strong: rgba(20, 30, 60, 0.18);
 
   --alfred-info: #2855c8;
-  --alfred-warn: #b7791f;
+  --alfred-warn: #8f5600;
   --alfred-alert: #d92d3c;
-  --alfred-ok: #0f9d77;
+  --alfred-ok: #087a5d;
 }
 
 /* ------------------------------------------------------------------ */
