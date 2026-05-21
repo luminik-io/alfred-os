@@ -61,8 +61,10 @@ it that way — no external deps.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -635,13 +637,46 @@ def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["launchctl", *args], check=False, capture_output=True, text=True)
 
 
+def _systemctl_user(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["systemctl", "--user", *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+
+def _decode_systemd_env_value(value: str) -> str:
+    try:
+        if value.startswith("$'") and value.endswith("'"):
+            return str(ast.literal_eval("'" + value[2:-1] + "'"))
+        if value.startswith(("'", '"')):
+            parts = shlex.split(value)
+            return parts[0] if parts else ""
+    except Exception:
+        return value
+    return value
+
+
 def _current_claude_dir() -> str:
-    if not shutil.which("launchctl"):
-        return os.environ.get("CLAUDE_CONFIG_DIR", "")
-    result = _launchctl(["getenv", "CLAUDE_CONFIG_DIR"])
-    if result.returncode != 0:
+    if scheduler.SCHEDULER == "launchd":
+        if not shutil.which("launchctl"):
+            return os.environ.get("CLAUDE_CONFIG_DIR", "")
+        result = _launchctl(["getenv", "CLAUDE_CONFIG_DIR"])
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+    if scheduler.SCHEDULER == "systemd":
+        result = _systemctl_user(["show-environment"])
+        if result.returncode != 0:
+            return os.environ.get("CLAUDE_CONFIG_DIR", "")
+        for line in result.stdout.splitlines():
+            key, _, value = line.partition("=")
+            if key == "CLAUDE_CONFIG_DIR":
+                return _decode_systemd_env_value(value)
         return ""
-    return result.stdout.strip()
+    return os.environ.get("CLAUDE_CONFIG_DIR", "")
 
 
 def _current_claude_label() -> str:
@@ -660,23 +695,16 @@ def _claude_auth_mtime(path: Path) -> str:
     return datetime.fromtimestamp(auth_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
 
 
-def _count_launchd_agents() -> int | None:
-    if not shutil.which("launchctl"):
+def _count_scheduled_agents() -> int | None:
+    if not scheduler.supported():
         return None
-    result = _launchctl(["list"])
-    if result.returncode != 0:
-        return None
+    labels = scheduler.loaded_labels()
     prefix = os.environ.get("FLEET_LABEL_PREFIX", "")
-    count = 0
-    for line in result.stdout.splitlines():
-        if not line.strip() or line.startswith("PID"):
-            continue
-        label = line.split()[-1]
-        if prefix:
-            count += int(label.startswith(prefix))
-        else:
-            count += int(any(token in label for token in ("agent", "fleet", "alfred")))
-    return count
+    if prefix:
+        return sum(1 for label in labels if label.startswith(prefix))
+    return sum(
+        1 for label in labels if any(token in label for token in ("agent", "fleet", "alfred"))
+    )
 
 
 def _claude_status() -> int:
@@ -692,11 +720,11 @@ def _claude_status() -> int:
         else:
             print(f"  {label:<12} {directory}   (NOT PRESENT)")
     print("")
-    agent_count = _count_launchd_agents()
+    agent_count = _count_scheduled_agents()
     if agent_count is None:
-        print("Live launchd agents: unavailable (launchctl not found)")
+        print("Live scheduled agents: unavailable (no supported host scheduler)")
     else:
-        print(f"Live launchd agents: {agent_count}")
+        print(f"Live {scheduler.SCHEDULER} agents: {agent_count}")
     print("")
     print("Switch with: alfred claude {primary|secondary|swap}")
     print("Verify real API auth with: alfred claude probe")
@@ -704,10 +732,10 @@ def _claude_status() -> int:
 
 
 def _set_claude_dir(path: Path, label: str) -> int:
-    if not shutil.which("launchctl"):
+    if scheduler.SCHEDULER not in {"launchd", "systemd"}:
         print(
-            "alfred claude: launchctl is not available; set CLAUDE_CONFIG_DIR "
-            f"to {path} in your shell, cron, or systemd unit.",
+            "alfred claude: no supported host scheduler; set CLAUDE_CONFIG_DIR "
+            f"to {path} in your shell or cron.",
             file=sys.stderr,
         )
         return 2
@@ -715,9 +743,23 @@ def _set_claude_dir(path: Path, label: str) -> int:
         print(f"ERROR: {path} not present. Set it up first:", file=sys.stderr)
         print(f"  CLAUDE_CONFIG_DIR={path} claude   # then complete login", file=sys.stderr)
         return 2
-    result = _launchctl(["setenv", "CLAUDE_CONFIG_DIR", str(path)])
+    if scheduler.SCHEDULER == "launchd":
+        if not shutil.which("launchctl"):
+            print(
+                "alfred claude: launchctl is not available; set CLAUDE_CONFIG_DIR "
+                f"to {path} manually.",
+                file=sys.stderr,
+            )
+            return 2
+        result = _launchctl(["setenv", "CLAUDE_CONFIG_DIR", str(path)])
+    else:
+        result = _systemctl_user(["set-environment", f"CLAUDE_CONFIG_DIR={path}"])
     if result.returncode != 0:
-        print(result.stderr.strip() or "alfred claude: launchctl setenv failed", file=sys.stderr)
+        print(
+            result.stderr.strip()
+            or f"alfred claude: {scheduler.SCHEDULER} environment update failed",
+            file=sys.stderr,
+        )
         return result.returncode
     print(f"Agents now route to {label.upper()} ({path}). Next firing of each agent picks this up.")
     return 0

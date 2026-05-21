@@ -7,6 +7,8 @@ enable_agent / disable_agent.
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import os
 import subprocess
 import sys
@@ -146,6 +148,16 @@ def test_write_dedupes_silently():
 CLI = Path(__file__).resolve().parent.parent / "bin" / "alfred"
 
 
+def _load_cli_module():
+    loader = importlib.machinery.SourceFileLoader("alfred_cli", str(CLI))
+    spec = importlib.util.spec_from_loader("alfred_cli", loader)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["alfred_cli"] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     full_env = {**os.environ, **(env_extra or {})}
     return subprocess.run(
@@ -247,6 +259,63 @@ def test_cli_codex_status_fails_when_binary_missing(tmp_path):
 
     assert res.returncode == 1
     assert "codex: not found" in res.stderr
+
+
+def test_claude_routing_reads_systemd_environment(monkeypatch, tmp_path):
+    cli = _load_cli_module()
+    monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")
+    target = tmp_path / "claude-secondary"
+
+    def fake_run(cmd, **_kwargs):
+        assert cmd[:3] == ["systemctl", "--user", "show-environment"]
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=f"PATH=/usr/bin\nCLAUDE_CONFIG_DIR={target}\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._current_claude_dir() == str(target)
+
+
+def test_claude_routing_decodes_systemd_escaped_environment(monkeypatch, tmp_path):
+    cli = _load_cli_module()
+    monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")
+    target = tmp_path / "home with spaces" / ".claude-secondary"
+
+    def fake_run(cmd, **_kwargs):
+        assert cmd[:3] == ["systemctl", "--user", "show-environment"]
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=f"PATH=/usr/bin\nCLAUDE_CONFIG_DIR=$'{target}'\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._current_claude_dir() == str(target)
+
+
+def test_claude_primary_sets_systemd_environment(monkeypatch, tmp_path):
+    cli = _load_cli_module()
+    monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")
+    home = tmp_path / "home"
+    primary = home / ".claude"
+    primary.mkdir(parents=True)
+    cli.PRIMARY_CLAUDE_DIR = primary
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._set_claude_dir(primary, "primary") == 0
+    assert ["systemctl", "--user", "set-environment", f"CLAUDE_CONFIG_DIR={primary}"] in calls
 
 
 def test_cli_status_reports_local_snapshot(tmp_path):

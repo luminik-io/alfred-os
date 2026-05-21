@@ -89,3 +89,40 @@ def test_list_large_features_scopes_search_to_configured_repos(monkeypatch):
     assert cmd.count("--repo") == 2
     assert "myorg/myorg-backend" in cmd
     assert "myorg/frontend" in cmd
+
+
+def test_bundle_for_issue_keeps_siblings_inside_scan_scope(monkeypatch):
+    runner = _load_runner()
+    seen_allowed: list[list[str]] = []
+
+    issue = {
+        "number": 1,
+        "title": "bundle trigger",
+        "url": "https://github.com/myorg/backend/issues/1",
+        "labels": [{"name": "agent:bundle:checkout"}],
+        "createdAt": "2026-05-09T10:00:00Z",
+        "body": "",
+    }
+
+    def fake_list_issues_by_bundle_label(label, *, allowed_repos=None):
+        seen_allowed.append(list(allowed_repos or []))
+        return [
+            issue,
+            {
+                "number": 2,
+                "title": "frontend sibling",
+                "url": "https://github.com/myorg/frontend/issues/2",
+                "labels": [{"name": label}],
+                "createdAt": "2026-05-09T10:01:00Z",
+                "body": "",
+            },
+        ]
+
+    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend,frontend")
+    monkeypatch.setattr(runner, "list_issues_by_bundle_label", fake_list_issues_by_bundle_label)
+
+    bundle = runner._bundle_for_issue(issue)
+
+    assert bundle.bundle_label == "agent:bundle:checkout"
+    assert seen_allowed == [["myorg/backend", "myorg/frontend"]]
+    assert {row["number"] for row in bundle.issues} == {1, 2}

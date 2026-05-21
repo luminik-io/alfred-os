@@ -107,4 +107,11 @@ This is the one piece `deploy.sh` does **not** do for you. It needs `sudo` and i
 - **WSL2**: same path as Linux on distros that enable systemd (recent Ubuntu does by default). Keep `WORKSPACE_ROOT` on a Linux path, not `/mnt/c/...`. Cross-filesystem worktrees are slow and Windows file-locking confuses `git worktree`.
 - **Docker**: still not container-friendly. The host-scheduler assumption means hosting the scheduler outside the container. Running individual agents *inside* containers is fine, though: point your codename's `bin/<name>.py` at `docker run --rm ... claude -p ...`.
 
-One thing still macOS-shaped: `alfred claude` switches the Claude Code account via `launchctl setenv`, which has no systemd equivalent. On Linux, set `CLAUDE_CONFIG_DIR` directly in `~/.alfredrc`.
+`alfred claude` works on Linux too. It switches the Claude Code account by setting `CLAUDE_CONFIG_DIR` in the `systemd --user` manager environment with `systemctl --user set-environment`. Already-running services keep the environment they started with, so restart the affected timer or service after a switch:
+
+```sh
+alfred claude secondary
+systemctl --user restart my.fleet.lucius.timer
+```
+
+If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in `~/.alfredrc`; it flows into rendered units through `agent-launch`.
