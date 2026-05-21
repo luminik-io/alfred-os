@@ -81,14 +81,14 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-For a single-repo solo-builder setup that an AI coding tool can run without
-guessing at prompts or labels:
+For a solo-builder setup that an AI coding tool can run without guessing at
+prompts or labels, pass one repo or an explicit comma-separated repo list:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
   --agents starter \
-  --repos your-org/your-repo \
+  --repos your-org/api,your-org/web \
   --slack-webhook skip
 ```
 
@@ -109,6 +109,12 @@ smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or
 [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
 
 Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md). On Linux, see [`docs/LINUX.md`](docs/LINUX.md) for the `systemd --user` path.
+
+Want Claude Code, Codex, or another local coding assistant to drive setup for
+you? Use [`docs/AI_ASSISTED_INSTALL.md`](docs/AI_ASSISTED_INSTALL.md). It gives
+the assistant a copy-paste prompt, explicit repo-scope lanes, and the guardrails
+that prevent it from assigning every repo or inventing secrets. For checkout
+layout choices, use [`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md).
 
 ## System shape
 
@@ -184,6 +190,8 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 ## Documentation
 
 - [Install](INSTALL.md): fresh-machine walkthrough.
+- [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
+- [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [Bootstrap](BOOTSTRAP.md): operations guide (AWS IAM, Slack, troubleshooting).
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
 - [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.

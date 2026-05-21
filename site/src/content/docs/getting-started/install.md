@@ -17,13 +17,13 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-Single-repo starter fleet:
+Starter fleet for one repo or an explicit comma-separated repo list:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
   --agents starter \
-  --repos your-org/your-repo \
+  --repos your-org/api,your-org/web \
   --slack-webhook skip
 ```
 
@@ -39,6 +39,23 @@ shared scheduler manifest; updates `~/.alfredrc`; runs deploy; and runs doctor.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
+
+## Install With Claude Code or Codex
+
+Claude Code, Codex, or another local coding assistant can drive setup if you
+give it explicit values and guardrails. Use the copy-paste prompt in
+[`docs/AI_ASSISTED_INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AI_ASSISTED_INSTALL.md).
+
+The important rules:
+
+- start with one explicit repo, or one explicit comma-separated repo list
+- use the starter fleet
+- keep Slack skipped unless you paste a webhook
+- do not create AWS profiles during first install
+- pause for browser auth flows
+- run `alfred auth status` and `doctor.sh` before trusting scheduled firings
+
+For repo checkout layout, read [Workspace patterns](/getting-started/workspace-patterns/).
 
 ## What `install.sh` does
 
@@ -79,7 +96,8 @@ Per-stage skips: `--skip-brew`, `--skip-npm`.
 
 For `alfred-init.py`, `--agents starter` means Drake, Lucius, Ras al Ghul, and
 agent-cleanup. Use `--agents all` only when you want every scheduled agent.
-Use `--repos owner/repo` for the common single-repo case. `owner` must match
+Use `--repos owner/repo` for one repo, or
+`--repos owner/api,owner/web,owner/mobile` for multi-repo. `owner` must match
 `GH_ORG`.
 
 ## After install

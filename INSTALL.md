@@ -16,18 +16,25 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-Single-repo starter fleet, suitable for an AI coding tool to run end to end:
+Starter fleet for one repo or an explicit comma-separated repo list, suitable
+for an AI coding tool to run end to end:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
   --agents starter \
-  --repos your-org/your-repo \
+  --repos your-org/api,your-org/web \
   --slack-webhook skip
 ```
 
 The repo owner must match `GH_ORG`; the runtime agents store the bare repo name
 in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
+
+If you want Claude Code, Codex, or another local coding assistant to drive these
+steps, use [`docs/AI_ASSISTED_INSTALL.md`](docs/AI_ASSISTED_INSTALL.md). It has
+a copy-paste prompt with the correct guardrails for one-repo and multi-repo
+setup. For checkout layout choices, read
+[`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md).
 
 The rest of this doc explains what each step does and what to do when something fails.
 
@@ -161,7 +168,7 @@ agent.
 Batman is included in the catalog as an opt-in cross-repo coordinator. In the
 public release it posts bundle plans for `agent:large-feature` work; teams can
 layer their own approval-and-execution chain on top. Enable Batman when you are
-ready for multi-repo planning, not for a first single-repo setup.
+ready for multi-repo planning, not for your first starter setup.
 
 ### 7. Framework-only deploy + verify
 
@@ -226,6 +233,8 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 ## Where to go next
 
 - [`BOOTSTRAP.md`](BOOTSTRAP.md): AWS IAM-per-agent, Slack, prompt sync, troubleshooting.
+- [`docs/AI_ASSISTED_INSTALL.md`](docs/AI_ASSISTED_INSTALL.md): assistant-driven setup with Claude Code, Codex, or another local coding assistant.
+- [`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md): Slack app + webhook + (optional) bot token.
 - [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md): IAM users, scoped policies, Secrets Manager layout.
 - [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `alfred claude`.

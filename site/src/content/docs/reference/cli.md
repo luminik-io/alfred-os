@@ -36,6 +36,7 @@ Configures the scheduled fleet after the base install.
 ```sh
 ./bin/alfred-init.py
 ./bin/alfred-init.py --non-interactive --agents starter --repos owner/repo --slack-webhook skip
+./bin/alfred-init.py --non-interactive --agents starter --repos owner/api,owner/web --slack-webhook skip
 ```
 
 `--agents` accepts `starter`, `all`, or comma-separated codenames. `starter`

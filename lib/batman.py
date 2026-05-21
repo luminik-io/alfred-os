@@ -1,12 +1,13 @@
-"""Bundle primitives for Batman, the multi-repo feature coordinator.
+"""Bundle primitives for Batman, the multi-repo planning coordinator.
 
 Batman picks ``agent:bundle:<slug>`` bundles across product repos,
-drafts plans, and executes coordinated multi-repo PR chains. This
+drafts plans, and exposes claim / release helpers for fleets that add
+their own execution layer. This
 module is the pure-data part: ``Bundle`` dataclass, claim / release
-across the bundle, plan parsing from issue bodies. The execution chain
-(worktrees, claude_invoke, PR chaining, founder approval gate) lives in
-``bin/batman.py`` so it can be skinned per-fleet without touching
-testable primitives.
+across the bundle, plan parsing from issue bodies. Public ``bin/batman.py``
+is plan-only: it finds a bundle, posts a rollout plan, and stops before
+worktrees, PR chaining, merge, or deploy steps. Site-specific fleets can
+build those execution steps on top of these primitives.
 
 Key contract, bundle = atomic unit:
 

@@ -58,6 +58,18 @@ engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 | `ALFRED_SHIPPED_SUMMARY_REPOS` | `alfred shipped` / `alfred-shipped-summary.py` watched repo list | (none) |
 | `ALFRED_SHIPPED_SUMMARY_QUERY_LIMIT` | per-window GitHub query limit | `1000` |
 
+## Batman planning
+
+| Var | Used by | Default |
+|---|---|---|
+| `BATMAN_SCAN_REPOS` | `bin/batman.py` repo scan scope for `agent:large-feature` issues | (none, no-op) |
+| `BATMAN_ROLLOUT_ORDER` | `alfred-init.py` and plan parsing defaults | `backend,frontend,mobile,agents,data-acquisition` |
+| `AGENT_CODENAME_CROSS_REPO_COORDINATOR` | `alfred-init.py` codename mapping | `batman` |
+
+Batman is opt-in and public Alfred ships it as plan-only. It scans the
+configured repo list, groups `agent:bundle:<slug>` siblings, posts a rollout
+plan, and stops before automatic cross-repo PR execution.
+
 ## Claude auth
 
 | Var | Used by | Default |
