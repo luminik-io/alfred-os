@@ -42,7 +42,7 @@ Alfred should not bundle:
 
 - private memory stores, canon files, transcripts, or operator data
 - a required vector database
-- a required Hermes install
+- a required external agent runtime
 - third-party skill bundles fetched at runtime without review
 - opaque background services that are not visible in `doctor.sh`
 
@@ -54,45 +54,45 @@ on a new machine.
 | Profile | Use it when | Required pieces |
 | --- | --- | --- |
 | Standalone Alfred | You want scheduled engineering agents on one machine. | Alfred, Python, `gh`, `git`, Claude Code or Codex, optional Slack webhook. |
-| Alfred + gbrain | You want searchable personal/company memory available to interactive sessions. | Standalone Alfred plus a separately installed gbrain. |
-| Alfred + Hermes | You already use Hermes as a chat gateway, cron prompt router, MCP registry, or skills host. | Standalone Alfred plus a separately installed Hermes operator layer. |
+| Alfred + external memory | You want searchable personal/company memory available to interactive sessions. | Standalone Alfred plus a separately installed memory layer. |
+| Alfred + operator gateway | You want chat control, MCP registration, skills, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/operator layer. |
 
 The standalone profile is the default and the only path the OSS installer
 should assume.
 
-## gbrain
+## Memory
 
-gbrain is a useful companion memory layer, but it is not Alfred state. Keep it
-outside `ALFRED_HOME`; point interactive agents at it through your shell,
-Claude Code, Hermes, or MCP setup.
+Memory tools can be useful companion layers, but they are not Alfred state. Keep
+them outside `ALFRED_HOME`; point interactive agents at them through your shell,
+Claude Code, MCP, or a separate operator gateway.
 
 Recommended shape:
 
 ```text
-~/.gbrain/
-`-- brain.pglite
+~/.your-memory-tool/
+`-- data/
 ```
 
-Alfred runners should continue working if `gbrain` is missing. If a prompt
-mentions gbrain, it should phrase it as optional context, not a hard
+Alfred runners should continue working if memory is missing. If a prompt
+mentions a memory tool, it should phrase it as optional context, not a hard
 preflight requirement.
 
-## Hermes
+## Operator gateways
 
-Hermes can wrap Alfred nicely when you want chat commands, MCP servers, skills,
-or dashboards around the fleet. It should observe Alfred or call read-only
-commands unless you intentionally build a handoff.
+A gateway can wrap Alfred nicely when you want chat commands, MCP servers,
+skills, durable task boards, or dashboards around the fleet. It should observe
+Alfred or call read-only commands unless you intentionally build a handoff.
 
 Good boundaries:
 
 - Alfred owns issue claims, worktrees, launchd jobs, state files, and Slack
   firing messages.
-- Hermes owns chat gateway behavior, skills, MCP server registration, memory,
-  and operator dashboards.
+- The gateway owns chat behavior, skills, MCP server registration, memory, and
+  operator dashboards.
 - Both tools may read `ALFRED_HOME/state`, but only Alfred runners should mutate
   in-flight issue and worktree state.
 
-See [`HERMES.md`](HERMES.md) for the optional recipe.
+See [`HERMES.md`](HERMES.md) for the optional Hermes recipe.
 
 ## Future Adapters
 
@@ -100,8 +100,10 @@ Good next integrations:
 
 - `alfred mcp serve` exposing read-only fleet status, issue claims, and shipped
   summaries.
-- `alfred memory export` producing sanitized JSON for gbrain or another memory
-  layer.
+- `alfred events export` producing sanitized JSONL for memory tools, dashboards,
+  or external task boards.
+- `alfred gateway bridge` creating GitHub issues/labels from an external board
+  without letting that board mutate Alfred state directly.
 - `alfred dashboards export` writing a static fleet snapshot for local or
   hosted dashboards.
 

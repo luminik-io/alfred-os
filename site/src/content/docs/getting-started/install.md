@@ -59,9 +59,8 @@ What it does **not** do (deliberately):
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
-- Install a separate Hermes agent. `ALFRED_HOME` is the Alfred runtime
-  root name. Install Hermes separately only if your fleet uses Hermes skills,
-  MCP, gbrain, canon, or dashboarding.
+- Install an external agent gateway, memory database, MCP server, dashboard, or
+  skill bundle. `ALFRED_HOME` is only Alfred's runtime root.
 
 ## Non-interactive
 

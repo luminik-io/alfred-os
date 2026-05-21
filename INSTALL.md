@@ -51,8 +51,9 @@ What it does **not** do (deliberately):
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
 - Touch runtime data outside `~/.alfred`.
-- Install Hermes, gbrain, MCP servers, or skill bundles. Those are optional
-  companion integrations; see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+- Install an external agent gateway, memory database, MCP server, dashboard, or
+  skill bundle. Those are optional companion integrations; see
+  [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 If you want a non-interactive run:
 
@@ -225,7 +226,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 - [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md): IAM users, scoped policies, Secrets Manager layout.
 - [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `alfred claude`.
 - [`docs/SKILLS.md`](docs/SKILLS.md): recommended Claude Code skills for an autonomous fleet.
-- [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md): optional Hermes, gbrain, MCP, and dashboard boundaries.
+- [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md): optional companion-tool boundaries.
 - [`docs/STATE_MACHINE.md`](docs/STATE_MACHINE.md): issue claim lifecycle and dedup primitives.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): design rationale.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how to propose changes.

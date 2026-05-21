@@ -92,7 +92,7 @@ Two reasons:
 
 If you want to rename, pick something coherent. Some examples:
 
-- **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Hermes (notifier), Asclepius (deploy health).
+- **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
 - **Tolkien**: Aragorn, Legolas, Gimli, Gandalf. Be careful about lore consistency.
 - **Your favourite anime, novel, podcast, board game**.

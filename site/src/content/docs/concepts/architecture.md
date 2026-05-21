@@ -25,7 +25,7 @@ flowchart LR
     runner <--> state
 ```
 
-State that lives outside the operator's filesystem becomes state the operator has to operate. Alfred keeps all of it in plain JSON files under `$ALFRED_HOME/state/`. No Redis, no SQS, no Postgres. Hermes, gbrain, MCP servers, skills, canon, and dashboards are compatible optional integrations, not core requirements.
+State that lives outside the operator's filesystem becomes state the operator has to operate. Alfred keeps all of it in plain JSON files under `$ALFRED_HOME/state/`. No Redis, no SQS, no Postgres, and no required external agent gateway.
 
 ## One firing, end to end
 
@@ -72,8 +72,9 @@ Every agent firing is a fresh `launchd` event, not a tick in a long-running proc
 - ❌ Cold start cost. ~1-2s of Python import + agent_runner setup per firing. Acceptable at the 20-min cadence.
 
 `ALFRED_HOME` is the runtime root. The core loop is `launchd -> bin/role.py ->
-lib/agent_runner.py -> claude/codex/gh/slack`. Hermes skills, MCP, gbrain,
-canon, and dashboarding are optional integrations for fleets that want them.
+lib/agent_runner.py -> claude/codex/gh/slack`. Optional companion tools can
+observe Alfred or read its exported state, but they are not part of the runtime
+contract.
 
 ### 2. Per-firing git worktree isolation
 

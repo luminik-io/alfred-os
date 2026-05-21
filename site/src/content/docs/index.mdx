@@ -33,9 +33,7 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 
 Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by `launchd`, isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
 
-`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`.
-Hermes, gbrain, MCP servers, skills, canon, and dashboards are compatible
-optional integrations, not core requirements.
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, memory database, skill registry, or dashboard service is required.
 
 ```mermaid
 flowchart TB

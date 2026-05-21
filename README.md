@@ -139,22 +139,19 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 
 Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, the `agent_runner` module wraps each firing in a lock, preflight, spend cap, and isolated worktree, and `claude -p` (or `codex exec`) does the bounded LLM work in a fresh subprocess. Spend is tracked per agent per day. When any agent hits Anthropic's rate limit, every other agent skips for an hour. The framework code never touches the LLM directly: the runner is plain Python, the model writes the code. The [System shape](#system-shape) diagram above traces one firing end to end; [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
 
-## Runtime and integrations
+## Runtime boundary
 
-Alfred core does not install or run Hermes, gbrain, or any other external agent
-gateway. The fleet works with local Python scripts, `gh`, `git`, and the
-configured LLM CLIs.
+Alfred core does not install or run an external agent gateway, memory database,
+skill registry, or dashboard service. The fleet works with local Python scripts,
+`gh`, `git`, and the configured LLM CLIs.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
 where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
 worktrees live. Alfred uses `ALFRED_HOME` only for its runtime path.
 
-Hermes, gbrain, MCP servers, canon files, dashboards, and skill packs can be
-useful companion layers, but they are not bundled into Alfred and should not be
-required for a clean OSS install.
-
-See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the bundling policy and
-[`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe.
+Companion layers can be useful around Alfred, but they are not bundled and must
+not be required for a clean OSS install. See
+[`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the boundary.
 
 Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
@@ -195,8 +192,8 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
-- [Integrations](docs/INTEGRATIONS.md): what Alfred does and does not bundle.
-- [Hermes integration](docs/HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
+- [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
+- [Hermes integration](docs/HERMES.md): optional operator-layer recipe for teams already using Hermes.
 - [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers. Install, deploy, and operate.
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
