@@ -1,6 +1,6 @@
 # Install
 
-Fresh Mac to a working Alfred fleet skeleton, ~30 minutes.
+Fresh Mac or Debian/Ubuntu host to a working Alfred fleet skeleton, ~30 minutes.
 
 For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
 
@@ -49,7 +49,8 @@ What it does **not** do (deliberately):
 - Authenticate `gh` / `aws` / `claude`. Interactive flows you should see.
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
-- Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
+- Run `deploy.sh`. That side-effects the host scheduler (`launchd` on macOS,
+  `systemd --user` on Linux); you should know what's about to load.
 - Touch runtime data outside `~/.alfred`.
 - Install an external agent gateway, memory database, MCP server, dashboard, or
   skill bundle. Those are optional companion integrations; see
@@ -148,7 +149,8 @@ agent.
 
 `alfred-init.py` now does the boring setup work for you:
 
-- Writes `launchd/agents.conf` and updates `~/.alfredrc`.
+- Writes `launchd/agents.conf`, the shared scheduler manifest, and updates
+  `~/.alfredrc`.
 - Copies starter prompts from `prompts/` into `~/.alfred/prompts/<codename>.md`
   without overwriting your edits.
 - Creates the standard GitHub labels on the selected repos, including
@@ -172,9 +174,9 @@ bash bin/doctor.sh
 
 `deploy.sh` copies `lib/` and `bin/` into `$ALFRED_HOME`. In a fresh checkout
 there is no `launchd/agents.conf`, so this is framework-only and nothing
-fires. After `alfred-init.py` creates `launchd/agents.conf`, deploy also
-renders plists from `launchd/_template.plist` and bootstraps them via
-`launchctl bootstrap`.
+fires. After `alfred-init.py` creates `launchd/agents.conf`, deploy renders
+host scheduler units: launchd plists on macOS, systemd user services/timers on
+Linux.
 
 `doctor.sh` runs every agent's preflight under `ALFRED_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
 
@@ -183,7 +185,7 @@ renders plists from `launchd/_template.plist` and bootstraps them via
 Read `examples/bin/hello.py`, the smallest possible codename agent. Copy it to `bin/your-codename.py`, edit, add a line to `launchd/agents.conf`:
 
 ```
-my.fleet.your-codename	your-codename.py	interval:3600	no
+my.fleet.your-codename	your-codename.py	interval:3600	no	my.fleet.your-codename	Custom agent
 ```
 
 `bash deploy.sh` again. `bash bin/doctor.sh` again. Should show `1 passed, 0 failed`.

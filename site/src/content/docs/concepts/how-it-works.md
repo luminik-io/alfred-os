@@ -1,6 +1,6 @@
 ---
 title: How it works
-description: One agent firing traced end to end, from the launchd trigger to the Slack post.
+description: One agent firing traced end to end, from the scheduler trigger to the Slack post.
 ---
 
 This page traces a single agent firing in detail. If [Architecture](/concepts/architecture/) is the why, this is the what-happens-in-order.
@@ -9,13 +9,18 @@ The example is Lucius, the feature-dev agent, because it exercises every primiti
 
 ## Stage 1: the trigger
 
-`launchd` owns the schedule. The rendered plist for Lucius carries a `StartInterval` of 1200 seconds. Every 20 minutes `launchd` execs:
+The host scheduler owns the schedule. On macOS that is launchd; on Linux it is
+`systemd --user`. A Lucius interval of 1200 seconds fires every 20 minutes and
+execs:
 
 ```
 $ALFRED_HOME/bin/agent-launch lucius.py
 ```
 
-`agent-launch` is a thin shell wrapper. `launchd` does not source shell rc files, so the wrapper sources `~/.alfredrc` at firing time, then execs `$ALFRED_HOME/bin/lucius.py`. The plist's `EnvironmentVariables` block has already set `AGENT_CODENAME`, `LAUNCHD_LABEL`, `ALFRED_HOME`, `WORKSPACE_ROOT`, and `PATH`.
+`agent-launch` is a thin shell wrapper. Host schedulers do not source shell rc
+files, so the wrapper sources `~/.alfredrc` at firing time, then execs
+`$ALFRED_HOME/bin/lucius.py`. The rendered scheduler unit has already set
+`AGENT_CODENAME`, `LAUNCHD_LABEL`, `ALFRED_HOME`, `WORKSPACE_ROOT`, and `PATH`.
 
 There is no daemon. The process exists only for the duration of this one firing.
 
@@ -35,7 +40,7 @@ flowchart TB
     gblock{"is_globally_blocked()?"}
     gb["print [LUCIUS-GLOBAL-BLOCKED]<br/>exit 0"]
     cap{"spend caps OK?"}
-    capfail["Slack-post, launchctl bootout<br/>exit 0"]
+    capfail["Slack-post, alfred pause<br/>exit 0"]
     pick["pick_issue()"]
 
     start --> lock
@@ -54,8 +59,8 @@ flowchart TB
 - **`with_lock(AGENT)`** is a `mkdir`-atomic per-codename mutex. If a previous Lucius firing is still running (a long `claude -p`), this firing exits rather than running two Luciuses at once.
 - **`preflight(spec)`** checks the `PreflightSpec`: required CLIs on PATH (`gh`, `git`, the engine binary), `gh` auth still valid, the watched repo checkouts present under `WORKSPACE_ROOT`. A gap prints `[LUCIUS-PREFLIGHT-FAILED]` naming each missing piece.
 - **`doctor_mode()`** reads `ALFRED_DOCTOR`. When `bin/doctor.sh` sets it to `1`, the agent emits `[LUCIUS-DOCTOR-OK]` and exits before doing real work. This is how the host gets verified without burning turns.
-- **`is_globally_blocked()`** reads `$ALFRED_HOME/state/global-blocked-until.json`. If another agent tripped Anthropic's rate limit in the last hour, this firing exits silently.
-- **Spend caps** read `SpendState(AGENT)`: `turns_today`, `consecutive_failures`. Over the cap, the agent Slack-posts the reason and `launchctl bootout`s its own launchd job.
+- **`is_globally_blocked()`** reads `$ALFRED_HOME/state/global-blocked-until.json`. If another Claude-backed agent tripped a Claude provider limit in the last hour, this firing exits silently.
+- **Spend caps** read `SpendState(AGENT)`: `turns_today`, `consecutive_failures`. Over the cap, the agent Slack-posts the reason and pauses its own scheduler unit.
 
 Every gate is a plain function call against a file on disk or a subprocess. No network round-trip is needed to decide "should this firing even run."
 
@@ -90,7 +95,7 @@ The runner builds the prompt from the issue body plus repo context (the repo's `
 
 ## Stage 5: branch on the outcome
 
-The runner inspects the result and the git state, then takes exactly one exit path. The exit "codes" are sentinel strings printed to stdout for the launchd log and Slack.
+The runner inspects the result and the git state, then takes exactly one exit path. The exit "codes" are sentinel strings printed to stdout for the scheduler log and Slack.
 
 | Sentinel | When | What happens |
 |---|---|---|
@@ -101,7 +106,7 @@ The runner inspects the result and the git state, then takes exactly one exit pa
 | `[LUCIUS-NO-COMMIT]` | Success returned but no commit landed | Inspect `git status`; salvage unstaged changes as a `do-not-review` draft PR, else count as failure |
 | `[SILENT]` | No `agent:implement` issue matched | Exit 0, no Slack post. The non-event is the signal |
 
-Whatever the path, `release_issue` runs so the issue never stays stuck in `agent:in-flight`, and `remove_worktree` cleans up the throwaway directory. Then the process exits and the host goes back to waiting for the next `launchd` trigger.
+Whatever the path, `release_issue` runs so the issue never stays stuck in `agent:in-flight`, and `remove_worktree` cleans up the throwaway directory. Then the process exits and the host goes back to waiting for the next scheduler trigger.
 
 ## Why this shape holds up unattended
 

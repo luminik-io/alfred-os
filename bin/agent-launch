@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Runtime wrapper for launchd-spawned alfred-os agents.
+# Runtime wrapper for scheduler-spawned alfred-os agents.
 #
-# launchd does not source shell rc files. This wrapper loads ~/.alfredrc at
-# firing time, exports its KEY=VALUE entries, then execs the requested agent
+# Host schedulers do not source shell rc files. This wrapper loads ~/.alfredrc
+# at firing time, exports its KEY=VALUE entries, then execs the requested agent
 # script from ${ALFRED_HOME}/bin. That keeps secrets and per-agent env outside
-# the plist while still making scheduled jobs see the same config as the
-# operator shell.
+# scheduler unit files while still making scheduled jobs see the same config as
+# the operator shell.
 
 set -euo pipefail
 

@@ -2,8 +2,8 @@
 
 Alfred does not require Hermes.
 
-The OSS runtime is local Python, `launchd`, git worktrees, GitHub CLI, model
-CLIs, and optional Slack delivery. Hermes is a companion operator layer for
+The OSS runtime is local Python, host scheduler units, git worktrees, GitHub
+CLI, model CLIs, and optional Slack delivery. Hermes is a companion operator layer for
 people who already want chat gateways, MCP servers, skills, memory, or
 dashboards around their local agents.
 
@@ -37,8 +37,8 @@ or create handoffs around it.
 
 | Tool | Owns | Should not own |
 | --- | --- | --- |
-| Alfred | launchd jobs, role runners, worktrees, issue claims, PR loops, Slack firing reports, spend guards, local state under `ALFRED_HOME` | Hermes gateway config, MCP registry, private memory, personal canon |
-| Hermes | chat gateway, cron prompts, durable Kanban cards, MCP tools, skills, memory, dashboards | Alfred's launchd plists, issue-claim mutations, per-agent worktrees |
+| Alfred | scheduler units, role runners, worktrees, issue claims, PR loops, Slack firing reports, spend guards, local state under `ALFRED_HOME` | Hermes gateway config, MCP registry, private memory, personal canon |
+| Hermes | chat gateway, cron prompts, durable Kanban cards, MCP tools, skills, memory, dashboards | Alfred's scheduler units, issue-claim mutations, per-agent worktrees |
 
 `ALFRED_HOME` is Alfred's runtime root. A fresh install defaults it to
 `~/.alfred`.
@@ -107,7 +107,7 @@ operator-specific state. Treat memory stores the same way.
    python "$ALFRED_HOME/bin/fleet-doctor.py"
    ```
 
-For write-heavy roles, keep `launchd` as the owner and let Hermes observe or
+For write-heavy roles, keep Alfred's host scheduler as the owner and let Hermes observe or
 create GitHub handoffs.
 
 ## Env Hygiene
@@ -182,7 +182,7 @@ That is a Hermes repair, not an Alfred runtime requirement.
 
 Good:
 
-- launchd fires Alfred agents.
+- Alfred's host scheduler fires Alfred agents.
 - Hermes posts daily operator summaries.
 - Hermes calls read-only Alfred commands such as `alfred status` or
   `alfred shipped --since 1d`.
@@ -191,7 +191,7 @@ Good:
 
 Risky:
 
-- launchd and Hermes cron both fire the same feature-dev runner.
+- Alfred's host scheduler and Hermes cron both fire the same feature-dev runner.
 - Hermes shells into an Alfred worktree while a runner owns the issue claim.
 - Hermes mutates `ALFRED_HOME/state` directly.
 - Hermes Kanban treats a task as done while the matching Alfred issue/PR is

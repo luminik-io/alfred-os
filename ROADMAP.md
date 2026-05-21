@@ -2,7 +2,7 @@
 
 What's shipped, what's next, where Alfred is going, and the design boundaries that stay. Living doc; updated on every release.
 
-## Shipped (v0.2.1)
+## Shipped in v0.2.1
 
 The default install ships a working engineering agent fleet. After `bash install.sh && ./bin/alfred-init.py`, an operator has:
 
@@ -10,12 +10,8 @@ The default install ships a working engineering agent fleet. After `bash install
 - `lib/agent_runner.py`: preflight, lock, spend, Claude/Codex engine adapters, gh, slack, event-log, commit-trailer.
 - Issue claim state machine: `agent:in-flight` → `agent:pr-open` → `agent:done` with race resolution + stale-claim sweep.
 - Slack severity routing: `info` / `warn` / `alert`.
-- launchd plist template + render.sh + agents.conf format.
+- macOS launchd plist template + render.sh + agents.conf format.
 - `bin/doctor.sh`, `alfred claude`, `deploy.sh`.
-
-**Cross-platform (unreleased, in `[Unreleased]`)**
-- Linux support via `systemd --user` timers: `systemd/` template + render.sh, `deploy.sh` host detection, `install.sh` Debian/Ubuntu apt lane.
-- `alfred pause` / `resume` / `run` operator verbs on a launchd/systemd scheduler abstraction (`lib/scheduler.py`). See [`docs/LINUX.md`](docs/LINUX.md).
 
 **Engineering agents** (Batman codenames by default; renameable per role at install time)
 - `lucius`: feature dev (picks `agent:implement` issues, opens PRs).
@@ -45,7 +41,14 @@ The default install ships a working engineering agent fleet. After `bash install
 - Astro Starlight docs site at `alfred.luminik.io` (env-overridable for forks/custom domains).
 - Homebrew formula pinned to the latest public release tarball.
 
-## In flight (next release)
+## Unreleased on main (supported now from `main`, next tagged release)
+
+- **Linux support** via `systemd --user` timers: `systemd/` template + render.sh, `deploy.sh` host detection, `install.sh` Debian/Ubuntu apt lane, and the Linux runbook in [`docs/LINUX.md`](docs/LINUX.md).
+- **Host scheduler abstraction**: `alfred pause` / `resume` / `run` operator verbs work across launchd and systemd through `lib/scheduler.py`.
+- **Codex and auth diagnostics**: `alfred codex status/probe` and `alfred auth status/probe`, so an operator can inspect Claude Code and Codex CLI auth before scheduled firings burn turns.
+- **Provider auth guardrails**: keep the default path subscription-backed through Claude Code / Codex CLI auth, with diagnostics when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` would shift usage toward API billing.
+
+## In flight after next release
 
 - **Bot token operations**: `lib/slack_format.py` already supports threaded Block Kit messages when a bot token is configured. Follow-up work: `slack_set_channel_topic()` for fleet status, reactions API for ack-without-replying, and a documented daily-thread routing policy.
 - **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues for the same work"; complements the issue-claim state machine which catches "two actors on the same issue."
@@ -53,9 +56,9 @@ The default install ships a working engineering agent fleet. After `bash install
 - **Spend dashboards**: render a weekly recap (turns, cost, success rate per agent) for `fleet-recap`.
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
 - **Full OSS Batman execution chain**: approval gate, sequenced worktrees, per-repo PR chain, and cleanup. The current OSS Batman is deliberately plan-only; private fleets can layer execution on top today.
-- **Provider auth guardrails**: keep the default path subscription-backed through Claude Code / Codex CLI auth, with diagnostics when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` would shift usage toward API billing.
 - **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional.
 - **Optional Hermes bridge**: Hermes now has persistent `/goal`, gateway-driven cron, Kanban worker profiles, MCP, skills, memory, and dashboards. Alfred should integrate by exposing status/events and by accepting GitHub issue/label handoffs, not by making Hermes a setup dependency or letting Hermes mutate Alfred worktrees/state directly.
+- **Per-agent model catalog**: internal Alfred has a model-routing surface. The OSS version should expose that only after the defaults, billing implications, and docs are clean enough for first-time operators.
 
 ## Beyond engineering: the solo builder's agent OS
 

@@ -3,20 +3,21 @@ title: Hermes integration
 description: Optional Hermes setup for operators who want a chat gateway, Kanban, MCP, skills, memory, or dashboards around Alfred.
 ---
 
-Alfred does not require Hermes. The core runtime is local Python, launchd,
-GitHub CLI, git worktrees, Slack delivery, and local model CLIs.
+Alfred does not require Hermes. The core runtime is local Python,
+host-scheduler units, GitHub CLI, git worktrees, Slack delivery, and local model
+CLIs.
 
 Hermes is useful when you want an operator layer around the engineering fleet:
 chat gateway, cron prompts, persistent goals, Kanban, MCP tools, skills, memory,
 or dashboards. In that setup Hermes observes, reports, or creates handoffs,
-while Alfred owns the engineering agent state machine and launchd jobs.
+while Alfred owns the engineering agent state machine and scheduler units.
 
 Use this page only if you already run Hermes or explicitly want Hermes features.
 It is not part of the Alfred quick start.
 
 | Layer | Owns |
 |---|---|
-| Alfred | launchd, role runners, worktrees, issue claims, PR loops, Slack reports |
+| Alfred | scheduler units, role runners, worktrees, issue claims, PR loops, Slack reports |
 | Hermes | chat gateway, cron prompts, Kanban cards, MCP tools, skills, memory, dashboards |
 
 ## Current Hermes overlap
@@ -57,14 +58,14 @@ Use one scheduler for each role.
 
 Good:
 
-- Alfred launchd fires engineering agents.
+- Alfred's host scheduler fires engineering agents.
 - Hermes cron posts daily summaries.
 - Hermes cron runs read-only commands like `alfred status` or `alfred shipped`.
 - Hermes creates a GitHub issue/label for Alfred to pick up.
 
 Risky:
 
-- launchd and Hermes cron both fire the same feature-dev runner.
+- Alfred's host scheduler and Hermes cron both fire the same feature-dev runner.
 - Hermes shells into an Alfred worktree while a runner owns the issue claim.
 - Hermes mutates `ALFRED_HOME/state` directly.
 - Hermes Kanban marks a task done while the corresponding Alfred PR is still

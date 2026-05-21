@@ -79,7 +79,7 @@ review, and housekeeping without lighting up every scheduled role on day one.
 
 ## Codename customization
 
-`alfred-init` asks for each agent's codename and falls back to the Batman default if you press Enter. The codename appears in PR titles, Slack messages, commit-trailer metadata, log filenames, worktree paths, and the launchd plist label.
+`alfred-init` asks for each agent's codename and falls back to the Batman default if you press Enter. The codename appears in PR titles, Slack messages, commit-trailer metadata, log filenames, worktree paths, and the host scheduler label/unit.
 
 ### Why the defaults are Batman
 
@@ -113,27 +113,27 @@ flowchart TB
     init["alfred-init wizard<br/><i>operator picks codenames</i>"]
     rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
     conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
-    plist["my.fleet.marshall.plist<br/>EnvironmentVariables:<br/><code>AGENT_CODENAME=marshall</code>"]
+    unit["my.fleet.marshall scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=marshall</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
     output["Slack: '✅ Marshall shipped: ...'<br/>PR title: 'feat(...): ... [Marshall]'<br/>worktree: eng-marshall-..."]
 
     init --> rc
     init --> conf
-    conf -- "render.sh" --> plist
-    plist -- "launchctl bootstrap" --> runner
+    conf -- "render.sh" --> unit
+    unit -- "deploy.sh" --> runner
     rc -. "sourced by shell" .-> runner
     runner --> output
 ```
 
 The agent script lives at `bin/<role>.py` (e.g. `bin/lucius.py` is the feature-dev script's default name). The operator-chosen codename is set via:
 
-1. The launchd plist's `EnvironmentVariables` block: `AGENT_CODENAME=<chosen-name>`. Rendered by `launchd/render.sh` from the label suffix in `agents.conf`.
+1. The scheduler unit environment: `AGENT_CODENAME=<chosen-name>`. Rendered from the label suffix in `agents.conf`.
 2. The agent runner reads `AGENT = os.environ.get("AGENT_CODENAME", "<default>")` at startup.
 3. Slack messages, PR titles, log paths, worktree paths, label-claim comments all use the codename from `AGENT`.
 
 If you rename `lucius` to `marshall`, the renamed agent:
 
-- Is labelled `my.fleet.marshall` in launchd.
+- Is labelled `my.fleet.marshall` in the host scheduler.
 - Posts `✅ Marshall shipped: <PR-url>` to Slack.
 - Files commit trailers `Agent-Codename: marshall`.
 - Claims issues with `<!-- agent-claim:codename=marshall firing_id=... -->`.
@@ -148,7 +148,7 @@ To add a role not in the default set (e.g., `arsenal` for "deploy-time security 
 2. Add a row to `launchd/agents.conf`:
 
    ```
-   my.fleet.arsenal	arsenal.py	interval:3600	no
+   my.fleet.arsenal	arsenal.py	interval:3600	no	my.fleet.arsenal	Deploy-time security scanner
    ```
 
 3. Run `bash deploy.sh`.

@@ -15,9 +15,43 @@ Alfred doesn't talk to the Anthropic API directly. It shells out to `claude`. Th
 
 Keep `ANTHROPIC_API_KEY` unset for subscription-backed Claude Code runs. Claude Code gives environment-variable API keys priority over Pro/Max subscription auth, which can move a firing onto API billing.
 
+## Claude accounts vs engine routing
+
+There are two separate switches:
+
+- **Claude account routing**: `alfred claude primary|secondary|swap` chooses which local Claude Code auth directory future scheduled firings use. This is account/quota routing for Claude only.
+- **Agent engine routing**: `alfred engine set <codename> <claude|codex|hybrid>` chooses whether a codename runs through Claude Code, Codex, or Claude-first hybrid fallback.
+
+Engine modes:
+
+| Mode | Behavior |
+|---|---|
+| `claude` | Use Claude Code only. |
+| `codex` | Use Codex only. |
+| `hybrid` | Use Claude Code first. Fall back to Codex when Claude returns `error_budget`, `error_rate_limit`, or `error_authentication`. |
+
+```sh
+alfred engine status
+alfred engine status lucius
+alfred engine set rasalghul codex
+alfred engine set lucius hybrid
+alfred codex status
+alfred codex probe
+alfred auth status
+```
+
+Resolution order for one codename:
+
+1. `ALFRED_<CODENAME>_ENGINE`
+2. Optional legacy env var for migrated fleets
+3. Fleet-wide `ALFRED_ENGINE`, useful for testing
+4. `$ALFRED_HOME/state/engines/<codename>`
+5. Optional legacy state file
+6. The codename's default, usually `hybrid`
+
 ## Optional Codex routing
 
-If the `codex` CLI is installed and authenticated, agents can route a task through `route_llm("codex", ...)` or call `codex_invoke()` directly. Authenticate Codex with your ChatGPT account if you want ChatGPT-plan usage rather than API-key usage. The default posture is review-safe. Write-capable agents must deliberately opt into writable worktrees and, when needed for autonomous `gh` or keychain access, the Codex bypass flag:
+If the `codex` CLI is installed and authenticated, agents can route work through `codex_invoke()` directly or through the per-agent engine router above. Authenticate Codex with your ChatGPT account if you want ChatGPT-plan usage rather than a manual API-key flow. OpenAI controls Codex plan availability, credits, and workspace settings, so use `alfred codex status/probe` plus the official Codex help page as the source of truth for a given account. The default Alfred posture is review-safe. Write-capable agents must deliberately opt into writable worktrees and, when needed for autonomous `gh` or keychain access, the Codex bypass flag:
 
 - Default sandbox: `read-only`
 - Default approval policy: `never`
@@ -36,9 +70,15 @@ CODEX_SANDBOX=read-only
 CODEX_APPROVAL_POLICY=never
 ```
 
-`deploy.sh` links an interactive-shell `codex` binary into `~/.local/bin/codex` when one exists. Rendered launchd plists include `~/.local/bin` in PATH, so Codex can stay optional without pinning app-bundle paths into agent config.
+`deploy.sh` links an interactive-shell `codex` binary into `~/.local/bin/codex` when one exists. Rendered scheduler units include `~/.local/bin` in PATH, so Codex can stay optional without pinning app-bundle paths into agent config.
 
-Use Codex alongside Claude when you want an independent reviewer or when Claude quota is scarce. Keep feature-writing agents on Claude until you have deliberately designed the Codex write path, commit verification, and PR creation boundary for that codename.
+Use Codex alongside Claude when you want an independent reviewer or when Claude quota is scarce. Keep feature-writing agents on Claude or `hybrid` until you have deliberately designed the Codex write path, commit verification, and PR creation boundary for that codename.
+
+References:
+
+- Anthropic: [Use Claude Code with your Pro or Max plan](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan)
+- Anthropic: [Manage API key environment variables in Claude Code](https://support.claude.com/en/articles/12304248-managing-api-key-environment-variables-in-claude-code)
+- OpenAI: [Using Codex with your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt-faq)
 
 ## Install
 
@@ -89,9 +129,9 @@ When the provider usage cap trips mid-firing, the framework treats it as a fleet
 
 ## The `alfred claude` swap pattern
 
-Two Anthropic accounts? `alfred claude` points the launchd-spawned `claude` at either one without re-authenticating each time.
+Two Anthropic accounts? `alfred claude` points the host-scheduled `claude` at either one without re-authenticating each time.
 
-The mechanism: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`.
+The mechanism on macOS: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`.
 `alfred claude` flips the launchd global env var between the primary
 `~/.claude/` directory and `~/.claude-secondary/`. Primary is explicit so
 older `~/.claude.json` files cannot accidentally win Claude Code's default
@@ -107,6 +147,15 @@ alfred claude probe       # run a tiny real auth check
 
 Typical usage: run on `primary` until it hits a usage cap or auth issue (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
 
+On Linux there is no `launchctl setenv` equivalent. Set `CLAUDE_CONFIG_DIR` in
+`~/.alfredrc`, then redeploy or restart the relevant systemd user timers:
+
+```sh
+CLAUDE_CONFIG_DIR=$HOME/.claude-secondary
+bash deploy.sh
+systemctl --user restart my.fleet.lucius.timer
+```
+
 To populate the secondary config, log in once with `CLAUDE_CONFIG_DIR` pointed
 at the secondary directory:
 
@@ -118,13 +167,13 @@ alfred claude secondary
 
 ## CLAUDE_BIN env var
 
-If `claude` isn't on the PATH that launchd inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/claude` over an fnm-managed path:
+If `claude` isn't on the PATH that the host scheduler inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/claude` over an fnm-managed path:
 
 ```sh
 CLAUDE_BIN=$HOME/.local/bin/claude
 ```
 
-`deploy.sh` links the interactive-shell `claude` binary into `~/.local/bin/claude` when one exists, mirroring the Codex setup, so launchd-rendered plists pick it up via `~/.local/bin` on PATH. The framework's `claude_invoke()` uses `CLAUDE_BIN` if set, otherwise `claude` from PATH. Get the right path:
+`deploy.sh` links the interactive-shell `claude` binary into `~/.local/bin/claude` when one exists, mirroring the Codex setup, so rendered scheduler units pick it up via `~/.local/bin` on PATH. The framework's `claude_invoke()` uses `CLAUDE_BIN` if set, otherwise `claude` from PATH. Get the right path:
 
 ```sh
 which claude
@@ -150,17 +199,17 @@ Claude Code supports installable skills (small markdown + script bundles that ex
 
 ## Troubleshooting
 
-**`claude: command not found` from a launchd-spawned agent.**
-The plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc` (sourced by launchd via the agent's environment), or symlink `claude` to `/usr/local/bin/`.
+**`claude: command not found` from a scheduled agent.**
+The scheduler unit's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`, or symlink `claude` to `/usr/local/bin/` or `~/.local/bin`.
 
-**`codex: command not found` from a launchd-spawned agent.**
+**`codex: command not found` from a scheduled agent.**
 Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/codex` over an app-bundle path.
 
 **`error_rate_limit` immediately on every firing.**
 You've hit a provider usage limit. `cat $ALFRED_HOME/state/global-blocked-until.json` shows Alfred's local cool-down. Either wait for the provider reset, swap to a second account via `alfred claude swap`, upgrade, or intentionally use provider-approved usage credits if that is your billing choice.
 
 **Unexpected API charges.**
-Check whether `ANTHROPIC_API_KEY` is set in your shell, launchd environment, or `~/.alfredrc`. For subscription-backed runs, unset it and re-run `claude /status` interactively to confirm the active account. If Codex is unexpectedly using API billing, check whether `OPENAI_API_KEY` is set or whether Codex was logged in through an API-key flow instead of ChatGPT-plan auth.
+Check whether `ANTHROPIC_API_KEY` is set in your shell, scheduler environment, or `~/.alfredrc`. For subscription-backed runs, unset it and re-run `claude /status` interactively to confirm the active account. If Codex is unexpectedly using API billing, check whether `OPENAI_API_KEY` is set or whether Codex was logged in through an API-key flow instead of ChatGPT-plan auth.
 
 **`error_max_turns` on every firing of one agent.**
 That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/lucius.py`), or scope-cap the issues that agent picks up.

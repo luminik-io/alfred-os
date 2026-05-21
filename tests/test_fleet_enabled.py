@@ -216,6 +216,39 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
         assert agent in res.stdout
 
 
+def test_cli_codex_status_reports_binary_and_engines(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    codex = fake_bin / "codex"
+    codex.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo codex-test; exit 0; fi\n')
+    codex.chmod(0o755)
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+    }
+
+    res = _run_cli("codex", "status", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    assert "codex version: codex-test" in res.stdout
+    assert "engine lucius:" in res.stdout
+    assert "Probe with: alfred codex probe" in res.stdout
+
+
+def test_cli_codex_status_fails_when_binary_missing(tmp_path):
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "PATH": str(tmp_path / "empty-bin"),
+    }
+
+    res = _run_cli("codex", "status", env_extra=env)
+
+    assert res.returncode == 1
+    assert "codex: not found" in res.stderr
+
+
 def test_cli_status_reports_local_snapshot(tmp_path):
     alfred = tmp_path / "alfred"
     launchd = alfred / "launchd"

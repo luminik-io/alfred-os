@@ -11,7 +11,7 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-A local engineering-fleet runtime: Claude Code-first agents scheduled by the host's per-user scheduler (`launchd` on macOS, `systemd --user` on Linux) with optional Codex routing for review-style work. Each firing runs as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide rate-limit block.
+A local engineering-fleet runtime: Claude Code-first agents with optional Codex routing, scheduled by the host's per-user scheduler (`launchd` on macOS, `systemd --user` on Linux). Each firing runs as a fresh subprocess in its own git worktree. Per-agent IAM. Per-day spend caps. Fleet-wide provider-limit block.
 
 Docs site: https://alfred.luminik.io
 
@@ -98,7 +98,8 @@ optional. The `--repos` owner must match `GH_ORG`; the runtime agents store the
 bare repo name in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
 `alfred-init.py` now seeds prompt templates into
 `~/.alfred/prompts/`, creates the standard GitHub labels on selected repos,
-writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs
+writes `launchd/agents.conf` (the shared scheduler manifest), updates
+`~/.alfredrc`, runs deploy, and runs
 doctor.
 
 For a framework-only install with no agents configured, use `bash deploy.sh &&
@@ -113,7 +114,7 @@ Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled 
 
 ```mermaid
 flowchart LR
-    issue["GitHub issue or PR"] --> schedule["launchd or manual firing"]
+    issue["GitHub issue or PR"] --> schedule["host scheduler or manual firing"]
     schedule --> runner["bin/role.py"]
     runner --> shared["lib/agent_runner.py"]
     shared --> lock["lock, preflight, spend caps"]
@@ -137,7 +138,7 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 - In-memory state can't survive an OS reboot. A long-lived host restarts every few weeks.
 - Chat-first interfaces put the operator on the critical path.
 
-Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, the `agent_runner` module wraps each firing in a lock, preflight, spend cap, and isolated worktree, and `claude -p` (or `codex exec`) does the bounded LLM work in a fresh subprocess. Spend is tracked per agent per day. When any agent hits Anthropic's rate limit, every other agent skips for an hour. The framework code never touches the LLM directly: the runner is plain Python, the model writes the code. The [System shape](#system-shape) diagram above traces one firing end to end; [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
+Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, the `agent_runner` module wraps each firing in a lock, preflight, spend cap, and isolated worktree, and `claude -p` (or `codex exec`) does the bounded LLM work in a fresh subprocess. Spend is tracked per agent per day. When a Claude-backed agent hits a Claude provider limit, every other agent skips for an hour. The framework code never touches the LLM directly: the runner is plain Python, the model writes the code. The [System shape](#system-shape) diagram above traces one firing end to end; [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
 
 ## Runtime boundary
 
@@ -163,7 +164,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`lib/slack_format.py`](lib/slack_format.py) | Block Kit + bot-token Slack helpers: per-firing `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Severity colour stripes. |
 | [`lib/batman.py`](lib/batman.py) | Bundle primitives for the multi-repo coordinator: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
-| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`. |
+| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Skeleton multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a plan to Slack. |
@@ -188,7 +189,8 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
 - [Architecture](ARCHITECTURE.md): design rationale.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
-- [Claude Code](docs/CLAUDE_CODE.md): install, Pro vs Max, `alfred claude`.
+- [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
+- [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
@@ -224,7 +226,7 @@ The engineering fleet ships today. Content, sales, and ops departments, plus a m
 
 ## Status
 
-**v0.2.1**. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, launchd/systemd deployment, doctor, dry-run, Slack reporting, and Claude/Codex engine routing.
+**Latest tagged release: v0.2.1.** Current `main` is the next release train and includes Linux/systemd deployment, dry-run, scheduler verbs, Slack reporting, and Claude/Codex engine routing. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, doctor, and isolated worktree execution.
 
 The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
 

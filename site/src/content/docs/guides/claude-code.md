@@ -1,9 +1,9 @@
 ---
-title: Claude Code
-description: Install, Pro vs Max sizing, two-account swap, troubleshooting.
+title: Claude Code and Codex
+description: Install, Pro vs Max sizing, account routing, engine routing, troubleshooting.
 ---
 
-Alfred runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. Codex can be enabled as an optional review engine.
+Alfred runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. Codex can be enabled as an optional per-agent engine, including review-safe Codex-only or Claude-first hybrid routing.
 
 Full guide at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md). Highlights:
 
@@ -38,10 +38,33 @@ A typical Lucius firing on a small backend issue burns 30-80 turns. Lucius alone
 
 Recommendation: Pro to validate, Max once you've got 2+ daily codenames. The two-account swap pattern below also lets you split spend.
 
+## Engine routing
+
+Claude account routing and engine routing are different:
+
+- `alfred claude primary|secondary|swap` chooses which local Claude Code auth directory future Claude firings use.
+- `alfred engine set <codename> <claude|codex|hybrid>` chooses whether that codename uses Claude, Codex, or Claude-first fallback.
+
+```sh
+alfred engine status
+alfred engine status lucius
+alfred engine set rasalghul codex
+alfred engine set lucius hybrid
+alfred codex status
+alfred codex probe
+alfred auth status
+```
+
+| Mode | Behavior |
+|---|---|
+| `claude` | Claude Code only. |
+| `codex` | Codex only. |
+| `hybrid` | Claude first, Codex fallback on Claude auth, budget, or rate-limit errors. |
+
 ## Two-account swap (`alfred claude`)
 
-Two Anthropic accounts? `alfred claude` flips the launchd
-`CLAUDE_CONFIG_DIR` env var so launchd-spawned `claude` uses either the
+Two Anthropic accounts? On macOS, `alfred claude` flips the launchd
+`CLAUDE_CONFIG_DIR` env var so macOS launchd-spawned `claude` uses either the
 primary `~/.claude/` directory or a secondary config such as
 `~/.claude-secondary/`. Primary is set explicitly so older `~/.claude.json`
 files cannot accidentally win Claude Code's default profile lookup.
@@ -62,9 +85,12 @@ CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
 
 Typical use: run on `primary`, hit a usage cap or auth issue (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
 
+On Linux, set `CLAUDE_CONFIG_DIR` in `~/.alfredrc` and redeploy or restart the
+systemd user timers. There is no `launchctl setenv` equivalent.
+
 ## CLAUDE_BIN
 
-If `claude` isn't on the PATH that `launchd` inherits, set the absolute path in `~/.alfredrc`:
+If `claude` isn't on the PATH that the host scheduler inherits, set the absolute path in `~/.alfredrc`:
 
 ```sh
 CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
@@ -72,7 +98,7 @@ CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude
 
 ## Optional Codex
 
-Set `CODEX_BIN` if `codex` is not on the `launchd` PATH. `codex_invoke()` defaults to a read-only sandbox and writes artifacts under `$ALFRED_HOME/state/codex/`.
+Set `CODEX_BIN` if `codex` is not on the host scheduler PATH. `codex_invoke()` defaults to a read-only sandbox and writes artifacts under `$ALFRED_HOME/state/codex/`.
 
 ```sh
 CODEX_BIN=$HOME/.local/bin/codex
@@ -81,7 +107,7 @@ CODEX_SANDBOX=read-only
 CODEX_APPROVAL_POLICY=never
 ```
 
-`deploy.sh` links an interactive-shell `codex` binary into `~/.local/bin/codex` when one exists. Rendered launchd plists include `~/.local/bin` in PATH.
+`deploy.sh` links an interactive-shell `codex` binary into `~/.local/bin/codex` when one exists. Rendered scheduler units include `~/.local/bin` in PATH.
 
 ## Cost mental model
 
@@ -93,7 +119,7 @@ If `ANTHROPIC_API_KEY` is present, Claude Code can use API billing instead of su
 
 Full list at [`docs/CLAUDE_CODE.md#troubleshooting`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md#troubleshooting). Most common:
 
-- `claude: command not found` from `launchd`: set `CLAUDE_BIN`.
-- `codex: command not found` from `launchd`: rerun `deploy.sh` after installing Codex, or set `CODEX_BIN`.
+- `claude: command not found` from a scheduled agent: set `CLAUDE_BIN`.
+- `codex: command not found` from a scheduled agent: rerun `deploy.sh` after installing Codex, or set `CODEX_BIN`.
 - `error_rate_limit` immediately on every firing: usage cap hit, swap accounts, wait, upgrade, or intentionally use provider-approved usage credits.
 - `error_max_turns` on every firing of one agent: tighten scope or widen the budget in that agent's runner.

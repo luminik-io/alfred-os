@@ -155,7 +155,7 @@ Expected output:
 ```
 [deploy] copying lib/
 [deploy] copying bin/ (Python + shell)
-[deploy] copying launchd plists
+[deploy] copying scheduler units
   - my.fleet.lucius
   - my.fleet.nightwing
   - my.fleet.rasalghul
@@ -166,7 +166,10 @@ Expected output:
 ...
 ```
 
-The script copies `lib/agent_runner.py` to `$ALFRED_HOME/lib`, every regular file in `bin/` to `$ALFRED_HOME/bin`, renders `launchd/_template.plist` for each entry in `launchd/agents.conf` and copies the result to `~/Library/LaunchAgents`, then re-loads each plist via `launchctl bootout` + `launchctl bootstrap`.
+The script copies `lib/agent_runner.py` to `$ALFRED_HOME/lib` and every regular
+file in `bin/` to `$ALFRED_HOME/bin`. When `launchd/agents.conf` exists, it
+renders host scheduler units from that manifest: launchd plists on macOS,
+systemd user services/timers on Linux.
 
 ## 5. Verify the host with `doctor.sh`
 
@@ -208,7 +211,7 @@ The plists ship with `RunAtLoad = false`, so deploying does not immediately fire
 1. Pick an agent and read its top-of-file constants. Lucius, for example, is gated by `agent:implement` issues. If no repo has one open, the firing exits `[SILENT]`.
 2. Fire it by hand:
    ```sh
-   launchctl kickstart -k gui/$(id -u)/my.fleet.lucius
+   alfred run lucius --force
    ```
 3. Tail the logs:
    ```sh
@@ -221,20 +224,20 @@ To verify wiring without code landing, point Lucius at a repo with no `agent:imp
 To pause an agent:
 
 ```sh
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
+alfred pause lucius
 ```
 
 To resume:
 
 ```sh
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
+alfred resume lucius
 ```
 
 ## 8. Troubleshooting
 
-**`claude: command not found` in the launchd log.** The plist's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Set `CLAUDE_BIN=<absolute-path>` in `~/.alfredrc`, or expose the binary through a stable directory already rendered into launchd PATH, such as `~/.local/bin`. `which claude` shows the path.
+**`claude: command not found` in the scheduler log.** The rendered unit's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Set `CLAUDE_BIN=<absolute-path>` in `~/.alfredrc`, or expose the binary through a stable directory already rendered into scheduler PATH, such as `~/.local/bin`. `which claude` shows the path.
 
-**`codex: command not found` in the launchd log.** Rerun `deploy.sh` after installing Codex. If `codex` is visible in your interactive shell, deploy links it into `~/.local/bin/codex`, which the renderer adds to launchd PATH. Otherwise set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
+**`codex: command not found` in the scheduler log.** Rerun `deploy.sh` after installing Codex. If `codex` is visible in your interactive shell, deploy links it into `~/.local/bin/codex`, which the renderer adds to scheduler PATH. Otherwise set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
 
 **Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id <your/webhook/path> --region us-east-1` against the agent's profile (`AWS_PROFILE=<your-codename>-cron`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.alfred/state/slack-webhook.cache`.
 

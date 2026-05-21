@@ -13,8 +13,11 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - `bin/doctor.sh --dev` flag: dev-install mode treats host-config preflight gaps as non-fatal while still failing hard on code defects. `install.sh` passes `--dev` on Linux.
 - Publishing guide for GitHub Pages workflow mode, release-site verification, and optional custom-domain setup.
 - `alfred claude probe` for a first-class Claude Code auth smoke test.
+- `alfred codex status/probe` and `alfred auth status/probe` for first-class
+  Codex CLI and combined provider-auth diagnostics.
 - `alfred-init.py --repos`, `--slack-webhook`, and `--skip-label-setup` for AI-driven setup against one repo without guessing through the interactive wizard.
 - Batman is now visible in the `alfred-init` catalog as an opt-in, plan-only cross-repo coordinator.
+- `docs/CODEX_PROVIDER.md` for Codex engine modes, runtime contract, and billing posture.
 
 ### Changed
 
@@ -23,6 +26,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - Robin is correctly described and wired as bug triage in the installer catalog.
 - `alfred-status` and `bin/doctor.sh` now read the `systemd --user` timer roster on Linux, falling back to the same agent-discovery logic the launchd path uses.
 - `docs/LINUX.md` rewritten: Linux is now a supported host, not a set of interim workarounds.
+- Documentation now consistently distinguishes host scheduling, Claude account
+  routing, and Claude/Codex engine routing.
 - Refreshed README, roadmap, docs site status, and release checklist for the public docs launch.
 - Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
 - Moved Claude account routing fully into `alfred claude`; the standalone helper is no longer shipped.

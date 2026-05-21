@@ -1,12 +1,12 @@
 """
-alfred-os: shared library for launchd-managed Claude Code agents.
+alfred-os: shared library for host-scheduled Claude Code and Codex agents.
 
 Provides the primitives every codename agent needs:
 
 - ``preflight()`` / ``doctor_mode()``: fail loud and early on mis-configured hosts.
 - ``with_lock()`` / ``AgentLock``: mkdir-atomic per-agent mutex.
 - ``SpendState``: per-agent per-day firings / turns / cost / failure tracking.
-- ``is_globally_blocked()`` / ``set_global_block()``: fleet-wide rate-limit poison pill.
+- ``is_globally_blocked()`` / ``set_global_block()``: fleet-wide provider-limit block.
 - ``run()`` / ``gh_json()``: ``subprocess`` wrappers with sane defaults and clear errors.
 - ``claude_invoke()``: call ``claude -p`` and parse the structured result.
 - ``codex_invoke()``: optional ``codex exec`` subprocess for review-style tasks.
@@ -25,8 +25,7 @@ configure.
 Path defaults assume a single host. ``ALFRED_HOME`` defaults to ``~/.alfred``
 and ``WORKSPACE_ROOT`` to ``~/code``; both are env-var overridable.
 ``GH_ORG`` is required for any helper that targets GitHub (e.g.
-``gh_pr_create``); set it once in the launchd plist's
-``EnvironmentVariables`` block.
+``gh_pr_create``); set it once in the rendered scheduler unit environment.
 """
 
 from __future__ import annotations
@@ -99,7 +98,7 @@ ENGINE_CHOICES = {"claude", "codex", "hybrid"}
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"
 SLACK_WEBHOOK_CACHE_TTL = 30 * 24 * 3600  # 30 days; the webhook URL itself is stable
 
-# Shared rate-limit blocker, when ANY agent hits Anthropic's error_rate_limit
+# Shared rate-limit blocker for Claude-backed firings that hit provider limits.
 # or error_budget, all agents respect the block until the timeout passes.
 # Otherwise each scheduled agent would keep firing into the rate-limit wall.
 GLOBAL_BLOCKED_FILE = STATE_ROOT / "global-blocked-until.json"
@@ -130,7 +129,7 @@ def set_global_block(hours: int, reason: str) -> str:
     from datetime import timedelta
 
     until = (datetime.now(UTC) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    # Dry-run: never write the fleet-wide poison pill, a dry-run firing must
+    # Dry-run: never write the fleet-wide provider-limit block; a dry-run firing must
     # not be able to block real scheduled agents. Report the until-string the
     # caller expects so its happy-path messaging still renders.
     if is_dry_run():

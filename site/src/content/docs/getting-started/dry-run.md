@@ -46,7 +46,7 @@ Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper i
 |---|---|
 | `claude_invoke`, `codex_invoke`, `invoke_agent_engine` | Return a clearly-marked synthetic result (`cost_usd=0.0`, `result_text` labelled `[dry-run] synthetic ...`). No LLM is ever invoked. |
 | `SpendState` | Write a separate `spend-dryrun-<date>.json` ledger. The real per-day counters are never touched, so a dry-run can't trip a daily cap. |
-| `set_global_block` | Log the block it would set; the fleet-wide poison pill file is never written. |
+| `set_global_block` | Log the provider-limit block it would set; the real scheduler block file is never written. |
 | `slack_post` | Log the line it would post (severity included) and return success. The webhook is never hit. |
 | `claim_issue`, `release_issue`, `gh_pr_create`, `gh_issue_edit`, and the other `gh` helpers | Log the `gh` call that would run and return success. No `gh` subprocess is spawned. |
 | `make_worktree` / `remove_worktree` | Create a self-contained throwaway git repo in a temp dir, coherent enough for a runner to inspect, then remove it. Nothing is fetched from or pushed to a real remote. |
