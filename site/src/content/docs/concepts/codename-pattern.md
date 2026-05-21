@@ -13,14 +13,14 @@ One codename agent, one job, 150-300 lines:
 |---|---|
 | **Lucius** (Lucius Fox) | Pick the oldest `agent:implement` issue, claim it, ask Claude to implement, push a branch, open a PR. |
 | **Drake** (Tim Drake) | Read specs + roadmap + code-reality grep, file the next well-scoped `agent:implement` issue. |
+| **Batman** | Plan cross-repo `agent:large-feature` bundles. Opt-in in OSS. |
 | **Bane** | Pick the lowest-coverage actively-changed file, write tests, open a PR. |
 | **Ra's al Ghul** | Multi-axis review on every fresh PR. |
 | **Nightwing** | Apply P0/P1 reviewer comments on `agent:authored` PRs. |
 | **Robin** | Triage new bug-report issues; classify severity, ask for repro info. |
 | **Huntress** | Post-deploy E2E smoke against staging. |
 | **Gordon** | Daily ECS drift + Sentry top-N read. |
-| **Alfred** | Cross-repo coordinator for features that span multiple repos. |
-| **Bat-Signal** | Slack notifier for the other agents. |
+| **agent-cleanup** | Sweep stale claims, locks, transcripts, and worktrees. |
 
 What the pattern is not:
 

@@ -28,6 +28,20 @@ it renders plists from `launchd/_template.plist`, installs them under
 bash deploy.sh
 ```
 
+## `bin/alfred-init.py`
+
+Configures the scheduled fleet after the base install.
+
+```sh
+./bin/alfred-init.py
+./bin/alfred-init.py --non-interactive --agents starter --repos owner/repo --slack-webhook skip
+```
+
+`--agents` accepts `starter`, `all`, or comma-separated codenames. `starter`
+enables Drake, Lucius, Ras al Ghul, and agent-cleanup. `--repos` scopes every
+repo-operating starter agent to explicit repos and is required for safe
+non-interactive setup when more than one repo is visible.
+
 ## `bin/doctor.sh`
 
 Runs configured Python agents under `ALFRED_DOCTOR=1`. On a fresh checkout

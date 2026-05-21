@@ -56,10 +56,12 @@ def test_discover_agents_finds_known_codenames(tmp_path, init_mod):
     bin_dir.mkdir()
     (bin_dir / "lucius.py").write_text("# lucius runner\n")
     (bin_dir / "drake.py").write_text("# drake runner\n")
+    (bin_dir / "batman.py").write_text("# batman runner\n")
     (bin_dir / "unknown.py").write_text("# not in catalog\n")
     out = init_mod.discover_agents(bin_dir)
     assert "feature_dev" in out
     assert "planner" in out
+    assert "cross_repo_coordinator" in out
     # Catalog order is preserved: feature_dev < planner.
     assert out.index("feature_dev") < out.index("planner")
 
@@ -164,6 +166,14 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
     assert "alfred.robin-hood\tlucius.py" in text
 
 
+def test_render_agents_conf_includes_batman(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
+    text = init_mod.render_agents_conf(state)
+    assert (
+        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo coordinator" in text
+    )
+
+
 # ---------------------------------------------------------------------------
 # env_assignments_for
 # ---------------------------------------------------------------------------
@@ -180,6 +190,20 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     assert out["GH_ORG"] == "acme"
     assert out["AGENT_CODENAME_FEATURE_DEV"] == "lucius"
     assert out["ALFRED_LUCIUS_REPOS"] == "acme/foo,acme/bar"
+
+
+def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("cross_repo_coordinator",),
+        repos={"cross_repo_coordinator": ["acme/api", "acme/web"]},
+    )
+    out = init_mod.env_assignments_for(state)
+    assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "batman"
+    assert out["BATMAN_SCAN_REPOS"] == "acme/api,acme/web"
+    assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
+    assert "ALFRED_BATMAN_REPOS" not in out
 
 
 def test_env_assignments_slack_env(init_mod, tmp_path):
@@ -277,6 +301,15 @@ def test_resolve_repo_selection_by_number(init_mod):
 def test_resolve_repo_selection_by_name(init_mod):
     repos = ["acme/api", "acme/web"]
     assert init_mod._resolve_repo_selection("acme/web", repos) == ["acme/web"]
+    assert init_mod._resolve_repo_selection("web", repos) == ["acme/web"]
+
+
+def test_resolve_repo_selection_allows_external_repo_for_cli(init_mod):
+    repos = ["acme/api"]
+    out = init_mod._resolve_repo_selection(
+        "other/web,worker", repos, gh_org="acme", allow_external=True
+    )
+    assert out == ["other/web", "acme/worker"]
 
 
 def test_resolve_repo_selection_drops_garbage(init_mod):
@@ -348,6 +381,52 @@ def test_apply_config_overrides(init_mod, tmp_path):
     assert state.aws_agent_profiles == {"huntress": "huntress-cron"}
     assert "feature_dev" in state.enabled_roles
     assert "planner" in state.enabled_roles
+
+
+def test_starter_roles_and_agents_arg(init_mod):
+    available = ["feature_dev", "planner", "cross_repo_coordinator", "pr_review", "agent_cleanup"]
+    assert init_mod.starter_roles(available) == [
+        "planner",
+        "feature_dev",
+        "pr_review",
+        "agent_cleanup",
+    ]
+    assert init_mod.roles_from_agents_arg("starter", available) == init_mod.starter_roles(available)
+    assert init_mod.roles_from_agents_arg("all", available) == available
+    assert init_mod.roles_from_agents_arg("batman,lucius", available) == [
+        "feature_dev",
+        "cross_repo_coordinator",
+    ]
+
+
+def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):
+    repo_root = tmp_path / "repo"
+    (repo_root / "prompts").mkdir(parents=True)
+    (repo_root / "prompts" / "planner.md").write_text("planner template\n")
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=repo_root,
+    )
+    state.enabled_roles = ["planner"]
+    created = init_mod.seed_prompt_templates(state)
+    assert created == [tmp_path / "alfred" / "prompts" / "drake.md"]
+    assert created[0].read_text() == "planner template\n"
+    created[0].write_text("custom\n")
+    assert init_mod.seed_prompt_templates(state) == []
+    assert created[0].read_text() == "custom\n"
+
+
+def test_write_opt_in_gate_for_batman(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path / "repo",
+    )
+    state.enabled_roles = ["cross_repo_coordinator"]
+    written = init_mod.write_opt_in_gate(state)
+    assert written == ["batman"]
+    assert "batman" in (tmp_path / "alfred" / "state" / "fleet" / "enabled.txt").read_text()
 
 
 # ---------------------------------------------------------------------------

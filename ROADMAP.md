@@ -20,6 +20,7 @@ The default install ships a working engineering agent fleet. After `bash install
 **Engineering agents** (Batman codenames by default; renameable per role at install time)
 - `lucius`: feature dev (picks `agent:implement` issues, opens PRs).
 - `drake`: issue planner (files `agent:implement` issues from specs / roadmap).
+- `batman`: opt-in cross-repo coordinator (plans `agent:large-feature` bundles in OSS).
 - `bane`: test coverage (writes tests for low-coverage changed files).
 - `rasalghul`: multi-axis PR review.
 - `nightwing`: review-fix (lands P0/P1 fixes on `agent:authored` PRs).
@@ -32,7 +33,7 @@ The default install ships a working engineering agent fleet. After `bash install
 - `agent-morning-brief`, `fleet-recap`: Slack digest cron.
 
 **Operator surface**
-- `alfred-init`: interactive installer wizard (Slack webhook, AWS choice, agent selection, per-role codename, repo selection).
+- `alfred-init`: interactive and non-interactive installer wizard (Slack webhook, AWS choice, starter/all/custom agent selection, per-role codename, explicit repo selection, prompt seeding, GitHub label setup).
 - `alfred` CLI: `agents / enable / disable / enabled-agents / engine status / engine set`.
 - Example state-machine CLI (`examples/bin/label_state.py`): `claim / release / dedup-check / status-issue / repo / sweep-claims`.
 - Pre-push git hook (`examples/git-hooks/pre-push`): refuses pushes that race in-flight agents.
@@ -51,6 +52,7 @@ The default install ships a working engineering agent fleet. After `bash install
 - **`claim_pr` / `release_pr`**: extend the state machine to PR-level work (review-fix agents that race to land patches on the same PR).
 - **Spend dashboards**: render a weekly recap (turns, cost, success rate per agent) for `fleet-recap`.
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
+- **Full OSS Batman execution chain**: approval gate, sequenced worktrees, per-repo PR chain, and cleanup. The current OSS Batman is deliberately plan-only; private fleets can layer execution on top today.
 - **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional, not a required Hermes dependency.
 
 ## Beyond engineering: the solo builder's agent OS

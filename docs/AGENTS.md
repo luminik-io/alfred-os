@@ -17,6 +17,7 @@ flowchart LR
     end
 
     drake["drake<br/><i>planner</i><br/>every 2h"]
+    batman["batman<br/><i>cross-repo coordinator</i><br/>opt-in"]
     lucius["lucius<br/><i>feature-dev</i><br/>every 20m"]
     bane["bane<br/><i>test-coverage</i><br/>every 4h"]
     rasalghul["rasalghul<br/><i>code-review</i><br/>every 30m"]
@@ -27,6 +28,7 @@ flowchart LR
     automerge["automerge<br/><i>squash-merge</i><br/>every 15m"]
 
     drake -- "files" --> issues
+    batman -- "plans bundles" --> issues
     robin -- "triages" --> issues
     issues -- "claim_issue" --> lucius
     lucius -- "transition_to=pr-open" --> prs
@@ -40,7 +42,7 @@ flowchart LR
     huntress -- "smoke-test fails" --> robin
     gordon -- "drift / Sentry" --> slack
 
-    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & automerge -. "status" .-> slack
+    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & batman & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
@@ -53,10 +55,15 @@ issue-claim overrides.
 
 The default install ships these agents. Schedules are sensible defaults; override per-agent in `agents.conf`.
 
+The recommended starter fleet is intentionally smaller: Drake, Lucius, Ras al
+Ghul, and agent-cleanup. That gives a solo builder planning, implementation,
+review, and housekeeping without lighting up every scheduled role on day one.
+
 | Codename | Role | Default schedule | Default repos | What it does |
 |---|---|---|---|---|
 | **lucius** | feature-dev | every 20 min | `ALFRED_LUCIUS_REPOS` | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | all in-scope repos | Reads specs / roadmap / `IMMEDIATE_NEXT_STEPS` / cross-repo open-issue list / code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in rolling 24 h. |
+| **batman** | cross-repo coordinator | every 1 h, opt-in | `BATMAN_SCAN_REPOS` | Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a bundle plan. OSS ships this as plan-only; site-specific fleets can add execution and approval gates on top. |
 | **bane** | test-coverage | every 4 h | `ALFRED_BANE_REPOS` (round-robin) | Picks the lowest-coverage actively-changed file. Writes tests. Opens PR. |
 | **rasalghul** | code-review | every 30 min | all in-scope repos | Multi-axis review (correctness, security, perf, maintainability) on every fresh PR. Posts as comment. |
 | **nightwing** | review-fix | every 45 min | all `agent:authored` PRs | Lands fixes for P0 / P1 reviewer comments (CodeRabbit, Codex, rasalghul) on agent-authored PRs. |

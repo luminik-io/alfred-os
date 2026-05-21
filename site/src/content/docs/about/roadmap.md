@@ -15,6 +15,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - [Issue claim state machine](/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
 - [Slack severity routing](/concepts/severity-routing/) (`info` / `warn` / `alert`).
 - `install.sh` + `INSTALL.md` for fresh-machine bootstrap.
+- `alfred-init.py` starter-fleet setup with prompt seeding, selected-repo label setup, and explicit `--repos` for AI-driven installs.
 - Setup walkthroughs: Slack, AWS, Claude Code, skills, Linux, your-first-agent tutorial.
 - [Operator CLI](/reference/cli/): label-state + pre-push hook.
 - CI (pytest + ruff + mypy + shellcheck + scrub-check) on every PR.
@@ -31,6 +32,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - **`claim_pr` / `release_pr`**. Extend the state machine to PR-level work.
 - **Spend dashboards**. Render a weekly recap from per-agent spend files.
 - **`alfred new-codename` scaffold**. Single command to add a fresh codename agent.
+- **Full OSS Batman execution chain**. The current public Batman is plan-only; approval gates and sequenced PR execution are still future work.
 
 ## Beyond engineering: the solo builder's agent OS
 

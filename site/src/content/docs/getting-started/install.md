@@ -17,7 +17,21 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-`alfred-init.py` writes the fleet config, runs deploy, and runs doctor. For a framework-only install with no agents configured, run `bash deploy.sh && bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
+Single-repo starter fleet:
+
+```sh
+./bin/alfred-init.py \
+  --non-interactive \
+  --agents starter \
+  --repos your-org/your-repo \
+  --slack-webhook skip
+```
+
+`alfred-init.py` writes the fleet config, seeds prompt templates into
+`~/.alfred/prompts/`, creates the standard GitHub labels on selected repos,
+runs deploy, and runs doctor. For a framework-only install with no agents
+configured, run `bash deploy.sh && bash bin/doctor.sh`; doctor should report
+`0 passed, 0 failed`.
 
 ## What `install.sh` does
 
@@ -55,6 +69,10 @@ ALFRED_NONINTERACTIVE=1 \
 ```
 
 Per-stage skips: `--skip-brew`, `--skip-npm`.
+
+For `alfred-init.py`, `--agents starter` means Drake, Lucius, Ras al Ghul, and
+agent-cleanup. Use `--agents all` only when you want every scheduled agent.
+Use `--repos owner/repo` for the common single-repo case.
 
 ## After install
 

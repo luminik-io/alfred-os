@@ -92,7 +92,29 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-`alfred-init.py` writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs doctor. For a framework-only install with no agents configured, use `bash deploy.sh && bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
+For a single-repo solo-builder setup that an AI coding tool can run without
+guessing at prompts or labels:
+
+```sh
+./bin/alfred-init.py \
+  --non-interactive \
+  --agents starter \
+  --repos your-org/your-repo \
+  --slack-webhook skip
+```
+
+The starter fleet is Drake, Lucius, Ras al Ghul, and agent-cleanup: plan
+issues, implement labelled issues, review PRs, and clean stale state. Slack is
+optional. `alfred-init.py` now seeds prompt templates into
+`~/.alfred/prompts/`, creates the standard GitHub labels on selected repos,
+writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs
+doctor.
+
+For a framework-only install with no agents configured, use `bash deploy.sh &&
+bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See
+[`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the
+smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or
+[`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
 
 Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md). On Linux, see [`docs/LINUX.md`](docs/LINUX.md) for the `systemd --user` path.
 

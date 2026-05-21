@@ -14,6 +14,7 @@ What's about to ship. See the [`[Unreleased]`](https://github.com/luminik-io/alf
 - **`alfred pause` / `resume` / `run`** operator verbs; `alfred agents` now shows a real scheduler-load column.
 - **`bin/doctor.sh --dev`**: dev-install mode that tolerates host-config gaps while still failing hard on code defects.
 - **`alfred claude probe`**: a first-class Claude Code auth smoke test.
+- **Solo-builder setup cleanup**: `alfred-init.py --repos`, starter-fleet default, prompt seeding, standard GitHub label setup, and Batman visible as an opt-in plan-only coordinator.
 - Docs: a [publishing guide](https://github.com/luminik-io/alfred-os/blob/main/docs/PUBLISHING.md) for maintainers, a rewritten [Linux guide](/guides/linux/), mermaid diagrams across the concept pages, and this docs site.
 
 ## 0.2.1 (2026-05-12)

@@ -19,17 +19,20 @@ Wizard order (each step is idempotent, re-running won't duplicate):
     6. Codenames:      per-role codename (default = canonical Batman name).
     7. Repos:          per-agent repo selection out of `gh repo list`.
     8. Schedule:       sensible defaults; press 'a' to customize.
-    9. Generate config, write agents.conf + per-agent env to ~/.alfredrc.
-   10. Deploy:         `bash deploy.sh`.
-   11. Doctor:         `bash bin/doctor.sh`.
-   12. Smoke test:     final Slack post + summary.
+    9. Generate config: agents.conf, env, starter prompts, opt-in gate.
+   10. GitHub labels:  create standard labels on selected repos.
+   11. Deploy:         `bash deploy.sh`.
+   12. Doctor:         `bash bin/doctor.sh`.
+   13. Smoke test:     final Slack post + summary.
 
 Override paths:
     ALFRED_NONINTERACTIVE=1   accept defaults everywhere
     ALFRED_DOCTOR=1               print [ALFRED-INIT-DOCTOR-OK] and exit
     --non-interactive             same as the env var
     --config <path>               read answers from JSON (skip prompts)
-    --agents <comma>              skip the agent multi-select
+    --agents <comma>              starter, all, or comma-separated codenames
+    --repos <comma>               repo selection for non-interactive setup
+    --slack-webhook <url|skip>    skip the Slack prompt
 
 Pure stdlib. The operator reads this file when something breaks; keep it
 that way, no external deps, no clever indirection.
@@ -83,7 +86,18 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
         True,
         "interval:2700",
     ),
-    "doc_writer": ("robin", "doc writer (keeps READMEs and ADRs in sync)", True, "interval:10800"),
+    "bug_triage": (
+        "robin",
+        "bug triage (labels issues, asks repro, hands off to Lucius)",
+        True,
+        "interval:10800",
+    ),
+    "cross_repo_coordinator": (
+        "batman",
+        "cross-repo coordinator (plans agent:large-feature bundles)",
+        True,
+        "interval:3600",
+    ),
     "smoke_runner": (
         "huntress",
         "staging smoke runner (hits a URL on schedule)",
@@ -146,6 +160,42 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
 CODENAME_TO_ROLE: dict[str, str] = {
     default: role for role, (default, _, _, _) in AGENT_CATALOG.items()
 }
+
+STARTER_ROLES = ("planner", "feature_dev", "pr_review", "agent_cleanup")
+OPT_IN_ROLES = {"cross_repo_coordinator"}
+
+PROMPT_TEMPLATE_BY_ROLE = {
+    "feature_dev": "feature-dev.md",
+    "planner": "planner.md",
+    "test_coverage": "test-coverage.md",
+    "pr_review": "code-review.md",
+    "ci_repair": "review-fix.md",
+    "bug_triage": "bug-triage.md",
+    "cross_repo_coordinator": "cross-repo-coordinator.md",
+    "smoke_runner": "post-deploy-smoke.md",
+    "ops_morning": "ecs-monitor.md",
+}
+
+SETUP_LABELS: list[tuple[str, str, str]] = [
+    ("agent:implement", "0e8a16", "Ready for an Alfred implementer to pick up."),
+    ("agent:in-flight", "e11d21", "An Alfred agent is actively working this issue."),
+    ("agent:pr-open", "fbca04", "A PR exists for this issue."),
+    ("agent:done", "0e8a16", "Issue shipped."),
+    ("agent:authored", "1d76db", "PR authored by an Alfred agent."),
+    ("agent:large-feature", "ff6b00", "Multi-repo feature candidate for Batman."),
+    ("batman-pr-open", "5319e7", "A Batman bundle PR is open in this repo."),
+    ("do-not-pickup", "5319e7", "Operator override: agents must not claim this issue."),
+    ("do-not-review", "cccccc", "Skip automated PR review."),
+    ("needs:human-scope", "e99695", "Issue needs manual scoping before autonomous work."),
+    ("needs:info", "d4c5f9", "Reporter needs to provide more detail."),
+    ("needs:triage", "fef2c0", "Needs bug triage."),
+    ("bug", "ee0701", "Confirmed bug."),
+    ("test-coverage", "bfdadc", "Test coverage work."),
+    ("severity:p0", "b60205", "Production broken, data loss, or security leak."),
+    ("severity:p1", "d93f0b", "User-visible bug, not blocking."),
+    ("severity:p2", "fbca04", "Minor or polish issue."),
+    ("severity:p3", "0e8a16", "Trivial or won't fix."),
+]
 
 # Repo-operating agents that need a staging URL / cluster name beyond repos.
 SPECIAL_PROMPTS = {
@@ -374,6 +424,111 @@ def discover_agents(bin_dir: Path) -> list[str]:
     return [role for role in AGENT_CATALOG if role in present]
 
 
+def starter_roles(available: list[str]) -> list[str]:
+    """Return the recommended cold-start fleet from the discovered runners."""
+    starter = [role for role in STARTER_ROLES if role in available]
+    return starter or list(available[:1])
+
+
+def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
+    """Resolve --agents into role keys while preserving catalog order.
+
+    Accepted values:
+      - starter / recommended
+      - all
+      - comma-separated codenames, role keys, or script stems
+    """
+    value = (raw or "").strip()
+    if not value:
+        return starter_roles(available)
+    lowered = value.lower()
+    if lowered in {"starter", "recommended", "default"}:
+        return starter_roles(available)
+    if lowered == "all":
+        return list(available)
+
+    requested = {tok.strip().lower() for tok in value.split(",") if tok.strip()}
+    matched: list[str] = []
+    for role in available:
+        default_codename = AGENT_CATALOG[role][0].lower()
+        script_stem = default_codename.removesuffix(".py")
+        if role.lower() in requested or default_codename in requested or script_stem in requested:
+            matched.append(role)
+    unknown = requested - {
+        token for role in matched for token in (role.lower(), AGENT_CATALOG[role][0].lower())
+    }
+    if unknown:
+        warn(f"Ignoring unknown --agents value(s): {', '.join(sorted(unknown))}")
+    return matched
+
+
+def repo_local_names(repos: list[str]) -> list[str]:
+    out: list[str] = []
+    for repo in repos:
+        name = repo.rsplit("/", 1)[-1]
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def selected_repo_union(state: WizardState) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for role in state.enabled_roles:
+        for repo in state.role_to_repos.get(role, []):
+            if repo not in seen:
+                seen.add(repo)
+                out.append(repo)
+    return out
+
+
+def seed_prompt_templates(state: WizardState) -> list[Path]:
+    """Copy starter prompt templates into ALFRED_HOME for enabled agents.
+
+    Existing operator prompts are never overwritten.
+    """
+    created: list[Path] = []
+    prompt_root = state.alfred_home / "prompts"
+    prompt_root.mkdir(parents=True, exist_ok=True)
+    template_root = state.repo_root / "prompts"
+    for role in state.enabled_roles:
+        template_name = PROMPT_TEMPLATE_BY_ROLE.get(role)
+        if not template_name:
+            continue
+        src = template_root / template_name
+        dest = prompt_root / f"{state.codename_for(role)}.md"
+        if not src.exists() or dest.exists():
+            continue
+        shutil.copyfile(src, dest)
+        created.append(dest)
+    return created
+
+
+def write_opt_in_gate(state: WizardState) -> list[str]:
+    """Persist selected opt-in agents to the runner gate file.
+
+    Default-enabled agents do not need to be listed. Batman does.
+    """
+    wanted = [state.codename_for(role) for role in state.enabled_roles if role in OPT_IN_ROLES]
+    if not wanted:
+        return []
+    gate = state.alfred_home / "state" / "fleet" / "enabled.txt"
+    existing: list[str] = []
+    if gate.exists():
+        for raw in gate.read_text().splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if line and line not in existing:
+                existing.append(line)
+    out = sorted(set(existing) | set(wanted))
+    gate.parent.mkdir(parents=True, exist_ok=True)
+    gate.write_text(
+        "# Alfred runner gate. Opt-in agents listed here are allowed to run.\n"
+        + "\n".join(out)
+        + "\n"
+    )
+    return wanted
+
+
 # ---------------------------------------------------------------------------
 # agents.conf renderer.
 # ---------------------------------------------------------------------------
@@ -432,7 +587,11 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         out[f"AGENT_CODENAME_{role.upper()}"] = codename
         repos = state.role_to_repos.get(role, [])
         if repos:
-            out[f"ALFRED_{default_slug}_REPOS"] = ",".join(repos)
+            if role == "cross_repo_coordinator":
+                out["BATMAN_SCAN_REPOS"] = ",".join(repos)
+                out["BATMAN_ROLLOUT_ORDER"] = ",".join(repo_local_names(repos))
+            else:
+                out[f"ALFRED_{default_slug}_REPOS"] = ",".join(repos)
         for k, v in state.role_to_extras.get(role, {}).items():
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
@@ -557,7 +716,9 @@ def step_2_github(state: WizardState, *, non_interactive: bool) -> None:
         ok(f"{len(state.repos)} repos visible in {state.gh_org}")
 
 
-def step_3_slack(state: WizardState, *, non_interactive: bool) -> None:
+def step_3_slack(
+    state: WizardState, *, slack_arg: str | None = None, non_interactive: bool
+) -> None:
     step("Slack webhook")
     note("1. Open https://api.slack.com/apps in your browser.")
     note("2. Create a new app from scratch.")
@@ -565,14 +726,24 @@ def step_3_slack(state: WizardState, *, non_interactive: bool) -> None:
     note("4. Add a webhook URL to the channel you want for fleet status.")
     note("5. Copy the resulting URL.")
     while True:
-        url = ask(
-            "Paste your Slack webhook URL (or 'skip')", "skip", non_interactive=non_interactive
-        )
+        if slack_arg is not None:
+            url = slack_arg
+        elif state.slack_webhook:
+            url = state.slack_webhook
+        else:
+            url = ask(
+                "Paste your Slack webhook URL (or 'skip')",
+                "skip",
+                non_interactive=non_interactive,
+            )
         if url == "skip" or not url:
-            warn("Skipping Slack setup. Agents that depend on slack_post will degrade quietly.")
+            warn("Skipping Slack setup. Agents will still log locally under ALFRED_HOME/state.")
             return
         if not SLACK_WEBHOOK_RE.match(url):
             fail("That doesn't look like a Slack webhook URL. Try again.")
+            if slack_arg is not None or non_interactive:
+                sys.exit(1)
+            state.slack_webhook = ""
             continue
         success, body = slack_post(url, "alfred-os installer: webhook test ok")
         if success:
@@ -580,6 +751,9 @@ def step_3_slack(state: WizardState, *, non_interactive: bool) -> None:
             state.slack_webhook = url
             break
         fail(f"Test post failed: {body}")
+        if slack_arg is not None or non_interactive:
+            sys.exit(1)
+        state.slack_webhook = ""
         if not ask_yes_no("Retry?", True, non_interactive=non_interactive):
             return
     storage = ask(
@@ -692,26 +866,29 @@ def step_5_pick_agents(
         warn("Falling back to the full catalog.")
         available = list(AGENT_CATALOG.keys())
     if agents_arg:
-        chosen_codenames = {c.strip() for c in agents_arg.split(",") if c.strip()}
-        state.enabled_roles = [r for r in available if AGENT_CATALOG[r][0] in chosen_codenames]
+        state.enabled_roles = roles_from_agents_arg(agents_arg, available)
+        if not state.enabled_roles:
+            fail("--agents did not match any discovered agents.")
+            sys.exit(1)
         ok(f"Enabled {len(state.enabled_roles)} agents from --agents.")
         return
     print()
-    print("  Available agents (default: all enabled):")
+    print("  Available agents (Enter = recommended starter fleet):")
+    starter = set(starter_roles(available))
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
-        print(f"    [x] {codename:<20s}, {desc}")
+        marker = "[starter]" if role in starter else "         "
+        print(f"    {marker} {codename:<20s}, {desc}")
     print()
     if non_interactive:
-        state.enabled_roles = list(available)
-        ok(f"All {len(available)} agents enabled (non-interactive).")
+        state.enabled_roles = starter_roles(available)
+        ok(f"Enabled recommended starter fleet ({len(state.enabled_roles)} agents).")
         return
-    raw = ask("Press Enter to accept all, or type comma-separated codenames to TOGGLE OFF", "")
-    toggle_off = {c.strip() for c in raw.split(",") if c.strip()}
-    state.enabled_roles = [r for r in available if AGENT_CATALOG[r][0] not in toggle_off]
+    raw = ask("Choose agents: Enter for starter, 'all', or comma-separated codenames", "")
+    state.enabled_roles = roles_from_agents_arg(raw or "starter", available)
     if not state.enabled_roles:
-        warn("Nothing enabled. Re-running selection with all agents on.")
-        state.enabled_roles = list(available)
+        warn("Nothing matched. Using the recommended starter fleet.")
+        state.enabled_roles = starter_roles(available)
     ok(f"{len(state.enabled_roles)} agents enabled.")
 
 
@@ -742,22 +919,56 @@ def step_6_codenames(state: WizardState, *, non_interactive: bool) -> None:
     ok(f"Codenames assigned for {len(state.enabled_roles)} agents.")
 
 
-def step_7_repos(state: WizardState, *, non_interactive: bool) -> None:
+def step_7_repos(
+    state: WizardState, *, repos_arg: str | None = None, non_interactive: bool
+) -> None:
     step("Per-agent repos")
     repo_roles = [r for r in state.enabled_roles if AGENT_CATALOG[r][2]]
     if not repo_roles:
         ok("No repo-operating agents enabled; skipping.")
+        return
+
+    arg_repos: list[str] | None = None
+    if repos_arg is not None:
+        arg_repos = _resolve_repo_selection(
+            repos_arg, state.repos, gh_org=state.gh_org, allow_external=True
+        )
+        if not arg_repos and repos_arg.strip().lower() != "none":
+            fail(f"--repos did not match any visible repo: {repos_arg}")
+            sys.exit(1)
+
     for role in repo_roles:
         codename = state.codename_for(role)
-        if non_interactive or not state.repos:
-            state.role_to_repos[role] = list(state.repos)
+        if arg_repos is not None:
+            state.role_to_repos[role] = list(arg_repos)
+            continue
+        if non_interactive:
+            if len(state.repos) == 1:
+                state.role_to_repos[role] = list(state.repos)
+                continue
+            fail(
+                "Non-interactive setup with repo agents needs --repos. "
+                "Example: --repos owner/repo or --repos repo-a,repo-b"
+            )
+            sys.exit(1)
+        if not state.repos:
+            state.role_to_repos[role] = []
             continue
         print()
         print(f"  Repos for {codename} ({AGENT_CATALOG[role][1]}):")
         for i, repo in enumerate(state.repos, 1):
             print(f"    {i:>2}. {repo}")
-        raw = ask("Numbers (comma-separated), 'all', or 'engineering' (excludes specs/docs)", "all")
-        state.role_to_repos[role] = _resolve_repo_selection(raw, state.repos)
+        default = "all" if len(state.repos) == 1 else ""
+        while True:
+            raw = ask(
+                "Numbers, 'all', 'engineering' (excludes specs/docs), or 'none'",
+                default,
+            )
+            selected = _resolve_repo_selection(raw, state.repos, gh_org=state.gh_org)
+            if selected or (raw or "").strip().lower() == "none":
+                state.role_to_repos[role] = selected
+                break
+            fail("Select at least one repo, or type 'none' to leave this agent idle.")
     # Special prompts (Huntress staging URL, Gordon ECS cluster, etc.)
     for role in state.enabled_roles:
         codename = state.codename_for(role)
@@ -775,23 +986,40 @@ def step_7_repos(state: WizardState, *, non_interactive: bool) -> None:
             state.role_to_extras[role] = extras
 
 
-def _resolve_repo_selection(raw: str, repos: list[str]) -> list[str]:
-    raw = (raw or "").strip().lower()
-    if not raw or raw == "all":
+def _resolve_repo_selection(
+    raw: str, repos: list[str], *, gh_org: str = "", allow_external: bool = False
+) -> list[str]:
+    raw = (raw or "").strip()
+    command = raw.lower()
+    if not raw or command == "all":
         return list(repos)
-    if raw == "engineering":
+    if command == "none":
+        return []
+    if command == "engineering":
         return [r for r in repos if not any(s in r.lower() for s in ("spec", "doc", "wiki"))]
+    by_full = {r.lower(): r for r in repos}
+    by_name = {r.rsplit("/", 1)[-1].lower(): r for r in repos}
     out: list[str] = []
     for tok in raw.split(","):
         tok = tok.strip()
         if not tok:
             continue
+        tok_lower = tok.lower()
+        chosen = ""
         if tok.isdigit():
             idx = int(tok) - 1
             if 0 <= idx < len(repos):
-                out.append(repos[idx])
-        elif tok in repos:
-            out.append(tok)
+                chosen = repos[idx]
+        elif tok_lower in by_full:
+            chosen = by_full[tok_lower]
+        elif tok_lower in by_name:
+            chosen = by_name[tok_lower]
+        elif allow_external and "/" in tok:
+            chosen = tok
+        elif allow_external and gh_org:
+            chosen = f"{gh_org}/{tok}"
+        if chosen and chosen not in out:
+            out.append(chosen)
     return out
 
 
@@ -823,6 +1051,16 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     env_kvs = env_assignments_for(state)
     upsert_alfredrc(state.alfredrc, env_kvs)
     ok(f"updated {state.alfredrc} with {len(env_kvs)} keys")
+    created_prompts = seed_prompt_templates(state)
+    if created_prompts:
+        ok(
+            f"seeded {len(created_prompts)} prompt template(s) under {state.alfred_home / 'prompts'}"
+        )
+    else:
+        ok("prompt templates already present or not needed")
+    opt_in = write_opt_in_gate(state)
+    if opt_in:
+        ok(f"enabled opt-in agent(s): {', '.join(opt_in)}")
     print()
     print("--- agents.conf ---")
     print(conf)
@@ -830,6 +1068,45 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     if not non_interactive and not ask_yes_no("Looks good?", True):
         warn("Re-run alfred-init to revise. Existing config left in place.")
         sys.exit(1)
+
+
+def step_10_labels(state: WizardState, *, skip: bool = False) -> None:
+    step("GitHub labels")
+    if skip:
+        warn("Skipping GitHub label setup by request.")
+        return
+    repos = selected_repo_union(state)
+    if not repos:
+        ok("No selected repos; skipping label setup.")
+        return
+    created_or_present = 0
+    warnings = 0
+    for repo in repos:
+        full_repo = repo if "/" in repo else f"{state.gh_org}/{repo}"
+        for name, color, desc in SETUP_LABELS:
+            cp = run(
+                [
+                    "gh",
+                    "label",
+                    "create",
+                    name,
+                    "--color",
+                    color,
+                    "--description",
+                    desc,
+                    "-R",
+                    full_repo,
+                ],
+                timeout=15,
+            )
+            if cp.returncode == 0 or "already" in (cp.stderr or "").lower():
+                created_or_present += 1
+                continue
+            warnings += 1
+            warn(f"Could not ensure label {name!r} on {full_repo}: {cp.stderr.strip()}")
+    ok(f"labels checked on {len(repos)} repo(s), {created_or_present} label operations ok")
+    if warnings:
+        warn(f"{warnings} label operation(s) need a manual check; agents can still run.")
 
 
 def step_10_deploy(state: WizardState) -> None:
@@ -916,7 +1193,24 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         "--agents",
         type=str,
         default=None,
-        help="Comma-separated codenames to enable (skips multi-select).",
+        help="starter, all, or comma-separated codenames/roles to enable.",
+    )
+    p.add_argument(
+        "--repos",
+        type=str,
+        default=None,
+        help="Comma-separated repo selection for repo-operating agents.",
+    )
+    p.add_argument(
+        "--slack-webhook",
+        type=str,
+        default=None,
+        help="Slack webhook URL, or 'skip' to skip Slack setup.",
+    )
+    p.add_argument(
+        "--skip-label-setup",
+        action="store_true",
+        help="Do not create the standard Alfred GitHub labels during setup.",
     )
     p.add_argument(
         "--repo-root",
@@ -954,6 +1248,12 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
         # cfg["agents"] is a list of codenames.
         wanted = set(cfg["agents"])
         state.enabled_roles = [r for r, (cn, _, _, _) in AGENT_CATALOG.items() if cn in wanted]
+    if "repos" in cfg:
+        repos = cfg["repos"]
+        if isinstance(repos, str):
+            state.role_to_repos["__all__"] = [repos]
+        elif isinstance(repos, list):
+            state.role_to_repos["__all__"] = [str(r) for r in repos]
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -982,14 +1282,18 @@ def main(argv: Iterable[str] | None = None) -> int:
     step_0_preflight(state)
     step_1_claude(non_interactive=non_interactive)
     step_2_github(state, non_interactive=non_interactive)
-    step_3_slack(state, non_interactive=non_interactive)
+    step_3_slack(state, slack_arg=args.slack_webhook, non_interactive=non_interactive)
     available = discover_agents(repo_root / "bin")
     step_5_pick_agents(state, available, agents_arg=args.agents, non_interactive=non_interactive)
     step_4_aws(state, non_interactive=non_interactive)  # after pick_agents so we know who needs AWS
     step_6_codenames(state, non_interactive=non_interactive)
-    step_7_repos(state, non_interactive=non_interactive)
+    config_repos = None
+    if "__all__" in state.role_to_repos:
+        config_repos = ",".join(state.role_to_repos.pop("__all__"))
+    step_7_repos(state, repos_arg=args.repos or config_repos, non_interactive=non_interactive)
     step_8_schedule(state, non_interactive=non_interactive)
     step_9_generate(state, non_interactive=non_interactive)
+    step_10_labels(state, skip=args.skip_label_setup)
     step_10_deploy(state)
     if not step_11_doctor(state, non_interactive=non_interactive):
         fail("Doctor failed. Resolve and re-run `bash bin/doctor.sh`.")

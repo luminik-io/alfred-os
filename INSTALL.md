@@ -16,6 +16,16 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
+Single-repo starter fleet, suitable for an AI coding tool to run end to end:
+
+```sh
+./bin/alfred-init.py \
+  --non-interactive \
+  --agents starter \
+  --repos your-org/your-repo \
+  --slack-webhook skip
+```
+
 The rest of this doc explains what each step does and what to do when something fails.
 
 ## What `install.sh` does
@@ -124,7 +134,26 @@ Run the wizard to choose agents, repos, codenames, Slack settings, and schedules
 ./bin/alfred-init.py
 ```
 
-`alfred-init.py` writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, then runs `bash bin/doctor.sh`.
+Pressing Enter at the agent-selection step chooses the recommended starter
+fleet: Drake, Lucius, Ras al Ghul, and agent-cleanup. Use `all` only when you
+want the full engineering roster. If multiple repos are visible, pick the repo
+numbers explicitly; the wizard no longer silently assigns every repo to every
+agent.
+
+`alfred-init.py` now does the boring setup work for you:
+
+- Writes `launchd/agents.conf` and updates `~/.alfredrc`.
+- Copies starter prompts from `prompts/` into `~/.alfred/prompts/<codename>.md`
+  without overwriting your edits.
+- Creates the standard GitHub labels on the selected repos, including
+  `agent:implement`, `agent:authored`, lifecycle labels, bug-triage labels, and
+  Batman's `agent:large-feature` label.
+- Runs `bash deploy.sh`, then `bash bin/doctor.sh`.
+
+Batman is included in the catalog as an opt-in cross-repo coordinator. In the
+OSS release it posts bundle plans for `agent:large-feature` work; the private
+Luminik repo has the fuller approval-and-execution chain. Enable Batman when
+you are ready for multi-repo planning, not for a first single-repo setup.
 
 ### 7. Framework-only deploy + verify
 

@@ -155,7 +155,7 @@ The wall hit by Lucius at 22:46 silences Bane's nightly run, Gordon's morning br
 
 ### 5. Codename pattern
 
-One agent script per narrow specialist. Named after a coherent fictional cast. The shipped examples use Batman side-characters: Lucius, Drake, Bane, Rasalghul, Robin, Nightwing, Huntress, Gordon.
+One agent script per narrow specialist. Named after a coherent fictional cast. The shipped examples use Batman side-characters: Batman, Lucius, Drake, Bane, Rasalghul, Robin, Nightwing, Huntress, Gordon.
 
 Two reasons it matters:
 
