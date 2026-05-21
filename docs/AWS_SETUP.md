@@ -184,7 +184,7 @@ aws --profile <your-codename>-cron secretsmanager get-secret-value \
   --query SecretString --output text
 ```
 
-## 4. Configure the launchd plist
+## 4. Configure the scheduled agent env
 
 The rendered plists do not have an `AWS_PROFILE` column. `alfred-init` writes role-specific profile variables such as `ALFRED_HUNTRESS_AWS_PROFILE` and `ALFRED_GORDON_AWS_PROFILE` into `~/.alfredrc`; `bin/agent-launch` loads that file at firing time; the stable role runner then sets `AWS_PROFILE` only around the AWS calls it owns.
 

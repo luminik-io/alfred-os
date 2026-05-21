@@ -1,6 +1,6 @@
 ---
 title: Alfred
-description: A local agent-fleet runtime for solo builders. AI development agents scheduled by launchd or systemd, on one machine you own.
+description: A local agent-fleet runtime for solo builders. Claude Code and Codex-capable development agents scheduled by launchd or systemd, on one machine you own.
 template: splash
 head:
   - tag: title
@@ -28,24 +28,24 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work.
 
 - **Long-running loops** have no failure isolation. One bad run trashes the others.
-- **In-memory state** can't survive an OS reboot. macOS restarts every few weeks.
+- **In-memory state** can't survive an OS reboot. Always-on hosts still restart.
 - **Chat-first interfaces** put the operator on the critical path.
 
-Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by `launchd`, isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
+Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude-provider-limit block.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, memory database, skill registry, or dashboard service is required.
 
 ```mermaid
 flowchart TB
-    launchd["launchd plist<br/><i>every N min</i>"]
+    scheduler["host scheduler<br/><i>launchd or systemd</i>"]
     role["$ALFRED_HOME/bin/{role}.py<br/><i>one stable role runner per agent</i>"]
-    runner["agent_runner module<br/><i>lock · preflight · spend · claude_invoke · gh · slack</i>"]
-    engine["claude -p {prompt} --max-turns N<br/><i>the LLM work, in a fresh subprocess</i>"]
+    runner["agent_runner module<br/><i>lock · preflight · spend · claude_invoke · codex_invoke · gh · slack</i>"]
+    engine["claude -p or codex exec<br/><i>the LLM work, in a fresh subprocess</i>"]
     gh["GitHub<br/><i>issues, PRs, state-machine labels</i>"]
     slack["Slack channel<br/><i>the operator's read surface</i>"]
     state[("$ALFRED_HOME/state/<br/><i>JSON on disk, no DB</i>")]
 
-    launchd --> role --> runner --> engine
+    scheduler --> role --> runner --> engine
     runner -- "claim / release / PR" --> gh
     runner -- "slack_post(severity=...)" --> slack
     runner <--> state
@@ -54,8 +54,8 @@ flowchart TB
 ## What you get
 
 <CardGrid stagger>
-  <Card title="launchd dispatch" icon="rocket">
-    Every firing is a `launchd` event. No long-running process; no in-memory state to lose on reboot. The OS is the orchestrator.
+  <Card title="Host-scheduler dispatch" icon="rocket">
+    Every firing is a host scheduler event. No long-running process; no in-memory state to lose on reboot. The OS is the orchestrator.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
     Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.
@@ -63,8 +63,8 @@ flowchart TB
   <Card title="Per-agent IAM" icon="approve-check-circle">
     Every scheduled agent gets its own scoped IAM identity. The operator's SSO is never used by scheduled agents.
   </Card>
-  <Card title="Fleet-wide rate-limit poison pill" icon="warning">
-    When any agent hits Anthropic's cap, every other agent silently skips for an hour. No stampede.
+  <Card title="Fleet-wide provider-limit block" icon="warning">
+    When a Claude-backed agent hits a Claude provider limit, every other agent silently skips for an hour. No stampede.
   </Card>
   <Card title="Issue claim state machine" icon="document">
     `agent:in-flight` → `agent:pr-open` → `agent:done`. Race-resistant cooperative coordination via GitHub labels + structured comments.
@@ -103,13 +103,13 @@ Alfred stays single-operator and local by design. It is not multi-tenant and not
 
 <LinkCard
   title="Read the architecture"
-  description="Why launchd, why worktrees, why per-agent IAM. The design constraints that make Alfred opinionated."
+  description="Why host scheduling, why worktrees, why per-agent IAM. The design constraints that make Alfred opinionated."
   href="/concepts/architecture/"
 />
 
 <LinkCard
   title="How it works"
-  description="One agent firing traced end to end: launchd trigger, the gates before any spend, claim, isolate, invoke, branch on outcome."
+  description="One agent firing traced end to end: scheduler trigger, the gates before any spend, claim, isolate, invoke, branch on outcome."
   href="/concepts/how-it-works/"
 />
 
@@ -121,7 +121,7 @@ Alfred stays single-operator and local by design. It is not multi-tenant and not
 
 ## Status
 
-Alfred is at v0.2.1. It is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, launchd/systemd deployment, doctor, dry-run, Slack reporting, and Claude/Codex engine routing.
+Latest tagged release: v0.2.1. Current `main` is the next release train and includes Linux/systemd deployment, dry-run, scheduler verbs, Slack reporting, and Claude/Codex engine routing. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, doctor, and isolated worktree execution.
 
 The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
 

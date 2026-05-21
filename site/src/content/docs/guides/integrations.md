@@ -3,7 +3,7 @@ title: Integrations
 description: What Alfred bundles, what stays optional, and how to think about companion tools.
 ---
 
-Alfred core should stay boring: local Python runners, `launchd` scheduling,
+Alfred core should stay boring: local Python runners, host-scheduler units,
 git worktrees, GitHub CLI, model CLIs, and optional Slack delivery.
 
 The default model path uses local Claude Code / Codex CLI authentication. Alfred

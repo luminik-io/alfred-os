@@ -1,19 +1,20 @@
 [project]
 name = "alfred-os"
 version = "0.2.1"
-description = "A small framework for running a fleet of narrow-specialist Claude Code agents on a single Mac, dispatched by launchd, isolated by git worktree."
+description = "A small framework for running a fleet of narrow-specialist Claude Code and Codex agents on one host, isolated by git worktree."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
   { name = "Alfred contributors" },
 ]
 requires-python = ">=3.11"
-keywords = ["claude-code", "agents", "launchd", "automation"]
+keywords = ["claude-code", "codex", "agents", "launchd", "systemd", "automation"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
   "Operating System :: MacOS :: MacOS X",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",

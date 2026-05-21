@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: Design rationale for launchd, worktrees, IAM-per-agent, codename pattern.
+description: Design rationale for host scheduling, worktrees, IAM-per-agent, codename pattern.
 ---
 
 Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md). This page is the executive summary.
@@ -11,7 +11,7 @@ Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to `~/.a
 
 ```mermaid
 flowchart LR
-    launchd["launchd<br/><i>every N min</i>"]
+    scheduler["host scheduler<br/><i>launchd or systemd</i>"]
     role["bin/{role}.py<br/><i>one stable runner per agent</i>"]
     runner["lib/agent_runner.py<br/><i>lock · preflight · spend · invoke · gh · slack</i>"]
     engine["claude -p / codex exec<br/><i>the LLM work, fresh subprocess</i>"]
@@ -19,7 +19,7 @@ flowchart LR
     slack["Slack webhook"]
     state[("$ALFRED_HOME/state/<br/><i>JSON files on disk</i>")]
 
-    launchd --> role --> runner --> engine
+    scheduler --> role --> runner --> engine
     runner --> gh
     runner --> slack
     runner <--> state
@@ -33,14 +33,14 @@ A single Lucius firing is the canonical trace. Every richer codename is a variat
 
 ```mermaid
 sequenceDiagram
-    participant launchd as launchd
+    participant scheduler as host scheduler
     participant runner as agent runner
     participant lib as agent_runner lib
     participant claude as Claude Code CLI
     participant gh as GitHub CLI
     participant slack as Slack webhook
 
-    launchd->>runner: fire (every N min)
+    scheduler->>runner: fire (every N min)
     runner->>lib: with_lock(AGENT)
     runner->>lib: preflight(spec)
     runner->>lib: SpendState / is_globally_blocked
@@ -61,17 +61,17 @@ If a firing crashes anywhere in that trace, the next firing starts clean: it rea
 
 ## Five non-negotiables
 
-### 1. launchd, not loops
+### 1. Host scheduler, not loops
 
-Every agent firing is a fresh `launchd` event, not a tick in a long-running process. Trade-offs:
+Every agent firing is a fresh scheduler event, not a tick in a long-running process. Trade-offs:
 
 - ✅ Failure isolation. A crashing firing doesn't poison the next one.
-- ✅ OS-level reliability. macOS reboots, system updates, sleep cycles. `launchd` handles all of them.
+- ✅ OS-level reliability. Reboots, system updates, sleep cycles. `launchd` or `systemd --user` handles all of them.
 - ✅ Per-firing observability. Stdout/stderr to per-agent files; the operator's grep-and-tail muscle memory works.
 - ❌ No in-process state. Anything an agent needs to remember between firings goes through `$ALFRED_HOME/state/<agent>/*.json`.
 - ❌ Cold start cost. ~1-2s of Python import + agent_runner setup per firing. Acceptable at the 20-min cadence.
 
-`ALFRED_HOME` is the runtime root. The core loop is `launchd -> bin/role.py ->
+`ALFRED_HOME` is the runtime root. The core loop is `host scheduler -> bin/role.py ->
 lib/agent_runner.py -> claude/codex/gh/slack`. Optional companion tools can
 observe Alfred or read its exported state, but they are not part of the runtime
 contract.
@@ -122,12 +122,12 @@ The operator's SSO (which has admin everywhere) is never used by scheduled agent
 
 See [AWS setup](/guides/aws/) for templates.
 
-### 4. Spend caps + fleet-wide poison pill
+### 4. Spend caps + fleet-wide provider-limit block
 
 Two layers:
 
 - **Per-agent per-day caps** in `SpendState(AGENT)`. Tracks turns, cost, success rate. Each agent's runner enforces its own ceiling and self-pauses if exceeded.
-- **Fleet-wide rate-limit block.** When any agent hits Anthropic's `error_rate_limit` or `error_budget`, it calls `set_global_block(hours=1, reason=...)`. Every other agent's `is_globally_blocked()` check at the top of `main()` exits silently for the next hour. Stops the stampede.
+- **Fleet-wide provider-limit block.** When a Claude-backed agent hits `error_rate_limit` or `error_budget`, it calls `set_global_block(hours=1, reason=...)`. Every other agent's `is_globally_blocked()` check at the top of `main()` exits silently for the next hour. Stops the stampede.
 
 ```mermaid
 flowchart TB
@@ -135,7 +135,7 @@ flowchart TB
     gblock{"is_globally_blocked()?"}
     skip["print [AGENT-GLOBAL-BLOCKED]<br/>exit 0, no Slack post"]
     cap{"turns_today over cap?<br/>8+ consecutive failures?"}
-    pause["Slack-post the reason<br/>launchctl bootout this agent"]
+    pause["Slack-post the reason<br/>alfred pause this agent"]
     work["claim issue, run claude -p"]
     rl{"claude returned<br/>error_rate_limit / error_budget?"}
     setblock["set_global_block(hours=1)<br/>writes global-blocked-until.json"]
@@ -176,9 +176,9 @@ See [codename pattern](/concepts/codename-pattern/) for more.
 
 ## What this enables
 
-- **Parallel codename agents on a single Mac**, each with its own IAM, spend cap, and Slack reporting, none stepping on the others.
-- **The whole fleet pausable in seconds** via `launchctl bootout` per-agent, or by keeping your own wrapper around the same launchd calls.
-- **Reboot survival**. macOS restart, WiFi flap, gh API outage: the fleet picks up where it left off on the next firing.
+- **Parallel codename agents on a single host**, each with its own IAM, spend cap, and Slack reporting, none stepping on the others.
+- **The whole fleet pausable in seconds** through `alfred pause`, backed by launchd on macOS and systemd on Linux.
+- **Reboot survival**. Host restart, WiFi flap, gh API outage: the fleet picks up where it left off on the next firing.
 - **Cooperative coordination via GitHub** (the [issue claim state machine](/concepts/state-machine/)): no shared database, no shared filesystem, just labels + structured comments.
 
 ## Read order for new contributors

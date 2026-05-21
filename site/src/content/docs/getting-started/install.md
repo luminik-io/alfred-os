@@ -34,8 +34,8 @@ runtime agents store the bare repo name in `~/.alfredrc` and build
 `GH_ORG/repo` at firing time. The command enables Drake, Lucius, Ras al Ghul,
 and agent-cleanup; assigns the selected repo to each repo-operating agent;
 skips Slack safely; seeds prompt templates into `~/.alfred/prompts/`; creates
-standard GitHub labels on the selected repo; writes
-`launchd/agents.conf`; updates `~/.alfredrc`; runs deploy; and runs doctor.
+standard GitHub labels on the selected repo; writes `launchd/agents.conf`, the
+shared scheduler manifest; updates `~/.alfredrc`; runs deploy; and runs doctor.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
@@ -58,7 +58,8 @@ What it does **not** do (deliberately):
 - Authenticate `gh` / `aws` / `claude`. Interactive flows you should see.
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
-- Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
+- Run `deploy.sh`. That side-effects the host scheduler (`launchd` on macOS,
+  `systemd --user` on Linux); you should know what's about to load.
 - Install an external agent gateway, memory database, MCP server, dashboard, or
   skill bundle. `ALFRED_HOME` is only Alfred's runtime root.
 
@@ -87,7 +88,7 @@ Point Alfred at your fleet's Slack channel and (optionally) AWS:
 
 - [Slack setup](/guides/slack/): create the app, mint the webhook.
 - [AWS setup](/guides/aws/): IAM-per-agent, Secrets Manager.
-- [Claude Code](/guides/claude-code/): Pro vs Max sizing, two-account swap.
+- [Claude Code and Codex](/guides/claude-code/): Pro vs Max sizing, account routing, engine routing.
 
 Then write your first codename agent:
 
@@ -98,5 +99,5 @@ Then write your first codename agent:
 Full list in [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common:
 
 - **`install.sh` stops on an unsupported host**: the apt lane targets Debian/Ubuntu. Other Linux distros need their packages installed by hand; the framework itself is distro-agnostic once the prerequisites are present.
-- **`claude: command not found` from launchd**: the plist's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`.
+- **`claude: command not found` from a scheduled agent**: the scheduler unit's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`.
 - **`gh auth login` browser doesn't open**: use the device-code flow: `gh auth login --hostname github.com --git-protocol https --web`.

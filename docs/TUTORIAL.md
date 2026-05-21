@@ -1,9 +1,9 @@
-# Tutorial: your first launchd-managed agent in 30 minutes
+# Tutorial: your first host-scheduled agent in 30 minutes
 
 End-to-end walkthrough. By the end:
 
 - A new codename agent `Echo` that picks the oldest open issue with a specific label, asks Claude to add a one-line summary as a comment, reports to Slack.
-- That agent firing every 30 minutes via `launchd`, isolated in a per-firing git worktree, claiming the issue via the state machine before posting, with a clean `bash bin/doctor.sh` pass.
+- That agent firing every 30 minutes via launchd on macOS or systemd on Linux, isolated in a per-firing git worktree, claiming the issue via the state machine before posting, with a clean `bash bin/doctor.sh` pass.
 - The framework's mental model, so you can write the next codename without re-reading anything.
 
 Assumes you've completed [`INSTALL.md`](../INSTALL.md): `bash install.sh` has run, `gh auth login` and `claude` are authenticated, `bash deploy.sh && bash bin/doctor.sh` shows `0 passed, 0 failed`.
@@ -160,10 +160,10 @@ if __name__ == "__main__":
 
 ## Step 4: register the agent in agents.conf
 
-Add to `launchd/agents.conf`:
+Add to `launchd/agents.conf`, the shared scheduler manifest:
 
 ```
-my.fleet.echo	echo.py	interval:1800	no
+my.fleet.echo	echo.py	interval:1800	no	my.fleet.echo	Issue summariser
 ```
 
 (`1800` seconds = 30 minutes. `no` because Echo doesn't compile any Java.)
@@ -190,7 +190,7 @@ doctor: 1 passed, 0 failed
 Don't wait 30 minutes. Force a firing:
 
 ```sh
-launchctl kickstart -k "gui/$(id -u)/my.fleet.echo"
+alfred run echo --force
 tail -f /tmp/my.fleet.echo.stdout /tmp/my.fleet.echo.stderr
 ```
 
@@ -209,7 +209,7 @@ Look at your configured fleet channel in Slack: there's the success message.
 Force a second firing immediately:
 
 ```sh
-launchctl kickstart -k "gui/$(id -u)/my.fleet.echo"
+alfred run echo --force
 ```
 
 Output:
@@ -225,18 +225,9 @@ Create another test issue with the `agent:summarise` label and force-fire again.
 ## Step 8: pause + resume
 
 ```sh
-launchctl bootout "gui/$(id -u)" \
-  ~/Library/LaunchAgents/my.fleet.echo.plist
-# … tea …
-launchctl bootstrap "gui/$(id -u)" \
-  ~/Library/LaunchAgents/my.fleet.echo.plist
-```
-
-Or wrap the same `launchctl` calls if you want operator-facing helper commands:
-
-```sh
-pause-agent echo
-resume-agent echo
+alfred pause echo
+# tea
+alfred resume echo
 ```
 
 ## What you just learned
@@ -246,7 +237,7 @@ Every framework primitive Echo uses scales up to a richer agent without changing
 - `with_lock(AGENT)`: host-level mutex prevents concurrent firings.
 - `preflight(PREFLIGHT)`: fail loud and early on missing env / CLIs / auth.
 - `doctor_mode()`: `bash bin/doctor.sh` doesn't burn turns or commit side effects.
-- `is_globally_blocked()`: fleet-wide rate-limit poison pill.
+- `is_globally_blocked()`: fleet-wide Claude-provider-limit block.
 - `SpendState(AGENT)`: per-agent per-day spend tracking.
 - `claim_issue()` / `release_issue()`: issue claim state machine ([STATE_MACHINE.md](STATE_MACHINE.md)).
 - `claude_invoke()`: structured `claude -p` invocation, parses turns/cost/session_id/result.
@@ -271,6 +262,6 @@ For richer agents (write code, open PRs, multi-step prompts, max-turns resume), 
 
 **Slack post returns `True` but you don't see the message.** Webhook cache may be stale. `rm $ALFRED_HOME/state/slack-webhook.cache` and retry.
 
-**`launchctl kickstart` fails with "Could not find specified service."** The plist isn't loaded. `bash deploy.sh` again. The launchctl bootstrap step is idempotent.
+**`alfred run echo --force` says the scheduler unit is missing.** The scheduler unit isn't loaded. `bash deploy.sh` again. The deploy step is idempotent.
 
 **Doctor passes but the agent fails on real firing.** Doctor only verifies preflight. Real firings can fail for runtime reasons (rate limit, gh API timeout, claude error). Check `/tmp/my.fleet.echo.stderr`.

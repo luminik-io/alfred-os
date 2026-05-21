@@ -3,7 +3,7 @@ title: Your first agent
 description: Build Echo, a working Alfred agent, end-to-end in 30 minutes.
 ---
 
-By the end you'll have a codename agent **Echo** that picks the oldest open issue with a specific label, asks Claude for a one-line summary, posts it as an issue comment, and reports to Slack. Fires every 30 minutes via `launchd`, isolated in a per-firing git worktree, claiming the issue via the [state machine](/concepts/state-machine/) before posting.
+By the end you'll have a codename agent **Echo** that picks the oldest open issue with a specific label, asks Claude for a one-line summary, posts it as an issue comment, and reports to Slack. It fires every 30 minutes via the host scheduler, isolated in a per-firing git worktree, claiming the issue via the [state machine](/concepts/state-machine/) before posting.
 
 Condensed companion to [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md). Full agent source at [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred-os/blob/main/examples/bin/echo_summarise.py); copy-paste-ready.
 
@@ -43,7 +43,7 @@ chmod +x bin/echo.py
 Append:
 
 ```
-my.fleet.echo	echo.py	interval:1800	no
+my.fleet.echo	echo.py	interval:1800	no	my.fleet.echo	Issue summariser
 ```
 
 ## 5. Deploy + verify
@@ -60,7 +60,7 @@ Doctor should now report `1 passed, 0 failed` (or `N+1`).
 Don't wait 30 minutes:
 
 ```sh
-launchctl kickstart -k "gui/$(id -u)/my.fleet.echo"
+alfred run echo --force
 tail -f /tmp/my.fleet.echo.std{out,err}
 ```
 
@@ -83,7 +83,7 @@ Check your configured fleet channel in Slack: the success message is there.
 Force a second firing immediately:
 
 ```sh
-launchctl kickstart -k "gui/$(id -u)/my.fleet.echo"
+alfred run echo --force
 ```
 
 Output: `[ECHO-IDLE] no agent:summarise issues`. The first firing transitioned the issue to `agent:done`, which blocks future claims.
@@ -95,7 +95,7 @@ Every framework primitive Echo uses scales up to a richer agent without changing
 - `with_lock(AGENT)`: host-level mutex prevents concurrent firings of the same codename.
 - `preflight(PREFLIGHT)`: fail loud and early on missing env / CLIs / auth.
 - `doctor_mode()`: `bash bin/doctor.sh` doesn't burn turns or commit side effects.
-- `is_globally_blocked()`: fleet-wide rate-limit poison pill.
+- `is_globally_blocked()`: fleet-wide Claude-provider-limit block.
 - `SpendState(AGENT)`: per-agent per-day spend tracking.
 - `claim_issue()` / `release_issue()`: [issue claim state machine](/concepts/state-machine/).
 - `claude_invoke()`: structured `claude -p` invocation, parses turns/cost/session_id/result.

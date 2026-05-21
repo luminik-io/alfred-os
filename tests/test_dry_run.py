@@ -345,14 +345,18 @@ def test_echo_example_dry_run_completes_full_lifecycle_exit_0(tmp_path):
 def test_lucius_runner_dry_run_completes_full_lifecycle_exit_0(tmp_path):
     """Lucius runs pick -> claim -> worktree -> invoke -> push/PR -> release
     with zero host config and exits 0 on the happy path."""
-    proc = _run_example("bin/lucius.py", {"ALFRED_DRY_RUN": "1"}, tmp_path)
+    proc = _run_example(
+        "bin/lucius.py",
+        {"ALFRED_DRY_RUN": "1", "AGENT_CODENAME": "lucius-dry-run-test"},
+        tmp_path,
+    )
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
     assert "would `git worktree add" in out
     assert "would invoke claude" in out
     assert "would `git push" in out
     assert "would `gh pr create" in out
-    assert "Lucius shipped" in out
+    assert "shipped" in out
 
 
 def test_dry_run_writes_no_real_spend_ledger_for_runners(tmp_path):

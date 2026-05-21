@@ -58,9 +58,9 @@ if "--dry-run" in sys.argv:
     set_dry_run(True)
 
 # Codename is operator-overridable. The bin file name keeps the Batman default;
-# the launchd plist EnvironmentVariables can set AGENT_CODENAME to rename the
-# agent at runtime without touching the source. Slack messages use AGENT.title()
-# so a renamed agent renders cleanly.
+# the scheduler unit environment can set AGENT_CODENAME to rename the agent at
+# runtime without touching the source. Slack messages use AGENT.title() so a
+# renamed agent renders cleanly.
 AGENT = os.environ.get("AGENT_CODENAME", "lucius")
 LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
 

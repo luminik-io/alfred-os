@@ -96,7 +96,7 @@ To add a role not in the default set (for example `arsenal`, a deploy-time secur
 2. Append a row to `launchd/agents.conf`:
 
    ```
-   my.fleet.arsenal	arsenal.py	interval:3600	no
+   my.fleet.arsenal	arsenal.py	interval:3600	no	my.fleet.arsenal	Deploy-time security scanner
    ```
 
 3. Run `bash deploy.sh`.

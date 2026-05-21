@@ -77,26 +77,26 @@ Constraints:
 Each codename has:
 
 - **A bin script**: `bin/<role>.py`. Imports from `agent_runner`. ~150-300 lines.
-- **A launchd entry**: one line in `launchd/agents.conf` (label, script, schedule, java flag).
+- **A scheduler entry**: one line in `launchd/agents.conf` (label, script, schedule, Java flag, log stem, role).
 - **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$ALFRED_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your repo guidance file** (`AGENTS.md` or `CLAUDE.md`) documenting role + trigger + scope.
 
-The role implementation lives in `bin/<role>.py` (the filename never changes). The operator-chosen codename flows in at runtime through the launchd plist:
+The role implementation lives in `bin/<role>.py` (the filename never changes). The operator-chosen codename flows in at runtime through the rendered scheduler unit:
 
 ```mermaid
 flowchart TB
     init["alfred-init wizard<br/><i>operator picks codenames</i>"]
     rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
     conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
-    plist["my.fleet.marshall.plist<br/>EnvironmentVariables:<br/><code>AGENT_CODENAME=marshall</code>"]
+    unit["my.fleet.marshall scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=marshall</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
     output["Slack: 'Marshall shipped: ...'<br/>PR title: 'feat(...): ... [Marshall]'<br/>worktree: eng-marshall-..."]
 
     init --> rc
     init --> conf
-    conf -- "render.sh" --> plist
-    plist -- "launchctl bootstrap" --> runner
+    conf -- "render.sh" --> unit
+    unit -- "deploy.sh" --> runner
     rc -. "sourced by shell" .-> runner
     runner --> output
 ```

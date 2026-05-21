@@ -3,7 +3,7 @@ title: Environment variables
 description: Every env var the framework reads, what defaults to what, where each is honoured.
 ---
 
-The framework is env-driven so a fresh user can clone + run without editing source. Every variable listed here is honoured by `agent_runner.py`, `install.sh`, `deploy.sh`, or the rendered launchd plists.
+The framework is env-driven so a fresh user can clone + run without editing source. Every variable listed here is honoured by `agent_runner.py`, `install.sh`, `deploy.sh`, or the rendered scheduler units.
 
 For the operator-config template, see [`.alfredrc.example`](https://github.com/luminik-io/alfred-os/blob/main/.alfredrc.example).
 
@@ -47,7 +47,9 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | `ALFRED_<CODENAME>_CODEX_SANDBOX` | per-agent Codex sandbox | `CODEX_SANDBOX` |
 | `ALFRED_<CODENAME>_CODEX_WRITE` | shortcut for `workspace-write` | `0` |
 
-`bin/alfred engine status/set` persists per-agent engine choices under `$ALFRED_HOME/state/engines/<codename>`.
+Engine values are `claude`, `codex`, or `hybrid`; `both` is accepted as a
+legacy alias for `hybrid`. `bin/alfred engine status/set` persists per-agent
+engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 
 ## Shipped summaries
 
@@ -61,7 +63,7 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 | Var | Used by | Default |
 |---|---|---|
 | `ALFRED_DISABLE_CLAUDE_AUTH_REPAIR` | disables automatic Claude auth refresh attempts | `0` |
-| `CLAUDE_CONFIG_DIR` | `alfred claude` and launchd env | `$HOME/.claude` for primary |
+| `CLAUDE_CONFIG_DIR` | Claude Code auth profile selection | `$HOME/.claude` for primary |
 
 ## Slack
 

@@ -5,13 +5,14 @@ description: install.sh, deploy.sh, doctor.sh, and the alfred operator CLI.
 
 The operator CLI covers the local fleet control surface: install, deploy,
 doctor, starter setup, status, runner-gate enablement, pause/resume, manual
-runs, engine selection, Claude account management, and shipped-work summaries.
+runs, engine selection, Claude/Codex auth checks, Claude account management, and shipped-work summaries.
 
 ## `install.sh`
 
-Fresh-machine bootstrap. Detects macOS, brew-installs CLI deps, npm-installs
-Claude Code, creates `$ALFRED_HOME` + `$WORKSPACE_ROOT`, drops `~/.alfredrc`
-from the template, and appends a source block to your shell rc.
+Fresh-machine bootstrap. Detects macOS or Debian/Ubuntu Linux, installs CLI
+deps through Homebrew or apt, npm-installs Claude Code, creates `$ALFRED_HOME`
+and `$WORKSPACE_ROOT`, drops `~/.alfredrc` from the template, and appends a
+source block to your shell rc.
 
 ```sh
 bash install.sh [--non-interactive] [--skip-brew] [--skip-npm]
@@ -20,9 +21,9 @@ bash install.sh [--non-interactive] [--skip-brew] [--skip-npm]
 ## `deploy.sh`
 
 Syncs `lib/` and `bin/` into `$ALFRED_HOME`. If `launchd/agents.conf` exists,
-it renders plists from `launchd/_template.plist`, installs them under
-`~/Library/LaunchAgents/`, and bootstraps each unpaused job. Without
-`agents.conf`, it performs a framework-only deploy.
+it renders host scheduler units: launchd plists on macOS, systemd user
+services/timers on Linux. Without `agents.conf`, it performs a framework-only
+deploy.
 
 ```sh
 bash deploy.sh
@@ -55,7 +56,9 @@ bash bin/doctor.sh
 
 ## `alfred claude`
 
-Swap which Claude account `claude -p` uses.
+Swap which Claude account `claude -p` uses. The `primary`, `secondary`, and
+`swap` commands set launchd env on macOS. On Linux, set `CLAUDE_CONFIG_DIR` in
+`~/.alfredrc` and restart the relevant systemd user timers.
 
 ```sh
 alfred claude status
@@ -63,6 +66,18 @@ alfred claude primary
 alfred claude secondary
 alfred claude swap
 alfred claude probe
+```
+
+## `alfred codex` and `alfred auth`
+
+Check Codex CLI availability and run tiny provider-auth probes before scheduled
+work starts.
+
+```sh
+alfred codex status
+alfred codex probe
+alfred auth status
+alfred auth probe
 ```
 
 ## `alfred`
@@ -79,6 +94,9 @@ alfred status
 alfred claude status
 alfred claude swap
 alfred claude probe
+alfred codex status
+alfred codex probe
+alfred auth status
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
 alfred shipped --period weekly
@@ -88,10 +106,11 @@ alfred shipped --period weekly
 runner-gate enablement, and role text. `enable` / `disable` update
 `$ALFRED_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
 such as Batman. `engine` persists per-agent Claude/Codex mode under
-`$ALFRED_HOME/state/engines/<codename>`. `status` reports local locks, pauses,
-recent firings, and Batman approval waits. `shipped` reports merged PRs,
-issues, LOC, and model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS`
-or explicit `--repo` values.
+`$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`
+checks Claude and Codex auth surfaces. `status` reports local locks, pauses,
+recent firings, and Batman approval waits. `shipped` reports merged PRs, issues,
+LOC, and model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit
+`--repo` values.
 
 ## State-machine Helpers
 

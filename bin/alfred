@@ -37,9 +37,12 @@ Subcommands today:
                               Persist an engine override in
                               $ALFRED_HOME/state/engines/<agent>.
                               Alias: provider.
+  alfred codex [status|probe] Show Codex CLI availability and run a tiny
+                              non-interactive probe.
+  alfred auth [status|probe]  Check Claude Code and Codex CLI auth surfaces.
   alfred claude [status|primary|secondary|swap|probe]
                               Show or change the Claude account used by
-                              launchd-spawned agents.
+                              scheduled agents.
   alfred status               Show local fleet health, locks, pauses, and
                               approval waits.
   alfred shipped              Summarize merged PRs, issues, LOC, and
@@ -63,6 +66,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -480,6 +484,123 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_engine_roster() -> None:
+    for agent in _engine_agent_codenames():
+        mode = agent_runner.agent_engine(
+            agent,
+            legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,
+            legacy_state_file=(
+                agent_runner.STATE_ROOT / "review-engine" if agent == "rasalghul" else None
+            ),
+        )
+        print(f"engine {agent}: {mode} ({_engine_behavior(mode)})")
+
+
+def _codex_status() -> int:
+    binary = agent_runner.CODEX_BIN
+    binary_path = Path(binary)
+    resolved = str(binary_path) if binary_path.is_absolute() and binary_path.exists() else None
+    if not resolved and not binary_path.is_absolute():
+        resolved = shutil.which(binary)
+    if not resolved:
+        print(f"codex: not found on PATH ({binary})", file=sys.stderr)
+        print("Set CODEX_BIN in ~/.alfredrc or install/sign in to Codex CLI.", file=sys.stderr)
+        return 1
+
+    print(f"codex binary: {resolved}")
+    result = subprocess.run(
+        [resolved, "--version"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    version = (result.stdout or result.stderr).strip()
+    if version:
+        print(f"codex version: {version}")
+    else:
+        print(f"codex version: unavailable (exit {result.returncode})")
+    print("")
+    _print_engine_roster()
+    print("")
+    print("Probe with: alfred codex probe")
+    return 0 if result.returncode == 0 else result.returncode
+
+
+def _probe_codex() -> int:
+    binary = agent_runner.CODEX_BIN
+    binary_path = Path(binary)
+    resolved = str(binary_path) if binary_path.is_absolute() and binary_path.exists() else None
+    if not resolved and not binary_path.is_absolute():
+        resolved = shutil.which(binary)
+    if not resolved:
+        print(f"codex probe: failed; binary not found ({binary})", file=sys.stderr)
+        return 1
+
+    probe_dir = Path.cwd()
+    if not (probe_dir / ".git").exists():
+        probe_dir = _HERE.parent
+    out_dir = Path(tempfile.mkdtemp(prefix="alfred-codex-probe-"))
+    last = out_dir / "last.md"
+    prompt = "Reply with exactly: ALFRED_CODEX_OK"
+    cmd = [
+        resolved,
+        "exec",
+        "--skip-git-repo-check",
+        "--cd",
+        str(probe_dir),
+        "--sandbox",
+        "read-only",
+        "-c",
+        'approval_policy="never"',
+        "--output-last-message",
+        str(last),
+        "-",
+    ]
+    print(f"Probing Codex CLI auth in {probe_dir}")
+    print(f"Probe artifacts: {out_dir}")
+    try:
+        result = subprocess.run(
+            cmd,
+            input=prompt,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        print("Codex probe: failed")
+        print("codex probe timed out after 120s", file=sys.stderr)
+        return 1
+
+    (out_dir / "stdout.txt").write_text(result.stdout or "", encoding="utf-8")
+    (out_dir / "stderr.txt").write_text(result.stderr or "", encoding="utf-8")
+    body = ""
+    if last.exists():
+        body = last.read_text(encoding="utf-8", errors="replace").strip()
+    if result.returncode == 0 and "ALFRED_CODEX_OK" in body:
+        print("Codex probe: ok")
+        print(f"last message: {last}")
+        return 0
+    print("Codex probe: failed")
+    if body:
+        print(f"last message: {body[:500]}")
+    tail = (result.stderr or result.stdout or "")[-800:].strip()
+    if tail:
+        print(tail)
+    return 1
+
+
+def cmd_codex(args: argparse.Namespace) -> int:
+    command = args.codex_command
+    if command in ("status", ""):
+        return _codex_status()
+    if command == "probe":
+        return _probe_codex()
+    print("Usage: alfred codex {status|probe}", file=sys.stderr)
+    return 2
+
+
 def cmd_shipped(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-shipped-summary.py"
     cmd = [sys.executable, str(script), "--period", args.period]
@@ -559,7 +680,7 @@ def _count_launchd_agents() -> int | None:
 
 
 def _claude_status() -> int:
-    print(f"Current routing for launchd-spawned agents: {_current_claude_label()}")
+    print(f"Current routing for scheduled agents: {_current_claude_label()}")
     print("")
     print("Auth dir state:")
     for label, directory in (
@@ -674,6 +795,22 @@ def cmd_claude(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_auth(args: argparse.Namespace) -> int:
+    command = args.auth_command
+    if command in ("status", ""):
+        _claude_status()
+        print("")
+        _codex_status()
+        return 0
+    if command == "probe":
+        claude_rc = _probe_claude_auth()
+        print("")
+        codex_rc = _probe_codex()
+        return 0 if claude_rc == 0 and codex_rc == 0 else 1
+    print("Usage: alfred auth {status|probe}", file=sys.stderr)
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="alfred", description="Alfred operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
@@ -728,6 +865,24 @@ def main(argv: list[str] | None = None) -> int:
         metavar="{status,primary,secondary,swap,probe}",
     )
     p_claude.set_defaults(func=cmd_claude)
+
+    p_codex = sub.add_parser("codex", help="inspect Codex CLI availability/auth")
+    p_codex.add_argument(
+        "codex_command",
+        nargs="?",
+        default="status",
+        metavar="{status,probe}",
+    )
+    p_codex.set_defaults(func=cmd_codex)
+
+    p_auth = sub.add_parser("auth", help="inspect Claude Code and Codex auth surfaces")
+    p_auth.add_argument(
+        "auth_command",
+        nargs="?",
+        default="status",
+        metavar="{status,probe}",
+    )
+    p_auth.set_defaults(func=cmd_auth)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
     p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")

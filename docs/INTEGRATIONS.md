@@ -1,6 +1,6 @@
 # Integrations
 
-Alfred core should stay boring: local Python runners, `launchd` scheduling,
+Alfred core should stay boring: local Python runners, host-scheduler units,
 git worktrees, GitHub CLI, model CLIs, and optional Slack delivery.
 
 Everything else is an integration. Useful integrations are welcome, but they
@@ -88,7 +88,7 @@ Alfred or call read-only commands unless you intentionally build a handoff.
 
 Good boundaries:
 
-- Alfred owns issue claims, worktrees, launchd jobs, state files, and Slack
+- Alfred owns issue claims, worktrees, scheduler units, state files, and Slack
   firing messages.
 - The gateway owns chat behavior, skills, MCP server registration, memory, and
   operator dashboards.

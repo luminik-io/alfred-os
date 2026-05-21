@@ -6,14 +6,14 @@ This document explains why Alfred has the shape it has. Read [`README.md`](READM
 
 ```mermaid
 sequenceDiagram
-    participant launchd as launchd
+    participant scheduler as host scheduler
     participant runner as agent runner
     participant lib as agent runner lib
     participant claude as Claude Code CLI
     participant gh as GitHub CLI
     participant slack as Slack webhook
 
-    launchd->>runner: fire (every N min)
+    scheduler->>runner: fire (every N min)
     runner->>lib: with_lock(AGENT)
     runner->>lib: preflight(spec)
     runner->>lib: SpendState / is_globally_blocked
@@ -39,17 +39,17 @@ Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to
 this repo is:
 
 ```text
-launchd -> bin/role.py -> lib/agent_runner.py -> claude/codex/gh/slack
+host scheduler -> bin/role.py -> lib/agent_runner.py -> claude/codex/gh/slack
 ```
 
 That loop runs without a memory database, MCP server, skill registry, or
 dashboard service. Those companion tools can sit around Alfred, but they stay
-outside the core launchd engineering fleet. See
+outside the core scheduled engineering fleet. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 ## Why this shape
 
-Alfred is built for one operator. One Mac Mini in a closet, one Anthropic Claude Pro / Max subscription, one founder merging the PRs. Every design decision falls out of those three constraints.
+Alfred is built for one operator. One always-on Mac or Debian/Ubuntu host, one Claude Code or Codex CLI account, one founder merging the PRs. Every design decision falls out of those three constraints.
 
 - **No GitHub Actions for the agent loop.** Earlier versions ran each agent as a workflow file (`agent-feature.yml`, `agent-tests.yml`, etc.) that called `anthropic-ai/claude-code-action`. That setup needed a paid Anthropic API key, doubled the spend, and made the Mac's existing Pro subscription dead weight. It was retired on 2026-04-24.
 - **No cloud queue, no shared service.** The fleet writes to plain JSON files in `~/.alfred/state/`. There is no Redis, no SQS, no Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.
@@ -61,7 +61,7 @@ Codenames are Batman side-characters in the shipped defaults: Batman for multi-r
 
 Same codename across repos means "same role applied to that repo's code," not "one agent spans repos." Lucius in `<your-backend-repo>` and Lucius in `<your-frontend-repo>` are two separate processes running the same prompt against different codebases. They never share state.
 
-This is the opposite of the CrewAI / AutoGen design, where a generalist agent decomposes tasks across roles at runtime. Alfred wires the roles at deploy time. The decomposition is the launchd schedule. The negotiation channel is the consumer's Slack channel.
+This is the opposite of the CrewAI / AutoGen design, where a generalist agent decomposes tasks across roles at runtime. Alfred wires the roles at deploy time. The decomposition is the host scheduler. The negotiation channel is the consumer's Slack channel.
 
 Why narrow specialists rather than one general agent: each role gets a different turn budget, a different IAM scope, a different tool list, a different escalation rule, a different failure-mode taxonomy. Lucius is allowed `Read,Edit,Write,Bash,Grep` and 80 turns; Robin gets `Read,Bash` and 30 turns. Generalist prompts that try to cover every case end up with the worst spend profile of all the cases combined.
 
@@ -71,7 +71,7 @@ What this gets you:
 
 - **24/7 unattended operation.** Lucius fires every 20 minutes whether or not the operator is at the keyboard. Bane fires nightly. Gordon or your own monitoring codename posts a morning health brief.
 - **Idempotent firings.** Every firing reads its inputs from scratch (open issues, PR list, file system). If a firing crashes, the next one starts clean. There is no resume protocol to debug.
-- **No babysitter process.** No long-lived agent that has to survive a Mac sleep cycle. `launchd` re-fires whenever the schedule says so.
+- **No babysitter process.** No long-lived agent that has to survive host sleep, reboots, or package updates. The host scheduler re-fires whenever the schedule says so.
 - **Spend predictability.** Each firing has a hard turn cap and a hard timeout. The fleet's worst-case daily cost is bounded by the schedule, not by what the operator is asking for.
 
 What it costs you:
@@ -145,7 +145,7 @@ if spend.state["consecutive_failures"] >= 8:
     return 0
 ```
 
-Beyond per-agent caps, the fleet shares a global block. When any agent's `claude -p` returns `error_rate_limit` or `error_budget` (the Anthropic subscription hit its weekly cap), it writes:
+Beyond per-agent caps, the fleet shares a global block. When a Claude-backed agent's `claude -p` returns `error_rate_limit` or `error_budget` (the Claude provider usage limit was reached), it writes:
 
 ```py
 # lib/agent_runner.py
@@ -213,13 +213,15 @@ alfred claude secondary
 alfred claude primary
 ```
 
-The helper flips the launchd global env var via `launchctl setenv`, so the next
-agent firing uses the selected account. In-flight runs keep their existing auth,
-and interactive Claude sessions keep using the operator's normal shell config.
+On macOS, the helper flips the launchd global env var via `launchctl setenv`, so
+the next agent firing uses the selected account. On Linux, set
+`CLAUDE_CONFIG_DIR` in `~/.alfredrc` and restart the relevant systemd user
+timers. In-flight runs keep their existing auth, and interactive Claude sessions
+keep using the operator's normal shell config.
 
 ## Failure modes and recovery
 
-A Lucius-style feature agent is the canonical example. The exit codes are not real exit codes - they are sentinel strings printed to stdout for the launchd log and `#your-fleet-channel`.
+A Lucius-style feature agent is the canonical example. The exit codes are not real exit codes - they are sentinel strings printed to stdout for the scheduler log and `#your-fleet-channel`.
 
 | Sentinel | When | What the system does |
 |---|---|---|
@@ -229,7 +231,7 @@ A Lucius-style feature agent is the canonical example. The exit codes are not re
 | `[BLOCKED] <reason>` | Claude could not resolve an error. | Slack-post with the reason. Counted as a failure. |
 | `[SILENT]` | No work matched the agent's filter (e.g. no `agent:implement` issues). | Exit 0, no Slack post. The non-event is the signal. |
 | `[LUCIUS-NO-COMMIT]` | `claude -p` returned success but no commit landed. | Look for unstaged changes; if any, salvage as a `do-not-review` draft PR. Otherwise count as failure. |
-| `[LUCIUS-DAILY-CAP]` | Per-agent turn cap exceeded. | Auto-pause the launchd job via `launchctl bootout`. |
+| `[LUCIUS-DAILY-CAP]` | Per-agent turn cap exceeded. | Auto-pause the host scheduler unit through the `alfred pause` scheduler abstraction. |
 | `[LUCIUS-FAIL-STREAK]` | 8 consecutive failures with 0 successes. | Slack-post; agent stays on schedule, but the streak is now visible for the operator to investigate. |
 | `[<AGENT>-GLOBAL-BLOCKED]` | Another agent already tripped the global block. | Exit silently. |
 

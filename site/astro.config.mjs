@@ -38,7 +38,7 @@ const STRUCTURED_DATA = JSON.stringify({
       url: SITE_URL,
       description:
         "A local agent-fleet runtime for solo builders. Claude Code agents " +
-        "scheduled by launchd or systemd, each firing isolated in its own git " +
+        "with optional Codex routing, scheduled by launchd or systemd, each firing isolated in its own git " +
         "worktree, with per-agent IAM and per-day spend caps.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
       softwareHelp: SITE_URL,
@@ -217,8 +217,8 @@ export default defineConfig({
     starlight({
       title: "Alfred",
       description:
-        "Launchd-managed Claude Code agent fleet for solo builders. " +
-        "One Mac, one operator, code shipping while you sleep.",
+        "Local Claude Code and Codex agent fleet for solo builders. " +
+        "One host, one operator, code shipping while you sleep.",
       logo: {
         src: "./src/assets/alfred-logo.png",
         alt: "Alfred logo",
@@ -333,7 +333,7 @@ export default defineConfig({
         {
           label: "Guides",
           items: [
-            { label: "Claude Code", slug: "guides/claude-code" },
+            { label: "Claude Code and Codex", slug: "guides/claude-code" },
             { label: "Slack", slug: "guides/slack" },
             { label: "AWS", slug: "guides/aws" },
             { label: "Skills", slug: "guides/skills" },

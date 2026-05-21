@@ -5,11 +5,10 @@ description: Shipped, in flight, where Alfred is going, and the design boundarie
 
 Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md). The shape:
 
-## Shipped
+## Shipped in v0.2.1
 
 - Framework substrate: preflight, lock, spend, claude_invoke, gh, slack, event-log, commit-trailer, handoff-table.
-- launchd plist template + render.sh + deploy.sh.
-- [Linux support](/guides/linux/): `systemd --user` timers, `systemd/render.sh`, `lib/scheduler.py` host abstraction, and a Debian/Ubuntu apt lane in `install.sh`.
+- macOS launchd plist template + render.sh + deploy.sh.
 - doctor.sh: fleet-wide preflight under `ALFRED_DOCTOR=1`, plus `--dev` mode for dev installs.
 - `alfred claude`: two-account swap helper.
 - [Issue claim state machine](/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
@@ -25,7 +24,14 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - Homebrew formula pinned to the latest public release tarball.
 - This Astro Starlight docs site.
 
-## In flight (next release)
+## Unreleased on main (next release)
+
+- [Linux support](/guides/linux/): `systemd --user` timers, `systemd/render.sh`, `lib/scheduler.py` host abstraction, and a Debian/Ubuntu apt lane in `install.sh`.
+- Host-scheduler operator verbs: `alfred pause`, `alfred resume`, and `alfred run` work across launchd and systemd.
+- Codex and auth diagnostics: `alfred codex status/probe` and `alfred auth status/probe`.
+- Provider auth guardrails for subscription-backed Claude Code / Codex CLI usage.
+
+## In flight after next release
 
 - **Bot token integration** (`xoxb-…`). Unlocks `slack_set_channel_topic()`, threaded `chat.postMessage` for daily-thread routing of `info`-tier messages, reactions API.
 - **Drake-style proactive title-token dedup**. Runner-level guard before invoking the planner.
@@ -33,7 +39,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - **Spend dashboards**. Render a weekly recap from per-agent spend files.
 - **`alfred new-codename` scaffold**. Single command to add a fresh codename agent.
 - **Full OSS Batman execution chain**. The current public Batman is plan-only; approval gates and sequenced PR execution are still future work.
-- **Provider auth guardrails**. Keep the default path subscription-backed via Claude Code / Codex CLI auth, with clearer diagnostics when API-key env vars would change billing behavior.
+- **Per-agent model catalog**. Internal Alfred has a model-routing surface. The OSS version should expose it only after the defaults, billing implications, and docs are clean enough for first-time operators.
 
 ## Beyond engineering: the solo builder's agent OS
 

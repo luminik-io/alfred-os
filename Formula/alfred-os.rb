@@ -13,7 +13,7 @@ class AlfredOs < Formula
   depends_on "awscli"
   depends_on "node"
   depends_on "uv"
-  depends_on :macos # launchd-only for now; see docs/LINUX.md
+  depends_on :macos # Homebrew formula path. Linux uses install.sh apt lane; see docs/LINUX.md.
 
   def install
     # Install the framework files into a libexec subdir so we don't pollute
@@ -50,7 +50,7 @@ class AlfredOs < Formula
         alfred                 # operator CLI, including `alfred claude`
         alfred-init            # interactive fleet configuration wizard
         alfred-install         # one-time fresh-machine setup (brew + npm + dirs + rc)
-        alfred-deploy          # sync lib/+bin/ into $ALFRED_HOME; renders plists when agents.conf exists
+        alfred-deploy          # sync lib/+bin/ into $ALFRED_HOME; renders scheduler units when agents.conf exists
         alfred-doctor          # preflight configured agents under ALFRED_DOCTOR=1
         alfred-label-state     # operator CLI for the issue claim state machine
 
