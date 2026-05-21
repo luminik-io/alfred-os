@@ -7,6 +7,8 @@ This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/
 
 ## TL;DR
 
+Source checkout path:
+
 ```sh
 git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
 cd ~/code/alfred-os
@@ -16,6 +18,23 @@ gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
+
+macOS Homebrew path, if you prefer package-manager installs:
+
+```sh
+brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
+brew install alfred-os
+alfred-install
+exec $SHELL                       # pick up ~/.alfredrc
+gh auth login                     # GitHub
+claude                            # Claude Code first-run auth
+alfred-init                       # choose agents, repos, codenames, Slack
+```
+
+The Homebrew formula installs the latest tagged release and puts the operator
+commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
+`alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
+want `main`, framework edits, or Linux.
 
 Starter fleet for one repo or an explicit comma-separated repo list:
 
