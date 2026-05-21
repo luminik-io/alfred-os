@@ -5,9 +5,7 @@ description: Recent Alfred releases. Full history in CHANGELOG.md.
 
 Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md) on GitHub. It follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Tagged releases are at [github.com/luminik-io/alfred-os/releases](https://github.com/luminik-io/alfred-os/releases).
 
-## Unreleased
-
-What's about to ship. See the [`[Unreleased]`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md#unreleased) section for the live list.
+## 0.3.0 (2026-05-21)
 
 - **Linux support** via `systemd --user` timers, a Debian/Ubuntu apt lane in `install.sh`, systemd unit rendering in `deploy.sh`, and a `lib/scheduler.py` host abstraction behind the `alfred` CLI. See [Linux](/guides/linux/).
 - **`--dry-run` mode**: run a full agent firing lifecycle with every side-effecting boundary stubbed: no LLM call, no spend, no Slack post, no GitHub or git mutation. Works with zero host config. See [Dry-run mode](/getting-started/dry-run/).
@@ -17,6 +15,7 @@ What's about to ship. See the [`[Unreleased]`](https://github.com/luminik-io/alf
 - **`alfred codex status/probe` and `alfred auth status/probe`**: first-class Codex CLI and combined provider-auth diagnostics.
 - **Solo-builder setup cleanup**: `alfred-init.py --repos`, starter-fleet default, prompt seeding, standard GitHub label setup, and Batman visible as an opt-in plan-only coordinator.
 - Docs: a [publishing guide](https://github.com/luminik-io/alfred-os/blob/main/docs/PUBLISHING.md) for maintainers, a rewritten [Linux guide](/guides/linux/), [Codex provider guide](https://github.com/luminik-io/alfred-os/blob/main/docs/CODEX_PROVIDER.md), mermaid diagrams across the concept pages, and this docs site.
+- Fixes: Batman bundle scans stay inside the selected repository scope, and `alfred auth status` now returns nonzero when the Codex CLI status path fails.
 
 ## 0.2.1 (2026-05-12)
 

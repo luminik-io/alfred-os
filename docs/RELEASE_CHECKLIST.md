@@ -5,7 +5,7 @@ Use this before tagging a public Alfred release.
 ## Preflight
 
 - Confirm `VERSION` has the intended version without a leading `v`.
-- Confirm `CHANGELOG.md` has a section for that version and the `[Unreleased]` section only contains future work.
+- Confirm `CHANGELOG.md` has a section for that version and the `Next` section only contains future work.
 - Confirm GitHub Pages is set to workflow publishing, not branch/root publishing:
 
   ```sh

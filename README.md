@@ -234,7 +234,7 @@ The engineering fleet ships today. Content, sales, and ops departments, plus a m
 
 ## Status
 
-**Latest tagged release: v0.2.1.** Current `main` is the next release train and includes Linux/systemd deployment, dry-run, scheduler verbs, Slack reporting, and Claude/Codex engine routing. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, doctor, and isolated worktree execution.
+**Latest release: v0.3.0.** Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
 
 The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
 

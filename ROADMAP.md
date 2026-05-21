@@ -2,7 +2,7 @@
 
 What's shipped, what's next, where Alfred is going, and the design boundaries that stay. Living doc; updated on every release.
 
-## Shipped in v0.2.1
+## Shipped in v0.3.0
 
 The default install ships a working engineering agent fleet. After `bash install.sh && ./bin/alfred-init.py`, an operator has:
 
@@ -10,7 +10,8 @@ The default install ships a working engineering agent fleet. After `bash install
 - `lib/agent_runner.py`: preflight, lock, spend, Claude/Codex engine adapters, gh, slack, event-log, commit-trailer.
 - Issue claim state machine: `agent:in-flight` → `agent:pr-open` → `agent:done` with race resolution + stale-claim sweep.
 - Slack severity routing: `info` / `warn` / `alert`.
-- macOS launchd plist template + render.sh + agents.conf format.
+- Host scheduling through macOS launchd or Linux `systemd --user`, both using the same `agents.conf` format.
+- Dry-run mode for watching a full agent firing with LLM, GitHub, Slack, and git mutations stubbed.
 - `bin/doctor.sh`, `alfred claude`, `deploy.sh`.
 
 **Engineering agents** (Batman codenames by default; renameable per role at install time)
@@ -30,7 +31,8 @@ The default install ships a working engineering agent fleet. After `bash install
 
 **Operator surface**
 - `alfred-init`: interactive and non-interactive installer wizard (Slack webhook, AWS choice, starter/all/custom agent selection, per-role codename, explicit repo selection, prompt seeding, GitHub label setup).
-- `alfred` CLI: `agents / enable / disable / enabled-agents / engine status / engine set`.
+- `alfred` CLI: `agents / enable / disable / enabled-agents / pause / resume / run / engine status / engine set / codex status / codex probe / auth status / auth probe`.
+- AI-assisted install guide and non-interactive `alfred-init.py --repos` path for Claude Code, Codex, or another local assistant.
 - Example state-machine CLI (`examples/bin/label_state.py`): `claim / release / dedup-check / status-issue / repo / sweep-claims`.
 - Pre-push git hook (`examples/git-hooks/pre-push`): refuses pushes that race in-flight agents.
 
@@ -41,14 +43,7 @@ The default install ships a working engineering agent fleet. After `bash install
 - Astro Starlight docs site at `alfred.luminik.io` (env-overridable for forks/custom domains).
 - Homebrew formula pinned to the latest public release tarball.
 
-## Unreleased on main (supported now from `main`, next tagged release)
-
-- **Linux support** via `systemd --user` timers: `systemd/` template + render.sh, `deploy.sh` host detection, `install.sh` Debian/Ubuntu apt lane, and the Linux runbook in [`docs/LINUX.md`](docs/LINUX.md).
-- **Host scheduler abstraction**: `alfred pause` / `resume` / `run` operator verbs work across launchd and systemd through `lib/scheduler.py`.
-- **Codex and auth diagnostics**: `alfred codex status/probe` and `alfred auth status/probe`, so an operator can inspect Claude Code and Codex CLI auth before scheduled firings burn turns.
-- **Provider auth guardrails**: keep the default path subscription-backed through Claude Code / Codex CLI auth, with diagnostics when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` would shift usage toward API billing.
-
-## In flight after next release
+## Next
 
 - **Bot token operations**: `lib/slack_format.py` already supports threaded Block Kit messages when a bot token is configured. Follow-up work: `slack_set_channel_topic()` for fleet status, reactions API for ack-without-replying, and a documented daily-thread routing policy.
 - **Drake-style proactive title-token dedup**: runner-level guard before invoking the planner. Catches "two issues for the same work"; complements the issue-claim state machine which catches "two actors on the same issue."

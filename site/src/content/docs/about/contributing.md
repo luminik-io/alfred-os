@@ -52,7 +52,7 @@ pre-commit install
 
 - Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`.
 - One topic per PR. Stack PRs for related changes.
-- Update `CHANGELOG.md` under `[Unreleased]` for any user-visible change.
+- Update `CHANGELOG.md` under `Next` for any user-visible change.
 - Update `docs/` and `site/` for any operator-visible change.
 - The PR template in [`.github/PULL_REQUEST_TEMPLATE.md`](https://github.com/luminik-io/alfred-os/blob/main/.github/PULL_REQUEST_TEMPLATE.md) has the verification checklist.
 

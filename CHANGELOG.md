@@ -2,7 +2,11 @@
 
 Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Next]
+
+No changes queued yet.
+
+## [0.3.0] - 2026-05-21
 
 ### Added
 
@@ -32,6 +36,11 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
 - Moved Claude account routing fully into `alfred claude`; the standalone helper is no longer shipped.
 - Standardized the public runtime root on `ALFRED_HOME` / `~/.alfred` across code, examples, tests, docs, and the docs site.
+
+### Fixed
+
+- Batman bundle scans now stay inside the selected repository scope instead of broadening across every configured repo.
+- `alfred auth status` now returns nonzero when the Codex CLI status path fails, so scheduled-agent preflight catches missing Codex installs.
 
 ## [0.2.1] - 2026-05-12
 
@@ -165,7 +174,8 @@ Initial public framework extraction.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.2.1...HEAD
+[Next]: https://github.com/luminik-io/alfred-os/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/luminik-io/alfred-os/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/luminik-io/alfred-os/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/luminik-io/alfred-os/compare/0c5d13c673f5954014cb5b5ccf3dc880c9563641...v0.2.0
 [0.1.0]: https://github.com/luminik-io/alfred-os/pull/2
