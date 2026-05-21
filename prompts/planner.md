@@ -218,7 +218,7 @@ If a similar pattern already exists in the repo, name it by `file:line` so the f
 ## Cross-repo impact
 
 - <list any other repos that may need follow-up issues; if none, write "None known">
-- If cross-repo coordination is required, escalate via the cross-repo coordinator (label `agent:cross-repo` on an orchestrator issue) instead of opening parallel PRs.
+- If cross-repo coordination is required, file or update a large-feature issue with `agent:large-feature` and, when there are sibling issues, the shared `agent:bundle:<slug>` label. Let Batman draft the rollout plan instead of opening parallel PRs.
 
 ## Rollback plan
 

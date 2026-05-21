@@ -315,6 +315,8 @@ export default defineConfig({
           items: [
             { label: "What is Alfred?", slug: "" },
             { label: "Install", slug: "getting-started/install" },
+            { label: "AI-assisted install", slug: "getting-started/ai-assisted-install" },
+            { label: "Workspace patterns", slug: "getting-started/workspace-patterns" },
             { label: "Your first agent", slug: "getting-started/tutorial" },
             { label: "Dry-run mode", slug: "getting-started/dry-run" },
           ],

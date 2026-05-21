@@ -209,7 +209,9 @@ The best bridge is additive and boring:
 2. `alfred events export` writes sanitized JSONL from `ALFRED_HOME/state` for
    Hermes dashboards or memory ingestion.
 3. A Hermes skill can create a GitHub issue with `agent:implement` or
-   `agent:large-feature`, then Alfred owns the execution path.
+   `agent:large-feature`, then Alfred owns the GitHub state path. For
+   `agent:large-feature`, public Batman drafts the bundle plan; automatic
+   cross-repo execution remains operator or private-fleet work.
 4. Optional: a Hermes Kanban card can link to the GitHub issue/PR, but the
    GitHub state remains the source of truth for Alfred work.
 
