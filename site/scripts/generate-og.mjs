@@ -5,13 +5,27 @@ import sharp from "sharp";
 const root = resolve(import.meta.dirname, "..");
 const logoPath = resolve(root, "src/assets/alfred-logo.png");
 const outPath = resolve(root, "public/brand/alfred-og.png");
+const fontDir = resolve(root, "node_modules/@fontsource/quicksand/files");
+const fontFamily = "Quicksand, Arial, sans-serif";
+
+async function fontFace(weight) {
+  const fontPath = resolve(fontDir, `quicksand-latin-${weight}-normal.woff2`);
+  try {
+    const font = await readFile(fontPath);
+    return `@font-face{font-family:Quicksand;font-style:normal;font-weight:${weight};src:url(data:font/woff2;base64,${font.toString("base64")}) format("woff2");}`;
+  } catch {
+    return "";
+  }
+}
 
 const logo = await readFile(logoPath);
 const logoData = `data:image/png;base64,${logo.toString("base64")}`;
+const fontFaceCss = (await Promise.all([400, 500, 600, 700].map(fontFace))).filter(Boolean).join("");
 
 const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
+    <style>${fontFaceCss}</style>
     <radialGradient id="blueGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(260 210) rotate(35) scale(450 360)">
       <stop stop-color="#245DFF" stop-opacity="0.45"/>
       <stop offset="1" stop-color="#245DFF" stop-opacity="0"/>
@@ -52,21 +66,22 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
 
   <rect x="54" y="48" width="1092" height="534" rx="34" stroke="url(#stroke)" stroke-width="2"/>
 
+  <text x="1106" y="88" fill="#90A4D8" font-family="${fontFamily}" font-size="18" font-weight="600" text-anchor="end">alfred.luminik.io</text>
+
   <g filter="url(#softShadow)">
     <rect x="92" y="98" width="258" height="258" rx="42" fill="#080D18" stroke="#25314E"/>
     <image href="${logoData}" x="113" y="119" width="216" height="216" preserveAspectRatio="xMidYMid meet"/>
   </g>
 
-  <text x="92" y="414" fill="#90A4D8" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="26" font-weight="700" letter-spacing="0.08em">ALFRED.LUMINIK.IO</text>
-  <text x="92" y="492" fill="#F7FAFF" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="88" font-weight="800">Alfred</text>
-  <text x="96" y="548" fill="#C8D3F5" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="31" font-weight="500">A local AI agent fleet for solo builders.</text>
+  <text x="92" y="466" fill="#F7FAFF" font-family="${fontFamily}" font-size="92" font-weight="700">Alfred</text>
+  <text x="96" y="528" fill="#C8D3F5" font-family="${fontFamily}" font-size="31" font-weight="500">A local AI agent fleet for solo builders.</text>
 
   <g filter="url(#softShadow)">
     <rect x="682" y="112" width="424" height="372" rx="30" fill="url(#panel)" stroke="#2D3B5D"/>
-    <text x="724" y="174" fill="#F7FAFF" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="34" font-weight="760">Run a local agent fleet</text>
-    <text x="724" y="216" fill="#B9C7EA" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="500">from one machine you own.</text>
+    <text x="724" y="174" fill="#F7FAFF" font-family="${fontFamily}" font-size="34" font-weight="700">Run a local agent fleet</text>
+    <text x="724" y="216" fill="#B9C7EA" font-family="${fontFamily}" font-size="24" font-weight="500">from one machine you own.</text>
 
-    <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="23" font-weight="650">
+    <g font-family="${fontFamily}" font-size="23" font-weight="600">
       <rect x="724" y="262" width="318" height="46" rx="23" fill="#13213D" stroke="#314676"/>
       <circle cx="750" cy="285" r="7" fill="#47D18C"/>
       <text x="770" y="293" fill="#E8EEFF">GitHub issue claimed</text>
@@ -81,7 +96,7 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
     </g>
   </g>
 
-  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="22" font-weight="700">
+  <g font-family="${fontFamily}" font-size="22" font-weight="700">
     <rect x="683" y="512" width="126" height="42" rx="21" fill="#0E172A" stroke="#304164"/>
     <text x="714" y="540" fill="#B9C7EA">Claude</text>
     <rect x="825" y="512" width="111" height="42" rx="21" fill="#0E172A" stroke="#304164"/>
