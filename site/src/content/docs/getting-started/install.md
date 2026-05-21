@@ -17,7 +17,28 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-`alfred-init.py` writes the fleet config, runs deploy, and runs doctor. For a framework-only install with no agents configured, run `bash deploy.sh && bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
+Single-repo starter fleet:
+
+```sh
+./bin/alfred-init.py \
+  --non-interactive \
+  --agents starter \
+  --repos your-org/your-repo \
+  --slack-webhook skip
+```
+
+This is the zero-guess path for a solo builder or an AI coding tool setting up
+one repo. It assumes `GH_ORG` is set, `gh auth login` has completed, and
+`claude` has completed first-run auth. The repo owner must match `GH_ORG`; the
+runtime agents store the bare repo name in `~/.alfredrc` and build
+`GH_ORG/repo` at firing time. The command enables Drake, Lucius, Ras al Ghul,
+and agent-cleanup; assigns the selected repo to each repo-operating agent;
+skips Slack safely; seeds prompt templates into `~/.alfred/prompts/`; creates
+standard GitHub labels on the selected repo; writes
+`launchd/agents.conf`; updates `~/.alfredrc`; runs deploy; and runs doctor.
+
+For a framework-only install with no agents configured, run `bash deploy.sh &&
+bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
 
 ## What `install.sh` does
 
@@ -38,9 +59,8 @@ What it does **not** do (deliberately):
 - Create AWS IAM users, secrets, or Slack webhooks. One-time human decisions.
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
-- Install a separate Hermes agent. `ALFRED_HOME` is the Alfred runtime
-  root name. Install Hermes separately only if your fleet uses Hermes skills,
-  MCP, gbrain, canon, or dashboarding.
+- Install an external agent gateway, memory database, MCP server, dashboard, or
+  skill bundle. `ALFRED_HOME` is only Alfred's runtime root.
 
 ## Non-interactive
 
@@ -55,6 +75,11 @@ ALFRED_NONINTERACTIVE=1 \
 ```
 
 Per-stage skips: `--skip-brew`, `--skip-npm`.
+
+For `alfred-init.py`, `--agents starter` means Drake, Lucius, Ras al Ghul, and
+agent-cleanup. Use `--agents all` only when you want every scheduled agent.
+Use `--repos owner/repo` for the common single-repo case. `owner` must match
+`GH_ORG`.
 
 ## After install
 

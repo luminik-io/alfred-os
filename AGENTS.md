@@ -6,7 +6,7 @@ first; this file is the short version those agents need.
 
 ## What this repo is
 
-Alfred OS is the open-source runtime for a fleet of autonomous Claude Code
+Alfred is the open-source runtime for a fleet of autonomous Claude Code
 agents on a single host. The OS scheduler (launchd on macOS, systemd on Linux)
 fires each agent; `lib/agent_runner.py` wraps every firing in a lock,
 preflight, spend cap, and an isolated git worktree. Agents are one Python file

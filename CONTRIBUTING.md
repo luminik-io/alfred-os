@@ -32,7 +32,7 @@ To test a prompt change before letting it run on schedule:
 5. Inspect the debug dump in `/tmp/<agent>-debug-<ts>/` (Lucius writes `prompt.txt` and `result.json` for every firing).
 6. Resume the launchd job when satisfied.
 
-Voice rules are locked. No em-dashes. No "leverage", "unlock", "seamless", "transform", "comprehensive", "robust", "streamline". No fabricated numbers; cite the file or codepath the number came from. The existing CLAUDE.md files are the voice reference. Match them.
+Voice rules are locked. No em-dashes. No "leverage", "unlock", "seamless", "transform", "comprehensive", "robust", "streamline". No fabricated numbers; cite the file or codepath the number came from. The existing `AGENTS.md` files are the voice reference. Match them.
 
 ## Commit messages
 
@@ -65,8 +65,8 @@ bash bin/scrub-check.sh
 
 4. Firing the smallest agent that exercises the changed code path. `hello.py` is good for `slack_post` changes; Bane is good for spend-state changes; Lucius for `make_worktree` changes.
 
-## OSS-readiness pass
+## Public repo hygiene
 
-Open thread. State of the cleanup is tracked. If you spot something that needs fixing (a hardcoded host-specific path, a doc that points at a private URL, a stale TODO), open a small PR rather than asking. Drive-by fixes are the easiest contribution to land.
+If you spot something that needs fixing (a hardcoded host-specific path, a doc that points at a private URL, a stale TODO), open a small PR with the smallest useful change. Drive-by fixes are the easiest contribution to land.
 
 Before opening a release PR, run `bash bin/scrub-check.sh` locally and follow [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). The scrub check is also wired into CI.

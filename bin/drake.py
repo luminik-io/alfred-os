@@ -4,7 +4,8 @@
 Reads specs + roadmap + code-reality, identifies the next well-scoped gap, and
 files GitHub issues that the implement agent (default: Lucius) can pick up. The
 dedup gate, scope rules, and issue template all live in the prompt at
-${ALFRED_HOME}/prompts/<codename>.md (operator-supplied); this runner is the
+${ALFRED_HOME}/prompts/<codename>.md. `alfred-init` seeds a starter prompt
+there; operators should edit it for their roadmap and stack. This runner is the
 harness that loads the prompt, dispatches a Claude Code subprocess, enforces
 fleet-wide spend / global-block / daily-cap, and reports.
 
@@ -134,7 +135,7 @@ def _build_state_machine_context() -> str:
     return "\n## State-machine snapshot (live)\n\n" + "\n".join(parts) + "\n"
 
 
-# Prompt path: operator drops the planner prompt at ${ALFRED_HOME}/prompts/<codename>.md.
+# Prompt path: alfred-init seeds this file, and the operator can customize it.
 PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
 DAILY_ISSUE_CAP_DEFAULT = 200
 DAILY_ISSUE_CAP = env_int(

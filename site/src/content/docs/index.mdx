@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: A local agent-fleet runtime for solo builders. Claude Code agents scheduled by launchd or systemd, on one machine you own.
+description: A local agent-fleet runtime for solo builders. AI development agents scheduled by launchd or systemd, on one machine you own.
 template: splash
 head:
   - tag: title
     content: "Alfred: the solo builder's agent OS"
 hero:
-  tagline: A framework for Claude Code agents scheduled by launchd or systemd, on one machine you own.
+  tagline: Run a small fleet of Claude Code and Codex agents from one machine you own.
   image:
     file: ../../assets/alfred-logo.png
     alt: Alfred shield logo
@@ -33,9 +33,7 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 
 Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by `launchd`, isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide rate-limit poison pill.
 
-`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`.
-Hermes, gbrain, MCP servers, skills, canon, and dashboards are compatible
-optional integrations, not core requirements.
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, memory database, skill registry, or dashboard service is required.
 
 ```mermaid
 flowchart TB
@@ -78,7 +76,7 @@ flowchart TB
 
 ## Where it's going
 
-The engineering fleet ships today. The harness underneath is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That's the roadmap: Alfred OS as the solo builder's whole agent OS.
+The engineering fleet ships today. The harness underneath is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That's the roadmap: Alfred as the solo builder's whole agent OS.
 
 <CardGrid>
   <Card title="Content" icon="document">Blog, LinkedIn, SEO drafts; site-page generation. Human-in-the-loop on publish.</Card>
@@ -93,7 +91,7 @@ Alfred stays single-operator and local by design. It is not multi-tenant and not
 
 <LinkCard
   title="Install in 30 minutes"
-  description="Fresh-Mac setup: install.sh handles brew + npm + dirs + shell rc + auth checks."
+  description="Fresh-machine setup. The wizard can configure a single-repo starter fleet without manual prompt or label copying."
   href="/getting-started/install/"
 />
 
@@ -117,14 +115,14 @@ Alfred stays single-operator and local by design. It is not multi-tenant and not
 
 <LinkCard
   title="Meet the fleet"
-  description="The default engineering roster: Lucius, Drake, Bane, Ra's al Ghul, and the rest. What each codename does and how work flows between them."
+  description="The starter fleet and the full engineering roster: Lucius, Drake, Bane, Ra's al Ghul, and the rest. What each codename does and how work flows between them."
   href="/concepts/fleet/"
 />
 
 ## Status
 
-Alfred is at v0.2.1. It ships a complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. The framework substrate (`agent_runner`) is stable for the operator's own use; expect rough edges if you fork.
+Alfred is at v0.2.1. It is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, launchd/systemd deployment, doctor, dry-run, Slack reporting, and Claude/Codex engine routing.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that fit the design boundaries get reviewed. Want to take Alfred somewhere new (a new department, a substrate change)? Open a discussion first. Read [Contributing](/about/contributing/) before opening.
+The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
 
 License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).

@@ -36,12 +36,12 @@ export const GET: APIRoute = async ({ site }) => {
     "",
     `> ${summary}`,
     "",
-    "Alfred OS is the open-source framework for running a fleet of autonomous",
-    "Claude Code agents on a single machine you own. The OS scheduler (launchd",
-    "on macOS, systemd on Linux) fires each agent; the harness wraps every",
-    "firing in a lock, preflight, spend cap, and an isolated git worktree. The",
-    "engineering fleet ships today; content, sales, and ops departments are the",
-    "roadmap. Source: https://github.com/luminik-io/alfred-os",
+    "Alfred is the open-source framework for running a local fleet of",
+    "autonomous development agents on a single machine you own. The OS",
+    "scheduler (launchd on macOS, systemd on Linux) fires each agent; the",
+    "harness wraps every firing in a lock, preflight, spend cap, and an",
+    "isolated git worktree. The engineering fleet ships today; content, sales,",
+    "and ops departments are the roadmap. Source: https://github.com/luminik-io/alfred-os",
     "",
   ];
 

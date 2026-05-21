@@ -1,3 +1,8 @@
+@import "@fontsource/quicksand/400.css";
+@import "@fontsource/quicksand/500.css";
+@import "@fontsource/quicksand/600.css";
+@import "@fontsource/quicksand/700.css";
+
 /* Alfred site overrides on top of Starlight defaults.
    Design system: logo-derived navy + brightened brand accent, restrained
    glassmorphism on floating chrome only, flat elevated surfaces everywhere
@@ -40,7 +45,7 @@
   --alfred-alert: #ff5d6c;
   --alfred-ok: #2dd4a7;
 
-  --sl-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --sl-font: "Quicksand", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --sl-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -145,7 +150,7 @@ nav.sidebar .sidebar-content {
 .sidebar ul.top-level > li > details > summary span.large {
   text-transform: uppercase;
   font-size: 0.7rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--sl-color-gray-3);
   font-weight: 600;
 }
@@ -206,19 +211,21 @@ mobile-starlight-toc nav {
 /* ------------------------------------------------------------------ */
 .sl-markdown-content {
   line-height: 1.7;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .sl-markdown-content h1,
 .content-panel h1 {
   font-size: 2.25rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .sl-markdown-content h2 {
   font-size: 1.625rem;
   font-weight: 700;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   margin-top: 2.5rem;
   padding-bottom: 0.3rem;
   border-bottom: 1px solid var(--alfred-border);
@@ -295,6 +302,8 @@ mobile-starlight-toc nav {
   border: 1px solid var(--alfred-border);
   border-radius: 0.5rem;
   padding: 1rem;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 /* Beat astro-mermaid's runtime-injected
@@ -308,6 +317,11 @@ mobile-starlight-toc nav {
    the head config in astro.config.mjs; this is the affordance + the overlay. */
 .sl-markdown-content pre.mermaid[data-processed] {
   cursor: zoom-in;
+}
+
+.sl-markdown-content pre.mermaid[data-processed] svg {
+  max-width: 100%;
+  height: auto;
 }
 
 .mermaid-zoom-overlay {
@@ -399,15 +413,47 @@ mobile-starlight-toc nav {
 
 .hero {
   position: relative;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .hero h1 {
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--sl-color-white);
+}
+
+.hero .stack,
+.hero .copy {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hero .copy > *,
+.hero .tagline {
+  max-width: min(100%, 50ch);
 }
 
 .hero .actions a.primary {
   box-shadow: 0 10px 24px -10px var(--alfred-accent-glow);
+}
+
+@media (max-width: 50rem) {
+  .hero {
+    overflow-x: hidden;
+  }
+
+  .hero > img,
+  .hero > .hero-html {
+    max-width: 100%;
+  }
+
+  .hero .tagline {
+    max-width: 32ch;
+  }
+
+  .hero .actions {
+    max-width: 100%;
+  }
 }
 
 /* ------------------------------------------------------------------ */

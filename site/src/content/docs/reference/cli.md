@@ -3,9 +3,9 @@ title: Operator CLI
 description: install.sh, deploy.sh, doctor.sh, and the alfred operator CLI.
 ---
 
-The public framework keeps the operator CLI intentionally small. Fleet-specific
-wrappers can add richer status, logs, pause, resume, and metrics commands on
-top of these stable primitives.
+The operator CLI covers the local fleet control surface: install, deploy,
+doctor, starter setup, status, runner-gate enablement, pause/resume, manual
+runs, engine selection, Claude account management, and shipped-work summaries.
 
 ## `install.sh`
 
@@ -27,6 +27,22 @@ it renders plists from `launchd/_template.plist`, installs them under
 ```sh
 bash deploy.sh
 ```
+
+## `bin/alfred-init.py`
+
+Configures the scheduled fleet after the base install.
+
+```sh
+./bin/alfred-init.py
+./bin/alfred-init.py --non-interactive --agents starter --repos owner/repo --slack-webhook skip
+```
+
+`--agents` accepts `starter`, `all`, or comma-separated codenames. `starter`
+enables Drake, Lucius, Ras al Ghul, and agent-cleanup. `--repos` scopes every
+enabled repo-operating agent to explicit repos and is required for safe
+non-interactive setup when more than one repo is visible. The repo owner must
+match `GH_ORG`; shipped agents store bare repo names and build `GH_ORG/repo`
+when they fire.
 
 ## `bin/doctor.sh`
 
@@ -51,8 +67,8 @@ alfred claude probe
 
 ## `alfred`
 
-Minimal runner-gate CLI. Installed into `$ALFRED_HOME/bin/alfred` by
-`deploy.sh` and symlinked to `~/.local/bin/alfred`.
+Fleet-control CLI. Installed into `$ALFRED_HOME/bin/alfred` by `deploy.sh` and
+symlinked to `~/.local/bin/alfred`.
 
 ```sh
 alfred agents

@@ -273,6 +273,11 @@ STANDARD_LABELS: list[tuple[str, str, str]] = [
         "ff6b00",
         "Multi-repo feature; picked up as a bundle by Batman.",
     ),
+    (
+        "done-already",
+        "0e8a16",
+        "Issue was already implemented before Alfred picked it up.",
+    ),
 ]
 
 

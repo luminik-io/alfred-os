@@ -8,6 +8,12 @@ import mermaid from "astro-mermaid";
 // Default URL assumes the public custom domain. Forks can override these with
 // ALFRED_OS_SITE_URL / ALFRED_OS_SITE_BASE when deploying under a project path.
 const SITE_URL = process.env.ALFRED_OS_SITE_URL ?? "https://alfred.luminik.io";
+const SITE_BASE = process.env.ALFRED_OS_SITE_BASE ?? "/";
+/** @param {string} path */
+const withBase = (path) =>
+  `${SITE_BASE.replace(/\/$/, "")}/${path.replace(/^\//, "")}`.replace(/\/{2,}/g, "/");
+/** @param {string} path */
+const siteAssetUrl = (path) => new URL(withBase(path), SITE_URL).href;
 
 // JSON-LD structured data, injected on every page. WebSite + SoftwareApplication
 // describe the project itself (not the individual page), so a site-wide graph
@@ -21,13 +27,12 @@ const STRUCTURED_DATA = JSON.stringify({
       name: "Alfred",
       url: SITE_URL,
       description:
-        "Documentation for Alfred OS, the open-source runtime for a fleet of " +
-        "autonomous Claude Code agents on a single machine you own.",
+        "Documentation for Alfred, the open-source runtime for a local fleet " +
+        "of autonomous development agents on a single machine you own.",
     },
     {
       "@type": "SoftwareApplication",
       name: "Alfred",
-      alternateName: "Alfred OS",
       applicationCategory: "DeveloperApplication",
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
@@ -187,7 +192,7 @@ const MERMAID_ZOOM_SCRIPT = `
 
 export default defineConfig({
   site: SITE_URL,
-  base: process.env.ALFRED_OS_SITE_BASE ?? "/",
+  base: SITE_BASE,
   trailingSlash: "ignore",
   integrations: [
     // astro-mermaid must run before starlight: it rewrites ```mermaid fenced
@@ -212,13 +217,13 @@ export default defineConfig({
     starlight({
       title: "Alfred",
       description:
-        "Launchd-managed Claude Code agent fleet for solo founders. " +
+        "Launchd-managed Claude Code agent fleet for solo builders. " +
         "One Mac, one operator, code shipping while you sleep.",
       logo: {
         src: "./src/assets/alfred-logo.png",
         alt: "Alfred logo",
       },
-      favicon: "/favicon.png",
+      favicon: withBase("/favicon.png"),
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/luminik-io/alfred-os" },
       ],
@@ -242,14 +247,42 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image",
-            content: "https://alfred.luminik.io/brand/alfred-og.png",
+            content: siteAssetUrl("/brand/alfred-og.png"),
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:width",
+            content: "1200",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:height",
+            content: "630",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:alt",
+            content: "Alfred, a local AI agent fleet for solo builders.",
           },
         },
         {
           tag: "meta",
           attrs: {
             name: "twitter:image",
-            content: "https://alfred.luminik.io/brand/alfred-og.png",
+            content: siteAssetUrl("/brand/alfred-og.png"),
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image:alt",
+            content: "Alfred, a local AI agent fleet for solo builders.",
           },
         },
         {
@@ -263,7 +296,7 @@ export default defineConfig({
           tag: "link",
           attrs: {
             rel: "apple-touch-icon",
-            href: "/apple-touch-icon.png",
+            href: withBase("/apple-touch-icon.png"),
           },
         },
         {

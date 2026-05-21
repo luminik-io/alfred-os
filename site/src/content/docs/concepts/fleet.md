@@ -24,6 +24,7 @@ flowchart LR
     end
 
     drake["drake<br/><i>planner · every 2h</i>"]
+    batman["batman<br/><i>cross-repo coordinator · opt-in</i>"]
     lucius["lucius<br/><i>feature-dev · every 20m</i>"]
     bane["bane<br/><i>test-coverage · every 4h</i>"]
     rasalghul["rasalghul<br/><i>code-review · every 30m</i>"]
@@ -34,6 +35,7 @@ flowchart LR
     automerge["automerge<br/><i>squash-merge · every 15m</i>"]
 
     drake -- "files" --> issues
+    batman -- "plans bundles" --> issues
     robin -- "triages" --> issues
     issues -- "claim_issue" --> lucius
     lucius -- "transition_to=pr-open" --> prs
@@ -47,15 +49,18 @@ flowchart LR
     huntress -- "smoke-test fails" --> robin
     gordon -- "drift / Sentry" --> slack
 
-    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & automerge -. "status" .-> slack
+    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & batman & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-The loop closes on itself: Drake files work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. The operator's only required action is merging (or letting automerge merge) and labelling issues `agent:implement`.
+The loop closes on itself: Drake files work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Batman is opt-in for multi-repo bundle planning. The operator's first required action is usually just labelling issues `agent:implement` and reviewing PRs before merge.
 
 ## The default roster
 
 Schedules are sensible defaults; override per-agent in `agents.conf`.
+
+The installer starts with a smaller recommended fleet: Drake, Lucius, Ras al
+Ghul, and agent-cleanup. Pick `all` only when you want the full roster.
 
 ### Specialist agents
 
@@ -63,6 +68,7 @@ Schedules are sensible defaults; override per-agent in `agents.conf`.
 |---|---|---|---|
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
+| **batman** | cross-repo coordinator | every 1 h, opt-in | Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a bundle plan. OSS ships this as plan-only; custom fleets can layer approval and execution on top. |
 | **bane** | test-coverage | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
 | **rasalghul** | code-review | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
 | **nightwing** | review-fix | every 45 min | Lands fixes for P0/P1 reviewer comments (CodeRabbit, Codex, rasalghul) on `agent:authored` PRs. |
@@ -100,7 +106,7 @@ The primitives in `lib/agent_runner.py` cover the common patterns: lock, preflig
 
 ## Roadmap categories
 
-The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and is out of scope for the v0.2 engineering release. PRs proposing individual agents in these categories are welcome.
+The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-operator.
 
 ## See also
 

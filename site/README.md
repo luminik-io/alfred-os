@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the URL Astro prints (default `http://localhost:4321/alfred-os/`).
+Open the URL Astro prints (default `http://localhost:4321/`).
 
 ## Build
 
@@ -21,7 +21,7 @@ Output in `dist/`.
 
 ## Deploy
 
-CI deploys on push to `main` via `.github/workflows/site.yml`. Output served at `https://luminik-io.github.io/alfred-os/`.
+CI deploys on push to `main` via `.github/workflows/site.yml`. Output is served at `https://alfred.luminik.io/`.
 
 ## Override the site URL
 

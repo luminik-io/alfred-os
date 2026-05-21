@@ -20,6 +20,7 @@ The default install ships a working engineering agent fleet. After `bash install
 **Engineering agents** (Batman codenames by default; renameable per role at install time)
 - `lucius`: feature dev (picks `agent:implement` issues, opens PRs).
 - `drake`: issue planner (files `agent:implement` issues from specs / roadmap).
+- `batman`: opt-in cross-repo coordinator (plans `agent:large-feature` bundles in OSS).
 - `bane`: test coverage (writes tests for low-coverage changed files).
 - `rasalghul`: multi-axis PR review.
 - `nightwing`: review-fix (lands P0/P1 fixes on `agent:authored` PRs).
@@ -32,7 +33,7 @@ The default install ships a working engineering agent fleet. After `bash install
 - `agent-morning-brief`, `fleet-recap`: Slack digest cron.
 
 **Operator surface**
-- `alfred-init`: interactive installer wizard (Slack webhook, AWS choice, agent selection, per-role codename, repo selection).
+- `alfred-init`: interactive and non-interactive installer wizard (Slack webhook, AWS choice, starter/all/custom agent selection, per-role codename, explicit repo selection, prompt seeding, GitHub label setup).
 - `alfred` CLI: `agents / enable / disable / enabled-agents / engine status / engine set`.
 - Example state-machine CLI (`examples/bin/label_state.py`): `claim / release / dedup-check / status-issue / repo / sweep-claims`.
 - Pre-push git hook (`examples/git-hooks/pre-push`): refuses pushes that race in-flight agents.
@@ -51,11 +52,14 @@ The default install ships a working engineering agent fleet. After `bash install
 - **`claim_pr` / `release_pr`**: extend the state machine to PR-level work (review-fix agents that race to land patches on the same PR).
 - **Spend dashboards**: render a weekly recap (turns, cost, success rate per agent) for `fleet-recap`.
 - **`alfred new-codename` scaffold**: single command to add a fresh codename agent (script template + agents.conf entry + label registration).
-- **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional, not a required Hermes dependency.
+- **Full OSS Batman execution chain**: approval gate, sequenced worktrees, per-repo PR chain, and cleanup. The current OSS Batman is deliberately plan-only; private fleets can layer execution on top today.
+- **Provider auth guardrails**: keep the default path subscription-backed through Claude Code / Codex CLI auth, with diagnostics when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` would shift usage toward API billing.
+- **MCP server adapter**: expose read-only fleet status plus carefully scoped `claim_issue` / `release_issue` / `slack_post(severity)` tools so other Claude Code consumers can call them directly. This should use `${ALFRED_HOME}` and remain optional.
+- **Optional Hermes bridge**: Hermes now has persistent `/goal`, gateway-driven cron, Kanban worker profiles, MCP, skills, memory, and dashboards. Alfred should integrate by exposing status/events and by accepting GitHub issue/label handoffs, not by making Hermes a setup dependency or letting Hermes mutate Alfred worktrees/state directly.
 
 ## Beyond engineering: the solo builder's agent OS
 
-The default install ships the **engineering fleet**. But the harness underneath it (`claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern) is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
+The default install ships the **engineering fleet**. But the harness underneath it (`claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern) is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred as the solo builder's whole agent OS, one department at a time.
 
 Each department is its own integration surface (Apollo / Reddit / Gmail / Stripe / Sentry SDKs) and its own per-codename prompt design. They land incrementally, one codename per PR, with prompt + tests + docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
@@ -85,7 +89,7 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 
 - **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` on your own subscription. It does not run inference for you.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script. The core stays lean.
 

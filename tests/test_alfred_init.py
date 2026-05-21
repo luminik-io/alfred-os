@@ -56,10 +56,12 @@ def test_discover_agents_finds_known_codenames(tmp_path, init_mod):
     bin_dir.mkdir()
     (bin_dir / "lucius.py").write_text("# lucius runner\n")
     (bin_dir / "drake.py").write_text("# drake runner\n")
+    (bin_dir / "batman.py").write_text("# batman runner\n")
     (bin_dir / "unknown.py").write_text("# not in catalog\n")
     out = init_mod.discover_agents(bin_dir)
     assert "feature_dev" in out
     assert "planner" in out
+    assert "cross_repo_coordinator" in out
     # Catalog order is preserved: feature_dev < planner.
     assert out.index("feature_dev") < out.index("planner")
 
@@ -164,6 +166,14 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
     assert "alfred.robin-hood\tlucius.py" in text
 
 
+def test_render_agents_conf_includes_batman(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
+    text = init_mod.render_agents_conf(state)
+    assert (
+        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo coordinator" in text
+    )
+
+
 # ---------------------------------------------------------------------------
 # env_assignments_for
 # ---------------------------------------------------------------------------
@@ -179,7 +189,21 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     out = init_mod.env_assignments_for(state)
     assert out["GH_ORG"] == "acme"
     assert out["AGENT_CODENAME_FEATURE_DEV"] == "lucius"
-    assert out["ALFRED_LUCIUS_REPOS"] == "acme/foo,acme/bar"
+    assert out["ALFRED_LUCIUS_REPOS"] == "foo,bar"
+
+
+def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("cross_repo_coordinator",),
+        repos={"cross_repo_coordinator": ["acme/api", "acme/web"]},
+    )
+    out = init_mod.env_assignments_for(state)
+    assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "batman"
+    assert out["BATMAN_SCAN_REPOS"] == "api,web"
+    assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
+    assert "ALFRED_BATMAN_REPOS" not in out
 
 
 def test_env_assignments_slack_env(init_mod, tmp_path):
@@ -277,6 +301,15 @@ def test_resolve_repo_selection_by_number(init_mod):
 def test_resolve_repo_selection_by_name(init_mod):
     repos = ["acme/api", "acme/web"]
     assert init_mod._resolve_repo_selection("acme/web", repos) == ["acme/web"]
+    assert init_mod._resolve_repo_selection("web", repos) == ["acme/web"]
+
+
+def test_resolve_repo_selection_allows_external_repo_for_cli(init_mod):
+    repos = ["acme/api"]
+    out = init_mod._resolve_repo_selection(
+        "other/web,worker", repos, gh_org="acme", allow_external=True
+    )
+    assert out == ["other/web", "acme/worker"]
 
 
 def test_resolve_repo_selection_drops_garbage(init_mod):
@@ -348,6 +381,163 @@ def test_apply_config_overrides(init_mod, tmp_path):
     assert state.aws_agent_profiles == {"huntress": "huntress-cron"}
     assert "feature_dev" in state.enabled_roles
     assert "planner" in state.enabled_roles
+
+
+def test_pick_agents_keeps_configured_agents(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    state.enabled_roles = ["bug_triage"]
+    init_mod.step_5_pick_agents(
+        state,
+        ["feature_dev", "planner", "bug_triage"],
+        agents_arg=None,
+        non_interactive=True,
+    )
+    assert state.enabled_roles == ["bug_triage"]
+
+
+def test_repos_arg_rejects_repos_outside_gh_org(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+        gh_org="acme",
+    )
+    state.enabled_roles = ["feature_dev"]
+    state.repos = ["acme/api"]
+    with pytest.raises(SystemExit):
+        init_mod.step_7_repos(
+            state,
+            repos_arg="other/api",
+            non_interactive=True,
+        )
+
+
+def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod):
+    repo_root = tmp_path / "repo"
+    bin_dir = repo_root / "bin"
+    prompts_dir = repo_root / "prompts"
+    bin_dir.mkdir(parents=True)
+    prompts_dir.mkdir()
+    for name in ["lucius.py", "drake.py", "rasalghul.py", "agent-cleanup.py"]:
+        (bin_dir / name).write_text("# runner\n")
+    for name in ["feature-dev.md", "planner.md", "code-review.md"]:
+        (prompts_dir / name).write_text(f"{name} template\n")
+    (repo_root / "deploy.sh").write_text("#!/bin/sh\n")
+    (repo_root / "launchd").mkdir()
+    (bin_dir / "doctor.sh").write_text("#!/bin/sh\n")
+
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir()
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text("GH_ORG=acme\n")
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setenv("ALFREDRC", str(alfredrc))
+    monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+
+    label_repos: list[str] = []
+    subprocesses: list[tuple[str, ...]] = []
+
+    def fake_have(_name):
+        return True
+
+    def fake_run(cmd, **_kwargs):
+        subprocesses.append(tuple(str(part) for part in cmd))
+        if cmd[:2] == ["claude", "--version"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="1.0.0\n", stderr="")
+        if cmd[:2] == ["claude", "-p"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="hi\n", stderr="")
+        if cmd[:3] == ["gh", "auth", "status"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:3] == ["gh", "repo", "list"]:
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout='[{"nameWithOwner":"acme/niyora"}]', stderr=""
+            )
+        if cmd[:3] == ["gh", "label", "create"]:
+            label_repos.append(cmd[cmd.index("-R") + 1])
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[0] == "bash":
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(init_mod, "have", fake_have)
+    monkeypatch.setattr(init_mod, "run", fake_run)
+
+    rc = init_mod.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--non-interactive",
+            "--agents",
+            "starter",
+            "--repos",
+            "acme/niyora",
+            "--slack-webhook",
+            "skip",
+        ]
+    )
+
+    assert rc == 0
+    generated_rc = alfredrc.read_text()
+    assert "ALFRED_LUCIUS_REPOS=niyora\n" in generated_rc
+    assert "ALFRED_DRAKE_REPOS=niyora\n" in generated_rc
+    assert "ALFRED_RASALGHUL_REPOS=niyora\n" in generated_rc
+    assert "acme/niyora" in set(label_repos)
+    assert (alfred_home / "prompts" / "lucius.md").exists()
+    assert (alfred_home / "prompts" / "drake.md").exists()
+    assert (alfred_home / "prompts" / "rasalghul.md").exists()
+    assert any(cmd[0] == "bash" and cmd[1].endswith("deploy.sh") for cmd in subprocesses)
+    assert any(cmd[0] == "bash" and cmd[1].endswith("doctor.sh") for cmd in subprocesses)
+
+
+def test_starter_roles_and_agents_arg(init_mod):
+    available = ["feature_dev", "planner", "cross_repo_coordinator", "pr_review", "agent_cleanup"]
+    assert init_mod.starter_roles(available) == [
+        "planner",
+        "feature_dev",
+        "pr_review",
+        "agent_cleanup",
+    ]
+    assert init_mod.roles_from_agents_arg("starter", available) == init_mod.starter_roles(available)
+    assert init_mod.roles_from_agents_arg("all", available) == available
+    assert init_mod.roles_from_agents_arg("batman,lucius", available) == [
+        "feature_dev",
+        "cross_repo_coordinator",
+    ]
+
+
+def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):
+    repo_root = tmp_path / "repo"
+    (repo_root / "prompts").mkdir(parents=True)
+    (repo_root / "prompts" / "planner.md").write_text("planner template\n")
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=repo_root,
+    )
+    state.enabled_roles = ["planner"]
+    created = init_mod.seed_prompt_templates(state)
+    assert created == [tmp_path / "alfred" / "prompts" / "drake.md"]
+    assert created[0].read_text() == "planner template\n"
+    created[0].write_text("custom\n")
+    assert init_mod.seed_prompt_templates(state) == []
+    assert created[0].read_text() == "custom\n"
+
+
+def test_write_opt_in_gate_for_batman(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path / "repo",
+    )
+    state.enabled_roles = ["cross_repo_coordinator"]
+    written = init_mod.write_opt_in_gate(state)
+    assert written == ["batman"]
+    assert "batman" in (tmp_path / "alfred" / "state" / "fleet" / "enabled.txt").read_text()
 
 
 # ---------------------------------------------------------------------------

@@ -11,20 +11,23 @@
 | **Security vulnerability** | Do **not** open a public issue. See [`SECURITY.md`](SECURITY.md) for the private-disclosure process. |
 | **Code contribution** | Read [`CONTRIBUTING.md`](CONTRIBUTING.md), open a draft PR. |
 
-## Response time
+## How issues get handled
 
-Weekend-maintained project. Realistic expectations:
+The fastest issues to resolve include an exact command, full output, host OS,
+Alfred version or commit SHA, and whether the failure happens in dry-run mode.
 
-- **Critical security issues**: acknowledged within 72 hours.
-- **Bugs with reproducer**: triaged within a week.
-- **Feature requests**: read but rarely actioned unless aligned with the roadmap (see [`ROADMAP.md`](ROADMAP.md) and the design constraints in [`CONTRIBUTING.md`](CONTRIBUTING.md)).
-- **Questions**: best-effort. The docs are the canonical answer source.
+Priority order:
+
+- **Security issues**: use the private disclosure path in [`SECURITY.md`](SECURITY.md).
+- **Install and setup regressions**: include `bash bin/doctor.sh` output.
+- **Runtime bugs with a reproducer**: include the affected agent, labels, repo, and log excerpt.
+- **Feature requests**: tie the request to the design boundaries in [`ROADMAP.md`](ROADMAP.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- **Questions**: start with the docs and open a focused issue when the docs leave a real gap.
 
 ## Out of scope for support
 
 - **Multi-tenant deployments.** Alfred is single-operator by design.
 - **Hosted SaaS.** Framework, not a service. We won't run agents for you.
-- **Linux fleets.** First-class Linux support is on the roadmap but not shipped. See [`docs/LINUX.md`](docs/LINUX.md) for interim cron / systemd patterns.
 - **Custom Claude Code installs.** If `npm install -g @anthropic-ai/claude-code` doesn't work for you, talk to Anthropic. The CLI is theirs.
 - **Per-fleet skill sets.** [`docs/SKILLS.md`](docs/SKILLS.md) recommends a starter set. What your fleet actually needs is yours to decide.
 - **AWS account setup, IAM policy authoring beyond the templates we ship.** Templates in [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md) cover the common patterns. Deeper AWS work is consultancy territory.
@@ -43,4 +46,6 @@ If none of that resolves it, file an issue with the output of all five.
 
 ## Maintainer time
 
-Solo founder on weekends. PR review is best-effort, 1-3 weeks for non-urgent changes. If you need faster turnaround for a serious bug, label the issue `severity:p0` and explain the impact.
+This is an open-source project with an opinionated scope. Small, reproducible
+bug fixes and docs improvements are the easiest contributions to review. Scope
+expansions should start as a discussion so the design stays coherent.

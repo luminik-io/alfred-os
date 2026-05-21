@@ -13,14 +13,14 @@ One codename agent, one job, 150-300 lines:
 |---|---|
 | **Lucius** (Lucius Fox) | Pick the oldest `agent:implement` issue, claim it, ask Claude to implement, push a branch, open a PR. |
 | **Drake** (Tim Drake) | Read specs + roadmap + code-reality grep, file the next well-scoped `agent:implement` issue. |
+| **Batman** | Plan cross-repo `agent:large-feature` bundles. Opt-in in OSS. |
 | **Bane** | Pick the lowest-coverage actively-changed file, write tests, open a PR. |
 | **Ra's al Ghul** | Multi-axis review on every fresh PR. |
 | **Nightwing** | Apply P0/P1 reviewer comments on `agent:authored` PRs. |
 | **Robin** | Triage new bug-report issues; classify severity, ask for repro info. |
 | **Huntress** | Post-deploy E2E smoke against staging. |
 | **Gordon** | Daily ECS drift + Sentry top-N read. |
-| **Alfred** | Cross-repo coordinator for features that span multiple repos. |
-| **Bat-Signal** | Slack notifier for the other agents. |
+| **agent-cleanup** | Sweep stale claims, locks, transcripts, and worktrees. |
 
 What the pattern is not:
 
@@ -60,7 +60,7 @@ Without the codename, "the test agent" tends to creep: "well, while it's there, 
 
 The shipped examples use Batman side-characters because the original operator liked Batman. Pick anything coherent:
 
-- **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Hermes (notifier), Asclepius (deploy health).
+- **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
 - **Tolkien**: Aragorn, Legolas, Gimli, Gandalf. Watch lore consistency (Gandalf shouldn't review Frodo's PR).
 - **Your favourite anime, novel, podcast, board game.** All work.
@@ -80,7 +80,7 @@ Each codename has:
 - **A launchd entry**: one line in `launchd/agents.conf` (label, script, schedule, java flag).
 - **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$ALFRED_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
-- **A row in your fleet's CLAUDE.md** documenting role + trigger + scope.
+- **A row in your repo guidance file** (`AGENTS.md` or `CLAUDE.md`) documenting role + trigger + scope.
 
 The role implementation lives in `bin/<role>.py` (the filename never changes). The operator-chosen codename flows in at runtime through the launchd plist:
 
@@ -109,6 +109,6 @@ Rename `lucius` to `marshall` and the bin script stays `lucius.py`; only the run
 
 - **Generic codenames**: "agent-1", "feature-bot", "the planner". The cast disappears as a forcing function; prompts bloat.
 - **Code-named-after-tools**: "lucius-grpc", "bane-pytest". Couples the codename to the implementation; can't refactor the tool without renaming the role.
-- **Cross-cast mixing**: Lucius (Batman) + Hermes (Greek) + Bunk (The Wire). Chaotic in Slack.
+- **Cross-cast mixing**: Lucius (Batman) + Athena (Greek) + Bunk (The Wire). Chaotic in Slack.
 - **One codename per repo** instead of per role: "backend-bot", "frontend-bot". Loses the role-as-narrow-specialist forcing function.
 - **Codename as adjective**: "smart-lucius", "fast-lucius". The codename is the specialist; modifiers don't add anything.

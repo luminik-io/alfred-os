@@ -69,7 +69,7 @@ from batman import (  # noqa: E402
 )
 from slack_format import firing_thread_root  # noqa: E402
 
-CODENAME = "batman"
+CODENAME = os.environ.get("AGENT_CODENAME", "batman")
 BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
 
 

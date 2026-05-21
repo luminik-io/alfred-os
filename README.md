@@ -15,13 +15,6 @@ A local engineering-fleet runtime: Claude Code-first agents scheduled by the hos
 
 Docs site: https://alfred.luminik.io
 
-<!-- TODO(operator): a hero GIF or annotated screenshot belongs here, directly
-     under the intro: the single biggest "what is this" signal for someone
-     landing cold. Good candidates: an asciinema recording of
-     `examples/bin/echo_summarise.py --dry-run` (safe to record, no secrets),
-     or a screenshot of `alfred status`. The "Quick start" section below has
-     the dry-run output as text; a recorded version is the visual upgrade. -->
-
 ## Why use it
 
 Alfred is for the operator who wants a small agent fleet working while they
@@ -29,9 +22,9 @@ sleep without turning their product into a hosted agent platform.
 
 - Label a GitHub issue, then let a narrow codename agent draft the plan, write
   the code, open the PR, review the PR, or fix review comments.
-- Run on your own always-on Mac or Linux box and your own Claude Code
-  subscription. No hosted scheduler, no shared queue, no API-key-only model
-  gateway.
+- Run on your own always-on Mac or Linux box and your own Claude Code or Codex
+  subscription-backed CLI auth. No hosted scheduler, no shared queue, no
+  provider API keys required by Alfred.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine.
 
@@ -74,10 +67,6 @@ The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the
 `ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
 for what is stubbed versus real.
 
-<!-- TODO(operator): a screenshot of a real #alfred Slack thread (severity
-     stripe, firing root + replies + close) is the other half of "what it
-     looks like running". Drop it here or in docs/. -->
-
 ### Full install
 
 About 30 minutes from a fresh Mac or Debian/Ubuntu host.
@@ -92,7 +81,31 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
-`alfred-init.py` writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs doctor. For a framework-only install with no agents configured, use `bash deploy.sh && bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
+For a single-repo solo-builder setup that an AI coding tool can run without
+guessing at prompts or labels:
+
+```sh
+./bin/alfred-init.py \
+  --non-interactive \
+  --agents starter \
+  --repos your-org/your-repo \
+  --slack-webhook skip
+```
+
+The starter fleet is Drake, Lucius, Ras al Ghul, and agent-cleanup: plan
+issues, implement labelled issues, review PRs, and clean stale state. Slack is
+optional. The `--repos` owner must match `GH_ORG`; the runtime agents store the
+bare repo name in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
+`alfred-init.py` now seeds prompt templates into
+`~/.alfred/prompts/`, creates the standard GitHub labels on selected repos,
+writes `launchd/agents.conf`, updates `~/.alfredrc`, runs deploy, and runs
+doctor.
+
+For a framework-only install with no agents configured, use `bash deploy.sh &&
+bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See
+[`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the
+smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or
+[`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
 
 Full setup including AWS IAM-per-agent, Slack webhook, and your first scheduled firing: [`BOOTSTRAP.md`](BOOTSTRAP.md). From-zero install with troubleshooting: [`INSTALL.md`](INSTALL.md). On Linux, see [`docs/LINUX.md`](docs/LINUX.md) for the `systemd --user` path.
 
@@ -126,22 +139,19 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 
 Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, the `agent_runner` module wraps each firing in a lock, preflight, spend cap, and isolated worktree, and `claude -p` (or `codex exec`) does the bounded LLM work in a fresh subprocess. Spend is tracked per agent per day. When any agent hits Anthropic's rate limit, every other agent skips for an hour. The framework code never touches the LLM directly: the runner is plain Python, the model writes the code. The [System shape](#system-shape) diagram above traces one firing end to end; [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
 
-## Runtime and integrations
+## Runtime boundary
 
-Alfred core does not install or run Hermes, gbrain, or any other external agent
-gateway. The fleet works with local Python scripts, `gh`, `git`, and the
-configured LLM CLIs.
+Alfred core does not install or run an external agent gateway, memory database,
+skill registry, or dashboard service. The fleet works with local Python scripts,
+`gh`, `git`, and the configured LLM CLIs.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
 where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
-worktrees live. Alfred OS uses `ALFRED_HOME` only for its runtime path.
+worktrees live. Alfred uses `ALFRED_HOME` only for its runtime path.
 
-Hermes, gbrain, MCP servers, canon files, dashboards, and skill packs can be
-useful companion layers, but they are not bundled into Alfred and should not be
-required for a clean OSS install.
-
-See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the bundling policy and
-[`docs/HERMES.md`](docs/HERMES.md) for the optional Hermes recipe.
+Companion layers can be useful around Alfred, but they are not bundled and must
+not be required for a clean OSS install. See
+[`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the boundary.
 
 Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
 
@@ -167,7 +177,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference: pick / claim / claude / act / release / report. |
 | [`examples/bin/label_state.py`](examples/bin/label_state.py) | Operator CLI for the issue claim state machine. |
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
-| [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Draft Homebrew formula. Published after the first public tag has a real tarball checksum. |
+| [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
 
 ## Documentation
@@ -182,8 +192,8 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
-- [Integrations](docs/INTEGRATIONS.md): what Alfred does and does not bundle.
-- [Hermes integration](docs/HERMES.md): optional Hermes, MCP, gbrain, canon, and skills recipe.
+- [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
+- [Hermes integration](docs/HERMES.md): optional operator-layer recipe for teams already using Hermes.
 - [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers. Install, deploy, and operate.
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
@@ -206,7 +216,7 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 
 - **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / optional `codex` / optional Ollama on your own subscription. It does not run a hosted inference service.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / optional `codex` / optional Ollama on your own subscription-backed CLI auth. It does not run a hosted inference service and does not require provider API keys.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
@@ -214,9 +224,9 @@ The engineering fleet ships today. Content, sales, and ops departments, plus a m
 
 ## Status
 
-**v0.2.1**. A complete local engineering-agent fleet for one operator, with the first public launch cleanup pass applied. APIs in `agent_runner` are stable for the operator's own use; expect rough edges if you fork.
+**v0.2.1**. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, launchd/systemd deployment, doctor, dry-run, Slack reporting, and Claude/Codex engine routing.
 
-Maintained on weekends. Issues triaged on a best-effort basis. PRs that match the design boundaries above (see also [`CONTRIBUTING.md`](CONTRIBUTING.md)) get reviewed. Want to take Alfred somewhere new, like a new department or a substrate change? Open a discussion first.
+The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
 
 ## License
 

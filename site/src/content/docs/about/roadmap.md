@@ -15,6 +15,7 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - [Issue claim state machine](/concepts/state-machine/) (`agent:in-flight` → `agent:pr-open` → `agent:done`) with race resolution + stale sweep.
 - [Slack severity routing](/concepts/severity-routing/) (`info` / `warn` / `alert`).
 - `install.sh` + `INSTALL.md` for fresh-machine bootstrap.
+- `alfred-init.py` starter-fleet setup with prompt seeding, selected-repo label setup, and explicit `--repos` for AI-driven installs.
 - Setup walkthroughs: Slack, AWS, Claude Code, skills, Linux, your-first-agent tutorial.
 - [Operator CLI](/reference/cli/): label-state + pre-push hook.
 - CI (pytest + ruff + mypy + shellcheck + scrub-check) on every PR.
@@ -31,10 +32,12 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - **`claim_pr` / `release_pr`**. Extend the state machine to PR-level work.
 - **Spend dashboards**. Render a weekly recap from per-agent spend files.
 - **`alfred new-codename` scaffold**. Single command to add a fresh codename agent.
+- **Full OSS Batman execution chain**. The current public Batman is plan-only; approval gates and sequenced PR execution are still future work.
+- **Provider auth guardrails**. Keep the default path subscription-backed via Claude Code / Codex CLI auth, with clearer diagnostics when API-key env vars would change billing behavior.
 
 ## Beyond engineering: the solo builder's agent OS
 
-The default install ships the engineering fleet. The harness underneath it is department-agnostic. The private fleet Alfred OS was extracted from already runs content, sales, and ops agents on the same substrate. That's the direction: Alfred OS as the solo builder's whole agent OS, one department at a time.
+The default install ships the engineering fleet. The harness underneath it is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That's the direction: Alfred as the solo builder's whole agent OS, one department at a time.
 
 - **Content**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
 - **Sales / SDR**: prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
@@ -42,7 +45,7 @@ The default install ships the engineering fleet. The harness underneath it is de
 - **Finance ops**: invoice generation, bank reconciliation, subscription audit. Drafts only.
 - **Product ops / SRE**: uptime monitoring, release notes, customer-health signals.
 
-Each department is its own integration surface and per-codename prompt design. One codename per PR, with prompt + tests + docs.
+Each department is its own integration surface and per-codename prompt design. One codename per PR, with prompt + tests + docs. Contributions are welcome when they keep the same human-in-the-loop boundaries.
 
 ## On the horizon
 
@@ -63,14 +66,14 @@ These are the design, not missing features.
 
 - **Single operator.** One person, one host, one config. Not multi-tenant, not a hosted SaaS.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` on your own subscription.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
 - **Lean on the platform.** Adopt Anthropic-native capabilities (Agent Teams, the Memory Tool) rather than re-implement them.
 - **Browser automation is per-codename**: installed in the codename's own bin script.
 
 ## Influence
 
 - **Strong**: a working PR for something on the in-flight or roadmap list.
-- **Medium**: a well-scoped feature request with a real use case + proposal.
+- **Medium**: a well-scoped feature request with a real use case and a proposal.
 - **Low**: "would be cool if" comments.
 
 Want to take Alfred somewhere new? Open a discussion first.

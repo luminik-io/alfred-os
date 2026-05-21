@@ -35,16 +35,17 @@ Every box outside the host is reached by stdlib subprocess + HTTP. No persistent
 ## Runtime and Integration Boundary
 
 Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to
-`~/.alfred`. The Hermes agent is not installed or required. The core loop in
+`~/.alfred`. No external agent gateway is installed or required. The core loop in
 this repo is:
 
 ```text
 launchd -> bin/role.py -> lib/agent_runner.py -> claude/codex/gh/slack
 ```
 
-That loop runs without Hermes, gbrain, MCP, skills, or a dashboard service.
-Those companion tools are compatible with Alfred, but they sit outside the
-core launchd engineering fleet. See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+That loop runs without a memory database, MCP server, skill registry, or
+dashboard service. Those companion tools can sit around Alfred, but they stay
+outside the core launchd engineering fleet. See
+[`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 ## Why this shape
 

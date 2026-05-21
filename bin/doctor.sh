@@ -120,6 +120,13 @@ prepend_path_if_dir "/usr/lib/jvm/java-21-openjdk-arm64/bin"
 prepend_path_if_dir "/usr/lib/jvm/default-java/bin"
 export PATH
 
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  echo "doctor.sh: warning: ANTHROPIC_API_KEY is set; Claude Code prefers API keys over Pro/Max subscription auth. Alfred does not require it." >&2
+fi
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  echo "doctor.sh: warning: OPENAI_API_KEY is set; Codex may use API billing instead of ChatGPT-plan auth. Alfred does not require it." >&2
+fi
+
 # macOS does not ship GNU coreutils' `timeout`. Auto-detect a usable
 # implementation; on Linux this finds `timeout`, on a fresh Mac with
 # `brew install coreutils` it finds `gtimeout`, and otherwise falls

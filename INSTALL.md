@@ -16,6 +16,19 @@ claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
+Single-repo starter fleet, suitable for an AI coding tool to run end to end:
+
+```sh
+./bin/alfred-init.py \
+  --non-interactive \
+  --agents starter \
+  --repos your-org/your-repo \
+  --slack-webhook skip
+```
+
+The repo owner must match `GH_ORG`; the runtime agents store the bare repo name
+in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
+
 The rest of this doc explains what each step does and what to do when something fails.
 
 ## What `install.sh` does
@@ -38,8 +51,9 @@ What it does **not** do (deliberately):
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects `launchd`; you should know what's about to load.
 - Touch runtime data outside `~/.alfred`.
-- Install Hermes, gbrain, MCP servers, or skill bundles. Those are optional
-  companion integrations; see [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+- Install an external agent gateway, memory database, MCP server, dashboard, or
+  skill bundle. Those are optional companion integrations; see
+  [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 If you want a non-interactive run:
 
@@ -96,7 +110,9 @@ Claude Code:
 claude
 ```
 
-First-run opens a browser to authenticate against your Anthropic account. Requires Pro or Max. The framework runs `claude -p` against your subscription's quota, no API key.
+First-run opens a browser to authenticate against your Anthropic account. For the default setup, use Claude Code through a Pro or Max subscription login. Alfred runs `claude -p` against the CLI account you authenticated and does not require an Anthropic API key.
+
+If `ANTHROPIC_API_KEY` is set in your shell or `~/.alfredrc`, Claude Code may prefer API billing over subscription auth. Unset it for subscription-backed Alfred runs.
 
 AWS (optional: only if you want Secrets Manager for Slack/credentials):
 
@@ -124,7 +140,26 @@ Run the wizard to choose agents, repos, codenames, Slack settings, and schedules
 ./bin/alfred-init.py
 ```
 
-`alfred-init.py` writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, then runs `bash bin/doctor.sh`.
+Pressing Enter at the agent-selection step chooses the recommended starter
+fleet: Drake, Lucius, Ras al Ghul, and agent-cleanup. Use `all` only when you
+want the full engineering roster. If multiple repos are visible, pick the repo
+numbers explicitly; the wizard no longer silently assigns every repo to every
+agent.
+
+`alfred-init.py` now does the boring setup work for you:
+
+- Writes `launchd/agents.conf` and updates `~/.alfredrc`.
+- Copies starter prompts from `prompts/` into `~/.alfred/prompts/<codename>.md`
+  without overwriting your edits.
+- Creates the standard GitHub labels on the selected repos, including
+  `agent:implement`, `agent:authored`, lifecycle labels, bug-triage labels, and
+  Batman's `agent:large-feature` label.
+- Runs `bash deploy.sh`, then `bash bin/doctor.sh`.
+
+Batman is included in the catalog as an opt-in cross-repo coordinator. In the
+public release it posts bundle plans for `agent:large-feature` work; teams can
+layer their own approval-and-execution chain on top. Enable Batman when you are
+ready for multi-repo planning, not for a first single-repo setup.
 
 ### 7. Framework-only deploy + verify
 
@@ -193,7 +228,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 - [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md): IAM users, scoped policies, Secrets Manager layout.
 - [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md): Pro vs Max, switching accounts, `alfred claude`.
 - [`docs/SKILLS.md`](docs/SKILLS.md): recommended Claude Code skills for an autonomous fleet.
-- [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md): optional Hermes, gbrain, MCP, and dashboard boundaries.
+- [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md): optional companion-tool boundaries.
 - [`docs/STATE_MACHINE.md`](docs/STATE_MACHINE.md): issue claim lifecycle and dedup primitives.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): design rationale.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how to propose changes.

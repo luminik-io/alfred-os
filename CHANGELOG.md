@@ -13,19 +13,24 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - `bin/doctor.sh --dev` flag: dev-install mode treats host-config preflight gaps as non-fatal while still failing hard on code defects. `install.sh` passes `--dev` on Linux.
 - Publishing guide for GitHub Pages workflow mode, release-site verification, and optional custom-domain setup.
 - `alfred claude probe` for a first-class Claude Code auth smoke test.
+- `alfred-init.py --repos`, `--slack-webhook`, and `--skip-label-setup` for AI-driven setup against one repo without guessing through the interactive wizard.
+- Batman is now visible in the `alfred-init` catalog as an opt-in, plan-only cross-repo coordinator.
 
 ### Changed
 
+- `alfred-init.py` now defaults to the recommended starter fleet (Drake, Lucius, Ras al Ghul, agent-cleanup) instead of enabling every discovered agent on Enter or in non-interactive mode.
+- `alfred-init.py` seeds prompt templates into `~/.alfred/prompts/<codename>.md`, creates standard GitHub labels on selected repos, and refuses multi-repo non-interactive setup unless `--repos` is explicit.
+- Robin is correctly described and wired as bug triage in the installer catalog.
 - `alfred-status` and `bin/doctor.sh` now read the `systemd --user` timer roster on Linux, falling back to the same agent-discovery logic the launchd path uses.
 - `docs/LINUX.md` rewritten: Linux is now a supported host, not a set of interim workarounds.
-- Refreshed README, roadmap, docs site status, and release checklist after the v0.2.1 public launch cleanup.
+- Refreshed README, roadmap, docs site status, and release checklist for the public docs launch.
 - Switched the public docs URL to `https://alfred.luminik.io/` and made docs-site links root-relative for the custom domain.
 - Moved Claude account routing fully into `alfred claude`; the standalone helper is no longer shipped.
 - Standardized the public runtime root on `ALFRED_HOME` / `~/.alfred` across code, examples, tests, docs, and the docs site.
 
 ## [0.2.1] - 2026-05-12
 
-Patch release for the first public launch cleanup pass.
+Public launch hardening release.
 
 ### Added
 

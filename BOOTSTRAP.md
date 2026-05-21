@@ -125,6 +125,25 @@ Run the public wizard. It chooses which agents are enabled, which repos they wat
 
 The wizard writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, and runs `bash bin/doctor.sh`.
 
+For a one-repo solo-builder fleet, you can drive the same setup without
+interactive choices:
+
+```sh
+./bin/alfred-init.py \
+  --non-interactive \
+  --agents starter \
+  --repos your-org/your-repo \
+  --slack-webhook skip
+```
+
+This configures Drake, Lucius, Ras al Ghul, and agent-cleanup; seeds starter
+prompts into `~/.alfred/prompts/`; and creates the GitHub labels the runners
+expect. Add Slack later by re-running the wizard or setting
+`SLACK_WEBHOOK_URL` in `~/.alfredrc`.
+
+The repo owner must match `GH_ORG`; the runtime stores bare repo names and
+builds `GH_ORG/repo` during agent firings.
+
 If you only want a framework-only deploy with no scheduled agents yet, skip the wizard and run:
 
 ```sh
