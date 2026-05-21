@@ -162,8 +162,16 @@ plain Python and Bash and have always run on Linux. `tests/` runs the full
 `pytest` suite on Linux CI. If you hit a Linux-specific bug, file an issue.
 Linux is a supported host now, so Linux bugs are real bugs.
 
-One thing that is still macOS-shaped: `alfred claude` switches the Claude
-Code account by setting `CLAUDE_CONFIG_DIR` via `launchctl setenv`, which
-has no systemd equivalent. On Linux, set `CLAUDE_CONFIG_DIR` directly in
-`~/.alfredrc` (it flows into every rendered unit through `agent-launch`), or
-in the unit's `Environment=` block.
+`alfred claude` works on Linux too. It switches the Claude Code account by
+setting `CLAUDE_CONFIG_DIR` in the `systemd --user` manager environment with
+`systemctl --user set-environment`. Already-running services keep the
+environment they started with, so restart the affected timer or service after a
+switch:
+
+```sh
+alfred claude secondary
+systemctl --user restart my.fleet.lucius.timer
+```
+
+If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in
+`~/.alfredrc`; it flows into rendered units through `agent-launch`.

@@ -35,6 +35,7 @@ Includes the parser scope-widening guard used by the bundle planner.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from agent_runner import GH_ORG, GH_REPO_TO_LOCAL, claim_issue, gh_json, release_issue
@@ -80,6 +81,41 @@ def _gh_repo_from_url(url: str) -> str | None:
     return m.group("repo")
 
 
+def _allowed_repo_slugs(tokens: Iterable[str] | None) -> set[str]:
+    """Normalize repo allowlist tokens to ``owner/repo`` strings."""
+    if not tokens:
+        return set()
+    allowed: set[str] = set()
+    for raw in tokens:
+        token = (raw or "").strip()
+        if not token:
+            continue
+        if "/" in token:
+            allowed.add(token.lower())
+            continue
+        repo_slug = next(
+            (
+                github_repo
+                for github_repo, local_repo in GH_REPO_TO_LOCAL.items()
+                if token in {github_repo, local_repo}
+            ),
+            token,
+        )
+        if GH_ORG:
+            allowed.add(f"{GH_ORG}/{repo_slug}".lower())
+    return allowed
+
+
+def _issue_in_allowed_repo(issue: dict, allowed_repos: set[str]) -> bool:
+    if not allowed_repos:
+        return True
+    url = issue.get("url") or ""
+    m = _ISSUE_URL_RE.match(url.strip())
+    if not m:
+        return False
+    return f"{m.group('owner')}/{m.group('repo')}".lower() in allowed_repos
+
+
 @dataclass
 class Bundle:
     """A set of issues sharing the same ``agent:bundle:<slug>`` label,
@@ -107,12 +143,15 @@ class Bundle:
         return f"{repo}-{self.primary_issue['number']}"
 
 
-def list_issues_by_bundle_label(bundle_label: str) -> list[dict]:
+def list_issues_by_bundle_label(
+    bundle_label: str, *, allowed_repos: Iterable[str] | None = None
+) -> list[dict]:
     """Cross-repo search for every open issue carrying the given
     ``agent:bundle:<slug>`` label.
 
-    Returns ``[]`` on missing GH_ORG, no matches, or any gh search
-    failure, never raises.
+    Returns ``[]`` on missing GH_ORG, no matches, or any gh search failure,
+    never raises. ``allowed_repos`` keeps bundle siblings inside the same
+    configured scan scope as the trigger issue.
     """
     if not GH_ORG:
         return []
@@ -134,7 +173,10 @@ def list_issues_by_bundle_label(bundle_label: str) -> list[dict]:
         ],
         default=[],
     )
-    return rows if isinstance(rows, list) else []
+    if not isinstance(rows, list):
+        return []
+    allowed = _allowed_repo_slugs(allowed_repos)
+    return [row for row in rows if _issue_in_allowed_repo(row, allowed)]
 
 
 def claim_bundle(bundle: Bundle, *, codename: str, firing_id: str) -> bool:

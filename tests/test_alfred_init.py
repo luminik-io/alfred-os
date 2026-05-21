@@ -508,6 +508,13 @@ def test_starter_roles_and_agents_arg(init_mod):
         "feature_dev",
         "cross_repo_coordinator",
     ]
+    assert init_mod.roles_from_agents_arg("starter,batman", available) == [
+        "planner",
+        "feature_dev",
+        "pr_review",
+        "agent_cleanup",
+        "cross_repo_coordinator",
+    ]
 
 
 def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):

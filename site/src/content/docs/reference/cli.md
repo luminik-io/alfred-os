@@ -57,8 +57,8 @@ bash bin/doctor.sh
 ## `alfred claude`
 
 Swap which Claude account `claude -p` uses. The `primary`, `secondary`, and
-`swap` commands set launchd env on macOS. On Linux, set `CLAUDE_CONFIG_DIR` in
-`~/.alfredrc` and restart the relevant systemd user timers.
+`swap` commands set launchd env on macOS and `systemd --user` manager env on
+Linux. Restart already-running systemd services after switching.
 
 ```sh
 alfred claude status

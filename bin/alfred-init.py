@@ -449,15 +449,23 @@ def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
         return list(available)
 
     requested = {tok.strip().lower() for tok in value.split(",") if tok.strip()}
-    matched: list[str] = []
+    if "all" in requested:
+        return list(available)
+    starter_tokens = {"starter", "recommended", "default"}
+    starter_requested = bool(requested & starter_tokens)
+    matched: list[str] = starter_roles(available) if starter_requested else []
     for role in available:
+        if role in matched:
+            continue
         default_codename = AGENT_CATALOG[role][0].lower()
         script_stem = default_codename.removesuffix(".py")
         if role.lower() in requested or default_codename in requested or script_stem in requested:
             matched.append(role)
-    unknown = requested - {
-        token for role in matched for token in (role.lower(), AGENT_CATALOG[role][0].lower())
-    }
+    unknown = (
+        requested
+        - {token for role in matched for token in (role.lower(), AGENT_CATALOG[role][0].lower())}
+        - starter_tokens
+    )
     if unknown:
         warn(f"Ignoring unknown --agents value(s): {', '.join(sorted(unknown))}")
     return matched

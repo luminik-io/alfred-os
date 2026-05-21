@@ -209,6 +209,48 @@ def test_parse_plan_from_bundle_multi_uses_per_issue_repo():
 
 
 # ---------------------------------------------------------------------------
+# list_issues_by_bundle_label
+# ---------------------------------------------------------------------------
+
+
+def test_list_issues_by_bundle_label_filters_to_allowed_repos(monkeypatch):
+    import batman as bm
+
+    def fake_gh_json(_cmd, *, default):
+        return [
+            _issue(1, "backend"),
+            _issue(2, "frontend"),
+            _issue(3, "private-lab"),
+        ]
+
+    monkeypatch.setattr(bm, "gh_json", fake_gh_json)
+
+    rows = bm.list_issues_by_bundle_label(
+        "agent:bundle:checkout", allowed_repos=["myorg/backend", "myorg/frontend"]
+    )
+
+    assert [row["number"] for row in rows] == [1, 2]
+
+
+def test_list_issues_by_bundle_label_accepts_local_repo_allowlist(monkeypatch):
+    import batman as bm
+
+    bm.GH_REPO_TO_LOCAL.update({"myorg-backend": "backend"})
+
+    def fake_gh_json(_cmd, *, default):
+        return [
+            _issue(1, "myorg-backend"),
+            _issue(2, "frontend"),
+        ]
+
+    monkeypatch.setattr(bm, "gh_json", fake_gh_json)
+
+    rows = bm.list_issues_by_bundle_label("agent:bundle:checkout", allowed_repos=["backend"])
+
+    assert [row["number"] for row in rows] == [1]
+
+
+# ---------------------------------------------------------------------------
 # claim_bundle / release_bundle (monkeypatched, no network)
 # ---------------------------------------------------------------------------
 

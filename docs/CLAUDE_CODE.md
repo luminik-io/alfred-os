@@ -131,11 +131,11 @@ When the provider usage cap trips mid-firing, the framework treats it as a fleet
 
 Two Anthropic accounts? `alfred claude` points the host-scheduled `claude` at either one without re-authenticating each time.
 
-The mechanism on macOS: launchd-spawned agents honor `CLAUDE_CONFIG_DIR`.
-`alfred claude` flips the launchd global env var between the primary
-`~/.claude/` directory and `~/.claude-secondary/`. Primary is explicit so
-older `~/.claude.json` files cannot accidentally win Claude Code's default
-profile lookup.
+The mechanism: scheduled agents honor `CLAUDE_CONFIG_DIR`. On macOS,
+`alfred claude` writes the launchd global env var. On Linux, it writes the
+`systemd --user` manager environment with `systemctl --user set-environment`.
+Primary is explicit so older `~/.claude.json` files cannot accidentally win
+Claude Code's default profile lookup.
 
 ```sh
 alfred claude status      # which account is active right now
@@ -147,12 +147,11 @@ alfred claude probe       # run a tiny real auth check
 
 Typical usage: run on `primary` until it hits a usage cap or auth issue (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
 
-On Linux there is no `launchctl setenv` equivalent. Set `CLAUDE_CONFIG_DIR` in
-`~/.alfredrc`, then redeploy or restart the relevant systemd user timers:
+On Linux, already-running services keep their current environment. Restart the
+affected timer or service after switching:
 
 ```sh
-CLAUDE_CONFIG_DIR=$HOME/.claude-secondary
-bash deploy.sh
+alfred claude secondary
 systemctl --user restart my.fleet.lucius.timer
 ```
 

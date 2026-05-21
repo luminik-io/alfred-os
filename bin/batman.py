@@ -105,6 +105,11 @@ def _repo_arg_for_scan_token(token: str) -> str | None:
     return f"{GH_ORG}/{repo_slug}" if GH_ORG else None
 
 
+def _scan_repo_args() -> list[str]:
+    repo_args = [_repo_arg_for_scan_token(repo) for repo in _scan_repos()]
+    return [repo for repo in repo_args if repo]
+
+
 def _list_large_features() -> list[dict]:
     """Cross-repo search for open ``agent:large-feature`` issues.
 
@@ -120,8 +125,7 @@ def _list_large_features() -> list[dict]:
     """
     if not GH_ORG:
         return []
-    repo_args = [_repo_arg_for_scan_token(repo) for repo in _scan_repos()]
-    repo_args = [repo for repo in repo_args if repo]
+    repo_args = _scan_repo_args()
     if not repo_args:
         return []
     cmd = ["gh", "search", "issues"]
@@ -175,7 +179,7 @@ def _bundle_for_issue(issue: dict) -> Bundle:
     label = _bundle_label(issue)
     if not label:
         return Bundle(issues=[issue], bundle_label=None)
-    siblings = list_issues_by_bundle_label(label)
+    siblings = list_issues_by_bundle_label(label, allowed_repos=_scan_repo_args())
     by_url = {s.get("url"): s for s in siblings if s.get("url")}
     by_url[issue.get("url")] = issue  # always include the trigger issue
     return Bundle(issues=list(by_url.values()), bundle_label=label)
