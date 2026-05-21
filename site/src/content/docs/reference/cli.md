@@ -18,6 +18,12 @@ source block to your shell rc.
 bash install.sh [--non-interactive] [--skip-brew] [--skip-npm]
 ```
 
+Homebrew installs the same script behind a wrapper:
+
+```sh
+alfred-install [--non-interactive] [--skip-brew] [--skip-npm]
+```
+
 ## `deploy.sh`
 
 Syncs `lib/` and `bin/` into `$ALFRED_HOME`. If `launchd/agents.conf` exists,
@@ -29,6 +35,12 @@ deploy.
 bash deploy.sh
 ```
 
+Homebrew wrapper:
+
+```sh
+alfred-deploy
+```
+
 ## `bin/alfred-init.py`
 
 Configures the scheduled fleet after the base install.
@@ -37,6 +49,12 @@ Configures the scheduled fleet after the base install.
 ./bin/alfred-init.py
 ./bin/alfred-init.py --non-interactive --agents starter --repos owner/repo --slack-webhook skip
 ./bin/alfred-init.py --non-interactive --agents starter --repos owner/api,owner/web --slack-webhook skip
+```
+
+Homebrew wrapper:
+
+```sh
+alfred-init
 ```
 
 `--agents` accepts `starter`, `all`, or comma-separated codenames. `starter`
@@ -53,6 +71,12 @@ with no `launchd/agents.conf`, it reports `0 passed, 0 failed`.
 
 ```sh
 bash bin/doctor.sh
+```
+
+Homebrew wrapper:
+
+```sh
+alfred-doctor
 ```
 
 ## `alfred claude`

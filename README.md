@@ -71,6 +71,8 @@ for what is stubbed versus real.
 
 About 30 minutes from a fresh Mac or Debian/Ubuntu host.
 
+Source checkout path:
+
 ```sh
 git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
 cd ~/code/alfred-os
@@ -80,6 +82,23 @@ gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
+
+macOS Homebrew path, if you prefer package-manager installs:
+
+```sh
+brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
+brew install alfred-os
+alfred-install
+exec $SHELL                       # pick up ~/.alfredrc
+gh auth login                     # GitHub
+claude                            # Claude Code first-run auth
+alfred-init                       # choose agents, repos, codenames, Slack
+```
+
+The Homebrew formula installs the latest tagged release and exposes
+`alfred`, `alfred-init`, `alfred-install`, `alfred-deploy`, and
+`alfred-doctor` on your PATH. Use the source checkout path when you want to
+work from `main` or run the Linux installer.
 
 For a solo-builder setup that an AI coding tool can run without guessing at
 prompts or labels, pass one repo or an explicit comma-separated repo list:

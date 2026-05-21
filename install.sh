@@ -414,6 +414,24 @@ if command -v claude >/dev/null 2>&1; then
   ok "claude on PATH (run \`claude\` once interactively to authenticate)"
 fi
 
+if command -v alfred-deploy >/dev/null 2>&1 && command -v alfred-doctor >/dev/null 2>&1; then
+  DEPLOY_CMD="alfred-deploy"
+  DOCTOR_CMD="alfred-doctor"
+  INIT_CMD="alfred-init"
+  SLACK_DOC="https://alfred.luminik.io/guides/slack/"
+  INSTALL_DOC="https://alfred.luminik.io/getting-started/install/"
+  BOOTSTRAP_DOC="https://github.com/luminik-io/alfred-os/blob/main/BOOTSTRAP.md"
+  LINUX_DOC="https://alfred.luminik.io/guides/linux/"
+else
+  DEPLOY_CMD="bash deploy.sh"
+  DOCTOR_CMD="bash bin/doctor.sh"
+  INIT_CMD="./bin/alfred-init.py"
+  SLACK_DOC="docs/SLACK_SETUP.md"
+  INSTALL_DOC="INSTALL.md"
+  BOOTSTRAP_DOC="BOOTSTRAP.md"
+  LINUX_DOC="docs/LINUX.md"
+fi
+
 cat <<EOF
 
 ${C_GREEN}===> Install complete.${C_OFF}
@@ -429,16 +447,19 @@ Next steps (run them in this order):
        ${C_BLUE}aws configure --profile <agent>-cron${C_OFF}   # only if you want AWS Secrets Manager
 
   3. Create a Slack incoming webhook for your fleet channel:
-       See ${C_BLUE}docs/SLACK_SETUP.md${C_OFF}
+       See ${C_BLUE}${SLACK_DOC}${C_OFF}
 
   4. Deploy the framework + verify (deploy.sh self-detects the host
      scheduler: launchd plists on macOS, systemd --user timers on Linux):
-       ${C_BLUE}bash deploy.sh${C_OFF}
-       ${C_BLUE}bash bin/doctor.sh${C_OFF}
+       ${C_BLUE}${DEPLOY_CMD}${C_OFF}
+       ${C_BLUE}${DOCTOR_CMD}${C_OFF}
 
-  5. Read ${C_BLUE}INSTALL.md${C_OFF} for the full first-fleet walkthrough,
-     then ${C_BLUE}BOOTSTRAP.md${C_OFF} for the deeper-dive operations guide.
-     Linux specifics live in ${C_BLUE}docs/LINUX.md${C_OFF}.
+  5. Configure your first fleet:
+       ${C_BLUE}${INIT_CMD}${C_OFF}
+
+  6. Read ${C_BLUE}${INSTALL_DOC}${C_OFF} for the full first-fleet walkthrough,
+     then ${C_BLUE}${BOOTSTRAP_DOC}${C_OFF} for the deeper-dive operations guide.
+     Linux specifics live in ${C_BLUE}${LINUX_DOC}${C_OFF}.
 
 If anything in this script went sideways, please open an issue at
 https://github.com/luminik-io/alfred-os/issues with the output.
