@@ -318,6 +318,28 @@ def test_claude_primary_sets_systemd_environment(monkeypatch, tmp_path):
     assert ["systemctl", "--user", "set-environment", f"CLAUDE_CONFIG_DIR={primary}"] in calls
 
 
+def test_cli_auth_status_propagates_codex_status_failure(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    launchctl = fake_bin / "launchctl"
+    launchctl.write_text("#!/bin/sh\nexit 0\n")
+    launchctl.chmod(0o755)
+    systemctl = fake_bin / "systemctl"
+    systemctl.write_text("#!/bin/sh\nexit 0\n")
+    systemctl.chmod(0o755)
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "PATH": str(fake_bin),
+    }
+
+    res = _run_cli("auth", "status", env_extra=env)
+
+    assert res.returncode == 1
+    assert "Current routing for scheduled agents" in res.stdout
+    assert "codex: not found" in res.stderr
+
+
 def test_cli_status_reports_local_snapshot(tmp_path):
     alfred = tmp_path / "alfred"
     launchd = alfred / "launchd"
