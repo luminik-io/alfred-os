@@ -414,7 +414,21 @@ if command -v claude >/dev/null 2>&1; then
   ok "claude on PATH (run \`claude\` once interactively to authenticate)"
 fi
 
-if command -v alfred-deploy >/dev/null 2>&1 && command -v alfred-doctor >/dev/null 2>&1; then
+# Homebrew formula installs this script under:
+#   .../Cellar/alfred-os/<version>/libexec/install.sh
+# Key off this script's own location, not ambient PATH. A source checkout may
+# have older Homebrew wrappers on PATH, and in that case the source checkout
+# should still print source-checkout next steps.
+case "$SCRIPT_DIR" in
+  */Cellar/alfred-os/*/libexec)
+    HOMEBREW_FORMULA_INSTALL=1
+    ;;
+  *)
+    HOMEBREW_FORMULA_INSTALL=0
+    ;;
+esac
+
+if [[ "$HOMEBREW_FORMULA_INSTALL" == "1" ]]; then
   DEPLOY_CMD="alfred-deploy"
   DOCTOR_CMD="alfred-doctor"
   INIT_CMD="alfred-init"
