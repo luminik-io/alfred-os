@@ -210,11 +210,10 @@ function html({ fontCss, logoData }) {
           </div>
         </div>
         <div class="hero">
-          <h2>Run Claude Code and Codex as development teammates.</h2>
-          <p>Turn GitHub issues, specs, and PR feedback into autonomous local runs with visible output.</p>
+          <h2>Local agent fleet for Claude Code + Codex.</h2>
+          <p>GitHub issues in. PRs and reviews out.</p>
         </div>
         <div class="chips">
-          <div class="chip">GitHub-native</div>
           <div class="chip">multi-repo</div>
           <div class="chip">clean worktrees</div>
           <div class="chip">PRs + Slack reports</div>
