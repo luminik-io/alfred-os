@@ -68,44 +68,23 @@ function html({ fontCss, logoData }) {
       position: relative;
       width: 1200px;
       height: 630px;
-      padding: 54px 68px;
+      padding: 72px 88px;
       background:
-        radial-gradient(circle at 16% 17%, rgba(42, 110, 255, 0.36), transparent 38%),
-        radial-gradient(circle at 92% 88%, rgba(244, 180, 62, 0.22), transparent 30%),
-        linear-gradient(180deg, #071025 0%, #050913 100%);
+        radial-gradient(circle at 18% 12%, rgba(56, 124, 255, 0.42), transparent 44%),
+        radial-gradient(circle at 88% 92%, rgba(244, 180, 62, 0.18), transparent 40%),
+        linear-gradient(180deg, #081227 0%, #050913 100%);
     }
-    .frame {
-      position: relative;
-      width: 1064px;
-      height: 522px;
-      padding: 58px 64px;
-      overflow: hidden;
-      border: 1px solid rgba(87, 137, 255, 0.72);
-      border-right-color: rgba(244, 180, 62, 0.46);
-      border-radius: 34px;
-      background:
-        linear-gradient(90deg, rgba(9, 20, 43, 0.92), rgba(7, 12, 26, 0.96)),
-        linear-gradient(135deg, rgba(31, 105, 255, 0.10), transparent 55%);
-      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.32);
-    }
-    .frame::before {
+    .canvas::before {
       content: "";
       position: absolute;
       inset: 0;
-      opacity: 0.32;
+      opacity: 0.18;
       background-image:
-        linear-gradient(rgba(94, 137, 239, 0.18) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(94, 137, 239, 0.18) 1px, transparent 1px);
-      background-size: 150px 108px;
-    }
-    .mark-bg {
-      position: absolute;
-      right: 58px;
-      top: 156px;
-      width: 320px;
-      height: 320px;
-      opacity: 0.12;
-      object-fit: contain;
+        linear-gradient(rgba(94, 137, 239, 0.16) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(94, 137, 239, 0.16) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 85%);
+      -webkit-mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 85%);
     }
     .content {
       position: relative;
@@ -118,109 +97,88 @@ function html({ fontCss, logoData }) {
     .brand {
       display: flex;
       align-items: center;
-      gap: 22px;
+      gap: 18px;
     }
-    .logo-tile {
-      display: grid;
-      place-items: center;
-      width: 78px;
-      height: 78px;
-      border: 1px solid #283A62;
-      border-radius: 20px;
-      background: #07111F;
-    }
-    .logo-tile img {
-      width: 62px;
-      height: 62px;
+    .brand img {
+      width: 56px;
+      height: 56px;
       object-fit: contain;
     }
-    h1 {
-      margin: 0;
-      font-size: 58px;
-      line-height: 1;
+    .brand .name {
+      font-size: 34px;
       font-weight: 700;
-      letter-spacing: 0;
+      letter-spacing: 0.5px;
+      color: #F8FBFF;
     }
     .hero {
-      max-width: 830px;
+      max-width: 1000px;
+      margin-top: -8px;
     }
-    .hero h2 {
+    .hero h1 {
       margin: 0;
-      max-width: 840px;
-      color: #F8FBFF;
-      font-size: 56px;
-      line-height: 1.08;
+      font-size: 76px;
+      line-height: 1.04;
       font-weight: 700;
-      letter-spacing: 0;
+      letter-spacing: -0.5px;
+      color: #FFFFFF;
+    }
+    .hero h1 .accent {
+      color: #7BA6FF;
     }
     .hero p {
-      margin: 20px 0 0;
-      max-width: 790px;
-      color: #C7D4F5;
-      font-size: 25px;
-      line-height: 1.35;
-      font-weight: 600;
-    }
-    .path {
-      display: flex;
-      align-items: center;
-      width: fit-content;
-      max-width: 100%;
-      padding: 14px 22px;
-      border: 1px solid #314573;
-      border-radius: 999px;
-      color: #CED9F6;
-      background: #101B32;
-      font-size: 19px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .arrow {
-      margin: 0 16px;
-      color: #5789FF;
-    }
-    .url,
-    .meta {
-      color: #91A8DD;
-      font-size: 18px;
-      font-weight: 700;
+      margin: 28px 0 0;
+      max-width: 880px;
+      color: #BFD0F2;
+      font-size: 28px;
+      line-height: 1.38;
+      font-weight: 500;
     }
     .footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 24px;
+      color: #8FA5D6;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .footer .meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .footer .dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 999px;
+      background: #3F5587;
+      display: inline-block;
     }
   </style>
 </head>
 <body>
   <main class="canvas">
-    <section class="frame">
-      <img class="mark-bg" src="${logoData}" alt="" />
-      <div class="content">
-        <div class="brand">
-          <div class="logo-tile"><img src="${logoData}" alt="" /></div>
-          <div>
-            <h1>Alfred</h1>
-          </div>
-        </div>
-        <div class="hero">
-          <h2>GitHub issues and specs become PRs, reviews, and tests.</h2>
-          <p>Alfred runs Claude Code and Codex locally, in clean worktrees, with Slack reports.</p>
-        </div>
-        <div class="path">
-          <span>issues + specs</span>
-          <span class="arrow">→</span>
-          <span>Claude Code / Codex</span>
-          <span class="arrow">→</span>
-          <span>PR + review</span>
-        </div>
-        <div class="footer">
-          <div class="url">alfred.luminik.io</div>
-          <div class="meta">MIT · Python · macOS/Linux</div>
+    <div class="content">
+      <div class="brand">
+        <img src="${logoData}" alt="" />
+        <span class="name">Alfred</span>
+      </div>
+      <div class="hero">
+        <h1>Autonomous engineering agents,<br /><span class="accent">on your own machine.</span></h1>
+        <p>GitHub issues become pull requests through Claude Code and Codex you already pay for. Scheduled, sandboxed, and reported back to Slack.</p>
+      </div>
+      <div class="footer">
+        <div>alfred.luminik.io</div>
+        <div class="meta">
+          <span>MIT</span>
+          <span class="dot"></span>
+          <span>Python</span>
+          <span class="dot"></span>
+          <span>macOS &amp; Linux</span>
         </div>
       </div>
-    </section>
+    </div>
   </main>
 </body>
 </html>`;
