@@ -63,28 +63,17 @@ function html({ fontCss, logoData }) {
       background: #050913;
       color: #f8fbff;
       font-family: Quicksand, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
     }
     .canvas {
       position: relative;
       width: 1200px;
       height: 630px;
-      padding: 72px 88px;
+      padding: 72px 88px 64px;
       background:
-        radial-gradient(circle at 18% 12%, rgba(56, 124, 255, 0.42), transparent 44%),
-        radial-gradient(circle at 88% 92%, rgba(244, 180, 62, 0.18), transparent 40%),
-        linear-gradient(180deg, #081227 0%, #050913 100%);
-    }
-    .canvas::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      opacity: 0.18;
-      background-image:
-        linear-gradient(rgba(94, 137, 239, 0.16) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(94, 137, 239, 0.16) 1px, transparent 1px);
-      background-size: 60px 60px;
-      mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 85%);
-      -webkit-mask-image: radial-gradient(circle at 50% 50%, black 55%, transparent 85%);
+        radial-gradient(ellipse 720px 540px at 12% 8%, rgba(58, 124, 255, 0.30), transparent 65%),
+        linear-gradient(180deg, #060d1c 0%, #03070f 100%);
     }
     .content {
       position: relative;
@@ -92,91 +81,105 @@ function html({ fontCss, logoData }) {
       height: 100%;
       display: flex;
       flex-direction: column;
+    }
+    .top {
+      display: flex;
+      align-items: center;
       justify-content: space-between;
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: 18px;
+      gap: 16px;
     }
     .brand img {
-      width: 56px;
-      height: 56px;
+      width: 44px;
+      height: 44px;
       object-fit: contain;
     }
-    .brand .name {
-      font-size: 34px;
+    .brand .wordmark {
+      font-size: 28px;
       font-weight: 700;
-      letter-spacing: 0.5px;
-      color: #F8FBFF;
+      letter-spacing: 0;
+      color: #F2F6FF;
+    }
+    .meta {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      color: #6E84B0;
+      text-transform: lowercase;
     }
     .hero {
-      max-width: 1000px;
-      margin-top: -8px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      margin-top: -16px;
     }
-    .hero h1 {
+    h1 {
       margin: 0;
-      font-size: 76px;
-      line-height: 1.04;
+      max-width: 1020px;
+      font-size: 92px;
+      line-height: 1.02;
       font-weight: 700;
-      letter-spacing: -0.5px;
+      letter-spacing: -1.5px;
       color: #FFFFFF;
     }
-    .hero h1 .accent {
-      color: #7BA6FF;
+    h1 .turn {
+      color: #93B6FF;
     }
-    .hero p {
-      margin: 28px 0 0;
+    .sub {
+      margin: 32px 0 0;
       max-width: 880px;
-      color: #BFD0F2;
-      font-size: 28px;
-      line-height: 1.38;
+      color: #B6C7EE;
+      font-size: 26px;
+      line-height: 1.4;
       font-weight: 500;
+      letter-spacing: -0.1px;
+    }
+    .sub .em {
+      color: #D4E1FF;
+      font-weight: 700;
     }
     .footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 24px;
-      color: #8FA5D6;
-      font-size: 20px;
+      color: #6E84B0;
+      font-size: 17px;
       font-weight: 600;
       letter-spacing: 0.3px;
     }
-    .footer .meta {
-      display: flex;
-      align-items: center;
-      gap: 14px;
+    .footer .url {
+      color: #B6C7EE;
     }
-    .footer .dot {
-      width: 4px;
-      height: 4px;
-      border-radius: 999px;
-      background: #3F5587;
-      display: inline-block;
+    .rule {
+      flex: 1;
+      height: 1px;
+      margin: 0 22px;
+      background: linear-gradient(90deg, rgba(110, 132, 176, 0) 0%, rgba(110, 132, 176, 0.45) 50%, rgba(110, 132, 176, 0) 100%);
     }
   </style>
 </head>
 <body>
   <main class="canvas">
     <div class="content">
-      <div class="brand">
-        <img src="${logoData}" alt="" />
-        <span class="name">Alfred</span>
+      <div class="top">
+        <div class="brand">
+          <img src="${logoData}" alt="" />
+          <span class="wordmark">Alfred</span>
+        </div>
+        <div class="meta">open source · mit license</div>
       </div>
       <div class="hero">
-        <h1>Autonomous engineering agents,<br /><span class="accent">on your own machine.</span></h1>
-        <p>GitHub issues become pull requests through Claude Code and Codex you already pay for. Scheduled, sandboxed, and reported back to Slack.</p>
+        <h1>GitHub issues, in.<br /><span class="turn">Pull requests, out.</span></h1>
+        <p class="sub">A self-hosted runtime for <span class="em">autonomous</span> Claude Code and Codex agents that turn scoped issues into reviewed pull requests, on the CLI subscriptions you already pay for.</p>
       </div>
       <div class="footer">
-        <div>alfred.luminik.io</div>
-        <div class="meta">
-          <span>MIT</span>
-          <span class="dot"></span>
-          <span>Python</span>
-          <span class="dot"></span>
-          <span>macOS &amp; Linux</span>
-        </div>
+        <div class="url">alfred.luminik.io</div>
+        <div class="rule"></div>
+        <div>luminik-io/alfred-os</div>
       </div>
     </div>
   </main>
@@ -200,14 +203,15 @@ async function renderWithChrome(htmlText) {
       "--hide-scrollbars",
       "--no-first-run",
       "--no-default-browser-check",
-      "--virtual-time-budget=1000",
+      "--virtual-time-budget=1500",
+      "--force-device-scale-factor=2",
       "--window-size=1200,630",
       `--screenshot=${screenshotPath}`,
       `file://${htmlPath}`,
     ]);
 
     await mkdir(dirname(outPath), { recursive: true });
-    await sharp(screenshotPath).resize(1200, 630).png().toFile(outPath);
+    await sharp(screenshotPath).resize(1200, 630).png({ compressionLevel: 9 }).toFile(outPath);
     return true;
   } finally {
     await rm(tempDir, { recursive: true, force: true });
