@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
+    "brand": "node scripts/generate-brand.mjs",
     "og": "node scripts/generate-og.mjs",
+    "assets": "npm run brand && npm run og",
     "build": "astro check && astro build",
     "preview": "astro preview",
     "astro": "astro"
