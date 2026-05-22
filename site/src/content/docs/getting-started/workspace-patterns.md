@@ -9,6 +9,8 @@ specs-led workspace. The important part is making the repo scope explicit.
 This page mirrors the full GitHub guide:
 [`docs/WORKSPACE_PATTERNS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/WORKSPACE_PATTERNS.md).
 
+For a deeper spec workflow, read [Specs-driven development](/guides/specs-driven-development/).
+
 ## Default Layout
 
 ```text
@@ -64,8 +66,9 @@ repos:
 ```
 
 Use `--repos my-org/api,my-org/web,my-org/mobile`, then edit
-`~/.alfred/prompts/drake.md`, `~/.alfred/prompts/lucius.md`, and
-`~/.alfred/prompts/rasalghul.md` to reference the specs checkout.
+`~/.alfred/prompts/drake.md` to reference the specs checkout. Drake should copy
+the relevant spec links and acceptance criteria into the GitHub issue body.
+Lucius receives spec context through that issue body when it claims the work.
 
 Specs-driven means agents read the specs repo as planning context while
 code-writing agents stay scoped to code repos. Include `specs` in `--repos`

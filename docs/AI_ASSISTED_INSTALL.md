@@ -94,22 +94,38 @@ Steps:
    git checkout main
    git pull --ff-only
 
-2. Show the dry-run lifecycle:
+2. If SPECS_REPO is set, clone or update it for read-only planning context:
+   mkdir -p "$WORKSPACE_ROOT/product"
+   if [ -n "$SPECS_REPO" ]; then
+     SPECS_NAME="${SPECS_REPO##*/}"
+     SPECS_NAME="${SPECS_NAME%.git}"
+     if [ ! -d "$WORKSPACE_ROOT/product/$SPECS_NAME/.git" ]; then
+       git clone "https://github.com/$SPECS_REPO.git" "$WORKSPACE_ROOT/product/$SPECS_NAME"
+     else
+       git -C "$WORKSPACE_ROOT/product/$SPECS_NAME" fetch --all --prune
+       git -C "$WORKSPACE_ROOT/product/$SPECS_NAME" checkout main || true
+       git -C "$WORKSPACE_ROOT/product/$SPECS_NAME" pull --ff-only || true
+     fi
+   fi
+
+3. Show the dry-run lifecycle:
    PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 
-3. Install prerequisites:
+4. Install prerequisites:
    ALFRED_NONINTERACTIVE=1 GH_ORG="$GH_ORG" OPERATOR_NAME="$OPERATOR_NAME" OPERATOR_EMAIL="$OPERATOR_EMAIL" bash install.sh
    . ~/.alfredrc
 
-4. Check auth and pause for me if login is needed:
+5. Check auth and pause for me if login is needed:
    gh auth status || { echo "GitHub auth needed. Run: gh auth login --hostname github.com --git-protocol https --web"; exit 1; }
    claude --version || true
    echo "If Claude Code is not authenticated yet, run: claude"
 
-5. After GitHub and Claude Code auth are working, configure the starter fleet:
+6. After GitHub and Claude Code auth are working, configure the starter fleet:
    ./bin/alfred-init.py --non-interactive --agents starter --repos "$REPOS" --slack-webhook "$SLACK_WEBHOOK"
 
-6. Verify:
+7. If SPECS_REPO is set, show me the specs checkout path and remind me to add it to `~/.alfred/prompts/drake.md` as planning context. Do not add it to `--repos` unless I ask.
+
+8. Verify:
    ~/.local/bin/alfred agents
    ~/.local/bin/alfred auth status
    bash bin/doctor.sh

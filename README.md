@@ -11,19 +11,17 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-Alfred runs autonomous coding agents as development teammates. It turns GitHub
-issues, specs, and PR feedback into scheduled local runs: Drake plans work,
-Lucius claims issues in fresh worktrees, Claude Code or Codex does the bounded
-task, and the fleet opens PRs, reviews them, fixes comments, adds tests, and
-reports to Slack.
+Alfred is a local runtime that turns GitHub issues and specs into autonomous
+Claude Code and Codex runs. It claims work, opens clean worktrees, creates PRs,
+reviews code, adds tests, and reports back to Slack.
 
 Docs site: https://alfred.luminik.io
 
 ## Why use it
 
 Use Alfred when one-off prompts are not enough and recurring repo work needs a
-coordination layer: queueing, issue state, worktree isolation, review handoff,
-and Slack reporting.
+coordination layer: scoped intake, issue state, worktree isolation, engine
+routing, review handoff, and Slack reporting.
 
 - Treat agents like narrow teammates: Batman plans multi-repo rollouts, Lucius
   implements scoped issues, Ras al Ghul reviews PRs, Bane adds tests, and
@@ -33,7 +31,7 @@ and Slack reporting.
 - Route engines by role. For example, run implementation on Claude Code and
   review on Codex, or keep Claude as primary with Codex fallback for selected
   agents.
-- Run on your own always-on Mac or Linux box with your Claude Code or Codex
+- Run on your own always-on Mac or Linux host with your Claude Code or Codex
   subscription-backed CLI auth. Alfred does not require provider API keys.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine.
@@ -195,7 +193,7 @@ Companion layers can be useful around Alfred, but they are not bundled and must
 not be required for a clean OSS install. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the boundary.
 
-Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Concrete engines such as Claude Code CLI, Codex CLI, and future SDK-backed runners plug in as adapters.
+Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Today Alfred supports Claude Code CLI and Codex CLI adapters. Other engines require a wrapper binary or new adapter code.
 
 ## What's in here
 
@@ -227,6 +225,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Install](INSTALL.md): fresh-machine walkthrough.
 - [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
 - [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
+- [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
 - [Bootstrap](BOOTSTRAP.md): operations guide (AWS IAM, Slack, troubleshooting).
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
 - [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
@@ -261,7 +260,7 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 
 - **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / optional `codex` / optional Ollama on your own subscription-backed CLI auth. It does not run a hosted inference service and does not require provider API keys.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. It does not run a hosted inference service and does not require provider API keys.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
@@ -271,7 +270,7 @@ The engineering fleet ships today. Content, sales, and ops departments, plus a m
 
 **Latest release: v0.3.0.** Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
 
-The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
+The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 
 ## License
 

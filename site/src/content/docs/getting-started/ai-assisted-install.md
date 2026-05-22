@@ -54,6 +54,10 @@ Rules:
 
 Then have the assistant follow the command sequence in the full guide.
 
+If `SPECS_REPO` is set, the full guide tells the assistant to clone it under
+`$WORKSPACE_ROOT/product/` for planning context and to leave it out of `--repos`
+unless you explicitly want Alfred to operate on specs issues or PRs.
+
 ## Installer vs Engine
 
 Claude Code or Codex can be the assistant that installs Alfred. Separately,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lucius - feature dev agent. Picks an `agent:implement` issue, delegates to claude -p."""
+"""Lucius - feature dev agent. Picks an issue and delegates to the configured engine."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ sys.path.insert(
     (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
 )
 from agent_runner import (
+    ALFRED_HOME,
     GH_ORG,
     WORKSPACE,
     EventLog,
@@ -39,6 +40,7 @@ from agent_runner import (
     is_dry_run,
     is_globally_blocked,
     is_repo_paused,
+    load_prompt,
     make_worktree,
     optional_env_int,
     preflight,
@@ -63,6 +65,7 @@ if "--dry-run" in sys.argv:
 # renamed agent renders cleanly.
 AGENT = os.environ.get("AGENT_CODENAME", "lucius")
 LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
+PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
 
 # Launchd plist label used for the auto-pause path. Defaults to a generic name;
 # override in the plist EnvironmentVariables to match your label scheme.
@@ -135,6 +138,34 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
 
 PRE_PUSH = _load_pre_push_config(AGENT)
 TRUSTED_AUTHOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+
+def _operator_prompt_guidance(repo: str, issue: dict, wt: Path, branch: str) -> str:
+    """Load operator-supplied Lucius guidance seeded by alfred-init, if present."""
+    if not PROMPT_PATH.exists():
+        return ""
+    guidance = load_prompt(
+        PROMPT_PATH,
+        extra_vars={
+            "AGENT_CODENAME": AGENT.title(),
+            "GH_ORG": GH_ORG,
+            "ALFRED_HOME": str(ALFRED_HOME),
+            "WORKSPACE_ROOT": str(WORKSPACE.parent),
+            "FEATURE_DEV_REPOS": ",".join(LUCIUS_REPOS),
+            "REPO_SLUG": repo,
+            "ISSUE_NUMBER": str(issue["number"]),
+            "WORKTREE": str(wt),
+            "BRANCH": branch,
+        },
+    ).strip()
+    if not guidance:
+        return ""
+    return f"""
+Operator-supplied guidance from {PROMPT_PATH}:
+---
+{guidance}
+---
+"""
 
 
 def _operator_git_identity_env() -> dict[str, str]:
@@ -382,10 +413,13 @@ def build_prompt(repo: str, issue: dict, wt: Path, branch: str, firing_id: str) 
         extra={"issue": f"{GH_ORG}/{repo}#{issue['number']}"},
     )
     issue_payload = format_untrusted_issue_payload(issue)
+    operator_guidance = _operator_prompt_guidance(repo, issue, wt, branch)
 
     return f"""You are {AGENT.title()}, implementing GitHub issue #{issue["number"]} in {GH_ORG}/{repo}.
 
 {issue_payload}
+
+{operator_guidance}
 
 You are working in this worktree: {wt}
 Branch: {branch}

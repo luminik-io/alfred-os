@@ -27,8 +27,8 @@ const STRUCTURED_DATA = JSON.stringify({
       name: "Alfred",
       url: SITE_URL,
       description:
-        "Documentation for Alfred, the open-source runtime and coordination layer for AI " +
-        "agents as development teammates.",
+        "Documentation for Alfred, the open-source runtime for autonomous engineering " +
+        "agents on Claude Code and Codex.",
     },
     {
       "@type": "SoftwareApplication",
@@ -38,7 +38,7 @@ const STRUCTURED_DATA = JSON.stringify({
       url: SITE_URL,
       description:
         "A local runtime and coordination layer that turns GitHub issues, specs, and PR " +
-        "feedback into scheduled Claude Code or Codex runs with isolated git " +
+        "feedback into autonomous Claude Code or Codex runs with isolated git " +
         "worktrees, label state, reviews, tests, and Slack reports.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
       softwareHelp: SITE_URL,
@@ -217,7 +217,7 @@ export default defineConfig({
     starlight({
       title: "Alfred",
       description:
-        "Run AI agents as development teammates with Claude Code and Codex. " +
+        "Run Claude Code and Codex as autonomous engineering agents. " +
         "GitHub issues, specs, worktrees, PRs, reviews, tests, and Slack reports.",
       logo: {
         src: "./src/assets/alfred-logo-transparent.png",
@@ -268,7 +268,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Alfred, local AI agents for real repos.",
+            content: "Alfred, autonomous engineering agents for Claude Code and Codex.",
           },
         },
         {
@@ -282,7 +282,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "Alfred, local AI agents for real repos.",
+            content: "Alfred, autonomous engineering agents for Claude Code and Codex.",
           },
         },
         {
@@ -336,6 +336,7 @@ export default defineConfig({
           label: "Guides",
           items: [
             { label: "Claude Code and Codex", slug: "guides/claude-code" },
+            { label: "Specs-driven development", slug: "guides/specs-driven-development" },
             { label: "Slack", slug: "guides/slack" },
             { label: "AWS", slug: "guides/aws" },
             { label: "Skills", slug: "guides/skills" },

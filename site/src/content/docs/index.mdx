@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: Run AI agents as development teammates. Alfred turns GitHub issues, specs, and PR feedback into scheduled local Claude Code or Codex runs.
+description: Turn GitHub issues and specs into autonomous Claude Code and Codex runs. PRs, reviews, tests, and Slack reports come back.
 template: splash
 head:
   - tag: title
-    content: "Alfred: local AI agents for real repos"
+    content: "Alfred: autonomous Claude Code and Codex runs from GitHub issues"
 hero:
-  tagline: Turn GitHub issues, specs, and PR feedback into autonomous Claude Code or Codex runs from a machine you control.
+  tagline: Turn GitHub issues and specs into autonomous Claude Code and Codex runs. PRs, reviews, tests, and Slack reports come back.
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -25,11 +25,11 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 ## Why Alfred Exists
 
-A coding agent can complete a prompt. Recurring engineering work needs more around the prompt: a repo scope, a spec or issue, labels that show state, an isolated worktree, review rules, and a place where the result lands.
+A coding agent can complete a prompt. Recurring engineering work needs durable coordination: scope in GitHub, specs that describe intent, labels that show state, clean worktrees, review rules, and visible output.
 
 Alfred supplies that runtime and coordination layer. Agents coordinate through GitHub, work in clean local worktrees, report back to Slack, and can be routed to different engines by role. One agent can build with Claude Code while another reviews with Codex.
 
-The default fleet is intentionally narrow: Batman plans multi-repo work, Lucius implements scoped issues, Ras al Ghul reviews PRs, Bane adds tests, and Nightwing can pick up unresolved review comments.
+The starter fleet is intentionally narrow: Drake plans work, Lucius implements scoped issues, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman, Bane, Nightwing, and other specialists.
 
 Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
@@ -98,6 +98,12 @@ flowchart TB
 />
 
 <LinkCard
+  title="Use specs-driven development"
+  description="Turn specs into scoped issue queues, Batman plans, clean worktrees, reviewable PRs, and visible Slack summaries."
+  href="/guides/specs-driven-development/"
+/>
+
+<LinkCard
   title="Build your first agent"
   description="The Echo tutorial: pick → claim → invoke → act → release → report. The shape every richer codename inherits."
   href="/getting-started/tutorial/"
@@ -140,6 +146,6 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 Latest release: v0.3.0. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
 
-The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
+The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 
 License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).

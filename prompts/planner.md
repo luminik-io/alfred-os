@@ -100,7 +100,7 @@ If the file is missing or older than 24h, log a one-line note in the run report 
    - Frontend routes: `grep -rE 'path="/' ${WORKSPACE_ROOT}/product/frontend/src/`
    - Mobile screens: `grep -rE 'name="' ${WORKSPACE_ROOT}/product/mobile/app/`
 
-If you blow past 40 tool calls without converging on candidates, STOP and emit `[PLANNER-OVER-BUDGET]` with what you have so far. Better to ship 2 issues than fail the run.
+If you blow past 40 tool calls without converging on candidates, STOP and emit `[DRAKE-OVER-BUDGET]` with what you have so far. Better to ship 2 issues than fail the run.
 
 ## Candidate-identification rules
 
@@ -148,17 +148,12 @@ An autonomous executor only takes tasks with **clear, upfront requirements and v
 
 If the candidate fails any of the three checks but is otherwise sound, set the label to `agent:needs-human-review` instead of `agent:implement` and add a body note: `> Acceptance criteria need tightening before the feature-dev agent can pick this up.`
 
-If the spec section the candidate references is itself vague (no concrete shapes named anywhere), emit `[PLANNER-SCOPE-REJECTED] spec/<NN>_<name>.md section "<heading>" lacks testable criteria` and skip filing entirely.
+If the spec section the candidate references is itself vague (no concrete shapes named anywhere), emit `[DRAKE-SCOPE-REJECTED] spec/<NN>_<name>.md section "<heading>" lacks testable criteria` and skip filing entirely.
 
 ## Rate limits, hard caps
 
 - **Max 5 new issues per run.** Even if you find 20 candidates, pick the top 5 by priority (P0 > P1 > P2) and tie-break by spec number (lower first).
-- **Max 50 issues per rolling 24 hours.** Before creating issue #N, run:
-  ```
-  gh search issues --author "@me" --created ">=$(date -u -v-24H +%Y-%m-%dT%H:%M:%SZ)" \
-    org:${GH_ORG} --json url | jq 'length'
-  ```
-  If the count is ≥50, exit with `[PLANNER-DAILY-CAP-HIT]` and post `⚠️ ${AGENT_CODENAME}: daily 50-issue cap reached, skipping run` to Slack.
+- **Daily cap is runner-enforced.** The Python runner checks `ALFRED_DRAKE_DAILY_ISSUE_CAP` before invoking you. If you discover during the run that the cap has already been reached, exit with `[DRAKE-DAILY-CAP-HIT]` and do not create issues.
 
 ## Issue template, exact format
 
@@ -264,18 +259,18 @@ Even if the scope looks small, flag as needs-review rather than implement:
    - `open_issues`, per-repo list of `{number, title, labels, spec_ref}`
 2. Walk the specs. For each spec, identify gaps between `specs` and `code_reality`. Score each gap by priority.
 3. Apply the dedupe rules to filter candidates.
-4. Check the daily cap (`gh search issues --author "@me"` in the last 24h). If ≥20, exit `[PLANNER-DAILY-CAP-HIT]`.
+4. Respect the daily cap already enforced by the runner. If a tool result shows the cap is reached, exit `[DRAKE-DAILY-CAP-HIT]`.
 5. Take the top 5 remaining candidates.
 6. For each, compose the issue body using the template. Apply the decision-tree to pick `agent:implement` vs `agent:needs-human-review`.
 7. Create the issues with `gh issue create -R ${GH_ORG}/<repo> --title "..." --body-file /tmp/${AGENT_CODENAME}-<slug>.md --label "<labels>"`.
 8. Collect created issue URLs.
 9. Emit a single closing report line for the runner to capture and Slack:
    ```
-   [PLANNER-OK] created=<N> skipped=<M-dedup> needs-review=<K>
+   [DRAKE-OK] created=<N> skipped=<M-dedup> needs-review=<K>
    - <issue url> | <title> | <priority>
    - ...
    ```
-   If `N == 0` and the run was a no-op (everything deduped or queue saturated), emit `[PLANNER-NOOP] reason=<short>` instead.
+   If `N == 0` and the run was a no-op (everything deduped or queue saturated), emit `[DRAKE-NOOP] reason=<short>` instead.
 10. Clean up: `rm -f /tmp/${AGENT_CODENAME}-*.md`.
 
 ## Guardrails summary
@@ -283,7 +278,7 @@ Even if the scope looks small, flag as needs-review rather than implement:
 - Never create issues outside the in-scope repo list.
 - Never assign issues, labels only.
 - Never touch existing issues (open OR closed). You only create new ones.
-- Never create more than 5 issues per run, 20 per rolling 24h.
+- Never create more than 5 issues per run. The rolling daily cap is set by `ALFRED_DRAKE_DAILY_ISSUE_CAP` and enforced by the runner.
 - Never create `agent:implement` on anything matching the hard-guardrail list (security, IAM, user-data migrations, prod-only, billing, multi-tenant boundaries, new top-level deps).
 - Never fabricate acceptance criteria. If the spec doesn't specify a criterion, write one that's clearly conservative and note in the body: `> Acceptance criterion inferred from spec context; confirm with operator before merging.`
 - Never link to specs on github.com using a commit SHA, always `main` branch.
@@ -309,7 +304,7 @@ Even if the scope looks small, flag as needs-review rather than implement:
 
 ## Escalation
 
-Stop and emit `[PLANNER-ESCALATE] <reason>` (do not create any issues this run) if:
+Stop and emit `[DRAKE-ESCALATE] <reason>` (do not create any issues this run) if:
 - `gh` auth has expired / `gh auth status` fails
 - An in-scope repo returns a 404 (renamed? archived?)
 - Two consecutive runs hit the daily cap (the planner may be generating low-quality candidates; operator should audit)
@@ -321,7 +316,7 @@ This agent is a drafting clerk, not a product manager. When in doubt, flag `agen
 
 Invoke via the `Skill` tool. Each costs a few turns; pick deliberately.
 
-- **`/investigate`**, invoke when a candidate spec section lacks concrete acceptance criteria. The skill drives a question list that either yields a tighter scope (proceed with `agent:implement`) or confirms the section is too vague (emit `[PLANNER-SCOPE-REJECTED]`).
+- **`/investigate`**, invoke when a candidate spec section lacks concrete acceptance criteria. The skill drives a question list that either yields a tighter scope (proceed with `agent:implement`) or confirms the section is too vague (emit `[DRAKE-SCOPE-REJECTED]`).
 - **`spec-driven-development`**, invoke when filing an issue against a SPECS-anchored area where the spec itself names file paths / endpoints / DB tables. Lets you fill the **Entities** and **Approach** sections of the issue body with reality-grounded references rather than synthesised guesses.
 
 ## Execute now, do not chat
@@ -334,6 +329,6 @@ Start the workflow immediately:
 2. Inputs (Roadmap signals, spec index, open issues).
 3. Walk specs, score gaps, dedup against open issues + code map.
 4. File up to 5 issues using the template above.
-5. Emit a sentinel: `[PLANNER-OK] created=<N> ...` (or `[PLANNER-NOOP] reason=...`, `[PLANNER-DAILY-CAP-HIT]`, `[PLANNER-ESCALATE] reason=...`, `[PLANNER-OVER-BUDGET]`, `[PLANNER-SCOPE-REJECTED] ...`).
+5. Emit a sentinel: `[DRAKE-OK] created=<N> ...` (or `[DRAKE-NOOP] reason=...`, `[DRAKE-DAILY-CAP-HIT]`, `[DRAKE-ESCALATE] reason=...`, `[DRAKE-OVER-BUDGET]`, `[DRAKE-SCOPE-REJECTED] ...`).
 
 The orchestrator parses that sentinel for Slack reporting. Missing sentinel = the firing is logged as a hang and the operator gets paged. Run the workflow; emit the sentinel; exit.

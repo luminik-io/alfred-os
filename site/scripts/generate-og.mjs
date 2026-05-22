@@ -78,7 +78,7 @@ function html({ fontCss, logoData }) {
       position: relative;
       width: 1064px;
       height: 522px;
-      padding: 50px 62px;
+      padding: 58px 64px;
       overflow: hidden;
       border: 1px solid rgba(87, 137, 255, 0.72);
       border-right-color: rgba(244, 180, 62, 0.46);
@@ -100,11 +100,11 @@ function html({ fontCss, logoData }) {
     }
     .mark-bg {
       position: absolute;
-      right: 40px;
-      top: 126px;
-      width: 390px;
-      height: 390px;
-      opacity: 0.20;
+      right: 58px;
+      top: 156px;
+      width: 320px;
+      height: 320px;
+      opacity: 0.12;
       object-fit: contain;
     }
     .content {
@@ -118,70 +118,66 @@ function html({ fontCss, logoData }) {
     .brand {
       display: flex;
       align-items: center;
-      gap: 24px;
+      gap: 22px;
     }
     .logo-tile {
       display: grid;
       place-items: center;
-      width: 80px;
-      height: 80px;
+      width: 78px;
+      height: 78px;
       border: 1px solid #283A62;
       border-radius: 20px;
       background: #07111F;
     }
     .logo-tile img {
-      width: 64px;
-      height: 64px;
+      width: 62px;
+      height: 62px;
       object-fit: contain;
     }
     h1 {
       margin: 0;
-      font-size: 60px;
-      line-height: 0.92;
+      font-size: 58px;
+      line-height: 1;
       font-weight: 700;
       letter-spacing: 0;
     }
-    .tagline {
-      margin: 11px 0 0;
-      color: #C7D4F5;
-      font-size: 22px;
-      line-height: 1.2;
-      font-weight: 600;
-    }
     .hero {
-      max-width: 720px;
+      max-width: 830px;
     }
     .hero h2 {
       margin: 0;
-      max-width: 760px;
+      max-width: 840px;
       color: #F8FBFF;
-      font-size: 54px;
+      font-size: 56px;
       line-height: 1.08;
       font-weight: 700;
       letter-spacing: 0;
     }
     .hero p {
       margin: 20px 0 0;
-      max-width: 740px;
+      max-width: 790px;
       color: #C7D4F5;
-      font-size: 24px;
+      font-size: 25px;
       line-height: 1.35;
       font-weight: 600;
     }
-    .chips {
+    .path {
       display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-    }
-    .chip {
-      padding: 12px 22px;
+      align-items: center;
+      width: fit-content;
+      max-width: 100%;
+      padding: 14px 22px;
       border: 1px solid #314573;
       border-radius: 999px;
       color: #CED9F6;
       background: #101B32;
       font-size: 19px;
       font-weight: 700;
-      text-align: center;
+      white-space: nowrap;
+    }
+    .arrow {
+      margin: 0 16px;
+      color: #5789FF;
     }
     .url,
     .meta {
@@ -206,17 +202,18 @@ function html({ fontCss, logoData }) {
           <div class="logo-tile"><img src="${logoData}" alt="" /></div>
           <div>
             <h1>Alfred</h1>
-            <p class="tagline">Local AI agents for real software work.</p>
           </div>
         </div>
         <div class="hero">
-          <h2>Local agent fleet for Claude Code + Codex.</h2>
-          <p>GitHub issues in. PRs and reviews out.</p>
+          <h2>GitHub issues and specs become PRs, reviews, and tests.</h2>
+          <p>Alfred runs Claude Code and Codex locally, in clean worktrees, with Slack reports.</p>
         </div>
-        <div class="chips">
-          <div class="chip">multi-repo</div>
-          <div class="chip">clean worktrees</div>
-          <div class="chip">PRs + Slack reports</div>
+        <div class="path">
+          <span>issues + specs</span>
+          <span class="arrow">→</span>
+          <span>Claude Code / Codex</span>
+          <span class="arrow">→</span>
+          <span>PR + review</span>
         </div>
         <div class="footer">
           <div class="url">alfred.luminik.io</div>
