@@ -110,6 +110,11 @@
    bars are `<figcaption class="header">`. A bare `.header` selector
    would bleed the glass treatment onto every framed code block. */
 header.header {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: var(--sl-z-index-navbar);
+  width: 100%;
   background: color-mix(in srgb, var(--sl-color-bg-nav) 88%, transparent);
   -webkit-backdrop-filter: blur(14px) saturate(1.15);
   backdrop-filter: blur(14px) saturate(1.15);
