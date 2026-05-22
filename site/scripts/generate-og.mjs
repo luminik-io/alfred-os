@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import sharp from "sharp";
 
 const root = resolve(import.meta.dirname, "..");
-const logoPath = resolve(root, "src/assets/alfred-logo.png");
+const logoPath = resolve(root, "src/assets/alfred-logo-transparent.png");
 const outPath = resolve(root, "public/brand/alfred-og.png");
 const fontDir = resolve(root, "node_modules/@fontsource/quicksand/files");
 const fontFamily = "Quicksand, Arial, sans-serif";
@@ -74,25 +74,25 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
   </g>
 
   <text x="92" y="466" fill="#F7FAFF" font-family="${fontFamily}" font-size="92" font-weight="700">Alfred</text>
-  <text x="96" y="528" fill="#C8D3F5" font-family="${fontFamily}" font-size="31" font-weight="500">A local AI agent fleet for solo builders.</text>
+  <text x="96" y="528" fill="#C8D3F5" font-family="${fontFamily}" font-size="31" font-weight="500">Local agents for real repos.</text>
 
   <g filter="url(#softShadow)">
     <rect x="682" y="112" width="424" height="372" rx="30" fill="url(#panel)" stroke="#2D3B5D"/>
-    <text x="724" y="174" fill="#F7FAFF" font-family="${fontFamily}" font-size="34" font-weight="700">Run a local agent fleet</text>
-    <text x="724" y="216" fill="#B9C7EA" font-family="${fontFamily}" font-size="24" font-weight="500">from one machine you own.</text>
+    <text x="724" y="174" fill="#F7FAFF" font-family="${fontFamily}" font-size="34" font-weight="700">Repo teammates</text>
+    <text x="724" y="216" fill="#B9C7EA" font-family="${fontFamily}" font-size="24" font-weight="500">running from your own machine.</text>
 
     <g font-family="${fontFamily}" font-size="23" font-weight="600">
       <rect x="724" y="262" width="318" height="46" rx="23" fill="#13213D" stroke="#314676"/>
       <circle cx="750" cy="285" r="7" fill="#47D18C"/>
-      <text x="770" y="293" fill="#E8EEFF">GitHub issue claimed</text>
+      <text x="770" y="293" fill="#E8EEFF">Issue or spec claimed</text>
 
       <rect x="724" y="324" width="318" height="46" rx="23" fill="#13213D" stroke="#314676"/>
       <circle cx="750" cy="347" r="7" fill="#5B8CFF"/>
-      <text x="770" y="355" fill="#E8EEFF">Isolated worktree</text>
+      <text x="770" y="355" fill="#E8EEFF">Clean worktree</text>
 
       <rect x="724" y="386" width="318" height="46" rx="23" fill="#13213D" stroke="#314676"/>
       <circle cx="750" cy="409" r="7" fill="#F4B43E"/>
-      <text x="770" y="417" fill="#E8EEFF">PR, review, Slack report</text>
+      <text x="770" y="417" fill="#E8EEFF">PR, review, tests</text>
     </g>
   </g>
 
@@ -102,7 +102,7 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
     <rect x="825" y="512" width="111" height="42" rx="21" fill="#0E172A" stroke="#304164"/>
     <text x="857" y="540" fill="#B9C7EA">Codex</text>
     <rect x="952" y="512" width="154" height="42" rx="21" fill="#0E172A" stroke="#304164"/>
-    <text x="983" y="540" fill="#B9C7EA">launchd</text>
+    <text x="983" y="540" fill="#B9C7EA">Slack</text>
   </g>
 </svg>`;
 

@@ -3,7 +3,7 @@ title: agent_runner API reference
 description: Public primitives in lib/agent_runner.py. Function signatures, semantics, return shapes.
 ---
 
-The framework substrate. Every codename agent imports from this module. Source: [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py).
+The shared runtime. Every codename agent imports from this module. Source: [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py).
 
 Categorised by what the operator-facing primitive does. For deep semantics, read the source's docstrings. They're the authoritative reference.
 

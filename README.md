@@ -1,7 +1,7 @@
 # Alfred
 
 <p align="center">
-  <img src="assets/brand/alfred-logo.png" alt="Alfred logo" width="180">
+  <img src="assets/brand/alfred-logo-transparent.png" alt="Alfred logo" width="180">
 </p>
 
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
@@ -11,27 +11,38 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-Alfred turns GitHub issues into scheduled local coding-agent runs. It uses
-Claude Code by default, can route selected agents to Codex, and runs from the
-host's per-user scheduler (`launchd` on macOS, `systemd --user` on Linux).
-Each firing gets a fresh git worktree, GitHub label state, spend guards, and a
-Slack report.
+Alfred runs autonomous coding agents as repo teammates. It turns GitHub issues,
+specs, and PR feedback into scheduled local runs: Drake plans work, Lucius
+claims issues in fresh worktrees, Claude Code or Codex does the bounded task,
+and the fleet opens PRs, reviews them, fixes comments, adds tests, and reports
+to Slack.
 
 Docs site: https://alfred.luminik.io
 
 ## Why use it
 
-Alfred is for the operator who wants a small agent fleet working while they are
-away from the screen without turning their product into a hosted agent
-platform.
+Use Alfred when one-off prompts are not enough and recurring repo work needs a
+coordination layer: queueing, issue state, worktree isolation, review handoff,
+and Slack reporting.
 
-- Label a GitHub issue, then let a narrow codename agent draft the plan, write
-  the code, open the PR, review the PR, or fix review comments.
-- Run on your own always-on Mac or Linux box and your own Claude Code or Codex
-  subscription-backed CLI auth. No hosted scheduler, no shared queue, no
-  provider API keys required by Alfred.
+- Treat agents like narrow teammates: Batman plans multi-repo rollouts, Lucius
+  implements scoped issues, Ras al Ghul reviews PRs, Bane adds tests, and
+  Nightwing can pick up unresolved review comments.
+- Coordinate through ordinary repo workflows: GitHub issues and PRs, labels,
+  specs, isolated git worktrees, commit trailers, and Slack summaries.
+- Route engines by role. For example, run implementation on Claude Code and
+  review on Codex, or keep Claude as primary with Codex fallback for selected
+  agents.
+- Run on your own always-on Mac or Linux box with your Claude Code or Codex
+  subscription-backed CLI auth. Alfred does not require provider API keys.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine.
+
+Default flow: specs or roadmap context -> Drake files scoped
+`agent:implement` issues -> Lucius claims one issue and opens a worktree ->
+Claude Code or Codex implements -> a PR opens with `agent:authored` -> Ra's al
+Ghul reviews -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Slack
+reports what changed.
 
 ## Quick start
 
@@ -258,9 +269,9 @@ The engineering fleet ships today. Content, sales, and ops departments, plus a m
 
 ## Status
 
-**Latest release: v0.3.0.** Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
+**Latest release: v0.3.0.** Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
 
-The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
+The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 
 ## License
 

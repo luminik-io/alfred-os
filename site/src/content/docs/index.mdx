@@ -1,14 +1,14 @@
 ---
 title: Alfred
-description: Turn GitHub issues into scheduled local agent runs. Claude Code and Codex-capable development agents, launched by launchd or systemd, on a machine you control.
+description: Run AI agents as repo teammates. Alfred turns GitHub issues, specs, and PR feedback into scheduled local Claude Code or Codex runs.
 template: splash
 head:
   - tag: title
-    content: "Alfred: the solo builder's agent OS"
+    content: "Alfred: local AI agents for real repos"
 hero:
-  tagline: Run Claude Code and Codex agents against real repos from a machine you control.
+  tagline: Turn GitHub issues, specs, and PR feedback into autonomous Claude Code or Codex runs from a machine you control.
   image:
-    file: ../../assets/alfred-logo.png
+    file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
   actions:
     - text: Install (30 min)
@@ -23,25 +23,25 @@ hero:
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-## Why Alfred exists
+## Why Alfred Exists
 
-Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. That can be useful for interactive experiments. It is not the shape Alfred uses for unattended repo work.
+A coding agent can complete a prompt. Recurring engineering work needs more around the prompt: a repo scope, a spec or issue, labels that show state, an isolated worktree, review rules, and a place where the result lands.
 
-- **Long-running loops** have no failure isolation. One bad run trashes the others.
-- **In-memory state** can't survive an OS reboot. Always-on hosts still restart.
-- **Chat-first interfaces** put the operator on the critical path.
+Alfred supplies that runtime and coordination layer. Agents coordinate through GitHub, work in clean local worktrees, report back to Slack, and can be routed to different engines by role. One agent can build with Claude Code while another reviews with Codex.
 
-Alfred's shape: each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
+The default fleet is intentionally narrow: Batman plans multi-repo work, Lucius implements scoped issues, Ras al Ghul reviews PRs, Bane adds tests, and Nightwing can pick up unresolved review comments.
+
+Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, memory database, skill registry, or dashboard service is required.
 
 ```mermaid
 flowchart TB
-    scheduler["host scheduler<br/><i>launchd or systemd</i>"]
+    scheduler["host scheduler<br/><i>survives restarts</i>"]
     role["$ALFRED_HOME/bin/{role}.py<br/><i>one stable role runner per agent</i>"]
     runner["agent_runner module<br/><i>lock · preflight · spend · claude_invoke · codex_invoke · gh · slack</i>"]
     engine["claude -p or codex exec<br/><i>the LLM work, in a fresh subprocess</i>"]
-    gh["GitHub<br/><i>issues, PRs, state-machine labels</i>"]
+    gh["GitHub<br/><i>issues, specs, PRs, labels</i>"]
     slack["Slack channel<br/><i>the operator's read surface</i>"]
     state[("$ALFRED_HOME/state/<br/><i>JSON on disk, no DB</i>")]
 
@@ -54,38 +54,28 @@ flowchart TB
 ## What you get
 
 <CardGrid stagger>
-  <Card title="Host-scheduler dispatch" icon="rocket">
-    Every firing is a host scheduler event. No long-running process; no in-memory state to lose on reboot. The OS is the orchestrator.
+  <Card title="Autonomous scheduled runs" icon="rocket">
+    Agents keep working on schedule, survive host restarts, and do not depend on one fragile long-running process.
+  </Card>
+  <Card title="Repo-teammate workflow" icon="document">
+    Issues and specs become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report.
+  </Card>
+  <Card title="Role-level engine routing" icon="setting">
+    Route builders and reviewers separately across Claude Code, Codex, or hybrid fallback.
+  </Card>
+  <Card title="Multi-repo planning" icon="puzzle">
+    Batman drafts rollout plans across repos from labelled GitHub issues, then stops before execution.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
     Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.
   </Card>
-  <Card title="Per-agent IAM" icon="approve-check-circle">
-    Every scheduled agent gets its own scoped IAM identity. The operator's SSO is never used by scheduled agents.
-  </Card>
-  <Card title="Fleet-wide provider-limit block" icon="warning">
-    When a Claude-backed agent hits a Claude provider limit, every other agent silently skips for an hour. No stampede.
-  </Card>
   <Card title="Issue claim state machine" icon="document">
     `agent:in-flight` → `agent:pr-open` → `agent:done`. Race-resistant cooperative coordination via GitHub labels + structured comments.
   </Card>
-  <Card title="Operator overrides" icon="setting">
-    `do-not-pickup` to manually claim an issue. Repo pause/resume to refactor without racing the fleet.
+  <Card title="Visible output" icon="approve-check-circle">
+    Slack firing reports and shipped summaries show what ran, what opened, what merged, and what needs human review.
   </Card>
 </CardGrid>
-
-## Where it's going
-
-The engineering fleet ships today. The harness underneath is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That's the roadmap: Alfred as the solo builder's whole agent OS.
-
-<CardGrid>
-  <Card title="Content" icon="document">Blog, LinkedIn, SEO drafts; site-page generation. Human-in-the-loop on publish.</Card>
-  <Card title="Sales / SDR" icon="rocket">Prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.</Card>
-  <Card title="Ops departments" icon="setting">Personal-assistant, finance, and product-ops: drafts-only on anything that sends, publishes, or pays.</Card>
-  <Card title="Memory + alfred serve" icon="puzzle">A recall/reflect layer so agents compound what they learn, plus a local read-only UI over fleet state.</Card>
-</CardGrid>
-
-Alfred stays single-operator and local by design. It is not multi-tenant and not a hosted SaaS. The full [roadmap](/about/roadmap/) has what's in flight and the design boundaries that hold.
 
 ## Quick start
 
@@ -131,10 +121,25 @@ Alfred stays single-operator and local by design. It is not multi-tenant and not
   href="/concepts/fleet/"
 />
 
+## Roadmap
+
+The engineering fleet ships today. The next categories are content, sales, ops,
+memory, and a local read-only fleet UI. Each category needs its own integrations,
+prompts, tests, and human-approval rules.
+
+<CardGrid>
+  <Card title="Content" icon="document">Blog, LinkedIn, SEO drafts, and site-page generation. Human approval before publish.</Card>
+  <Card title="Sales / SDR" icon="rocket">Prospect identification, event-page sourcing, and outreach drafts. Human approval before send.</Card>
+  <Card title="Ops departments" icon="setting">Personal assistant, finance, and product-ops agents with drafts-only defaults for anything that sends, publishes, or pays.</Card>
+  <Card title="Memory + alfred serve" icon="puzzle">A recall layer so agents compound what they learn, plus a local read-only UI over fleet state.</Card>
+</CardGrid>
+
+The full [roadmap](/about/roadmap/) tracks what is in flight.
+
 ## Status
 
-Latest release: v0.3.0. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
+Latest release: v0.3.0. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
 
-The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination surface. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or substrate change, should start as a discussion.
+The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 
 License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).

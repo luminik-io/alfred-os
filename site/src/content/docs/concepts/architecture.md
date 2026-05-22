@@ -11,7 +11,7 @@ Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to `~/.a
 
 ```mermaid
 flowchart LR
-    scheduler["host scheduler<br/><i>launchd or systemd</i>"]
+    scheduler["host scheduler<br/><i>survives restarts</i>"]
     role["bin/{role}.py<br/><i>one stable runner per agent</i>"]
     runner["lib/agent_runner.py<br/><i>lock · preflight · spend · invoke · gh · slack</i>"]
     engine["claude -p / codex exec<br/><i>the LLM work, fresh subprocess</i>"]
@@ -36,7 +36,7 @@ sequenceDiagram
     participant scheduler as host scheduler
     participant runner as agent runner
     participant lib as agent_runner lib
-    participant claude as Claude Code CLI
+    participant engine as configured engine
     participant gh as GitHub CLI
     participant slack as Slack webhook
 
@@ -49,8 +49,8 @@ sequenceDiagram
     lib->>gh: add agent:in-flight label
     lib->>gh: post claim comment
     runner->>lib: make_worktree(repo, agent, issue)
-    runner->>claude: invoke prompt with max turns
-    claude-->>runner: ClaudeResult (turns, cost, session_id, text)
+    runner->>engine: invoke prompt with max turns
+    engine-->>runner: AgentResult (turns, cost, session_id, text)
     runner->>gh: gh pr create
     runner->>lib: release_issue(transition_to=agent:pr-open, pr_url)
     runner->>slack: slack_post('shipped', severity=info)
@@ -72,7 +72,7 @@ Every agent firing is a fresh scheduler event, not a tick in a long-running proc
 - ❌ Cold start cost. ~1-2s of Python import + agent_runner setup per firing. Acceptable at the 20-min cadence.
 
 `ALFRED_HOME` is the runtime root. The core loop is `host scheduler -> bin/role.py ->
-lib/agent_runner.py -> claude/codex/gh/slack`. Optional companion tools can
+lib/agent_runner.py -> configured engine / gh / slack`. Optional companion tools can
 observe Alfred or read its exported state, but they are not part of the runtime
 contract.
 

@@ -69,7 +69,7 @@ Use this when one product spans backend, frontend, mobile, packages, or infra:
 The starter fleet receives the same selected repo list. That is the right
 default for a small solo-builder workspace because Drake can plan across all
 repos, Lucius can pick labelled implementation work from any selected repo, and
-Ra's al Ghul can review PRs across the same surface.
+Ra's al Ghul can review PRs across the same selected repos.
 
 If you need different repo lists per agent, run the interactive wizard or edit
 the generated variables in `~/.alfredrc`:
