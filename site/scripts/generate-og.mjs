@@ -60,7 +60,7 @@ function html({ fontCss, logoData }) {
       height: 630px;
       margin: 0;
       overflow: hidden;
-      background: #050913;
+      background: #060b16;
       color: #f8fbff;
       font-family: Quicksand, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
@@ -70,10 +70,22 @@ function html({ fontCss, logoData }) {
       position: relative;
       width: 1200px;
       height: 630px;
-      padding: 72px 88px 64px;
+      padding: 58px 74px 56px;
       background:
-        radial-gradient(ellipse 720px 540px at 12% 8%, rgba(58, 124, 255, 0.30), transparent 65%),
-        linear-gradient(180deg, #060d1c 0%, #03070f 100%);
+        radial-gradient(ellipse 620px 420px at 84% 42%, rgba(44, 111, 255, 0.34), transparent 66%),
+        radial-gradient(ellipse 720px 500px at 6% 0%, rgba(50, 98, 210, 0.30), transparent 60%),
+        linear-gradient(135deg, #081327 0%, #030812 58%, #05070d 100%);
+    }
+    .canvas::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.34;
+      background-image:
+        linear-gradient(rgba(123, 154, 224, 0.14) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(123, 154, 224, 0.14) 1px, transparent 1px);
+      background-size: 150px 120px;
+      mask-image: linear-gradient(90deg, transparent 0%, #000 16%, #000 84%, transparent 100%);
     }
     .content {
       position: relative;
@@ -90,56 +102,127 @@ function html({ fontCss, logoData }) {
     .brand {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
     }
     .brand img {
-      width: 44px;
-      height: 44px;
+      width: 42px;
+      height: 42px;
       object-fit: contain;
     }
     .brand .wordmark {
-      font-size: 28px;
+      font-size: 30px;
       font-weight: 700;
       letter-spacing: 0;
       color: #F2F6FF;
     }
     .meta {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 600;
-      letter-spacing: 0.4px;
-      color: #6E84B0;
-      text-transform: lowercase;
+      letter-spacing: 0;
+      color: #AFC3F7;
     }
-    .hero {
+    .main {
       flex: 1;
       display: flex;
-      flex-direction: column;
-      justify-content: center;
-      margin-top: -16px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 54px;
+      padding: 30px 0 20px;
+    }
+    .copy {
+      width: 690px;
+      flex: none;
     }
     h1 {
       margin: 0;
-      max-width: 1020px;
-      font-size: 92px;
-      line-height: 1.02;
+      font-size: 72px;
+      line-height: 1.05;
       font-weight: 700;
-      letter-spacing: -1.5px;
+      letter-spacing: 0;
       color: #FFFFFF;
     }
-    h1 .turn {
+    h1 .accent {
       color: #93B6FF;
     }
     .sub {
-      margin: 32px 0 0;
-      max-width: 880px;
+      margin: 26px 0 0;
+      max-width: 680px;
       color: #B6C7EE;
-      font-size: 26px;
-      line-height: 1.4;
+      font-size: 25px;
+      line-height: 1.38;
       font-weight: 500;
-      letter-spacing: -0.1px;
+      letter-spacing: 0;
     }
     .sub .em {
       color: #D4E1FF;
+      font-weight: 700;
+    }
+    .mark {
+      position: relative;
+      width: 330px;
+      height: 330px;
+      flex: none;
+      border-radius: 42px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(145deg, rgba(22, 34, 63, 0.78), rgba(5, 10, 23, 0.58));
+      border: 1px solid rgba(134, 166, 242, 0.22);
+      box-shadow:
+        0 34px 90px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+    .mark::before {
+      content: "";
+      position: absolute;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(74, 120, 255, 0.34), transparent 68%);
+    }
+    .mark img {
+      position: relative;
+      width: 232px;
+      height: 232px;
+      object-fit: contain;
+      filter: drop-shadow(0 18px 30px rgba(14, 66, 210, 0.38));
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr 36px 1fr 36px 1fr;
+      align-items: stretch;
+      gap: 12px;
+      min-height: 92px;
+    }
+    .step {
+      border: 1px solid rgba(134, 166, 242, 0.24);
+      background: rgba(17, 29, 57, 0.68);
+      border-radius: 22px;
+      padding: 16px 18px;
+    }
+    .step span {
+      display: block;
+      margin-bottom: 6px;
+      color: #7F96CA;
+      font-size: 15px;
+      line-height: 1;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+    .step strong {
+      display: block;
+      color: #E9F0FF;
+      font-size: 20px;
+      line-height: 1.18;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+    .arrow {
+      display: grid;
+      place-items: center;
+      color: #7EA6FF;
+      font-size: 30px;
       font-weight: 700;
     }
     .footer {
@@ -170,16 +253,28 @@ function html({ fontCss, logoData }) {
           <img src="${logoData}" alt="" />
           <span class="wordmark">Alfred</span>
         </div>
-        <div class="meta">open source · mit license</div>
+        <div class="meta">local · open source · MIT</div>
       </div>
-      <div class="hero">
-        <h1>GitHub issues, in.<br /><span class="turn">Pull requests, out.</span></h1>
-        <p class="sub">A self-hosted runtime for <span class="em">autonomous</span> Claude Code and Codex agents that turn scoped issues into reviewed pull requests, on the CLI subscriptions you already pay for.</p>
+      <div class="main">
+        <section class="copy">
+          <h1>GitHub issues become <span class="accent">reviewed pull requests.</span></h1>
+          <p class="sub">Alfred runs Claude Code and Codex locally as autonomous development teammates, with specs, clean worktrees, and Slack reports.</p>
+        </section>
+        <section class="mark" aria-hidden="true">
+          <img src="${logoData}" alt="" />
+        </section>
+      </div>
+      <div class="flow" aria-hidden="true">
+        <div class="step"><span>Scope</span><strong>issues + specs</strong></div>
+        <div class="arrow">→</div>
+        <div class="step"><span>Run</span><strong>local agents</strong></div>
+        <div class="arrow">→</div>
+        <div class="step"><span>Return</span><strong>PRs + reviews</strong></div>
       </div>
       <div class="footer">
         <div class="url">alfred.luminik.io</div>
         <div class="rule"></div>
-        <div>luminik-io/alfred-os</div>
+        <div>luminik-io/alfred-os · macOS/Linux</div>
       </div>
     </div>
   </main>
