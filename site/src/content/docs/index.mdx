@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: Turn GitHub issues and specs into autonomous Claude Code and Codex runs. PRs, reviews, tests, and Slack reports come back.
+description: A self-hosted runtime for autonomous Claude Code and Codex agents. Scoped GitHub issues and specs come in; reviewed pull requests, tests, and Slack reports come back, on the CLI subscriptions you already pay for.
 template: splash
 head:
   - tag: title
-    content: "Alfred: autonomous Claude Code and Codex runs from GitHub issues"
+    content: "Alfred: self-hosted runtime for autonomous Claude Code and Codex agents"
 hero:
-  tagline: Turn GitHub issues and specs into autonomous Claude Code and Codex runs. PRs, reviews, tests, and Slack reports come back.
+  tagline: "GitHub issues, in. Pull requests, out. A self-hosted runtime for autonomous Claude Code and Codex agents on the CLI subscriptions you already pay for."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -23,11 +23,11 @@ hero:
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-## Why Alfred Exists
+## Why Alfred exists
 
-A coding agent can complete a prompt. Recurring engineering work needs durable coordination: scope in GitHub, specs that describe intent, labels that show state, clean worktrees, review rules, and visible output.
+Interactive coding agents finish a prompt while you sit at the keyboard. The job Alfred is built for is the work that keeps coming after the keyboard closes: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
 
-Alfred supplies that runtime and coordination layer. Agents coordinate through GitHub, work in clean local worktrees, report back to Slack, and can be routed to different engines by role. One agent can build with Claude Code while another reviews with Codex.
+That work needs durable coordination, not another chat window. Alfred supplies the runtime: scoped intake from GitHub issues and specs, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
 
 The starter fleet is intentionally narrow: Drake plans work, Lucius implements scoped issues, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman, Bane, Nightwing, and other specialists.
 

@@ -11,28 +11,34 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-Alfred is a local runtime that turns GitHub issues and specs into autonomous
-Claude Code and Codex runs. It claims work, opens clean worktrees, creates PRs,
-reviews code, adds tests, and reports back to Slack.
+**GitHub issues, in. Pull requests, out.**
+
+Alfred is a self-hosted runtime for autonomous Claude Code and Codex agents.
+Scoped GitHub issues and specs come in; reviewed pull requests, tests, and
+Slack reports come back. The agents run on the CLI subscriptions you already
+pay for, on a host you control. No provider API keys, no cloud agent service.
 
 Docs site: https://alfred.luminik.io
 
 ## Why use it
 
-Use Alfred when one-off prompts are not enough and recurring repo work needs a
-coordination layer: scoped intake, issue state, worktree isolation, engine
-routing, review handoff, and Slack reporting.
+Interactive coding agents complete a prompt while you sit at the keyboard.
+Alfred is the layer around them when the work is recurring and you want it to
+ship without you. It handles scoped intake from GitHub, per-firing worktree
+isolation, role-based engine routing, review handoff, hard spend caps, and the
+state machine that keeps multiple agents from stepping on each other.
 
-- Treat agents like narrow teammates: Batman plans multi-repo rollouts, Lucius
-  implements scoped issues, Ras al Ghul reviews PRs, Bane adds tests, and
-  Nightwing can pick up unresolved review comments.
-- Coordinate through ordinary repo workflows: GitHub issues and PRs, labels,
-  specs, isolated git worktrees, commit trailers, and Slack summaries.
-- Route engines by role. For example, run implementation on Claude Code and
-  review on Codex, or keep Claude as primary with Codex fallback for selected
-  agents.
-- Run on your own always-on Mac or Linux host with your Claude Code or Codex
-  subscription-backed CLI auth. Alfred does not require provider API keys.
+- Narrow roles, not a chatty multi-agent crowd: Drake plans, Lucius
+  implements, Ra's al Ghul reviews, Bane adds tests, Nightwing picks up
+  unresolved review comments, Batman drafts multi-repo rollouts.
+- Coordinate through ordinary repo primitives: GitHub issues and pull
+  requests, labels, specs, isolated git worktrees, commit trailers, and Slack
+  summaries. No bespoke dashboard, no proprietary control plane.
+- Route engines by role. Run implementation on Claude Code and review on
+  Codex, or keep Claude as primary with Codex fallback for selected agents.
+- Bring your own subscription. Alfred shells out to your local `claude` and
+  optional `codex` CLI auth. It does not bill LLM calls separately and does
+  not require provider API keys.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine.
 
