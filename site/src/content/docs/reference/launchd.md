@@ -106,7 +106,10 @@ launchctl bootstrap "gui/$(id -u)" \
 
 Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/my.fleet.lucius.std{out,err}` to watch a firing live.
 
-`/tmp/` is wiped on macOS reboot. The framework's per-firing JSONL transcripts (under `$ALFRED_HOME/state/transcripts/`) survive, so post-hoc analysis isn't dependent on `/tmp/`.
+`/tmp/` is wiped on macOS reboot. Durable runtime state lives under
+`$ALFRED_HOME/state/`; Codex artifacts are written under
+`$ALFRED_HOME/state/codex/`. Claude transcript capture is planned, not written
+by the current runner.
 
 ## RunAtLoad
 

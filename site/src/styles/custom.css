@@ -494,15 +494,10 @@ mobile-starlight-toc nav {
 }
 
 /* ------------------------------------------------------------------ */
-/* Fixed copyright bar, glass treatment                               */
+/* Copyright bar                                                       */
 /* ------------------------------------------------------------------ */
 .alfred-copyright-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  padding: 0.4rem 1rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
   text-align: center;
   font-size: var(--sl-text-xs);
   color: var(--sl-color-gray-2);
@@ -510,9 +505,6 @@ mobile-starlight-toc nav {
   -webkit-backdrop-filter: blur(14px) saturate(1.15);
   backdrop-filter: blur(14px) saturate(1.15);
   border-top: 1px solid var(--alfred-border);
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.4),
-    0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 @supports not (backdrop-filter: blur(1px)) {
@@ -527,10 +519,4 @@ mobile-starlight-toc nav {
 
 .alfred-copyright-bar a {
   color: var(--sl-color-text-accent);
-}
-
-/* Clearance for the fixed copyright bar so the last line of content is never
-   hidden behind it. */
-.sl-markdown-content {
-  padding-bottom: 2.5rem;
 }

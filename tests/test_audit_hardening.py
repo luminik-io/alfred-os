@@ -407,6 +407,30 @@ def test_drake_prompt_uses_load_prompt_substitution(monkeypatch, tmp_path):
     assert text == "Drake luminik backend,frontend Custom-Lucius\nstate-context"
 
 
+def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
+    monkeypatch.setenv("GH_ORG", "luminik")
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    prompt = tmp_path / "lucius.md"
+    prompt.write_text("Read specs from ${WORKSPACE_ROOT}/product/specs for #${ISSUE_NUMBER}.")
+    monkeypatch.setattr(lucius, "PROMPT_PATH", prompt)
+    monkeypatch.setattr(lucius, "GH_ORG", "luminik")
+    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["backend"])
+    monkeypatch.setattr(lucius, "PRE_PUSH", {"backend": "pytest"})
+    monkeypatch.setattr(lucius, "WORKSPACE", tmp_path / "product")
+
+    issue = {
+        "number": 42,
+        "title": "feat: add spec-backed behavior",
+        "body": "Implement the spec.",
+        "labels": [],
+    }
+    text = lucius.build_prompt("backend", issue, tmp_path / "wt", "lucius/42", "fid-1")
+
+    assert "Operator-supplied guidance" in text
+    assert "Read specs from " in text
+    assert "product/specs for #42" in text
+
+
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
     huntress = load_bin_module("huntress.py", monkeypatch)
 

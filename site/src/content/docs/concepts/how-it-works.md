@@ -91,7 +91,12 @@ sequenceDiagram
 
 `make_worktree` creates a throwaway git worktree under `$ALFRED_HOME/worktrees/eng-lucius-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The `claude -p` subprocess runs with its `cwd` pinned to that worktree, so it physically cannot touch the operator's canonical checkout or another firing's branch.
 
-The runner builds the prompt from the issue body plus repo context (the repo's `CLAUDE.md`, the cross-repo `code-map.json`), inlines it, and calls the configured engine with a hard `max_turns` cap and a hard timeout. The result comes back in the same shape whether the engine is Claude Code, Codex, or hybrid fallback: `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, `result_text`.
+The runner builds the prompt from the issue body plus repo context such as the
+repo's `CLAUDE.md`, inlines it, and calls the configured engine with a hard
+`max_turns` cap and a hard timeout. Drake and code-map-aware review prompts may
+read `$ALFRED_HOME/state/code-map.json` when configured. The result comes back
+in the same shape whether the engine is Claude Code, Codex, or hybrid fallback:
+`success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, `result_text`.
 
 ## Stage 5: branch on the outcome
 
@@ -112,7 +117,7 @@ Whatever the path, `release_issue` runs so the issue never stays stuck in `agent
 
 - **Idempotent.** Every firing reads its inputs from scratch. A crash mid-run leaves no half-state to resume; the next firing's `make_worktree` even prunes orphaned worktrees first.
 - **Bounded.** `max_turns` and the firing timeout cap the worst-case spend of any single firing. The schedule caps the worst-case spend of the day.
-- **Observable.** Every exit path prints a sentinel and (for anything the operator should see) posts to Slack. Per-firing JSONL transcripts under `$ALFRED_HOME/state/transcripts/` survive reboots.
+- **Observable.** Every exit path prints a sentinel and (for anything the operator should see) posts to Slack. Codex writes per-firing artifacts under `$ALFRED_HOME/state/codex/`; Claude transcript capture is planned, not written by the current runner.
 - **Isolated.** A bad firing trashes its own worktree and nothing else.
 
 ## See also

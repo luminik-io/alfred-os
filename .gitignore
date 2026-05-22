@@ -205,6 +205,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Local Alfred scratch worktrees
+.worktrees/
+
 # PyPI configuration file
 .pypirc
 

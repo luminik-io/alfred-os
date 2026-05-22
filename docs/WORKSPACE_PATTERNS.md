@@ -4,6 +4,9 @@ Alfred can run against one repo, a multi-repo product workspace, or a
 specs-led workspace. The important part is to make the shape explicit before
 agents start firing.
 
+For the full specs workflow, read
+[`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md).
+
 ## Default Layout
 
 By default:
@@ -112,9 +115,13 @@ First setup:
   --slack-webhook skip
 ```
 
-Then edit `~/.alfred/prompts/drake.md`, `~/.alfred/prompts/lucius.md`, and
-`~/.alfred/prompts/rasalghul.md` to explain where specs live and which spec
-documents should be treated as source of intent.
+Then edit `~/.alfred/prompts/drake.md` to explain where specs live and which
+spec documents should be treated as source of intent. Drake should copy the
+relevant spec links and acceptance criteria into the GitHub issue body. Lucius
+receives spec context through that issue body when it claims the work.
+
+For review agents, keep spec references in the PR description or review prompt
+so the reviewer can compare implementation against the intended contract.
 
 Only include the specs repo in `--repos` if you want Alfred to create labels
 there and allow repo-operating agents to pick issues or PRs from it.

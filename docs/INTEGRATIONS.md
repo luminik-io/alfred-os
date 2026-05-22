@@ -56,7 +56,7 @@ on a new machine.
 
 | Profile | Use it when | Required pieces |
 | --- | --- | --- |
-| Standalone Alfred | You want scheduled engineering agents on one machine. | Alfred, Python, `gh`, `git`, Claude Code or Codex, optional Slack webhook. |
+| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code or Codex, optional Slack webhook. |
 | Alfred + external memory | You want searchable personal/company memory available to interactive sessions. | Standalone Alfred plus a separately installed memory layer. |
 | Alfred + operator gateway | You want chat control, MCP registration, skills, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/operator layer. |
 

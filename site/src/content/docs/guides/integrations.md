@@ -25,7 +25,7 @@ skills fetched at runtime without review.
 
 | Profile | Use it when | Required pieces |
 | --- | --- | --- |
-| Standalone Alfred | You want scheduled engineering agents on one machine. | Alfred, Python, `gh`, `git`, Claude Code or Codex, optional Slack webhook. |
+| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code or Codex, optional Slack webhook. |
 | Alfred + external memory | You want searchable memory in interactive sessions. | Standalone Alfred plus a separately installed memory layer. |
 | Alfred + operator gateway | You want chat control, MCP registration, skills, durable task boards, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/operator layer. |
 

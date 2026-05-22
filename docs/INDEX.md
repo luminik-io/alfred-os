@@ -8,6 +8,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`../INSTALL.md`](../INSTALL.md): from-zero local install.
 - [`AI_ASSISTED_INSTALL.md`](AI_ASSISTED_INSTALL.md): copy-paste prompt and guardrails for Claude Code, Codex, or another local coding assistant to install Alfred.
 - [`WORKSPACE_PATTERNS.md`](WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
+- [`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md): turning specs into issue queues, Batman plans, and reviewable PRs.
 - [`../BOOTSTRAP.md`](../BOOTSTRAP.md): full operations setup for a first fleet.
 - [`TUTORIAL.md`](TUTORIAL.md): build the Echo example agent end-to-end.
 - [`DRY_RUN.md`](DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.

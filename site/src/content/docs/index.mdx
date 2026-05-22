@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: Run AI agents as repo teammates. Alfred turns GitHub issues, specs, and PR feedback into scheduled local Claude Code or Codex runs.
+description: A self-hosted runtime for autonomous Claude Code and Codex agents. Scoped GitHub issues and specs come in; reviewed pull requests, tests, and Slack reports come back, on the CLI subscriptions you already pay for.
 template: splash
 head:
   - tag: title
-    content: "Alfred: local AI agents for real repos"
+    content: "Alfred: self-hosted runtime for autonomous Claude Code and Codex agents"
 hero:
-  tagline: Turn GitHub issues, specs, and PR feedback into autonomous Claude Code or Codex runs from a machine you control.
+  tagline: "GitHub issues, in. Pull requests, out. A self-hosted runtime for autonomous Claude Code and Codex agents on the CLI subscriptions you already pay for."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -23,13 +23,13 @@ hero:
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-## Why Alfred Exists
+## Why Alfred exists
 
-A coding agent can complete a prompt. Recurring engineering work needs more around the prompt: a repo scope, a spec or issue, labels that show state, an isolated worktree, review rules, and a place where the result lands.
+Interactive coding agents finish a prompt while you sit at the keyboard. The job Alfred is built for is the work that keeps coming after the keyboard closes: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
 
-Alfred supplies that runtime and coordination layer. Agents coordinate through GitHub, work in clean local worktrees, report back to Slack, and can be routed to different engines by role. One agent can build with Claude Code while another reviews with Codex.
+That work needs durable coordination, not another chat window. Alfred supplies the runtime: scoped intake from GitHub issues and specs, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
 
-The default fleet is intentionally narrow: Batman plans multi-repo work, Lucius implements scoped issues, Ras al Ghul reviews PRs, Bane adds tests, and Nightwing can pick up unresolved review comments.
+The starter fleet is intentionally narrow: Drake plans work, Lucius implements scoped issues, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman, Bane, Nightwing, and other specialists.
 
 Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
@@ -57,7 +57,7 @@ flowchart TB
   <Card title="Autonomous scheduled runs" icon="rocket">
     Agents keep working on schedule, survive host restarts, and do not depend on one fragile long-running process.
   </Card>
-  <Card title="Repo-teammate workflow" icon="document">
+  <Card title="Development-team workflow" icon="document">
     Issues and specs become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report.
   </Card>
   <Card title="Role-level engine routing" icon="setting">
@@ -95,6 +95,12 @@ flowchart TB
   title="Pick your workspace shape"
   description="One repo, multi-repo product workspace, specs-led planning, or Batman bundle planning."
   href="/getting-started/workspace-patterns/"
+/>
+
+<LinkCard
+  title="Use specs-driven development"
+  description="Turn specs into scoped issue queues, Batman plans, clean worktrees, reviewable PRs, and visible Slack summaries."
+  href="/guides/specs-driven-development/"
 />
 
 <LinkCard
@@ -140,6 +146,6 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 Latest release: v0.3.0. Alfred is usable today as a local engineering-agent fleet for one operator: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
 
-The design boundary is stable: one operator, one machine, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
+The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 
 License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).
