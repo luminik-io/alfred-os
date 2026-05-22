@@ -191,15 +191,11 @@ function html({ fontCss, logoData }) {
     }
     .footer-pill {
       position: absolute;
-      left: 172px;
-      right: 172px;
-      bottom: 72px;
-      padding: 16px 28px;
-      border: 1px solid #314573;
-      border-radius: 999px;
-      background: rgba(7, 13, 28, 0.72);
-      color: #E6EDFF;
-      font-size: 22px;
+      left: 300px;
+      right: 300px;
+      bottom: 25px;
+      color: #B7C5EB;
+      font-size: 18px;
       line-height: 1.2;
       font-weight: 700;
       text-align: center;
@@ -207,13 +203,13 @@ function html({ fontCss, logoData }) {
     .url,
     .meta {
       position: absolute;
-      bottom: 38px;
+      bottom: 25px;
       color: #91A8DD;
       font-size: 20px;
       font-weight: 700;
     }
-    .url { left: 112px; }
-    .meta { right: 112px; }
+    .url { left: 42px; }
+    .meta { right: 42px; }
   </style>
 </head>
 <body>
@@ -238,10 +234,10 @@ function html({ fontCss, logoData }) {
         <div class="arrow">→</div>
         ${card("Engines + output", ["Claude Code or Codex", "PRs, reviews, tests", "Slack summaries"], "#F4B43E")}
       </div>
+      <div class="footer-pill">Planned, claimed, reviewed, and reported back.</div>
+      <div class="url">alfred.luminik.io</div>
+      <div class="meta">MIT · Python · macOS/Linux</div>
     </section>
-    <div class="footer-pill">Recurring engineering work: planned, claimed, run, reviewed, and reported back.</div>
-    <div class="url">alfred.luminik.io</div>
-    <div class="meta">MIT · Python · macOS/Linux</div>
   </main>
 </body>
 </html>`;
