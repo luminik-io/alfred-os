@@ -36,9 +36,12 @@ Full roadmap at [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main
 - **Full OSS Batman execution chain**. The current public Batman is plan-only; approval gates and sequenced PR execution are still future work.
 - **Per-agent model catalog**. Internal Alfred has a model-routing surface. The OSS version should expose it only after the defaults, billing implications, and docs are clean enough for first-time operators.
 
-## Beyond engineering: the solo builder's agent OS
+## Beyond engineering
 
-The default install ships the engineering fleet. The harness underneath it is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That's the direction: Alfred as the solo builder's whole agent OS, one department at a time.
+The default install ships the engineering fleet. The same scheduler, worktree,
+Slack, state-machine, and engine-routing primitives can support other
+departments, but each department needs its own integrations, prompts, tests, and
+approval rules.
 
 - **Content**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
 - **Sales / SDR**: prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
@@ -46,7 +49,9 @@ The default install ships the engineering fleet. The harness underneath it is de
 - **Finance ops**: invoice generation, bank reconciliation, subscription audit. Drafts only.
 - **Product ops / SRE**: uptime monitoring, release notes, customer-health signals.
 
-Each department is its own integration surface and per-codename prompt design. One codename per PR, with prompt + tests + docs. Contributions are welcome when they keep the same human-in-the-loop boundaries.
+Each department lands incrementally, one codename per PR, with prompt + tests +
+docs. Contributions are welcome when they keep the same human-in-the-loop
+boundaries.
 
 ## On the horizon
 

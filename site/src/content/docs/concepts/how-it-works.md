@@ -76,22 +76,22 @@ Then `claim_issue(repo, num, codename=AGENT, firing_id=...)` runs the [state mac
 sequenceDiagram
     participant runner as lucius.py
     participant git as git
-    participant claude as claude -p
+    participant engine as configured engine
     participant fs as worktree dir
 
     runner->>git: make_worktree(repo, agent, issue)
     git->>fs: git worktree add from origin/main
     runner->>runner: build prompt (issue body + repo context)
-    runner->>claude: claude_invoke_streaming(prompt, workdir=wt, max_turns=N)
-    claude->>fs: read, edit, write files, run tests
-    claude-->>runner: ClaudeResult (success, turns, cost, session_id, text)
+    runner->>engine: invoke prompt (Claude Code, Codex, or hybrid)
+    engine->>fs: read, edit, write files, run tests
+    engine-->>runner: AgentResult (success, turns, cost, session_id, text)
     runner->>git: git rev-list origin/main..HEAD
     git-->>runner: commit count
 ```
 
 `make_worktree` creates a throwaway git worktree under `$ALFRED_HOME/worktrees/eng-lucius-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The `claude -p` subprocess runs with its `cwd` pinned to that worktree, so it physically cannot touch the operator's canonical checkout or another firing's branch.
 
-The runner builds the prompt from the issue body plus repo context (the repo's `CLAUDE.md`, the cross-repo `code-map.json`), inlines it, and calls `claude_invoke_streaming` with a hard `max_turns` cap and a hard timeout. The result comes back as a `ClaudeResult` dataclass: `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, `result_text`.
+The runner builds the prompt from the issue body plus repo context (the repo's `CLAUDE.md`, the cross-repo `code-map.json`), inlines it, and calls the configured engine with a hard `max_turns` cap and a hard timeout. The result comes back in the same shape whether the engine is Claude Code, Codex, or hybrid fallback: `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, `result_text`.
 
 ## Stage 5: branch on the outcome
 

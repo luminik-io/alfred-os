@@ -27,8 +27,8 @@ const STRUCTURED_DATA = JSON.stringify({
       name: "Alfred",
       url: SITE_URL,
       description:
-        "Documentation for Alfred, the open-source runtime for a local fleet " +
-        "of autonomous development agents on a single machine you control.",
+        "Documentation for Alfred, the open-source runtime and coordination layer for AI " +
+        "agents as repo teammates.",
     },
     {
       "@type": "SoftwareApplication",
@@ -37,9 +37,9 @@ const STRUCTURED_DATA = JSON.stringify({
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
       description:
-        "A local agent-fleet runtime for solo builders. Claude Code agents " +
-        "with optional Codex routing, scheduled by launchd or systemd, each firing isolated in its own git " +
-        "worktree, with per-agent IAM and per-day spend caps.",
+        "A local runtime and coordination layer that turns GitHub issues, specs, and PR " +
+        "feedback into scheduled Claude Code or Codex runs with isolated git " +
+        "worktrees, label state, reviews, tests, and Slack reports.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
       softwareHelp: SITE_URL,
       license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
@@ -217,10 +217,10 @@ export default defineConfig({
     starlight({
       title: "Alfred",
       description:
-        "Local Claude Code and Codex agent fleet for solo builders. " +
-        "One host, one operator, code shipping while you sleep.",
+        "Run AI agents as repo teammates with Claude Code and Codex. " +
+        "GitHub issues, specs, worktrees, PRs, reviews, tests, and Slack reports.",
       logo: {
-        src: "./src/assets/alfred-logo.png",
+        src: "./src/assets/alfred-logo-transparent.png",
         alt: "Alfred logo",
       },
       favicon: withBase("/favicon.png"),
@@ -268,7 +268,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Alfred, a local AI agent fleet for solo builders.",
+            content: "Alfred, local AI agents for real repos.",
           },
         },
         {
@@ -282,7 +282,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "Alfred, a local AI agent fleet for solo builders.",
+            content: "Alfred, local AI agents for real repos.",
           },
         },
         {

@@ -66,7 +66,7 @@ Ghul, and agent-cleanup. Pick `all` only when you want the full roster.
 
 | Codename | Role | Default schedule | What it does |
 |---|---|---|---|
-| **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
+| **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
 | **batman** | cross-repo coordinator | every 1 h, opt-in | Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a bundle plan. OSS ships this as plan-only; custom fleets can layer approval and execution on top. |
 | **bane** | test-coverage | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |

@@ -1,6 +1,6 @@
 # Claude Code
 
-Alfred runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`alfred claude`), and the optional Codex path.
+Alfred is the scheduler and guardrail layer; Claude Code is the default engine. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`alfred claude`), and the optional Codex path.
 
 Default billing posture: Alfred uses the local CLI account you have already authenticated. It does not need Anthropic or OpenAI API keys for the normal Claude Code / Codex CLI flow.
 

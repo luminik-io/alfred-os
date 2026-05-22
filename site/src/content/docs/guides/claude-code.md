@@ -3,7 +3,7 @@ title: Claude Code and Codex
 description: Install, Pro vs Max sizing, account routing, engine routing, troubleshooting.
 ---
 
-Alfred runs most agents as a `claude -p` subprocess. The framework is the harness, Claude Code is the default brain. Codex can be enabled as an optional per-agent engine, including review-safe Codex-only or Claude-first hybrid routing.
+Alfred is the scheduler and guardrail layer; Claude Code is the default engine. Codex can be enabled as an optional per-agent engine, including review-safe Codex-only or Claude-first hybrid routing.
 
 Full guide at [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md). Highlights:
 

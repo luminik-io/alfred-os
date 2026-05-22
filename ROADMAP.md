@@ -55,11 +55,15 @@ The default install ships a working engineering agent fleet. After `bash install
 - **Optional Hermes bridge**: Hermes now has persistent `/goal`, gateway-driven cron, Kanban worker profiles, MCP, skills, memory, and dashboards. Alfred should integrate by exposing status/events and by accepting GitHub issue/label handoffs, not by making Hermes a setup dependency or letting Hermes mutate Alfred worktrees/state directly.
 - **Per-agent model catalog**: internal Alfred has a model-routing surface. The OSS version should expose that only after the defaults, billing implications, and docs are clean enough for first-time operators.
 
-## Beyond engineering: the solo builder's agent OS
+## Beyond engineering
 
-The default install ships the **engineering fleet**. But the harness underneath it (`claude_invoke`, `slack_post`, the issue-claim state machine, per-agent spend caps, per-firing worktrees, the codename pattern) is department-agnostic. Alfred was extracted from a private fleet that already runs content, sales, and ops agents on the same substrate. That is the direction: Alfred as the solo builder's whole agent OS, one department at a time.
+The default install ships the **engineering fleet**. The same scheduler,
+worktree, Slack, state-machine, spend-cap, and engine-routing primitives can
+support other departments, but each department needs its own integrations,
+prompts, tests, and approval rules.
 
-Each department is its own integration surface (Apollo / Reddit / Gmail / Stripe / Sentry SDKs) and its own per-codename prompt design. They land incrementally, one codename per PR, with prompt + tests + docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Each department lands incrementally, one codename per PR, with prompt + tests +
+docs. PRs welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 - **Content**: blog / LinkedIn / SEO drafts, site-page generation, content-drift detection. Human-in-the-loop on publish.
 - **Sales / SDR**: prospect identification, event-page sourcing, outreach drafts. Human-in-the-loop on send.
@@ -97,4 +101,4 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 - **Medium**: a well-scoped feature request with a real use case and a proposal.
 - **Low**: "would be cool if" comments.
 
-Want to take Alfred somewhere new, like a new department or a substrate change? Open a discussion first, so the design fits before the code does.
+Want to take Alfred somewhere new, like a new department or runtime change? Open a discussion first, so the design fits before the code does.

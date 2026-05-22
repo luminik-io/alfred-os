@@ -47,7 +47,7 @@ Use this for one app, one library, or one Mac/iOS app repo.
 ```
 
 The starter fleet receives the selected repo list. Drake can plan across the
-surface, Lucius can pick labelled issues in any selected repo, and Ra's al Ghul
+selected repos, Lucius can pick labelled issues in any selected repo, and Ra's al Ghul
 can review PRs across the same repo set.
 
 ## Specs-Led
@@ -67,8 +67,9 @@ Use `--repos my-org/api,my-org/web,my-org/mobile`, then edit
 `~/.alfred/prompts/drake.md`, `~/.alfred/prompts/lucius.md`, and
 `~/.alfred/prompts/rasalghul.md` to reference the specs checkout.
 
-Only include specs in `--repos` when you want Alfred to create labels there and
-allow repo-operating agents to pick issues or PRs from it.
+Specs-driven means agents read the specs repo as planning context while
+code-writing agents stay scoped to code repos. Include `specs` in `--repos`
+only when you want Alfred to create labels there or pick issues and PRs from it.
 
 ## Batman
 

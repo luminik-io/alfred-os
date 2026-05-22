@@ -47,13 +47,13 @@ Starter fleet for one repo or an explicit comma-separated repo list:
 ```
 
 This is the zero-guess path for a solo builder or an AI coding tool setting up
-one repo. It assumes `GH_ORG` is set, `gh auth login` has completed, and
+one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has completed, and
 `claude` has completed first-run auth. The repo owner must match `GH_ORG`; the
 runtime agents store the bare repo name in `~/.alfredrc` and build
 `GH_ORG/repo` at firing time. The command enables Drake, Lucius, Ras al Ghul,
 and agent-cleanup; assigns the selected repo to each repo-operating agent;
 skips Slack safely; seeds prompt templates into `~/.alfred/prompts/`; creates
-standard GitHub labels on the selected repo; writes `launchd/agents.conf`, the
+standard GitHub labels on the selected repos; writes `launchd/agents.conf`, the
 shared scheduler manifest; updates `~/.alfredrc`; runs deploy; and runs doctor.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
