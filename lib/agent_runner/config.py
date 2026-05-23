@@ -72,9 +72,7 @@ def _agent_env_slug(agent: str) -> str:
     return agent.strip().upper().replace("-", "_")
 
 
-def env_int(
-    name: str, default: int, *, minimum: int = 1, maximum: int | None = None
-) -> int:
+def env_int(name: str, default: int, *, minimum: int = 1, maximum: int | None = None) -> int:
     """Read a small integer knob from env, clamped to ``[minimum, maximum]``.
 
     Missing or non-integer values fall back to ``default``. The result is
@@ -104,9 +102,7 @@ def env_int(
     return value
 
 
-def optional_env_int(
-    name: str, *, minimum: int = 1, maximum: int | None = None
-) -> int | None:
+def optional_env_int(name: str, *, minimum: int = 1, maximum: int | None = None) -> int | None:
     """Read an optional integer knob; return ``None`` when unset or unparseable.
 
     Designed for "no default ceiling but allow temporary debugging via env"
@@ -239,9 +235,7 @@ def codex_sandbox_for_agent(
     env = environ if environ is not None else os.environ
     slug = _agent_env_slug(agent)
     explicit = (
-        env.get(f"ALFRED_{slug}_CODEX_SANDBOX")
-        or env.get(f"{slug}_CODEX_SANDBOX")
-        or ""
+        env.get(f"ALFRED_{slug}_CODEX_SANDBOX") or env.get(f"{slug}_CODEX_SANDBOX") or ""
     ).strip()
     if explicit:
         return explicit

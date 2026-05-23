@@ -117,9 +117,7 @@ class SentryConnector:
             return []
 
         if not isinstance(resp, list):
-            logger.warning(
-                "%s: expected list response, got %s", self.name, type(resp).__name__
-            )
+            logger.warning("%s: expected list response, got %s", self.name, type(resp).__name__)
             return []
 
         threshold = _SEVERITY_RANK[self.min_severity]
@@ -174,9 +172,7 @@ class SentryConnector:
             "query": " ".join(query_parts),
             "limit": str(self.page_size),
         }
-        return (
-            f"{self.base_url}/projects/{org}/{proj}/issues/?{urlencode(params, safe=':>-')}"
-        )
+        return f"{self.base_url}/projects/{org}/{proj}/issues/?{urlencode(params, safe=':>-')}"
 
     @staticmethod
     def _level_to_severity(level: str | None) -> Severity:
@@ -191,7 +187,7 @@ class SentryConnector:
         permalink = str(node.get("permalink") or node.get("permalinkUrl") or "")
         level = self._level_to_severity(node.get("level"))
         count = node.get("count") or "?"
-        users = (node.get("userCount") if isinstance(node.get("userCount"), int) else "?")
+        users = node.get("userCount") if isinstance(node.get("userCount"), int) else "?"
 
         body_parts = [
             f"**Sentry**: `{short_id}`  ·  **events**: {count}  ·  **users**: {users}",

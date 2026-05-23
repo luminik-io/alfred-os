@@ -31,9 +31,7 @@ from .process import run
 SLACK_SEVERITY_INFO = "info"
 SLACK_SEVERITY_WARN = "warn"
 SLACK_SEVERITY_ALERT = "alert"
-_SLACK_SEVERITIES = frozenset(
-    {SLACK_SEVERITY_INFO, SLACK_SEVERITY_WARN, SLACK_SEVERITY_ALERT}
-)
+_SLACK_SEVERITIES = frozenset({SLACK_SEVERITY_INFO, SLACK_SEVERITY_WARN, SLACK_SEVERITY_ALERT})
 
 # Slack truncates webhook payloads at ~4000 chars; leave headroom.
 _SLACK_MAX_LEN = 3500
@@ -96,9 +94,7 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
         return False
 
     payload = json.dumps({"text": text}).encode("utf-8")
-    req = urllib.request.Request(
-        hook, data=payload, headers={"content-type": "application/json"}
-    )
+    req = urllib.request.Request(hook, data=payload, headers={"content-type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             r.read()

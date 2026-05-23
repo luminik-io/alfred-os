@@ -51,11 +51,7 @@ def _full_firing_events() -> list[dict]:
         },
         {
             "type": "user",
-            "message": {
-                "content": [
-                    {"type": "tool_result", "content": "ok"}
-                ]
-            },
+            "message": {"content": [{"type": "tool_result", "content": "ok"}]},
         },
         {
             "type": "assistant",
@@ -129,15 +125,14 @@ def test_transcript_summary_skips_invalid_json(state_dir: Path) -> None:
     path = state_dir / "transcripts" / "drake" / "2026-05" / "D001.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps({"type": "result", "subtype": "ok", "num_turns": 1}) + "\n"
+        json.dumps({"type": "result", "subtype": "ok", "num_turns": 1})
+        + "\n"
         + "not valid json\n"
         + json.dumps(
             {
                 "type": "assistant",
                 "message": {
-                    "content": [
-                        {"type": "tool_use", "name": "Read", "input": {"file_path": "/a"}}
-                    ]
+                    "content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "/a"}}]
                 },
             }
         )

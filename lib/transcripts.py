@@ -199,9 +199,7 @@ def transcript_summary(path: Path) -> TranscriptSummary:
         if not isinstance(obj, dict):
             continue
 
-        if obj.get("type") == "result" or (
-            "subtype" in obj and "num_turns" in obj
-        ):
+        if obj.get("type") == "result" or ("subtype" in obj and "num_turns" in obj):
             summary.result = FiringResult(
                 subtype=obj.get("subtype"),
                 num_turns=obj.get("num_turns"),
@@ -356,7 +354,7 @@ def _render_event(obj: dict[str, Any]) -> str | None:
 
 
 def _render_user(obj: dict[str, Any]) -> str | None:
-    content = ((obj.get("message") or {}).get("content") or "")
+    content = (obj.get("message") or {}).get("content") or ""
     if isinstance(content, list):
         parts: list[str] = []
         for block in content:
@@ -378,7 +376,7 @@ def _render_user(obj: dict[str, Any]) -> str | None:
 
 
 def _render_assistant(obj: dict[str, Any]) -> str | None:
-    content = ((obj.get("message") or {}).get("content") or [])
+    content = (obj.get("message") or {}).get("content") or []
     if not isinstance(content, list):
         return None
     parts: list[str] = []

@@ -82,9 +82,7 @@ def test_proxy_available_returns_false_for_non_socket_file(
 
 
 def test_invoke_collected_raises_when_unset(env_clean: None) -> None:
-    request = InvokeRequest(
-        prompt="x", workdir="/tmp", allowed_tools="Read", session_id="s"
-    )
+    request = InvokeRequest(prompt="x", workdir="/tmp", allowed_tools="Read", session_id="s")
     with pytest.raises(ProxyUnavailable):
         invoke_collected(request)
 
@@ -95,9 +93,7 @@ def test_invoke_collected_raises_when_socket_missing(
     short_tmp: Path,
 ) -> None:
     monkeypatch.setenv(ENV_SOCKET, str(short_tmp / "missing.sock"))
-    request = InvokeRequest(
-        prompt="x", workdir="/tmp", allowed_tools="Read", session_id="s"
-    )
+    request = InvokeRequest(prompt="x", workdir="/tmp", allowed_tools="Read", session_id="s")
     with pytest.raises(ProxyUnavailable):
         invoke_collected(request)
 

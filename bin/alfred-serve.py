@@ -111,8 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     reader = FilesystemReader()
     if not reader.state_root.exists():
         logger.warning(
-            "state root %s does not exist; the dashboard will render empty until "
-            "an agent fires", reader.state_root,
+            "state root %s does not exist; the dashboard will render empty until an agent fires",
+            reader.state_root,
         )
 
     app = create_app(reader)

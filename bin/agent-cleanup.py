@@ -249,15 +249,14 @@ def sweep_extra_paths(
                 if dirty_reason:
                     skipped += 1
                     print(
-                        f"[cleanup] extra worktree skipped: {wt} "
-                        f"({dirty_reason})",
+                        f"[cleanup] extra worktree skipped: {wt} ({dirty_reason})",
                         file=sys.stderr,
                     )
                     continue
                 try:
-                    size_mb = sum(
-                        f.stat().st_size for f in wt.rglob("*") if f.is_file()
-                    ) / (1024 * 1024)
+                    size_mb = sum(f.stat().st_size for f in wt.rglob("*") if f.is_file()) / (
+                        1024 * 1024
+                    )
                 except OSError:
                     size_mb = 0.0
                 for repo_dir in WORKSPACE.iterdir():

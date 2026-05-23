@@ -62,8 +62,18 @@ def populated_state(tmp_path: Path) -> Path:
         state / "lucius" / "events" / "2026-05-23-1200-aa.jsonl",
         [
             {"ts": "2026-05-23T12:00:00Z", "event": "firing_started", "agent": "lucius"},
-            {"ts": "2026-05-23T12:01:30Z", "event": "issue_picked", "repo": "your-org/api", "number": 42},
-            {"ts": "2026-05-23T12:05:00Z", "event": "firing_ended", "agent": "lucius", "result": "pr_opened"},
+            {
+                "ts": "2026-05-23T12:01:30Z",
+                "event": "issue_picked",
+                "repo": "your-org/api",
+                "number": 42,
+            },
+            {
+                "ts": "2026-05-23T12:05:00Z",
+                "event": "firing_ended",
+                "agent": "lucius",
+                "result": "pr_opened",
+            },
         ],
     )
     _write_jsonl(

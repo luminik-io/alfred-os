@@ -28,8 +28,7 @@ def test_parse_claim_comment_roundtrip(fresh_agent_runner):
     """_parse_claim_comment reads back the structured fields."""
     ar = fresh_agent_runner
     body = (
-        "<!-- agent-claim:codename=lucius firing_id=2026-05-22-1300-aa "
-        "ts=2026-05-22T13:00:00Z -->"
+        "<!-- agent-claim:codename=lucius firing_id=2026-05-22-1300-aa ts=2026-05-22T13:00:00Z -->"
     )
     meta = ar._parse_claim_comment(body)
     assert meta["codename"] == "lucius"
@@ -64,9 +63,7 @@ def test_gh_issue_edit_dry_run_no_subprocess(fresh_agent_runner, monkeypatch):
     )
     ar.set_dry_run(True)
     try:
-        assert ar.gh_issue_edit(
-            "backend", 12, add_labels=["agent:done"]
-        )
+        assert ar.gh_issue_edit("backend", 12, add_labels=["agent:done"])
     finally:
         ar.set_dry_run(False)
     assert called == []

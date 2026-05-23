@@ -64,10 +64,7 @@ def test_lifecycle_label_set_membership():
 def test_lifecycle_state_picks_most_advanced():
     assert labels.lifecycle_state({labels.IMPLEMENT}) == labels.IMPLEMENT
     assert labels.lifecycle_state({labels.IMPLEMENT, labels.IN_FLIGHT}) == labels.IN_FLIGHT
-    assert (
-        labels.lifecycle_state({labels.IN_FLIGHT, labels.PR_OPEN, labels.DONE})
-        == labels.DONE
-    )
+    assert labels.lifecycle_state({labels.IN_FLIGHT, labels.PR_OPEN, labels.DONE}) == labels.DONE
     assert labels.lifecycle_state(set()) is None
     assert labels.lifecycle_state({"random-label"}) is None
 

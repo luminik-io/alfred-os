@@ -22,8 +22,9 @@ def _load_alfred_logs():
     return module
 
 
-def _events_with_tools(num_reads: int = 1, num_bash: int = 1, num_edits: int = 0,
-                      skill: str | None = None) -> list[dict]:
+def _events_with_tools(
+    num_reads: int = 1, num_bash: int = 1, num_edits: int = 0, skill: str | None = None
+) -> list[dict]:
     content = []
     for _ in range(num_reads):
         content.append({"type": "tool_use", "name": "Read", "input": {"file_path": "/a"}})
@@ -112,12 +113,20 @@ def test_logs_firing_pretty_dump(tmp_path: Path, capsys):
 
 
 def test_logs_firing_tool_calls(tmp_path: Path, capsys):
-    _write_firing(tmp_path, "lucius", "F020", _events_with_tools(num_reads=3, num_bash=2, num_edits=1))
+    _write_firing(
+        tmp_path, "lucius", "F020", _events_with_tools(num_reads=3, num_bash=2, num_edits=1)
+    )
     cli = _load_alfred_logs()
-    rc = cli.main([
-        "lucius", "--state-dir", str(tmp_path),
-        "--firing-id", "F020", "--show-tool-calls",
-    ])
+    rc = cli.main(
+        [
+            "lucius",
+            "--state-dir",
+            str(tmp_path),
+            "--firing-id",
+            "F020",
+            "--show-tool-calls",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "total tool calls: 6" in out
@@ -149,7 +158,9 @@ def test_logs_firing_json_passthrough(tmp_path: Path, capsys):
 
 
 def test_logs_show_tool_calls_aggregate(tmp_path: Path, capsys):
-    _write_firing(tmp_path, "lucius", "A1", _events_with_tools(num_reads=2, num_bash=1, skill="review"))
+    _write_firing(
+        tmp_path, "lucius", "A1", _events_with_tools(num_reads=2, num_bash=1, skill="review")
+    )
     _write_firing(tmp_path, "lucius", "A2", _events_with_tools(num_reads=1, num_bash=3))
     cli = _load_alfred_logs()
     rc = cli.main(["lucius", "--state-dir", str(tmp_path), "--show-tool-calls"])
@@ -164,9 +175,7 @@ def test_logs_show_tool_calls_aggregate(tmp_path: Path, capsys):
 def test_logs_show_tool_calls_json(tmp_path: Path, capsys):
     _write_firing(tmp_path, "lucius", "A1", _events_with_tools(num_reads=2))
     cli = _load_alfred_logs()
-    rc = cli.main([
-        "lucius", "--state-dir", str(tmp_path), "--show-tool-calls", "--json"
-    ])
+    rc = cli.main(["lucius", "--state-dir", str(tmp_path), "--show-tool-calls", "--json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["codename"] == "lucius"

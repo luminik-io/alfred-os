@@ -96,9 +96,7 @@ def test_claim_calls_gh_issue_edit_with_do_not_pickup(
 def test_claim_refused_when_pr_open(
     cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        cli_module, "issue_dedup_check", lambda r, n: _stub_state(pr_open=True)
-    )
+    monkeypatch.setattr(cli_module, "issue_dedup_check", lambda r, n: _stub_state(pr_open=True))
     monkeypatch.setattr(cli_module, "gh_issue_edit", lambda *a, **k: True)
     rc = cli_module.main(["claim", "your-backend#42"])
     assert rc == 2
@@ -121,9 +119,7 @@ def test_claim_refused_when_in_flight_without_force(
     assert rc == 2
 
 
-def test_claim_overrides_in_flight_with_force(
-    cli_module, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_claim_overrides_in_flight_with_force(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         cli_module,
         "issue_dedup_check",
@@ -158,9 +154,7 @@ def test_release_clears_do_not_pickup(
     assert "released your-backend#42" in capsys.readouterr().out
 
 
-def test_dedup_check_exits_zero_when_claimable(
-    cli_module, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_dedup_check_exits_zero_when_claimable(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_module, "issue_dedup_check", lambda r, n: _stub_state())
     assert cli_module.main(["dedup-check", "your-backend#42"]) == 0
 
@@ -250,17 +244,19 @@ def test_sweep_claims_dry_run_uses_env_repos(
     monkeypatch.setattr(
         cli_module,
         "find_stale_claims",
-        lambda repo, *, max_age_hours: [
-            {
-                "number": 100,
-                "codename": "lucius",
-                "firing_id": "x",
-                "age_hours": 5.0,
-                "title": "stuck issue",
-            }
-        ]
-        if repo == "your-backend"
-        else [],
+        lambda repo, *, max_age_hours: (
+            [
+                {
+                    "number": 100,
+                    "codename": "lucius",
+                    "firing_id": "x",
+                    "age_hours": 5.0,
+                    "title": "stuck issue",
+                }
+            ]
+            if repo == "your-backend"
+            else []
+        ),
     )
 
     force_calls: list[tuple[str, int]] = []

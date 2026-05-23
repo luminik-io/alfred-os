@@ -34,9 +34,7 @@ class FakeGit:
     """Map of ``" ".join(args)`` -> result. Missing keys -> success."""
     calls: list[tuple[tuple[str, ...], Path]] = field(default_factory=list)
 
-    def __call__(
-        self, args: Sequence[str], *, cwd: Path, timeout: int = 60
-    ) -> GitResult:
+    def __call__(self, args: Sequence[str], *, cwd: Path, timeout: int = 60) -> GitResult:
         key = " ".join(args)
         self.calls.append((tuple(args), cwd))
         return self.script.get(key, GitResult(returncode=0))
@@ -88,9 +86,11 @@ def test_setup_failure_rolls_back_already_created(repos: list[Path], tmp_path: P
     """If repo 2's `worktree add` fails, repo 1's worktree must be cleaned up."""
     fake = FakeGit()
     # Make the SECOND `worktree add` fail (target = frontend repo).
-    fake.script["worktree add -b batman/x-frontend-100 "
-                + str(tmp_path / "wt" / "batman-frontend-x-100")
-                + " origin/main"] = GitResult(returncode=1, stderr="boom")
+    fake.script[
+        "worktree add -b batman/x-frontend-100 "
+        + str(tmp_path / "wt" / "batman-frontend-x-100")
+        + " origin/main"
+    ] = GitResult(returncode=1, stderr="boom")
 
     requests = [
         WorktreeRequest("backend", repos[0]),
@@ -151,9 +151,7 @@ def test_verify_worktree_clean_true_on_empty_status(tmp_path: Path) -> None:
 
 
 def test_verify_worktree_clean_false_when_dirty(tmp_path: Path) -> None:
-    fake = FakeGit(
-        script={"status --short": GitResult(returncode=0, stdout=" M lib/labels.py\n")}
-    )
+    fake = FakeGit(script={"status --short": GitResult(returncode=0, stdout=" M lib/labels.py\n")})
     assert verify_worktree_clean(tmp_path, git=fake) is False
 
 

@@ -146,9 +146,7 @@ RELEASE_COMMENT_PREFIX = "<!-- agent-release:"
 # --------------------------------------------------------------------------
 
 
-def ensure_labels(
-    repo_slug: str, labels: list[tuple[str, str, str]] | None = None
-) -> None:
+def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = None) -> None:
     """Idempotent label creation. Silent on already-exists. Cached per process."""
     if labels is None:
         labels = STANDARD_LABELS
@@ -182,9 +180,7 @@ def ensure_labels(
 # --------------------------------------------------------------------------
 
 
-def _make_dry_run_worktree(
-    agent: str, local_repo: str, target: str, branch: str
-) -> Path:
+def _make_dry_run_worktree(agent: str, local_repo: str, target: str, branch: str) -> Path:
     """Build a self-contained throwaway git repo for a dry-run firing.
 
     The result is a real git repo in a temp dir with one commit on
@@ -192,9 +188,7 @@ def _make_dry_run_worktree(
     out, one synthetic commit ahead of ``main``. Falls back to a bare
     temp dir if git is unavailable.
     """
-    wt = Path(
-        tempfile.mkdtemp(prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-")
-    )
+    wt = Path(tempfile.mkdtemp(prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-"))
     git_env = {
         "GIT_AUTHOR_NAME": "Alfred Dry Run",
         "GIT_AUTHOR_EMAIL": "dry-run@alfred-os.invalid",
@@ -291,20 +285,14 @@ def make_worktree(
     return wt, branch
 
 
-def make_worktree_from_branch(
-    local_repo: str, agent: str, head_ref: str, target: str
-) -> Path:
+def make_worktree_from_branch(local_repo: str, agent: str, head_ref: str, target: str) -> Path:
     """Create a worktree pointing at an existing remote branch (read-only review)."""
     repo_path = WORKSPACE / local_repo
     ts = int(time.time())
     wt = WORKTREE_ROOT / f"eng-{agent}-{local_repo}-{target}-{ts}"
 
     if is_dry_run():
-        wt = Path(
-            tempfile.mkdtemp(
-                prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-"
-            )
-        )
+        wt = Path(tempfile.mkdtemp(prefix=f"alfred-dry-run-{agent}-{local_repo}-{target}-"))
         dry_run_log(
             "git",
             f"would `git worktree add {wt} origin/{head_ref}` in {repo_path}; "
@@ -342,9 +330,7 @@ def remove_worktree(local_repo: str, wt: Path) -> None:
     )
 
 
-def find_existing_worktree(
-    local_repo: str, agent: str, target: str
-) -> Path | None:
+def find_existing_worktree(local_repo: str, agent: str, target: str) -> Path | None:
     """Locate a previous-firing worktree for ``(agent, local_repo, target)``.
 
     Returns the most recent matching path under ``WORKTREE_ROOT`` or
@@ -363,18 +349,14 @@ def find_existing_worktree(
 
 def _worktree_branch(wt: Path) -> str | None:
     """Return the branch checked out inside ``wt`` or ``None`` on error."""
-    res = run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(wt), timeout=10
-    )
+    res = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(wt), timeout=10)
     if res.returncode != 0:
         return None
     branch = (res.stdout or "").strip()
     return branch or None
 
 
-def _worktree_is_stale(
-    local_repo: str, wt: Path, base: str = "origin/main"
-) -> bool:
+def _worktree_is_stale(local_repo: str, wt: Path, base: str = "origin/main") -> bool:
     """True when ``wt``'s branch is detached, or base has moved past with no commits ahead."""
     repo_path = WORKSPACE / local_repo
     run(["git", "fetch", "origin", "main"], cwd=str(repo_path), timeout=60)
@@ -550,8 +532,7 @@ def gh_issue_comment(repo_slug: str, num: int, body: str) -> bool:
     if is_dry_run():
         dry_run_log(
             "gh",
-            f"would `gh issue comment #{num}` on {_full_repo(repo_slug)}: "
-            f"{short(body, 200)}",
+            f"would `gh issue comment #{num}` on {_full_repo(repo_slug)}: {short(body, 200)}",
         )
         return True
     res = run(
@@ -575,8 +556,7 @@ def gh_pr_comment(repo_slug: str, num: int, body: str) -> bool:
     if is_dry_run():
         dry_run_log(
             "gh",
-            f"would `gh pr comment #{num}` on {_full_repo(repo_slug)}: "
-            f"{short(body, 200)}",
+            f"would `gh pr comment #{num}` on {_full_repo(repo_slug)}: {short(body, 200)}",
         )
         return True
     res = run(
@@ -672,9 +652,7 @@ def list_paused_repos() -> list[str]:
     if not PAUSED_REPOS_FILE.exists():
         return []
     try:
-        return list(
-            json.loads(PAUSED_REPOS_FILE.read_text()).get("paused", []) or []
-        )
+        return list(json.loads(PAUSED_REPOS_FILE.read_text()).get("paused", []) or [])
     except (json.JSONDecodeError, ValueError, OSError):
         return []
 
@@ -731,9 +709,7 @@ def _issue_state(repo_slug: str, num: int) -> dict:
     )
 
 
-def claim_issue(
-    repo_slug: str, num: int, *, codename: str, firing_id: str
-) -> bool:
+def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> bool:
     """Atomic-ish claim. Returns ``True`` if the claim succeeded, ``False`` if blocked.
 
     Refusal reasons (returns ``False``):
@@ -779,8 +755,7 @@ def claim_issue(
     ):
         return False
     claim_body = (
-        f"{CLAIM_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
-        f"ts={now_iso()} -->"
+        f"{CLAIM_COMMENT_PREFIX}codename={codename} firing_id={firing_id} ts={now_iso()} -->"
     )
     if not gh_issue_comment(repo_slug, num, claim_body):
         gh_issue_edit(
@@ -790,9 +765,7 @@ def claim_issue(
             remove_labels=["agent:in-flight"],
         )
         return False
-    contested_by = _detect_contested_claim(
-        repo_slug, num, codename=codename, firing_id=firing_id
-    )
+    contested_by = _detect_contested_claim(repo_slug, num, codename=codename, firing_id=firing_id)
     if contested_by is not None:
         gh_issue_edit(
             repo_slug,
@@ -897,9 +870,7 @@ def _detect_contested_claim(
     return None
 
 
-def find_stale_claims(
-    repo_slug: str, *, max_age_hours: int = 4
-) -> list[dict]:
+def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
     """List in-flight issues whose latest unreleased claim is older than ``max_age_hours``.
 
     Returns dicts with ``number`` / ``title`` / ``codename`` /

@@ -156,7 +156,12 @@ def test_full_state_produces_summary_and_sorted_prs(mod, window):
         operator="your-org",
         window=window,
         allowlist=[],
-        summary_extra={"prs_reverted": 0, "issues_closed": 12, "agents_active": 9, "spend_cents": 1200},
+        summary_extra={
+            "prs_reverted": 0,
+            "issues_closed": 12,
+            "agents_active": 9,
+            "spend_cents": 1200,
+        },
         now=datetime(2026, 5, 23, 6, 0, tzinfo=UTC),
     )
     payload = feed.to_dict()
@@ -177,13 +182,24 @@ def test_full_state_produces_summary_and_sorted_prs(mod, window):
 
 def test_merge_clean_pct_with_reverts(mod, window):
     raw = [
-        {"repo": "your-org/your-backend", "number": i, "title": "x", "codename": "lucius",
-         "merged_at": "2026-05-21T12:00:00Z", "lines_added": 1, "lines_removed": 0,
-         "files_changed": 1, "url": f"https://github.com/your-org/your-backend/pull/{i}"}
+        {
+            "repo": "your-org/your-backend",
+            "number": i,
+            "title": "x",
+            "codename": "lucius",
+            "merged_at": "2026-05-21T12:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": f"https://github.com/your-org/your-backend/pull/{i}",
+        }
         for i in range(1, 11)
     ]
     feed = mod.build_feed(
-        raw, operator="your-org", window=window, allowlist=[],
+        raw,
+        operator="your-org",
+        window=window,
+        allowlist=[],
         summary_extra={"prs_reverted": 2},
     )
     payload = feed.to_dict()
@@ -200,18 +216,39 @@ def test_scrub_drops_private_repos(mod, window):
     private_token = "lumi" + "nik-backend"
     predecessor = "lumi" + "nik-io/alfred"
     raw = [
-        {"repo": f"{private_org}/{private_token}", "number": 1, "title": "leak",
-         "codename": "lucius", "merged_at": "2026-05-22T10:00:00Z",
-         "lines_added": 1, "lines_removed": 0, "files_changed": 1,
-         "url": f"https://github.com/{private_org}/{private_token}/pull/1"},
-        {"repo": predecessor, "number": 2, "title": "former internal",
-         "codename": "lucius", "merged_at": "2026-05-22T11:00:00Z",
-         "lines_added": 1, "lines_removed": 0, "files_changed": 1,
-         "url": f"https://github.com/{predecessor}/pull/2"},
-        {"repo": "your-org/your-backend", "number": 3, "title": "public",
-         "codename": "lucius", "merged_at": "2026-05-22T12:00:00Z",
-         "lines_added": 1, "lines_removed": 0, "files_changed": 1,
-         "url": "https://github.com/your-org/your-backend/pull/3"},
+        {
+            "repo": f"{private_org}/{private_token}",
+            "number": 1,
+            "title": "leak",
+            "codename": "lucius",
+            "merged_at": "2026-05-22T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": f"https://github.com/{private_org}/{private_token}/pull/1",
+        },
+        {
+            "repo": predecessor,
+            "number": 2,
+            "title": "former internal",
+            "codename": "lucius",
+            "merged_at": "2026-05-22T11:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": f"https://github.com/{predecessor}/pull/2",
+        },
+        {
+            "repo": "your-org/your-backend",
+            "number": 3,
+            "title": "public",
+            "codename": "lucius",
+            "merged_at": "2026-05-22T12:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/your-backend/pull/3",
+        },
     ]
     feed = mod.build_feed(raw, operator="your-org", window=window, allowlist=[])
     payload = feed.to_dict()
@@ -238,22 +275,25 @@ def test_scrub_redacts_partner_names_in_title(mod):
     assert mod.scrub_title("Cvent attendee sync") == "vendor attendee sync"
     assert mod.scrub_title("Add Whova mapping") == "Add vendor mapping"
     # CRMs collapse to "CRM".
-    assert mod.scrub_title("Add Salesforce action: opportunity-by-id") == "Add CRM action: opportunity-by-id"
+    assert (
+        mod.scrub_title("Add Salesforce action: opportunity-by-id")
+        == "Add CRM action: opportunity-by-id"
+    )
     assert mod.scrub_title("HubSpot webhook handler") == "CRM webhook handler"
     # Outreach platforms collapse to "outreach platform".
     assert mod.scrub_title("Apollo sequence push") == "outreach platform sequence push"
     # Email providers collapse.
-    assert mod.scrub_title("Wire Resend transactional client") == "Wire email provider transactional client"
+    assert (
+        mod.scrub_title("Wire Resend transactional client")
+        == "Wire email provider transactional client"
+    )
     # Observability collapses.
     assert mod.scrub_title("Capture Sentry breadcrumbs") == "Capture error tracker breadcrumbs"
     # Case-insensitive match.
     assert mod.scrub_title("brella retry") == "vendor retry"
     # Combined private-token + partner-token redaction.
     pre = "lumi" + "nik"
-    assert (
-        mod.scrub_title(f"Salesforce action in {pre}-nango")
-        == "CRM action in your-nango"
-    )
+    assert mod.scrub_title(f"Salesforce action in {pre}-nango") == "CRM action in your-nango"
     # No collateral damage on unrelated text.
     assert mod.scrub_title("Add billing-v2 settings panel") == "Add billing-v2 settings panel"
 
@@ -301,15 +341,32 @@ def test_to_public_pr_drops_fields_outside_allowlist(mod):
 
 def test_allowlist_filters_repos(mod, window):
     raw = [
-        {"repo": "your-org/your-backend", "number": 1, "title": "x", "codename": "lucius",
-         "merged_at": "2026-05-22T10:00:00Z", "lines_added": 1, "lines_removed": 0,
-         "files_changed": 1, "url": "https://github.com/your-org/your-backend/pull/1"},
-        {"repo": "your-org/other-repo", "number": 2, "title": "x", "codename": "lucius",
-         "merged_at": "2026-05-22T10:00:00Z", "lines_added": 1, "lines_removed": 0,
-         "files_changed": 1, "url": "https://github.com/your-org/other-repo/pull/2"},
+        {
+            "repo": "your-org/your-backend",
+            "number": 1,
+            "title": "x",
+            "codename": "lucius",
+            "merged_at": "2026-05-22T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/your-backend/pull/1",
+        },
+        {
+            "repo": "your-org/other-repo",
+            "number": 2,
+            "title": "x",
+            "codename": "lucius",
+            "merged_at": "2026-05-22T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/other-repo/pull/2",
+        },
     ]
-    feed = mod.build_feed(raw, operator="your-org", window=window,
-                           allowlist=["your-org/your-backend"])
+    feed = mod.build_feed(
+        raw, operator="your-org", window=window, allowlist=["your-org/your-backend"]
+    )
     assert {pr["repo"] for pr in feed.to_dict()["prs"]} == {"your-org/your-backend"}
 
 
@@ -319,15 +376,39 @@ def test_window_filtering(mod):
         end=datetime(2026, 5, 23, tzinfo=UTC),
     )
     raw = [
-        {"repo": "your-org/x", "number": 1, "title": "in",  "codename": "lucius",
-         "merged_at": "2026-05-22T10:00:00Z", "lines_added": 1, "lines_removed": 0,
-         "files_changed": 1, "url": "https://github.com/your-org/x/pull/1"},
-        {"repo": "your-org/x", "number": 2, "title": "out", "codename": "lucius",
-         "merged_at": "2026-05-09T10:00:00Z", "lines_added": 1, "lines_removed": 0,
-         "files_changed": 1, "url": "https://github.com/your-org/x/pull/2"},
-        {"repo": "your-org/x", "number": 3, "title": "edge-end", "codename": "lucius",
-         "merged_at": "2026-05-23T00:00:00Z", "lines_added": 1, "lines_removed": 0,
-         "files_changed": 1, "url": "https://github.com/your-org/x/pull/3"},
+        {
+            "repo": "your-org/x",
+            "number": 1,
+            "title": "in",
+            "codename": "lucius",
+            "merged_at": "2026-05-22T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/x/pull/1",
+        },
+        {
+            "repo": "your-org/x",
+            "number": 2,
+            "title": "out",
+            "codename": "lucius",
+            "merged_at": "2026-05-09T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/x/pull/2",
+        },
+        {
+            "repo": "your-org/x",
+            "number": 3,
+            "title": "edge-end",
+            "codename": "lucius",
+            "merged_at": "2026-05-23T00:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/x/pull/3",
+        },
     ]
     feed = mod.build_feed(raw, operator="your-org", window=window, allowlist=[])
     nums = sorted(pr["number"] for pr in feed.to_dict()["prs"])
@@ -340,9 +421,17 @@ def test_trend_emits_twelve_weeks_ending_at_window(mod):
         end=datetime(2026, 5, 23, tzinfo=UTC),
     )
     raw = [
-        {"repo": "your-org/x", "number": 1, "title": "t", "codename": "lucius",
-         "merged_at": "2026-05-22T10:00:00Z", "lines_added": 1, "lines_removed": 0,
-         "files_changed": 1, "url": "https://github.com/your-org/x/pull/1"},
+        {
+            "repo": "your-org/x",
+            "number": 1,
+            "title": "t",
+            "codename": "lucius",
+            "merged_at": "2026-05-22T10:00:00Z",
+            "lines_added": 1,
+            "lines_removed": 0,
+            "files_changed": 1,
+            "url": "https://github.com/your-org/x/pull/1",
+        },
     ]
     feed = mod.build_feed(raw, operator="your-org", window=window, allowlist=[])
     trend = feed.to_dict()["trend"]
@@ -370,7 +459,9 @@ def test_sample_weekly_json_validates_against_schema():
 # --------------------------------------------------------------------------
 
 
-def write_state(state_root: Path, prs: list[dict[str, Any]], trend: list[dict[str, Any]] | None = None) -> None:
+def write_state(
+    state_root: Path, prs: list[dict[str, Any]], trend: list[dict[str, Any]] | None = None
+) -> None:
     shipped = state_root / "shipped"
     shipped.mkdir(parents=True, exist_ok=True)
     (shipped / "prs.json").write_text(json.dumps(prs), encoding="utf-8")
@@ -403,11 +494,16 @@ def test_cli_writes_file(tmp_path):
         [
             sys.executable,
             str(BIN),
-            "--emit-public-json", str(out),
-            "--state", str(state_root),
-            "--operator", "your-org",
-            "--since", "2026-05-16",
-            "--until", "2026-05-23",
+            "--emit-public-json",
+            str(out),
+            "--state",
+            str(state_root),
+            "--operator",
+            "your-org",
+            "--since",
+            "2026-05-16",
+            "--until",
+            "2026-05-23",
             "--quiet",
         ],
         capture_output=True,
@@ -429,9 +525,12 @@ def test_cli_writes_stdout_empty_state(tmp_path):
         [
             sys.executable,
             str(BIN),
-            "--emit-public-json", "-",
-            "--state", str(state_root),
-            "--operator", "your-org",
+            "--emit-public-json",
+            "-",
+            "--state",
+            str(state_root),
+            "--operator",
+            "your-org",
             "--quiet",
         ],
         capture_output=True,
@@ -456,7 +555,9 @@ def test_cli_public_allowlist_flag(tmp_path):
                 "title": "in",
                 "codename": "lucius",
                 "merged_at": (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "lines_added": 1, "lines_removed": 0, "files_changed": 1,
+                "lines_added": 1,
+                "lines_removed": 0,
+                "files_changed": 1,
                 "url": "https://github.com/your-org/your-backend/pull/1",
             },
             {
@@ -465,7 +566,9 @@ def test_cli_public_allowlist_flag(tmp_path):
                 "title": "out",
                 "codename": "lucius",
                 "merged_at": (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "lines_added": 1, "lines_removed": 0, "files_changed": 1,
+                "lines_added": 1,
+                "lines_removed": 0,
+                "files_changed": 1,
                 "url": "https://github.com/your-org/other-repo/pull/2",
             },
         ],
@@ -475,9 +578,12 @@ def test_cli_public_allowlist_flag(tmp_path):
         [
             sys.executable,
             str(BIN),
-            "--emit-public-json", str(out),
-            "--state", str(state_root),
-            "--public-allowlist", "your-org/your-backend",
+            "--emit-public-json",
+            str(out),
+            "--state",
+            str(state_root),
+            "--public-allowlist",
+            "your-org/your-backend",
             "--quiet",
         ],
         capture_output=True,

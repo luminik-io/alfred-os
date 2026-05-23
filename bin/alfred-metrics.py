@@ -70,8 +70,16 @@ def render_table(report: FleetReport) -> str:
     lines.append("-" * len(header))
 
     totals = {
-        "firings": 0, "ok": 0, "fail": 0, "turns": 0, "cost": 0.0,
-        "tools": 0, "edits": 0, "reads": 0, "codex": 0, "ctok": 0,
+        "firings": 0,
+        "ok": 0,
+        "fail": 0,
+        "turns": 0,
+        "cost": 0.0,
+        "tools": 0,
+        "edits": 0,
+        "reads": 0,
+        "codex": 0,
+        "ctok": 0,
     }
     rows_shown = 0
     for m in report.metrics:
@@ -148,16 +156,14 @@ def render_by_day(report: FleetReport, state_dir: Path) -> str:
     days_map: dict[str, dict[str, float]] = defaultdict(
         lambda: {"firings": 0, "ok": 0, "fail": 0, "turns": 0, "cost": 0.0}
     )
-    cutoff = (datetime.now().date() - timedelta(days=max(0, report.days - 1)))
+    cutoff = datetime.now().date() - timedelta(days=max(0, report.days - 1))
     if state_dir.is_dir():
         for entry in state_dir.iterdir():
             if not entry.is_dir() or entry.name.startswith("_"):
                 continue
             for path in entry.glob("spend-*.json"):
                 try:
-                    day = datetime.strptime(
-                        path.stem.replace("spend-", ""), "%Y-%m-%d"
-                    ).date()
+                    day = datetime.strptime(path.stem.replace("spend-", ""), "%Y-%m-%d").date()
                 except ValueError:
                     continue
                 if day < cutoff:
@@ -194,8 +200,9 @@ def render_by_day(report: FleetReport, state_dir: Path) -> str:
 def render_json(report: FleetReport) -> str:
     payload = report.to_dict()
     # Drop empty rows in JSON too — matches the table behaviour.
-    payload["metrics"] = [m for m in payload["metrics"]
-                          if m["spend"]["firings"] or m["tool_calls_total"]]
+    payload["metrics"] = [
+        m for m in payload["metrics"] if m["spend"]["firings"] or m["tool_calls_total"]
+    ]
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -235,10 +242,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="break down totals by day instead of by agent",
     )
     fmt = p.add_mutually_exclusive_group()
-    fmt.add_argument("--json", action="store_true", dest="json_out",
-                     help="machine-readable JSON output")
-    fmt.add_argument("--table", action="store_true",
-                     help="tabular text output (default)")
+    fmt.add_argument(
+        "--json", action="store_true", dest="json_out", help="machine-readable JSON output"
+    )
+    fmt.add_argument("--table", action="store_true", help="tabular text output (default)")
     p.add_argument(
         "--state-dir",
         type=Path,

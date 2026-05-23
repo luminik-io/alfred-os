@@ -53,9 +53,7 @@ def codename_with_role(codename: str) -> str:
     return f"{codename} ({role})" if role else codename
 
 
-def commit_trailer(
-    agent: str, firing_id: str, *, extra: dict[str, str] | None = None
-) -> str:
+def commit_trailer(agent: str, firing_id: str, *, extra: dict[str, str] | None = None) -> str:
     """Build a multi-line commit-trailer block.
 
     Caller appends this to their commit message. Format follows the
@@ -74,9 +72,7 @@ def commit_trailer(
     ]
     if extra:
         for k, v in extra.items():
-            key = "-".join(
-                part.capitalize() for part in k.replace("_", "-").split("-")
-            )
+            key = "-".join(part.capitalize() for part in k.replace("_", "-").split("-"))
             lines.append(f"{key}: {v}")
     return "\n".join(lines)
 
@@ -104,30 +100,20 @@ class HandoffTable:
 
     def consumers(self, codename: str) -> list[str]:
         """Return outcomes ``codename`` emits that route to another codename."""
-        return [
-            outcome for (src, outcome), _ in self.edges.items() if src == codename
-        ]
+        return [outcome for (src, outcome), _ in self.edges.items() if src == codename]
 
     def producers(self, codename: str) -> list[tuple[str, str]]:
         """Return ``(from-agent, outcome)`` pairs that route to ``codename``."""
-        return [
-            (src, outcome)
-            for (src, outcome), dst in self.edges.items()
-            if dst == codename
-        ]
+        return [(src, outcome) for (src, outcome), dst in self.edges.items() if dst == codename]
 
     def validate(self, known_codenames: set[str]) -> list[str]:
         """Return list of issues: orphan emitters / consumers / unknown agents."""
         misses: list[str] = []
         for (src, outcome), dst in self.edges.items():
             if src not in known_codenames:
-                misses.append(
-                    f"hand-off from unknown agent '{src}' (outcome={outcome})"
-                )
+                misses.append(f"hand-off from unknown agent '{src}' (outcome={outcome})")
             if dst not in known_codenames:
-                misses.append(
-                    f"hand-off to unknown agent '{dst}' (outcome={outcome})"
-                )
+                misses.append(f"hand-off to unknown agent '{dst}' (outcome={outcome})")
         return misses
 
 
@@ -140,9 +126,7 @@ HANDOFFS = HandoffTable()
 # --------------------------------------------------------------------------
 
 
-def load_prompt(
-    path: Path | str, *, extra_vars: dict[str, str] | None = None
-) -> str:
+def load_prompt(path: Path | str, *, extra_vars: dict[str, str] | None = None) -> str:
     """Read a prompt file and substitute ``${VAR}`` placeholders from env.
 
     Unset variables are left as literal ``${VAR}``. That's deliberate:

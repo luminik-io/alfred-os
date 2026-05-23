@@ -777,13 +777,9 @@ class SubprocessGitHubChildIssueClient:
             ]
             for label in labels:
                 cmd.extend(["--label", label])
-            res = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60, check=False
-            )
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
             if res.returncode != 0:
-                logger.warning(
-                    "gh issue create failed for %s: %s", repo, res.stderr.strip()
-                )
+                logger.warning("gh issue create failed for %s: %s", repo, res.stderr.strip())
                 return None
             for line in reversed((res.stdout or "").splitlines()):
                 line = line.strip()
@@ -809,8 +805,7 @@ class ApprovalGate(Protocol):
         *,
         timeout_s: int = 900,
         poll_interval_s: int = 30,
-    ) -> object:
-        ...  # pragma: no cover
+    ) -> object: ...  # pragma: no cover
 
 
 class Reporter(Protocol):
@@ -975,9 +970,7 @@ def parse_parent_issue(
     for short, child_title in children_pairs:
         full = _resolve_child_repo(short, repos)
         if not full:
-            logger.warning(
-                "child %r references unknown repo %r; skipping", child_title, short
-            )
+            logger.warning("child %r references unknown repo %r; skipping", child_title, short)
             continue
         child_body = _render_child_body(
             parent_repo=parent_repo,
@@ -1182,9 +1175,7 @@ class BatmanLifecycle:
 
     config: BatmanLifecycleConfig
     gate: ApprovalGate | None = None
-    gh_client: GitHubChildIssueClient = field(
-        default_factory=SubprocessGitHubChildIssueClient
-    )
+    gh_client: GitHubChildIssueClient = field(default_factory=SubprocessGitHubChildIssueClient)
     reporter: Reporter | None = None
 
     # ---- plan ----
@@ -1300,9 +1291,7 @@ class BatmanLifecycle:
                 logger.info("filed %s: %s", child.repo, url)
             else:
                 failed.append(child.repo)
-                logger.warning(
-                    "failed to file child in %s: %s", child.repo, child.title
-                )
+                logger.warning("failed to file child in %s: %s", child.repo, child.title)
         if not failed:
             return ExecuteResult(
                 executed=True,

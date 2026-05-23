@@ -208,9 +208,7 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
             # stop_reason=tool_use. Preserve the specific subtype while
             # forcing success=False via stop_reason=error.
             mark_error(str(subtype))
-        elif stop_reason in STOP_REASON_HEALTHY or (
-            stop_reason is None and subtype == "success"
-        ):
+        elif stop_reason in STOP_REASON_HEALTHY or (stop_reason is None and subtype == "success"):
             mark_error("error_api")
     elif stop_reason in STOP_REASON_HEALTHY:
         # Defensive path: is_error missing/false but the body carries a
@@ -336,9 +334,7 @@ def _quarantine_stale_claude_credentials(reason: str) -> bool:
     return True
 
 
-def _should_retry_claude_auth(
-    result: ClaudeResult, *, already_retried: bool
-) -> bool:
+def _should_retry_claude_auth(result: ClaudeResult, *, already_retried: bool) -> bool:
     """Decide whether to retry once after an authentication failure.
 
     True only when (a) we have not retried this firing yet AND (b) the
@@ -349,7 +345,5 @@ def _should_retry_claude_auth(
     return (
         not already_retried
         and result.subtype == "error_authentication"
-        and _quarantine_stale_claude_credentials(
-            result.error_message or result.result_text
-        )
+        and _quarantine_stale_claude_credentials(result.error_message or result.result_text)
     )

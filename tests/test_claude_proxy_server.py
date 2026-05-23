@@ -111,9 +111,7 @@ def _make_config(short_tmp: Path, body: str = _FAKE_OK) -> ServerConfig:
 # --------------------------------------------------------------------------
 
 
-async def _request_and_collect(
-    socket_path: Path, request: dict | InvokeRequest
-) -> list[dict]:
+async def _request_and_collect(socket_path: Path, request: dict | InvokeRequest) -> list[dict]:
     """Connect, send one line, collect every NDJSON response."""
     reader, writer = await asyncio.open_unix_connection(str(socket_path))
     try:
@@ -204,9 +202,7 @@ def test_health_during_active_invoke(short_tmp: Path) -> None:
             claude_args=[],
             timeout_seconds=60,
         )
-        invoke_task = asyncio.create_task(
-            _request_and_collect(cfg.socket_path, request)
-        )
+        invoke_task = asyncio.create_task(_request_and_collect(cfg.socket_path, request))
 
         # Let the invocation reach the proxy.accepted point.
         await asyncio.sleep(0.5)
@@ -395,9 +391,7 @@ def test_live_socket_blocks_second_bind(short_tmp: Path) -> None:
     config = _make_config(short_tmp)
 
     async def body(_server: _ProxyServer, cfg: ServerConfig) -> None:
-        config_b = ServerConfig(
-            socket_path=cfg.socket_path, claude_bin=cfg.claude_bin
-        )
+        config_b = ServerConfig(socket_path=cfg.socket_path, claude_bin=cfg.claude_bin)
         server_b = _ProxyServer(config_b)
         with pytest.raises(RuntimeError, match="another claude-proxy"):
             await server_b.start()

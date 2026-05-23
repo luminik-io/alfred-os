@@ -87,12 +87,8 @@ PAUSED_REPOS_FILE: Path = STATE_ROOT / "paused-repos.json"
 CLAUDE_BIN: str = os.environ.get("CLAUDE_BIN", "claude")
 CODEX_BIN: str = os.environ.get("CODEX_BIN", "codex")
 CODEX_DEFAULT_MODEL: str | None = os.environ.get("CODEX_MODEL", "").strip() or None
-CODEX_DEFAULT_SANDBOX: str = (
-    os.environ.get("CODEX_SANDBOX", "read-only").strip() or "read-only"
-)
-CODEX_APPROVAL_POLICY: str = (
-    os.environ.get("CODEX_APPROVAL_POLICY", "never").strip() or "never"
-)
+CODEX_DEFAULT_SANDBOX: str = os.environ.get("CODEX_SANDBOX", "read-only").strip() or "read-only"
+CODEX_APPROVAL_POLICY: str = os.environ.get("CODEX_APPROVAL_POLICY", "never").strip() or "never"
 
 # --------------------------------------------------------------------------
 # Small datetime helpers (used everywhere, belong with the constants)

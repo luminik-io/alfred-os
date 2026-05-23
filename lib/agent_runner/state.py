@@ -58,6 +58,7 @@ def _resolve_pid_start_key(pid: int) -> str:
     """
     return _process.pid_start_key(pid)
 
+
 # --------------------------------------------------------------------------
 # Global block (fleet-wide rate-limit pause)
 # --------------------------------------------------------------------------
@@ -89,9 +90,7 @@ def set_global_block(hours: int, reason: str) -> str:
     Dry-run never writes the fleet-wide block; the operator still gets
     the expected until-string so happy-path messaging renders.
     """
-    until = (datetime.now(UTC) + timedelta(hours=hours)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    until = (datetime.now(UTC) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     if is_dry_run():
         dry_run_log(
             "block",
@@ -255,9 +254,7 @@ class AgentLock:
             "cmdline": " ".join(sys.argv),
             "agent": self.name,
         }
-        (self._lock_dir / "metadata.json").write_text(
-            json.dumps(metadata, sort_keys=True)
-        )
+        (self._lock_dir / "metadata.json").write_text(json.dumps(metadata, sort_keys=True))
         return True
 
     def release(self) -> None:
@@ -305,10 +302,7 @@ def lock_pid_identity_matches(
     expected_agent: str | None = None,
 ) -> bool:
     """Convenience wrapper: ``True`` iff identity status is unambiguously True."""
-    return (
-        lock_pid_identity_status(lock_dir, pid, expected_agent=expected_agent)
-        is True
-    )
+    return lock_pid_identity_status(lock_dir, pid, expected_agent=expected_agent) is True
 
 
 def with_lock(name: str) -> AgentLock:
@@ -330,10 +324,7 @@ def with_lock(name: str) -> AgentLock:
             body = marker.read_text(errors="replace").strip()
         except OSError:
             body = ""
-        print(
-            f"[{name.upper()}-PAUSED] marker present: {marker} ({body}). "
-            "Skipping firing."
-        )
+        print(f"[{name.upper()}-PAUSED] marker present: {marker} ({body}). Skipping firing.")
         sys.exit(0)
     lock = AgentLock(name)
     if not lock.acquire():
@@ -474,9 +465,7 @@ class SpendState:
         self.state.update(kwargs)
         if is_dry_run():
             fields = ", ".join(f"{k}={v}" for k, v in kwargs.items())
-            dry_run_log(
-                "spend", f"would set real ledger ({fields}); dry-run ledger only"
-            )
+            dry_run_log("spend", f"would set real ledger ({fields}); dry-run ledger only")
         self.save()
 
     def is_blocked(self) -> str | None:
@@ -484,9 +473,7 @@ class SpendState:
         until = self.state.get("blocked_until")
         if until:
             try:
-                exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(
-                    tzinfo=UTC
-                )
+                exp = datetime.strptime(until, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
                 if datetime.now(UTC) < exp:
                     return f"blocked until {until}"
                 self.state["blocked_until"] = None

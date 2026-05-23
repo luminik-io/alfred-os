@@ -85,17 +85,28 @@ KNOWN_CODENAMES: frozenset[str] = frozenset(
 # Listed by basename so the source file does not carry a literal "owner/name"
 # pair; the emitter denies any owner/name where the name matches.
 _PRIVATE_NAMES: tuple[str, ...] = (
-    "backend", "frontend", "mobile", "nango",
-    "agents", "data-acquisition", "data-infra",
-    "specs", "site", "design-system",
-    "orchestrator", "internal",
+    "backend",
+    "frontend",
+    "mobile",
+    "nango",
+    "agents",
+    "data-acquisition",
+    "data-infra",
+    "specs",
+    "site",
+    "design-system",
+    "orchestrator",
+    "internal",
 )
 _PRIVATE_PREFIX = "luminik-"
 
 PRIVATE_REPO_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
-        r"(?:^|/)" + re.escape(_PRIVATE_PREFIX)
-        + r"(?:" + "|".join(_PRIVATE_NAMES) + r")"
+        r"(?:^|/)"
+        + re.escape(_PRIVATE_PREFIX)
+        + r"(?:"
+        + "|".join(_PRIVATE_NAMES)
+        + r")"
         + r"(?:$|[^A-Za-z0-9_-])"
     ),
     # Bare-name "alfred" basename under any owner (a former internal repo,
@@ -604,14 +615,8 @@ def build_parser() -> argparse.ArgumentParser:
 def parse_window(args: argparse.Namespace, now: datetime) -> Window:
     if not args.since and not args.until:
         return default_window(now)
-    until_day = (
-        date.fromisoformat(args.until) if args.until else now.astimezone(UTC).date()
-    )
-    since_day = (
-        date.fromisoformat(args.since)
-        if args.since
-        else until_day - timedelta(days=7)
-    )
+    until_day = date.fromisoformat(args.until) if args.until else now.astimezone(UTC).date()
+    since_day = date.fromisoformat(args.since) if args.since else until_day - timedelta(days=7)
     start = datetime.combine(since_day, datetime.min.time(), tzinfo=UTC)
     end = datetime.combine(until_day, datetime.min.time(), tzinfo=UTC)
     if end <= start:

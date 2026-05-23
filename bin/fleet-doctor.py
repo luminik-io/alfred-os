@@ -266,17 +266,16 @@ def _file_has_engine_auth_failure(path: Path, *, cutoff_ts: float) -> bool:
                 ts_str = rec.get("ts", "")
                 if isinstance(ts_str, str) and ts_str:
                     try:
-                        rec_ts = datetime.strptime(
-                            ts_str, "%Y-%m-%dT%H:%M:%S.%fZ"
-                        ).replace(tzinfo=UTC).timestamp()
+                        rec_ts = (
+                            datetime.strptime(ts_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+                            .replace(tzinfo=UTC)
+                            .timestamp()
+                        )
                         if rec_ts < cutoff_ts:
                             continue
                     except ValueError:
                         pass
-                if (
-                    rec.get("subtype") == "error_authentication"
-                    and rec.get("engine") == "claude"
-                ):
+                if rec.get("subtype") == "error_authentication" and rec.get("engine") == "claude":
                     return True
     except OSError:
         return False

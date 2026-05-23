@@ -26,9 +26,7 @@ def register_routes(app: FastAPI) -> None:
         templates = request.app.state.templates
         agents = reader.list_agents()
         template = (
-            "fleet_table.html"
-            if request.headers.get("HX-Request") == "true"
-            else "fleet.html"
+            "fleet_table.html" if request.headers.get("HX-Request") == "true" else "fleet.html"
         )
         return templates.TemplateResponse(
             request,

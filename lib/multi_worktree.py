@@ -102,9 +102,7 @@ class GitRunner(Protocol):
 class SubprocessGitRunner:
     """Default :class:`GitRunner` implementation; shells out to ``git``."""
 
-    def __call__(
-        self, args: Sequence[str], *, cwd: Path, timeout: int = 60
-    ) -> GitResult:
+    def __call__(self, args: Sequence[str], *, cwd: Path, timeout: int = 60) -> GitResult:
         result = subprocess.run(
             ["git", *args],
             cwd=str(cwd),
@@ -191,10 +189,7 @@ class MultiWorktree:
             raise RuntimeError(f"local checkout not found: {req.checkout_path}")
 
         branch = f"{self.agent}/{self.feature_id}-{req.repo_name}-{ts}"
-        wt_path = (
-            self.worktree_root
-            / f"{self.agent}-{req.repo_name}-{self.feature_id}-{ts}"
-        )
+        wt_path = self.worktree_root / f"{self.agent}-{req.repo_name}-{self.feature_id}-{ts}"
 
         # Fetch the request's configured base ref, not a hardcoded "main".
         # Repos using "master" or a release-train base would otherwise fail
@@ -203,13 +198,10 @@ class MultiWorktree:
         # ("origin/release/24w11"); strip a leading "origin/" so the
         # `git fetch origin <ref>` form is well-defined.
         fetch_ref = req.base.removeprefix("origin/")
-        fetch = self.git(
-            ["fetch", "origin", fetch_ref], cwd=req.checkout_path, timeout=60
-        )
+        fetch = self.git(["fetch", "origin", fetch_ref], cwd=req.checkout_path, timeout=60)
         if fetch.returncode != 0:
             raise RuntimeError(
-                f"git fetch failed for {req.repo_name} base={req.base!r}: "
-                f"{fetch.stderr.strip()}"
+                f"git fetch failed for {req.repo_name} base={req.base!r}: {fetch.stderr.strip()}"
             )
 
         add = self.git(
@@ -218,9 +210,7 @@ class MultiWorktree:
             timeout=60,
         )
         if add.returncode != 0:
-            raise RuntimeError(
-                f"worktree add failed for {req.repo_name}: {add.stderr.strip()}"
-            )
+            raise RuntimeError(f"worktree add failed for {req.repo_name}: {add.stderr.strip()}")
 
         return WorktreeSpec(
             repo_name=req.repo_name,
@@ -235,9 +225,7 @@ class MultiWorktree:
             try:
                 self._remove_one(spec)
             except Exception as e:
-                logger.warning(
-                    "worktree cleanup failed for %s: %s", spec.repo_name, e
-                )
+                logger.warning("worktree cleanup failed for %s: %s", spec.repo_name, e)
         self._specs.clear()
 
     def _remove_one(self, spec: WorktreeSpec) -> None:
@@ -247,9 +235,7 @@ class MultiWorktree:
             timeout=30,
         )
         if res.returncode != 0:
-            raise RuntimeError(
-                f"worktree remove failed for {spec.repo_name}: {res.stderr.strip()}"
-            )
+            raise RuntimeError(f"worktree remove failed for {spec.repo_name}: {res.stderr.strip()}")
 
 
 # --------------------------------------------------------------------------
@@ -257,9 +243,7 @@ class MultiWorktree:
 # --------------------------------------------------------------------------
 
 
-def verify_worktree_clean(
-    wt_path: Path, *, git: GitRunner | None = None
-) -> bool:
+def verify_worktree_clean(wt_path: Path, *, git: GitRunner | None = None) -> bool:
     """True if a worktree has no uncommitted changes.
 
     Args:

@@ -114,9 +114,7 @@ def run(
             cmd, 124, stdout=e.stdout or "", stderr=f"TIMEOUT after {timeout}s"
         )
     except Exception as e:
-        return subprocess.CompletedProcess(
-            cmd, 1, stdout="", stderr=f"{type(e).__name__}: {e}"
-        )
+        return subprocess.CompletedProcess(cmd, 1, stdout="", stderr=f"{type(e).__name__}: {e}")
 
 
 def gh_json(cmd: list[str], default: Any = None) -> Any:
@@ -382,9 +380,7 @@ def _try_invoke_via_proxy(
     return _claude_result_from_proxy_events(stream.events, fallback_exit=stream.exit_code)
 
 
-def _claude_result_from_proxy_events(
-    events: list[dict], fallback_exit: int
-) -> ClaudeResult:
+def _claude_result_from_proxy_events(events: list[dict], fallback_exit: int) -> ClaudeResult:
     """Translate a list of stream-json events into a ClaudeResult.
 
     The upstream ``claude --output-format stream-json`` emits a final
@@ -409,8 +405,10 @@ def _claude_result_from_proxy_events(
             fallback_text=(proxy_error or {}).get("detail", ""),
         )
 
-    detail = (proxy_error or {}).get("detail") or (proxy_error or {}).get("reason") or (
-        f"claude exited {fallback_exit} without a result event"
+    detail = (
+        (proxy_error or {}).get("detail")
+        or (proxy_error or {}).get("reason")
+        or (f"claude exited {fallback_exit} without a result event")
     )
     return ClaudeResult(
         success=False,
@@ -582,11 +580,7 @@ def codex_invoke(
     if proc.returncode != 0:
         tail = (result_text or stderr or stdout or "").strip()[-1000:]
         classifier_text = f"{result_text}\n{stdout}\n{stderr}"
-        subtype = (
-            "error_rate_limit"
-            if _RATE_LIMIT_RESULT_RE.search(classifier_text)
-            else "error"
-        )
+        subtype = "error_rate_limit" if _RATE_LIMIT_RESULT_RE.search(classifier_text) else "error"
         if subtype == "error" and _BUDGET_RESULT_RE.search(classifier_text):
             subtype = "error_rate_limit"
         return ClaudeResult(

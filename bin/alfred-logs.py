@@ -119,9 +119,7 @@ def cmd_summary(state_dir: Path, codename: str, last: int, json_out: bool) -> in
     for r in rows:
         result = r["result"] or {}
         cost = float(result.get("total_cost_usd") or 0)
-        skills_note = (
-            f" [skills: {','.join(r['skills_invoked'])}]" if r["skills_invoked"] else ""
-        )
+        skills_note = f" [skills: {','.join(r['skills_invoked'])}]" if r["skills_invoked"] else ""
         print(
             f"{r['firing_id']:<22} {r['ts']:<22} "
             f"{(result.get('subtype') or '?'):<14} "
@@ -219,12 +217,17 @@ def cmd_tools_recent(
             skills_seen[sk] = skills_seen.get(sk, 0) + 1
 
     if json_out:
-        print(json.dumps({
-            "codename": codename,
-            "firings": len(firings),
-            "tools": aggregate,
-            "skills": skills_seen,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "codename": codename,
+                    "firings": len(firings),
+                    "tools": aggregate,
+                    "skills": skills_seen,
+                },
+                indent=2,
+            )
+        )
         return 0
 
     print(f"alfred-logs {codename} --show-tool-calls — last {len(firings)} firings")
@@ -273,7 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--show-tool-calls",
         action="store_true",
         help="aggregate tool / skill calls across the last N firings, "
-             "or one firing if --firing-id is set",
+        "or one firing if --firing-id is set",
     )
     p.add_argument(
         "--json",
@@ -310,8 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     codenames = list_codenames(state_dir)
     if codenames and args.codename not in codenames:
         print(
-            f"alfred-logs: unknown codename '{args.codename}'. "
-            f"Known: {', '.join(codenames)}",
+            f"alfred-logs: unknown codename '{args.codename}'. Known: {', '.join(codenames)}",
             file=sys.stderr,
         )
         return 1

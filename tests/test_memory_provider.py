@@ -124,9 +124,7 @@ def test_null_provider_recall_empty() -> None:
 
 def test_null_provider_reflect_raises() -> None:
     with pytest.raises(NotImplementedError):
-        NullMemoryProvider().reflect(
-            codename="lucius", repo="acme-org/api", body="x"
-        )
+        NullMemoryProvider().reflect(codename="lucius", repo="acme-org/api", body="x")
 
 
 # ---------------------------------------------------------------------------
@@ -290,9 +288,7 @@ def test_gbrain_provider_invokes_binary_and_parses(tmp_path: Path) -> None:
     ]
     binary = tmp_path / "fake-kb"
     binary.write_text(
-        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '"
-        + json.dumps(payload)
-        + "'\n",
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '" + json.dumps(payload) + "'\n",
     )
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     provider = GBrainProvider(binary_path=binary)

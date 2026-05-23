@@ -217,14 +217,24 @@ def test_engine_auth_streak_green_when_below_threshold(tmp_path, monkeypatch):
     _write_event(
         state / "lucius" / "events",
         "abc",
-        {"ts": ts, "agent": "lucius", "event": "firing_complete",
-         "subtype": "error_authentication", "engine": "claude"},
+        {
+            "ts": ts,
+            "agent": "lucius",
+            "event": "firing_complete",
+            "subtype": "error_authentication",
+            "engine": "claude",
+        },
     )
     _write_event(
         state / "drake" / "events",
         "def",
-        {"ts": ts, "agent": "drake", "event": "firing_complete",
-         "subtype": "error_authentication", "engine": "claude"},
+        {
+            "ts": ts,
+            "agent": "drake",
+            "event": "firing_complete",
+            "subtype": "error_authentication",
+            "engine": "claude",
+        },
     )
     finding = fd.check_engine_auth_streak()
     assert finding.severity == "green"
@@ -242,8 +252,13 @@ def test_engine_auth_streak_red_when_three_agents_hit(tmp_path, monkeypatch):
         path = _write_event(
             events_dir,
             "fid-" + agent,
-            {"ts": iso, "agent": agent, "event": "firing_complete",
-             "subtype": "error_authentication", "engine": "claude"},
+            {
+                "ts": iso,
+                "agent": agent,
+                "event": "firing_complete",
+                "subtype": "error_authentication",
+                "engine": "claude",
+            },
         )
         os.utime(path, (now, now))
     finding = fd.check_engine_auth_streak(now=now)
@@ -265,8 +280,13 @@ def test_engine_auth_streak_ignores_non_claude_engines(tmp_path, monkeypatch):
         path = _write_event(
             events_dir,
             "fid-" + agent,
-            {"ts": iso, "agent": agent, "event": "firing_complete",
-             "subtype": "error_authentication", "engine": "codex"},
+            {
+                "ts": iso,
+                "agent": agent,
+                "event": "firing_complete",
+                "subtype": "error_authentication",
+                "engine": "codex",
+            },
         )
         os.utime(path, (now, now))
     finding = fd.check_engine_auth_streak(now=now)
@@ -285,8 +305,13 @@ def test_engine_auth_streak_ignores_other_subtypes(tmp_path, monkeypatch):
         path = _write_event(
             events_dir,
             "fid-" + agent,
-            {"ts": iso, "agent": agent, "event": "firing_complete",
-             "subtype": "error_rate_limit", "engine": "claude"},
+            {
+                "ts": iso,
+                "agent": agent,
+                "event": "firing_complete",
+                "subtype": "error_rate_limit",
+                "engine": "claude",
+            },
         )
         os.utime(path, (now, now))
     finding = fd.check_engine_auth_streak(now=now)
@@ -306,8 +331,13 @@ def test_engine_auth_streak_window_excludes_old_files(tmp_path, monkeypatch):
         path = _write_event(
             events_dir,
             "fid-" + agent,
-            {"ts": iso_old, "agent": agent, "event": "firing_complete",
-             "subtype": "error_authentication", "engine": "claude"},
+            {
+                "ts": iso_old,
+                "agent": agent,
+                "event": "firing_complete",
+                "subtype": "error_authentication",
+                "engine": "claude",
+            },
         )
         os.utime(path, (old, old))
     finding = fd.check_engine_auth_streak(now=now)

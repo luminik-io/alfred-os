@@ -6,6 +6,7 @@ is the new helper from the cleanup-scope-hole fix — it sweeps operator-
 managed worktree pools outside ``$ALFRED_HOME/worktrees`` that the
 fleet sweep would never touch.
 """
+
 from __future__ import annotations
 
 import contextlib

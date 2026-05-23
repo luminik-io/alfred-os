@@ -228,20 +228,14 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
     skip_labels = {"agent:in-flight", "agent:pr-open", "do-not-pickup"}
     eligible: list[dict] = []
     for r in rows:
-        labels = {
-            label.get("name")
-            for label in r.get("labels", [])
-            if isinstance(label, dict)
-        }
+        labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
         if labels & skip_labels:
             continue
         eligible.append(r)
     return eligible
 
 
-def _pick_parent_issue(
-    issues: list[dict], *, picker: str = "oldest"
-) -> dict | None:
+def _pick_parent_issue(issues: list[dict], *, picker: str = "oldest") -> dict | None:
     """Return the next parent issue to act on, or ``None`` if list empty.
 
     ``picker`` is read from ``BATMAN_PICKER``. ``oldest`` picks by
@@ -297,8 +291,7 @@ def _run_lifecycle(
                 gate = SlackApproval(default_slack_client(), operator_user_id=operator)
         except Exception as e:
             print(
-                f"[BATMAN-GATE-INIT-FAIL] {type(e).__name__}: {e}; "
-                f"halting after plan",
+                f"[BATMAN-GATE-INIT-FAIL] {type(e).__name__}: {e}; halting after plan",
                 file=sys.stderr,
             )
 
@@ -323,8 +316,7 @@ def _run_lifecycle(
     envelope = lifecycle.request_approval(plan)
     if envelope is None:
         print(
-            "[BATMAN-PLAN-POSTED-NO-TS] gate unavailable; respecting "
-            f"{config.auto_execute!r}",
+            f"[BATMAN-PLAN-POSTED-NO-TS] gate unavailable; respecting {config.auto_execute!r}",
             file=sys.stderr,
         )
 

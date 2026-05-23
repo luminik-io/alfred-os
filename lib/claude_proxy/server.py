@@ -216,9 +216,7 @@ class _ProxyServer:
             elif isinstance(request, InvokeRequest):
                 await self._handle_invoke(request, reader, writer)
             else:  # pragma: no cover -- parse_request can't return anything else
-                writer.write(
-                    serialize(ProxyError(reason="unsupported", detail=str(request)))
-                )
+                writer.write(serialize(ProxyError(reason="unsupported", detail=str(request))))
                 await writer.drain()
         except (asyncio.CancelledError, BrokenPipeError, ConnectionResetError):
             raise
@@ -266,11 +264,7 @@ class _ProxyServer:
                 stderr=asyncio.subprocess.PIPE,
             )
         except FileNotFoundError as e:
-            writer.write(
-                serialize(
-                    ProbeFail(reason="claude-bin-missing", stderr_tail=str(e))
-                )
-            )
+            writer.write(serialize(ProbeFail(reason="claude-bin-missing", stderr_tail=str(e))))
             await writer.drain()
             return
 
@@ -329,19 +323,13 @@ class _ProxyServer:
                 cwd=str(workdir),
             )
         except FileNotFoundError as e:
-            writer.write(
-                serialize(
-                    ProxyError(reason="claude-bin-missing", detail=str(e))
-                )
-            )
+            writer.write(serialize(ProxyError(reason="claude-bin-missing", detail=str(e))))
             await writer.drain()
             return
 
         self._active_children.add(proc)
         try:
-            writer.write(
-                serialize(ProxyAccepted(claude_bin=self.config.claude_bin, pid=proc.pid))
-            )
+            writer.write(serialize(ProxyAccepted(claude_bin=self.config.claude_bin, pid=proc.pid)))
             await writer.drain()
 
             await self._pump_invocation(request, proc, reader, writer, start)
@@ -437,9 +425,7 @@ class _ProxyServer:
             exit_code = proc.returncode if proc.returncode is not None else -1
 
         duration_ms = int((time.monotonic() - start_monotonic) * 1000)
-        writer.write(
-            serialize(ProxyTerminal(exit_code=exit_code, duration_ms=duration_ms))
-        )
+        writer.write(serialize(ProxyTerminal(exit_code=exit_code, duration_ms=duration_ms)))
         with contextlib.suppress(Exception):
             await writer.drain()
 
@@ -573,18 +559,14 @@ def _peer_uid_allowed(sock: socket.socket, allowed_uid: int) -> bool:
 def resolve_socket_path(alfred_home: Path | None = None) -> Path:
     """Return ``$ALFRED_HOME/run/claude-proxy.sock`` (overridable via env)."""
     if alfred_home is None:
-        alfred_home = Path(
-            os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-        )
+        alfred_home = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
     return alfred_home / DEFAULT_SOCKET_REL_PATH
 
 
 def resolve_audit_log_path(alfred_home: Path | None = None) -> Path:
     """Return ``$ALFRED_HOME/state/claude-proxy/log.jsonl``."""
     if alfred_home is None:
-        alfred_home = Path(
-            os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-        )
+        alfred_home = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
     return alfred_home / "state" / "claude-proxy" / "log.jsonl"
 
 

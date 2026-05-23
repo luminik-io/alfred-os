@@ -139,6 +139,13 @@ addopts = "-q --strict-markers"
 filterwarnings = [
   "error",
   "ignore::DeprecationWarning:dateutil.*",
+  # Python 3.13 surfaces sqlite3.Connection garbage-collection warnings
+  # as PytestUnraisableExceptionWarning. These fire when tests open
+  # short-lived in-memory or tmp-dir SQLite connections (e.g. fleet-brain)
+  # and let them be GC'd implicitly. The connection close itself is
+  # harmless; the warning is a 3.13 stdlib quirk. Ignoring so the suite
+  # passes on 3.13 without forcing every test to manage close() explicitly.
+  "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
 [[tool.mypy.overrides]]
 # Optional brain integration — modules live in the operator's private

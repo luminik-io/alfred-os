@@ -52,9 +52,7 @@ class PreflightSpec:
     """
 
     agent: str
-    env_vars: list[str] = field(
-        default_factory=lambda: ["ALFRED_HOME", "WORKSPACE_ROOT"]
-    )
+    env_vars: list[str] = field(default_factory=lambda: ["ALFRED_HOME", "WORKSPACE_ROOT"])
     bins: list[str] = field(default_factory=list)
     aws_profile: str | None = None
     require_gh_auth: bool = False
@@ -138,9 +136,7 @@ def preflight(spec: PreflightSpec) -> None:
             out = (sts.stderr or sts.stdout or "").strip()
             if sts.returncode != 0 or spec.aws_profile not in (sts.stdout or ""):
                 err = out.splitlines()[-1] if out else "no output"
-                misses.append(
-                    f"AWS profile `{spec.aws_profile}` not usable: {err[:120]}"
-                )
+                misses.append(f"AWS profile `{spec.aws_profile}` not usable: {err[:120]}")
 
     # 4. gh auth alive (every issue/PR/label operation needs it).
     if spec.require_gh_auth:
@@ -230,6 +226,7 @@ def _preflight_error_signature(misses: list[str]) -> str:
 
 def _preflight_slack_state_path(agent: str) -> Path:
     from .paths import STATE_ROOT
+
     return STATE_ROOT / agent / _PREFLIGHT_SLACK_STATE_NAME
 
 
@@ -245,9 +242,7 @@ def _should_post_preflight_slack(agent: str, signature: str) -> bool:
     if not isinstance(last_iso, str):
         return True
     try:
-        last_dt = datetime.strptime(last_iso, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=UTC
-        )
+        last_dt = datetime.strptime(last_iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except ValueError:
         return True
     delta_minutes = (datetime.now(UTC) - last_dt).total_seconds() / 60.0
@@ -461,9 +456,7 @@ class _FiringContext:
         self._extra: dict = {}
         self._success_called: bool = False
 
-    def success(
-        self, *, num_turns: int = 0, cost_usd: float = 0.0, **extra: Any
-    ) -> None:
+    def success(self, *, num_turns: int = 0, cost_usd: float = 0.0, **extra: Any) -> None:
         """Record happy-path numbers for the closing event."""
         self._success_called = True
         self._num_turns = int(num_turns or 0)
@@ -642,9 +635,7 @@ def _ollama_invoke(prompt: str, **kw: Any) -> ClaudeResult:
     """
     timeout = kw.pop("timeout", OLLAMA_TIMEOUT_SEC)
     unsupported = sorted(set(kw.keys()) & _OLLAMA_UNSUPPORTED_KWARGS)
-    unknown = sorted(
-        set(kw.keys()) - _OLLAMA_UNSUPPORTED_KWARGS - _OLLAMA_HONORED_KWARGS
-    )
+    unknown = sorted(set(kw.keys()) - _OLLAMA_UNSUPPORTED_KWARGS - _OLLAMA_HONORED_KWARGS)
     rejected = unsupported + unknown
     if rejected:
         return ClaudeResult(
@@ -662,9 +653,7 @@ def _ollama_invoke(prompt: str, **kw: Any) -> ClaudeResult:
                 + ". Drop them or route this prompt to claude (sonnet/haiku/opus) instead."
             ),
         )
-    payload = json.dumps(
-        {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
-    ).encode("utf-8")
+    payload = json.dumps({"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}).encode("utf-8")
     req = urllib.request.Request(
         f"{OLLAMA_HOST}/api/generate",
         data=payload,

@@ -14,9 +14,7 @@ def test_slack_post_empty_text_returns_false(fresh_agent_runner):
     assert ar.slack_post("   ") is False
 
 
-def test_slack_post_unknown_severity_coerces_to_info(
-    fresh_agent_runner, monkeypatch
-):
+def test_slack_post_unknown_severity_coerces_to_info(fresh_agent_runner, monkeypatch):
     """Unknown severity falls back to info (no glyph prefix added)."""
     ar = fresh_agent_runner
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")
@@ -34,9 +32,7 @@ def test_slack_post_unknown_severity_coerces_to_info(
     assert "⚠️" not in payload["text"]
 
 
-def test_slack_post_alert_adds_glyph_and_here_mention(
-    fresh_agent_runner, monkeypatch
-):
+def test_slack_post_alert_adds_glyph_and_here_mention(fresh_agent_runner, monkeypatch):
     """alert severity adds a 🚨 prefix and a <!here> mention."""
     ar = fresh_agent_runner
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.example.test/x")

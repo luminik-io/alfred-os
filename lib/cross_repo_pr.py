@@ -150,9 +150,7 @@ class GitHubClient(Protocol):
         """
         ...  # pragma: no cover
 
-    def pr_edit_body(
-        self, gh_repo: str, pr_url: str, *, body: str
-    ) -> bool:
+    def pr_edit_body(self, gh_repo: str, pr_url: str, *, body: str) -> bool:
         """Replace the PR body of an existing PR. Returns True on success."""
         ...  # pragma: no cover
 
@@ -211,9 +209,7 @@ class SubprocessGitHubClient:
                 cmd.extend(["--label", label])
             res = self._run(cmd, timeout=60)
             if res.returncode != 0:
-                logger.warning(
-                    "gh pr create failed for %s: %s", gh_repo, res.stderr.strip()
-                )
+                logger.warning("gh pr create failed for %s: %s", gh_repo, res.stderr.strip())
                 return None
             for line in reversed((res.stdout or "").splitlines()):
                 line = line.strip()
@@ -361,8 +357,7 @@ def build_pr_body(
         Markdown body string.
     """
     parent_link = (
-        f"https://github.com/{plan.parent_gh_org}/{plan.parent_repo}"
-        f"/issues/{plan.parent_issue}"
+        f"https://github.com/{plan.parent_gh_org}/{plan.parent_repo}/issues/{plan.parent_issue}"
     )
     sibling_lines: list[str] = []
     for i, t in enumerate(plan.targets, start=1):
@@ -496,9 +491,7 @@ class CrossRepoPRChain:
 
         return result
 
-    def _refresh_earlier_bodies(
-        self, plan: Plan, state: ChainState, *, up_to_idx: int
-    ) -> None:
+    def _refresh_earlier_bodies(self, plan: Plan, state: ChainState, *, up_to_idx: int) -> None:
         for earlier_idx, earlier_target in enumerate(plan.targets[: up_to_idx - 1], start=1):
             url = state.prs.get(earlier_target.repo_name)
             if not url:
@@ -511,9 +504,7 @@ class CrossRepoPRChain:
             )
             ok = self.client.pr_edit_body(earlier_target.gh_repo, url, body=new_body)
             if not ok:
-                logger.warning(
-                    "failed to refresh sibling-links body on %s", url
-                )
+                logger.warning("failed to refresh sibling-links body on %s", url)
 
 
 # --------------------------------------------------------------------------

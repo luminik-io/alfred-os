@@ -24,6 +24,7 @@ locking. Callers serialize whatever dict they want and supply a TTL.
 Reads return ``None`` on a miss or stale entry so the caller falls
 through to its live-probe path.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,9 +48,7 @@ def _parse_iso_utc(value: str) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=UTC
-        )
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     except (TypeError, ValueError):
         return None
 
@@ -71,9 +70,7 @@ def cache_age_seconds(path: Path) -> float | None:
         ts = data.get(_TIMESTAMP_KEY)
         parsed = _parse_iso_utc(ts) if isinstance(ts, str) else None
         if parsed is not None:
-            return max(
-                0.0, (datetime.now(UTC) - parsed).total_seconds()
-            )
+            return max(0.0, (datetime.now(UTC) - parsed).total_seconds())
     try:
         return max(
             0.0,

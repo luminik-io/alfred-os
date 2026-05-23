@@ -203,9 +203,7 @@ def _entry_to_lesson(entry: Any) -> Lesson | None:
         raw_tags = []
     tags = sorted({str(t).strip() for t in raw_tags if str(t).strip()})
     severity_raw = entry.get("severity", "info")
-    severity: Severity = (
-        severity_raw if severity_raw in ("info", "warning", "blocker") else "info"
-    )
+    severity: Severity = severity_raw if severity_raw in ("info", "warning", "blocker") else "info"
     created_raw = entry.get("created_at")
     created_at = _parse_iso(created_raw) if isinstance(created_raw, str) else datetime.now(UTC)
     return Lesson(

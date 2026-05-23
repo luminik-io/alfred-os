@@ -100,9 +100,7 @@ class FakeGitHubClient:
             self.issued = []
 
     def create_issue(self, repo, *, title, body, labels):
-        self.issued.append(
-            {"repo": repo, "title": title, "body": body, "labels": list(labels)}
-        )
+        self.issued.append({"repo": repo, "title": title, "body": body, "labels": list(labels)})
         if repo in self.fail_repos:
             return None
         url = f"https://github.com/{repo}/issues/{self.next_issue_number}"

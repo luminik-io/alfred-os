@@ -10,9 +10,7 @@ def test_preflight_passes_when_env_and_bins_exist(fresh_agent_runner, monkeypatc
     ar = fresh_agent_runner
     monkeypatch.setenv("ALFRED_HOME", "/tmp/alfred")
     monkeypatch.setenv("WORKSPACE_ROOT", "/tmp/workspace")
-    monkeypatch.setattr(
-        ar.orchestrator, "shutil", _shutil_always_present(), raising=False
-    )
+    monkeypatch.setattr(ar.orchestrator, "shutil", _shutil_always_present(), raising=False)
 
     # Use the real shutil.which by patching what preflight imports lazily.
     import shutil as _shutil
@@ -37,12 +35,7 @@ def test_get_tier_from_labels_defaults_to_sonnet(fresh_agent_runner):
     ar = fresh_agent_runner
     assert ar.get_tier_from_labels([]) == "sonnet"
     assert ar.get_tier_from_labels([{"name": "llm-tier:opus"}]) == "opus"
-    assert (
-        ar.get_tier_from_labels(
-            [{"name": "other"}, {"name": "llm-tier:haiku"}]
-        )
-        == "haiku"
-    )
+    assert ar.get_tier_from_labels([{"name": "other"}, {"name": "llm-tier:haiku"}]) == "haiku"
 
 
 def test_route_llm_unknown_tier_falls_back(fresh_agent_runner, monkeypatch):

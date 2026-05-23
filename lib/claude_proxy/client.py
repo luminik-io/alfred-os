@@ -272,5 +272,3 @@ def health_check(socket_path: Path | None = None, timeout: float = 2.0) -> dict[
     if not line:
         raise ProxyUnavailable("empty health response")
     return json.loads(line.decode("utf-8"))
-
-

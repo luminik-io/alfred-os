@@ -11,6 +11,7 @@ Tests target the pure-python helpers (is_agent_paused,
 write_agent_pause_marker, clear_agent_pause_marker,
 reset_consecutive_failures) and the integration via with_lock.
 """
+
 from __future__ import annotations
 
 import sys

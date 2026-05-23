@@ -83,7 +83,9 @@ class FleetReader(Protocol):
 
     def list_agents(self) -> list[AgentSummary]: ...
 
-    def list_recent_firings(self, *, limit: int = 50, codename: str | None = None) -> list[FiringRecord]: ...
+    def list_recent_firings(
+        self, *, limit: int = 50, codename: str | None = None
+    ) -> list[FiringRecord]: ...
 
     def get_firing(self, firing_id: str) -> FiringRecord | None: ...
 
@@ -245,6 +247,7 @@ class FilesystemReader:
         alt_events = self.state_root / "codenames" / codename / "events"
         if alt_events.is_dir():
             candidates.extend(alt_events.glob("*.jsonl"))
+
         # Sort by mtime descending so we cap I/O even for large fleets.
         # Guard against OSError from race conditions (file deleted between
         # glob and stat), broken symlinks, or permission errors so a single
@@ -311,7 +314,14 @@ def _firing_from_events(
     events_path: str,
 ) -> FiringRecord:
     """Distill a :class:`FiringRecord` from raw event dicts."""
-    started = next((e.get("ts") for e in events if e.get("event") in {"firing_started", "start", "preflight_passed"}), None)
+    started = next(
+        (
+            e.get("ts")
+            for e in events
+            if e.get("event") in {"firing_started", "start", "preflight_passed"}
+        ),
+        None,
+    )
     ended = None
     status = "unknown"
     summary_text = ""

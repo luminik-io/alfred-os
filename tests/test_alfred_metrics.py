@@ -45,7 +45,9 @@ def _write_spend(state_dir: Path, codename: str, day: str, **kw) -> Path:
     return path
 
 
-def _write_transcript(state_dir: Path, codename: str, firing_id: str, tools: list[tuple[str, dict]]) -> Path:
+def _write_transcript(
+    state_dir: Path, codename: str, firing_id: str, tools: list[tuple[str, dict]]
+) -> Path:
     month = datetime.now(UTC).strftime("%Y-%m")
     path = state_dir / "transcripts" / codename / month / f"{firing_id}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,10 +55,7 @@ def _write_transcript(state_dir: Path, codename: str, firing_id: str, tools: lis
         {
             "type": "assistant",
             "message": {
-                "content": [
-                    {"type": "tool_use", "name": name, "input": inp}
-                    for name, inp in tools
-                ]
+                "content": [{"type": "tool_use", "name": name, "input": inp} for name, inp in tools]
             },
         },
         {
@@ -131,8 +130,10 @@ def test_agent_metric_full_rollup(tmp_path: Path):
     today = datetime.now().strftime("%Y-%m-%d")
     _write_spend(tmp_path, "lucius", today, firings=3, successes=2, failures=1, turns=12, cost=1.50)
     _write_transcript(
-        tmp_path, "lucius", "L1",
-        [("Read", {"file_path": "/a"}), ("Edit", {"file_path": "/a"}), ("Bash", {"command": "ls"})]
+        tmp_path,
+        "lucius",
+        "L1",
+        [("Read", {"file_path": "/a"}), ("Edit", {"file_path": "/a"}), ("Bash", {"command": "ls"})],
     )
     _write_codex(tmp_path, "lucius", "L1", 2500)
 
