@@ -21,7 +21,14 @@ const { title, body, state = "live", log } = Astro.props;
 </article>
 
 <style>
-  .job-card { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+  .job-card {
+    display: flex; flex-direction: column; gap: 12px; height: 100%;
+    /* Critical: allow the card to shrink below its intrinsic content width
+       inside a grid track. Without min-width: 0, a long-line <pre> child
+       sets the column's min-content and bleeds past the viewport on mobile
+       and 768px tablet. */
+    min-width: 0;
+  }
   .job-card__head { display: flex; align-items: center; gap: 10px; }
   .job-card__body {
     color: var(--alfred-text);
@@ -40,5 +47,9 @@ const { title, body, state = "live", log } = Astro.props;
     padding: 10px 12px;
     overflow-x: auto;
     white-space: pre;
+    /* Pairs with .job-card { min-width: 0 } above so long lines scroll
+       inside the log rather than pushing the card past the viewport. */
+    min-width: 0;
+    max-width: 100%;
   }
 </style>

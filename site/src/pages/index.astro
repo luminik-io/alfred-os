@@ -300,10 +300,16 @@ const why = [
 
   .job-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    /* minmax(0, 1fr) overrides the default min-content min so cards
+       cannot push the grid wider than the parent at 768px. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
   }
-  @media (max-width: 720px) { .job-grid { grid-template-columns: 1fr; } }
+  /* Go single-column below 900px so the iPad-portrait (768) view
+     stops looking like a half-baked desktop and the cards breathe.
+     Keep minmax(0, 1fr) here too: bare 1fr is shorthand for
+     minmax(auto, 1fr) which reintroduces min-content. */
+  @media (max-width: 900px) { .job-grid { grid-template-columns: minmax(0, 1fr); } }
 
   .why-grid {
     display: grid;

@@ -115,6 +115,12 @@ const total = rows.length;
        panel and own their own inner padding. */
     padding: 0;
     overflow: hidden;
+    /* The terminal-style row has fixed ch widths (~109ch). Without
+       min-width: 0 the figure's intrinsic min-content sets the parent
+       grid track's min, pushing the .fleet__state span past the
+       viewport at 375px. min-width: 0 lets .fleet__body's overflow-x
+       scroll instead. */
+    min-width: 0;
   }
   .fleet__head {
     display: flex;

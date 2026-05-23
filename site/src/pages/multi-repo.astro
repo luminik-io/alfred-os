@@ -63,7 +63,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
         <div>
           <h3 class="m-h3" style="margin-bottom:12px;">Bundle plan body</h3>
           <CodeBlock
-            title="luminik-platform#812 (agent:large-feature)"
+            title="your-platform#812 (agent:large-feature)"
             lines={[
               "Bundle: billing-v2 rollout",
               "Repos in scope:",
@@ -88,7 +88,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
           <CodeBlock
             title="your-backend#247 (agent:implement)"
             lines={[
-              "Parent: luminik-platform#812",
+              "Parent: your-platform#812",
               "Bundle: bundle:billing-v2",
               "",
               "Goal: introduce BillingV2Service with a clean",
@@ -148,7 +148,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
       <CodeBlock
         title="terminal"
         lines={[
-          "$ alfred fire batman --dry-run --issue luminik-platform#812",
+          "$ alfred fire batman --dry-run --issue your-platform#812",
           "ok    preflight passed",
           "ok    bundle plan drafted (4 repos, 11 children)",
           "skip  gh issue create (dry-run)",
@@ -162,8 +162,13 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 <style>
   .panel { display: flex; flex-direction: column; }
   .panel__head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 6px; border-bottom: 1px solid var(--alfred-border); }
-  .example-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  @media (max-width: 980px) { .example-grid { grid-template-columns: 1fr; } }
+  /* minmax(0, 1fr): the CodeBlock children have intrinsic line widths
+     that would otherwise push the column past the viewport on mobile.
+     The single-column @media variant uses the same form (NOT bare 1fr,
+     which is shorthand for minmax(auto, 1fr) and reintroduces the
+     min-content min that we are explicitly trying to override). */
+  .example-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+  @media (max-width: 980px) { .example-grid { grid-template-columns: minmax(0, 1fr); } }
   .states { display: flex; flex-direction: column; gap: 14px; }
   .states__row { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: center; }
   .states__tag { color: var(--alfred-accent); font-size: 14px; }

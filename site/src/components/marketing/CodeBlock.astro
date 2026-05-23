@@ -59,16 +59,34 @@ const { title, lines } = Astro.props;
        own their own inner padding. */
     padding: 0;
     overflow: hidden;
+    /* Allow the figure to shrink below its intrinsic line width inside
+       a CSS Grid track so .codeblock__body's overflow-x: auto actually
+       kicks in instead of the figure pushing the viewport wider. */
+    min-width: 0;
   }
   .codeblock__head {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
     padding: 10px 16px;
     background: var(--alfred-surface-2);
     border-bottom: 1px solid var(--alfred-border);
+    /* Allow the head children to shrink below their intrinsic min-content
+       so a long unbreakable title (e.g. "your-platform#812
+       (agent:large-feature)") truncates instead of stretching the figure
+       past the viewport on mobile. */
+    min-width: 0;
   }
-  .codeblock__title { color: var(--alfred-mute); }
+  .codeblock__title {
+    color: var(--alfred-mute);
+    /* Truncate with ellipsis rather than push the figure wider than
+       its grid track on narrow viewports. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .codeblock__body {
     margin: 0;
     padding: 16px 18px;

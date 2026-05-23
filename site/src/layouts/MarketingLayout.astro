@@ -118,17 +118,12 @@ const nav = [
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    {/* Quicksand is the personality font (also self-hosted via @fontsource in
-        marketing.css). The preconnect + stylesheet href here is a low-cost
-        fallback so a viewer with the @fontsource bundle stripped (older
-        cache, ad-blocker variant) still resolves Quicksand from Google's CDN
-        instead of falling all the way to system-ui. */}
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap"
-    />
+    {/* Quicksand is bundled via @fontsource (see marketing.css). We used
+        to ship a Google Fonts CDN <link> as a belt-and-braces fallback,
+        but it caused duplicate @font-face declarations and a noisy
+        document.fonts.check() false-positive in QA. The @fontsource
+        package is self-hostable and reliable enough on its own. If it
+        ever fails to load, system-ui is an acceptable fallback. */}
 
     {/* Open Graph */}
     <meta property="og:title" content={title} />

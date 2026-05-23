@@ -106,9 +106,16 @@ import JobCard from "../components/marketing/JobCard.astro";
 <style>
   .panel { display: flex; flex-direction: column; }
   .panel__head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 6px; border-bottom: 1px solid var(--alfred-border); }
-  .windows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  @media (max-width: 980px) { .windows { grid-template-columns: 1fr; } }
-  .boundaries { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-  @media (max-width: 720px) { .boundaries { grid-template-columns: 1fr; } }
+  /* minmax(0, 1fr): prevents card content from setting min-content
+     width and pushing the row past 1024px (small laptops, iPad landscape).
+     The single-column @media variants below use the same form (NOT bare
+     1fr, which silently resolves to minmax(auto, 1fr) and reintroduces
+     the min-content min). */
+  .windows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+  /* 1100, not 980: at 1024 the 3-col layout was overflowing. Going
+     straight from 3-col to 1-col avoids an orphan card in a 2-col view. */
+  @media (max-width: 1100px) { .windows { grid-template-columns: minmax(0, 1fr); } }
+  .boundaries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  @media (max-width: 720px) { .boundaries { grid-template-columns: minmax(0, 1fr); } }
   .boundaries p { margin-top: 10px; color: var(--alfred-text); font-size: 15px; line-height: 1.6; }
 </style>

@@ -416,6 +416,11 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   display: block;
   width: 100%;
   max-width: 100%;
+  /* Belt-and-braces against the CSS-Grid intrinsic-min-content footgun:
+     every m-figure descendant ships with min-width: 0, but enforcing it
+     here too means any future figure component cannot accidentally bleed
+     past a 1fr grid track on mobile. */
+  min-width: 0;
   margin: 32px 0;
   padding: 22px;
   border: 1px solid var(--alfred-border-strong);
