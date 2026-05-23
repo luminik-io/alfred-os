@@ -181,9 +181,55 @@ summarised inline.
 See [`docs/CLI.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLI.md)
 for the full reference including library examples.
 
-## State-machine Helpers
+## State-machine helpers
 
-The issue claim-state helper is currently shipped as an example at
-`examples/bin/label_state.py`. Copy or wrap it in your fleet if you want
-operator commands such as `claim`, `release`, `dedup-check`, `status-issue`,
-`repo pause`, or `sweep-claims`.
+### `alfred-label-state`
+
+Operator-facing CLI for the [issue claim state machine](/concepts/state-machine/).
+Installed into `$ALFRED_HOME/bin/alfred-label-state` by `deploy.sh`.
+
+```sh
+alfred-label-state claim       <repo>#<N> [--force]
+alfred-label-state release     <repo>#<N>
+alfred-label-state dedup-check <repo>#<N> [--json]
+alfred-label-state status-issue <repo>#<N> [--json]
+alfred-label-state repo        {pause,resume,list} [<repo>]
+alfred-label-state sweep-claims [--max-age-hours N] [--repo <name>] [--dry-run]
+```
+
+| Subcommand | Use |
+|---|---|
+| `claim` | Set `do-not-pickup` on an issue so agents skip it while you work it manually. `--force` overrides an in-flight claim. |
+| `release` | Remove `do-not-pickup`. Issue returns to the `agent:implement` queue. |
+| `dedup-check` | Probe whether an issue is currently claimable. Exits non-zero if not. Designed for use inside a `pre-push` git hook. |
+| `status-issue` | Pretty-print the state-machine view of an issue (labels, latest claim, claimable verdict). |
+| `repo pause/resume/list` | Pause or resume an entire repo. Agents skip every issue in a paused repo. |
+| `sweep-claims` | Force-release stale `agent:in-flight` claims whose latest unreleased claim comment is older than `--max-age-hours` (default 4). |
+
+Configuration (12-factor, env-driven):
+
+| Env var | Purpose |
+|---|---|
+| `GH_ORG` | GitHub org for repo-targeting helpers in `agent_runner` (required). |
+| `ALFRED_HOME` | Runtime root (default `~/.alfred`). |
+| `LABEL_STATE_SWEEP_REPOS` | Comma-separated repo slugs for the default `sweep-claims` target set when `--repo` isn't passed. |
+
+Sample invocations:
+
+```sh
+# Take #42 in your-backend off the autonomous queue for a manual fix.
+alfred-label-state claim your-backend#42
+
+# What's currently going on with #42?
+alfred-label-state status-issue your-backend#42 --json
+
+# Daily stale-claim cleanup across your engineering repos:
+LABEL_STATE_SWEEP_REPOS="your-backend,your-frontend,your-mobile" \
+  alfred-label-state sweep-claims --max-age-hours 4
+
+# Pre-push hook usage: refuse to push if the closed issue is in-flight elsewhere.
+alfred-label-state dedup-check your-backend#42 || exit 1
+```
+
+A copy also ships at `examples/bin/label_state.py` for fleets that prefer
+to wrap the CLI under their own entry-point name.

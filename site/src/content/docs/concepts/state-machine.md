@@ -114,7 +114,7 @@ sequenceDiagram
 
 A runner crashing between `claim_issue` and `release_issue` would normally leave an issue blocked indefinitely. `find_stale_claims()` reads claim comments and surfaces any in-flight claim with no matching release after `max_age_hours` (default 4). `force_release_stale_claim()` then transitions the issue back to `agent:implement` so the queue picks it up again.
 
-Wire it into your fleet's daily cleanup runner. The shipped `examples/bin/label_state.py` helper exposes this as `label-state sweep-claims [--max-age-hours N] [--dry-run]` once you copy or wrap it in your fleet.
+Wire it into your fleet's daily cleanup runner. The shipped `bin/alfred-label-state.py` binary exposes this as `alfred-label-state sweep-claims [--max-age-hours N] [--dry-run]` — `deploy.sh` copies it into `$ALFRED_HOME/bin/` alongside the other `alfred-*` binaries.
 
 ## Operator overrides
 
@@ -122,16 +122,23 @@ Two ways to take an issue manually without racing an agent:
 
 ```sh
 # Mark a single issue do-not-pickup
-label-state claim <repo>#<N>
+alfred-label-state claim your-org/your-backend#42
 # ... do your work ...
-label-state release <repo>#<N>
+alfred-label-state release your-org/your-backend#42
 ```
 
 ```sh
 # Take a whole repo offline from the fleet
-label-state repo pause <repo>
+alfred-label-state repo pause your-backend
 # ... refactor in peace ...
-label-state repo resume <repo>
+alfred-label-state repo resume your-backend
+```
+
+`sweep-claims` reads `LABEL_STATE_SWEEP_REPOS` (comma-separated) for its default repo set:
+
+```sh
+LABEL_STATE_SWEEP_REPOS="your-backend,your-frontend,your-mobile" \
+  alfred-label-state sweep-claims --max-age-hours 4 --dry-run
 ```
 
 The pre-push git hook ([`examples/git-hooks/pre-push`](https://github.com/luminik-io/alfred-os/blob/main/examples/git-hooks/pre-push)) enforces this symmetrically. Push a branch whose commits reference `Closes #N` and that issue is currently in-flight or has a PR open, the push is refused.
@@ -169,3 +176,31 @@ PAUSED_REPOS_FILE: Path
 ```
 
 See [agent_runner API reference](/reference/agent-runner/) for the full module surface.
+
+## Source-of-truth label constants
+
+Every label string lives in [`lib/labels.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/labels.py). Import from there rather than duplicating string literals:
+
+```python
+from labels import (
+    IMPLEMENT,           # "agent:implement"
+    IN_FLIGHT,           # "agent:in-flight"
+    PR_OPEN,             # "agent:pr-open"
+    DONE,                # "agent:done"
+    DO_NOT_PICKUP,       # "do-not-pickup"
+    NEEDS_HUMAN_SCOPE,   # "needs:human-scope"
+    AUTHORED,            # "agent:authored"
+    LARGE_FEATURE,       # "agent:large-feature"
+    bundle_label,        # builds "agent:bundle:<slug>"
+    is_legal_transition, # documents the state-machine moves
+)
+```
+
+## Cross-repo PR chains and worktrees
+
+For multi-repo features (one issue, N PRs across N repos), `alfred-os` ships:
+
+- **`lib/multi_worktree.py`** — `MultiWorktree(requests, agent, feature_id)` context manager that creates per-repo git worktrees with synchronised branch names and cleans them up on exit. Git interaction is injected via a `GitRunner` Protocol so tests don't touch real worktrees.
+- **`lib/cross_repo_pr.py`** — `CrossRepoPRChain` plan/execute coordinator. `chain.plan(...)` returns a `Plan` dataclass (pure, no I/O); `chain.execute(plan)` opens each PR, persists state to `$ALFRED_HOME/state/pr-chains/<feature_id>.json` atomically, and refreshes earlier PR bodies as later siblings open so the cross-links stay current.
+
+Both modules use Protocol-based dependency injection so consumers can swap the default subprocess implementation for tests or alternative GitHub clients.

@@ -1,0 +1,283 @@
+"""Central source of truth for Alfred's GitHub-label state machine.
+
+Every label string the fleet relies on lives here, plus the transition
+table that documents which moves are legal. Other modules import names
+from this file rather than duplicating string literals; if a label needs
+to change, change it here and the rest of the fleet follows.
+
+The lifecycle is described in detail in ``docs/STATE_MACHINE.md`` and
+``site/src/content/docs/concepts/state-machine.md``. This module is the
+machine-readable form of that doc.
+
+Design notes:
+
+- No I/O. This module is pure data and pure functions so it can be
+  imported from any context (CLI, hook, library, test) without dragging
+  in subprocess, gh CLI, filesystem, or network.
+- ``agent_runner.py`` predates this module; the existing constants on
+  that module remain valid and continue to be the canonical names used
+  by claim_issue / release_issue. ``labels.is_lifecycle_label`` etc. use
+  the strings defined here; tests assert the two stay in sync.
+- Bundle labels are dynamic (``agent:bundle:<slug>``) so we expose a
+  predicate and a slug helper rather than a static set.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Final
+
+# --------------------------------------------------------------------------
+# Lifecycle labels (mutually exclusive — at most one set on an issue).
+# --------------------------------------------------------------------------
+
+IMPLEMENT: Final[str] = "agent:implement"
+"""Eligible for autonomous pickup by a planner agent."""
+
+IN_FLIGHT: Final[str] = "agent:in-flight"
+"""An agent is actively working this issue."""
+
+PR_OPEN: Final[str] = "agent:pr-open"
+"""A PR exists for this issue. Set on successful release."""
+
+DONE: Final[str] = "agent:done"
+"""Issue shipped. Set externally on PR merge."""
+
+LIFECYCLE_LABEL_SET: Final[frozenset[str]] = frozenset({IMPLEMENT, IN_FLIGHT, PR_OPEN, DONE})
+
+
+# --------------------------------------------------------------------------
+# Sticky modifiers (orthogonal — may coexist with any lifecycle label).
+# --------------------------------------------------------------------------
+
+DO_NOT_PICKUP: Final[str] = "do-not-pickup"
+"""Operator override: agents must not claim this issue."""
+
+NEEDS_HUMAN_SCOPE: Final[str] = "needs:human-scope"
+"""Issue is too vague for autonomous work; not eligible for pickup."""
+
+STICKY_LABEL_SET: Final[frozenset[str]] = frozenset({DO_NOT_PICKUP, NEEDS_HUMAN_SCOPE})
+
+
+# --------------------------------------------------------------------------
+# Bundle / large-feature labels.
+# --------------------------------------------------------------------------
+
+LARGE_FEATURE: Final[str] = "agent:large-feature"
+"""Multi-repo feature; picked up as a bundle by the bundle coordinator."""
+
+BUNDLE_LABEL_PREFIX: Final[str] = "agent:bundle:"
+"""Prefix for per-bundle labels (``agent:bundle:<slug>``)."""
+
+
+def bundle_label(slug: str) -> str:
+    """Return the bundle label for a given slug.
+
+    Args:
+        slug: bundle slug, e.g. ``"oauth-rollout"``.
+
+    Returns:
+        The full label string, e.g. ``"agent:bundle:oauth-rollout"``.
+
+    Raises:
+        ValueError: if the slug is empty or contains whitespace.
+    """
+    if not slug or any(c.isspace() for c in slug):
+        raise ValueError(f"invalid bundle slug: {slug!r}")
+    return f"{BUNDLE_LABEL_PREFIX}{slug}"
+
+
+def is_bundle_label(label: str) -> bool:
+    """True if ``label`` is an ``agent:bundle:<slug>`` label."""
+    return label.startswith(BUNDLE_LABEL_PREFIX) and len(label) > len(BUNDLE_LABEL_PREFIX)
+
+
+def bundle_slug(label: str) -> str | None:
+    """Extract the slug from a bundle label; ``None`` if not a bundle label."""
+    if not is_bundle_label(label):
+        return None
+    return label[len(BUNDLE_LABEL_PREFIX) :]
+
+
+# --------------------------------------------------------------------------
+# Author / provenance labels.
+# --------------------------------------------------------------------------
+
+AUTHORED: Final[str] = "agent:authored"
+"""PR was authored by an agent (vs. an operator). Set on PR open."""
+
+
+# --------------------------------------------------------------------------
+# Claim-comment prefixes (HTML-comment audit trail).
+# --------------------------------------------------------------------------
+
+CLAIM_COMMENT_PREFIX: Final[str] = "<!-- agent-claim:"
+RELEASE_COMMENT_PREFIX: Final[str] = "<!-- agent-release:"
+
+
+# --------------------------------------------------------------------------
+# Framework-provided label definitions (name, color, description).
+# ensure_labels() reads this list to create missing labels on a repo on
+# first contact. Color values are hex without the leading '#'.
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LabelDef:
+    """A GitHub label definition.
+
+    Frozen so the module-level list of definitions is safe to share.
+    """
+
+    name: str
+    color: str  # six-char hex, no leading '#'
+    description: str
+
+
+LIFECYCLE_LABEL_DEFS: Final[tuple[LabelDef, ...]] = (
+    LabelDef(IN_FLIGHT, "e11d21", "An agent is actively working this issue."),
+    LabelDef(PR_OPEN, "fbca04", "A PR exists for this issue. Set by release_issue on success."),
+    LabelDef(DONE, "0e8a16", "Issue shipped. Set externally on PR merge."),
+    LabelDef(DO_NOT_PICKUP, "5319e7", "Operator override: agents must not claim this issue."),
+    LabelDef(
+        NEEDS_HUMAN_SCOPE,
+        "e99695",
+        "Issue requires manual scoping; not eligible for autonomous pickup.",
+    ),
+    LabelDef(
+        LARGE_FEATURE,
+        "ff6b00",
+        "Multi-repo feature; picked up as a bundle by the bundle coordinator.",
+    ),
+    LabelDef(
+        AUTHORED,
+        "c2e0c6",
+        "PR was authored by an agent (vs. an operator). Set on PR open.",
+    ),
+)
+"""Tuple of every label the framework guarantees on a repo it touches."""
+
+LIFECYCLE_LABELS_TUPLES: Final[tuple[tuple[str, str, str], ...]] = tuple(
+    (d.name, d.color, d.description) for d in LIFECYCLE_LABEL_DEFS
+)
+"""Back-compat shape matching agent_runner.LIFECYCLE_LABELS."""
+
+
+# --------------------------------------------------------------------------
+# State machine: legal transitions.
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Transition:
+    """A legal lifecycle move.
+
+    ``trigger`` names the event that drove the move (in code paths or in
+    operator commands). Not enforced; the doc value of the table is what
+    matters.
+    """
+
+    src: str
+    dst: str
+    trigger: str
+
+
+_TRANSITIONS: Final[tuple[Transition, ...]] = (
+    Transition("(none)", IMPLEMENT, "drake / human files issue"),
+    Transition(IMPLEMENT, IN_FLIGHT, "claim_issue()"),
+    Transition(IMPLEMENT, NEEDS_HUMAN_SCOPE, "3+ failed attempts"),
+    Transition(IN_FLIGHT, IMPLEMENT, "release_issue(transition_to=None)"),
+    Transition(IN_FLIGHT, PR_OPEN, "release_issue(transition_to=agent:pr-open)"),
+    Transition(IN_FLIGHT, IMPLEMENT, "stale-claim sweep (>max_age_hours)"),
+    Transition(IN_FLIGHT, IMPLEMENT, "race-yield to earlier claim"),
+    Transition(PR_OPEN, DONE, "automerge or human merge"),
+    Transition(PR_OPEN, IMPLEMENT, "PR closed without merge"),
+)
+
+
+def legal_transitions(src: str) -> tuple[Transition, ...]:
+    """Return every legal transition from ``src``."""
+    return tuple(t for t in _TRANSITIONS if t.src == src)
+
+
+def is_legal_transition(src: str, dst: str) -> bool:
+    """True if ``src -> dst`` is a documented lifecycle move."""
+    return any(t.src == src and t.dst == dst for t in _TRANSITIONS)
+
+
+def all_transitions() -> tuple[Transition, ...]:
+    """Return the full transition table (for docs / introspection)."""
+    return _TRANSITIONS
+
+
+# --------------------------------------------------------------------------
+# Inspection helpers — pure predicates on label sets.
+# --------------------------------------------------------------------------
+
+
+def lifecycle_state(labels: set[str] | frozenset[str] | list[str]) -> str | None:
+    """Return the active lifecycle label on an issue, or ``None`` if none.
+
+    A well-formed issue carries at most one lifecycle label. If multiple
+    are present (the state machine got into a bad state) the most
+    advanced one wins: ``done`` > ``pr_open`` > ``in_flight`` > ``implement``.
+    """
+    s = set(labels)
+    for label in (DONE, PR_OPEN, IN_FLIGHT, IMPLEMENT):
+        if label in s:
+            return label
+    return None
+
+
+def has_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
+    """True if the label set contains any claim-blocking label.
+
+    Blocking labels: ``in_flight``, ``pr_open``, ``do_not_pickup``,
+    ``needs_human_scope``. Matches ``claim_issue`` in ``agent_runner``.
+    """
+    s = set(labels)
+    return bool(s & {IN_FLIGHT, PR_OPEN, DO_NOT_PICKUP, NEEDS_HUMAN_SCOPE})
+
+
+def bundle_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return every ``agent:bundle:<slug>`` label in the set, sorted."""
+    return sorted(label for label in labels if is_bundle_label(label))
+
+
+# --------------------------------------------------------------------------
+# Operator-config plumbing (env-driven; no hardcoded repo names).
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LabelStateConfig:
+    """Configuration for the operator CLI and sweep helpers.
+
+    Sourced from env vars (12-factor). All fields are read-only; build
+    via :func:`LabelStateConfig.from_env` to pick up overrides.
+    """
+
+    gh_org: str = ""
+    sweep_repos: tuple[str, ...] = field(default_factory=tuple)
+    alfred_home: str = ""
+
+    @classmethod
+    def from_env(cls, env: dict[str, str] | None = None) -> LabelStateConfig:
+        """Build a config from an env mapping (defaults to ``os.environ``).
+
+        ``LABEL_STATE_SWEEP_REPOS`` is comma-separated; whitespace is
+        stripped. Missing or empty yields an empty tuple — the caller
+        decides whether that's an error (typically ``sweep --repo`` is
+        then required).
+        """
+        if env is None:
+            import os as _os
+
+            env = dict(_os.environ)
+        raw = env.get("LABEL_STATE_SWEEP_REPOS", "").strip()
+        sweep = tuple(r.strip() for r in raw.split(",") if r.strip()) if raw else ()
+        return cls(
+            gh_org=env.get("GH_ORG", "").strip(),
+            sweep_repos=sweep,
+            alfred_home=env.get("ALFRED_HOME", "").strip(),
+        )

@@ -154,10 +154,51 @@ PAUSED_REPOS_FILE: Path
           )
    ```
 
-4. Drop `examples/bin/label_state.py` into your fleet's `bin/` directory and dispatch the subcommands (`claim`, `release`, `dedup-check`, `status-issue`, `repo`, `sweep-claims`) from your operator-facing CLI wrapper.
+4. Use the shipped `bin/alfred-label-state.py` as the operator command surface. `deploy.sh` copies it to `$ALFRED_HOME/bin/` so it's available alongside the other `alfred-*` binaries. The subcommand surface:
+
+   ```sh
+   alfred-label-state claim       <repo>#<N> [--force]
+   alfred-label-state release     <repo>#<N>
+   alfred-label-state dedup-check <repo>#<N> [--json]
+   alfred-label-state status-issue <repo>#<N> [--json]
+   alfred-label-state repo        {pause,resume,list} [<repo>]
+   alfred-label-state sweep-claims [--max-age-hours N] [--repo <name>] [--dry-run]
+   ```
+
+   `sweep-claims` reads the comma-separated `LABEL_STATE_SWEEP_REPOS` env var for its default repo set. No hardcoded repo names; supply your own.
 
 5. Install the `examples/git-hooks/pre-push` hook into every repo your operator touches manually:
 
    ```sh
    ln -s "$LABEL_STATE_HOOKS/pre-push" .git/hooks/pre-push
    ```
+
+## Source-of-truth label constants
+
+Every label string in this state machine lives in [`lib/labels.py`](../lib/labels.py). Import from there rather than duplicating string literals:
+
+```python
+from labels import (
+    IMPLEMENT,           # "agent:implement"
+    IN_FLIGHT,           # "agent:in-flight"
+    PR_OPEN,             # "agent:pr-open"
+    DONE,                # "agent:done"
+    DO_NOT_PICKUP,       # "do-not-pickup"
+    NEEDS_HUMAN_SCOPE,   # "needs:human-scope"
+    AUTHORED,            # "agent:authored"
+    LARGE_FEATURE,       # "agent:large-feature"
+    bundle_label,        # builds "agent:bundle:<slug>"
+    is_legal_transition, # documents the state-machine moves
+)
+```
+
+`labels.py` also exports the framework label definitions (`LIFECYCLE_LABEL_DEFS`) used by `ensure_labels()` to create missing labels on a fresh repo. If you need to change a label string, change it once in `labels.py` and the rest of the fleet follows.
+
+## Cross-repo PR chains and worktrees
+
+For multi-repo features (one issue, N PRs across N repos), `alfred-os` ships:
+
+- **`lib/multi_worktree.py`** — `MultiWorktree(requests, agent, feature_id)` context manager that creates per-repo git worktrees with synchronised branch names and cleans them up on exit. Git interaction is injected via a `GitRunner` Protocol so tests don't touch real worktrees.
+- **`lib/cross_repo_pr.py`** — `CrossRepoPRChain` plan/execute coordinator. `chain.plan(...)` returns a `Plan` dataclass (pure, no I/O); `chain.execute(plan)` opens each PR, persists state to `$ALFRED_HOME/state/pr-chains/<feature_id>.json` atomically, and refreshes earlier PR bodies as later siblings open so the cross-links stay current.
+
+Both modules use Protocol-based dependency injection so consumers can swap the default subprocess implementation for tests or alternative GitHub clients.
