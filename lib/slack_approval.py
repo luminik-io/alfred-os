@@ -207,7 +207,7 @@ def aws_secrets_token_resolver(
     boto3 = boto3_module
     if boto3 is None:
         try:
-            import boto3 as _boto3  # type: ignore[import-not-found]
+            import boto3 as _boto3  # type: ignore[import-untyped]
 
             boto3 = _boto3
         except ImportError:
@@ -302,7 +302,7 @@ def default_slack_client(token: str | None = None) -> SlackClient:
     be resolved (so the gate fails loud at startup rather than silently
     polling forever)."""
     try:
-        from slack_sdk import WebClient  # type: ignore[import-not-found]
+        from slack_sdk import WebClient
     except ImportError as e:
         raise ImportError(
             "slack-sdk is not installed but the Slack approval gate was "

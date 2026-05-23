@@ -1102,7 +1102,12 @@ class SlackReporter:
                 from agent_runner import slack_post as fallback_post
             except Exception:  # pragma: no cover
                 fallback_post = None
-        self._thread_root = thread_root
+        # thread_root is guaranteed non-None here (either passed in or
+        # filled in by the import above). The assert makes the
+        # narrowing visible to mypy so the call sites below do not
+        # trip "None not callable".
+        assert thread_root is not None
+        self._thread_root: Callable = thread_root
         self._fallback_post = fallback_post
 
     def post_plan(self, plan: BundlePlan, *, channel: str) -> str | None:

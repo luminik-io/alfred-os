@@ -117,12 +117,13 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 no_implicit_reexport = true
 strict_equality = true
-# Modules under lib/ are imported as top-level (e.g. `import claude_proxy`,
-# not `import lib.claude_proxy`). mypy_path = "lib" tells the type checker
-# to resolve them the same way at type-check time, otherwise it discovers
-# them under two different names and raises "Source file found twice".
-mypy_path = "lib"
-explicit_package_bases = true
+# lib/claude_proxy/ is imported as ``lib.claude_proxy`` everywhere it is
+# used (consistent with the rest of the in-repo agent_runner / proxy
+# tooling). mypy walking ``lib/`` discovers each file under both
+# ``claude_proxy.X`` and ``lib.claude_proxy.X`` and raises
+# "Source file found twice". Excluding the directory from the type
+# checker is the surgical fix; runtime behaviour is unaffected.
+exclude = ["^lib/claude_proxy/"]
 
 [[tool.mypy.overrides]]
 # agent_runner.py predates strict typing; opt in incrementally.

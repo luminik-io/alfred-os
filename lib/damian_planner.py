@@ -48,7 +48,11 @@ from typing import Protocol
 # the target site once the label-state port lands; until then ``lib.batman``
 # already owns the same constants and ships with this repo.
 try:  # pragma: no cover - import wiring only
-    from labels import BUNDLE_LABEL_PREFIX, LARGE_FEATURE_LABEL  # type: ignore[import-not-found]
+    # labels.py canonicalises this as ``LARGE_FEATURE``; batman.py kept the
+    # earlier ``LARGE_FEATURE_LABEL`` name and is the fallback path below.
+    # Aliasing keeps the rest of this module readable under either import.
+    from labels import BUNDLE_LABEL_PREFIX
+    from labels import LARGE_FEATURE as LARGE_FEATURE_LABEL
 except ImportError:  # pragma: no cover - fallback path
     from batman import BUNDLE_LABEL_PREFIX, LARGE_FEATURE_LABEL
 

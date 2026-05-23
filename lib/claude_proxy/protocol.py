@@ -199,6 +199,10 @@ def parse_request(line: bytes | str) -> InvokeRequest | HealthRequest | ProbeReq
     """Parse a client-side NDJSON line into a typed request dataclass."""
     obj = _parse_to_dict(line)
     kind = obj.get("type")
+    # _REQUEST_TYPES is keyed by str; obj.get("type") returns Any | None.
+    # Guard the type narrowing explicitly so mypy and runtime agree.
+    if not isinstance(kind, str):
+        raise ProtocolError(f"unknown request type {kind!r}")
     cls = _REQUEST_TYPES.get(kind)
     if cls is None:
         raise ProtocolError(f"unknown request type {kind!r}")
