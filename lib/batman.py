@@ -511,14 +511,15 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
 #   ``ExecuteResult``, ``ReportEnvelope`` so every shape is JSON-friendly
 #   and easy to log / diff.
 
-import logging
-import os
-import subprocess
-from collections.abc import Callable
-from pathlib import Path
-from typing import Protocol
+import contextlib  # noqa: E402
+import logging  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+from collections.abc import Callable  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Protocol  # noqa: E402
 
-import labels as label_constants
+import labels as label_constants  # noqa: E402
 
 logger = logging.getLogger("alfred.batman.lifecycle")
 
@@ -776,7 +777,7 @@ class SubprocessGitHubChildIssueClient:
             ]
             for label in labels:
                 cmd.extend(["--label", label])
-            res = subprocess.run(  # noqa: S603 - gh is trusted
+            res = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=60, check=False
             )
             if res.returncode != 0:
@@ -790,10 +791,8 @@ class SubprocessGitHubChildIssueClient:
                     return line
             return None
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 body_path.unlink()
-            except OSError:
-                pass
 
 
 class ApprovalGate(Protocol):
@@ -1104,10 +1103,10 @@ class SlackReporter:
         self._firing_id = firing_id
         self._codename = codename
         if thread_root is None:
-            from slack_format import firing_thread_root as thread_root  # noqa: PLC0415
+            from slack_format import firing_thread_root as thread_root
         if fallback_post is None:
             try:
-                from agent_runner import slack_post as fallback_post  # noqa: PLC0415
+                from agent_runner import slack_post as fallback_post
             except Exception:  # pragma: no cover
                 fallback_post = None
         self._thread_root = thread_root
@@ -1251,7 +1250,7 @@ class BatmanLifecycle:
         )
         approved = bool(getattr(raw, "approved", False))
         verdict_raw = getattr(raw, "verdict", "unknown")
-        from slack_approval import (  # noqa: PLC0415
+        from slack_approval import (
             APPROVAL_GRANTED,
             APPROVAL_REJECTED,
             APPROVAL_TIMEOUT,
@@ -1344,14 +1343,7 @@ __all__ = [
     "AUTO_EXECUTE_FORCE",
     "AUTO_EXECUTE_GATE",
     "AUTO_EXECUTE_OFF",
-    "ApprovalEnvelope",
-    "ApprovalResult",
     "BUNDLE_LABEL_PREFIX",
-    "BatmanLifecycle",
-    "BatmanLifecycleConfig",
-    "Bundle",
-    "BundlePlan",
-    "ChildIssue",
     "DEFAULT_ROLLOUT_ORDER",
     "ENV_APPROVAL_TIMEOUT_S",
     "ENV_AUTO_EXECUTE",
@@ -1366,9 +1358,16 @@ __all__ = [
     "EXEC_PARTIAL",
     "EXEC_REJECTED",
     "EXEC_TRANSPORT",
+    "LARGE_FEATURE_LABEL",
+    "ApprovalEnvelope",
+    "ApprovalResult",
+    "BatmanLifecycle",
+    "BatmanLifecycleConfig",
+    "Bundle",
+    "BundlePlan",
+    "ChildIssue",
     "ExecuteResult",
     "GitHubChildIssueClient",
-    "LARGE_FEATURE_LABEL",
     "PlanShape",
     "ReportEnvelope",
     "Reporter",

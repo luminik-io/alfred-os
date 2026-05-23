@@ -8,6 +8,7 @@ fleet sweep would never touch.
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import os
 import sys
@@ -15,7 +16,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parent.parent
 CLEANUP = REPO / "bin" / "agent-cleanup.py"
@@ -58,10 +58,8 @@ def cleanup(tmp_path, monkeypatch):
     # The procedural body posts to Slack on dirty-worktree skips; stub
     # via env before loading.
     monkeypatch.setenv("ALFRED_SLACK_WEBHOOK_URL", "")
-    try:
+    with contextlib.suppress(SystemExit):
         spec.loader.exec_module(mod)
-    except SystemExit:
-        pass
     return mod
 
 

@@ -61,19 +61,14 @@ from agent_runner import (  # noqa: E402
     with_lock,
 )
 from batman import (  # noqa: E402
-    AUTO_EXECUTE_FORCE,
-    AUTO_EXECUTE_GATE,
-    AUTO_EXECUTE_OFF,
     BUNDLE_LABEL_PREFIX,
     EXEC_GATE_DISABLED,
     LARGE_FEATURE_LABEL,
     BatmanLifecycle,
     BatmanLifecycleConfig,
     Bundle,
-    BundlePlan,
     SlackReporter,
     list_issues_by_bundle_label,
-    parse_parent_issue,
     parse_plan_from_bundle,
 )
 from slack_format import firing_thread_root  # noqa: E402
@@ -284,7 +279,7 @@ def _run_lifecycle(
     gate = None
     if config.gate_enabled:
         try:
-            from slack_approval import (  # noqa: PLC0415
+            from slack_approval import (
                 SlackApproval,
                 default_slack_client,
                 operator_user_id_from_env,

@@ -34,10 +34,11 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 SCHEMA_VERSION = 1
 
@@ -455,7 +456,7 @@ def compute_summary(prs: list[PublicPr], extra: dict[str, Any] | None = None) ->
         merge_clean_pct = 100 if prs_reverted == 0 else 0
     else:
         clean = max(0, prs_merged - prs_reverted)
-        merge_clean_pct = int(round(100 * clean / prs_merged))
+        merge_clean_pct = round(100 * clean / prs_merged)
     return {
         "prs_merged": prs_merged,
         "prs_reverted": prs_reverted,

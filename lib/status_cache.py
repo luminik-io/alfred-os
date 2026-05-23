@@ -28,10 +28,10 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
-
+from typing import Any
 
 AUTH_TTL_SECONDS = int(os.environ.get("ALFRED_STATUS_AUTH_TTL_SECONDS", "60"))
 SLOW_TTL_SECONDS = int(os.environ.get("ALFRED_STATUS_SLOW_TTL_SECONDS", "1800"))
@@ -40,21 +40,21 @@ _TIMESTAMP_KEY = "cache_written_at"
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _parse_iso_utc(value: str) -> Optional[datetime]:
+def _parse_iso_utc(value: str) -> datetime | None:
     if not value:
         return None
     try:
         return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=timezone.utc
+            tzinfo=UTC
         )
     except (TypeError, ValueError):
         return None
 
 
-def cache_age_seconds(path: Path) -> Optional[float]:
+def cache_age_seconds(path: Path) -> float | None:
     """Return the cache's self-reported age in seconds, or ``None`` when
     the file is missing or unparseable.
 
@@ -72,18 +72,18 @@ def cache_age_seconds(path: Path) -> Optional[float]:
         parsed = _parse_iso_utc(ts) if isinstance(ts, str) else None
         if parsed is not None:
             return max(
-                0.0, (datetime.now(timezone.utc) - parsed).total_seconds()
+                0.0, (datetime.now(UTC) - parsed).total_seconds()
             )
     try:
         return max(
             0.0,
-            datetime.now(timezone.utc).timestamp() - path.stat().st_mtime,
+            datetime.now(UTC).timestamp() - path.stat().st_mtime,
         )
     except OSError:
         return None
 
 
-def read_cache(path: Path, *, ttl_seconds: int) -> Optional[dict[str, Any]]:
+def read_cache(path: Path, *, ttl_seconds: int) -> dict[str, Any] | None:
     """Return the cached payload if fresh, else ``None``."""
     age = cache_age_seconds(path)
     if age is None or age > ttl_seconds:
@@ -149,7 +149,7 @@ __all__ = [
     "AUTH_TTL_SECONDS",
     "SLOW_TTL_SECONDS",
     "cache_age_seconds",
+    "get_or_refresh",
     "read_cache",
     "write_cache",
-    "get_or_refresh",
 ]

@@ -22,7 +22,7 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -178,7 +178,7 @@ def _spend_files(state_dir: Path, codename: str, days: int) -> list[Path]:
 def _files_in_window(root: Path, days: int, suffix: str) -> list[Path]:
     if not root.is_dir():
         return []
-    cutoff_ts = (datetime.now(tz=timezone.utc) - timedelta(days=days)).timestamp()
+    cutoff_ts = (datetime.now(tz=UTC) - timedelta(days=days)).timestamp()
     out: list[Path] = []
     for month_dir in root.iterdir():
         if not month_dir.is_dir():
@@ -254,7 +254,7 @@ def fleet_metrics(
     targets = codenames if codenames is not None else discover_codenames(state_dir)
     return FleetReport(
         days=days,
-        generated_at=datetime.now(tz=timezone.utc),
+        generated_at=datetime.now(tz=UTC),
         metrics=[agent_metric(state_dir, c, days) for c in targets],
     )
 

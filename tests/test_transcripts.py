@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -13,7 +13,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 import transcripts  # noqa: E402
-
 
 # --------------------------------------------------------------------------
 # Fixtures: a tiny but representative stream-JSON corpus
@@ -27,7 +26,7 @@ def _write_firing(
     events: list[dict],
     month: str | None = None,
 ) -> Path:
-    month = month or datetime.now(timezone.utc).strftime("%Y-%m")
+    month = month or datetime.now(UTC).strftime("%Y-%m")
     out = state_dir / "transcripts" / codename / month / f"{firing_id}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")

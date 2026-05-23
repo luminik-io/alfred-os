@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -14,7 +14,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 import metrics  # noqa: E402
-
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -47,7 +46,7 @@ def _write_spend(state_dir: Path, codename: str, day: str, **kw) -> Path:
 
 
 def _write_transcript(state_dir: Path, codename: str, firing_id: str, tools: list[tuple[str, dict]]) -> Path:
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    month = datetime.now(UTC).strftime("%Y-%m")
     path = state_dir / "transcripts" / codename / month / f"{firing_id}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     events = [
@@ -72,7 +71,7 @@ def _write_transcript(state_dir: Path, codename: str, firing_id: str, tools: lis
 
 
 def _write_codex(state_dir: Path, codename: str, firing_id: str, tokens: int) -> Path:
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    month = datetime.now(UTC).strftime("%Y-%m")
     path = state_dir / "codex" / codename / month / f"{firing_id}.stdout.txt"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"session id: {firing_id}\n\ntokens used\n{tokens}\n", encoding="utf-8")

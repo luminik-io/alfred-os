@@ -11,11 +11,10 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
@@ -68,7 +67,7 @@ def test_read_cache_returns_none_when_embedded_timestamp_is_old(cache_path):
     ``cache_written_at`` is 10 minutes ago must be treated as stale."""
     from status_cache import read_cache
 
-    stale_ts = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime(
+    stale_ts = (datetime.now(UTC) - timedelta(minutes=10)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     cache_path.write_text(
@@ -110,7 +109,7 @@ def test_get_or_refresh_uses_cache_when_fresh(cache_path):
 def test_get_or_refresh_calls_refresh_when_stale(cache_path):
     from status_cache import get_or_refresh
 
-    stale_ts = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime(
+    stale_ts = (datetime.now(UTC) - timedelta(hours=1)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     cache_path.write_text(json.dumps({"value": "old", "cache_written_at": stale_ts}))

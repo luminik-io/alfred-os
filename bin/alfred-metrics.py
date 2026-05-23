@@ -41,7 +41,6 @@ for candidate in (
         sys.path.insert(0, str(candidate))
 
 from metrics import (  # noqa: E402
-    AgentMetric,
     FleetReport,
     discover_codenames,
     fleet_metrics,

@@ -26,7 +26,7 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -116,7 +116,7 @@ class FiringRef:
 
     @property
     def timestamp(self) -> datetime:
-        return datetime.fromtimestamp(self.mtime, tz=timezone.utc)
+        return datetime.fromtimestamp(self.mtime, tz=UTC)
 
 
 # --------------------------------------------------------------------------

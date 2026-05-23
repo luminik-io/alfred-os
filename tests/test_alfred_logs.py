@@ -5,10 +5,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
@@ -48,7 +46,7 @@ def _events_with_tools(num_reads: int = 1, num_bash: int = 1, num_edits: int = 0
 
 
 def _write_firing(state_dir: Path, codename: str, firing_id: str, events: list[dict]) -> Path:
-    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    month = datetime.now(UTC).strftime("%Y-%m")
     path = state_dir / "transcripts" / codename / month / f"{firing_id}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")

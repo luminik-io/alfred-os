@@ -13,7 +13,6 @@ reset_consecutive_failures) and the integration via with_lock.
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 

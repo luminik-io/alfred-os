@@ -19,6 +19,13 @@ from pathlib import Path
 
 import pytest
 
+# Skip the entire module when the `serve` extra is not installed. CI runs
+# default `pip install -e .` which does not pull fastapi/uvicorn/jinja2;
+# those tests only make sense when the operator has chosen to install
+# the serve dashboard. Pytest's importorskip skips with a clear marker
+# rather than letting a collection-time ImportError crash the suite.
+pytest.importorskip("fastapi")
+
 # lib/ is not a package on install yet, add it to sys.path explicitly.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIB = REPO_ROOT / "lib"
@@ -26,9 +33,7 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 from fastapi.testclient import TestClient  # noqa: E402
-
 from server import FilesystemReader, create_app  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -184,7 +189,7 @@ def test_unknown_firing_returns_404(populated_state: Path) -> None:
 
 def test_firing_id_rejects_path_traversal(populated_state: Path) -> None:
     """Operator-supplied firing id must not be able to read arbitrary files."""
-    client = _client(populated_state)
+    _client(populated_state)
     # Hitting "%2E%2E%2F" decoded equals "../"  FastAPI normalizes path
     # params so the safest assertion is that any explicit traversal char
     # is rejected by the reader.

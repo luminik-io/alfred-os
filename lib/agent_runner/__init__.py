@@ -238,8 +238,8 @@ from .result import (
 # State (locks, spend, fleet, events, global block)
 # --------------------------------------------------------------------------
 from .state import (
-    PAUSE_MARKER_DIR,
     _LOCK_GRACE_SECONDS,
+    PAUSE_MARKER_DIR,
     AgentLock,
     EventLog,
     SpendState,
