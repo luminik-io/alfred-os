@@ -1,0 +1,41 @@
+<div id="fleet-table"
+     hx-get="/"
+     hx-trigger="every 10s"
+     hx-swap="outerHTML">
+{% if agents %}
+<table role="grid" class="ops-table">
+  <thead>
+    <tr>
+      <th>codename</th>
+      <th>status</th>
+      <th>last run</th>
+      <th>firings today</th>
+      <th>last firing</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for agent in agents %}
+    <tr>
+      <td><strong>{{ agent.codename }}</strong></td>
+      <td><span class="dot dot-{{ agent.status }}" aria-label="{{ agent.status }}"></span> {{ agent.status }}</td>
+      <td><code class="ts">{{ agent.last_run_at or "never" }}</code></td>
+      <td>{{ agent.firings_today }}</td>
+      <td>
+        {% if agent.last_firing_id %}
+          <a href="/firings/{{ agent.last_firing_id }}"><code>{{ agent.last_firing_id }}</code></a>
+          <small class="dim">{{ agent.last_summary }}</small>
+        {% else %}
+          <small class="dim">no firings yet</small>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<article class="empty">
+  <p><strong>No codenames found.</strong></p>
+  <p>Expected per-agent state at <code>$ALFRED_HOME/state/&lt;codename&gt;/</code>. Run an agent (or <code>alfred run &lt;codename&gt;</code>) and reload.</p>
+</article>
+{% endif %}
+</div>

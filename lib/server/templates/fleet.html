@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}fleet · alfred serve{% endblock %}
+{% block content %}
+<section>
+  <hgroup>
+    <h2>Fleet status</h2>
+    <p>{{ agents|length }} codename{{ '' if agents|length == 1 else 's' }} · {{ total_today }} firing{{ '' if total_today == 1 else 's' }} today</p>
+  </hgroup>
+  {% include "fleet_table.html" %}
+</section>
+{% endblock %}

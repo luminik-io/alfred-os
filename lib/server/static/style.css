@@ -1,0 +1,127 @@
+/* alfred serve - Operations Room theme.
+ *
+ * Layered on top of Pico.css. Warm black background, cyan accents,
+ * JetBrains Mono on log strips. Keep the surface read-only-looking:
+ * no big buttons, plenty of whitespace, soft contrast.
+ */
+
+:root {
+  --ops-bg: #0A0E14;
+  --ops-fg: #C9D1D9;
+  --ops-dim: #6B7785;
+  --ops-accent: #00E5C7;
+  --ops-error: #FF6E6E;
+  --ops-warn: #F0B860;
+  --ops-line: #1B2230;
+  --ops-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html, body {
+  background: var(--ops-bg);
+  color: var(--ops-fg);
+}
+
+a { color: var(--ops-accent); }
+a:hover { color: #5cf2dd; }
+
+.ops-header {
+  border-bottom: 1px solid var(--ops-line);
+  padding: 0.25rem 0;
+}
+.ops-header .brand {
+  color: var(--ops-accent);
+  letter-spacing: 0.05em;
+}
+
+.ops-main {
+  padding-top: 1.5rem;
+  padding-bottom: 3rem;
+}
+
+.ops-footer {
+  border-top: 1px solid var(--ops-line);
+  text-align: center;
+  padding: 1rem;
+  color: var(--ops-dim);
+}
+
+.ops-table {
+  width: 100%;
+  font-size: 0.92rem;
+}
+.ops-table th {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  color: var(--ops-dim);
+}
+.ops-table td code,
+.ops-table code.ts,
+.event-log code,
+pre code {
+  font-family: var(--ops-mono);
+  font-size: 0.85rem;
+}
+
+.dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--ops-dim);
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+.dot-live { background: var(--ops-accent); box-shadow: 0 0 6px var(--ops-accent); }
+.dot-idle { background: var(--ops-dim); }
+.dot-error { background: var(--ops-error); box-shadow: 0 0 6px var(--ops-error); }
+.dot-ok { background: var(--ops-accent); }
+.dot-running { background: var(--ops-warn); }
+
+.dim { color: var(--ops-dim); }
+
+.empty {
+  border: 1px dashed var(--ops-line);
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--ops-dim);
+}
+
+.codename-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--ops-line);
+  border-radius: 6px;
+}
+.codename-filter small { color: var(--ops-dim); }
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+  font-size: 0.9rem;
+}
+.meta dt {
+  color: var(--ops-dim);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  align-self: center;
+}
+.meta dd { margin: 0; }
+
+.event-log {
+  background: #05080C;
+  border: 1px solid var(--ops-line);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-family: var(--ops-mono);
+  font-size: 0.78rem;
+  max-height: 60vh;
+  overflow: auto;
+}

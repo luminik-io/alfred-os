@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}not found · alfred serve{% endblock %}
+{% block content %}
+<section>
+  <hgroup>
+    <h2>Firing not found</h2>
+    <p><code>{{ firing_id }}</code> was not located under <code>$ALFRED_HOME/state</code>.</p>
+  </hgroup>
+  <p><a href="/firings">back to firings</a></p>
+</section>
+{% endblock %}

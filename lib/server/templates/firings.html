@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}firings · alfred serve{% endblock %}
+{% block content %}
+<section>
+  <hgroup>
+    <h2>Recent firings</h2>
+    <p>{% if codename %}filtered to <code>{{ codename }}</code> · <a href="/firings">clear filter</a>{% else %}all codenames, last {{ rows|length }}{% endif %}</p>
+  </hgroup>
+
+  {% if all_codenames %}
+  <nav class="codename-filter">
+    <small>filter:</small>
+    <a href="/firings">all</a>
+    {% for c in all_codenames %}
+      <a href="/firings?codename={{ c }}">{{ c }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {% if rows %}
+  <table role="grid" class="ops-table">
+    <thead>
+      <tr>
+        <th>firing</th>
+        <th>codename</th>
+        <th>status</th>
+        <th>started</th>
+        <th>ended</th>
+        <th>summary</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><a href="/firings/{{ row.firing_id }}"><code>{{ row.firing_id }}</code></a></td>
+        <td>{{ row.codename }}</td>
+        <td><span class="dot dot-{{ row.status }}"></span> {{ row.status }}</td>
+        <td><code class="ts">{{ row.started_at or "?" }}</code></td>
+        <td><code class="ts">{{ row.ended_at or "?" }}</code></td>
+        <td><small class="dim">{{ row.summary }}</small></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <article class="empty">
+    <p><strong>No firings to show.</strong></p>
+    <p>Either none have run yet, or the filter matched nothing.</p>
+  </article>
+  {% endif %}
+</section>
+{% endblock %}
