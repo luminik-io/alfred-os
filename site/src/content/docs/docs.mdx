@@ -63,8 +63,8 @@ flowchart TB
   <Card title="Role-level engine routing" icon="setting">
     Route builders and reviewers separately across Claude Code, Codex, or hybrid fallback.
   </Card>
-  <Card title="Multi-repo planning" icon="puzzle">
-    Batman drafts rollout plans across repos from labelled GitHub issues, then stops before execution.
+  <Card title="Batman: multi-repo + monorepo planning" icon="puzzle">
+    The agent that holds a whole feature in its head. Reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel. Single-repo coding agents stop at the boundary; Batman is the boundary.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
     Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.

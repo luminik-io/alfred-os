@@ -246,6 +246,34 @@ export default defineConfig({
         {
           tag: "meta",
           attrs: {
+            name: "keywords",
+            content:
+              "autonomous coding agents, Claude Code, Codex, Codex CLI, self-hosted ai agents, engineering agents, GitHub agents, multi-repo, monorepo, agent runtime, Alfred, open source, MIT, specs-driven development",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: { name: "author", content: "DataRavel Inc." },
+        },
+        {
+          tag: "meta",
+          attrs: { name: "robots", content: "index, follow" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:site_name", content: "Alfred" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:locale", content: "en_US" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:type", content: "website" },
+        },
+        {
+          tag: "meta",
+          attrs: {
             property: "og:image",
             content: siteAssetUrl("/brand/alfred-og.png"),
           },
@@ -267,8 +295,15 @@ export default defineConfig({
         {
           tag: "meta",
           attrs: {
+            property: "og:image:type",
+            content: "image/png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
             property: "og:image:alt",
-            content: "Alfred, autonomous engineering agents for Claude Code and Codex.",
+            content: "Alfred. An autonomous engineering team for Claude Code and Codex agents.",
           },
         },
         {

@@ -306,28 +306,33 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
+  height: 72px;
 }
 
 .m-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   color: var(--alfred-text-bright);
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 18px;
+  font-size: 20px;
   letter-spacing: -0.01em;
 }
 .m-brand:hover { text-decoration: none; }
 
 .m-brand__logo {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   display: block;
   filter: drop-shadow(0 1px 0 rgba(135, 180, 255, 0.18));
 }
+
+/* Larger footer treatment: the bat-shield reads as a small mark in the
+   product nav, but in the footer it can breathe more. */
+.m-footer .m-brand { font-size: 22px; gap: 14px; }
+.m-footer .m-brand__logo { width: 48px; height: 48px; }
 
 /* Heartbeat pulse on status dots. Suggests Alfred is alive in the background.
    Respects prefers-reduced-motion. */

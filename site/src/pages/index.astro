@@ -26,6 +26,7 @@ import SlackProof from "../components/marketing/SlackProof.astro";
 import FiringLifecycle from "../components/marketing/FiringLifecycle.astro";
 import FleetStatus from "../components/marketing/FleetStatus.astro";
 import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
+import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 
 type JobState = "live" | "warn" | "idle" | "info";
 
@@ -94,7 +95,7 @@ const why = [
 ---
 
 <MarketingLayout
-  title="Alfred · An autonomous engineering team for one operator"
+  title="Alfred | An autonomous engineering team for one operator"
   description="Alfred runs a fleet of coding agents on Claude Code and Codex. Plans across your repos or monorepo packages, implements scoped issues, and reports to Slack while you focus on something else."
   path="/"
 >
@@ -160,6 +161,21 @@ const why = [
       <p style="margin-top:24px;">
         <a class="m-link" href="/docs/guides/specs-driven-development/">Read the specs-driven guide</a>
       </p>
+    </div>
+  </section>
+
+  <section class="m-section m-section--soft" id="batman">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE BATMAN AGENT"
+        title="One large feature. Many repos. One coordinated plan."
+        lede="Most coding agents work one repo at a time. Batman is the agent that holds a whole feature in its head: backend service, frontend page, mobile screen, infra job. It drafts the rollout, posts the plan to Slack for approval, then files scoped child issues across every affected repo so Lucius can pick them up in parallel."
+      />
+      <BatmanFanOut />
+      <div class="batman-cta">
+        <a class="m-btn" href="/multi-repo/">See multi-repo planning</a>
+        <a class="m-btn m-btn--ghost" href="/docs/guides/multi-repo-worked-example/">Read the worked example</a>
+      </div>
     </div>
   </section>
 
@@ -344,4 +360,11 @@ const why = [
     margin-top: 12px;
   }
   @media (max-width: 880px) { .proof-grid { grid-template-columns: 1fr; } }
+
+  .batman-cta {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 28px;
+  }
 </style>

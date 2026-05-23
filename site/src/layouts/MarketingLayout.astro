@@ -20,9 +20,31 @@ interface Props {
   description: string;
   path: string;
   ogImage?: string;
+  keywords?: string[];
 }
 
-const { title, description, path, ogImage } = Astro.props;
+const {
+  title,
+  description,
+  path,
+  ogImage,
+  keywords = [
+    "autonomous coding agents",
+    "Claude Code",
+    "Codex",
+    "Codex CLI",
+    "self-hosted ai agents",
+    "engineering agents",
+    "GitHub agents",
+    "multi-repo",
+    "monorepo",
+    "agent runtime",
+    "Alfred",
+    "open source",
+    "MIT",
+    "specs-driven development",
+  ],
+} = Astro.props;
 
 const SITE_URL = "https://alfred.luminik.io";
 const canonical = `${SITE_URL}${path}`.replace(/\/+$/, "/");
@@ -65,21 +87,31 @@ const nav = [
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="keywords" content={keywords.join(", ")} />
+    <meta name="author" content="DataRavel Inc." />
+    <meta name="robots" content="index, follow" />
     <link rel="canonical" href={canonical} />
     <meta name="theme-color" content="#0A0E14" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
+    {/* Open Graph */}
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Alfred" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:image" content={og} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Alfred, autonomous engineering agents for Claude Code and Codex." />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Alfred. An autonomous engineering team for Claude Code and Codex agents." />
+
+    {/* Twitter / X */}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={og} />
+    <meta name="twitter:image:alt" content="Alfred. An autonomous engineering team for Claude Code and Codex agents." />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
 
