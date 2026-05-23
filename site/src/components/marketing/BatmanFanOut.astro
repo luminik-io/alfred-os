@@ -1,0 +1,128 @@
+---
+/**
+ * BatmanFanOut.astro
+ *
+ * Inline SVG showing how one agent:large-feature issue (parent) fans out
+ * into N scoped agent:implement child issues across separate repos, each
+ * picked up independently by Lucius and merged as a separate PR. Used on
+ * /multi-repo/ and /monorepo/ pages.
+ *
+ * No JS. Pure SVG + CSS animation (line-pulse). Reduced-motion safe.
+ */
+---
+
+<figure class="m-fan m-reveal" aria-label="One large-feature issue fanning out to per-repo PRs">
+  <div class="m-fan__head">
+    <span class="m-mono m-fan__tag">BATMAN PLAN · FAN-OUT</span>
+    <span class="m-mono m-fan__meta">parent issue → N child issues → N PRs</span>
+  </div>
+
+  <svg viewBox="0 0 1180 460" role="img" aria-hidden="false" class="m-fan__svg" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="fanCard" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stop-color="#161D2A" />
+        <stop offset="100%" stop-color="#11161F" />
+      </linearGradient>
+      <linearGradient id="fanLine" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%"   stop-color="#00E5C7" stop-opacity="0.0" />
+        <stop offset="50%"  stop-color="#00E5C7" stop-opacity="0.9" />
+        <stop offset="100%" stop-color="#00E5C7" stop-opacity="0.0" />
+      </linearGradient>
+      <filter id="fanShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45" />
+      </filter>
+    </defs>
+
+    <!-- Parent issue card -->
+    <g transform="translate(440 20)">
+      <rect width="300" height="120" rx="8" ry="8" fill="url(#fanCard)" stroke="#2A3548" filter="url(#fanShadow)" />
+      <text x="20" y="32" font-family="JetBrains Mono, monospace" font-size="11" fill="#F4B43E" letter-spacing="2">agent:large-feature</text>
+      <text x="20" y="62" font-family="Space Grotesk, sans-serif" font-size="18" font-weight="700" fill="#F2F6FF">org slug rollout</text>
+      <text x="20" y="84" font-family="Space Grotesk, sans-serif" font-size="13" fill="#C5D0E0">specs#42</text>
+      <text x="20" y="104" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F">agent:bundle:add-org-slug</text>
+    </g>
+
+    <!-- Batman planner step -->
+    <g transform="translate(470 170)">
+      <rect width="240" height="70" rx="8" ry="8" fill="#11161F" stroke="#2A3548" filter="url(#fanShadow)" />
+      <text x="20" y="28" font-family="JetBrains Mono, monospace" font-size="11" fill="#00E5C7" letter-spacing="2">BATMAN PLANS</text>
+      <text x="20" y="52" font-family="Space Grotesk, sans-serif" font-size="15" fill="#F2F6FF">files N scoped children</text>
+    </g>
+
+    <!-- connection lines -->
+    <line x1="590" y1="140" x2="590" y2="170" stroke="#2A3548" stroke-width="2" />
+    <line x1="590" y1="240" x2="590" y2="270" stroke="#2A3548" stroke-width="2" />
+    <line x1="590" y1="270" x2="180" y2="320" stroke="#2A3548" stroke-width="2" />
+    <line x1="590" y1="270" x2="590" y2="320" stroke="#2A3548" stroke-width="2" />
+    <line x1="590" y1="270" x2="1000" y2="320" stroke="#2A3548" stroke-width="2" />
+
+    <line x1="590" y1="270" x2="180" y2="320" stroke="url(#fanLine)" stroke-width="3" class="m-fan__pulse m-fan__pulse--a" />
+    <line x1="590" y1="270" x2="590" y2="320" stroke="url(#fanLine)" stroke-width="3" class="m-fan__pulse m-fan__pulse--b" />
+    <line x1="590" y1="270" x2="1000" y2="320" stroke="url(#fanLine)" stroke-width="3" class="m-fan__pulse m-fan__pulse--c" />
+
+    <!-- 3 child repo cards -->
+    <g transform="translate(40 320)">
+      <rect width="280" height="120" rx="8" ry="8" fill="url(#fanCard)" stroke="#2A3548" filter="url(#fanShadow)" />
+      <text x="20" y="32" font-family="JetBrains Mono, monospace" font-size="11" fill="#00E5C7" letter-spacing="2">agent:implement</text>
+      <text x="20" y="60" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="700" fill="#F2F6FF">luminik-backend</text>
+      <text x="20" y="80" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">PR opened by lucius</text>
+      <text x="20" y="102" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">+162 / -34 in 4 files</text>
+      <circle cx="260" cy="100" r="4" fill="#00E5C7" />
+    </g>
+
+    <g transform="translate(450 320)">
+      <rect width="280" height="120" rx="8" ry="8" fill="url(#fanCard)" stroke="#2A3548" filter="url(#fanShadow)" />
+      <text x="20" y="32" font-family="JetBrains Mono, monospace" font-size="11" fill="#00E5C7" letter-spacing="2">agent:implement</text>
+      <text x="20" y="60" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="700" fill="#F2F6FF">luminik-frontend</text>
+      <text x="20" y="80" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">PR in review</text>
+      <text x="20" y="102" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">+98 / -12 in 3 files</text>
+      <circle cx="260" cy="100" r="4" fill="#F4B43E" />
+    </g>
+
+    <g transform="translate(860 320)">
+      <rect width="280" height="120" rx="8" ry="8" fill="url(#fanCard)" stroke="#2A3548" filter="url(#fanShadow)" />
+      <text x="20" y="32" font-family="JetBrains Mono, monospace" font-size="11" fill="#00E5C7" letter-spacing="2">agent:implement</text>
+      <text x="20" y="60" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="700" fill="#F2F6FF">luminik-mobile</text>
+      <text x="20" y="80" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">queued, no firing yet</text>
+      <text x="20" y="102" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">picked next interval</text>
+      <circle cx="260" cy="100" r="4" fill="#6B7A8F" />
+    </g>
+  </svg>
+</figure>
+
+<style>
+  .m-fan {
+    margin: 32px 0;
+    padding: 22px;
+    border: 1px solid var(--alfred-border-strong);
+    background: linear-gradient(180deg, var(--alfred-surface-2) 0%, var(--alfred-surface) 100%);
+    border-radius: var(--radius);
+  }
+  .m-fan__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+  .m-fan__tag {
+    color: var(--alfred-accent);
+    letter-spacing: 0.16em;
+  }
+  .m-fan__svg { width: 100%; height: auto; display: block; }
+  .m-fan__pulse {
+    stroke-dasharray: 32 240;
+    animation: m-fan-pulse 2.6s linear infinite;
+  }
+  .m-fan__pulse--a { animation-delay: 0s; }
+  .m-fan__pulse--b { animation-delay: 0.5s; }
+  .m-fan__pulse--c { animation-delay: 1s; }
+  @keyframes m-fan-pulse {
+    from { stroke-dashoffset: 240; }
+    to   { stroke-dashoffset: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .m-fan__pulse { animation: none; opacity: 0.5; }
+  }
+</style>

@@ -1,0 +1,165 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import CodeBlock from "../components/marketing/CodeBlock.astro";
+
+const lifecycle = [
+  {
+    n: "01",
+    title: "Scheduler fires",
+    body: "launchd on macOS or systemd --user on Linux fires the role runner on a fixed cadence (every 20 minutes by default).",
+    log: "[12:00:00] launchd → /Users/op/.alfred/bin/lucius.py",
+  },
+  {
+    n: "02",
+    title: "Preflight gates",
+    body: "Before any LLM call, the runner checks gh auth, claude or codex CLI auth, fleet spend cap, and provider rate-limit blocks. Any failure halts cleanly.",
+    log: "[12:00:01] preflight ok  spend=$3.21/$20.00",
+  },
+  {
+    n: "03",
+    title: "Claim an issue",
+    body: "Lucius lists open issues labelled agent:implement, claims the oldest, and applies agent:in-flight. Other agents see the claim through GitHub labels.",
+    log: "[12:00:03] lucius claimed luminik-backend#247  label=agent:in-flight",
+  },
+  {
+    n: "04",
+    title: "Open a worktree",
+    body: "A fresh git worktree opens under $ALFRED_HOME/wt/. Each firing gets its own directory. Safe to crash mid-run, safe to run in parallel.",
+    log: "[12:00:05] worktree ~/.alfred/wt/12000305/  branch=agent/247-billing-v2",
+  },
+  {
+    n: "05",
+    title: "Invoke Claude Code or Codex",
+    body: "The runner shells out to claude -p or codex exec with the scoped issue body. Output streams to a local log file under state/.",
+    log: "[12:00:06] claude_invoke pid=84217  log=state/logs/12000305.log",
+  },
+  {
+    n: "06",
+    title: "Open a pull request",
+    body: "On success, the runner pushes the branch and opens a pull request through gh pr create. Labels rotate from agent:in-flight to agent:pr-open.",
+    log: "[12:18:09] gh pr create  PR #1247  label=agent:pr-open",
+  },
+  {
+    n: "07",
+    title: "Slack report",
+    body: "The runner posts a structured report to the operator's Slack channel: what ran, what opened, what failed, what cost. Severity routes to thread or channel.",
+    log: "[12:18:11] slack_post severity=info  PR #1247 opened",
+  },
+];
+
+const labels = [
+  { label: "agent:implement", body: "Drake or you file this. Tells Lucius the issue is scoped and ready to pick up." },
+  { label: "agent:in-flight", body: "Lucius applies this on claim. Other agents see the claim and skip the issue." },
+  { label: "agent:pr-open", body: "Applied when the runner opens a pull request. Ras al Ghul reads from this label." },
+  { label: "agent:done", body: "Applied when the PR merges. Closes the loop, removes the issue from active state." },
+  { label: "agent:needs-changes", body: "Ras al Ghul applies this on review. Lucius picks it up on the next firing." },
+];
+---
+
+<MarketingLayout
+  title="How Alfred works · One firing, end to end"
+  description="The Alfred firing lifecycle: scheduler trigger to Slack post. Worktree isolation, label state machine, and spend gates explained."
+  path="/how-it-works/"
+>
+  <Hero
+    eyebrow="MECHANISM"
+    headline="How Alfred works."
+    sub="One firing, end to end. Scheduler trigger to Slack post. No background process, no managed control plane, no API gateway."
+    headlineSize="lg"
+    primaryCta={{ label: "Read the architecture", href: "/docs/concepts/architecture/" }}
+    secondaryCta={{ label: "Install (30 min)", href: "/docs/getting-started/install/" }}
+  />
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE FIRING LIFECYCLE"
+        title="Seven gates, every time."
+        lede="Every Alfred agent runs the same seven steps. Failure at any gate halts the firing cleanly and posts a Slack notice."
+      />
+      <ol class="lifecycle">
+        {lifecycle.map((step) => (
+          <li class="lifecycle__item m-card">
+            <div class="lifecycle__num m-mono">{step.n}</div>
+            <div class="lifecycle__body">
+              <h3 class="m-h3">{step.title}</h3>
+              <p class="lifecycle__copy">{step.body}</p>
+              <pre class="lifecycle__log">{step.log}</pre>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="STATE MACHINE"
+        title="GitHub labels carry the state."
+        lede="Race-resistant cooperative coordination. No database. The labels are the truth."
+      />
+      <div class="labels">
+        {labels.map((l) => (
+          <div class="labels__row m-card m-card--hover">
+            <code class="labels__tag m-mono">{l.label}</code>
+            <p class="labels__body">{l.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="VERIFY ON YOUR MACHINE"
+        title="Dry-run before any spend."
+        lede="The dry-run flag exercises every gate above without calling Claude or Codex. Use it on every install."
+      />
+      <CodeBlock
+        title="terminal"
+        lines={[
+          "$ alfred fire lucius --dry-run",
+          "ok    preflight passed",
+          "ok    issue selection (would claim #247)",
+          "ok    worktree would open at ~/.alfred/wt/...",
+          "skip  claude_invoke (dry-run)",
+          "skip  gh pr create (dry-run)",
+          "ok    slack_post (dry-run, no webhook call)",
+          "ok    runner lifecycle verified, no spend",
+        ]}
+      />
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .lifecycle { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 16px; }
+  .lifecycle__item { display: grid; grid-template-columns: 60px 1fr; gap: 20px; align-items: start; }
+  .lifecycle__num { color: var(--alfred-accent); font-size: 20px; padding-top: 4px; }
+  .lifecycle__copy { color: var(--alfred-text); font-size: 15px; margin: 8px 0 14px; line-height: 1.6; }
+  .lifecycle__log {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--alfred-mute);
+    background: var(--alfred-black);
+    border: 1px solid var(--alfred-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .labels { display: flex; flex-direction: column; gap: 14px; }
+  .labels__row { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: center; }
+  .labels__tag { color: var(--alfred-accent); font-size: 14px; }
+  .labels__body { color: var(--alfred-text); font-size: 15px; line-height: 1.6; }
+  @media (max-width: 720px) {
+    .lifecycle__item, .labels__row { grid-template-columns: 1fr; gap: 12px; }
+  }
+</style>

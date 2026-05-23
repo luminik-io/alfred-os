@@ -1,0 +1,107 @@
+---
+/**
+ * Hero.astro
+ *
+ * Reusable hero for marketing pages. Slot accepts a right-side control surface
+ * (typically a list of MetricRows in a panel). If no slot is provided, the
+ * hero renders single-column.
+ */
+
+interface Props {
+  eyebrow: string;
+  headline: string;
+  sub: string;
+  primaryCta?: { label: string; href: string };
+  secondaryCta?: { label: string; href: string };
+  headlineSize?: "xl" | "lg";
+}
+
+const { eyebrow, headline, sub, primaryCta, secondaryCta, headlineSize = "xl" } = Astro.props;
+const hasPanel = Astro.slots.has("panel");
+---
+
+<section class={`hero ${hasPanel ? "hero--split" : "hero--solo"}`}>
+  <div class="m-ambient" aria-hidden="true"></div>
+  <div class="m-container hero__inner">
+    <div class="hero__copy">
+      <div class="m-eyebrow">{eyebrow}</div>
+      <h1 class={headlineSize === "xl" ? "m-display-xl" : "m-display-lg"}>{headline}</h1>
+      <p class="m-body-lg hero__sub">{sub}</p>
+      {(primaryCta || secondaryCta) && (
+        <div class="hero__ctas">
+          {primaryCta && <a class="m-btn" href={primaryCta.href}>{primaryCta.label}</a>}
+          {secondaryCta && (
+            <a class="m-btn m-btn--ghost" href={secondaryCta.href} rel="noopener">{secondaryCta.label}</a>
+          )}
+        </div>
+      )}
+    </div>
+    {hasPanel && (
+      <aside class="hero__panel">
+        <slot name="panel" />
+      </aside>
+    )}
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding: 96px 0 64px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 600px 280px at 20% 0%, rgba(0, 229, 199, 0.10), transparent 60%),
+      radial-gradient(ellipse 700px 320px at 80% 10%, rgba(87, 137, 255, 0.06), transparent 60%);
+    pointer-events: none;
+  }
+
+  .hero__inner {
+    position: relative;
+    display: grid;
+    gap: 56px;
+    align-items: center;
+  }
+
+  .hero--split .hero__inner {
+    grid-template-columns: 1.15fr 1fr;
+  }
+
+  .hero__copy h1 {
+    margin-top: 18px;
+    color: var(--alfred-text-bright);
+  }
+
+  .hero__sub {
+    margin-top: 24px;
+    color: var(--alfred-text);
+    max-width: 58ch;
+  }
+
+  .hero__ctas {
+    margin-top: 32px;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .hero__panel {
+    background: var(--alfred-surface);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: var(--radius);
+    padding: 22px;
+    box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  }
+
+  @media (max-width: 980px) {
+    .hero { padding: 64px 0 48px; }
+    .hero--split .hero__inner {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

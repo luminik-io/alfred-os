@@ -1,0 +1,70 @@
+---
+/**
+ * StatusStrip.astro
+ *
+ * The brand's signature log strip. Static, representative-but-not-live.
+ * Renders near the footer on every marketing page.
+ *
+ * Voice rule from DESIGN.md: real names (Lucius, Drake, Ras al Ghul,
+ * Batman, Bane, Nightwing, agent-cleanup), real labels.
+ */
+
+const rows = [
+  { ts: "12:04:11", agent: "drake     ", action: "triaged 4 issues from /specs", state: "live" },
+  { ts: "12:04:18", agent: "lucius    ", action: "claimed luminik-backend#247", state: "live" },
+  { ts: "12:04:21", agent: "lucius    ", action: "worktree opened ~/.alfred/wt/12042118/", state: "info" },
+  { ts: "12:18:09", agent: "lucius    ", action: "PR luminik-backend#1247 opened", state: "live" },
+  { ts: "12:18:33", agent: "ras-al    ", action: "reviewed PR#1247, 2 nits", state: "warn" },
+];
+---
+
+<section class="status-strip" aria-label="Representative log strip">
+  <div class="status-strip__head">
+    <span class="m-eyebrow">~/.alfred/state/firings.log</span>
+    <span class="m-mono m-mute">tail -f &middot; 5 lines &middot; static sample</span>
+  </div>
+  <pre class="status-strip__body">{rows.map((r) => (
+    <div class="status-strip__row">
+      <span class="m-mute">[{r.ts}]</span>{" "}
+      <span class="status-strip__agent">{r.agent}</span>{" "}
+      <span class="status-strip__action">{r.action}</span>{" "}
+      <span class={`m-dot m-dot--${r.state}`}>●</span>
+    </div>
+  ))}</pre>
+</section>
+
+<style>
+  .status-strip {
+    background: var(--alfred-surface);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin-bottom: 32px;
+    overflow-x: auto;
+  }
+  .status-strip__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--alfred-border);
+    gap: 16px;
+  }
+  .status-strip__body {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--alfred-text);
+    margin: 0;
+    white-space: pre;
+    padding: 0;
+    background: transparent;
+  }
+  .status-strip__row {
+    display: block;
+    color: var(--alfred-text);
+  }
+  .status-strip__agent { color: var(--alfred-accent); }
+  .status-strip__action { color: var(--alfred-text); }
+</style>

@@ -1,0 +1,32 @@
+---
+/**
+ * SlackProof.astro
+ *
+ * Embeds a real Slack screenshot inside a framed control-surface panel.
+ * Used for production proof on landing, multi-repo, and how-it-works pages.
+ *
+ * Pass the screenshot path under /proof/ and a small caption. The component
+ * adds a mono header that reads "slack #alfred . <tag>" plus a meta timestamp,
+ * making the image feel embedded in Alfred's own console rather than dropped in
+ * as a marketing graphic.
+ */
+
+interface Props {
+  src: string;
+  alt: string;
+  tag: string;
+  meta?: string;
+  caption?: string;
+}
+
+const { src, alt, tag, meta = "received via webhook", caption } = Astro.props;
+---
+
+<figure class="m-proof m-reveal">
+  <div class="m-proof__head">
+    <span><span class="m-proof__tag">slack #alfred</span> · {tag}</span>
+    <span class="m-proof__meta">{meta}</span>
+  </div>
+  <img src={src} alt={alt} loading="lazy" decoding="async" />
+  {caption ? <figcaption class="m-proof__cap">{caption}</figcaption> : null}
+</figure>

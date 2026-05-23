@@ -1,0 +1,58 @@
+---
+interface Props {
+  title?: string;
+  lines: string[];
+}
+
+const { title, lines } = Astro.props;
+---
+
+<div class="codeblock">
+  {title && (
+    <header class="codeblock__head">
+      <span class="m-mono codeblock__title">{title}</span>
+      <span class="m-mono m-mute">copy</span>
+    </header>
+  )}
+  <pre class="codeblock__body">{lines.map((line) => {
+    const isPrompt = line.startsWith("$ ");
+    const rest = isPrompt ? line.slice(2) : line;
+    return (
+      <div class="codeblock__line">
+        {isPrompt ? <span class="codeblock__prompt">$</span> : null}
+        {isPrompt ? <span class="codeblock__cmd">{" "}{rest}</span> : <span class="codeblock__out">{line}</span>}
+      </div>
+    );
+  })}</pre>
+</div>
+
+<style>
+  .codeblock {
+    background: var(--alfred-surface);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .codeblock__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: var(--alfred-surface-2);
+    border-bottom: 1px solid var(--alfred-border);
+  }
+  .codeblock__title { color: var(--alfred-mute); }
+  .codeblock__body {
+    margin: 0;
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--alfred-text);
+  }
+  .codeblock__line { white-space: pre; }
+  .codeblock__prompt { color: var(--alfred-accent); font-weight: 600; }
+  .codeblock__cmd { color: var(--alfred-text-bright); }
+  .codeblock__out { color: var(--alfred-mute); }
+</style>

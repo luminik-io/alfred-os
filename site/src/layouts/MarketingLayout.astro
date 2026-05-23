@@ -1,0 +1,205 @@
+---
+/**
+ * MarketingLayout.astro
+ *
+ * Shared <head> + header + footer chrome for every page under src/pages/.
+ * Bypasses Starlight; Starlight still serves /docs/, /concepts/, /guides/, etc.
+ * Dark-first by intent; no theme toggle.
+ *
+ * Pulls design tokens from src/styles/marketing.css, which is the runtime
+ * realization of site/DESIGN.md.
+ */
+
+import "../styles/marketing.css";
+import StatusStrip from "../components/marketing/StatusStrip.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  ogImage?: string;
+}
+
+const { title, description, path, ogImage } = Astro.props;
+
+const SITE_URL = "https://alfred.luminik.io";
+const canonical = `${SITE_URL}${path}`.replace(/\/+$/, "/");
+const og = ogImage ?? `${SITE_URL}/brand/alfred-og.png`;
+
+const orgSchema = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      name: "DataRavel Inc.",
+      url: "https://luminik.io",
+      logo: `${SITE_URL}/brand/alfred-og.png`,
+    },
+    {
+      "@type": "WebSite",
+      name: "Alfred",
+      url: SITE_URL,
+      description:
+        "Alfred runs a fleet of autonomous coding agents on Claude Code and Codex, on hardware you already own.",
+    },
+  ],
+};
+
+const nav = [
+  { label: "How it works", href: "/how-it-works/" },
+  { label: "Multi-repo", href: "/multi-repo/" },
+  { label: "Monorepo", href: "/monorepo/" },
+  { label: "For solo founders", href: "/for-solo-founders/" },
+  { label: "Install", href: "/install/" },
+  { label: "Pricing", href: "/pricing/" },
+  { label: "Docs", href: "/docs/" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#0A0E14" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content={og} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Alfred, autonomous engineering agents for Claude Code and Codex." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={og} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(orgSchema)} />
+
+    {/* Google Analytics 4. Set ALFRED_GA4_ID in the build environment to enable.
+        Defaults to no-op in development so we don't pollute analytics.
+        Swap the placeholder with your real measurement ID when ready. */}
+    {import.meta.env.PUBLIC_ALFRED_GA4_ID && (
+      <>
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_ALFRED_GA4_ID}`}></script>
+        <script is:inline define:vars={{ id: import.meta.env.PUBLIC_ALFRED_GA4_ID }}>{`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', id, { anonymize_ip: true });
+        `}</script>
+      </>
+    )}
+
+    {/* Google Search Console verification. Add the meta tag value here when
+        you receive it from search.google.com/search-console. Currently a
+        placeholder; replace with the real token before pushing live. */}
+    {import.meta.env.PUBLIC_ALFRED_GSC_TOKEN && (
+      <meta name="google-site-verification" content={import.meta.env.PUBLIC_ALFRED_GSC_TOKEN} />
+    )}
+  </head>
+  <body>
+    <header class="m-header">
+      <div class="m-container m-header__inner">
+        <a class="m-brand" href="/">
+          <img class="m-brand__logo" src="/brand/alfred-logo.png" width="32" height="32" alt="" aria-hidden="true" />
+          Alfred
+        </a>
+        <nav class="m-nav" aria-label="primary">
+          {nav.map((item) => <a href={item.href}>{item.label}</a>)}
+          <a class="m-nav__cta" href="https://github.com/luminik-io/alfred-os" rel="noopener">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="m-footer">
+      <div class="m-container">
+        <div class="m-footer__grid">
+          <div class="m-footer__col">
+            <a class="m-brand" href="/" style="margin-bottom:14px;">
+              <img class="m-brand__logo" src="/brand/alfred-logo.png" width="32" height="32" alt="" aria-hidden="true" />
+              Alfred
+            </a>
+            <p class="m-mute" style="font-size:14px;margin-top:12px;max-width:280px;">
+              A self-hosted runtime for autonomous engineering agents. Open source, MIT.
+            </p>
+          </div>
+          <div class="m-footer__col">
+            <h4>Product</h4>
+            <ul>
+              <li><a href="/how-it-works/">How it works</a></li>
+              <li><a href="/multi-repo/">Multi-repo</a></li>
+              <li><a href="/monorepo/">Monorepo</a></li>
+              <li><a href="/for-solo-founders/">For solo founders</a></li>
+              <li><a href="/pricing/">Pricing</a></li>
+            </ul>
+          </div>
+          <div class="m-footer__col">
+            <h4>Docs</h4>
+            <ul>
+              <li><a href="/docs/">Overview</a></li>
+              <li><a href="/docs/getting-started/install/">Install</a></li>
+              <li><a href="/docs/concepts/architecture/">Architecture</a></li>
+              <li><a href="/docs/concepts/fleet/">The fleet</a></li>
+              <li><a href="/docs/reference/cli/">Operator CLI</a></li>
+            </ul>
+          </div>
+          <div class="m-footer__col">
+            <h4>Project</h4>
+            <ul>
+              <li><a href="https://github.com/luminik-io/alfred-os" rel="noopener">GitHub</a></li>
+              <li><a href="/docs/about/changelog/">Changelog</a></li>
+              <li><a href="/docs/about/roadmap/">Roadmap</a></li>
+              <li><a href="/docs/about/contributing/">Contributing</a></li>
+              <li><a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE" rel="noopener">MIT license</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <StatusStrip />
+
+        <div class="m-footer__base">
+          <span>© DataRavel Inc. · Alfred is open source, MIT.</span>
+          <span class="m-mono m-mute">alfred.luminik.io</span>
+        </div>
+      </div>
+    </footer>
+
+    <script is:inline>
+      // Scroll-in reveal for .m-reveal elements. Respects prefers-reduced-motion.
+      (function () {
+        if (
+          typeof window === "undefined" ||
+          typeof IntersectionObserver === "undefined" ||
+          (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+        ) {
+          document.querySelectorAll(".m-reveal").forEach((el) => el.classList.add("is-in"));
+          return;
+        }
+        const io = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                e.target.classList.add("is-in");
+                io.unobserve(e.target);
+              }
+            });
+          },
+          { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
+        );
+        document.querySelectorAll(".m-reveal").forEach((el) => io.observe(el));
+      })();
+    </script>
+  </body>
+</html>

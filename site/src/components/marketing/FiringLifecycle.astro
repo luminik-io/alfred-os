@@ -1,0 +1,138 @@
+---
+/**
+ * FiringLifecycle.astro
+ *
+ * Inline SVG diagram of one Alfred firing end to end. Visual replacement
+ * for the mermaid graph on the docs homepage, themed to the marketing
+ * design system. Animates with a slow "pulse" travelling along the flow
+ * line so the diagram feels alive, like a control surface. Respects
+ * prefers-reduced-motion.
+ *
+ * No JS dependency. Pure SVG + CSS.
+ */
+---
+
+<figure class="m-flow m-reveal" aria-label="One Alfred firing, end to end">
+  <div class="m-flow__head">
+    <span class="m-mono m-flow__tag">FIRING LIFECYCLE</span>
+    <span class="m-mono m-flow__meta">scheduler → role runner → engine → slack</span>
+  </div>
+
+  <svg viewBox="0 0 1180 360" role="img" aria-hidden="false" class="m-flow__svg" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="flowLine" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%"   stop-color="#00E5C7" stop-opacity="0.0" />
+        <stop offset="50%"  stop-color="#00E5C7" stop-opacity="0.9" />
+        <stop offset="100%" stop-color="#00E5C7" stop-opacity="0.0" />
+      </linearGradient>
+      <linearGradient id="cardGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"  stop-color="#161D2A" />
+        <stop offset="100%" stop-color="#11161F" />
+      </linearGradient>
+      <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45" />
+      </filter>
+    </defs>
+
+    <!-- Flow track -->
+    <line x1="90" y1="180" x2="1090" y2="180" stroke="#2A3548" stroke-width="2" stroke-dasharray="2 6" />
+    <line x1="90" y1="180" x2="1090" y2="180" stroke="url(#flowLine)" stroke-width="3" class="m-flow__pulse" />
+
+    <!-- Stage cards -->
+    <g class="m-flow__stage" transform="translate(40 80)">
+      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">01 · SCHEDULER</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">launchd</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">fires lucius</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">every 1200s</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">survives reboot</text>
+      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+    </g>
+
+    <g class="m-flow__stage" transform="translate(260 80)">
+      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">02 · ROLE RUNNER</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">lucius.py</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">preflight, claim</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">picks oldest open</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">agent:implement</text>
+      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+    </g>
+
+    <g class="m-flow__stage" transform="translate(480 80)">
+      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">03 · WORKTREE</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">fresh git worktree</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">isolated workspace</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">~/.alfred/wt/...</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">safe to crash</text>
+      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+    </g>
+
+    <g class="m-flow__stage" transform="translate(700 80)">
+      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">04 · ENGINE</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">claude -p</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">or codex exec</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">your subscription</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">no API key</text>
+      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+    </g>
+
+    <g class="m-flow__stage" transform="translate(920 80)">
+      <rect width="220" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">05 · GITHUB + SLACK</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">PR + report</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">label flip, slack post</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">agent:pr-open</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">severity=info</text>
+      <circle cx="200" cy="178" r="4" fill="#00E5C7" />
+    </g>
+
+    <!-- caption -->
+    <text x="40" y="332" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">
+      one firing = one role run, one issue claim, one worktree, one engine invocation, one slack post
+    </text>
+  </svg>
+</figure>
+
+<style>
+  .m-flow {
+    margin: 32px 0;
+    padding: 22px;
+    border: 1px solid var(--alfred-border-strong);
+    background: linear-gradient(180deg, var(--alfred-surface-2) 0%, var(--alfred-surface) 100%);
+    border-radius: var(--radius);
+  }
+  .m-flow__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+  .m-flow__tag {
+    color: var(--alfred-accent);
+    letter-spacing: 0.16em;
+  }
+  .m-flow__svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .m-flow__pulse {
+    stroke-dasharray: 60 940;
+    animation: m-flow-pulse 3.4s linear infinite;
+  }
+  @keyframes m-flow-pulse {
+    from { stroke-dashoffset: 1000; }
+    to   { stroke-dashoffset: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .m-flow__pulse { animation: none; opacity: 0.55; }
+  }
+  @media (max-width: 880px) {
+    .m-flow__svg { min-height: 280px; }
+  }
+</style>
