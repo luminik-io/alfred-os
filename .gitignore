@@ -219,3 +219,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 uv.lock
+
+# Claude Code local state (worktrees, launch configs)
+.claude/
+**/.claude/
+screenshots/

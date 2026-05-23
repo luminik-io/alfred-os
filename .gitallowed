@@ -1,0 +1,7 @@
+# Files allowed to contain regex patterns that look like secrets.
+# These are the scrub-check script (which DEFINES the patterns) and CI
+# configuration that may reference them. They are scanned at runtime by
+# bin/scrub-check.sh itself; pre-commit git-secrets needs an allowlist
+# entry so it doesn't double-flag pattern literals as actual secrets.
+bin/scrub-check\.sh
+\.github/workflows/.*\.yml
