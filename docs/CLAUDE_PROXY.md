@@ -82,8 +82,21 @@ echo '{"type":"probe"}' | nc -U $ALFRED_HOME/run/claude-proxy.sock
 # -> {"duration_ms":2400,"type":"probe.ok"}
 ```
 
-If the probe returns `{"type":"probe.fail", ...}`, read
-[`MACOS_KEYCHAIN.md`](MACOS_KEYCHAIN.md) for diagnosis.
+If the probe returns `{"type":"probe.fail", ...}` with
+`"reason":"claude-exit-1"` (or similar) and an empty `stderr_tail`,
+the Keychain ACL is denying the proxy's child `claude` access to your
+OAuth token. The fix is a one-time targeted ACL grant:
+
+```sh
+# Advisory run (no changes), prints the binary path + entries it would update.
+bash bin/alfred-grant-keychain.sh
+
+# Apply via the security CLI (prompts once for your login keychain password).
+bash bin/alfred-grant-keychain.sh --apply
+```
+
+See [`MACOS_KEYCHAIN.md`](MACOS_KEYCHAIN.md) for the mechanism, security
+posture, and the GUI alternative.
 
 ## Enable in alfred-os
 
