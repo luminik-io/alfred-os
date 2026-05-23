@@ -245,7 +245,18 @@ class FilesystemReader:
         if alt_events.is_dir():
             candidates.extend(alt_events.glob("*.jsonl"))
         # Sort by mtime descending so we cap I/O even for large fleets.
-        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        # Guard against OSError from race conditions (file deleted between
+        # glob and stat), broken symlinks, or permission errors so a single
+        # bad event file does not take down the /firings view. Unreadable
+        # entries sort last (mtime=0) and are likely skipped by the limit
+        # cap; if they squeak through, _read_firing handles its own errors.
+        def _safe_mtime(p: Path) -> float:
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0.0
+
+        candidates.sort(key=_safe_mtime, reverse=True)
         for path in candidates[: max(limit, 1) * 2]:
             rec = self._read_firing(codename, path)
             if rec is not None:

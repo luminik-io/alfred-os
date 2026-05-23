@@ -196,10 +196,20 @@ class MultiWorktree:
             / f"{self.agent}-{req.repo_name}-{self.feature_id}-{ts}"
         )
 
-        fetch = self.git(["fetch", "origin", "main"], cwd=req.checkout_path, timeout=60)
+        # Fetch the request's configured base ref, not a hardcoded "main".
+        # Repos using "master" or a release-train base would otherwise fail
+        # at the fetch step before `worktree add` could use the requested
+        # base. `req.base` may be a bare ref ("main", "master") or qualified
+        # ("origin/release/24w11"); strip a leading "origin/" so the
+        # `git fetch origin <ref>` form is well-defined.
+        fetch_ref = req.base.removeprefix("origin/")
+        fetch = self.git(
+            ["fetch", "origin", fetch_ref], cwd=req.checkout_path, timeout=60
+        )
         if fetch.returncode != 0:
             raise RuntimeError(
-                f"git fetch failed for {req.repo_name}: {fetch.stderr.strip()}"
+                f"git fetch failed for {req.repo_name} base={req.base!r}: "
+                f"{fetch.stderr.strip()}"
             )
 
         add = self.git(
