@@ -1,9 +1,19 @@
 ---
 title: agent_runner API reference
-description: Public primitives in lib/agent_runner.py. Function signatures, semantics, return shapes.
+description: Public primitives in the lib/agent_runner package. Function signatures, semantics, return shapes.
 ---
 
-The shared runtime. Every codename agent imports from this module. Source: [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py).
+The shared runtime. Every codename agent imports from this package. Source: [`lib/agent_runner/`](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner).
+
+The package is internally split into focused submodules — `paths`,
+`config`, `process`, `result`, `transcripts`, `metadata`, `notify`,
+`state`, `github`, `orchestrator` — but every public name listed below
+is re-exported from `agent_runner` itself, so the historical flat
+imports keep working:
+
+```python
+from agent_runner import preflight, make_worktree, slack_post, claude_invoke
+```
 
 Categorised by what the operator-facing primitive does. For deep semantics, read the source's docstrings. They're the authoritative reference.
 
@@ -234,4 +244,4 @@ Substitutes `${ENV_VAR}` from the environment (and any `extra_vars`). Unset vars
 - Every primitive that writes operator-visible state (Slack, gh, files) is idempotent or near-idempotent.
 - Every primitive that depends on the host shell uses `subprocess.run` (via `run()`), never `shell=True`.
 
-For implementation details, the [source file](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py) is exhaustively commented. Module-level docstring at the top documents the env-var contract every consumer agent inherits.
+For implementation details, the [package source](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner) is exhaustively commented. Each submodule's docstring documents what it owns and what it does not own.

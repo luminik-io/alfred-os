@@ -31,7 +31,14 @@ def test_wheel_smoke_import_and_console_script(tmp_path):
 
     with zipfile.ZipFile(wheel) as zf:
         names = set(zf.namelist())
-        assert "agent_runner.py" in names
+        # agent_runner is now a package with a thin __init__ re-exporting
+        # the public API; the historical single-file layout is gone.
+        assert "agent_runner/__init__.py" in names
+        # A few load-bearing submodules should always ship with the wheel.
+        for sub in ("paths", "process", "result", "github", "state"):
+            assert f"agent_runner/{sub}.py" in names, (
+                f"wheel missing agent_runner/{sub}.py"
+            )
         assert "alfred_os_cli.py" in names
         entry_points = next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
         assert "alfred-os = alfred_os_cli:main" in zf.read(entry_points).decode()

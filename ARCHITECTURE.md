@@ -39,8 +39,26 @@ Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to
 this repo is:
 
 ```text
-host scheduler -> bin/role.py -> lib/agent_runner.py -> claude/codex/gh/slack
+host scheduler -> bin/role.py -> lib/agent_runner/ -> claude/codex/gh/slack
 ```
+
+`lib/agent_runner/` is a Python package with one focused submodule per
+concern; the historical flat imports (`from agent_runner import preflight,
+make_worktree, slack_post`) still work because the package's
+`__init__.py` re-exports the public API.
+
+| Submodule | Owns |
+|---|---|
+| `paths.py` | `ALFRED_HOME`, `WORKSPACE_ROOT`, derived state/transcript paths, `CLAUDE_BIN`, `CODEX_BIN`, `now_iso`, `today_str`. |
+| `config.py` | Env-var helpers (`env_int`, `optional_env_int`), engine selection (`agent_engine`, `engine_preflight_bins`, `normalize_engine`), dry-run + doctor flags. |
+| `process.py` | `subprocess.run` wrapper, `gh_json`, `pid_start_key`, `claude_invoke`, `claude_invoke_streaming`, `codex_invoke`, `invoke_agent_engine`. |
+| `result.py` | `ClaudeResult` dataclass, stop-reason discipline, provider-error envelope regexes, stale-credentials repair. |
+| `transcripts.py` | Stream-JSON transcript path resolver, Codex artifact paths, session-id / token extractors. |
+| `state.py` | `AgentLock` + `with_lock`, `SpendState`, `EventLog`, fleet enable/disable file, global rate-limit block. |
+| `github.py` | `gh` CLI wrappers, label catalogues, issue claim/release state machine, paused-repos override, per-firing git worktrees. |
+| `notify.py` | `slack_post` with severity routing and webhook URL resolution (env -> disk cache -> AWS Secrets). |
+| `metadata.py` | `agent_role`, `codename_with_role`, `commit_trailer`, `HandoffTable`, `load_prompt`. |
+| `orchestrator.py` | `preflight` + `PreflightSpec`, LLM tier routing (`route_llm`, `get_tier_from_labels`), optional brain/event-stream/best-of-N shims. |
 
 That loop runs without a memory database, MCP server, skill registry, or
 dashboard service. Those companion tools can sit around Alfred, but they stay
@@ -96,7 +114,7 @@ This is Alfred's main answer to the question "what stops a single autonomous age
 Concurrent firings must never clobber each other or the operator's main checkout. The runtime puts every firing in its own throwaway git worktree:
 
 ```py
-# lib/agent_runner.py
+# lib/agent_runner/paths.py
 WORKTREE_ROOT = ALFRED_HOME / "worktrees"
 # wt = ~/.alfred/worktrees/<agent>-<repo>-<issue>-<ts>/
 ```
@@ -123,7 +141,7 @@ Every agent maintains a per-day spend file:
 ~/.alfred/state/<agent>/spend-YYYY-MM-DD.json
 ```
 
-Tracked fields, per `agent_runner.py`:
+Tracked fields, per `agent_runner/state.py` (`SpendState`):
 
 ```py
 firings_today, turns_today, cost_usd_today,
@@ -148,7 +166,7 @@ if spend.state["consecutive_failures"] >= 8:
 Beyond per-agent caps, the fleet shares a global block. When a Claude-backed agent's `claude -p` returns `error_rate_limit` or `error_budget` (the Claude provider usage limit was reached), it writes:
 
 ```py
-# lib/agent_runner.py
+# lib/agent_runner/state.py
 GLOBAL_BLOCKED_FILE = STATE_ROOT / "global-blocked-until.json"
 
 def set_global_block(hours: int, reason: str) -> str:
@@ -173,7 +191,7 @@ The pre-flight `claude -p "reply OK"` canary that earlier versions used was remo
 
 Every meaningful event posts to `#your-fleet-channel`. Successes, failures, rate limits, salvaged WIP PRs, "no work to do" silences. The Slack channel doubles as the human surface and the audit log: one place to scroll back through and see what the fleet did overnight.
 
-The webhook is fetched from AWS Secrets Manager and cached at `~/.alfred/state/slack-webhook.cache` with a 30-day TTL. Cache lives outside `/tmp` so it survives reboots, and the long TTL avoids depending on a healthy AWS SSO session for routine Slack posts. From `agent_runner.py`:
+The webhook is fetched from AWS Secrets Manager and cached at `~/.alfred/state/slack-webhook.cache` with a 30-day TTL. Cache lives outside `/tmp` so it survives reboots, and the long TTL avoids depending on a healthy AWS SSO session for routine Slack posts. From `agent_runner/notify.py`:
 
 ```py
 SLACK_WEBHOOK_CACHE = STATE_ROOT / "slack-webhook.cache"

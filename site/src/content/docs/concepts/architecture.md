@@ -13,7 +13,7 @@ Alfred uses `ALFRED_HOME` as its runtime root. A fresh install defaults to `~/.a
 flowchart LR
     scheduler["host scheduler<br/><i>survives restarts</i>"]
     role["bin/{role}.py<br/><i>one stable runner per agent</i>"]
-    runner["lib/agent_runner.py<br/><i>lock · preflight · spend · invoke · gh · slack</i>"]
+    runner["lib/agent_runner/ (package)<br/><i>lock · preflight · spend · invoke · gh · slack</i>"]
     engine["claude -p / codex exec<br/><i>the LLM work, fresh subprocess</i>"]
     gh["GitHub CLI"]
     slack["Slack webhook"]
@@ -72,9 +72,17 @@ Every agent firing is a fresh scheduler event, not a tick in a long-running proc
 - ❌ Cold start cost. ~1-2s of Python import + agent_runner setup per firing. Acceptable at the 20-min cadence.
 
 `ALFRED_HOME` is the runtime root. The core loop is `host scheduler -> bin/role.py ->
-lib/agent_runner.py -> configured engine / gh / slack`. Optional companion tools can
+lib/agent_runner/ -> configured engine / gh / slack`. Optional companion tools can
 observe Alfred or read its exported state, but they are not part of the runtime
 contract.
+
+`lib/agent_runner/` is internally split into nine focused submodules
+(`paths`, `config`, `process`, `result`, `transcripts`, `metadata`, `notify`,
+`state`, `github`) plus a thin `orchestrator` that owns preflight + LLM
+tier routing. Every public name is re-exported from the package's
+`__init__.py`, so `from agent_runner import preflight, make_worktree,
+slack_post` keeps working unchanged. See `ARCHITECTURE.md` for the
+per-submodule responsibilities.
 
 ### 2. Per-firing git worktree isolation
 
@@ -184,7 +192,7 @@ See [codename pattern](/concepts/codename-pattern/) for more.
 ## Read order for new contributors
 
 1. [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md): full doc
-2. [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py): module docstring + public API
+2. [`lib/agent_runner/`](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner): package docstring + per-submodule responsibilities
 3. [`examples/bin/echo_summarise.py`](https://github.com/luminik-io/alfred-os/blob/main/examples/bin/echo_summarise.py): the smallest "real" agent showing the full pattern
 4. [`docs/STATE_MACHINE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_MACHINE.md): the cooperative coordination primitive
 5. [`examples/bin/`](https://github.com/luminik-io/alfred-os/tree/main/examples/bin): small runnable agents you can copy into a fleet

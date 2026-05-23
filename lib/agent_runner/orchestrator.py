@@ -1,0 +1,671 @@
+"""Firing-lifecycle orchestrator: preflight, LLM tier routing, opt-in helpers.
+
+This module is the thin coordinator that the per-codename runners in
+``bin/`` import. It owns the host-readiness check (:func:`preflight`),
+the model-selection seam (:func:`route_llm`), and the additive opt-in
+helpers (shared brain, event stream, best-of-N) that degrade silently
+when the optional shared-agent directory isn't mounted.
+
+What this module does NOT own:
+
+* Subprocess invocation of ``claude`` / ``codex`` -> ``process.py``.
+* Issue claim / release state machine -> ``github.py``.
+* On-disk state (locks, spend, fleet flags) -> ``state.py``.
+* Slack delivery -> ``notify.py``.
+
+The orchestrator's public surface is re-exported from
+``agent_runner.__init__`` so bin scripts can keep importing flat names.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from .config import _env_present, _env_value_enabled
+from .notify import slack_post
+from .paths import SHARED_AGENT, WORKSPACE_ROOT
+from .process import claude_invoke, codex_invoke
+from .result import ClaudeResult
+
+# --------------------------------------------------------------------------
+# Preflight
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class PreflightSpec:
+    """Declarative requirements for an agent run.
+
+    All fields are optional: an agent that needs nothing more than
+    ``claude`` on PATH and the two workspace env vars can declare just
+    ``bins=["claude"]``.
+    """
+
+    agent: str
+    env_vars: list[str] = field(
+        default_factory=lambda: ["ALFRED_HOME", "WORKSPACE_ROOT"]
+    )
+    bins: list[str] = field(default_factory=list)
+    aws_profile: str | None = None
+    require_gh_auth: bool = False
+    require_workspace_repos: list[str] = field(default_factory=list)
+
+
+class PreflightFailed(RuntimeError):
+    """Raised by :func:`preflight` when one or more checks fail.
+
+    The caller catches and exits ``0`` cleanly; preflight has already
+    posted a one-line Slack message and printed a sentinel to stdout.
+    """
+
+
+def preflight(spec: PreflightSpec) -> None:
+    """Validate the host before doing real work. Raise on miss.
+
+    Reports every miss in one shot rather than one-at-a-time so the
+    operator sees the full picture in a single Slack notification.
+
+    Args:
+        spec: declarative requirements for this firing.
+
+    Raises:
+        PreflightFailed: when one or more checks fail.
+    """
+    import shutil  # local: only used when an agent actually checks bins
+
+    misses: list[str] = []
+
+    # 1. Required env vars.
+    for var in spec.env_vars:
+        if not _env_present(var):
+            misses.append(f"env var `{var}` is unset")
+
+    # 2. Required CLI binaries on PATH (or absolute paths that are executable).
+    for binname in spec.bins:
+        if "/" in binname:
+            if not Path(binname).is_file() or not os.access(binname, os.X_OK):
+                misses.append(f"binary `{binname}` is not an executable file")
+        elif not shutil.which(binname):
+            misses.append(f"binary `{binname}` not found on PATH")
+
+    # 3. AWS profile usable. Strip inherited keys so we never accidentally
+    #    use the operator's interactive SSO session in place of the
+    #    agent's scoped IAM user.
+    if spec.aws_profile:
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SESSION_TOKEN",
+                "AWS_SECURITY_TOKEN",
+            )
+        }
+        env["AWS_PROFILE"] = spec.aws_profile
+        try:
+            sts = subprocess.run(
+                [
+                    "aws",
+                    "sts",
+                    "get-caller-identity",
+                    "--query",
+                    "Arn",
+                    "--output",
+                    "text",
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            misses.append(f"AWS profile `{spec.aws_profile}` check timed out")
+        except FileNotFoundError:
+            misses.append("binary `aws` not found on PATH")
+        else:
+            out = (sts.stderr or sts.stdout or "").strip()
+            if sts.returncode != 0 or spec.aws_profile not in (sts.stdout or ""):
+                err = out.splitlines()[-1] if out else "no output"
+                misses.append(
+                    f"AWS profile `{spec.aws_profile}` not usable: {err[:120]}"
+                )
+
+    # 4. gh auth alive (every issue/PR/label operation needs it).
+    if spec.require_gh_auth:
+        try:
+            gh = subprocess.run(
+                ["gh", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            misses.append("gh auth status timed out")
+        except FileNotFoundError:
+            misses.append("binary `gh` not found on PATH")
+        else:
+            if gh.returncode != 0:
+                misses.append("gh auth not active (run `gh auth login`)")
+
+    # 5. Local repo checkouts present.
+    for repo in spec.require_workspace_repos:
+        repo_path = WORKSPACE_ROOT / "product" / repo
+        if not (repo_path / ".git").exists():
+            misses.append(f"checkout `{repo_path}` missing or not a git repo")
+
+    if not misses:
+        return
+
+    sentinel = f"[{spec.agent.upper()}-PREFLIGHT-FAILED]"
+    detail = "\n  ".join(f"- {m}" for m in misses)
+    print(f"{sentinel} {len(misses)} issue(s):\n  {detail}")
+    headline = misses[0] + (f" (+{len(misses) - 1} more)" if len(misses) > 1 else "")
+    suppress_slack = (
+        _env_value_enabled("ALFRED_DOCTOR")
+        or spec.agent == "test"
+        or (
+            not _env_value_enabled("XPC_SERVICE_NAME")
+            and not _env_value_enabled("ALFRED_PREFLIGHT_FORCE_SLACK")
+        )
+    )
+    if not suppress_slack:
+        slack_post(f"🚫 {spec.agent} preflight failed: {headline}")
+    raise PreflightFailed(misses)
+
+
+# --------------------------------------------------------------------------
+# Optional shared-agent brain
+#
+# These wrap an optional shared-agent brain mounted at
+# ``${ALFRED_HOME}/shared/.agent/``. Existing agents work unchanged; new
+# agents can opt in with one line each. The brain is intentionally
+# external to alfred-os so public installs stay small.
+# --------------------------------------------------------------------------
+
+
+def _shared_agent_available() -> bool:
+    """Return True iff the brain is mounted and the core modules import.
+
+    Conservative: any failure returns False so a missing or broken brain
+    does NOT take down a working agent that opted in. Brain is an
+    enhancement, not a load-bearing dependency.
+    """
+    if not SHARED_AGENT.exists():
+        return False
+    try:
+        sys.path.insert(0, str(SHARED_AGENT / "tools"))
+        sys.path.insert(0, str(SHARED_AGENT / "harness"))
+        sys.path.insert(0, str(SHARED_AGENT / "memory"))
+        import memory_reflect  # noqa: F401
+        import recall  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def recall_for(intent: str, top_k: int = 3) -> str:
+    """Return a formatted block of relevant past lessons for ``intent``.
+
+    Drop the return value into the prompt of :func:`claude_invoke` so the
+    model starts with prior knowledge. Returns the empty string if the
+    brain is unavailable; never raises.
+    """
+    if not _shared_agent_available():
+        return ""
+    try:
+        from recall import format_pretty
+        from recall import recall as _recall
+
+        result, meta = _recall(intent, top_k=top_k)
+        if not result:
+            return ""
+        return format_pretty(intent, result, meta)
+    except Exception as e:
+        print(f"[recall_for] swallowed: {e}", file=sys.stderr)
+        return ""
+
+
+def reflect(
+    skill: str,
+    action: str,
+    outcome: str,
+    *,
+    success: bool = True,
+    importance: int = 5,
+    note: str = "",
+    confidence: float | None = None,
+) -> dict | None:
+    """Append an episodic entry from inside any agent.
+
+    Use after every meaningful action so the dream cycle has something
+    to cluster on. Returns the written entry or ``None`` when the brain
+    is unavailable; never raises.
+    """
+    if not _shared_agent_available():
+        return None
+    try:
+        from memory_reflect import reflect as _reflect
+
+        return _reflect(
+            skill_name=skill,
+            action=action,
+            outcome=outcome,
+            success=success,
+            importance=importance,
+            reflection=note,
+            confidence=confidence,
+        )
+    except Exception as e:
+        print(f"[reflect] swallowed: {e}", file=sys.stderr)
+        return None
+
+
+def call_with_guardrail(prompt: str, validator: Any, **kwargs: Any) -> Any:
+    """Invoke claude with output validation and reject-and-retry.
+
+    Thin wrapper around ``harness/guardrail.py:with_guardrail`` so
+    agents can use the pattern with one import. ``validator`` is either
+    a callable ``(output) -> (bool, reason|None)`` or a ``Guardrail``
+    instance. ``**kwargs`` are forwarded to :func:`claude_invoke`. The
+    optional ``max_retries`` int (default 1) is consumed before forwarding.
+
+    Returns ``None`` if the shared brain is not mounted; caller should
+    fall back to plain :func:`claude_invoke`.
+    """
+    if not _shared_agent_available():
+        return None
+    try:
+        from guardrail import with_guardrail
+
+        max_retries = kwargs.pop("max_retries", 1)
+        return with_guardrail(
+            prompt,
+            validator,
+            claude_invoke_fn=claude_invoke,
+            max_retries=max_retries,
+            **kwargs,
+        )
+    except Exception as e:
+        print(f"[call_with_guardrail] swallowed: {e}", file=sys.stderr)
+        return None
+
+
+def assemble_shared_context(intent: str, budget: int = 16000) -> str:
+    """Build the brain context string for ``intent``. Empty when brain is absent."""
+    if not _shared_agent_available():
+        return ""
+    try:
+        from context_budget import build_context
+
+        ctx, _used = build_context(intent, budget=budget)
+        return ctx
+    except Exception as e:
+        print(f"[assemble_shared_context] swallowed: {e}", file=sys.stderr)
+        return ""
+
+
+# --------------------------------------------------------------------------
+# Event-stream helpers (additive, opt-in per agent)
+# --------------------------------------------------------------------------
+
+
+def emit(event_type: str, **payload: Any) -> None:
+    """Append one event to the shared stream. Best-effort, no-throw.
+
+    Pull-out fields (``agent``, ``tokens_in``, ``tokens_out``,
+    ``cost_usd``, ``tags``) are promoted to top-level columns; the rest
+    becomes the event's payload dict.
+    """
+    if not _shared_agent_available():
+        return
+    try:
+        from event_stream import Event, EventStream
+
+        agent = payload.pop("agent", "unknown")
+        tokens_in = int(payload.pop("tokens_in", 0) or 0)
+        tokens_out = int(payload.pop("tokens_out", 0) or 0)
+        cost_usd = float(payload.pop("cost_usd", 0.0) or 0.0)
+        tags = list(payload.pop("tags", []) or [])
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ev = Event(
+            ts=ts,
+            agent=agent,
+            type=event_type,
+            payload=dict(payload),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost_usd,
+            tags=tags,
+        )
+        EventStream().append(ev)
+    except Exception as e:
+        print(f"[emit] swallowed: {e}", file=sys.stderr)
+
+
+class _FiringContext:
+    """Context manager yielded by :func:`emit_firing`.
+
+    ``success()`` records the happy-path numbers stamped on the closing
+    event. If the ``with`` block raises, we emit a typed ``error``
+    event AND ``firing_end(success=False)`` with the exception name.
+    """
+
+    def __init__(self, agent: str) -> None:
+        self.agent = agent
+        self._num_turns: int = 0
+        self._cost_usd: float = 0.0
+        self._extra: dict = {}
+        self._success_called: bool = False
+
+    def success(
+        self, *, num_turns: int = 0, cost_usd: float = 0.0, **extra: Any
+    ) -> None:
+        """Record happy-path numbers for the closing event."""
+        self._success_called = True
+        self._num_turns = int(num_turns or 0)
+        self._cost_usd = float(cost_usd or 0.0)
+        self._extra = dict(extra)
+
+    def __enter__(self) -> _FiringContext:
+        emit("firing_start", agent=self.agent)
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        if exc is not None:
+            emit("error", agent=self.agent, error=f"{exc_type.__name__}: {exc}")
+            emit(
+                "firing_end",
+                agent=self.agent,
+                success=False,
+                num_turns=self._num_turns,
+                cost_usd=self._cost_usd,
+                reason=exc_type.__name__,
+            )
+            return  # propagate; do not suppress
+        emit(
+            "firing_end",
+            agent=self.agent,
+            success=bool(self._success_called),
+            num_turns=self._num_turns,
+            cost_usd=self._cost_usd,
+            **self._extra,
+        )
+
+
+def emit_firing(agent: str) -> _FiringContext:
+    """Context manager that wraps a single agent firing in start/end events.
+
+    Usage::
+
+        with emit_firing("lucius") as f:
+            ...do work...
+            f.success(num_turns=12, cost_usd=0.42)
+    """
+    return _FiringContext(agent)
+
+
+# --------------------------------------------------------------------------
+# Best-of-N helper (additive, opt-in)
+# --------------------------------------------------------------------------
+
+
+def best_of_n(
+    agent: str,
+    n: int = 2,
+    *,
+    task_id: str | None = None,
+    work_factory: Any | None = None,
+) -> Any | None:
+    """Return a configured ``TaskRun`` for ``agent``, or ``None`` if brain absent.
+
+    ``work_factory`` is required before calling ``run_attempts``; pass
+    here or set ``run.work_factory`` on the returned object.
+    ``task_id`` defaults to a fresh UUID4.
+    """
+    if not _shared_agent_available():
+        return None
+    try:
+        from best_of_n import TaskRun, new_task_id  # type: ignore[import-not-found]
+    except Exception as e:
+        print(f"[best_of_n] swallowed import error: {e}", file=sys.stderr)
+        return None
+
+    def _placeholder_factory(_placement: int) -> Any:
+        raise RuntimeError(
+            "best_of_n: work_factory not set. Pass work_factory=... or "
+            "assign run.work_factory before calling run_attempts()."
+        )
+
+    return TaskRun(
+        task_id=task_id or new_task_id(),
+        agent=agent,
+        n_attempts=n,
+        work_factory=work_factory or _placeholder_factory,
+    )
+
+
+# --------------------------------------------------------------------------
+# LLM tier routing
+#
+# Issues / tasks declare which model handles them via the
+# ``llm-tier:<x>`` label. Runners read the tier when picking work and
+# call :func:`route_llm` instead of :func:`claude_invoke` directly.
+# --------------------------------------------------------------------------
+TIER_TO_MODEL: dict[str, str | None] = {
+    "opus": "opus",
+    "sonnet": "sonnet",
+    "haiku": "haiku",
+    "local": None,  # routed to Ollama, see _ollama_invoke
+    "codex": None,  # routed to codex_invoke
+}
+
+OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_MODEL = "qwen2.5:3b-instruct-q4_K_M"
+OLLAMA_TIMEOUT_SEC = 30
+
+_OLLAMA_HONORED_KWARGS = {"timeout"}
+_OLLAMA_UNSUPPORTED_KWARGS = {
+    "workdir",
+    "allowed_tools",
+    "max_turns",
+    "resume_session",
+    "model",
+    "output_format",
+}
+
+
+def get_tier_from_labels(labels: list) -> str:
+    """Read ``llm-tier:<x>`` from a list of GitHub label objects.
+
+    Each label is a dict like ``{"name": "...", "color": "...", ...}``.
+    The first matching ``llm-tier`` label wins so callers don't have to
+    reason about ordering. Defaults to ``"sonnet"`` when no label is
+    present.
+    """
+    for lbl in labels or []:
+        if not isinstance(lbl, dict):
+            continue
+        name = lbl.get("name", "")
+        if name.startswith("llm-tier:"):
+            return name.split(":", 1)[1]
+    return "sonnet"
+
+
+def _ollama_health_ok() -> bool:
+    """Quick probe: is Ollama serving on localhost?"""
+    try:
+        req = urllib.request.Request(f"{OLLAMA_HOST}/api/tags")
+        with urllib.request.urlopen(req, timeout=2) as r:
+            r.read()
+        return True
+    except Exception:
+        return False
+
+
+def start_ollama_if_needed() -> bool:
+    """Start ``ollama serve`` in the background if it isn't already up.
+
+    Returns ``True`` if Ollama is reachable after the call (whether we
+    started it or it was already running). Returns ``False`` if Ollama
+    is not installed or the daemon never came up.
+    """
+    if _ollama_health_ok():
+        return True
+    try:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (FileNotFoundError, OSError):
+        return False
+    for _ in range(10):
+        time.sleep(0.5)
+        if _ollama_health_ok():
+            return True
+    return False
+
+
+def _ollama_invoke(prompt: str, **kw: Any) -> ClaudeResult:
+    """POST to Ollama ``/api/generate`` and return a ``ClaudeResult``-shaped reply.
+
+    Returns a failure ``ClaudeResult`` when Ollama is not running or the
+    request errors, so the caller can fall back to :func:`claude_invoke`
+    without branching on tier. Kwargs that have no Ollama analogue are
+    rejected up front so the caller does not believe a tool gate or
+    session resume was enforced when it wasn't.
+    """
+    timeout = kw.pop("timeout", OLLAMA_TIMEOUT_SEC)
+    unsupported = sorted(set(kw.keys()) & _OLLAMA_UNSUPPORTED_KWARGS)
+    unknown = sorted(
+        set(kw.keys()) - _OLLAMA_UNSUPPORTED_KWARGS - _OLLAMA_HONORED_KWARGS
+    )
+    rejected = unsupported + unknown
+    if rejected:
+        return ClaudeResult(
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
+            stop_reason="error",
+            error_message=(
+                "ollama tier does not support kwargs: "
+                + ", ".join(rejected)
+                + ". Drop them or route this prompt to claude (sonnet/haiku/opus) instead."
+            ),
+        )
+    payload = json.dumps(
+        {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{OLLAMA_HOST}/api/generate",
+        data=payload,
+        headers={"content-type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read().decode("utf-8")
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        return ClaudeResult(
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
+            stop_reason="error",
+            error_message=f"ollama not running: {reason}",
+        )
+    except Exception as e:
+        return ClaudeResult(
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
+            stop_reason="error",
+            error_message=f"ollama request failed: {type(e).__name__}: {e}",
+        )
+
+    try:
+        raw = json.loads(body)
+    except json.JSONDecodeError:
+        return ClaudeResult(
+            success=False,
+            subtype="error",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=body,
+            raw={},
+            stop_reason="error",
+            error_message="ollama response unparseable",
+        )
+
+    return ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=1,
+        cost_usd=0.0,
+        session_id=None,
+        result_text=str(raw.get("response", "")),
+        raw=raw,
+        stop_reason="end_turn",
+        error_message=None,
+    )
+
+
+def route_llm(tier: str, prompt: str, **kw: Any) -> ClaudeResult:
+    """Route a prompt to the right model based on tier.
+
+    ``tier`` in ``{"opus", "sonnet", "haiku", "local", "codex"}``.
+    Unknown tiers fall back to sonnet so a typo in a label can't take
+    an agent down.
+
+    For ``local``, ensures the Ollama daemon is up before dispatching
+    so a cold host does not produce a misleading ``ollama not running``
+    failure on the first call.
+    """
+    if tier == "codex":
+        return codex_invoke(prompt, **kw)
+    if tier == "local":
+        if not start_ollama_if_needed():
+            return ClaudeResult(
+                success=False,
+                subtype="error",
+                num_turns=0,
+                cost_usd=0.0,
+                session_id=None,
+                result_text="",
+                raw={},
+                stop_reason="error",
+                error_message=(
+                    "ollama daemon could not be started; the local tier is "
+                    "unavailable on this host. Install ollama or route the "
+                    "prompt to a claude tier (sonnet/haiku/opus)."
+                ),
+            )
+        return _ollama_invoke(prompt, **kw)
+    model = TIER_TO_MODEL.get(tier, TIER_TO_MODEL["sonnet"])
+    return claude_invoke(prompt, model=model, **kw)
