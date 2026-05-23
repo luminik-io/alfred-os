@@ -15,8 +15,8 @@ commit, the pre-push command passed, and the PR was opened.
 ```
 lucius · PR opened · green
 
-Issue:    luminik-backend#251
-PR:       luminik-backend#412
+Issue:    your-backend#251
+PR:       your-backend#412
 Branch:   agent/lucius/251-add-org-slug-column-and-resolver
 Engine:   hybrid (claude)
 Turns:    38
@@ -33,7 +33,7 @@ artifact. The issue is released back to `agent:implement`.
 ```
 lucius · BLOCKED · warn
 
-Issue:    luminik-frontend#188
+Issue:    your-frontend#188
 Branch:   agent/lucius/188-use-org-slug-in-account-urls
 Engine:   hybrid (claude)
 Turns:    22
@@ -44,7 +44,7 @@ Reason:   [BLOCKED] cannot resolve type error in src/lib/routes.ts:42.
           a contract update; out of scope per acceptance criteria.
 
 Worktree retained for inspection:
-  ~/.alfred/worktrees/eng-lucius-luminik-frontend-188-20260601-194414/
+  ~/.alfred/worktrees/eng-lucius-your-frontend-188-20260601-194414/
 ```
 
 ## Slack: shipped summary (daily, post-merge)
@@ -56,13 +56,13 @@ roll-up.
 ```
 shipped · yesterday · 3 PRs merged
 
-luminik-backend
+your-backend
   #412 Add org_slug column and resolver endpoint
        Lucius · 38 turns · $0.41 · merged 21:30 by automerge
   #414 Tests for AccountService.slug paths
        Bane · 22 turns · $0.18 · merged 22:14 by automerge
 
-luminik-frontend
+your-frontend
   #207 Use org_slug in account-scoped URLs
        Lucius · 27 turns · $0.31 · merged 20:30 by automerge
 
@@ -78,10 +78,10 @@ Public Batman stops at the plan.
 ```
 batman · plan drafted
 
-Issue:        luminik-backend#247: Add org_slug to account-scoped URLs
+Issue:        your-backend#247: Add org_slug to account-scoped URLs
 Bundle:       add-org-slug
-Affected:     luminik-backend, luminik-frontend, luminik-mobile
-Rollout:      luminik-backend → luminik-frontend → luminik-mobile
+Affected:     your-backend, your-frontend, your-mobile
+Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
 This is plan-only. To proceed, the operator labels each child issue
@@ -98,7 +98,7 @@ $ bash bin/doctor.sh
 [doctor] alfred-os doctor starting
 [doctor] ALFRED_HOME=~/.alfred
 [doctor] WORKSPACE_ROOT=~/code
-[doctor] GH_ORG=luminik-io
+[doctor] GH_ORG=your-org
 
 [doctor] preflight ............................. ok
 [doctor]   gh ............................ ok (gh version 2.45.0)
@@ -108,9 +108,9 @@ $ bash bin/doctor.sh
 [doctor]   gh auth ....................... ok (operator@example.com)
 
 [doctor] workspace repos ......................... ok
-[doctor]   ~/code/luminik-backend ........ ok (origin: luminik-io/luminik-backend)
-[doctor]   ~/code/luminik-frontend ....... ok (origin: luminik-io/luminik-frontend)
-[doctor]   ~/code/luminik-mobile ......... ok (origin: luminik-io/luminik-mobile)
+[doctor]   ~/code/your-backend ........ ok (origin: your-org/your-backend)
+[doctor]   ~/code/your-frontend ....... ok (origin: your-org/your-frontend)
+[doctor]   ~/code/your-mobile ......... ok (origin: your-org/your-mobile)
 
 [doctor] agents (doctor-mode firings) ............ ok
 [doctor]   drake     [DRAKE-DOCTOR-OK]
@@ -133,7 +133,7 @@ $ bash bin/doctor.sh
 [doctor] alfred-os doctor starting
 [doctor] ALFRED_HOME=~/.alfred
 [doctor] WORKSPACE_ROOT=~/code
-[doctor] GH_ORG=luminik-io
+[doctor] GH_ORG=your-org
 
 [doctor] preflight ............................. ok
 [doctor]   gh ............................ ok
@@ -143,15 +143,15 @@ $ bash bin/doctor.sh
 [doctor]   gh auth ....................... ok
 
 [doctor] workspace repos ......................... FAIL
-[doctor]   ~/code/luminik-backend ........ ok
-[doctor]   ~/code/luminik-frontend ....... ok
-[doctor]   ~/code/luminik-mobile ......... MISSING
-[doctor]     expected: ~/code/luminik-mobile
-[doctor]     hint: git clone https://github.com/luminik-io/luminik-mobile
+[doctor]   ~/code/your-backend ........ ok
+[doctor]   ~/code/your-frontend ....... ok
+[doctor]   ~/code/your-mobile ......... MISSING
+[doctor]     expected: ~/code/your-mobile
+[doctor]     hint: git clone https://github.com/your-org/your-mobile
 
 [doctor] agents (doctor-mode firings) ............ partial
 [doctor]   drake     [DRAKE-DOCTOR-OK]
-[doctor]   lucius    [LUCIUS-PREFLIGHT-FAILED] missing checkout: luminik-mobile
+[doctor]   lucius    [LUCIUS-PREFLIGHT-FAILED] missing checkout: your-mobile
 [doctor]   rasalghul [RASALGHUL-DOCTOR-OK]
 [doctor]   batman    [BATMAN-DOCTOR-OK]
 
@@ -224,7 +224,7 @@ Closes #312
 PR body:
 
 ```md
-Implements luminik-frontend#312.
+Implements your-frontend#312.
 
 ## What
 Adds an optional `intent` prop to `<Button>`. Default is `primary`. No
@@ -282,7 +282,7 @@ When it appears: every firing reads and writes per-agent state under
   "consecutive_failures": 0,
   "last_firing_id": "20260601-191211-3f",
   "last_firing_outcome": "ok",
-  "last_firing_pr": "luminik-backend#412",
+  "last_firing_pr": "your-backend#412",
   "blocked_until": null
 }
 ```

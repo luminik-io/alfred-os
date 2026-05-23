@@ -127,7 +127,7 @@ Avoid direct long-lived AWS access keys in shared env files. Prefer named
 profiles:
 
 ```bash
-AWS_PROFILE_FOR_HERMES="hermes-alfred"
+AWS_PROFILE_FOR_HERMES="your-aws-profile"
 ```
 
 If both Alfred and Hermes need cloud credentials, give them separate least-privilege

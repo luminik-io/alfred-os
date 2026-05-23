@@ -8,18 +8,18 @@ that genuinely required coordinated edits to backend, frontend, and mobile.
 The repos referenced below are real names from the workspace this example
 is drawn from:
 
-- `luminik-io/luminik-specs` (specs repo, planning context)
-- `luminik-io/luminik-backend` (Kotlin API)
-- `luminik-io/luminik-frontend` (React web app)
-- `luminik-io/luminik-mobile` (React Native app)
+- `your-org/your-specs` (specs repo, planning context)
+- `your-org/your-backend` (Kotlin API)
+- `your-org/your-frontend` (React web app)
+- `your-org/your-mobile` (React Native app)
 
 Fleet configuration for this example:
 
 ```sh
-ALFRED_DRAKE_REPOS=luminik-backend,luminik-frontend,luminik-mobile
-ALFRED_LUCIUS_REPOS=luminik-backend,luminik-frontend,luminik-mobile
-ALFRED_RASALGHUL_REPOS=luminik-backend,luminik-frontend,luminik-mobile
-BATMAN_SCAN_REPOS=luminik-backend,luminik-frontend,luminik-mobile
+ALFRED_DRAKE_REPOS=your-backend,your-frontend,your-mobile
+ALFRED_LUCIUS_REPOS=your-backend,your-frontend,your-mobile
+ALFRED_RASALGHUL_REPOS=your-backend,your-frontend,your-mobile
+BATMAN_SCAN_REPOS=your-backend,your-frontend,your-mobile
 ```
 
 ## Step 1: operator files one `agent:large-feature` issue
@@ -61,9 +61,9 @@ links shared by the product.
 
 ## Repos this touches
 
-  - luminik-backend (first; schema + endpoint)
-  - luminik-frontend (after backend ships staging)
-  - luminik-mobile (after backend ships staging)
+  - your-backend (first; schema + endpoint)
+  - your-frontend (after backend ships staging)
+  - your-mobile (after backend ships staging)
 
 ## Out of scope
 
@@ -95,7 +95,7 @@ itself), and posts a plan summary.
 [15:04:12] batman  scanning 3 repos for agent:large-feature
 [15:04:14] batman  found 1 issue, 1 bundle: add-org-slug
 [15:04:14] batman  plan drafted                        ● green
-[15:04:15] batman  posted plan to #alfred-fleet
+[15:04:15] batman  posted plan to #your-fleet-channel
 ```
 
 The post Batman emits in Slack (rendered shape):
@@ -103,10 +103,10 @@ The post Batman emits in Slack (rendered shape):
 ```
 batman · plan drafted
 
-Issue:        luminik-backend#247: Add `org_slug` to account-scoped URLs
+Issue:        your-backend#247: Add `org_slug` to account-scoped URLs
 Bundle:       add-org-slug
-Affected:     luminik-backend, luminik-frontend, luminik-mobile
-Rollout:      luminik-backend → luminik-frontend → luminik-mobile
+Affected:     your-backend, your-frontend, your-mobile
+Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
 This is plan-only. To proceed, the operator labels each child issue
@@ -130,7 +130,7 @@ The OSS package keeps that step explicit.
 ### Child issue 1 (backend)
 
 ```md
-Repo: luminik-io/luminik-backend
+Repo: your-org/your-backend
 Title: Add `org_slug` column and resolver endpoint for accounts
 
 Labels: agent:implement, agent:bundle:add-org-slug
@@ -162,7 +162,7 @@ slug-resolver endpoint. Numeric routes continue to work.
 ### Child issue 2 (frontend)
 
 ```md
-Repo: luminik-io/luminik-frontend
+Repo: your-org/your-frontend
 Title: Use `org_slug` in account-scoped URLs
 
 Labels: agent:implement, agent:bundle:add-org-slug
@@ -189,13 +189,13 @@ URLs working for back-compat.
 - Mobile deep linking.
 
 ## Depends on
-luminik-backend bundle:add-org-slug merged to main and deployed to staging.
+your-backend bundle:add-org-slug merged to main and deployed to staging.
 ```
 
 ### Child issue 3 (mobile)
 
 ```md
-Repo: luminik-io/luminik-mobile
+Repo: your-org/your-mobile
 Title: Accept `<slug>` in deep links
 
 Labels: agent:implement, agent:bundle:add-org-slug
@@ -218,7 +218,7 @@ Mobile deep-link handler must accept `luminik://<slug>/...` in addition to
 - Push notification payloads (separate bundle).
 
 ## Depends on
-luminik-backend bundle:add-org-slug merged to main and deployed to staging.
+your-backend bundle:add-org-slug merged to main and deployed to staging.
 ```
 
 ## Step 4: Lucius picks up the backend issue first
@@ -229,9 +229,9 @@ so it is eligible on the first firing after labelling.
 ```
 [15:24:11] lucius  preflight ok                        ● green
 [15:24:12] lucius  pick_issue: oldest agent:implement
-[15:24:13] lucius  claimed luminik-backend#251         ● green
+[15:24:13] lucius  claimed your-backend#251         ● green
 [15:24:14] lucius  worktree opened
-                   ~/.alfred/worktrees/eng-lucius-luminik-backend-251-20260601-152414/
+                   ~/.alfred/worktrees/eng-lucius-your-backend-251-20260601-152414/
 [15:24:15] lucius  branch: agent/lucius/251-add-org-slug-column-and-resolver
 [15:24:16] lucius  invoking hybrid engine, max_turns=140
 [15:27:42] lucius  engine returned success, 38 turns, $0.41
@@ -239,7 +239,7 @@ so it is eligible on the first firing after labelling.
 [15:30:12] lucius  pre-push ok
 [15:30:14] lucius  pushed branch
 [15:30:16] lucius  gh pr create
-[15:30:17] lucius  PR opened: luminik-backend#412     ● green
+[15:30:17] lucius  PR opened: your-backend#412     ● green
 [15:30:17] lucius  [OK] commit 7c4a1f2
 [15:30:18] lucius  release_issue → agent:pr-open
 [15:30:19] lucius  Slack-post info
@@ -250,8 +250,8 @@ The Slack post Lucius emits:
 ```
 lucius · PR opened · green
 
-Issue:    luminik-backend#251
-PR:       luminik-backend#412
+Issue:    your-backend#251
+PR:       your-backend#412
 Branch:   agent/lucius/251-add-org-slug-column-and-resolver
 Engine:   hybrid (claude)
 Turns:    38
@@ -265,7 +265,7 @@ Ra's al Ghul fires every 30 minutes. It picks the fresh `agent:authored`
 PR.
 
 ```
-[15:48:11] rasalghul  reviewing luminik-backend#412
+[15:48:11] rasalghul  reviewing your-backend#412
 [15:51:33] rasalghul  posted review comment, 2 nits, 0 P0/P1
 ```
 
@@ -296,26 +296,26 @@ also asked Nightwing to address P2 nits on this PR by labelling it
 `nightwing:p2`. On the next firing:
 
 ```
-[16:33:11] nightwing  picking review threads on luminik-backend#412
+[16:33:11] nightwing  picking review threads on your-backend#412
 [16:33:14] nightwing  2 unresolved threads (P2 by label override)
 [16:33:15] nightwing  worktree opened
 [16:35:42] nightwing  engine returned success, 7 turns, $0.09
 [16:35:43] nightwing  pushed fix commit 9a2cdde
-[16:35:44] nightwing  resolved 2 threads on luminik-backend#412
+[16:35:44] nightwing  resolved 2 threads on your-backend#412
 ```
 
 ## Step 7: Bane adds tests on the side
 
 Bane fires every 4 hours and writes only test files. It looks at the
-recently-changed files in `luminik-backend` and notices `AccountService.kt`
+recently-changed files in `your-backend` and notices `AccountService.kt`
 is now the lowest-coverage actively-changed file.
 
 ```
 [18:04:11] bane   lowest-coverage actively-changed file
-                  luminik-backend/src/.../AccountService.kt (62%)
+                  your-backend/src/.../AccountService.kt (62%)
 [18:04:12] bane   worktree opened
 [18:07:38] bane   engine returned success, 22 turns, $0.18
-[18:07:39] bane   PR opened: luminik-backend#414      ● green
+[18:07:39] bane   PR opened: your-backend#414      ● green
                   agent:authored, tests-only
 ```
 
@@ -325,7 +325,7 @@ branch. The squash-merge utility (`automerge`) treats it on its own merits.
 ## Step 8: backend merges, the bundle progresses
 
 After Ra's al Ghul says "Ship-ready: yes" and CI is green for 30 minutes,
-`automerge` squash-merges `luminik-backend#412`. The issue transitions to
+`automerge` squash-merges `your-backend#412`. The issue transitions to
 `agent:done`.
 
 A separate deploy step (Alfred does not own this) rolls staging. Once
@@ -338,13 +338,13 @@ claimed and worked. They run on different worktrees, in different repos,
 and never collide.
 
 ```
-[19:04:11] lucius  claimed luminik-frontend#188        ● green
+[19:04:11] lucius  claimed your-frontend#188        ● green
 [19:04:14] lucius  worktree opened
-                   ~/.alfred/worktrees/eng-lucius-luminik-frontend-188-20260601-190414/
+                   ~/.alfred/worktrees/eng-lucius-your-frontend-188-20260601-190414/
 ...
-[19:24:11] lucius  claimed luminik-mobile#92           ● green
+[19:24:11] lucius  claimed your-mobile#92           ● green
 [19:24:14] lucius  worktree opened
-                   ~/.alfred/worktrees/eng-lucius-luminik-mobile-92-20260601-192414/
+                   ~/.alfred/worktrees/eng-lucius-your-mobile-92-20260601-192414/
 ```
 
 Each gets its own review pass, its own Nightwing fixes if needed, its own
@@ -363,11 +363,11 @@ Example closing rollup post:
 ```
 batman · bundle shipped · add-org-slug
 
-Parent:   luminik-backend#247
+Parent:   your-backend#247
 Children:
-  - luminik-backend#251 → PR #412 (merged 15:50 → 21:30)
-  - luminik-frontend#188 → PR #207 (merged 19:48 → 20:30)
-  - luminik-mobile#92  → PR #61  (merged 19:55 → 20:30)
+  - your-backend#251 → PR #412 (merged 15:50 → 21:30)
+  - your-frontend#188 → PR #207 (merged 19:48 → 20:30)
+  - your-mobile#92  → PR #61  (merged 19:55 → 20:30)
 
 Bane added 2 test PRs along the way (#414 backend, #208 frontend).
 Total cost: $1.84 across 7 firings.
