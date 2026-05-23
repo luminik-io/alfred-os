@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from agent_runner import GH_ORG, GH_REPO_TO_LOCAL, claim_issue, gh_json, release_issue
 
@@ -491,14 +491,892 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
     return PlanShape(affected_repos=ordered, repo_criteria=criteria_by_repo)
 
 
+# ---------------------------------------------------------------------------
+# plan-approve-execute-report lifecycle
+# ---------------------------------------------------------------------------
+#
+# The block below extends Batman from "draft a plan and stop" to a full
+# plan -> approve -> execute -> report cycle. Wire it up via
+# ``BatmanLifecycle`` in ``bin/batman.py``; the original parsing /
+# claim helpers above stay untouched so legacy fleets keep working.
+#
+# Design rules (SOLID, DRY, 12-factor):
+#
+# - Dependency injection: ``BatmanLifecycle`` accepts ``SlackApproval``,
+#   ``GitHubChildIssueClient``, and ``Reporter`` via the constructor.
+#   Tests inject fakes; production wires the real Slack + gh CLI clients.
+# - Label strings come from ``labels.py`` ONLY (no string literals here).
+# - Env-driven config via ``BatmanLifecycleConfig.from_env``.
+# - Dataclasses for ``BundlePlan``, ``ChildIssue``, ``ApprovalEnvelope``,
+#   ``ExecuteResult``, ``ReportEnvelope`` so every shape is JSON-friendly
+#   and easy to log / diff.
+
+import logging
+import os
+import subprocess
+from collections.abc import Callable
+from pathlib import Path
+from typing import Protocol
+
+import labels as label_constants
+
+logger = logging.getLogger("alfred.batman.lifecycle")
+
+# Outcomes for ExecuteResult.reason. Strings, not enums, so the value
+# survives JSON serialisation cleanly.
+EXEC_OK = "ok"
+EXEC_APPROVAL_TIMEOUT = "approval_timeout"
+EXEC_REJECTED = "rejected_by_operator"
+EXEC_TRANSPORT = "approval_transport_down"
+EXEC_NO_CHILDREN = "no_children_parsed"
+EXEC_PARTIAL = "partial"
+EXEC_GATE_DISABLED = "gate_disabled"
+
+# Env contract -- documented in docs/BATMAN.md.
+ENV_AUTO_EXECUTE = "BATMAN_AUTO_EXECUTE"
+ENV_PARENT_REPO = "BATMAN_PARENT_REPO"
+ENV_PICKER = "BATMAN_PICKER"
+ENV_BUNDLE_SLUG_PREFIX = "BATMAN_BUNDLE_SLUG_PREFIX"
+ENV_APPROVAL_TIMEOUT_S = "BATMAN_APPROVAL_TIMEOUT_S"
+ENV_SLACK_CHANNEL = "BATMAN_SLACK_CHANNEL"
+
+AUTO_EXECUTE_OFF = "0"
+AUTO_EXECUTE_GATE = "approval-gate"
+AUTO_EXECUTE_FORCE = "1"
+VALID_AUTO_EXECUTE = (AUTO_EXECUTE_OFF, AUTO_EXECUTE_GATE, AUTO_EXECUTE_FORCE)
+
+
+@dataclass(frozen=True)
+class ChildIssue:
+    """One scoped sub-issue Batman intends to file in a downstream repo.
+
+    Args:
+        repo: ``owner/repo`` slug the issue belongs in.
+        title: full issue title (the leading ``<repo>:`` prefix is stripped
+            from the parent-body bullet because the issue already lives in
+            that repo).
+        body: markdown body for the child issue.
+        labels: extra labels (lifecycle + bundle) to apply on creation.
+    """
+
+    repo: str
+    title: str
+    body: str
+    labels: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class BundlePlan:
+    """The result of ``BatmanLifecycle.plan``. Pure data.
+
+    Args:
+        bundle_slug: short id derived from the parent issue title
+            (``billing-v2`` for "Bundle: billing-v2 rollout"). Used as the
+            ``agent:bundle:<slug>`` label so every child shares one trail.
+        parent_repo: ``owner/repo`` of the issue Batman is reading.
+        parent_issue_number: GitHub issue number on ``parent_repo``.
+        parent_title: human-readable parent title (for the Slack post).
+        affected_repos: ``owner/repo`` list, declaration order preserved.
+        children: per-repo child issues to file on execute.
+        done_when: free-text "Done when" block lifted from the body.
+        plan_markdown: the rendered markdown a human reads in Slack. The
+            execute step does NOT use this; tests pin it for clarity.
+    """
+
+    bundle_slug: str
+    parent_repo: str
+    parent_issue_number: int
+    parent_title: str
+    affected_repos: tuple[str, ...]
+    children: tuple[ChildIssue, ...]
+    done_when: str
+    plan_markdown: str
+
+
+@dataclass(frozen=True)
+class ApprovalEnvelope:
+    """Returned by ``request_approval``; consumed by ``await_approval``.
+
+    Args:
+        channel: Slack channel id or name the plan was posted to.
+        message_ts: ``chat.postMessage`` ts of the plan message, the
+            anchor for the reaction poll.
+        plan: the plan that was posted (so ``await_approval`` does not
+            need a second argument).
+    """
+
+    channel: str
+    message_ts: str
+    plan: BundlePlan
+
+
+@dataclass(frozen=True)
+class ApprovalResult:
+    """A simplified verdict for ``BatmanLifecycle.await_approval``.
+
+    Wraps ``slack_approval.ApprovalResult`` into a Batman-shaped tuple so
+    callers do not need to import slack_approval directly.
+    """
+
+    approved: bool
+    verdict: str
+    detail: str = ""
+    elapsed_s: float = 0.0
+
+
+@dataclass(frozen=True)
+class ExecuteResult:
+    """Outcome of ``BatmanLifecycle.execute``.
+
+    Args:
+        executed: True iff at least one child issue was filed.
+        reason: machine-readable status (``ok`` / ``approval_timeout`` /
+            ``rejected_by_operator`` / ``partial`` / etc.).
+        created_issue_urls: URLs of the children that did land.
+        failed_repos: ``owner/repo`` of every target that failed to file.
+        detail: free-text context for the report.
+    """
+
+    executed: bool
+    reason: str
+    created_issue_urls: tuple[str, ...] = ()
+    failed_repos: tuple[str, ...] = ()
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class ReportEnvelope:
+    """What ``BatmanLifecycle.report`` posts to Slack as a follow-up.
+
+    Kept as a separate dataclass so a fleet that wants a different
+    surface (email, PagerDuty, ...) can swap the reporter without
+    rewriting the orchestrator.
+    """
+
+    bundle_slug: str
+    parent_title: str
+    created: tuple[str, ...]
+    failed_repos: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class BatmanLifecycleConfig:
+    """All env-driven knobs for the plan-approve-execute-report flow.
+
+    Build via :meth:`from_env`. Every field is overridable for tests.
+    """
+
+    auto_execute: str = AUTO_EXECUTE_OFF
+    parent_repo: str = ""
+    picker: str = "oldest"
+    bundle_slug_prefix: str = ""
+    approval_timeout_s: int = 900
+    slack_channel: str = ""
+
+    @classmethod
+    def from_env(cls, env: dict[str, str] | None = None) -> BatmanLifecycleConfig:
+        e = env if env is not None else dict(os.environ)
+        raw_auto = (e.get(ENV_AUTO_EXECUTE) or "").strip().lower() or AUTO_EXECUTE_OFF
+        if raw_auto not in VALID_AUTO_EXECUTE:
+            logger.warning(
+                "%s=%r not in %s; treating as off",
+                ENV_AUTO_EXECUTE,
+                raw_auto,
+                VALID_AUTO_EXECUTE,
+            )
+            raw_auto = AUTO_EXECUTE_OFF
+        try:
+            timeout = int((e.get(ENV_APPROVAL_TIMEOUT_S) or "900").strip() or "900")
+        except ValueError:
+            timeout = 900
+        return cls(
+            auto_execute=raw_auto,
+            parent_repo=(e.get(ENV_PARENT_REPO) or "").strip(),
+            picker=((e.get(ENV_PICKER) or "oldest").strip() or "oldest"),
+            bundle_slug_prefix=(e.get(ENV_BUNDLE_SLUG_PREFIX) or "").strip(),
+            approval_timeout_s=max(0, timeout),
+            slack_channel=(e.get(ENV_SLACK_CHANNEL) or "").strip(),
+        )
+
+    @property
+    def gate_enabled(self) -> bool:
+        return self.auto_execute == AUTO_EXECUTE_GATE
+
+    @property
+    def execute_enabled(self) -> bool:
+        return self.auto_execute in (AUTO_EXECUTE_GATE, AUTO_EXECUTE_FORCE)
+
+
+# ---------------------------------------------------------------------------
+# Injection seams.
+# ---------------------------------------------------------------------------
+
+
+class GitHubChildIssueClient(Protocol):
+    """Subset of the gh CLI Batman needs to file children.
+
+    Implementations must never raise; return ``None`` on failure so the
+    orchestrator can record a partial result and continue.
+    """
+
+    def create_issue(
+        self,
+        repo: str,
+        *,
+        title: str,
+        body: str,
+        labels: list[str],
+    ) -> str | None:
+        """File one issue. Returns the issue URL on success, ``None``
+        otherwise. Implementations should ensure labels exist on the
+        target repo before adding them, or accept gh's auto-creation
+        behaviour.
+        """
+        ...  # pragma: no cover
+
+
+class SubprocessGitHubChildIssueClient:
+    """Default ``GitHubChildIssueClient`` that shells out to ``gh``.
+
+    Tests inject a fake; production uses this. Errors are logged at
+    WARNING and surface as ``None`` returns so callers can record a
+    partial-execute result without a crash.
+    """
+
+    def __init__(self, gh_bin: str = "gh") -> None:
+        self._gh = gh_bin
+
+    def create_issue(
+        self,
+        repo: str,
+        *,
+        title: str,
+        body: str,
+        labels: list[str],
+    ) -> str | None:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(body)
+            body_path = Path(tmp.name)
+        try:
+            cmd = [
+                self._gh,
+                "issue",
+                "create",
+                "-R",
+                repo,
+                "--title",
+                title,
+                "--body-file",
+                str(body_path),
+            ]
+            for label in labels:
+                cmd.extend(["--label", label])
+            res = subprocess.run(  # noqa: S603 - gh is trusted
+                cmd, capture_output=True, text=True, timeout=60, check=False
+            )
+            if res.returncode != 0:
+                logger.warning(
+                    "gh issue create failed for %s: %s", repo, res.stderr.strip()
+                )
+                return None
+            for line in reversed((res.stdout or "").splitlines()):
+                line = line.strip()
+                if line.startswith("https://"):
+                    return line
+            return None
+        finally:
+            try:
+                body_path.unlink()
+            except OSError:
+                pass
+
+
+class ApprovalGate(Protocol):
+    """Minimal interface Batman needs from the approval surface.
+
+    ``slack_approval.SlackApproval`` already implements ``await_approval``
+    with the right signature, so it satisfies this protocol directly.
+    """
+
+    def await_approval(
+        self,
+        channel: str,
+        message_ts: str,
+        *,
+        timeout_s: int = 900,
+        poll_interval_s: int = 30,
+    ) -> object:
+        ...  # pragma: no cover
+
+
+class Reporter(Protocol):
+    """Post-execute notifier. ``SlackReporter`` is the default."""
+
+    def post_plan(
+        self,
+        plan: BundlePlan,
+        *,
+        channel: str,
+    ) -> str | None:
+        """Post the plan and return a Slack ts (string), or ``None``."""
+        ...  # pragma: no cover
+
+    def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
+        """Post the follow-up report. Returns success."""
+        ...  # pragma: no cover
+
+
+# ---------------------------------------------------------------------------
+# Parent-issue body parsing for the plan-approve-execute lifecycle.
+# ---------------------------------------------------------------------------
+
+_BUNDLE_TITLE_RE = re.compile(r"bundle:\s*(?P<slug>[a-z0-9][a-z0-9\-]*)", re.IGNORECASE)
+_REPOS_BLOCK_RE = re.compile(
+    r"^\s*repos?\s*:\s*$(.*?)(?=^\s*(?:children|done\s*when)\s*:|^\#|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+_CHILDREN_BLOCK_RE = re.compile(
+    r"^\s*children\s*:\s*$(.*?)(?=^\s*done\s*when\s*:|^\#|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+_DONE_BLOCK_RE = re.compile(
+    r"^\s*done\s*when\s*:\s*$(.*?)(?=^\#|\Z)",
+    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+)
+
+
+def _slugify_bundle_title(title: str, prefix: str = "") -> str:
+    """Derive a bundle slug from a parent-issue title.
+
+    Prefers an explicit ``Bundle: <slug>`` lead in the title. Falls back
+    to a sanitised slug of the whole title. Lower-snake hyphens, no
+    leading/trailing dashes. ``prefix`` is prepended when set (used by
+    ``BATMAN_BUNDLE_SLUG_PREFIX``).
+    """
+    title = (title or "").strip()
+    m = _BUNDLE_TITLE_RE.search(title)
+    if m:
+        slug = m.group("slug").lower().strip("-")
+    else:
+        s = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        slug = s or "bundle"
+    if prefix:
+        return f"{prefix.strip('-')}-{slug}"
+    return slug
+
+
+def _parse_repo_lines(block: str) -> list[str]:
+    out: list[str] = []
+    for line in block.splitlines():
+        token = line.strip().lstrip("-*").strip()
+        if not token:
+            continue
+        if "/" not in token:
+            # The parent-body shape REQUIRES owner/repo so siblings can be
+            # filed cross-repo without operator-side path mapping. Skip
+            # malformed lines rather than guess.
+            continue
+        out.append(token)
+    return out
+
+
+def _parse_children_lines(block: str) -> list[tuple[str, str]]:
+    """Return ``[(short_repo, title), ...]`` from a ``Children:`` block.
+
+    Each line is ``- <short_repo>: <title>``. ``short_repo`` is the local
+    name (``backend``, ``frontend``) that ``BatmanLifecycle.plan`` maps
+    back to a full ``owner/repo`` slug using the affected-repos list.
+    """
+    out: list[tuple[str, str]] = []
+    for line in block.splitlines():
+        stripped = line.strip().lstrip("-*").strip()
+        if not stripped or ":" not in stripped:
+            continue
+        repo_token, title = stripped.split(":", 1)
+        repo_token = repo_token.strip().lower()
+        title = title.strip()
+        if not repo_token or not title:
+            continue
+        out.append((repo_token, title))
+    return out
+
+
+def _resolve_child_repo(short: str, affected: list[str]) -> str | None:
+    """Map ``backend`` to ``owner/backend`` using the affected list.
+
+    Trailing-segment match: ``backend`` matches ``my-org/my-backend`` only
+    when no exact ``my-org/backend`` is present. Exact match wins.
+    """
+    short = short.lower()
+    exact = [r for r in affected if r.split("/", 1)[-1].lower() == short]
+    if exact:
+        return exact[0]
+    sub = [r for r in affected if r.split("/", 1)[-1].lower().endswith(short)]
+    if len(sub) == 1:
+        return sub[0]
+    return None
+
+
+def parse_parent_issue(
+    *,
+    body: str,
+    title: str,
+    parent_repo: str,
+    parent_issue_number: int,
+    bundle_slug_prefix: str = "",
+) -> BundlePlan:
+    """Build a ``BundlePlan`` from a well-formed parent-issue body.
+
+    The body shape is documented in ``docs/BATMAN.md``::
+
+        Bundle: <human title>
+
+        Repos:
+        - org/repo-a
+        - org/repo-b
+
+        Children:
+        - repo-a: short scope
+        - repo-b: short scope
+
+        Done when:
+        - free-text criteria
+
+    Missing sections degrade gracefully: an empty ``Children`` block
+    yields an empty ``children`` tuple, which surfaces as
+    ``EXEC_NO_CHILDREN`` at execute time. The parser never raises on
+    malformed input.
+    """
+    body = body or ""
+    slug = _slugify_bundle_title(title, prefix=bundle_slug_prefix)
+
+    repos: list[str] = []
+    rm = _REPOS_BLOCK_RE.search(body)
+    if rm:
+        repos = _parse_repo_lines(rm.group(1))
+
+    children_pairs: list[tuple[str, str]] = []
+    cm = _CHILDREN_BLOCK_RE.search(body)
+    if cm:
+        children_pairs = _parse_children_lines(cm.group(1))
+
+    done_when = ""
+    dm = _DONE_BLOCK_RE.search(body)
+    if dm:
+        done_when = dm.group(1).strip()
+
+    bundle_label_str = label_constants.bundle_label(slug)
+    base_labels = (label_constants.IMPLEMENT, bundle_label_str)
+    children: list[ChildIssue] = []
+    for short, child_title in children_pairs:
+        full = _resolve_child_repo(short, repos)
+        if not full:
+            logger.warning(
+                "child %r references unknown repo %r; skipping", child_title, short
+            )
+            continue
+        child_body = _render_child_body(
+            parent_repo=parent_repo,
+            parent_issue=parent_issue_number,
+            parent_title=title,
+            bundle_slug=slug,
+            child_title=child_title,
+            done_when=done_when,
+        )
+        children.append(
+            ChildIssue(
+                repo=full,
+                title=child_title,
+                body=child_body,
+                labels=base_labels,
+            )
+        )
+
+    plan_md = _render_plan_markdown(
+        slug=slug,
+        parent_repo=parent_repo,
+        parent_issue=parent_issue_number,
+        parent_title=title,
+        affected_repos=repos,
+        children=children,
+        done_when=done_when,
+    )
+
+    return BundlePlan(
+        bundle_slug=slug,
+        parent_repo=parent_repo,
+        parent_issue_number=parent_issue_number,
+        parent_title=title,
+        affected_repos=tuple(repos),
+        children=tuple(children),
+        done_when=done_when,
+        plan_markdown=plan_md,
+    )
+
+
+def _render_child_body(
+    *,
+    parent_repo: str,
+    parent_issue: int,
+    parent_title: str,
+    bundle_slug: str,
+    child_title: str,
+    done_when: str,
+) -> str:
+    parent_link = f"https://github.com/{parent_repo}/issues/{parent_issue}"
+    done_block = f"\n\n## Done when\n\n{done_when}\n" if done_when.strip() else ""
+    return (
+        f"## Scope\n\n{child_title}\n\n"
+        f"## Parent\n\n"
+        f"- Bundle: `{bundle_slug}`\n"
+        f"- Parent issue: [{parent_repo}#{parent_issue}]({parent_link})\n"
+        f"- Parent title: {parent_title}"
+        f"{done_block}\n\n"
+        f"---\nFiled by Batman as part of the `{bundle_slug}` bundle.\n"
+    )
+
+
+def _render_plan_markdown(
+    *,
+    slug: str,
+    parent_repo: str,
+    parent_issue: int,
+    parent_title: str,
+    affected_repos: list[str],
+    children: list[ChildIssue],
+    done_when: str,
+) -> str:
+    """Render the markdown Batman posts to Slack for approval."""
+    lines: list[str] = []
+    lines.append(f"*Batman plan: `{slug}`*")
+    lines.append(
+        f"*Parent:* <https://github.com/{parent_repo}/issues/{parent_issue}|"
+        f"{parent_repo}#{parent_issue}> -- {parent_title}"
+    )
+    if affected_repos:
+        lines.append("*Affected repos:* " + ", ".join(affected_repos))
+    else:
+        lines.append("*Affected repos:* (none parsed)")
+    lines.append("")
+    lines.append("*Children to file:*")
+    if children:
+        for c in children:
+            lines.append(f"  - `{c.repo}` -- {c.title}")
+    else:
+        lines.append("  - (none parsed; check the parent-issue body shape)")
+    if done_when.strip():
+        lines.append("")
+        lines.append("*Done when:*")
+        lines.append(done_when)
+    lines.append("")
+    lines.append("React with :white_check_mark: to approve, :x: to reject.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Default reporter (Slack-backed). Tests inject a FakeReporter instead.
+# ---------------------------------------------------------------------------
+
+
+class SlackReporter:
+    """Default reporter: posts plan + report through ``slack_format``.
+
+    Falls back to the legacy webhook (``slack_post`` from
+    ``agent_runner``) when the bot-token surface is unavailable; the
+    operator still sees the plan even on a half-configured fleet, but
+    without a ``message_ts`` the approval gate is bypassed (callers
+    treat that as ``EXEC_GATE_DISABLED``).
+    """
+
+    def __init__(
+        self,
+        *,
+        firing_id: str,
+        codename: str = "batman",
+        thread_root: Callable | None = None,
+        fallback_post: Callable | None = None,
+    ) -> None:
+        self._firing_id = firing_id
+        self._codename = codename
+        if thread_root is None:
+            from slack_format import firing_thread_root as thread_root  # noqa: PLC0415
+        if fallback_post is None:
+            try:
+                from agent_runner import slack_post as fallback_post  # noqa: PLC0415
+            except Exception:  # pragma: no cover
+                fallback_post = None
+        self._thread_root = thread_root
+        self._fallback_post = fallback_post
+
+    def post_plan(self, plan: BundlePlan, *, channel: str) -> str | None:
+        summary = (
+            f"plan drafted for {plan.bundle_slug} "
+            f"({len(plan.children)} child issue(s), "
+            f"{len(plan.affected_repos)} repo(s))"
+        )
+        handle = self._thread_root(
+            codename=self._codename,
+            firing_id=self._firing_id,
+            summary_one_liner=summary,
+            severity="info",
+            channel=channel or None,
+            body=plan.plan_markdown,
+        )
+        if handle is None:
+            if self._fallback_post is not None:
+                self._fallback_post(
+                    f"[BATMAN-PLAN-DRAFTED] {summary}\n{plan.plan_markdown}",
+                    severity="info",
+                )
+            return None
+        return getattr(handle, "ts", None)
+
+    def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
+        lines = [
+            f"*Batman bundle `{envelope.bundle_slug}` -- {envelope.reason}*",
+            f"*Parent:* {envelope.parent_title}",
+        ]
+        if envelope.created:
+            lines.append("*Filed children:*")
+            for url in envelope.created:
+                lines.append(f"  - {url}")
+        if envelope.failed_repos:
+            lines.append("*Failed repos:*")
+            for repo in envelope.failed_repos:
+                lines.append(f"  - {repo}")
+        text = "\n".join(lines)
+        summary = f"bundle {envelope.bundle_slug} report ({envelope.reason})"
+        handle = self._thread_root(
+            codename=self._codename,
+            firing_id=f"{self._firing_id}-report",
+            summary_one_liner=summary,
+            severity="info",
+            channel=channel or None,
+            body=text,
+        )
+        if handle is not None:
+            return True
+        if self._fallback_post is not None:
+            self._fallback_post(f"[BATMAN-REPORT] {summary}\n{text}", severity="info")
+            return True
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BatmanLifecycle:
+    """Orchestrates plan -> approve -> execute -> report for one parent
+    issue.
+
+    Dependency-injected (SOLID): swap any of ``gate`` / ``gh_client`` /
+    ``reporter`` for tests. ``config`` carries every env-driven knob.
+    """
+
+    config: BatmanLifecycleConfig
+    gate: ApprovalGate | None = None
+    gh_client: GitHubChildIssueClient = field(
+        default_factory=SubprocessGitHubChildIssueClient
+    )
+    reporter: Reporter | None = None
+
+    # ---- plan ----
+
+    def plan(
+        self,
+        *,
+        body: str,
+        title: str,
+        parent_repo: str,
+        parent_issue_number: int,
+    ) -> BundlePlan:
+        """Parse the parent issue and return a :class:`BundlePlan`."""
+        return parse_parent_issue(
+            body=body,
+            title=title,
+            parent_repo=parent_repo,
+            parent_issue_number=parent_issue_number,
+            bundle_slug_prefix=self.config.bundle_slug_prefix,
+        )
+
+    # ---- approval ----
+
+    def request_approval(self, plan: BundlePlan) -> ApprovalEnvelope | None:
+        """Post the plan to Slack and return an :class:`ApprovalEnvelope`.
+
+        Returns ``None`` when the reporter could not capture a
+        ``message_ts`` (no bot token, channel unset, transport down).
+        Callers that hit this path should treat the gate as effectively
+        disabled and fall back to the operator's
+        ``BATMAN_AUTO_EXECUTE`` choice.
+        """
+        if self.reporter is None:
+            return None
+        ts = self.reporter.post_plan(plan, channel=self.config.slack_channel)
+        if not ts:
+            return None
+        return ApprovalEnvelope(
+            channel=self.config.slack_channel,
+            message_ts=ts,
+            plan=plan,
+        )
+
+    def await_approval(
+        self,
+        envelope: ApprovalEnvelope,
+        *,
+        timeout_s: int | None = None,
+    ) -> ApprovalResult:
+        """Block until the operator approves, rejects, or the wall-clock
+        timeout expires. Treats a missing gate as "no approval"."""
+        if self.gate is None:
+            return ApprovalResult(
+                approved=False,
+                verdict=EXEC_GATE_DISABLED,
+                detail="no SlackApproval injected",
+            )
+        timeout = timeout_s if timeout_s is not None else self.config.approval_timeout_s
+        raw = self.gate.await_approval(
+            envelope.channel,
+            envelope.message_ts,
+            timeout_s=timeout,
+        )
+        approved = bool(getattr(raw, "approved", False))
+        verdict_raw = getattr(raw, "verdict", "unknown")
+        from slack_approval import (  # noqa: PLC0415
+            APPROVAL_GRANTED,
+            APPROVAL_REJECTED,
+            APPROVAL_TIMEOUT,
+            APPROVAL_TRANSPORT_DOWN,
+        )
+
+        if verdict_raw == APPROVAL_GRANTED:
+            verdict = EXEC_OK
+        elif verdict_raw == APPROVAL_REJECTED:
+            verdict = EXEC_REJECTED
+        elif verdict_raw == APPROVAL_TIMEOUT:
+            verdict = EXEC_APPROVAL_TIMEOUT
+        elif verdict_raw == APPROVAL_TRANSPORT_DOWN:
+            verdict = EXEC_TRANSPORT
+        else:
+            verdict = str(verdict_raw)
+        return ApprovalResult(
+            approved=approved,
+            verdict=verdict,
+            detail=str(getattr(raw, "detail", "")),
+            elapsed_s=float(getattr(raw, "elapsed_s", 0.0)),
+        )
+
+    # ---- execute ----
+
+    def execute(self, plan: BundlePlan) -> ExecuteResult:
+        """File every child issue declared in ``plan``.
+
+        Partial failures do not abort: every target is attempted, and the
+        outcome is recorded per-repo. Callers report the partial via
+        :meth:`report` so the operator can pick up the failed repos
+        manually.
+        """
+        if not plan.children:
+            return ExecuteResult(executed=False, reason=EXEC_NO_CHILDREN)
+        created: list[str] = []
+        failed: list[str] = []
+        for child in plan.children:
+            url = self.gh_client.create_issue(
+                child.repo,
+                title=child.title,
+                body=child.body,
+                labels=list(child.labels),
+            )
+            if url:
+                created.append(url)
+                logger.info("filed %s: %s", child.repo, url)
+            else:
+                failed.append(child.repo)
+                logger.warning(
+                    "failed to file child in %s: %s", child.repo, child.title
+                )
+        if not failed:
+            return ExecuteResult(
+                executed=True,
+                reason=EXEC_OK,
+                created_issue_urls=tuple(created),
+            )
+        if not created:
+            return ExecuteResult(
+                executed=False,
+                reason=EXEC_PARTIAL,
+                failed_repos=tuple(failed),
+                detail="no children landed",
+            )
+        return ExecuteResult(
+            executed=True,
+            reason=EXEC_PARTIAL,
+            created_issue_urls=tuple(created),
+            failed_repos=tuple(failed),
+        )
+
+    # ---- report ----
+
+    def report(self, plan: BundlePlan, result: ExecuteResult) -> None:
+        """Post the follow-up Slack message naming the filed children."""
+        if self.reporter is None:
+            return
+        envelope = ReportEnvelope(
+            bundle_slug=plan.bundle_slug,
+            parent_title=plan.parent_title,
+            created=result.created_issue_urls,
+            failed_repos=result.failed_repos,
+            reason=result.reason,
+        )
+        self.reporter.post_report(envelope, channel=self.config.slack_channel)
+
+
 __all__ = [
+    "AUTO_EXECUTE_FORCE",
+    "AUTO_EXECUTE_GATE",
+    "AUTO_EXECUTE_OFF",
+    "ApprovalEnvelope",
+    "ApprovalResult",
     "BUNDLE_LABEL_PREFIX",
-    "DEFAULT_ROLLOUT_ORDER",
-    "LARGE_FEATURE_LABEL",
+    "BatmanLifecycle",
+    "BatmanLifecycleConfig",
     "Bundle",
+    "BundlePlan",
+    "ChildIssue",
+    "DEFAULT_ROLLOUT_ORDER",
+    "ENV_APPROVAL_TIMEOUT_S",
+    "ENV_AUTO_EXECUTE",
+    "ENV_BUNDLE_SLUG_PREFIX",
+    "ENV_PARENT_REPO",
+    "ENV_PICKER",
+    "ENV_SLACK_CHANNEL",
+    "EXEC_APPROVAL_TIMEOUT",
+    "EXEC_GATE_DISABLED",
+    "EXEC_NO_CHILDREN",
+    "EXEC_OK",
+    "EXEC_PARTIAL",
+    "EXEC_REJECTED",
+    "EXEC_TRANSPORT",
+    "ExecuteResult",
+    "GitHubChildIssueClient",
+    "LARGE_FEATURE_LABEL",
     "PlanShape",
+    "ReportEnvelope",
+    "Reporter",
+    "SlackReporter",
+    "SubprocessGitHubChildIssueClient",
     "claim_bundle",
     "list_issues_by_bundle_label",
+    "parse_parent_issue",
     "parse_plan_from_bundle",
     "parse_plan_from_issue",
     "release_bundle",

@@ -61,10 +61,19 @@ from agent_runner import (  # noqa: E402
     with_lock,
 )
 from batman import (  # noqa: E402
+    AUTO_EXECUTE_FORCE,
+    AUTO_EXECUTE_GATE,
+    AUTO_EXECUTE_OFF,
     BUNDLE_LABEL_PREFIX,
+    EXEC_GATE_DISABLED,
     LARGE_FEATURE_LABEL,
+    BatmanLifecycle,
+    BatmanLifecycleConfig,
     Bundle,
+    BundlePlan,
+    SlackReporter,
     list_issues_by_bundle_label,
+    parse_parent_issue,
     parse_plan_from_bundle,
 )
 from slack_format import firing_thread_root  # noqa: E402
@@ -192,6 +201,185 @@ def _firing_id() -> str:
     return f"{stamp}-{secrets.token_hex(2)}"
 
 
+def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
+    """Return open ``agent:large-feature`` issues in ``parent_repo``.
+
+    ``parent_repo`` is an ``owner/repo`` slug. Used by the lifecycle path
+    (``BATMAN_PARENT_REPO``); falls back to ``[]`` on any gh search
+    failure so the runner skips cleanly rather than crashing.
+    """
+    if not parent_repo:
+        return []
+    rows = gh_json(
+        [
+            "gh",
+            "issue",
+            "list",
+            "-R",
+            parent_repo,
+            "--label",
+            LARGE_FEATURE_LABEL,
+            "--state",
+            "open",
+            "--json",
+            "number,title,url,labels,createdAt,body",
+            "--limit",
+            "20",
+        ],
+        default=[],
+    )
+    if not isinstance(rows, list):
+        return []
+    skip_labels = {"agent:in-flight", "agent:pr-open", "do-not-pickup"}
+    eligible: list[dict] = []
+    for r in rows:
+        labels = {
+            label.get("name")
+            for label in r.get("labels", [])
+            if isinstance(label, dict)
+        }
+        if labels & skip_labels:
+            continue
+        eligible.append(r)
+    return eligible
+
+
+def _pick_parent_issue(
+    issues: list[dict], *, picker: str = "oldest"
+) -> dict | None:
+    """Return the next parent issue to act on, or ``None`` if list empty.
+
+    ``picker`` is read from ``BATMAN_PICKER``. ``oldest`` picks by
+    ``createdAt`` ascending (the default and the safest pickup order:
+    nothing starves while newer work jumps the queue). ``newest`` is
+    available for operators who explicitly want last-filed first.
+    """
+    if not issues:
+        return None
+    if picker == "newest":
+        return max(issues, key=lambda i: i.get("createdAt", ""))
+    return min(issues, key=lambda i: i.get("createdAt", ""))
+
+
+def _run_lifecycle(
+    *,
+    config: BatmanLifecycleConfig,
+    parent_issue: dict,
+    firing_id: str,
+) -> int:
+    """Run plan -> approve -> execute -> report for one parent issue.
+
+    Wires up the real SlackReporter, gh CLI issue client, and (when the
+    operator opts in via ``BATMAN_AUTO_EXECUTE=approval-gate``) the
+    ``SlackApproval`` gate. The function is intentionally short: every
+    interesting branch lives on the lifecycle dataclasses so the same
+    code paths are exercised by ``tests/test_batman_execute.py`` via
+    injected fakes.
+    """
+    # Build the lifecycle. Imports here are deferred so the lifecycle
+    # module is only loaded when the new path is active; legacy fleets
+    # that never set BATMAN_PARENT_REPO never pay for the optional
+    # slack_approval / slack_sdk dependency.
+    reporter = SlackReporter(firing_id=firing_id, codename=CODENAME)
+    gate = None
+    if config.gate_enabled:
+        try:
+            from slack_approval import (  # noqa: PLC0415
+                SlackApproval,
+                default_slack_client,
+                operator_user_id_from_env,
+            )
+
+            operator = operator_user_id_from_env()
+            if not operator:
+                print(
+                    "[BATMAN-GATE-DISABLED] BATMAN_AUTO_EXECUTE=approval-gate "
+                    "but ALFRED_OPERATOR_SLACK_USER_ID is unset; falling back "
+                    "to halt-after-plan",
+                    file=sys.stderr,
+                )
+            else:
+                gate = SlackApproval(default_slack_client(), operator_user_id=operator)
+        except Exception as e:
+            print(
+                f"[BATMAN-GATE-INIT-FAIL] {type(e).__name__}: {e}; "
+                f"halting after plan",
+                file=sys.stderr,
+            )
+
+    lifecycle = BatmanLifecycle(
+        config=config,
+        gate=gate,
+        reporter=reporter,
+    )
+
+    plan = lifecycle.plan(
+        body=parent_issue.get("body") or "",
+        title=parent_issue.get("title") or "",
+        parent_repo=config.parent_repo,
+        parent_issue_number=int(parent_issue.get("number") or 0),
+    )
+
+    print(
+        f"[BATMAN-PLAN-DRAFTED] firing_id={firing_id} bundle={plan.bundle_slug} "
+        f"children={len(plan.children)} repos={len(plan.affected_repos)}"
+    )
+
+    envelope = lifecycle.request_approval(plan)
+    if envelope is None:
+        print(
+            "[BATMAN-PLAN-POSTED-NO-TS] gate unavailable; respecting "
+            f"{config.auto_execute!r}",
+            file=sys.stderr,
+        )
+
+    # Decide whether to execute. The matrix:
+    #   auto_execute=0 (off):        halt after plan, no execute.
+    #   auto_execute=approval-gate:  poll Slack; execute only on :white_check_mark:.
+    #   auto_execute=1 (force):      execute immediately, no gate.
+    if not config.execute_enabled:
+        print("[BATMAN-HALT-AFTER-PLAN] BATMAN_AUTO_EXECUTE=0; not filing children")
+        return 0
+
+    if config.gate_enabled:
+        if envelope is None or gate is None:
+            # We could not stand up the gate; do NOT silently execute.
+            print(
+                "[BATMAN-HALT-NO-GATE] approval-gate requested but unavailable; "
+                "not filing children",
+                file=sys.stderr,
+            )
+            lifecycle.report(
+                plan,
+                _empty_result_reason(reason=EXEC_GATE_DISABLED),
+            )
+            return 0
+        verdict = lifecycle.await_approval(envelope)
+        if not verdict.approved:
+            print(
+                f"[BATMAN-APPROVAL-{verdict.verdict.upper()}] "
+                f"elapsed={verdict.elapsed_s:.0f}s detail={verdict.detail!r}"
+            )
+            lifecycle.report(plan, _empty_result_reason(reason=verdict.verdict))
+            return 0
+        print(f"[BATMAN-APPROVED] elapsed={verdict.elapsed_s:.0f}s")
+
+    result = lifecycle.execute(plan)
+    print(
+        f"[BATMAN-EXECUTE-DONE] reason={result.reason} "
+        f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)}"
+    )
+    lifecycle.report(plan, result)
+    return 0
+
+
+def _empty_result_reason(*, reason: str):
+    """Build a no-op ``ExecuteResult`` for report-only paths."""
+    from batman import ExecuteResult  # local import keeps the runner header clean
+
+    return ExecuteResult(executed=False, reason=reason)
+
+
 def main() -> int:
     if doctor_mode():
         print("[BATMAN-DOCTOR-OK]")
@@ -218,6 +406,29 @@ def main() -> int:
         return 0
 
     with_lock(CODENAME)
+
+    # New (lifecycle) path: pick a single parent issue from BATMAN_PARENT_REPO
+    # and run plan -> approve -> execute -> report. The lifecycle path is
+    # the one new operators should reach for; the legacy cross-repo
+    # bundle scan stays for fleets that already use agent:bundle:<slug>
+    # labels across multiple repos.
+    lifecycle_config = BatmanLifecycleConfig.from_env()
+    if lifecycle_config.parent_repo:
+        parents = _list_parent_repo_large_features(lifecycle_config.parent_repo)
+        parent_issue = _pick_parent_issue(parents, picker=lifecycle_config.picker)
+        if parent_issue is None:
+            print(
+                f"[BATMAN-NOOP] no eligible {LARGE_FEATURE_LABEL} issues in "
+                f"{lifecycle_config.parent_repo}"
+            )
+            return 0
+        return _run_lifecycle(
+            config=lifecycle_config,
+            parent_issue=parent_issue,
+            firing_id=_firing_id(),
+        )
+
+    # Legacy path: cross-repo bundle scan, plan-only output.
     issues = _list_large_features()
     if not issues:
         print("[BATMAN-NOOP] no eligible agent:large-feature issues")
