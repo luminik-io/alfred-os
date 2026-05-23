@@ -57,6 +57,7 @@ Committed for the following quarter. Design first, then code.
 - **Spec linter and template generator.** `alfred spec lint` checks a spec file for missing acceptance criteria, missing test plan, and other lifecycle gaps. `alfred spec new` scaffolds a fresh spec from a template. Effort: S. Issue: TBD.
 - **Better Batman v2.** Post-approval per-repo execution sweep with bundle-completion detection: Batman keeps watch on the PR chain it opened, reports per-repo progress, and closes the bundle once every PR has landed or been explicitly dropped. Effort: M. Issue: TBD.
 - **`alfred dry-run <codename>` for every shipped codename.** Today dry-run is wired through specific runners; widen it so every codename in the tree runs end-to-end with no side effects. Effort: S. Issue: TBD.
+- **`alfred serve` v2.** v0.4.0 shipped a read-only localhost dashboard ([`docs/SERVE.md`](docs/SERVE.md)) with three views: fleet status, recent firings, single-firing detail. v2 adds per-agent cost and success trends, full trace tree per firing, and transcript pretty-printing. Cross-platform precursor to any future native menu-bar UI. Effort: S. Issue: TBD.
 
 ## Horizon (no committed quarter)
 

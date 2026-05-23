@@ -4,7 +4,9 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
-No changes queued yet.
+### Added
+
+- `alfred serve` v1: a localhost-only, read-only FastAPI dashboard over `$ALFRED_HOME/state` (`bin/alfred-serve.py`). Three views: fleet status with HTMX auto-refresh every 10 seconds, recent firings (last 50, filter by codename), and single-firing detail with the raw event stream. Pulls in `fastapi`, `uvicorn`, `jinja2` behind a new `[serve]` optional dependency group so the base package stays stdlib-only. Reader is injected as a `typing.Protocol` so the app can be tested without touching disk. See `docs/SERVE.md`.
 
 ## [0.3.0] - 2026-05-21
 
