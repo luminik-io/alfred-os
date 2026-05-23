@@ -93,9 +93,9 @@ Each page renders a representative-but-static log strip near the footer. Mono fo
 
 ```text
 [12:04:11] drake   triaged 4 issues from /specs   ● green
-[12:04:18] lucius  claimed luminik-backend#247    ● green
+[12:04:18] lucius  claimed your-backend#247    ● green
 [12:04:21] lucius  worktree opened   ~/.alfred/wt/12042118/
-[12:18:09] lucius  PR luminik-backend#1247 opened  ● green
+[12:18:09] lucius  PR your-backend#1247 opened  ● green
 [12:18:33] ras-al  reviewed PR#1247   2 nits       ● amber
 ```
 

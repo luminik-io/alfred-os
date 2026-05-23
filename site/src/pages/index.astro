@@ -36,8 +36,8 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     body: "Reads files under /specs/, asks the gaps you forgot, and files scoped agent:implement issues a coding agent can pick up without a human in the loop.",
     log: [
       "[09:02] drake  read /specs/billing-v2.md",
-      "[09:02] drake  filed luminik-backend#247 agent:implement",
-      "[09:02] drake  filed luminik-backend#248 agent:implement",
+      "[09:02] drake  filed your-backend#247 agent:implement",
+      "[09:02] drake  filed your-backend#248 agent:implement",
     ],
     state: "live",
   },
@@ -45,7 +45,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     title: "Lucius implements scoped issues",
     body: "Picks up an agent:implement issue, opens a fresh git worktree, runs Claude Code or Codex with full repo context, and opens a pull request with tests.",
     log: [
-      "[12:04] lucius claimed luminik-backend#247",
+      "[12:04] lucius claimed your-backend#247",
       "[12:04] lucius worktree ~/.alfred/wt/12042118/",
       "[12:18] lucius PR #1247 opened",
     ],
@@ -211,7 +211,7 @@ const why = [
         />
         <SlackProof
           src="/proof/slack-shipped-summary.png"
-          alt="Slack message from the Alfred bot summarising one day of shipped work: 153 PRs merged, 44 issues opened, 144 issues closed, +44,351 lines added across luminik-frontend, luminik-agents, luminik-mobile, luminik-nango, luminik-backend, and luminik-data-acquisition."
+          alt="Slack message from the Alfred bot summarising one day of shipped work: 153 PRs merged, 44 issues opened, 144 issues closed, +44,351 lines added across your-frontend, your-agents, your-mobile, your-nango, your-backend, and your-data-acquisition."
           tag="shipped summary"
           meta="2026-05-20 20:45 CET"
           caption="One operator's day, six repos. The operator reads this summary in the morning. Every PR has a human review on the way to main; your throughput will depend on your fleet, repo size, and how scoped your issues are."
