@@ -60,11 +60,34 @@ const orgSchema = {
       logo: `${SITE_URL}/brand/alfred-og.png`,
     },
     {
+      "@type": "Person",
+      name: "Prasad Subrahmanya",
+      url: "https://prasad.tech",
+      sameAs: [
+        "https://github.com/prasadus92",
+        "https://www.linkedin.com/in/prasadus",
+      ],
+    },
+    {
       "@type": "WebSite",
       name: "Alfred",
       url: SITE_URL,
       description:
         "Alfred runs a fleet of autonomous coding agents on Claude Code and Codex, on hardware you already own.",
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "Alfred OS",
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "macOS, Linux",
+      url: SITE_URL,
+      description:
+        "Open-source local runtime for autonomous engineering agents on Claude Code and Codex. Coordinates a named fleet (Drake, Lucius, Ras al Ghul, Batman) via GitHub labels, isolated git worktrees, and a Slack approval gate.",
+      downloadUrl: "https://github.com/luminik-io/alfred-os",
+      license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      author: { "@type": "Organization", name: "DataRavel Inc." },
     },
   ],
 };
@@ -94,6 +117,18 @@ const nav = [
     <meta name="theme-color" content="#0A0E14" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    {/* Quicksand is the personality font (also self-hosted via @fontsource in
+        marketing.css). The preconnect + stylesheet href here is a low-cost
+        fallback so a viewer with the @fontsource bundle stripped (older
+        cache, ad-blocker variant) still resolves Quicksand from Google's CDN
+        instead of falling all the way to system-ui. */}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap"
+    />
 
     {/* Open Graph */}
     <meta property="og:title" content={title} />
@@ -226,7 +261,13 @@ const nav = [
         <StatusStrip />
 
         <div class="m-footer__base">
-          <span>© DataRavel Inc. · Alfred is open source, MIT.</span>
+          <span class="m-footer__attribution">
+            Alfred OS is open source under the <a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE" rel="noopener">MIT License</a>.
+            Built by Prasad Subrahmanya
+            &middot; <a href="https://github.com/prasadus92" rel="noopener">GitHub</a>
+            &middot; <a href="https://prasad.tech" rel="noopener">prasad.tech</a>
+            &middot; <a href="https://www.linkedin.com/in/prasadus" rel="noopener">LinkedIn</a>
+          </span>
           <span class="m-mono m-mute">alfred.luminik.io</span>
         </div>
       </div>
