@@ -1,0 +1,396 @@
+---
+/**
+ * MarketingLayout.astro
+ *
+ * Shared <head> + header + footer chrome for every page under src/pages/.
+ * Bypasses Starlight; Starlight still serves /docs/, /concepts/, /guides/, etc.
+ * Dark-first by intent; no theme toggle.
+ *
+ * Pulls design tokens from src/styles/marketing.css, which is the runtime
+ * realization of site/DESIGN.md.
+ */
+
+import "../styles/marketing.css";
+import StatusStrip from "../components/marketing/StatusStrip.astro";
+import GitHubBadge from "../components/marketing/GitHubBadge.astro";
+import ThemeToggle from "../components/marketing/ThemeToggle.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  path: string;
+  ogImage?: string;
+  keywords?: string[];
+}
+
+const {
+  title,
+  description,
+  path,
+  ogImage,
+  keywords = [
+    "autonomous coding agents",
+    "Claude Code",
+    "Codex",
+    "Codex CLI",
+    "self-hosted ai agents",
+    "engineering agents",
+    "GitHub agents",
+    "multi-repo",
+    "monorepo",
+    "agent runtime",
+    "Alfred",
+    "open source",
+    "MIT",
+    "specs-driven development",
+  ],
+} = Astro.props;
+
+const SITE_URL = "https://alfred.luminik.io";
+const canonical = `${SITE_URL}${path}`.replace(/\/+$/, "/");
+const og = ogImage ?? `${SITE_URL}/brand/alfred-og.png`;
+
+const orgSchema = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      name: "DataRavel Inc.",
+      url: "https://luminik.io",
+      logo: `${SITE_URL}/brand/alfred-og.png`,
+    },
+    {
+      "@type": "WebSite",
+      name: "Alfred",
+      url: SITE_URL,
+      description:
+        "Alfred runs a fleet of autonomous coding agents on Claude Code and Codex, on hardware you already own.",
+    },
+  ],
+};
+
+const nav = [
+  { label: "How it works", href: "/how-it-works/" },
+  { label: "Multi-repo", href: "/multi-repo/" },
+  { label: "Monorepo", href: "/monorepo/" },
+  { label: "For solo founders", href: "/for-solo-founders/" },
+  { label: "Install", href: "/install/" },
+  { label: "Pricing", href: "/pricing/" },
+  { label: "Docs", href: "/docs/" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="keywords" content={keywords.join(", ")} />
+    <meta name="author" content="DataRavel Inc." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href={canonical} />
+    <meta name="theme-color" content="#0A0E14" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    {/* Open Graph */}
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Alfred" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content={og} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Alfred. An autonomous engineering team for Claude Code and Codex agents." />
+
+    {/* Twitter / X */}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={og} />
+    <meta name="twitter:image:alt" content="Alfred. An autonomous engineering team for Claude Code and Codex agents." />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    {/* Theme boot. Synchronous, blocking, in <head> so the page never
+        flashes the wrong palette. Reads the persisted choice from
+        localStorage; if absent or set to "auto", uses the OS preference. */}
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem("alfred-theme");
+          var mode = stored === "light" || stored === "dark" ? stored : "auto";
+          var resolved =
+            mode === "auto"
+              ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+              : mode;
+          document.documentElement.setAttribute("data-theme", resolved);
+          document.documentElement.setAttribute("data-theme-mode", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+          document.documentElement.setAttribute("data-theme-mode", "auto");
+        }
+      })();
+    </script>
+
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(orgSchema)} />
+
+    {/* Google Analytics 4. Set ALFRED_GA4_ID in the build environment to enable.
+        Defaults to no-op in development so we don't pollute analytics.
+        Swap the placeholder with your real measurement ID when ready. */}
+    {import.meta.env.PUBLIC_ALFRED_GA4_ID && (
+      <>
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_ALFRED_GA4_ID}`}></script>
+        <script is:inline define:vars={{ id: import.meta.env.PUBLIC_ALFRED_GA4_ID }}>{`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', id, { anonymize_ip: true });
+        `}</script>
+      </>
+    )}
+
+    {/* Google Search Console verification. Add the meta tag value here when
+        you receive it from search.google.com/search-console. Currently a
+        placeholder; replace with the real token before pushing live. */}
+    {import.meta.env.PUBLIC_ALFRED_GSC_TOKEN && (
+      <meta name="google-site-verification" content={import.meta.env.PUBLIC_ALFRED_GSC_TOKEN} />
+    )}
+  </head>
+  <body>
+    <header class="m-header">
+      <div class="m-container m-header__inner">
+        <a class="m-brand" href="/">
+          <img class="m-brand__logo" src="/brand/alfred-logo.png" width="32" height="32" alt="" aria-hidden="true" />
+          Alfred
+        </a>
+        <nav class="m-nav" aria-label="primary">
+          {nav.map((item) => <a href={item.href}>{item.label}</a>)}
+          <ThemeToggle />
+          <GitHubBadge />
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="m-footer">
+      <div class="m-container">
+        <div class="m-footer__grid">
+          <div class="m-footer__col">
+            <a class="m-brand" href="/" style="margin-bottom:14px;">
+              <img class="m-brand__logo" src="/brand/alfred-logo.png" width="32" height="32" alt="" aria-hidden="true" />
+              Alfred
+            </a>
+            <p class="m-mute" style="font-size:14px;margin-top:12px;max-width:280px;">
+              A self-hosted runtime for autonomous engineering agents. Open source, MIT.
+            </p>
+          </div>
+          <div class="m-footer__col">
+            <h4>Product</h4>
+            <ul>
+              <li><a href="/how-it-works/">How it works</a></li>
+              <li><a href="/multi-repo/">Multi-repo</a></li>
+              <li><a href="/monorepo/">Monorepo</a></li>
+              <li><a href="/for-solo-founders/">For solo founders</a></li>
+              <li><a href="/pricing/">Pricing</a></li>
+            </ul>
+          </div>
+          <div class="m-footer__col">
+            <h4>Docs</h4>
+            <ul>
+              <li><a href="/docs/">Overview</a></li>
+              <li><a href="/docs/getting-started/install/">Install</a></li>
+              <li><a href="/docs/concepts/architecture/">Architecture</a></li>
+              <li><a href="/docs/concepts/fleet/">The fleet</a></li>
+              <li><a href="/docs/reference/cli/">Operator CLI</a></li>
+            </ul>
+          </div>
+          <div class="m-footer__col">
+            <h4>Project</h4>
+            <ul>
+              <li><a href="https://github.com/luminik-io/alfred-os" rel="noopener">GitHub</a></li>
+              <li><a href="/docs/about/changelog/">Changelog</a></li>
+              <li><a href="/docs/about/roadmap/">Roadmap</a></li>
+              <li><a href="/docs/about/contributing/">Contributing</a></li>
+              <li><a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE" rel="noopener">MIT license</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <StatusStrip />
+
+        <div class="m-footer__base">
+          <span>© DataRavel Inc. · Alfred is open source, MIT.</span>
+          <span class="m-mono m-mute">alfred.luminik.io</span>
+        </div>
+      </div>
+    </footer>
+
+    <script is:inline>
+      // Reduced-motion guard once, used by all of: reveal, parallax, count-up.
+      (function () {
+        if (typeof window === "undefined") return;
+
+        const reduced =
+          window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        // 1. Scroll-in reveal for .m-reveal elements.
+        if (typeof IntersectionObserver === "undefined" || reduced) {
+          document.querySelectorAll(".m-reveal").forEach((el) => el.classList.add("is-in"));
+        } else {
+          const io = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((e) => {
+                if (e.isIntersecting) {
+                  e.target.classList.add("is-in");
+                  io.unobserve(e.target);
+                }
+              });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
+          );
+          document.querySelectorAll(".m-reveal").forEach((el) => io.observe(el));
+        }
+
+        // 2. Scroll-tied parallax for .m-ambient elements (hero grid drift).
+        //    Updates a single CSS variable --m-parallax with a vertical
+        //    offset proportional to scrollY. Throttled with rAF. Skipped
+        //    under reduced motion.
+        if (!reduced) {
+          let scheduled = false;
+          const root = document.documentElement;
+          const onScroll = () => {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(() => {
+              const y = window.scrollY || 0;
+              // 12% of scrollY, clamped, in negative px (drift upward).
+              const offset = Math.max(-160, -(y * 0.12));
+              root.style.setProperty("--m-parallax", offset.toFixed(1) + "px");
+              scheduled = false;
+            });
+          };
+          window.addEventListener("scroll", onScroll, { passive: true });
+          onScroll();
+        }
+
+        // 3. Theme toggle. data-theme-set buttons (light / dark / auto) flip
+        //    the persisted choice in localStorage, update html[data-theme],
+        //    and update the radio-button aria-pressed state. When auto, we
+        //    also re-listen for OS preference changes.
+        var html = document.documentElement;
+        function syncToggleButtons() {
+          var mode = html.getAttribute("data-theme-mode") || "auto";
+          document.querySelectorAll("[data-theme-set]").forEach(function (b) {
+            b.setAttribute("aria-pressed", b.getAttribute("data-theme-set") === mode ? "true" : "false");
+          });
+        }
+        function applyMode(mode) {
+          var resolved =
+            mode === "auto"
+              ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+              : mode;
+          html.setAttribute("data-theme", resolved);
+          html.setAttribute("data-theme-mode", mode);
+          try { localStorage.setItem("alfred-theme", mode); } catch (e) {}
+          syncToggleButtons();
+        }
+        document.querySelectorAll("[data-theme-set]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            applyMode(btn.getAttribute("data-theme-set") || "auto");
+          });
+        });
+        syncToggleButtons();
+        if (window.matchMedia) {
+          var mq = window.matchMedia("(prefers-color-scheme: light)");
+          var listener = function () {
+            if ((html.getAttribute("data-theme-mode") || "auto") === "auto") {
+              applyMode("auto");
+            }
+          };
+          if (mq.addEventListener) mq.addEventListener("change", listener);
+          else if (mq.addListener) mq.addListener(listener);
+        }
+
+        // 4. Image-zoom: wire data-zoom-open triggers to open their dialog.
+        //    Backdrop click also closes (native dialogs do not do this by
+        //    default). Escape close is native.
+        document.querySelectorAll("[data-zoom-open]").forEach((btn) => {
+          btn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const id = btn.getAttribute("data-zoom-open");
+            const dialog = id ? document.getElementById(id) : null;
+            if (dialog && typeof dialog.showModal === "function") {
+              dialog.showModal();
+            }
+          });
+        });
+        document.querySelectorAll("dialog.zoomable__dialog").forEach((dialog) => {
+          dialog.addEventListener("click", (ev) => {
+            // Backdrop click: the dialog element itself receives the event when
+            // the user clicks the backdrop area outside its content.
+            if (ev.target === dialog) dialog.close();
+          });
+        });
+
+        // 5. Count-up animation: when a [data-countup] element enters the
+        //    viewport, animate from 0 to its data-target over ~900ms with
+        //    an ease-out curve. Then add .is-done so it stays in place.
+        if (typeof IntersectionObserver !== "undefined" && !reduced) {
+          const counters = document.querySelectorAll("[data-countup]");
+          const counterIo = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                const el = entry.target;
+                counterIo.unobserve(el);
+                el.classList.add("is-counting");
+                const target = parseInt(el.getAttribute("data-target") || "0", 10);
+                if (!Number.isFinite(target) || target <= 0) {
+                  el.textContent = String(target);
+                  el.classList.add("is-done");
+                  return;
+                }
+                const duration = 900;
+                const start = performance.now();
+                const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+                const tick = (now) => {
+                  const elapsed = Math.min(1, (now - start) / duration);
+                  const v = Math.round(target * easeOut(elapsed));
+                  el.textContent = String(v);
+                  if (elapsed < 1) {
+                    requestAnimationFrame(tick);
+                  } else {
+                    el.textContent = String(target);
+                    el.classList.add("is-done");
+                  }
+                };
+                requestAnimationFrame(tick);
+              });
+            },
+            { threshold: 0.4 }
+          );
+          counters.forEach((el) => {
+            // Pre-set to 0 so there is no flash of the final value before the
+            // animation starts.
+            const target = parseInt(el.getAttribute("data-target") || "0", 10);
+            if (target > 0) el.textContent = "0";
+            counterIo.observe(el);
+          });
+        } else {
+          document.querySelectorAll("[data-countup]").forEach((el) => {
+            const target = el.getAttribute("data-target") || "";
+            el.textContent = target;
+            el.classList.add("is-done");
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

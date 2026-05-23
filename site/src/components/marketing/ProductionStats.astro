@@ -1,0 +1,39 @@
+---
+/**
+ * ProductionStats.astro
+ *
+ * Anchors the page with one row of real production numbers from Alfred's
+ * own usage at Luminik. Use only verifiable, sourced numbers. Defaults below
+ * are from the 2026-05-20 Alfred shipped-summary Slack post in
+ * /public/proof/slack-shipped-summary.png.
+ */
+
+interface Stat {
+  num: string;
+  label: string;
+  emphasize?: boolean;
+}
+
+interface Props {
+  stats?: Stat[];
+}
+
+const defaultStats: Stat[] = [
+  { num: "153", label: "PRs merged · one day", emphasize: true },
+  { num: "144", label: "Issues closed · one day" },
+  { num: "21", label: "Agents in production" },
+];
+
+const { stats = defaultStats } = Astro.props;
+---
+
+<div class="m-stats m-reveal" role="list" aria-label="Alfred production numbers, May 2026">
+  {stats.map((s) => (
+    <div class="m-stat" role="listitem">
+      <div class="m-stat__num">
+        {s.emphasize ? <span class="m-stat__plus">{s.num}</span> : s.num}
+      </div>
+      <div class="m-stat__lbl">{s.label}</div>
+    </div>
+  ))}
+</div>

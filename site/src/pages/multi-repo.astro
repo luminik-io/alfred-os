@@ -1,0 +1,172 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import CodeBlock from "../components/marketing/CodeBlock.astro";
+import MetricRow from "../components/marketing/MetricRow.astro";
+import SlackProof from "../components/marketing/SlackProof.astro";
+import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
+---
+
+<MarketingLayout
+  title="Multi-repo planning | Alfred"
+  description="Batman drafts a bundle plan across as many repos as you set, files scoped agent:implement issues per repo, and Lucius picks them up in parallel."
+  path="/multi-repo/"
+>
+  <Hero
+    eyebrow="MULTI-REPO PLANNING"
+    headline="Plan once. Ship across every repo."
+    sub="Batman drafts a bundle plan across as many repos as you set, files scoped agent:implement issues per repo, and Lucius picks them up in parallel."
+    headlineSize="lg"
+    primaryCta={{ label: "Read the worked example", href: "/docs/guides/specs-driven-development/" }}
+    secondaryCta={{ label: "Install (30 min)", href: "/docs/getting-started/install/" }}
+  >
+    <div slot="panel" class="panel">
+      <div class="panel__head">
+        <span class="m-eyebrow">BUNDLE STATE</span>
+        <span class="m-mono m-mute">bundle:billing-v2</span>
+      </div>
+      <MetricRow label="repos in plan" value="4" state="live" />
+      <MetricRow label="child issues" value="11" state="live" />
+      <MetricRow label="in flight" value="3" state="warn" />
+      <MetricRow label="PRs open" value="6" state="info" glyph="arrow" />
+      <MetricRow label="done" value="2" state="live" />
+    </div>
+  </Hero>
+
+  <section class="m-section m-section--soft">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE FAN-OUT"
+        title="One parent issue becomes one PR per repo."
+        lede="The diagram below is the actual state Batman keeps. Each child is a separate scoped issue in its own repo, picked up by Lucius on the next interval, and merged independently."
+      />
+      <BatmanFanOut />
+      <SlackProof
+        src="/proof/slack-batman-plan.png"
+        alt="Slack message from the Alfred bot. Batman drafted a plan for issue #504 across backend, frontend, and mobile repos, with a rollout order and a plan preview. The status badge is green. The plan is in draft awaiting approval."
+        tag="batman firing"
+        meta="2026-05-12 11:44 UTC"
+        caption="This is a real Batman plan posted to Slack on 2026-05-12. The rollout was approved a few minutes later. Lucius picked up the backend child first; frontend and mobile followed on the next two intervals."
+      />
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT BATMAN FILES"
+        title="A bundle plan, then scoped child issues."
+        lede="Batman reads one large agent:large-feature issue, drafts the rollout, and stops. You approve the plan. Then it files children."
+      />
+      <div class="example-grid">
+        <div>
+          <h3 class="m-h3" style="margin-bottom:12px;">Bundle plan body</h3>
+          <CodeBlock
+            title="luminik-platform#812 (agent:large-feature)"
+            lines={[
+              "Bundle: billing-v2 rollout",
+              "Repos in scope:",
+              "  - your-backend   (Kotlin, Quarkus)",
+              "  - your-frontend  (React, Vite)",
+              "  - your-mobile    (Expo)",
+              "  - your-data-infra (Python)",
+              "",
+              "Children to file:",
+              "  - backend: introduce BillingV2Service",
+              "  - backend: migrate /api/v1/invoices",
+              "  - frontend: pricing page rewrite",
+              "  - mobile: settings screen v2",
+              "  - data-infra: invoice export job",
+              "",
+              "Halt before file. Awaiting operator approval.",
+            ]}
+          />
+        </div>
+        <div>
+          <h3 class="m-h3" style="margin-bottom:12px;">Child issue body</h3>
+          <CodeBlock
+            title="your-backend#247 (agent:implement)"
+            lines={[
+              "Parent: luminik-platform#812",
+              "Bundle: bundle:billing-v2",
+              "",
+              "Goal: introduce BillingV2Service with a clean",
+              "interface. No callers wired yet.",
+              "",
+              "Constraints:",
+              "  - Kotlin, Quarkus",
+              "  - Existing BillingService stays untouched",
+              "  - Add unit tests for the new interface",
+              "",
+              "Done when:",
+              "  - PR open against main",
+              "  - Tests green",
+              "  - Ras al Ghul approves",
+            ]}
+          />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE BUNDLE STATE MACHINE"
+        title="One label per stage. No database."
+        lede="Same label discipline as a single-repo firing, with an extra label that ties children back to the parent."
+      />
+      <div class="states">
+        <div class="m-card states__row">
+          <code class="m-mono states__tag">agent:large-feature</code>
+          <p>You file this. Batman picks it up, drafts a bundle plan, and posts to Slack for approval.</p>
+        </div>
+        <div class="m-card states__row">
+          <code class="m-mono states__tag">bundle:&lt;slug&gt;</code>
+          <p>Applied to every child issue Batman files. Ties them back to the parent plan.</p>
+        </div>
+        <div class="m-card states__row">
+          <code class="m-mono states__tag">agent:implement</code>
+          <p>Children land with this label. Lucius picks them up in parallel across repos.</p>
+        </div>
+        <div class="m-card states__row">
+          <code class="m-mono states__tag">agent:done</code>
+          <p>Applied per child when the PR merges. The parent closes when every child is done.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="VERIFY THE BUNDLE"
+        title="Dry-run the planner first."
+        lede="Batman will not file child issues without operator approval. Dry-run shows the plan it would file."
+      />
+      <CodeBlock
+        title="terminal"
+        lines={[
+          "$ alfred fire batman --dry-run --issue luminik-platform#812",
+          "ok    preflight passed",
+          "ok    bundle plan drafted (4 repos, 11 children)",
+          "skip  gh issue create (dry-run)",
+          "ok    plan posted to Slack as draft, awaiting approval",
+        ]}
+      />
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .panel { display: flex; flex-direction: column; }
+  .panel__head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 6px; border-bottom: 1px solid var(--alfred-border); }
+  .example-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 980px) { .example-grid { grid-template-columns: 1fr; } }
+  .states { display: flex; flex-direction: column; gap: 14px; }
+  .states__row { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: center; }
+  .states__tag { color: var(--alfred-accent); font-size: 14px; }
+  .states__row p { color: var(--alfred-text); font-size: 15px; line-height: 1.6; }
+  @media (max-width: 720px) { .states__row { grid-template-columns: 1fr; gap: 8px; } }
+</style>

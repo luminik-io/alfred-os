@@ -53,7 +53,17 @@ flowchart LR
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-The loop closes on itself: Drake files work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Batman is opt-in for multi-repo bundle planning. The operator's first required action is usually just labelling issues `agent:implement` and reviewing PRs before merge.
+The loop closes on itself: Drake files work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. The operator's first required action is usually just labelling issues `agent:implement` and reviewing PRs before merge.
+
+## Batman: the multi-repo agent
+
+Batman is the agent that holds a whole feature in its head. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts a rollout plan, posts it to Slack for operator approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
+
+This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
+
+Batman runs every hour by default but is opt-in: a fresh install does not start it. Enable it once you have a recurring multi-repo or monorepo-package feature shape and want a coordination layer above the per-repo agents. The OSS variant always halts before filing children; custom fleets can layer approval logic on top.
+
+See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
 ## The default roster
 

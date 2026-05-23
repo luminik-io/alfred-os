@@ -1,0 +1,63 @@
+---
+/**
+ * MetricRow.astro
+ *
+ * One row of a control-surface metric strip.
+ *   <MetricRow label="agents" value="21" state="live" />
+ *   <MetricRow label="firings" value="18m ago" glyph="arrow" />
+ *
+ * Used inside Hero panel and elsewhere we want a "log line" feel.
+ *
+ * If `countTo` is set and is a positive integer, the value will be
+ * animated up from 0 to countTo on first scroll-in (via JS in
+ * MarketingLayout.astro). The static `value` prop is the fallback for
+ * reduced-motion users and the initial server-rendered text.
+ */
+
+interface Props {
+  label: string;
+  value: string;
+  state?: "live" | "warn" | "idle" | "error" | "info";
+  glyph?: "dot" | "arrow";
+  countTo?: number;
+}
+
+const { label, value, state = "live", glyph = "dot", countTo } = Astro.props;
+const glyphChar = glyph === "arrow" ? "→" : "●";
+---
+
+<div class="metric-row">
+  <span class="metric-row__label m-mono">{label}</span>
+  <span class={`metric-row__glyph m-mono m-dot m-dot--${state}`}>{glyphChar}</span>
+  {countTo && countTo > 0 ? (
+    <span class="metric-row__value m-mono m-count" data-countup data-target={countTo}>{value}</span>
+  ) : (
+    <span class="metric-row__value m-mono">{value}</span>
+  )}
+</div>
+
+<style>
+  .metric-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1.1fr;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--alfred-border);
+  }
+  .metric-row:last-child { border-bottom: none; }
+
+  .metric-row__label {
+    color: var(--alfred-mute);
+    text-transform: lowercase;
+    letter-spacing: 0.04em;
+  }
+  .metric-row__glyph {
+    font-size: 15px;
+  }
+  .metric-row__value {
+    color: var(--alfred-text-bright);
+    text-align: left;
+    font-weight: 500;
+  }
+</style>

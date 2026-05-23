@@ -1,0 +1,216 @@
+---
+/**
+ * FleetStatus.astro
+ *
+ * A render of real `alfred status` terminal output. This is a static
+ * representation taken from the operator's own production fleet, used as
+ * proof on the landing page. The columns and values mirror what the
+ * actual `alfred status` command prints in a terminal: agent name, load
+ * state, engine, last-fired time, fire counts, cost, and current state.
+ *
+ * The table is intentionally dense (small font, mono, terminal aesthetic)
+ * because the goal is to communicate "this is what running Alfred actually
+ * looks like" - not to be a marketing summary.
+ *
+ * Source: live `alfred status` output, captured 2026-05-23 from the
+ * operator's Ghostty terminal. Cost is $0.00 because Alfred uses CLI
+ * subscriptions, not metered API spend.
+ */
+
+type Load = "live" | "paused";
+type State = "ok" | "warn" | "paused" | "info";
+
+interface Row {
+  agent: string;
+  load: Load;
+  engine: string;
+  fired: string;
+  fires: number;
+  ok: number;
+  fail: number;
+  streak: number;
+  turns: number;
+  cost: string;
+  state: State;
+  note?: string;
+}
+
+const rows: Row[] = [
+  { agent: "alfred-nightly",        load: "live",   engine: "-",      fired: "never",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "automerge",             load: "live",   engine: "-",      fired: "3m",      fires: 47, ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "bane",                  load: "live",   engine: "hybrid", fired: "9h37m",   fires: 1,  ok: 1,  fail: 0, streak: 0,  turns: 1,  cost: "$0.00", state: "ok" },
+  { agent: "batman",                load: "live",   engine: "hybrid", fired: "11h14m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "warn", note: "awaiting approval #567, #123 (9h 44m)" },
+  { agent: "brand-mention-scanner", load: "live",   engine: "-",      fired: "56m",     fires: 6,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "cleanup",               load: "live",   engine: "-",      fired: "8h54m",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "code-map-refresh",      load: "live",   engine: "-",      fired: "59m",     fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "content-drift",         load: "live",   engine: "-",      fired: "never",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "damian",                load: "live",   engine: "hybrid", fired: "2h37m",   fires: 1,  ok: 1,  fail: 0, streak: 0,  turns: 1,  cost: "$0.00", state: "ok" },
+  { agent: "drake",                 load: "live",   engine: "hybrid", fired: "17m",     fires: 9,  ok: 9,  fail: 0, streak: 0,  turns: 9,  cost: "$0.00", state: "ok" },
+  { agent: "fleet-doctor",          load: "live",   engine: "-",      fired: "4h25m",   fires: 1,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "huntress",              load: "paused", engine: "-",      fired: "18h26m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "paused", note: "paused since 2026-05-22T15:46:57Z" },
+  { agent: "lucius",                load: "paused", engine: "hybrid", fired: "15h42m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "paused", note: "paused since 2026-05-22T18:23:22Z" },
+  { agent: "morning-brief",         load: "live",   engine: "-",      fired: "4h55m",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "nightwing",             load: "paused", engine: "hybrid", fired: "41m",     fires: 14, ok: 14, fail: 0, streak: 0,  turns: 15, cost: "$0.00", state: "paused", note: "paused since 2026-05-15T11:23:59Z" },
+  { agent: "rasalghul",             load: "live",   engine: "hybrid", fired: "23m",     fires: 23, ok: 0,  fail: 23, streak: 0, turns: 23, cost: "$0.00", state: "ok" },
+  { agent: "robin",                 load: "live",   engine: "hybrid", fired: "56m",     fires: 1,  ok: 1,  fail: 0, streak: 0,  turns: 1,  cost: "$0.00", state: "ok" },
+  { agent: "shipped-summary-daily", load: "live",   engine: "-",      fired: "15h10m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "shipped-summary-weekly",load: "live",   engine: "-",      fired: "15h10m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+];
+
+const loaded = rows.filter((r) => r.load === "live").length;
+const total = rows.length;
+---
+
+<figure class="fleet m-reveal" aria-label="Live alfred status output from a real Alfred fleet">
+  <div class="fleet__head">
+    <span class="m-mono fleet__cmd"><span class="fleet__prompt">$</span> alfred status</span>
+    <span class="m-mono m-mute">{loaded}/{total} loaded &middot; live operator output</span>
+  </div>
+
+  <div class="fleet__body">
+    <div class="fleet__row fleet__row--head" aria-hidden="true">
+      <span>agent</span>
+      <span>load</span>
+      <span>eng</span>
+      <span>fired</span>
+      <span class="num">fires</span>
+      <span class="num">ok</span>
+      <span class="num">fail</span>
+      <span class="num">streak</span>
+      <span class="num">turns</span>
+      <span class="num">cost</span>
+      <span>state</span>
+    </div>
+    <div class="fleet__rule" aria-hidden="true"></div>
+
+    {rows.map((r) => (
+      <div class={`fleet__row fleet__row--state-${r.state}`}>
+        <span class="fleet__agent">{r.agent}</span>
+        <span class="fleet__load">{r.load === "live" ? "●" : "❚❚"}</span>
+        <span class="fleet__eng">{r.engine}</span>
+        <span class="fleet__fired">{r.fired}</span>
+        <span class="num">{r.fires}</span>
+        <span class="num">{r.ok}</span>
+        <span class="num">{r.fail}</span>
+        <span class="num">{r.streak}</span>
+        <span class="num">{r.turns}</span>
+        <span class="num">{r.cost}</span>
+        <span class="fleet__state">
+          <span class={`fleet__dot fleet__dot--${r.state}`}>●</span>
+          <span class="fleet__statetext">{r.note ?? r.state}</span>
+        </span>
+      </div>
+    ))}
+  </div>
+
+  <figcaption class="fleet__cap">
+    Live <code>alfred status</code> output from the operator's own Mac, captured 2026-05-23. Cost is <code>$0.00</code> because Alfred uses your own CLI subscription auth, not metered API spend. The amber row is Batman holding two large bundle plans for approval; the paused rows are agents the operator stopped manually.
+  </figcaption>
+</figure>
+
+<style>
+  .fleet {
+    margin: 32px 0;
+    border: 1px solid var(--alfred-border-strong);
+    background: linear-gradient(180deg, var(--alfred-surface-2) 0%, var(--alfred-surface) 100%);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .fleet__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 18px;
+    background: var(--alfred-surface-2);
+    border-bottom: 1px solid var(--alfred-border);
+    font-size: 13px;
+  }
+  .fleet__cmd { color: var(--alfred-text); }
+  .fleet__prompt { color: var(--alfred-accent); font-weight: 600; margin-right: 6px; }
+  .fleet__body {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    padding: 14px 18px 18px;
+    overflow-x: auto;
+  }
+  /* Fixed-width columns in `ch` so every row aligns the same way every
+     terminal does. Numeric columns right-align so 47 and 0 share a tail. */
+  .fleet__row {
+    display: grid;
+    grid-template-columns:
+      26ch    /* agent name */
+      4ch     /* load dot */
+      8ch     /* engine */
+      9ch     /* fired (e.g. 18h26m) */
+      7ch     /* fires */
+      6ch     /* ok */
+      6ch     /* fail */
+      8ch     /* streak */
+      7ch     /* turns */
+      8ch     /* cost */
+      minmax(14ch, 1fr); /* state, takes remaining */
+    align-items: center;
+    gap: 10px;
+    padding: 2px 0;
+    white-space: nowrap;
+  }
+  .fleet__row--head { color: var(--alfred-mute); padding-bottom: 4px; }
+  .fleet__rule {
+    height: 1px;
+    background: var(--alfred-border);
+    margin: 4px 0 6px;
+  }
+  .fleet__agent { color: var(--alfred-text-bright); }
+  .fleet__load {
+    color: var(--alfred-accent);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    /* Both ● and ❚❚ occupy the same visual slot. */
+    letter-spacing: -0.05em;
+  }
+  .fleet__row--state-paused .fleet__load { color: var(--alfred-mute); }
+  .fleet__row--state-warn .fleet__load { color: var(--alfred-accent); }
+  .fleet__eng { color: var(--alfred-mute); }
+  .fleet__fired { color: var(--alfred-mute); text-align: left; }
+  .num {
+    color: var(--alfred-text);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .fleet__row--head .num { text-align: right; }
+  .fleet__state {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--alfred-text);
+  }
+  .fleet__dot { font-size: 10px; line-height: 1; }
+  .fleet__dot--ok     { color: var(--alfred-accent); }
+  .fleet__dot--warn   { color: var(--alfred-warn); }
+  .fleet__dot--paused { color: var(--alfred-mute); }
+  .fleet__dot--info   { color: var(--alfred-blue); }
+  .fleet__statetext { color: var(--alfred-mute); overflow: hidden; text-overflow: ellipsis; }
+  .fleet__row--state-warn .fleet__statetext { color: var(--alfred-warn); }
+
+  .fleet__cap {
+    padding: 14px 18px 18px;
+    color: var(--alfred-mute);
+    font-size: 13px;
+    line-height: 1.55;
+    border-top: 1px solid var(--alfred-border);
+  }
+  .fleet__cap code {
+    color: var(--alfred-text-bright);
+    background: var(--alfred-black);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  @media (max-width: 980px) {
+    .fleet__body { font-size: 11.5px; }
+    .fleet__row { gap: 10px; }
+  }
+</style>

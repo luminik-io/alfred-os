@@ -1,0 +1,370 @@
+---
+/**
+ * Landing page for alfred.luminik.io.
+ *
+ * Routing decision (binding):
+ * The previous landing was a Starlight `splash` template rendered from
+ * src/content/docs/index.mdx (slug=""), which owned the root URL.
+ *
+ * To swap in a fully bespoke marketing landing without breaking the rest of
+ * the Starlight docs (which still serve /concepts/, /guides/, /reference/,
+ * /about/, /getting-started/), we rename that file to
+ * `src/content/docs/docs.mdx` and update the sidebar entry in
+ * astro.config.mjs (`slug: ""` → `slug: "docs"`).
+ *
+ * Astro then serves `src/pages/index.astro` at `/`, and Starlight serves the
+ * docs hub at `/docs/`. Every other Starlight URL is unchanged.
+ */
+
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import MetricRow from "../components/marketing/MetricRow.astro";
+import JobCard from "../components/marketing/JobCard.astro";
+import CodeBlock from "../components/marketing/CodeBlock.astro";
+import SlackProof from "../components/marketing/SlackProof.astro";
+import FiringLifecycle from "../components/marketing/FiringLifecycle.astro";
+import FleetStatus from "../components/marketing/FleetStatus.astro";
+import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
+import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
+
+type JobState = "live" | "warn" | "idle" | "info";
+
+const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
+  {
+    title: "Drake triages your specs",
+    body: "Reads files under /specs/, asks the gaps you forgot, and files scoped agent:implement issues a coding agent can pick up without a human in the loop.",
+    log: [
+      "[09:02] drake  read /specs/billing-v2.md",
+      "[09:02] drake  filed your-backend#247 agent:implement",
+      "[09:02] drake  filed your-backend#248 agent:implement",
+    ],
+    state: "live",
+  },
+  {
+    title: "Lucius implements scoped issues",
+    body: "Picks up an agent:implement issue, opens a fresh git worktree, runs Claude Code or Codex with full repo context, and opens a pull request with tests.",
+    log: [
+      "[12:04] lucius claimed your-backend#247",
+      "[12:04] lucius worktree ~/.alfred/wt/12042118/",
+      "[12:18] lucius PR #1247 opened",
+    ],
+    state: "live",
+  },
+  {
+    title: "Ras al Ghul reviews open PRs",
+    body: "Reads diffs, runs the project test suite in a separate worktree, files inline review comments, and labels PRs ready or needs-changes.",
+    log: [
+      "[12:18] ras-al reviewed PR#1247",
+      "[12:18] ras-al filed 2 inline nits",
+      "[12:19] ras-al labelled needs-changes",
+    ],
+    state: "warn",
+  },
+  {
+    title: "Batman coordinates across repos",
+    body: "Reads a large agent:large-feature issue, drafts a bundle plan across as many repos as you set, and files child agent:implement issues per repo.",
+    log: [
+      "[10:30] batman drafted bundle:billing-v2",
+      "[10:30] batman filed 4 child issues",
+      "[10:31] batman handed off to lucius",
+    ],
+    state: "info",
+  },
+];
+
+const why = [
+  {
+    title: "Runs while you don't",
+    body: "Schedulers fire every 20 minutes around the clock. Agents pick up scoped work, open pull requests, and post a Slack summary. You read the result in the morning.",
+  },
+  {
+    title: "Self-hosted on your own machine",
+    body: "No cloud agent vendor. No API key billing. Alfred runs on a Mac or Linux box you already own, under launchd or systemd, using the Claude Code and Codex subscriptions you already pay for.",
+  },
+  {
+    title: "Multi-repo and monorepo, both",
+    body: "Batman plans rollouts across nine repos at once. The same runner opens a worktree of a Turborepo, Nx, or Cargo workspace and ships a per-package PR.",
+  },
+  {
+    title: "Open source, MIT",
+    body: "Every line lives at github.com/luminik-io/alfred-os. Fork it, audit it, run it offline. No vendor lock, no telemetry pipe, no managed control plane.",
+  },
+];
+
+---
+
+<MarketingLayout
+  title="Alfred | An autonomous engineering team for one operator"
+  description="Alfred runs a fleet of coding agents on Claude Code and Codex. Plans across your repos or monorepo packages, implements scoped issues, and reports to Slack while you focus on something else."
+  path="/"
+>
+  <Hero
+    eyebrow="AN AUTONOMOUS ENGINEERING TEAM"
+    headline="A team of coding agents that ships while you're away."
+    sub="Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else."
+    primaryCta={{ label: "Install (30 min)", href: "/docs/getting-started/install/" }}
+    secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
+  >
+    <div slot="panel" class="hero-panel">
+      <div class="hero-panel__head">
+        <span class="m-eyebrow">FLEET STATUS</span>
+        <span class="m-mono m-mute">~/.alfred/state</span>
+      </div>
+      <MetricRow label="agents" value="21" countTo={21} state="live" />
+      <MetricRow label="repos" value="9" countTo={9} state="live" />
+      <MetricRow label="firings" value="18m ago" glyph="arrow" state="info" />
+      <MetricRow label="open PRs" value="4" countTo={4} state="warn" />
+      <MetricRow label="errors" value="0" state="live" />
+    </div>
+  </Hero>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT IT DOES FOR YOU"
+        title="Four codenames carry the engineering loop."
+        lede="The starter fleet is intentionally narrow. Add Bane, Nightwing, and the rest when you need them."
+      />
+      <div class="job-grid">
+        {jobs.map((j) => <JobCard title={j.title} body={j.body} log={j.log} state={j.state} />)}
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHY ALFRED IS DIFFERENT"
+        title="A control surface, not another chat window."
+        lede="Most coding agents wait for you to type. Alfred is built for the work that keeps coming after the keyboard closes."
+      />
+      <div class="why-grid">
+        {why.map((w) => (
+          <article class="m-card m-card--hover">
+            <h3 class="m-h3">{w.title}</h3>
+            <p style="margin-top:10px;color:var(--alfred-text);font-size:15px;line-height:1.6;">{w.body}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="SPECS-DRIVEN DEVELOPMENT"
+        title="The spec is the contract. Alfred is the team that delivers it."
+        lede="Write specs once in plain markdown. Drake reads them, asks the gaps you forgot, and files scoped agent:implement issues into the right repos. Lucius picks them up. PRs come back. No prompt copy-paste, no chat-window state."
+      />
+      <SpecsDrivenFlow />
+      <p style="margin-top:24px;">
+        <a class="m-link" href="/docs/guides/specs-driven-development/">Read the specs-driven guide</a>
+      </p>
+    </div>
+  </section>
+
+  <section class="m-section m-section--soft" id="batman">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE BATMAN AGENT"
+        title="One large feature. Many repos. One coordinated plan."
+        lede="Most coding agents work one repo at a time. Batman is the agent that holds a whole feature in its head: backend service, frontend page, mobile screen, infra job. It drafts the rollout, posts the plan to Slack for approval, then files scoped child issues across every affected repo so Lucius can pick them up in parallel."
+      />
+      <BatmanFanOut />
+      <div class="batman-cta">
+        <a class="m-btn" href="/multi-repo/">See multi-repo planning</a>
+        <a class="m-btn m-btn--ghost" href="/docs/guides/multi-repo-worked-example/">Read the worked example</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="HOW IT WORKS"
+        title="One firing, end to end."
+        lede="Scheduler trigger to pull request. Five stages, every time, on a 20 minute cadence."
+      />
+      <FiringLifecycle />
+      <p style="margin-top:32px;">
+        <a class="m-link" href="/how-it-works/">Read the full lifecycle</a>
+      </p>
+    </div>
+  </section>
+
+  <section class="m-section m-section--soft" id="real-production">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="REAL PRODUCTION"
+        title="What lands in Slack while you're away."
+        lede="The two Slack posts below are real captures from the operator's own setup. A Batman bundle plan waiting for approval, and a daily shipped summary. Your numbers will vary with your fleet shape, repo size, and how aggressive you let the agents be."
+      />
+
+      <div class="proof-grid">
+        <SlackProof
+          src="/proof/slack-batman-plan.png"
+          alt="Slack message from the Alfred bot showing Batman drafting a plan for issue #504, with affected repos backend, frontend, mobile, and a rollout order. The plan is in draft, awaiting approval."
+          tag="batman firing"
+          meta="2026-05-12 11:44 UTC"
+          caption="Batman reads one agent:large-feature issue, drafts a rollout plan across backend, frontend, and mobile, and stops before execution. The operator approves in Slack."
+        />
+        <SlackProof
+          src="/proof/slack-shipped-summary.png"
+          alt="Slack message from the Alfred bot summarising one day of shipped work: 153 PRs merged, 44 issues opened, 144 issues closed, +44,351 lines added across your-frontend, your-agents, your-mobile, your-nango, your-backend, and your-data-acquisition."
+          tag="shipped summary"
+          meta="2026-05-20 20:45 CET"
+          caption="One operator's day, six repos. The operator reads this summary in the morning. Every PR has a human review on the way to main; your throughput will depend on your fleet, repo size, and how scoped your issues are."
+        />
+      </div>
+
+      <p style="margin-top:36px;">
+        <a class="m-link" href="/docs/reference/output-samples/">Read every output Alfred produces</a>
+      </p>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE FLEET, RIGHT NOW"
+        title="What `alfred status` actually prints."
+        lede="Live output captured from the operator's production fleet, 2026-05-23. Twenty agents, three paused on purpose, one waiting on a Batman approval, zero dollars in LLM spend."
+      />
+      <FleetStatus />
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="GET STARTED"
+        title="Dry-run first. No spend, no LLM call."
+        lede="Verify the runner lifecycle on your machine before any agent picks up real work."
+      />
+      <CodeBlock
+        title="terminal"
+        lines={[
+          "$ alfred doctor",
+          "ok    gh auth                  luminik-io",
+          "ok    claude code              authed",
+          "ok    codex                    authed (optional)",
+          "ok    launchd                  21 agents loaded",
+          "ok    spend cap                $20/day fleet",
+          "",
+          "$ alfred fire lucius --dry-run",
+          "ok    preflight passed",
+          "ok    worktree would open at ~/.alfred/wt/...",
+          "skip  claude_invoke (dry-run)",
+          "ok    no spend, no LLM call, runner lifecycle verified",
+        ]}
+      />
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container built-by">
+      <SectionHeader
+        eyebrow="BUILT BY LUMINIK"
+        title="Used in production by the team that wrote it."
+        lede="Luminik runs Alfred against nine repos with 21 launchd-managed agents. The engineering loop ships pull requests every day before the operator opens their laptop."
+      />
+      <div class="built-by__panel m-card">
+        <div class="built-by__metrics">
+          <MetricRow label="agents in fleet" value="21" state="live" />
+          <MetricRow label="repos in scope" value="9" state="live" />
+          <MetricRow label="cadence" value="every 20 min" glyph="arrow" state="info" />
+          <MetricRow label="operators" value="1" state="live" />
+        </div>
+        <div class="built-by__cta">
+          <a class="m-btn" href="/docs/getting-started/install/">Install (30 min)</a>
+          <a class="m-btn m-btn--ghost" href="/for-solo-founders/">For solo founders</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .hero-panel { display: flex; flex-direction: column; }
+  .hero-panel__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 12px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--alfred-border);
+  }
+
+  .job-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+  @media (max-width: 720px) { .job-grid { grid-template-columns: 1fr; } }
+
+  .why-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+  @media (max-width: 720px) { .why-grid { grid-template-columns: 1fr; } }
+
+  .steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+  @media (max-width: 980px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .steps { grid-template-columns: 1fr; } }
+
+  .steps__item {
+    background: var(--alfred-surface);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: var(--radius);
+    padding: 22px;
+    position: relative;
+  }
+  .steps__label {
+    color: var(--alfred-accent);
+    letter-spacing: 0.18em;
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  .steps__log {
+    margin: 14px 0 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--alfred-mute);
+    background: var(--alfred-black);
+    border: 1px solid var(--alfred-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .built-by__panel { padding: 28px; }
+  .built-by__metrics { margin-bottom: 24px; }
+  .built-by__cta { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 8px; }
+
+  .proof-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-top: 12px;
+  }
+  @media (max-width: 880px) { .proof-grid { grid-template-columns: 1fr; } }
+
+  .batman-cta {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 28px;
+  }
+</style>

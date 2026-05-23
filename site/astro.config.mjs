@@ -246,6 +246,34 @@ export default defineConfig({
         {
           tag: "meta",
           attrs: {
+            name: "keywords",
+            content:
+              "autonomous coding agents, Claude Code, Codex, Codex CLI, self-hosted ai agents, engineering agents, GitHub agents, multi-repo, monorepo, agent runtime, Alfred, open source, MIT, specs-driven development",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: { name: "author", content: "DataRavel Inc." },
+        },
+        {
+          tag: "meta",
+          attrs: { name: "robots", content: "index, follow" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:site_name", content: "Alfred" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:locale", content: "en_US" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:type", content: "website" },
+        },
+        {
+          tag: "meta",
+          attrs: {
             property: "og:image",
             content: siteAssetUrl("/brand/alfred-og.png"),
           },
@@ -267,8 +295,15 @@ export default defineConfig({
         {
           tag: "meta",
           attrs: {
+            property: "og:image:type",
+            content: "image/png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
             property: "og:image:alt",
-            content: "Alfred, autonomous engineering agents for Claude Code and Codex.",
+            content: "Alfred. An autonomous engineering team for Claude Code and Codex agents.",
           },
         },
         {
@@ -308,13 +343,44 @@ export default defineConfig({
           tag: "script",
           content: MERMAID_ZOOM_SCRIPT,
         },
+        // Google Analytics 4 loader. Set PUBLIC_ALFRED_GA4_ID in the build
+        // environment (e.g. GitHub Actions secret -> astro env var) to enable.
+        // Same pattern is used in src/layouts/MarketingLayout.astro for the
+        // marketing pages, so analytics are uniform across the whole site.
+        ...(process.env.PUBLIC_ALFRED_GA4_ID
+          ? /** @type {const} */ ([
+              {
+                tag: /** @type {"script"} */ ("script"),
+                attrs: {
+                  async: true,
+                  src: `https://www.googletagmanager.com/gtag/js?id=${process.env.PUBLIC_ALFRED_GA4_ID}`,
+                },
+              },
+              {
+                tag: /** @type {"script"} */ ("script"),
+                content: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag("js",new Date());gtag("config","${process.env.PUBLIC_ALFRED_GA4_ID}",{anonymize_ip:true});`,
+              },
+            ])
+          : []),
+        ...(process.env.PUBLIC_ALFRED_GSC_TOKEN
+          ? /** @type {const} */ ([
+              {
+                tag: /** @type {"meta"} */ ("meta"),
+                attrs: {
+                  name: "google-site-verification",
+                  content: process.env.PUBLIC_ALFRED_GSC_TOKEN,
+                },
+              },
+            ])
+          : []),
       ],
       sidebar: [
         {
           label: "Getting started",
           items: [
-            { label: "What is Alfred?", slug: "" },
+            { label: "What is Alfred?", slug: "docs" },
             { label: "Install", slug: "getting-started/install" },
+            { label: "How long does install take", slug: "getting-started/install-time" },
             { label: "AI-assisted install", slug: "getting-started/ai-assisted-install" },
             { label: "Workspace patterns", slug: "getting-started/workspace-patterns" },
             { label: "Your first agent", slug: "getting-started/tutorial" },
@@ -337,6 +403,8 @@ export default defineConfig({
           items: [
             { label: "Claude Code and Codex", slug: "guides/claude-code" },
             { label: "Specs-driven development", slug: "guides/specs-driven-development" },
+            { label: "Alfred on a monorepo", slug: "guides/monorepo" },
+            { label: "Worked example: three repos", slug: "guides/multi-repo-worked-example" },
             { label: "Slack", slug: "guides/slack" },
             { label: "AWS", slug: "guides/aws" },
             { label: "Skills", slug: "guides/skills" },
@@ -352,6 +420,8 @@ export default defineConfig({
             { label: "Operator CLI", slug: "reference/cli" },
             { label: "launchd plist template", slug: "reference/launchd" },
             { label: "Environment variables", slug: "reference/env" },
+            { label: "Output samples", slug: "reference/output-samples" },
+            { label: "Glossary", slug: "reference/glossary" },
           ],
         },
         {

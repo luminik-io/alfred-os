@@ -1,0 +1,95 @@
+---
+/**
+ * StatusStrip.astro
+ *
+ * The brand's signature log strip. Static, representative-but-not-live.
+ * Renders near the footer on every marketing page.
+ *
+ * Voice rule from DESIGN.md: real names (Lucius, Drake, Ras al Ghul,
+ * Batman, Bane, Nightwing, agent-cleanup), real labels.
+ *
+ * Implementation note: each row is a single block. We do NOT use <pre>
+ * with <div> children, because that introduces a forced newline per span
+ * and the strip blows up vertically. Layout is a CSS grid per row with
+ * fixed columns for ts/agent/action/state.
+ */
+
+const rows = [
+  { ts: "12:04:11", agent: "drake",   action: "triaged 4 issues from /specs",                   state: "live" },
+  { ts: "12:04:18", agent: "lucius",  action: "claimed your-backend#247",                     state: "live" },
+  { ts: "12:04:21", agent: "lucius",  action: "worktree opened ~/.alfred/wt/12042118/",         state: "info" },
+  { ts: "12:18:09", agent: "lucius",  action: "PR your-backend#1247 opened",                  state: "live" },
+  { ts: "12:18:33", agent: "ras-al",  action: "reviewed PR#1247, 2 nits",                        state: "warn" },
+];
+---
+
+<section class="status-strip" aria-label="Representative log strip">
+  <div class="status-strip__head">
+    <span class="m-eyebrow">~/.alfred/state/firings.log</span>
+    <span class="m-mono m-mute">tail -f &middot; 5 lines &middot; static sample</span>
+  </div>
+  <div class="status-strip__body">
+    {rows.map((r) => (
+      <div class="status-strip__row">
+        <span class="status-strip__ts">[{r.ts}]</span>
+        <span class="status-strip__agent">{r.agent}</span>
+        <span class="status-strip__action">{r.action}</span>
+        <span class={`status-strip__dot status-strip__dot--${r.state}`} aria-hidden="true">●</span>
+      </div>
+    ))}
+    <span class="m-strip__cursor" aria-hidden="true"></span>
+  </div>
+</section>
+
+<style>
+  .status-strip {
+    background: var(--alfred-surface);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: var(--radius);
+    padding: 14px 20px 12px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+  .status-strip__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--alfred-border);
+    gap: 16px;
+  }
+  .status-strip__body {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--alfred-text);
+  }
+  .status-strip__row {
+    display: grid;
+    grid-template-columns: 90px 78px 1fr 14px;
+    align-items: center;
+    gap: 12px;
+    white-space: nowrap;
+  }
+  .status-strip__ts     { color: var(--alfred-mute); }
+  .status-strip__agent  { color: var(--alfred-accent); font-weight: 600; }
+  .status-strip__action { color: var(--alfred-text); overflow: hidden; text-overflow: ellipsis; }
+  .status-strip__dot {
+    font-size: 11px;
+    line-height: 1;
+    text-align: right;
+  }
+  .status-strip__dot--live  { color: var(--alfred-accent); }
+  .status-strip__dot--warn  { color: var(--alfred-warn); }
+  .status-strip__dot--error { color: var(--alfred-error); }
+  .status-strip__dot--info  { color: var(--alfred-blue); }
+  .status-strip__dot--idle  { color: var(--alfred-mute); }
+
+  @media (max-width: 720px) {
+    .status-strip__row {
+      grid-template-columns: 76px 70px 1fr 12px;
+      font-size: 12px;
+    }
+  }
+</style>

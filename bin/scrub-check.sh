@@ -28,26 +28,74 @@ SECRET_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|.*\.
 SKIP_PATH_RE='^(\./)?(\.git/|site/node_modules/)'
 
 patterns=(
+  # Operator home-directory paths (private workspace layout).
   "/Users/[A-Za-z0-9._-]+/Claude_Workspace"
   "/Users/[A-Za-z0-9._-]+/\\.alfred"
   "/Users/[A-Za-z0-9._-]+/\\.hermes"
   "/home/[A-Za-z0-9._-]+/Claude_Workspace"
+
+  # Luminik internal product / org references. alfred-os legitimately ships
+  # from luminik-io, but other product repo names are private. The "alfred"
+  # bareword catches the predecessor private repo; the long alternation
+  # catches every named Luminik product repo.
   "luminik-internal"
+  "luminik-orchestrator"
   "luminik-io/alfred([^A-Za-z0-9_-]|$)"
+  "luminik-io/luminik-(backend|frontend|mobile|nango|agents|data-acquisition|data-infra|specs|site|design-system)"
+  "luminik-(backend|frontend|mobile|nango|agents|data-acquisition|data-infra)([^A-Za-z0-9_-]|$)"
   "[A-Za-z0-9._%+-]+@luminik\\.io"
+  "[A-Za-z0-9._%+-]+@dataravel\\.com"
+
+  # Luminik staging / production hostnames and AWS account ID.
+  "app-staging\\.luminik\\.io"
+  "(^|[^A-Za-z0-9])241533131716([^A-Za-z0-9]|$)"
+
+  # Operator-private Slack channel and codename prefixes.
+  "#alfred-fleet"
+  "#luminik\\."
+  "luminik\\.eng\\."
+
+  # Predecessor / reference fleet references.
   "private predecessor"
   "predecessor fleet"
   "reference fleet"
+
+  # Private env var aliases used internally.
+  "LUMINIK_WORKSPACE"
+  "LUMINIK_FOUNDER_SLACK"
+  "OPERATOR_REDDIT_HANDLE"
+
+  # Internal-only AWS profile naming (the literal value, not the env name).
+  "AWS_PROFILE_FOR_HERMES=\"hermes-alfred"
+
+  # Internal pipelines / surfaces.
   "slack/(staging|prod|production)/"
   "e2e/(staging|prod|production)/"
 )
 
 secret_patterns=(
+  # Slack tokens / webhooks.
   "https://hooks\\.slack\\.com/services/[A-Z0-9]{8,}/[A-Z0-9]{8,}/[A-Za-z0-9]{20,}"
   "xox[baprs]-[A-Za-z0-9-]{20,}"
   "xapp-[A-Za-z0-9-]{20,}"
+
+  # AWS access keys.
   "AKIA[0-9A-Z]{16}"
   "ASIA[0-9A-Z]{16}"
+
+  # GitHub personal / app / OAuth tokens.
+  "ghp_[A-Za-z0-9]{36,}"
+  "github_pat_[A-Za-z0-9_]{82,}"
+  "gho_[A-Za-z0-9]{36,}"
+  "ghu_[A-Za-z0-9]{36,}"
+  "ghs_[A-Za-z0-9]{36,}"
+
+  # OpenAI / Anthropic API keys.
+  "sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}"
+  "sk-ant-api03-[A-Za-z0-9_-]{40,}"
+
+  # Generic private keys.
+  "-----BEGIN (OPENSSH|RSA|EC|DSA|PGP) PRIVATE KEY-----"
 )
 
 candidate_files() {

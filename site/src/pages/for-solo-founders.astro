@@ -1,0 +1,114 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import MetricRow from "../components/marketing/MetricRow.astro";
+import JobCard from "../components/marketing/JobCard.astro";
+---
+
+<MarketingLayout
+  title="An engineering team for one operator | Alfred"
+  description="Alfred runs on a Mac or Linux box you already own, plugs into your Claude Code and Codex CLI auth, and ships pull requests while you focus on the parts of your product that are still you."
+  path="/for-solo-founders/"
+>
+  <Hero
+    eyebrow="FOR SOLO FOUNDERS AND SMALL TEAMS"
+    headline="An engineering team for one operator."
+    sub="You set up Alfred on a Mac or Linux box you already own, plug in the Claude Code and Codex CLI auth you already pay for, and Alfred ships PRs while you focus on the parts of your product that are still you."
+    headlineSize="lg"
+    primaryCta={{ label: "Install (30 min)", href: "/docs/getting-started/install/" }}
+    secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
+  >
+    <div slot="panel" class="panel">
+      <div class="panel__head">
+        <span class="m-eyebrow">SOLO FLEET, REPRESENTATIVE</span>
+        <span class="m-mono m-mute">~/.alfred/state</span>
+      </div>
+      <MetricRow label="operator" value="1" state="live" />
+      <MetricRow label="machine" value="Mac mini M2" state="live" />
+      <MetricRow label="agents" value="21" state="live" />
+      <MetricRow label="spend cap" value="$20 / day" glyph="arrow" state="info" />
+      <MetricRow label="errors" value="0" state="live" />
+    </div>
+  </Hero>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE AUTONOMY PROMISE"
+        title="Three windows you do not have to be at the keyboard."
+        lede="Alfred fills the hours the rest of your week cannot. None of these require a long-running cloud agent or a managed control plane."
+      />
+      <div class="windows">
+        <JobCard
+          title="During your sleep"
+          body="A launchd timer fires every 20 minutes overnight. Lucius picks up the agent:implement queue Drake filed during the day. You wake up to opened pull requests."
+          log={[
+            "[02:14] lucius PR #1247 opened",
+            "[03:42] lucius PR #1248 opened",
+            "[05:11] ras-al reviewed PR#1247",
+          ]}
+          state="live"
+        />
+        <JobCard
+          title="During meetings"
+          body="You step into a call. Alfred keeps firing. A Slack summary tells you what opened and what needs a glance when you come back."
+          log={[
+            "[14:00] meeting block started",
+            "[14:20] lucius worktree opened",
+            "[14:35] PR #1252 opened, severity=info",
+          ]}
+          state="info"
+        />
+        <JobCard
+          title="During deep work"
+          body="You are heads-down on a feature only you can write. Drake reads /specs, files the next three issues, and Lucius starts before you look up."
+          log={[
+            "[10:02] drake triaged /specs/payouts.md",
+            "[10:02] drake filed 3 agent:implement issues",
+            "[10:24] lucius claimed #312",
+          ]}
+          state="warn"
+        />
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="HONEST BOUNDARIES"
+        title="Where Alfred stops and you decide."
+        lede="Alfred ships pull requests. It does not merge them. The human review stage is a feature."
+      />
+      <div class="boundaries">
+        <article class="m-card">
+          <h3 class="m-h3">Slack approval gates</h3>
+          <p>Batman bundle plans halt before file. Any agent with destructive intent posts a draft to Slack and waits for you to react.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Spend caps are hard</h3>
+          <p>Per-day fleet cap. Per-agent cap. Provider-side rate-limit block on top. The runner halts cleanly when any cap trips.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Human review at the PR stage</h3>
+          <p>Ras al Ghul comments and labels. The merge button stays under your finger. No agent has merge rights by default.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">No production access</h3>
+          <p>Alfred runs on your laptop or a dedicated box. It does not hold your prod database password or your billing keys.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .panel { display: flex; flex-direction: column; }
+  .panel__head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 6px; border-bottom: 1px solid var(--alfred-border); }
+  .windows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 980px) { .windows { grid-template-columns: 1fr; } }
+  .boundaries { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  @media (max-width: 720px) { .boundaries { grid-template-columns: 1fr; } }
+  .boundaries p { margin-top: 10px; color: var(--alfred-text); font-size: 15px; line-height: 1.6; }
+</style>

@@ -45,7 +45,7 @@ ALFRED_HOME="$HOME/.alfred"
 WORKSPACE_ROOT="$HOME/code"
 GH_ORG="your-github-org"
 ACP_ARGS="--acp --stdio"
-AWS_PROFILE_FOR_HERMES="hermes-alfred"
+AWS_PROFILE_FOR_HERMES="your-aws-profile"
 ```
 
 Prefer AWS profiles over direct `AWS_ACCESS_KEY_ID` and

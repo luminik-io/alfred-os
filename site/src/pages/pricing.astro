@@ -1,0 +1,115 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import MetricRow from "../components/marketing/MetricRow.astro";
+---
+
+<MarketingLayout
+  title="Pricing | Alfred is free, MIT"
+  description="MIT license. No vendor account. Alfred uses the Claude Code and Codex CLI subscriptions you already pay for."
+  path="/pricing/"
+>
+  <Hero
+    eyebrow="PRICING"
+    headline="Alfred is free."
+    sub="MIT license. No vendor account. Alfred uses the Claude Code and Codex CLI subscriptions you already pay for."
+    headlineSize="lg"
+    primaryCta={{ label: "Install (30 min)", href: "/docs/getting-started/install/" }}
+    secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
+  >
+    <div slot="panel" class="panel">
+      <div class="panel__head">
+        <span class="m-eyebrow">COST SHEET</span>
+        <span class="m-mono m-mute">representative</span>
+      </div>
+      <MetricRow label="alfred license" value="$0 / MIT" state="live" />
+      <MetricRow label="alfred vendor fee" value="$0" state="live" />
+      <MetricRow label="claude code (yours)" value="from $20 / mo" glyph="arrow" state="info" />
+      <MetricRow label="codex (optional)" value="from $20 / mo" glyph="arrow" state="info" />
+      <MetricRow label="control plane host" value="$0" state="live" />
+    </div>
+  </Hero>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT YOU PAY"
+        title="The CLIs you already pay for."
+        lede="Alfred drives Claude Code and Codex through their official CLIs. Your subscription, your auth, your spend cap."
+      />
+      <div class="cards">
+        <article class="m-card">
+          <h3 class="m-h3">Claude Code subscription</h3>
+          <p>Anthropic's CLI. Alfred shells out to claude -p with the scoped issue body. Bring your own plan; Pro and Max both work.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Codex CLI (optional)</h3>
+          <p>OpenAI's coding CLI. Use it for hybrid routing: Claude for plans, Codex for implementation, or split builders and reviewers.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT YOU DO NOT PAY"
+        title="No vendor account."
+        lede="Three lines that almost always show up on a coding-agent product. None of them apply here."
+      />
+      <div class="cards">
+        <article class="m-card">
+          <h3 class="m-h3">No LLM API key bill</h3>
+          <p>Alfred does not call the Anthropic or OpenAI API directly. There is no per-token line item under an Alfred account.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">No Alfred SaaS fee</h3>
+          <p>There is no Alfred dashboard you log into. There is no usage tier, no seat count, no contract.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">No managed control plane</h3>
+          <p>There is no cloud agent gateway. The runner lives on your machine. Your worktrees never leave your disk.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT IT COSTS TO RUN"
+        title="Hardware you probably already own."
+        lede="Alfred is happy on a Mac mini, an old MacBook plugged into a dock, or a small Linux box. None of these are required to be new."
+      />
+      <div class="cards">
+        <article class="m-card">
+          <h3 class="m-h3">A Mac or Linux box</h3>
+          <p>macOS uses launchd. Linux uses systemd --user. Either way, the host has to stay awake during the cron windows you set.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Slack (optional)</h3>
+          <p>One incoming webhook for the Slack channel where Alfred posts firing reports. Slack's free tier is fine.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">AWS for secrets (optional)</h3>
+          <p>If you want IAM-scoped secrets, Alfred reads from AWS Secrets Manager. If you don't, plain .env on disk works.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container" style="text-align:center;">
+      <a class="m-btn" href="/install/" style="font-size:16px;padding:16px 28px;">Install Alfred</a>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .panel { display: flex; flex-direction: column; }
+  .panel__head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 6px; border-bottom: 1px solid var(--alfred-border); }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 980px) { .cards { grid-template-columns: 1fr; } }
+  .cards p { margin-top: 10px; color: var(--alfred-text); font-size: 15px; line-height: 1.6; }
+</style>

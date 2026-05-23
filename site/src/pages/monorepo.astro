@@ -1,0 +1,175 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import CodeBlock from "../components/marketing/CodeBlock.astro";
+
+const layouts = [
+  {
+    title: "Nx + pnpm",
+    note: "Each agent:implement issue targets one package. Lucius runs pnpm --filter @org/api test.",
+    tree: [
+      "monorepo/",
+      "├── apps/",
+      "│   ├── api/",
+      "│   ├── web/",
+      "│   └── docs/",
+      "├── packages/",
+      "│   ├── ui/",
+      "│   ├── auth/",
+      "│   └── db/",
+      "├── nx.json",
+      "├── pnpm-workspace.yaml",
+      "└── package.json",
+    ],
+  },
+  {
+    title: "Turborepo",
+    note: "Bane runs the affected pipeline per package. turbo run test --filter=...HEAD~1 is the test gate.",
+    tree: [
+      "monorepo/",
+      "├── apps/",
+      "│   ├── marketing/",
+      "│   └── dashboard/",
+      "├── packages/",
+      "│   ├── design-system/",
+      "│   ├── eslint-config/",
+      "│   └── tsconfig/",
+      "├── turbo.json",
+      "└── pnpm-workspace.yaml",
+    ],
+  },
+  {
+    title: "Cargo workspaces",
+    note: "cargo test -p service-auth scopes the run. Lucius opens the worktree at the workspace root.",
+    tree: [
+      "workspace/",
+      "├── crates/",
+      "│   ├── service-auth/",
+      "│   ├── service-billing/",
+      "│   └── shared-types/",
+      "├── Cargo.toml",
+      "└── Cargo.lock",
+    ],
+  },
+];
+---
+
+<MarketingLayout
+  title="Monorepo support | Alfred"
+  description="Drake files issues that target one package, Lucius opens a worktree of the whole monorepo, and Bane runs per-package tests."
+  path="/monorepo/"
+>
+  <Hero
+    eyebrow="MONOREPO"
+    headline="Yes, Alfred works on a monorepo."
+    sub="Drake files issues that target one package, Lucius opens a worktree of the whole monorepo, and Bane runs per-package tests."
+    headlineSize="lg"
+    primaryCta={{ label: "Read the worked example", href: "/docs/getting-started/workspace-patterns/" }}
+    secondaryCta={{ label: "Install (30 min)", href: "/docs/getting-started/install/" }}
+  />
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THREE LAYOUTS, SAME RUNNER"
+        title="The worktree is the monorepo."
+        lede="Each firing opens a fresh worktree of the entire repo. Per-package scoping happens in the issue body and the test command."
+      />
+      <div class="layouts">
+        {layouts.map((l) => (
+          <article class="m-card m-card--hover">
+            <h3 class="m-h3">{l.title}</h3>
+            <p class="layouts__note">{l.note}</p>
+            <pre class="layouts__tree">{l.tree.join("\n")}</pre>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="HONEST TRADEOFFS"
+        title="What works, what to watch."
+        lede="Monorepos make some things easier (one repo, one worktree) and some things harder (test scope, lockfile churn)."
+      />
+      <div class="tradeoffs">
+        <article class="m-card">
+          <h3 class="m-h3">Works well</h3>
+          <ul class="tradeoffs__list">
+            <li>Per-package issues with a clear "target package" line.</li>
+            <li>Bane runs the affected test command, not the full pipeline.</li>
+            <li>One repo means Batman bundle plans collapse to one repo.</li>
+            <li>Spend stays predictable when tests are scoped.</li>
+          </ul>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Watch out for</h3>
+          <ul class="tradeoffs__list">
+            <li>Lockfile churn across packages. Cap concurrent in-flight to 2 or 3.</li>
+            <li>Cross-package refactors. File them as agent:large-feature so Batman plans, not Lucius.</li>
+            <li>Slow root test commands. Set a per-package test gate in the issue body.</li>
+            <li>Shared design-system edits land everywhere. Review carefully.</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="ISSUE TEMPLATE"
+        title="One agent:implement issue, one package."
+      />
+      <CodeBlock
+        title="monorepo#412 (agent:implement)"
+        lines={[
+          "Target package: packages/auth",
+          "",
+          "Goal: rotate the session cookie name to alfred_session.",
+          "Keep backward compatibility for one release.",
+          "",
+          "Test gate:",
+          "  pnpm --filter @org/auth test",
+          "",
+          "Done when:",
+          "  PR open, scoped tests green, no other package touched.",
+        ]}
+      />
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .layouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 980px) { .layouts { grid-template-columns: 1fr; } }
+  .layouts__note { color: var(--alfred-text); font-size: 14px; line-height: 1.55; margin: 10px 0 14px; }
+  .layouts__tree {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--alfred-text);
+    background: var(--alfred-black);
+    border: 1px solid var(--alfred-border);
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .tradeoffs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px) { .tradeoffs { grid-template-columns: 1fr; } }
+  .tradeoffs__list { list-style: none; padding: 0; margin: 10px 0 0; display: flex; flex-direction: column; gap: 10px; }
+  .tradeoffs__list li { color: var(--alfred-text); font-size: 15px; line-height: 1.55; padding-left: 18px; position: relative; }
+  .tradeoffs__list li::before {
+    content: "●";
+    position: absolute;
+    left: 0;
+    color: var(--alfred-accent);
+    font-size: 10px;
+    top: 6px;
+  }
+</style>

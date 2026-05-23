@@ -1,0 +1,131 @@
+---
+/**
+ * SpecsDrivenFlow.astro
+ *
+ * Inline SVG illustration: a spec file in /specs/ becomes scoped
+ * agent:implement issues, then PRs. Mirrors the Operations Room aesthetic
+ * (themed cards, log lines, soft accent pulse). Used on the landing page
+ * specs-driven section and on /docs/guides/specs-driven-development/.
+ *
+ * No JS. Pure SVG + CSS animation. Reduced-motion safe.
+ */
+---
+
+<figure class="m-spec m-reveal" aria-label="One spec turns into many scoped issues and PRs">
+  <div class="m-spec__head">
+    <span class="m-mono m-spec__tag">SPECS-DRIVEN FLOW</span>
+    <span class="m-mono m-spec__meta">/specs &nbsp;→&nbsp; drake &nbsp;→&nbsp; agent:implement &nbsp;→&nbsp; PR</span>
+  </div>
+
+  <svg viewBox="0 0 1180 380" role="img" aria-hidden="false" class="m-spec__svg" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="specCard" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"  stop-color="#161D2A" />
+        <stop offset="100%" stop-color="#11161F" />
+      </linearGradient>
+      <linearGradient id="specLine" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%"   stop-color="#00E5C7" stop-opacity="0.0" />
+        <stop offset="50%"  stop-color="#00E5C7" stop-opacity="0.9" />
+        <stop offset="100%" stop-color="#00E5C7" stop-opacity="0.0" />
+      </linearGradient>
+      <filter id="specShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45" />
+      </filter>
+    </defs>
+
+    <!-- Spec file card -->
+    <g transform="translate(40 70)" filter="url(#specShadow)">
+      <rect width="280" height="240" rx="8" ry="8" fill="url(#specCard)" stroke="#2A3548" />
+      <text x="22" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#F4B43E" letter-spacing="2">/specs/billing-v2.md</text>
+      <text x="22" y="64" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="700" fill="#F2F6FF">## What</text>
+      <text x="22" y="84" font-family="JetBrains Mono, monospace" font-size="12" fill="#C5D0E0">Org-scoped billing v2.</text>
+      <text x="22" y="120" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="700" fill="#F2F6FF">## Acceptance</text>
+      <text x="22" y="140" font-family="JetBrains Mono, monospace" font-size="12" fill="#C5D0E0">- /api/v1/invoices by org</text>
+      <text x="22" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#C5D0E0">- Pricing page rewrite</text>
+      <text x="22" y="176" font-family="JetBrains Mono, monospace" font-size="12" fill="#C5D0E0">- Mobile settings v2</text>
+      <text x="22" y="210" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F">human-authored</text>
+    </g>
+
+    <!-- Drake step -->
+    <g transform="translate(440 145)" filter="url(#specShadow)">
+      <rect width="180" height="90" rx="8" ry="8" fill="url(#specCard)" stroke="#2A3548" />
+      <text x="20" y="32" font-family="JetBrains Mono, monospace" font-size="11" fill="#00E5C7" letter-spacing="2">DRAKE READS</text>
+      <text x="20" y="58" font-family="Space Grotesk, sans-serif" font-size="15" font-weight="700" fill="#F2F6FF">files scoped issues</text>
+      <text x="20" y="78" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F">every 20 min</text>
+    </g>
+
+    <!-- 3 scoped child issues -->
+    <g transform="translate(720 60)" filter="url(#specShadow)">
+      <rect width="420" height="78" rx="8" ry="8" fill="url(#specCard)" stroke="#2A3548" />
+      <text x="20" y="30" font-family="JetBrains Mono, monospace" font-size="11" fill="#00E5C7" letter-spacing="2">agent:implement · backend</text>
+      <text x="20" y="54" font-family="Space Grotesk, sans-serif" font-size="14" fill="#F2F6FF">Introduce BillingV2Service</text>
+      <text x="20" y="70" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F">your-backend#247</text>
+      <circle cx="400" cy="58" r="4" fill="#00E5C7" />
+    </g>
+    <g transform="translate(720 160)" filter="url(#specShadow)">
+      <rect width="420" height="78" rx="8" ry="8" fill="url(#specCard)" stroke="#2A3548" />
+      <text x="20" y="30" font-family="JetBrains Mono, monospace" font-size="11" fill="#00E5C7" letter-spacing="2">agent:implement · frontend</text>
+      <text x="20" y="54" font-family="Space Grotesk, sans-serif" font-size="14" fill="#F2F6FF">Pricing page rewrite</text>
+      <text x="20" y="70" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F">your-frontend#572</text>
+      <circle cx="400" cy="58" r="4" fill="#00E5C7" />
+    </g>
+    <g transform="translate(720 260)" filter="url(#specShadow)">
+      <rect width="420" height="78" rx="8" ry="8" fill="url(#specCard)" stroke="#2A3548" />
+      <text x="20" y="30" font-family="JetBrains Mono, monospace" font-size="11" fill="#F4B43E" letter-spacing="2">agent:implement · mobile</text>
+      <text x="20" y="54" font-family="Space Grotesk, sans-serif" font-size="14" fill="#F2F6FF">Settings screen v2</text>
+      <text x="20" y="70" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F">your-mobile#188 · queued</text>
+      <circle cx="400" cy="58" r="4" fill="#F4B43E" />
+    </g>
+
+    <!-- connectors with pulse -->
+    <line x1="320" y1="190" x2="440" y2="190" stroke="#2A3548" stroke-width="2" />
+    <line x1="320" y1="190" x2="440" y2="190" stroke="url(#specLine)" stroke-width="3" class="m-spec__pulse" />
+
+    <line x1="620" y1="190" x2="720" y2="99"  stroke="#2A3548" stroke-width="2" />
+    <line x1="620" y1="190" x2="720" y2="199" stroke="#2A3548" stroke-width="2" />
+    <line x1="620" y1="190" x2="720" y2="299" stroke="#2A3548" stroke-width="2" />
+
+    <line x1="620" y1="190" x2="720" y2="99"  stroke="url(#specLine)" stroke-width="3" class="m-spec__pulse m-spec__pulse--a" />
+    <line x1="620" y1="190" x2="720" y2="199" stroke="url(#specLine)" stroke-width="3" class="m-spec__pulse m-spec__pulse--b" />
+    <line x1="620" y1="190" x2="720" y2="299" stroke="url(#specLine)" stroke-width="3" class="m-spec__pulse m-spec__pulse--c" />
+  </svg>
+</figure>
+
+<style>
+  .m-spec {
+    margin: 28px 0;
+    padding: 22px;
+    border: 1px solid var(--alfred-border-strong);
+    background: linear-gradient(180deg, var(--alfred-surface-2) 0%, var(--alfred-surface) 100%);
+    border-radius: var(--radius);
+  }
+  .m-spec__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    color: var(--alfred-mute);
+    font-size: 13px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .m-spec__tag {
+    color: var(--alfred-accent);
+    letter-spacing: 0.16em;
+  }
+  .m-spec__svg { width: 100%; height: auto; display: block; }
+  .m-spec__pulse {
+    stroke-dasharray: 30 220;
+    animation: m-spec-pulse 3s linear infinite;
+  }
+  .m-spec__pulse--a { animation-delay: 0s; }
+  .m-spec__pulse--b { animation-delay: 0.4s; }
+  .m-spec__pulse--c { animation-delay: 0.8s; }
+  @keyframes m-spec-pulse {
+    from { stroke-dashoffset: 220; }
+    to   { stroke-dashoffset: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .m-spec__pulse { animation: none; opacity: 0.5; }
+  }
+</style>

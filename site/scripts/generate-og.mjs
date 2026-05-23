@@ -10,13 +10,26 @@ const execFile = promisify(execFileCallback);
 const root = resolve(import.meta.dirname, "..");
 const logoPath = resolve(root, "src/assets/alfred-logo-transparent.png");
 const outPath = resolve(root, "public/brand/alfred-og.png");
-const fontDir = resolve(root, "node_modules/@fontsource/quicksand/files");
-const fontWeights = [400, 500, 600, 700];
 
-async function fontFace(weight) {
-  const fontPath = resolve(fontDir, `quicksand-latin-${weight}-normal.woff2`);
-  const font = await readFile(fontPath);
-  return `@font-face{font-family:Quicksand;font-style:normal;font-weight:${weight};font-display:block;src:url(data:font/woff2;base64,${font.toString("base64")}) format("woff2");}`;
+// OG redesign uses Space Grotesk (display) + JetBrains Mono (status lines)
+// instead of Quicksand alone, to match the marketing site design system
+// (see site/DESIGN.md). Fonts are inlined as base64 woff2 so the Chrome
+// headless render does not depend on network.
+const grotesk700 = resolve(
+  root,
+  "node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2",
+);
+const mono500 = resolve(
+  root,
+  "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+);
+
+async function fontFace(family, weight, file, opts = {}) {
+  const buf = await readFile(file);
+  const variation = opts.variation ? `font-stretch:75% 125%;` : "";
+  return `@font-face{font-family:${family};font-style:normal;font-weight:${weight};${variation}font-display:block;src:url(data:font/woff2;base64,${buf.toString(
+    "base64",
+  )}) format("woff2");}`;
 }
 
 async function imageData(path) {
@@ -40,7 +53,7 @@ async function findChrome() {
       await execFile(candidate, ["--version"]);
       return candidate;
     } catch {
-      // Keep looking.
+      // keep looking
     }
   }
 
@@ -60,9 +73,9 @@ function html({ fontCss, logoData }) {
       height: 630px;
       margin: 0;
       overflow: hidden;
-      background: #050913;
-      color: #f8fbff;
-      font-family: Quicksand, Arial, sans-serif;
+      background: #0A0E14;
+      color: #C5D0E0;
+      font-family: "Space Grotesk Var", "Inter", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
     }
@@ -70,10 +83,23 @@ function html({ fontCss, logoData }) {
       position: relative;
       width: 1200px;
       height: 630px;
-      padding: 72px 88px 64px;
+      padding: 64px 72px 56px;
       background:
-        radial-gradient(ellipse 720px 540px at 12% 8%, rgba(58, 124, 255, 0.30), transparent 65%),
-        linear-gradient(180deg, #060d1c 0%, #03070f 100%);
+        radial-gradient(ellipse 760px 460px at 10% 0%, rgba(0, 229, 199, 0.16), transparent 62%),
+        radial-gradient(ellipse 700px 460px at 90% 100%, rgba(87, 137, 255, 0.10), transparent 62%),
+        linear-gradient(160deg, #0c1119 0%, #0A0E14 50%, #060a10 100%);
+    }
+    .canvas::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.30;
+      background-image:
+        linear-gradient(rgba(0, 229, 199, 0.10) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 229, 199, 0.10) 1px, transparent 1px);
+      background-size: 80px 80px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.0) 60%);
+      -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.0) 60%);
     }
     .content {
       position: relative;
@@ -90,76 +116,89 @@ function html({ fontCss, logoData }) {
     .brand {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
     }
     .brand img {
-      width: 44px;
-      height: 44px;
+      width: 42px;
+      height: 42px;
       object-fit: contain;
     }
     .brand .wordmark {
-      font-size: 28px;
+      font-size: 30px;
       font-weight: 700;
-      letter-spacing: 0;
+      letter-spacing: -0.01em;
       color: #F2F6FF;
     }
     .meta {
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: 0.4px;
-      color: #6E84B0;
-      text-transform: lowercase;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      color: #6B7A8F;
+      text-transform: uppercase;
     }
+    .meta .accent { color: #00E5C7; }
     .hero {
       flex: 1;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      margin-top: -16px;
+      margin-top: -18px;
+      max-width: 940px;
+    }
+    .eyebrow {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.20em;
+      color: #00E5C7;
+      text-transform: uppercase;
+      margin-bottom: 16px;
     }
     h1 {
       margin: 0;
-      max-width: 1020px;
-      font-size: 92px;
-      line-height: 1.02;
+      font-size: 76px;
+      line-height: 1.04;
       font-weight: 700;
-      letter-spacing: -1.5px;
+      letter-spacing: -2px;
       color: #FFFFFF;
     }
-    h1 .turn {
-      color: #93B6FF;
+    h1 .away {
+      color: #00E5C7;
     }
     .sub {
-      margin: 32px 0 0;
-      max-width: 880px;
+      margin: 26px 0 0;
+      max-width: 840px;
       color: #B6C7EE;
-      font-size: 26px;
+      font-size: 22px;
       line-height: 1.4;
       font-weight: 500;
       letter-spacing: -0.1px;
     }
-    .sub .em {
-      color: #D4E1FF;
-      font-weight: 700;
+    .stripe {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding-top: 22px;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 13px;
+      color: #6B7A8F;
+      letter-spacing: 0.04em;
     }
+    .stripe .dot { color: #00E5C7; }
+    .stripe .dot.warn { color: #F4B43E; }
+    .stripe .sep { color: #2A3548; }
     .footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      color: #6E84B0;
-      font-size: 17px;
-      font-weight: 600;
-      letter-spacing: 0.3px;
+      gap: 24px;
+      color: #6B7A8F;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 14px;
+      letter-spacing: 0.04em;
     }
-    .footer .url {
-      color: #B6C7EE;
-    }
-    .rule {
-      flex: 1;
-      height: 1px;
-      margin: 0 22px;
-      background: linear-gradient(90deg, rgba(110, 132, 176, 0) 0%, rgba(110, 132, 176, 0.45) 50%, rgba(110, 132, 176, 0) 100%);
-    }
+    .footer .url { color: #B6C7EE; }
   </style>
 </head>
 <body>
@@ -170,15 +209,24 @@ function html({ fontCss, logoData }) {
           <img src="${logoData}" alt="" />
           <span class="wordmark">Alfred</span>
         </div>
-        <div class="meta">open source · mit license</div>
+        <div class="meta"><span class="accent">●</span> live · open source · mit</div>
       </div>
       <div class="hero">
-        <h1>GitHub issues, in.<br /><span class="turn">Pull requests, out.</span></h1>
-        <p class="sub">A self-hosted runtime for <span class="em">autonomous</span> Claude Code and Codex agents that turn scoped issues into reviewed pull requests, on the CLI subscriptions you already pay for.</p>
+        <div class="eyebrow">an autonomous engineering team</div>
+        <h1>A team of coding agents.<br />Ships <span class="away">while you're away.</span></h1>
+        <p class="sub">Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else.</p>
+        <div class="stripe">
+          <span><span class="dot">●</span> self-hosted</span>
+          <span class="sep">·</span>
+          <span><span class="dot">●</span> claude code + codex</span>
+          <span class="sep">·</span>
+          <span><span class="dot">●</span> github-native</span>
+          <span class="sep">·</span>
+          <span><span class="dot warn">●</span> human review at every PR</span>
+        </div>
       </div>
       <div class="footer">
         <div class="url">alfred.luminik.io</div>
-        <div class="rule"></div>
         <div>luminik-io/alfred-os</div>
       </div>
     </div>
@@ -226,7 +274,7 @@ async function renderWithSharp(htmlText) {
 
   const fallbackSvg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#050913"/>
+  <rect width="1200" height="630" fill="#0A0E14"/>
   <foreignObject width="1200" height="630">
     ${escaped}
   </foreignObject>
@@ -236,7 +284,10 @@ async function renderWithSharp(htmlText) {
   await sharp(Buffer.from(fallbackSvg)).png().toFile(outPath);
 }
 
-const fontCss = (await Promise.all(fontWeights.map(fontFace))).join("");
+const fontCss = [
+  await fontFace('"Space Grotesk Var"', 700, grotesk700, { variation: true }),
+  await fontFace('"JetBrains Mono"', 500, mono500),
+].join("");
 const logoData = await imageData(logoPath);
 const htmlText = html({ fontCss, logoData });
 const rendered = await renderWithChrome(htmlText);

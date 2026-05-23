@@ -1,0 +1,44 @@
+---
+interface Props {
+  title: string;
+  body: string;
+  state?: "live" | "warn" | "idle" | "info";
+  log?: string[];
+}
+
+const { title, body, state = "live", log } = Astro.props;
+---
+
+<article class="m-card m-card--hover job-card">
+  <header class="job-card__head">
+    <span class={`m-dot m-dot--${state}`}>●</span>
+    <h3 class="m-h3">{title}</h3>
+  </header>
+  <p class="job-card__body">{body}</p>
+  {log && (
+    <pre class="job-card__log">{log.join("\n")}</pre>
+  )}
+</article>
+
+<style>
+  .job-card { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+  .job-card__head { display: flex; align-items: center; gap: 10px; }
+  .job-card__body {
+    color: var(--alfred-text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .job-card__log {
+    margin: 8px 0 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--alfred-mute);
+    background: var(--alfred-black);
+    border: 1px solid var(--alfred-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+</style>

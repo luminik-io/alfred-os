@@ -11,12 +11,14 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**GitHub issues, in. Pull requests, out.**
+**An autonomous engineering team that ships while you are away.**
 
-Alfred is a self-hosted runtime for autonomous Claude Code and Codex agents.
-Scoped GitHub issues and specs come in; reviewed pull requests, tests, and
-Slack reports come back. The agents run on the CLI subscriptions you already
-pay for, on a host you control. No provider API keys, no cloud agent service.
+Alfred plans across your repos or monorepo packages, implements with the
+Claude Code and Codex subscriptions you already pay for, and reports to
+Slack while you focus on something else. Drake triages your specs. Lucius
+opens scoped pull requests. Ras al Ghul reviews them. Batman coordinates
+across many repos. The agents run on the CLI subscriptions you already pay
+for, on a host you control. No provider API keys, no cloud agent service.
 
 Docs site: https://alfred.luminik.io
 

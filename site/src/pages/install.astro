@@ -1,0 +1,112 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import CodeBlock from "../components/marketing/CodeBlock.astro";
+---
+
+<MarketingLayout
+  title="Install Alfred | 30 minutes if your machine is warm"
+  description="If you already have gh auth login, claude first-run, and Homebrew on macOS, this takes 30 minutes. From cold start it takes 60 to 120."
+  path="/install/"
+>
+  <Hero
+    eyebrow="INSTALL"
+    headline="Install in 30 minutes (if your machine is warm)."
+    sub="If you already have gh auth login, claude first-run, and Homebrew on macOS, this takes 30 minutes. From cold start it takes 60 to 120."
+    headlineSize="lg"
+    primaryCta={{ label: "I have all that already", href: "/docs/getting-started/install/" }}
+    secondaryCta={{ label: "I am starting cold", href: "/docs/getting-started/ai-assisted-install/" }}
+  />
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="PICK YOUR STARTING POINT"
+        title="Two honest paths."
+        lede="The first assumes your machine is already provisioned. The second walks you through every step from a fresh laptop."
+      />
+      <div class="paths">
+        <a class="m-card m-card--hover paths__card" href="/docs/getting-started/install/">
+          <span class="m-eyebrow">PATH A &middot; ~30 MIN</span>
+          <h3 class="m-h3">I have all that already.</h3>
+          <ul class="paths__list">
+            <li>gh auth login done</li>
+            <li>claude first-run done</li>
+            <li>Homebrew on macOS or apt on Linux</li>
+            <li>Python 3.11+ on PATH</li>
+          </ul>
+          <span class="m-link" style="align-self:start;">Open the 30-min install →</span>
+        </a>
+        <a class="m-card m-card--hover paths__card" href="/docs/getting-started/ai-assisted-install/">
+          <span class="m-eyebrow">PATH B &middot; ~60 TO 120 MIN</span>
+          <h3 class="m-h3">I am starting cold.</h3>
+          <ul class="paths__list">
+            <li>Fresh laptop or dedicated box</li>
+            <li>No GitHub auth, no CLIs installed</li>
+            <li>Walk-through prompt for Claude Code</li>
+            <li>Asks every question explicitly</li>
+          </ul>
+          <span class="m-link" style="align-self:start;">Open the AI-assisted install →</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="VERIFY FIRST"
+        title="Dry-run before any spend."
+        lede="The doctor command checks every gate. The dry-run flag walks one agent through its lifecycle without calling Claude or Codex."
+      />
+      <CodeBlock
+        title="terminal"
+        lines={[
+          "$ alfred doctor",
+          "ok    gh auth                  luminik-io",
+          "ok    claude code              authed",
+          "ok    codex                    authed (optional)",
+          "ok    launchd                  21 agents loaded",
+          "ok    spend cap                $20/day fleet",
+          "",
+          "$ alfred fire lucius --dry-run",
+          "ok    preflight passed",
+          "ok    issue selection (would claim #247)",
+          "skip  claude_invoke (dry-run)",
+          "ok    runner lifecycle verified, no spend",
+        ]}
+      />
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT YOU END UP WITH"
+        title="One repo, four codenames, twenty-minute cadence."
+        lede="The default install configures a starter fleet: Drake, Lucius, Ras al Ghul, agent-cleanup. Add Batman, Bane, and Nightwing when you grow into them."
+      />
+      <ol class="checks">
+        <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Drake</strong> reads /specs and files scoped issues.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Lucius</strong> picks up agent:implement issues and opens PRs.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--warn">●</span><strong>Ras al Ghul</strong> reviews PRs and runs the test suite.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>agent-cleanup</strong> clears stale worktrees and orphan branches.</li>
+      </ol>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 720px) { .paths { grid-template-columns: 1fr; } }
+  .paths__card { display: flex; flex-direction: column; gap: 14px; }
+  .paths__list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; color: var(--alfred-text); font-size: 15px; }
+  .paths__list li { padding-left: 18px; position: relative; }
+  .paths__list li::before { content: "●"; position: absolute; left: 0; color: var(--alfred-accent); font-size: 9px; top: 7px; }
+
+  .checks { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .checks { grid-template-columns: 1fr; } }
+  .checks li { display: flex; align-items: center; gap: 14px; color: var(--alfred-text); font-size: 15px; }
+  .checks li strong { color: var(--alfred-text-bright); margin-right: 4px; }
+</style>
