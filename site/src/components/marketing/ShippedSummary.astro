@@ -53,7 +53,7 @@ const mergeCleanState: "live" | "warn" | "error" =
       : "error";
 ---
 
-<figure class="shipped-summary m-card">
+<figure class="shipped-summary m-figure">
   <figcaption class="shipped-summary__head">
     <span class="m-eyebrow">SHIPPED, {fmtDate(windowFrom)} TO {fmtDate(windowTo)}</span>
     <span class="m-mono m-mute">operator: {operator}</span>
@@ -71,7 +71,10 @@ const mergeCleanState: "live" | "warn" | "error" =
 </figure>
 
 <style>
-  .shipped-summary { padding: 24px 28px; }
+  .shipped-summary {
+    /* Outer sizing comes from .m-figure. The grid below sits inside its
+       padding without a per-component override. */
+  }
   .shipped-summary__head {
     display: flex;
     justify-content: space-between;

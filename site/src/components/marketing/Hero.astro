@@ -61,6 +61,12 @@ const hasPanel = Astro.slots.has("panel");
     pointer-events: none;
   }
 
+  :global([data-theme="light"]) .hero::before {
+    background:
+      radial-gradient(ellipse 600px 280px at 20% 0%, rgba(15, 138, 120, 0.10), transparent 60%),
+      radial-gradient(ellipse 700px 320px at 80% 10%, rgba(46, 93, 219, 0.06), transparent 60%);
+  }
+
   .hero__inner {
     position: relative;
     display: grid;
@@ -96,6 +102,10 @@ const hasPanel = Astro.slots.has("panel");
     border-radius: var(--radius);
     padding: 22px;
     box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+  }
+
+  :global([data-theme="light"]) .hero__panel {
+    box-shadow: 0 20px 50px -28px rgba(20, 30, 60, 0.25);
   }
 
   @media (max-width: 980px) {

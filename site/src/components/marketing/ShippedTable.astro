@@ -59,7 +59,7 @@ const linesCell = (added: number, removed: number): string =>
   `+${added}/-${removed}`;
 ---
 
-<figure class="shipped-table" aria-label="Merged pull requests in this week's window">
+<figure class="shipped-table m-figure" aria-label="Merged pull requests in this week's window">
   <div class="shipped-table__head">
     <span class="m-mono shipped-table__cmd"><span class="shipped-table__prompt">$</span> alfred shipped --weekly</span>
     <span class="m-mono m-mute">{prs.length} merged PRs</span>
@@ -91,10 +91,10 @@ const linesCell = (added: number, removed: number): string =>
 
 <style>
   .shipped-table {
-    margin: 0;
-    background: var(--alfred-surface);
-    border: 1px solid var(--alfred-border-strong);
-    border-radius: var(--radius);
+    /* Outer sizing/background comes from .m-figure. The head and body
+       rows render flush-left at panel width, so we zero the figure
+       padding here. */
+    padding: 0;
     overflow: hidden;
   }
   .shipped-table__head {

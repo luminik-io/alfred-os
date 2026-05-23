@@ -21,7 +21,7 @@ interface Props {
 const { title, lines } = Astro.props;
 ---
 
-<div class="codeblock">
+<div class="codeblock m-figure">
   {title && (
     <header class="codeblock__head">
       <span class="m-mono codeblock__title">{title}</span>
@@ -54,9 +54,10 @@ const { title, lines } = Astro.props;
 
 <style>
   .codeblock {
-    background: var(--alfred-surface);
-    border: 1px solid var(--alfred-border-strong);
-    border-radius: var(--radius);
+    /* Outer sizing/background comes from .m-figure. We zero the padding
+       so the header bar and body sit edge-to-edge within the panel and
+       own their own inner padding. */
+    padding: 0;
     overflow: hidden;
   }
   .codeblock__head {

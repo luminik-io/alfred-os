@@ -9,10 +9,11 @@
  * prefers-reduced-motion.
  *
  * No JS dependency. Pure SVG + CSS.
+ * Theme-aware via .svg-* classes defined in marketing.css.
  */
 ---
 
-<figure class="m-flow m-reveal" aria-label="One Alfred firing, end to end">
+<figure class="m-flow m-figure m-reveal" aria-label="One Alfred firing, end to end">
   <div class="m-flow__head">
     <span class="m-mono m-flow__tag">FIRING LIFECYCLE</span>
     <span class="m-mono m-flow__meta">scheduler → role runner → engine → slack</span>
@@ -25,86 +26,75 @@
         <stop offset="50%"  stop-color="#00E5C7" stop-opacity="0.9" />
         <stop offset="100%" stop-color="#00E5C7" stop-opacity="0.0" />
       </linearGradient>
-      <linearGradient id="cardGrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%"  stop-color="#161D2A" />
-        <stop offset="100%" stop-color="#11161F" />
-      </linearGradient>
       <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
         <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45" />
       </filter>
     </defs>
 
     <!-- Flow track. 5 cards × 200 wide, 25 gap, starts at x=40, ends at x=1140. -->
-    <line x1="90" y1="180" x2="1090" y2="180" stroke="#2A3548" stroke-width="2" stroke-dasharray="2 6" />
+    <line x1="90" y1="180" x2="1090" y2="180" class="svg-line" stroke-width="2" stroke-dasharray="2 6" />
     <line x1="90" y1="180" x2="1090" y2="180" stroke="url(#flowLine)" stroke-width="3" class="m-flow__pulse" />
 
     <!-- Stage cards: all equal width (200px) for vertical-column alignment.
          Eyebrows kept short so they fit without truncation. -->
     <g class="m-flow__stage" transform="translate(40 80)">
-      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">01 · SCHEDULER</text>
-      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">launchd</text>
-      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">fires lucius</text>
-      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">every 1200s</text>
-      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">survives reboot</text>
-      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
+      <rect width="200" height="200" rx="8" ry="8" class="svg-card svg-card-stroke" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">01 · SCHEDULER</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" class="svg-text-bright">launchd</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" class="svg-text">fires lucius</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">every 1200s</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">survives reboot</text>
+      <circle cx="180" cy="178" r="4" class="svg-accent-fill" />
     </g>
 
     <g class="m-flow__stage" transform="translate(265 80)">
-      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">02 · ROLE RUNNER</text>
-      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">lucius.py</text>
-      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">preflight, claim</text>
-      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">picks oldest open</text>
-      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">agent:implement</text>
-      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
+      <rect width="200" height="200" rx="8" ry="8" class="svg-card svg-card-stroke" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">02 · ROLE RUNNER</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" class="svg-text-bright">lucius.py</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" class="svg-text">preflight, claim</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">picks oldest open</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">agent:implement</text>
+      <circle cx="180" cy="178" r="4" class="svg-accent-fill" />
     </g>
 
     <g class="m-flow__stage" transform="translate(490 80)">
-      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">03 · WORKTREE</text>
-      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">git worktree</text>
-      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">isolated workspace</text>
-      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">~/.alfred/wt/...</text>
-      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">safe to crash</text>
-      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
+      <rect width="200" height="200" rx="8" ry="8" class="svg-card svg-card-stroke" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">03 · WORKTREE</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" class="svg-text-bright">git worktree</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" class="svg-text">isolated workspace</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">~/.alfred/wt/...</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">safe to crash</text>
+      <circle cx="180" cy="178" r="4" class="svg-accent-fill" />
     </g>
 
     <g class="m-flow__stage" transform="translate(715 80)">
-      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">04 · ENGINE</text>
-      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">claude -p</text>
-      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">or codex exec</text>
-      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">your subscription</text>
-      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">no API key</text>
-      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
+      <rect width="200" height="200" rx="8" ry="8" class="svg-card svg-card-stroke" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">04 · ENGINE</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" class="svg-text-bright">claude -p</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" class="svg-text">or codex exec</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">your subscription</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">no API key</text>
+      <circle cx="180" cy="178" r="4" class="svg-accent-fill" />
     </g>
 
     <g class="m-flow__stage" transform="translate(940 80)">
-      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">05 · OUTPUT</text>
-      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">PR + report</text>
-      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">label flip, slack post</text>
-      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">agent:pr-open</text>
-      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">severity=info</text>
-      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
+      <rect width="200" height="200" rx="8" ry="8" class="svg-card svg-card-stroke" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">05 · OUTPUT</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" class="svg-text-bright">PR + report</text>
+      <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" class="svg-text">label flip, slack post</text>
+      <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">agent:pr-open</text>
+      <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">severity=info</text>
+      <circle cx="180" cy="178" r="4" class="svg-accent-fill" />
     </g>
 
     <!-- caption -->
-    <text x="40" y="332" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">
+    <text x="40" y="332" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">
       one firing = one role run, one issue claim, one worktree, one engine invocation, one slack post
     </text>
   </svg>
 </figure>
 
 <style>
-  .m-flow {
-    margin: 32px 0;
-    padding: 22px;
-    border: 1px solid var(--alfred-border-strong);
-    background: linear-gradient(180deg, var(--alfred-surface-2) 0%, var(--alfred-surface) 100%);
-    border-radius: var(--radius);
-  }
   .m-flow__head {
     display: flex;
     align-items: center;

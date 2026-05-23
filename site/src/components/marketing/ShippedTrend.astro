@@ -65,7 +65,7 @@ const deltaSign = delta > 0 ? "+" : delta < 0 ? "" : "";
 const hasData = n > 0;
 ---
 
-<figure class="shipped-trend m-card" aria-label="Pull requests merged per week, last 12 weeks">
+<figure class="shipped-trend m-figure" aria-label="Pull requests merged per week, last 12 weeks">
   <figcaption class="shipped-trend__head">
     <div>
       <span class="m-eyebrow">PRS MERGED PER WEEK</span>
@@ -132,7 +132,10 @@ const hasData = n > 0;
 </figure>
 
 <style>
-  .shipped-trend { padding: 24px 28px; }
+  .shipped-trend {
+    /* Outer sizing comes from .m-figure (padding: 22px). No extra override
+       needed; head + chart sit naturally inside that pad. */
+  }
   .shipped-trend__head {
     display: flex;
     justify-content: space-between;
