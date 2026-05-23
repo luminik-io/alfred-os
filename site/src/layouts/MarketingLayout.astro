@@ -12,6 +12,8 @@
 
 import "../styles/marketing.css";
 import StatusStrip from "../components/marketing/StatusStrip.astro";
+import GitHubBadge from "../components/marketing/GitHubBadge.astro";
+import ThemeToggle from "../components/marketing/ThemeToggle.astro";
 
 interface Props {
   title: string;
@@ -81,6 +83,27 @@ const nav = [
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
 
+    {/* Theme boot. Synchronous, blocking, in <head> so the page never
+        flashes the wrong palette. Reads the persisted choice from
+        localStorage; if absent or set to "auto", uses the OS preference. */}
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem("alfred-theme");
+          var mode = stored === "light" || stored === "dark" ? stored : "auto";
+          var resolved =
+            mode === "auto"
+              ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+              : mode;
+          document.documentElement.setAttribute("data-theme", resolved);
+          document.documentElement.setAttribute("data-theme-mode", mode);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+          document.documentElement.setAttribute("data-theme-mode", "auto");
+        }
+      })();
+    </script>
+
     <script is:inline type="application/ld+json" set:html={JSON.stringify(orgSchema)} />
 
     {/* Google Analytics 4. Set ALFRED_GA4_ID in the build environment to enable.
@@ -114,7 +137,8 @@ const nav = [
         </a>
         <nav class="m-nav" aria-label="primary">
           {nav.map((item) => <a href={item.href}>{item.label}</a>)}
-          <a class="m-nav__cta" href="https://github.com/luminik-io/alfred-os" rel="noopener">GitHub</a>
+          <ThemeToggle />
+          <GitHubBadge />
         </nav>
       </div>
     </header>
@@ -177,28 +201,163 @@ const nav = [
     </footer>
 
     <script is:inline>
-      // Scroll-in reveal for .m-reveal elements. Respects prefers-reduced-motion.
+      // Reduced-motion guard once, used by all of: reveal, parallax, count-up.
       (function () {
-        if (
-          typeof window === "undefined" ||
-          typeof IntersectionObserver === "undefined" ||
-          (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-        ) {
+        if (typeof window === "undefined") return;
+
+        const reduced =
+          window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        // 1. Scroll-in reveal for .m-reveal elements.
+        if (typeof IntersectionObserver === "undefined" || reduced) {
           document.querySelectorAll(".m-reveal").forEach((el) => el.classList.add("is-in"));
-          return;
+        } else {
+          const io = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((e) => {
+                if (e.isIntersecting) {
+                  e.target.classList.add("is-in");
+                  io.unobserve(e.target);
+                }
+              });
+            },
+            { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
+          );
+          document.querySelectorAll(".m-reveal").forEach((el) => io.observe(el));
         }
-        const io = new IntersectionObserver(
-          (entries) => {
-            entries.forEach((e) => {
-              if (e.isIntersecting) {
-                e.target.classList.add("is-in");
-                io.unobserve(e.target);
-              }
+
+        // 2. Scroll-tied parallax for .m-ambient elements (hero grid drift).
+        //    Updates a single CSS variable --m-parallax with a vertical
+        //    offset proportional to scrollY. Throttled with rAF. Skipped
+        //    under reduced motion.
+        if (!reduced) {
+          let scheduled = false;
+          const root = document.documentElement;
+          const onScroll = () => {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(() => {
+              const y = window.scrollY || 0;
+              // 12% of scrollY, clamped, in negative px (drift upward).
+              const offset = Math.max(-160, -(y * 0.12));
+              root.style.setProperty("--m-parallax", offset.toFixed(1) + "px");
+              scheduled = false;
             });
-          },
-          { threshold: 0.12, rootMargin: "0px 0px -8% 0px" }
-        );
-        document.querySelectorAll(".m-reveal").forEach((el) => io.observe(el));
+          };
+          window.addEventListener("scroll", onScroll, { passive: true });
+          onScroll();
+        }
+
+        // 3. Theme toggle. data-theme-set buttons (light / dark / auto) flip
+        //    the persisted choice in localStorage, update html[data-theme],
+        //    and update the radio-button aria-pressed state. When auto, we
+        //    also re-listen for OS preference changes.
+        var html = document.documentElement;
+        function syncToggleButtons() {
+          var mode = html.getAttribute("data-theme-mode") || "auto";
+          document.querySelectorAll("[data-theme-set]").forEach(function (b) {
+            b.setAttribute("aria-pressed", b.getAttribute("data-theme-set") === mode ? "true" : "false");
+          });
+        }
+        function applyMode(mode) {
+          var resolved =
+            mode === "auto"
+              ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+              : mode;
+          html.setAttribute("data-theme", resolved);
+          html.setAttribute("data-theme-mode", mode);
+          try { localStorage.setItem("alfred-theme", mode); } catch (e) {}
+          syncToggleButtons();
+        }
+        document.querySelectorAll("[data-theme-set]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            applyMode(btn.getAttribute("data-theme-set") || "auto");
+          });
+        });
+        syncToggleButtons();
+        if (window.matchMedia) {
+          var mq = window.matchMedia("(prefers-color-scheme: light)");
+          var listener = function () {
+            if ((html.getAttribute("data-theme-mode") || "auto") === "auto") {
+              applyMode("auto");
+            }
+          };
+          if (mq.addEventListener) mq.addEventListener("change", listener);
+          else if (mq.addListener) mq.addListener(listener);
+        }
+
+        // 4. Image-zoom: wire data-zoom-open triggers to open their dialog.
+        //    Backdrop click also closes (native dialogs do not do this by
+        //    default). Escape close is native.
+        document.querySelectorAll("[data-zoom-open]").forEach((btn) => {
+          btn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const id = btn.getAttribute("data-zoom-open");
+            const dialog = id ? document.getElementById(id) : null;
+            if (dialog && typeof dialog.showModal === "function") {
+              dialog.showModal();
+            }
+          });
+        });
+        document.querySelectorAll("dialog.zoomable__dialog").forEach((dialog) => {
+          dialog.addEventListener("click", (ev) => {
+            // Backdrop click: the dialog element itself receives the event when
+            // the user clicks the backdrop area outside its content.
+            if (ev.target === dialog) dialog.close();
+          });
+        });
+
+        // 5. Count-up animation: when a [data-countup] element enters the
+        //    viewport, animate from 0 to its data-target over ~900ms with
+        //    an ease-out curve. Then add .is-done so it stays in place.
+        if (typeof IntersectionObserver !== "undefined" && !reduced) {
+          const counters = document.querySelectorAll("[data-countup]");
+          const counterIo = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                const el = entry.target;
+                counterIo.unobserve(el);
+                el.classList.add("is-counting");
+                const target = parseInt(el.getAttribute("data-target") || "0", 10);
+                if (!Number.isFinite(target) || target <= 0) {
+                  el.textContent = String(target);
+                  el.classList.add("is-done");
+                  return;
+                }
+                const duration = 900;
+                const start = performance.now();
+                const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+                const tick = (now) => {
+                  const elapsed = Math.min(1, (now - start) / duration);
+                  const v = Math.round(target * easeOut(elapsed));
+                  el.textContent = String(v);
+                  if (elapsed < 1) {
+                    requestAnimationFrame(tick);
+                  } else {
+                    el.textContent = String(target);
+                    el.classList.add("is-done");
+                  }
+                };
+                requestAnimationFrame(tick);
+              });
+            },
+            { threshold: 0.4 }
+          );
+          counters.forEach((el) => {
+            // Pre-set to 0 so there is no flash of the final value before the
+            // animation starts.
+            const target = parseInt(el.getAttribute("data-target") || "0", 10);
+            if (target > 0) el.textContent = "0";
+            counterIo.observe(el);
+          });
+        } else {
+          document.querySelectorAll("[data-countup]").forEach((el) => {
+            const target = el.getAttribute("data-target") || "";
+            el.textContent = target;
+            el.classList.add("is-done");
+          });
+        }
       })();
     </script>
   </body>

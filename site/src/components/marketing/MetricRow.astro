@@ -7,6 +7,11 @@
  *   <MetricRow label="firings" value="18m ago" glyph="arrow" />
  *
  * Used inside Hero panel and elsewhere we want a "log line" feel.
+ *
+ * If `countTo` is set and is a positive integer, the value will be
+ * animated up from 0 to countTo on first scroll-in (via JS in
+ * MarketingLayout.astro). The static `value` prop is the fallback for
+ * reduced-motion users and the initial server-rendered text.
  */
 
 interface Props {
@@ -14,16 +19,21 @@ interface Props {
   value: string;
   state?: "live" | "warn" | "idle" | "error" | "info";
   glyph?: "dot" | "arrow";
+  countTo?: number;
 }
 
-const { label, value, state = "live", glyph = "dot" } = Astro.props;
+const { label, value, state = "live", glyph = "dot", countTo } = Astro.props;
 const glyphChar = glyph === "arrow" ? "→" : "●";
 ---
 
 <div class="metric-row">
   <span class="metric-row__label m-mono">{label}</span>
   <span class={`metric-row__glyph m-mono m-dot m-dot--${state}`}>{glyphChar}</span>
-  <span class="metric-row__value m-mono">{value}</span>
+  {countTo && countTo > 0 ? (
+    <span class="metric-row__value m-mono m-count" data-countup data-target={countTo}>{value}</span>
+  ) : (
+    <span class="metric-row__value m-mono">{value}</span>
+  )}
 </div>
 
 <style>

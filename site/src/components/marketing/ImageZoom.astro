@@ -1,0 +1,217 @@
+---
+/**
+ * ImageZoom.astro
+ *
+ * Wraps an image so a click opens a native <dialog> lightbox. The user can:
+ *   - click the image to enlarge it
+ *   - click the backdrop or the close button to dismiss
+ *   - press Escape to dismiss (native <dialog> behaviour)
+ *   - pinch-zoom on touch devices (touch-action: pinch-zoom)
+ *   - scroll the dialog body if the image is larger than the viewport
+ *
+ * No dependency. Pure HTML <dialog> + a tiny <script>. SSR-safe.
+ *
+ * Pass `src`, `alt`, and an optional `caption`. The wrapper component sets a
+ * `data-zoomable` attribute that the page-level script in MarketingLayout
+ * picks up and wires open/close handlers to. Each instance gets its own
+ * stable id derived from the src.
+ */
+
+interface Props {
+  src: string;
+  alt: string;
+  caption?: string;
+  // Optional class hook so the parent can theme the trigger.
+  class?: string;
+}
+
+const { src, alt, caption, class: cls = "" } = Astro.props;
+
+// Stable, deterministic id per src so the dialog and trigger pair up.
+const id =
+  "zoom-" +
+  src
+    .replace(/^\/+/, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .toLowerCase()
+    .slice(0, 40);
+---
+
+<div class={`zoomable ${cls}`}>
+  <button
+    type="button"
+    class="zoomable__trigger"
+    aria-label={`Open enlarged view: ${alt}`}
+    data-zoom-open={id}
+  >
+    <img src={src} alt={alt} loading="lazy" decoding="async" />
+    <span class="zoomable__hint" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m21 21-4.3-4.3"></path>
+        <path d="M11 8v6"></path>
+        <path d="M8 11h6"></path>
+      </svg>
+      click to enlarge
+    </span>
+  </button>
+
+  <dialog id={id} class="zoomable__dialog" aria-label={`Enlarged view: ${alt}`}>
+    <form method="dialog" class="zoomable__close-form">
+      <button class="zoomable__close" aria-label="Close enlarged view" value="cancel">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M18 6 6 18"></path>
+          <path d="m6 6 12 12"></path>
+        </svg>
+      </button>
+    </form>
+    <div class="zoomable__viewport">
+      <img src={src} alt={alt} />
+      {caption && <p class="zoomable__caption">{caption}</p>}
+    </div>
+  </dialog>
+</div>
+
+<style>
+  .zoomable { display: block; }
+
+  .zoomable__trigger {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    cursor: zoom-in;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .zoomable__trigger:focus-visible {
+    outline: 2px solid var(--alfred-accent);
+    outline-offset: 3px;
+  }
+  .zoomable__trigger img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    transition: transform 280ms ease, filter 280ms ease;
+  }
+  .zoomable__trigger:hover img {
+    transform: scale(1.012);
+    filter: brightness(1.06);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .zoomable__trigger img { transition: none; }
+    .zoomable__trigger:hover img { transform: none; filter: none; }
+  }
+
+  .zoomable__hint {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--alfred-black) 78%, transparent);
+    color: var(--alfred-text-bright);
+    border: 1px solid var(--alfred-border-strong);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 180ms ease, transform 180ms ease;
+    pointer-events: none;
+  }
+  .zoomable__trigger:hover .zoomable__hint,
+  .zoomable__trigger:focus-visible .zoomable__hint {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  @media (hover: none) {
+    /* Touch device: leave the hint always visible so users know they can tap. */
+    .zoomable__hint { opacity: 1; transform: none; }
+  }
+
+  /* Dialog. Closed by default. ::backdrop styled for blur + dim. */
+  .zoomable__dialog {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--alfred-text);
+    max-width: 96vw;
+    max-height: 96vh;
+    width: min(1400px, 96vw);
+  }
+  .zoomable__dialog::backdrop {
+    background: rgba(3, 7, 15, 0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .zoomable__dialog[open] {
+    display: block;
+    animation: zoom-in 220ms ease;
+  }
+  @keyframes zoom-in {
+    from { opacity: 0; transform: scale(0.985); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .zoomable__dialog[open] { animation: none; }
+  }
+
+  .zoomable__close-form {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    margin: 0;
+    z-index: 2;
+  }
+  .zoomable__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--alfred-border-strong);
+    background: color-mix(in oklab, var(--alfred-surface) 92%, transparent);
+    color: var(--alfred-text-bright);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease;
+  }
+  .zoomable__close:hover {
+    background: var(--alfred-surface-2);
+    border-color: var(--alfred-accent);
+  }
+
+  .zoomable__viewport {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    /* On touch devices, pinch-zoom the dialog viewport. Pan-x/y too so
+       users can move around an over-large image. */
+    touch-action: pinch-zoom pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 12px;
+    background: var(--alfred-surface);
+    padding: 22px;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  }
+  .zoomable__viewport img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+  }
+  .zoomable__caption {
+    margin: 14px 4px 0;
+    color: var(--alfred-mute);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+</style>

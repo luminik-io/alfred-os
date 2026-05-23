@@ -15,7 +15,19 @@
 @import "@fontsource/jetbrains-mono/500.css";
 @import "@fontsource/jetbrains-mono/600.css";
 
-:root {
+/* ───────────────────────────────────────────────────────────────────
+   Theme tokens. Dark is the default Operations Room palette.
+   Light is a warm parchment + ink variant. The :root rule below
+   acts as the dark fallback when no [data-theme] is set, so the page
+   never flashes the wrong palette before the script runs.
+
+   The accent stays cyan in both modes (a deeper teal in light so it
+   reads as button-ink, not as glow). The status dots reuse the same
+   accent / warn / error tokens.
+   ─────────────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="dark"] {
   --alfred-black: #0A0E14;
   --alfred-surface: #11161F;
   --alfred-surface-2: #161D2A;
@@ -27,17 +39,40 @@
 
   --alfred-accent: #00E5C7;
   --alfred-accent-soft: #1B3A37;
+  --alfred-accent-ink: #06231F;   /* button text on accent fill */
   --alfred-warn: #F4B43E;
   --alfred-error: #FF5A6B;
   --alfred-blue: #5789FF;
+}
 
+[data-theme="light"] {
+  --alfred-black: #F6F4EE;        /* canvas (cream/parchment) */
+  --alfred-surface: #FDFBF6;       /* one step up for cards */
+  --alfred-surface-2: #F1ECE0;     /* hover / focused panel */
+  --alfred-border: #E2D9C6;
+  --alfred-border-strong: #C8BBA0;
+  --alfred-mute: #6B6354;
+  --alfred-text: #2A2620;
+  --alfred-text-bright: #0B0905;
+
+  --alfred-accent: #0F8A78;        /* deeper teal, reads as ink not glow */
+  --alfred-accent-soft: #D5EAE5;
+  --alfred-accent-ink: #FFFFFF;    /* button text on accent fill */
+  --alfred-warn: #B07A19;
+  --alfred-error: #C2362C;
+  --alfred-blue: #2E5DDB;
+}
+
+/* Static design tokens (typography, spacing) live on :root and are
+   independent of theme. */
+:root {
   --font-display: "Space Grotesk Variable", "Inter", system-ui, sans-serif;
   --font-body: "Inter", "Quicksand", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --text-display-xl: 84px;
-  --text-display-lg: 64px;
-  --text-display-md: 44px;
+  --text-display-xl: 72px;
+  --text-display-lg: 56px;
+  --text-display-md: 40px;
   --text-h2: 32px;
   --text-h3: 22px;
   --text-body-lg: 19px;
@@ -91,13 +126,35 @@ p { margin: 0; }
 @media (max-width: 720px) {
   .m-container { padding: 0 20px; }
   :root {
-    --text-display-xl: 48px;
-    --text-display-lg: 40px;
-    --text-display-md: 32px;
-    --text-h2: 26px;
-    --text-h3: 20px;
+    --text-display-xl: 44px;
+    --text-display-lg: 36px;
+    --text-display-md: 30px;
+    --text-h2: 24px;
+    --text-h3: 19px;
     --text-body-lg: 17px;
   }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --text-display-xl: 34px;
+    --text-display-lg: 28px;
+    --text-display-md: 24px;
+    --text-h2: 21px;
+    --text-body-lg: 16px;
+  }
+  /* Drop the negative tracking on display-xl so descenders don't kiss
+     the viewport edge on phones. */
+  .m-display-xl { letter-spacing: 0; }
+  h1 { letter-spacing: 0; }
+}
+
+/* Ensure huge display headlines never overflow on narrow screens. */
+h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
+  -webkit-hyphens: auto;
 }
 
 .m-eyebrow {
@@ -166,7 +223,7 @@ p { margin: 0; }
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: var(--alfred-accent);
-  color: #06231F;
+  color: var(--alfred-accent-ink);
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
   cursor: pointer;
 }
@@ -237,7 +294,9 @@ p { margin: 0; }
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(10, 14, 20, 0.82);
+  /* color-mix preserves the alpha through theme switches so the header
+     reads as the surrounding canvas with a soft blur. */
+  background: color-mix(in oklab, var(--alfred-black) 82%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--alfred-border);
@@ -399,7 +458,10 @@ p { margin: 0; }
 }
 
 /* Operations-room ambient: a faint moving gridline backdrop on hero
-   sections. Pure CSS, very subtle, no JS, no big perf cost. */
+   sections. Pure CSS, very subtle, no JS, no big perf cost.
+   The CSS variable --m-parallax is updated by a tiny scroll listener in
+   MarketingLayout.astro so the grid drifts up as the user scrolls,
+   giving a subtle parallax depth without a heavy framework. */
 .m-ambient {
   position: absolute;
   inset: 0;
@@ -407,6 +469,9 @@ p { margin: 0; }
   overflow: hidden;
   z-index: 0;
   opacity: 0.55;
+  transform: translate3d(0, var(--m-parallax, 0px), 0);
+  will-change: transform;
+  transition: opacity 0.4s ease;
 }
 .m-ambient::before,
 .m-ambient::after {
@@ -527,3 +592,101 @@ p { margin: 0; }
 .m-section-header .m-eyebrow { margin-bottom: 12px; }
 .m-section-header h2 { margin-bottom: 12px; }
 .m-section-header p { color: var(--alfred-mute); font-size: var(--text-body-lg); line-height: 1.55; }
+
+/* ───────────────────────────────────────────────────────────────────
+   Motion + interaction polish (added 2026-05-23)
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Hover-lift on cards: gentle elevation + accent border on the leading
+   edge. Reads as "this is interactable" without being a generic shadow. */
+.m-card,
+.job-card,
+.m-card--hover {
+  transition: transform 220ms ease, border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+}
+.m-card:hover,
+.job-card:hover,
+.m-card--hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 229, 199, 0.45);
+  box-shadow: 0 14px 40px -22px rgba(0, 229, 199, 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-card,
+  .job-card,
+  .m-card--hover {
+    transition: none;
+  }
+  .m-card:hover,
+  .job-card:hover,
+  .m-card--hover:hover {
+    transform: none;
+  }
+}
+
+/* Animated underline on nav items. The accent line slides in from the
+   left on hover. */
+.m-nav a {
+  position: relative;
+  padding-bottom: 4px;
+}
+.m-nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: 100%;
+  background: var(--alfred-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 220ms ease;
+}
+.m-nav a:hover { text-decoration: none; }
+.m-nav a:hover::after { transform: scaleX(1); }
+@media (prefers-reduced-motion: reduce) {
+  .m-nav a::after { transition: none; }
+}
+
+/* Subtle accent pulse on the GitHub star icon to draw the eye. */
+.ghb__star svg path {
+  animation: m-star-pulse 4s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes m-star-pulse {
+  0%, 100% { fill: var(--alfred-warn); }
+  50%      { fill: #FFD96A; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ghb__star svg path { animation: none; }
+}
+
+/* Count-up animation hook. JS adds .is-counting to the wrapping element
+   on first scroll-in; the value text fades in over 600ms. Used on
+   FleetStatus hero panel metric values. */
+.m-count {
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.m-count.is-counting,
+.m-count.is-done {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-count { opacity: 1; transform: none; transition: none; }
+}
+
+/* CTA primary button: subtle accent glow + 1px lift on hover. */
+.m-btn:not(.m-btn--ghost) {
+  transition: transform 200ms ease, box-shadow 200ms ease, background 200ms ease;
+}
+.m-btn:not(.m-btn--ghost):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 30px -8px rgba(0, 229, 199, 0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-btn { transition: none; }
+  .m-btn:hover { transform: none; }
+}

@@ -1,4 +1,18 @@
 ---
+/**
+ * CodeBlock.astro
+ *
+ * A monospace code or terminal-output block. Lines are passed as an array;
+ * each line is rendered as its own block child. Lines starting with `$ `
+ * are treated as prompts and the `$` is colored in the accent.
+ *
+ * Implementation note: we deliberately use <div class="codeblock__body">
+ * NOT <pre>, because <pre> preserves the whitespace between JSX <div>
+ * children and inserts a forced newline per child, doubling the line
+ * height. Using <div> as the wrapper keeps each line on its own row
+ * without the extra spacing.
+ */
+
 interface Props {
   title?: string;
   lines: string[];
@@ -14,16 +28,28 @@ const { title, lines } = Astro.props;
       <span class="m-mono m-mute">copy</span>
     </header>
   )}
-  <pre class="codeblock__body">{lines.map((line) => {
-    const isPrompt = line.startsWith("$ ");
-    const rest = isPrompt ? line.slice(2) : line;
-    return (
-      <div class="codeblock__line">
-        {isPrompt ? <span class="codeblock__prompt">$</span> : null}
-        {isPrompt ? <span class="codeblock__cmd">{" "}{rest}</span> : <span class="codeblock__out">{line}</span>}
-      </div>
-    );
-  })}</pre>
+  <div class="codeblock__body">
+    {lines.map((line) => {
+      const isPrompt = line.startsWith("$ ");
+      const rest = isPrompt ? line.slice(2) : line;
+      const isBlank = line.trim() === "";
+      if (isBlank) {
+        return <div class="codeblock__line codeblock__line--blank" aria-hidden="true">&nbsp;</div>;
+      }
+      return (
+        <div class="codeblock__line">
+          {isPrompt ? (
+            <>
+              <span class="codeblock__prompt">$</span>
+              <span class="codeblock__cmd"> {rest}</span>
+            </>
+          ) : (
+            <span class="codeblock__out">{line}</span>
+          )}
+        </div>
+      );
+    })}
+  </div>
 </div>
 
 <style>
@@ -44,15 +70,19 @@ const { title, lines } = Astro.props;
   .codeblock__title { color: var(--alfred-mute); }
   .codeblock__body {
     margin: 0;
-    padding: 18px 20px;
+    padding: 16px 18px;
     overflow-x: auto;
     font-family: var(--font-mono);
-    font-size: 13.5px;
-    line-height: 1.7;
+    font-size: 13px;
+    line-height: 1.6;
     color: var(--alfred-text);
   }
-  .codeblock__line { white-space: pre; }
-  .codeblock__prompt { color: var(--alfred-accent); font-weight: 600; }
+  .codeblock__line {
+    white-space: pre;
+    display: block;
+  }
+  .codeblock__line--blank { height: 1.6em; }
+  .codeblock__prompt { color: var(--alfred-accent); font-weight: 600; margin-right: 0; }
   .codeblock__cmd { color: var(--alfred-text-bright); }
   .codeblock__out { color: var(--alfred-mute); }
 </style>

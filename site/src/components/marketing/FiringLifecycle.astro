@@ -34,59 +34,60 @@
       </filter>
     </defs>
 
-    <!-- Flow track -->
+    <!-- Flow track. 5 cards × 200 wide, 25 gap, starts at x=40, ends at x=1140. -->
     <line x1="90" y1="180" x2="1090" y2="180" stroke="#2A3548" stroke-width="2" stroke-dasharray="2 6" />
     <line x1="90" y1="180" x2="1090" y2="180" stroke="url(#flowLine)" stroke-width="3" class="m-flow__pulse" />
 
-    <!-- Stage cards -->
+    <!-- Stage cards: all equal width (200px) for vertical-column alignment.
+         Eyebrows kept short so they fit without truncation. -->
     <g class="m-flow__stage" transform="translate(40 80)">
-      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
       <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">01 · SCHEDULER</text>
       <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">launchd</text>
       <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">fires lucius</text>
       <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">every 1200s</text>
       <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">survives reboot</text>
-      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
     </g>
 
-    <g class="m-flow__stage" transform="translate(260 80)">
-      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+    <g class="m-flow__stage" transform="translate(265 80)">
+      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
       <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">02 · ROLE RUNNER</text>
       <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">lucius.py</text>
       <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">preflight, claim</text>
       <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">picks oldest open</text>
       <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">agent:implement</text>
-      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
     </g>
 
-    <g class="m-flow__stage" transform="translate(480 80)">
-      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+    <g class="m-flow__stage" transform="translate(490 80)">
+      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
       <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">03 · WORKTREE</text>
-      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">fresh git worktree</text>
+      <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">git worktree</text>
       <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">isolated workspace</text>
       <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">~/.alfred/wt/...</text>
       <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">safe to crash</text>
-      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
     </g>
 
-    <g class="m-flow__stage" transform="translate(700 80)">
-      <rect width="180" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+    <g class="m-flow__stage" transform="translate(715 80)">
+      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
       <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">04 · ENGINE</text>
       <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">claude -p</text>
       <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">or codex exec</text>
       <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">your subscription</text>
       <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">no API key</text>
-      <circle cx="160" cy="178" r="4" fill="#00E5C7" />
+      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
     </g>
 
-    <g class="m-flow__stage" transform="translate(920 80)">
-      <rect width="220" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">05 · GITHUB + SLACK</text>
+    <g class="m-flow__stage" transform="translate(940 80)">
+      <rect width="200" height="200" rx="8" ry="8" fill="url(#cardGrad)" stroke="#2A3548" filter="url(#cardShadow)" />
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7A8F" letter-spacing="2">05 · OUTPUT</text>
       <text x="20" y="78" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" fill="#F2F6FF">PR + report</text>
       <text x="20" y="100" font-family="Space Grotesk, sans-serif" font-size="14" fill="#C5D0E0">label flip, slack post</text>
       <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">agent:pr-open</text>
       <text x="20" y="158" font-family="JetBrains Mono, monospace" font-size="12" fill="#6B7A8F">severity=info</text>
-      <circle cx="200" cy="178" r="4" fill="#00E5C7" />
+      <circle cx="180" cy="178" r="4" fill="#00E5C7" />
     </g>
 
     <!-- caption -->

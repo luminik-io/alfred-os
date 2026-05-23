@@ -11,6 +11,8 @@
  * as a marketing graphic.
  */
 
+import ImageZoom from "./ImageZoom.astro";
+
 interface Props {
   src: string;
   alt: string;
@@ -27,6 +29,6 @@ const { src, alt, tag, meta = "received via webhook", caption } = Astro.props;
     <span><span class="m-proof__tag">slack #alfred</span> · {tag}</span>
     <span class="m-proof__meta">{meta}</span>
   </div>
-  <img src={src} alt={alt} loading="lazy" decoding="async" />
+  <ImageZoom src={src} alt={alt} caption={caption} />
   {caption ? <figcaption class="m-proof__cap">{caption}</figcaption> : null}
 </figure>

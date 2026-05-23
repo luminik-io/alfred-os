@@ -23,8 +23,9 @@ import MetricRow from "../components/marketing/MetricRow.astro";
 import JobCard from "../components/marketing/JobCard.astro";
 import CodeBlock from "../components/marketing/CodeBlock.astro";
 import SlackProof from "../components/marketing/SlackProof.astro";
-import ProductionStats from "../components/marketing/ProductionStats.astro";
 import FiringLifecycle from "../components/marketing/FiringLifecycle.astro";
+import FleetStatus from "../components/marketing/FleetStatus.astro";
+import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
 
 type JobState = "live" | "warn" | "idle" | "info";
 
@@ -109,10 +110,10 @@ const why = [
         <span class="m-eyebrow">FLEET STATUS</span>
         <span class="m-mono m-mute">~/.alfred/state</span>
       </div>
-      <MetricRow label="agents" value="21" state="live" />
-      <MetricRow label="repos" value="9" state="live" />
+      <MetricRow label="agents" value="21" countTo={21} state="live" />
+      <MetricRow label="repos" value="9" countTo={9} state="live" />
       <MetricRow label="firings" value="18m ago" glyph="arrow" state="info" />
-      <MetricRow label="open PRs" value="4" state="warn" />
+      <MetricRow label="open PRs" value="4" countTo={4} state="warn" />
       <MetricRow label="errors" value="0" state="live" />
     </div>
   </Hero>
@@ -151,6 +152,20 @@ const why = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
+        eyebrow="SPECS-DRIVEN DEVELOPMENT"
+        title="The spec is the contract. Alfred is the team that delivers it."
+        lede="Write specs once in plain markdown. Drake reads them, asks the gaps you forgot, and files scoped agent:implement issues into the right repos. Lucius picks them up. PRs come back. No prompt copy-paste, no chat-window state."
+      />
+      <SpecsDrivenFlow />
+      <p style="margin-top:24px;">
+        <a class="m-link" href="/docs/guides/specs-driven-development/">Read the specs-driven guide</a>
+      </p>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
         eyebrow="HOW IT WORKS"
         title="One firing, end to end."
         lede="Scheduler trigger to pull request. Five stages, every time, on a 20 minute cadence."
@@ -167,10 +182,8 @@ const why = [
       <SectionHeader
         eyebrow="REAL PRODUCTION"
         title="What lands in Slack while you're away."
-        lede="The two Slack posts below are real: a Batman bundle plan waiting for approval, and an Alfred daily shipped summary covering one day's work across the Luminik repos."
+        lede="The two Slack posts below are real captures from the operator's own setup. A Batman bundle plan waiting for approval, and a daily shipped summary. Your numbers will vary with your fleet shape, repo size, and how aggressive you let the agents be."
       />
-
-      <ProductionStats />
 
       <div class="proof-grid">
         <SlackProof
@@ -185,13 +198,24 @@ const why = [
           alt="Slack message from the Alfred bot summarising one day of shipped work: 153 PRs merged, 44 issues opened, 144 issues closed, +44,351 lines added across luminik-frontend, luminik-agents, luminik-mobile, luminik-nango, luminik-backend, and luminik-data-acquisition."
           tag="shipped summary"
           meta="2026-05-20 20:45 CET"
-          caption="One day, six repos, 153 PRs merged. The operator reads this in the morning. Every PR has a human review on the way to main."
+          caption="One operator's day, six repos. The operator reads this summary in the morning. Every PR has a human review on the way to main; your throughput will depend on your fleet, repo size, and how scoped your issues are."
         />
       </div>
 
       <p style="margin-top:36px;">
         <a class="m-link" href="/docs/reference/output-samples/">Read every output Alfred produces</a>
       </p>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE FLEET, RIGHT NOW"
+        title="What `alfred status` actually prints."
+        lede="Live output captured from the operator's production fleet, 2026-05-23. Twenty agents, three paused on purpose, one waiting on a Batman approval, zero dollars in LLM spend."
+      />
+      <FleetStatus />
     </div>
   </section>
 

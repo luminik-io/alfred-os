@@ -216,11 +216,11 @@ function html({ fontCss, logoData }) {
         <h1>A team of coding agents.<br />Ships <span class="away">while you're away.</span></h1>
         <p class="sub">Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else.</p>
         <div class="stripe">
-          <span><span class="dot">●</span> 21 agents</span>
+          <span><span class="dot">●</span> self-hosted</span>
           <span class="sep">·</span>
-          <span><span class="dot">●</span> 9 repos</span>
+          <span><span class="dot">●</span> claude code + codex</span>
           <span class="sep">·</span>
-          <span><span class="dot">●</span> 153 PRs · one day</span>
+          <span><span class="dot">●</span> github-native</span>
           <span class="sep">·</span>
           <span><span class="dot warn">●</span> human review at every PR</span>
         </div>
