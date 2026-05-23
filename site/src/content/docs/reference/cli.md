@@ -124,6 +124,8 @@ alfred codex probe
 alfred auth status
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
+alfred metrics [--since 7d] [--codename <name>] [--by-day] [--json]
+alfred logs <codename> [--last N] [--firing-id ID] [--show-tool-calls] [--json]
 alfred shipped --period weekly
 ```
 
@@ -136,6 +138,48 @@ checks Claude and Codex auth surfaces. `status` reports local locks, pauses,
 recent firings, and Batman approval waits. `shipped` reports merged PRs, issues,
 LOC, and model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit
 `--repo` values.
+
+## `alfred metrics`
+
+Weekly per-agent rollup of firings, cost, turns, tool-use, and Codex tokens.
+Read-only; reads `$ALFRED_STATE_DIR` (defaults to `$ALFRED_HOME/state`) and
+prints either a table or JSON.
+
+```sh
+alfred metrics                          # last 7 days, per-agent
+alfred metrics --since 14d              # last 14 days
+alfred metrics --since 48h              # rounds up to days
+alfred metrics --codename lucius        # one codename only
+alfred metrics --by-day                 # daily totals instead of per-agent
+alfred metrics --json                   # machine-readable
+```
+
+`--since` accepts `7`, `7d`, `48h`, `2w`, `1m`. `--days N` overrides
+`--since` when both are passed. Exit 1 on user errors (bad `--since`,
+unknown codename); exit 2 when the state directory is missing.
+
+## `alfred logs`
+
+Inspect stream-JSON transcripts under
+`$ALFRED_STATE_DIR/transcripts/<codename>/<YYYY-MM>/<firing-id>.jsonl`.
+
+```sh
+alfred logs <codename>                              # last 10 firings (summary)
+alfred logs <codename> --last 25                    # last 25 firings
+alfred logs <codename> --show-tool-calls            # tool-call rollup
+alfred logs <codename> --firing-id <id>             # dump one firing
+alfred logs <codename> --firing-id <id> --show-tool-calls
+alfred logs <codename> --json                       # machine-readable
+```
+
+Summary view shows `firing_id, when, subtype, turns, cost, tools, edits,
+top tools`. Tool-call mode aggregates `tool_use` blocks across the last N
+firings and lists skill invocations separately. The single-firing dump
+pretty-prints the stream-JSON one event per line with tool-use inputs
+summarised inline.
+
+See [`docs/CLI.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLI.md)
+for the full reference including library examples.
 
 ## State-machine Helpers
 

@@ -45,6 +45,12 @@ Subcommands today:
                               scheduled agents.
   alfred status               Show local fleet health, locks, pauses, and
                               approval waits.
+  alfred metrics              Weekly per-agent firings/cost/turns/tool-use
+                              roll-up across spend, transcripts, and Codex
+                              artifacts.
+  alfred logs <codename>      Inspect stream-JSON transcripts for one agent:
+                              recent firings, tool-call summary, or a full
+                              pretty-printed dump of one firing.
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
 
@@ -603,6 +609,36 @@ def cmd_codex(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_metrics(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-metrics.py"
+    cmd = [sys.executable, str(script)]
+    if args.since is not None:
+        cmd.extend(["--since", args.since])
+    if args.days is not None:
+        cmd.extend(["--days", str(args.days)])
+    for codename in args.codename or []:
+        cmd.extend(["--codename", codename])
+    if args.by_day:
+        cmd.append("--by-day")
+    if args.json:
+        cmd.append("--json")
+    return subprocess.run(cmd, check=False).returncode
+
+
+def cmd_logs(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-logs.py"
+    cmd = [sys.executable, str(script), args.codename]
+    if args.firing_id:
+        cmd.extend(["--firing-id", args.firing_id])
+    if args.last is not None:
+        cmd.extend(["--last", str(args.last)])
+    if args.show_tool_calls:
+        cmd.append("--show-tool-calls")
+    if args.json:
+        cmd.append("--json")
+    return subprocess.run(cmd, check=False).returncode
+
+
 def cmd_shipped(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-shipped-summary.py"
     cmd = [sys.executable, str(script), "--period", args.period]
@@ -925,6 +961,24 @@ def main(argv: list[str] | None = None) -> int:
         metavar="{status,probe}",
     )
     p_auth.set_defaults(func=cmd_auth)
+
+    p_metrics = sub.add_parser("metrics", help="weekly fleet rollup of firings/cost/turns")
+    p_metrics.add_argument("--since", default=None, help="window size (e.g. 7d, 48h, 2w)")
+    p_metrics.add_argument("--days", type=int, help="window size in days (overrides --since)")
+    p_metrics.add_argument("--codename", action="append", help="restrict to one codename (repeatable)")
+    p_metrics.add_argument("--by-agent", action="store_true", help="default per-agent view")
+    p_metrics.add_argument("--by-day", action="store_true", help="per-day breakdown")
+    p_metrics.add_argument("--json", action="store_true")
+    p_metrics.set_defaults(func=cmd_metrics)
+
+    p_logs = sub.add_parser("logs", help="inspect stream-JSON transcripts for one agent")
+    p_logs.add_argument("codename", help="agent codename (directory under state/transcripts/)")
+    p_logs.add_argument("--firing-id", dest="firing_id", help="dump this firing id only")
+    p_logs.add_argument("--last", type=int, default=None, help="how many recent firings (default 10)")
+    p_logs.add_argument("--show-tool-calls", action="store_true",
+                        help="aggregate tool/skill calls")
+    p_logs.add_argument("--json", action="store_true")
+    p_logs.set_defaults(func=cmd_logs)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
     p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")
