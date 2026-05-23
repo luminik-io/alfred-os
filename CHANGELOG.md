@@ -4,6 +4,13 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
+### Added
+
+- `lib/claude_proxy/` and `bin/claude-proxy.py`: localhost unix-socket daemon that brokers `claude -p` invocations on behalf of launchd-spawned agent processes. Solves the macOS Keychain ACL issue that returns 401 on every `claude` call from a non-Aqua launchd session. NDJSON wire protocol with `invoke`, `health`, and `probe` requests; stdlib-only; opt-in via `ALFRED_CLAUDE_PROXY_SOCKET` with transparent fallback to direct subprocess. See `docs/CLAUDE_PROXY.md` and `docs/MACOS_KEYCHAIN.md`.
+- `examples/launchd/luminik.claude-proxy.plist.example`: sample launchd unit with `LimitLoadToSessionType=Aqua` and inline install / verify recipe. Operators must edit the placeholder paths before bootstrapping.
+- `lib/agent_runner.process.claude_invoke_streaming` now routes through the proxy when the env var is set, falls back to direct subprocess otherwise.
+- 48 new tests covering protocol round-trip, server lifecycle (stale socket, concurrent invokes, health-during-invoke, client-disconnect kills child), client fallback paths, and end-to-end `claude_invoke_streaming` routing.
+
 ## [0.4.0] - 2026-05-23
 
 Substrate, observability, planning, approval, memory, and connector primitives. The largest single release since 0.1.0; lays down building blocks the next two quarters of roadmap items will compose.

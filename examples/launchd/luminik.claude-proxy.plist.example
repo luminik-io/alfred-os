@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example launchd unit for alfred-claude-proxy.
+
+  EDIT THE PATHS BEFORE LOADING. The values below are placeholders that
+  must be replaced with your install's absolute paths, in particular:
+
+  * "__ALFRED_HOME__"     -> e.g. ~/.alfred expanded to an absolute path
+  * "__ALFRED_REPO__"     -> e.g. ~/code/alfred-os expanded to an
+                             absolute path (launchd does not perform
+                             tilde expansion)
+  * "__PYTHON__"          -> absolute path to a Python 3.11+ interpreter
+                             (the OSS repo's .venv/bin/python is fine)
+  * "__CLAUDE_BIN__"      -> absolute path to your `claude` binary
+                             (e.g. /opt/homebrew/bin/claude). Resolving
+                             via PATH is unreliable under launchd.
+
+  Why ``LimitLoadToSessionType=Aqua``:
+
+  The whole point of the proxy is to live in the Aqua login session, so
+  its child ``claude`` processes inherit Keychain access. Loading this
+  unit at the System or Background session type defeats the purpose --
+  the proxy would have the same Keychain ACL problem the agents do.
+
+  Install:
+
+      cp examples/launchd/luminik.claude-proxy.plist.example \
+         ~/Library/LaunchAgents/luminik.claude-proxy.plist
+      # edit the paths
+      launchctl bootstrap gui/$(id -u) \
+         ~/Library/LaunchAgents/luminik.claude-proxy.plist
+
+  Verify:
+
+      echo '{"type":"health"}' | nc -U $ALFRED_HOME/run/claude-proxy.sock
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.alfred-os.claude-proxy</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__ALFRED_REPO__/bin/claude-proxy.py</string>
+    <string>--graceful-shutdown-seconds</string>
+    <string>30</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+
+  <key>ProcessType</key>
+  <string>Interactive</string>
+
+  <key>StandardOutPath</key>
+  <string>__ALFRED_HOME__/logs/claude-proxy.stdout</string>
+
+  <key>StandardErrorPath</key>
+  <string>__ALFRED_HOME__/logs/claude-proxy.stderr</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>ALFRED_HOME</key>
+    <string>__ALFRED_HOME__</string>
+    <key>CLAUDE_BIN</key>
+    <string>__CLAUDE_BIN__</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__</string>
+</dict>
+</plist>
