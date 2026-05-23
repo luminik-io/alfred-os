@@ -1,0 +1,114 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+
+// Custom 404 to replace the Starlight default, which renders inside the
+// docs chrome and reads as a broken docs page rather than an Alfred page.
+// Keeps the marketing chrome (header, footer, theme tokens) and gives the
+// operator-personality voice room to breathe.
+
+const title = "404 — that codename has not been hired yet";
+const description =
+  "The page you are looking for does not exist. Try the homepage, the docs, the install guide, or the multi-repo guide.";
+---
+
+<MarketingLayout title={title} description={description} path="/404/">
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="404"
+        title="That page is not in the fleet."
+        lede="No codename by that name has been hired. Maybe you followed an old link, maybe you typed a path that does not exist, maybe an agent filed a draft that was rolled back. Pick a route below."
+      />
+
+      <div class="four-oh-grid">
+        <a class="m-card m-card--hover four-oh__card" href="/">
+          <span class="four-oh__eyebrow m-mono">HOMEPAGE</span>
+          <h3 class="m-h3">Start at the top.</h3>
+          <p class="four-oh__body">
+            What Alfred is, what it ships, and the four codenames that carry
+            the engineering loop.
+          </p>
+        </a>
+
+        <a class="m-card m-card--hover four-oh__card" href="/docs/">
+          <span class="four-oh__eyebrow m-mono">DOCS</span>
+          <h3 class="m-h3">Read the documentation.</h3>
+          <p class="four-oh__body">
+            Getting started, concepts, guides, and the reference for every
+            CLI, every env var, and the lifecycle of a firing.
+          </p>
+        </a>
+
+        <a class="m-card m-card--hover four-oh__card" href="/getting-started/install/">
+          <span class="four-oh__eyebrow m-mono">INSTALL</span>
+          <h3 class="m-h3">Install it on your Mac or Linux box.</h3>
+          <p class="four-oh__body">
+            Clone, configure, schedule. The runtime is your operating
+            system, not a daemon Alfred ships.
+          </p>
+        </a>
+
+        <a class="m-card m-card--hover four-oh__card" href="/multi-repo/">
+          <span class="four-oh__eyebrow m-mono">MULTI-REPO</span>
+          <h3 class="m-h3">See Batman coordinate across repos.</h3>
+          <p class="four-oh__body">
+            Plan, approve, execute. A single agent:large-feature issue
+            becomes a coordinated rollout of scoped child issues.
+          </p>
+        </a>
+      </div>
+
+      <p class="four-oh__note">
+        Still cannot find it? Try the
+        <a href="/docs/" class="four-oh__link">docs search</a>
+        or
+        <a href="https://github.com/luminik-io/alfred-os/issues" class="four-oh__link">open an issue on GitHub</a>.
+      </p>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .four-oh-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    margin-top: 8px;
+  }
+  @media (max-width: 900px) {
+    .four-oh-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+  .four-oh__card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 22px 24px;
+    text-decoration: none;
+    color: inherit;
+    min-width: 0;
+  }
+  .four-oh__card:hover { text-decoration: none; }
+  .four-oh__eyebrow {
+    color: var(--alfred-accent);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .four-oh__body {
+    color: var(--alfred-text);
+    line-height: 1.6;
+    font-size: 15px;
+    margin: 0;
+  }
+  .four-oh__note {
+    margin-top: 28px;
+    color: var(--alfred-mute);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .four-oh__link {
+    color: var(--alfred-accent);
+  }
+  .four-oh__link:hover { text-decoration: underline; }
+</style>

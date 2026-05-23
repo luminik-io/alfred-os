@@ -26,5 +26,8 @@
   },
   "overrides": {
     "yaml": "^2.8.4"
+  },
+  "devDependencies": {
+    "node-html-markdown": "^2.0.0"
   }
 }

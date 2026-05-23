@@ -64,6 +64,12 @@ export const GET: APIRoute = async ({ site }) => {
     "- [GitHub repository](https://github.com/luminik-io/alfred-os): the framework, examples, and issues.",
     "- [Roadmap](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): shipped, in flight, and the design boundaries.",
     "",
+    "## Other LLM-friendly surfaces",
+    "",
+    `- [${new URL("llms-full.txt", origin).href}](${new URL("llms-full.txt", origin).href}): the entire documentation set in a single markdown file.`,
+    `- [${new URL("agents.md", origin).href}](${new URL("agents.md", origin).href}): the AGENTS.md convention; prose intro for an agent reading once.`,
+    "- Per-page markdown mirrors: append `.md` to any page URL (e.g. `/getting-started/install.md`) to fetch that page as raw GFM markdown.",
+    "",
   );
 
   return new Response(lines.join("\n"), {
