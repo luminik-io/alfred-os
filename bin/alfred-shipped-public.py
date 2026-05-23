@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Emit a public-safe shipped feed for the /shipped/ page.
+"""Emit a public-safe shipped feed for self-hosted proof pages.
 
 Usage:
-    alfred-shipped-public.py --emit-public-json site/src/data/shipped/weekly.json
+    alfred-shipped-public.py --emit-public-json weekly.json
     alfred-shipped-public.py --emit-public-json - --operator your-org
     alfred-shipped-public.py --emit-public-json out.json --state ~/.alfred/state
 
 Reads Alfred state under ``$ALFRED_HOME/state/`` (default ``~/.alfred/state``)
-and produces a versioned JSON document that the Astro site picks up at
-build time. The emitter is the privacy boundary: nothing leaves this
-process unless it is in the public allowlist below.
+and produces a versioned JSON document that operators can publish on their
+own site if they want a public rolling-proof page. The emitter is the
+privacy boundary: nothing leaves this process unless it is in the public
+allowlist below. The canonical schema lives at ``schema/weekly.schema.json``.
 
 12-factor: env-driven defaults (``ALFRED_HOME``, ``ALFRED_PUBLIC_OPERATOR``,
 ``ALFRED_PUBLIC_REPO_ALLOWLIST``), file output via CLI (``--emit-public-json

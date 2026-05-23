@@ -11,7 +11,7 @@ Covers:
   codenames collapsed to ``agent``, fields outside the allowlist
   dropped (no PR diffs / issue bodies).
 - Schema validity: output validates against
-  ``site/src/data/shipped/schema.json`` for all the above cases.
+  ``schema/weekly.schema.json`` for all the above cases.
 - CLI: stdout output, file output, --public-allowlist flag.
 - Window filtering.
 """
@@ -31,8 +31,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "bin" / "alfred-shipped-public.py"
-SCHEMA = ROOT / "site" / "src" / "data" / "shipped" / "schema.json"
-SAMPLE_FEED = ROOT / "site" / "src" / "data" / "shipped" / "weekly.json"
+SCHEMA = ROOT / "schema" / "weekly.schema.json"
+SAMPLE_FEED = ROOT / "schema" / "weekly.sample.json"
 
 
 def load_module():
