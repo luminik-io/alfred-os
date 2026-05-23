@@ -134,7 +134,7 @@ Done when:
 
 Batman fires (cron, or manually with `alfred run batman`), reads the
 issue, derives `billing-v2` as the bundle slug, and posts to
-`#alfred-fleet`:
+`#your-fleet-channel`:
 
 ```
 batman, plan drafted for billing-v2 (4 child issue(s), 3 repo(s))

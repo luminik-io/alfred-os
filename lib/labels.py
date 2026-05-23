@@ -69,6 +69,15 @@ LARGE_FEATURE: Final[str] = "agent:large-feature"
 BUNDLE_LABEL_PREFIX: Final[str] = "agent:bundle:"
 """Prefix for per-bundle labels (``agent:bundle:<slug>``)."""
 
+PLAN_PENDING_APPROVAL: Final[str] = "agent:plan-pending-approval"
+"""Set on a bundle parent while Batman waits on operator approval before execute."""
+
+# Legacy long-form alias kept for backward compatibility with downstream code
+# that imports ``LABEL_AGENT_PLAN_PENDING_APPROVAL`` directly (lib/slack_approval.py,
+# lib/batman.py, and any operator extension code that mirrored the original
+# slack_approval module's naming).
+LABEL_AGENT_PLAN_PENDING_APPROVAL: Final[str] = PLAN_PENDING_APPROVAL
+
 
 def bundle_label(slug: str) -> str:
     """Return the bundle label for a given slug.
