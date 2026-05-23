@@ -181,6 +181,35 @@ summarised inline.
 See [`docs/CLI.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CLI.md)
 for the full reference including library examples.
 
+## `bin/connector-sync.py`
+
+Drain registered input connectors and file `agent:implement` issues for
+every new draft. Connectors are pull-mode adapters from non-GitHub
+sources (Linear, Sentry) into the engineering fleet's queue. See
+[`docs/CONNECTORS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/CONNECTORS.md)
+for the full design and the new-connector recipe.
+
+```sh
+./bin/connector-sync.py --dry-run
+./bin/connector-sync.py --connectors linear,sentry
+./bin/connector-sync.py --config examples/connectors.yaml
+./bin/connector-sync.py --json
+```
+
+Config lives at `examples/connectors.yaml` (override with
+`ALFRED_CONNECTORS_CONFIG`). API keys come from the process environment
+only (`LINEAR_API_KEY`, `SENTRY_AUTH_TOKEN`); inline keys are refused.
+Dedup state is per-connector under
+`$ALFRED_HOME/state/connectors/<name>.json`, so a poll that runs every
+15 minutes is idempotent. Exit code is `0` on success, `2` on a missing
+or invalid config, and `3` when at least one connector failed.
+
+Schedule it the same way as any other agent:
+
+```
+my.fleet.connector-sync	connector-sync.py	interval:900	no		Input connector poll
+```
+
 ## State-machine helpers
 
 ### `alfred-label-state`

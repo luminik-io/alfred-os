@@ -1,0 +1,50 @@
+# Example connectors config for ``bin/connector-sync.py``.
+#
+# Each entry under ``connectors`` is a single connector instance. The
+# ``type`` key picks the factory from the registry in
+# ``bin/connector-sync.py`` (currently: ``linear``, ``sentry``).
+#
+# Hard rules
+# ----------
+# * API keys are env-only. Every connector reads its token through an
+#   env var named here as ``api_key_env``. Never paste a token into
+#   this file — Alfred deliberately refuses to load one.
+# * Pull-mode. The operator runs ``connector-sync`` on a launchd /
+#   systemd timer (every 10-30 min is typical). Webhook push-mode is a
+#   v2 item (see ``docs/CONNECTORS.md``).
+# * The runner always adds ``agent:implement`` + ``connector`` to every
+#   filed issue. ``default_labels`` and per-draft labels stack on top.
+
+connectors:
+  - name: linear
+    type: linear
+    enabled: true
+    api_key_env: LINEAR_API_KEY
+    default_repo: example-org/example-backend
+    default_labels: [source:linear, type:feature]
+    filter:
+      team_key: ENG
+      state: Ready
+      label: agent-ready
+
+  - name: sentry
+    type: sentry
+    enabled: true
+    api_key_env: SENTRY_AUTH_TOKEN
+    organization: example-org
+    project: example-web
+    min_severity: warning
+    default_repo: example-org/example-web
+    default_labels: [source:sentry, type:bug]
+
+  # A second Sentry project routed to a different repo. New entries
+  # never touch library code — open-closed by construction.
+  - name: sentry-api
+    type: sentry
+    enabled: false
+    api_key_env: SENTRY_AUTH_TOKEN
+    organization: example-org
+    project: example-api
+    min_severity: blocker
+    default_repo: example-org/example-api
+    default_labels: [source:sentry, area:api]
