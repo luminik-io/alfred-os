@@ -40,3 +40,8 @@
 # A check that fires at 10:00 AND 22:00 (two rows, shared script + log_stem):
 #   my.fleet.health-am	health-check.py	cron:10:00	no	my.fleet.health	Fleet health (morning)
 #   my.fleet.health-pm	health-check.py	cron:22:00	no	my.fleet.health	Fleet health (evening)
+#
+# Opt-in: damian, the spec-bundle planner. Uncomment after configuring
+# DAMIAN_SCAN_REPOS and DAMIAN_SPEC_DIR, then `alfred enable damian`.
+# Fires once a day; matches the daily-bundle cap baked into the runner.
+#   my.fleet.damian	damian.py	cron:9:00	no		Spec-bundle planner

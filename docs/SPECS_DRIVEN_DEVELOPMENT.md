@@ -71,15 +71,22 @@ How to revert or disable the change if it breaks.
 1. **Drake reads specs and roadmap context.** It files scoped
    `agent:implement` issues only when the acceptance criteria are concrete and
    testable.
-2. **Batman plans multi-repo work.** A labelled `agent:large-feature` issue,
+2. **Damian fills the multi-repo bundle queue.** Where Drake handles
+   single-repo work, Damian walks `DAMIAN_SPEC_DIR` once a day, identifies
+   specs whose acceptance criteria touch two or more configured repos, and
+   files the matching `agent:bundle:<slug>` sibling issues. All-or-nothing per
+   bundle: if any sibling-create fails, the previously-created siblings are
+   rolled back so Batman never picks up a half-filed bundle. Damian is
+   opt-in and capped at three bundles per firing.
+3. **Batman plans multi-repo work.** A labelled `agent:large-feature` issue,
    optionally grouped with `agent:bundle:<slug>`, becomes a rollout plan across
    the configured repos. Public Batman stops at the plan.
-3. **Lucius implements one repo at a time.** It claims a single
+4. **Lucius implements one repo at a time.** It claims a single
    `agent:implement` issue, opens an isolated worktree, invokes Claude Code or
    Codex, pushes a branch, and opens a PR.
-4. **Ras al Ghul, Bane, and Nightwing close the review path.** Review, tests,
+5. **Ras al Ghul, Bane, and Nightwing close the review path.** Review, tests,
    and P0/P1 comment fixes happen as separate bounded jobs.
-5. **Slack and shipped summaries show the outcome.** The operator sees what was
+6. **Slack and shipped summaries show the outcome.** The operator sees what was
    planned, claimed, opened, merged, or blocked.
 
 ## One Repo

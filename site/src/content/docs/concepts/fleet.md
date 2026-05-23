@@ -24,6 +24,7 @@ flowchart LR
     end
 
     drake["drake<br/><i>planner · every 2h</i>"]
+    damian["damian<br/><i>spec-bundle-planner · opt-in</i>"]
     batman["batman<br/><i>cross-repo coordinator · opt-in</i>"]
     lucius["lucius<br/><i>feature-dev · every 20m</i>"]
     bane["bane<br/><i>test-coverage · every 4h</i>"]
@@ -35,6 +36,7 @@ flowchart LR
     automerge["automerge<br/><i>squash-merge · every 15m</i>"]
 
     drake -- "files" --> issues
+    damian -- "files bundles" --> issues
     batman -- "plans bundles" --> issues
     robin -- "triages" --> issues
     issues -- "claim_issue" --> lucius
@@ -49,7 +51,7 @@ flowchart LR
     huntress -- "smoke-test fails" --> robin
     gordon -- "drift / Sentry" --> slack
 
-    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & batman & automerge -. "status" .-> slack
+    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & damian & batman & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
@@ -78,6 +80,7 @@ Ghul, and agent-cleanup. Pick `all` only when you want the full roster.
 |---|---|---|---|
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
+| **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |
 | **batman** | cross-repo coordinator | every 1 h, opt-in | Picks `agent:large-feature` / `agent:bundle:<slug>` issues and posts a bundle plan. OSS ships this as plan-only; custom fleets can layer approval and execution on top. |
 | **bane** | test-coverage | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
 | **rasalghul** | code-review | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
