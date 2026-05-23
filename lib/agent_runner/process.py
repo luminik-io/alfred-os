@@ -345,16 +345,37 @@ def _try_invoke_via_proxy(
         available or the connection failed. Never raises.
     """
     # Import locally so the OSS framework still works in environments where
-    # ``lib/claude_proxy`` is absent (vendored installs, partial copies).
+    # ``claude_proxy`` is absent (vendored installs, partial copies). The
+    # two-form try keeps both production (lib/ on sys.path, bin scripts)
+    # and the test harness (repo root on sys.path) working without forcing
+    # the suite to reach into module internals; either path resolves the
+    # same file. The earlier ``from lib.claude_proxy ...`` only matched
+    # the test layout, so under launchd this fell through to fallback and
+    # the proxy never engaged — exactly the Keychain workaround the proxy
+    # was built for.
+    # Dual-import: try the deployed shape (`claude_proxy.X` with lib/ on
+    # sys.path) first, fall back to the test-harness shape
+    # (`lib.claude_proxy.X` with repo root on sys.path), then degrade to
+    # direct subprocess. Both branches resolve the same file at runtime.
+    # mypy handles the dual resolution via the `claude_proxy*` /
+    # `lib.claude_proxy*` follow_imports = "skip" override in pyproject.
     try:
-        from lib.claude_proxy.client import (
+        from claude_proxy.client import (
             ProxyUnavailable,
             invoke_collected,
             proxy_available,
         )
-        from lib.claude_proxy.protocol import InvokeRequest
+        from claude_proxy.protocol import InvokeRequest
     except ImportError:
-        return None
+        try:
+            from lib.claude_proxy.client import (
+                ProxyUnavailable,
+                invoke_collected,
+                proxy_available,
+            )
+            from lib.claude_proxy.protocol import InvokeRequest
+        except ImportError:
+            return None
 
     if not proxy_available():
         return None

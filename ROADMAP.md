@@ -15,9 +15,9 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
-### v0.4.0 (staging)
+### v0.4.0 — 2026-05-23
 
-Substrate, observability, and approval primitives. Currently being staged on the `positioning/operations-room` branch.
+Substrate, observability, planning, approval, memory, and connector primitives. Merged to `main` on 2026-05-23 via PRs #89 and #90; tagged as `v0.4.0`.
 
 - `lib/agent_runner.py` decomposed into a 10-file `lib/agent_runner/` package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
 - `alfred-metrics` CLI: per-agent firings, cost, success rate, p50/p95 turn count from on-disk state.

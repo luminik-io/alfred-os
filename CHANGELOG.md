@@ -4,12 +4,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
-### Added
-
-- `lib/claude_proxy/` and `bin/claude-proxy.py`: localhost unix-socket daemon that brokers `claude -p` invocations on behalf of launchd-spawned agent processes. Solves the macOS Keychain ACL issue that returns 401 on every `claude` call from a non-Aqua launchd session. NDJSON wire protocol with `invoke`, `health`, and `probe` requests; stdlib-only; opt-in via `ALFRED_CLAUDE_PROXY_SOCKET` with transparent fallback to direct subprocess. See `docs/CLAUDE_PROXY.md` and `docs/MACOS_KEYCHAIN.md`.
-- `examples/launchd/luminik.claude-proxy.plist.example`: sample launchd unit with `LimitLoadToSessionType=Aqua` and inline install / verify recipe. Operators must edit the placeholder paths before bootstrapping.
-- `lib/agent_runner.process.claude_invoke_streaming` now routes through the proxy when the env var is set, falls back to direct subprocess otherwise.
-- 48 new tests covering protocol round-trip, server lifecycle (stale socket, concurrent invokes, health-during-invoke, client-disconnect kills child), client fallback paths, and end-to-end `claude_invoke_streaming` routing.
+(No unreleased entries.)
 
 ## [0.4.0] - 2026-05-23
 
@@ -19,7 +14,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 
 #### Runner and observability
 
-- `lib/agent_runner.py` decomposed from a single monolith into a 10-file `lib/agent_runner/` package: preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup. Public import surface preserved. 380 new unit tests covering the split modules.
+- `lib/agent_runner.py` decomposed from a single monolith into a 10-file `lib/agent_runner/` package: preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup. Public import surface preserved. 50 new unit tests under `tests/unit/agent_runner/` cover the split modules; full suite grew from 689 to 749.
 - `alfred metrics` (`bin/alfred-metrics.py`): per-agent rollup of firings, cost, turns, tool-use, and Codex tokens. `--since 7d`, `--codename`, `--by-day`, `--json`. Reads `$ALFRED_STATE_DIR` only.
 - `alfred logs` (`bin/alfred-logs.py`): tail and filter per-firing stream-JSON transcripts. `--last N`, `--firing-id ID`, `--show-tool-calls`, `--json`. See `docs/CLI.md`.
 - `lib/transcripts.py` and `lib/metrics.py`: `TranscriptReader` and `MetricsAggregator` protocols + filesystem-backed implementations, used by the two new CLIs and exposed for downstream code.
@@ -56,7 +51,22 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 #### Dashboards and proof
 
 - `alfred serve` v1 (`bin/alfred-serve.py` + `lib/server/`): localhost-only, read-only FastAPI dashboard over `$ALFRED_HOME/state`. Three views: fleet status with HTMX auto-refresh, recent firings, single-firing detail. Reader injected as `typing.Protocol`. New `[serve]` optional dependency group for `fastapi`, `uvicorn`, `jinja2`. See `docs/SERVE.md`.
-- `/shipped/` page on the docs site (`site/src/pages/shipped.astro`): rolling proof page populated from real fleet output. Cold-fork mode renders an explainer when there is no operator data yet. Privacy posture: field allowlist, repo denylist for `luminik-*` basenames, title and reviewer scrub. `bin/alfred-shipped-public.py` is the emitter; see `docs/SHIPPED_PAGE.md`.
+- `bin/alfred-shipped-public.py`: self-host emitter that reads `$ALFRED_HOME/state`, applies a public field allowlist + partner-name redaction table, and writes a `weekly.json` operators can publish on their own site. See `docs/SHIPPED_EMITTER.md`.
+
+#### Infrastructure for unattended operation
+
+- `lib/claude_proxy/` and `bin/claude-proxy.py`: localhost unix-socket daemon that brokers `claude -p` invocations on behalf of launchd-spawned agent processes. Solves the macOS Keychain ACL issue that returns 401 on every `claude` call from a non-Aqua launchd session. NDJSON wire protocol with `invoke`, `health`, and `probe` requests; stdlib-only; opt-in via `ALFRED_CLAUDE_PROXY_SOCKET` with transparent fallback to direct subprocess. See `docs/CLAUDE_PROXY.md` and `docs/MACOS_KEYCHAIN.md`.
+- `examples/launchd/luminik.claude-proxy.plist.example`: sample launchd unit with `LimitLoadToSessionType=Aqua` and inline install / verify recipe. Operators must edit the placeholder paths before bootstrapping. (Brand-neutral filename rename tracked for the v0.4.1 docs PR.)
+- `lib/agent_runner.process.claude_invoke_streaming` routes through the proxy when the env var is set, falls back to direct subprocess otherwise.
+
+#### Fleet diagnostic + cleanup hardening
+
+- Pause-marker honoring under launchd via `$ALFRED_HOME/state/_paused/<codename>` (paused agents stay paused across firings, not just at boot).
+- Fail-streak / pause-marker sync at every self-pause site (lucius, drake, batman, rasalghul, nightwing).
+- `ALFRED_CLEANUP_EXTRA_PATHS` env var: sweep operator-managed worktree pools outside `$ALFRED_HOME/worktrees`.
+- Status-cache TTL stops stale reads when `alfred status` is invoked in quick succession.
+- `ALFRED_PREFLIGHT_SLACK_MIN_MINUTES` throttles repeated preflight Slack alerts.
+- `fleet-doctor` distinct alert for concurrent engine-auth failures (separates "claude not logged in" from generic firing errors).
 
 #### Documentation
 

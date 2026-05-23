@@ -128,6 +128,17 @@ strict_equality = true
 exclude = ["^lib/claude_proxy/", "^lib/server/"]
 
 [[tool.mypy.overrides]]
+# claude_proxy is dual-imported in agent_runner/process.py as both
+# `claude_proxy.X` (deployed shape) and `lib.claude_proxy.X` (test
+# harness shape). Either resolves to lib/claude_proxy/client.py; mypy
+# raises "Source file found twice" trying to follow both. follow_imports
+# = "skip" stops mypy from descending into the proxy module during
+# resolution. lib/claude_proxy/ is also excluded from type-checking above.
+module = ["claude_proxy", "claude_proxy.*", "lib.claude_proxy", "lib.claude_proxy.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # agent_runner.py predates strict typing; opt in incrementally.
 module = "agent_runner"
 disallow_untyped_defs = false
