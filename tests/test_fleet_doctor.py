@@ -194,3 +194,121 @@ def test_doctor_smoke_runs_in_doctor_mode(tmp_path):
     )
     assert res.returncode == 0
     assert "[FLEET-DOCTOR-OK]" in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# check_engine_auth_streak — concurrent Anthropic auth failures
+# ---------------------------------------------------------------------------
+def _write_event(events_dir: Path, firing_id: str, *records: dict) -> Path:
+    events_dir.mkdir(parents=True, exist_ok=True)
+    path = events_dir / f"{firing_id}.jsonl"
+    with open(path, "w", encoding="utf-8") as f:
+        for rec in records:
+            f.write(json.dumps(rec) + "\n")
+    return path
+
+
+def test_engine_auth_streak_green_when_below_threshold(tmp_path, monkeypatch):
+    """Two affected agents is below the default min_agents=3 threshold."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    fd = _load_doctor()
+    state = fd.STATE_ROOT
+    ts = "2026-05-23T16:00:00.000000Z"
+    _write_event(
+        state / "lucius" / "events",
+        "abc",
+        {"ts": ts, "agent": "lucius", "event": "firing_complete",
+         "subtype": "error_authentication", "engine": "claude"},
+    )
+    _write_event(
+        state / "drake" / "events",
+        "def",
+        {"ts": ts, "agent": "drake", "event": "firing_complete",
+         "subtype": "error_authentication", "engine": "claude"},
+    )
+    finding = fd.check_engine_auth_streak()
+    assert finding.severity == "green"
+
+
+def test_engine_auth_streak_red_when_three_agents_hit(tmp_path, monkeypatch):
+    """Three affected agents within the window trips the alert."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    fd = _load_doctor()
+    state = fd.STATE_ROOT
+    now = time.time()
+    iso = "2026-05-23T16:30:00.000000Z"
+    for agent in ("lucius", "drake", "bane"):
+        events_dir = state / agent / "events"
+        path = _write_event(
+            events_dir,
+            "fid-" + agent,
+            {"ts": iso, "agent": agent, "event": "firing_complete",
+             "subtype": "error_authentication", "engine": "claude"},
+        )
+        os.utime(path, (now, now))
+    finding = fd.check_engine_auth_streak(now=now)
+    assert finding.severity == "alert"
+    assert "Engine auth failing" in finding.message
+    assert "lucius" in finding.message
+    assert "alfred claude probe" in finding.message
+
+
+def test_engine_auth_streak_ignores_non_claude_engines(tmp_path, monkeypatch):
+    """Codex engine-auth failures must not count toward the Claude streak."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    fd = _load_doctor()
+    state = fd.STATE_ROOT
+    now = time.time()
+    iso = "2026-05-23T16:30:00.000000Z"
+    for agent in ("lucius", "drake", "bane"):
+        events_dir = state / agent / "events"
+        path = _write_event(
+            events_dir,
+            "fid-" + agent,
+            {"ts": iso, "agent": agent, "event": "firing_complete",
+             "subtype": "error_authentication", "engine": "codex"},
+        )
+        os.utime(path, (now, now))
+    finding = fd.check_engine_auth_streak(now=now)
+    assert finding.severity == "green"
+
+
+def test_engine_auth_streak_ignores_other_subtypes(tmp_path, monkeypatch):
+    """A rate-limit error with engine=claude must not trigger this check."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    fd = _load_doctor()
+    state = fd.STATE_ROOT
+    now = time.time()
+    iso = "2026-05-23T16:30:00.000000Z"
+    for agent in ("lucius", "drake", "bane"):
+        events_dir = state / agent / "events"
+        path = _write_event(
+            events_dir,
+            "fid-" + agent,
+            {"ts": iso, "agent": agent, "event": "firing_complete",
+             "subtype": "error_rate_limit", "engine": "claude"},
+        )
+        os.utime(path, (now, now))
+    finding = fd.check_engine_auth_streak(now=now)
+    assert finding.severity == "green"
+
+
+def test_engine_auth_streak_window_excludes_old_files(tmp_path, monkeypatch):
+    """Files outside the time window must not contribute."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    fd = _load_doctor()
+    state = fd.STATE_ROOT
+    now = time.time()
+    old = now - (3 * 3600)
+    iso_old = "2026-05-23T10:00:00.000000Z"
+    for agent in ("lucius", "drake", "bane"):
+        events_dir = state / agent / "events"
+        path = _write_event(
+            events_dir,
+            "fid-" + agent,
+            {"ts": iso_old, "agent": agent, "event": "firing_complete",
+             "subtype": "error_authentication", "engine": "claude"},
+        )
+        os.utime(path, (old, old))
+    finding = fd.check_engine_auth_streak(now=now)
+    assert finding.severity == "green"

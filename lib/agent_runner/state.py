@@ -312,15 +312,103 @@ def lock_pid_identity_matches(
 
 
 def with_lock(name: str) -> AgentLock:
-    """Acquire the per-agent lock; exit cleanly if another live PID holds it."""
+    """Acquire the per-agent lock; exit cleanly if another live PID holds it.
+
+    Also honors the operator-managed pause marker at
+    ``$ALFRED_HOME/state/_paused/<name>``. The ``alfred run`` CLI
+    enforces that gate, but launchd-spawned firings invoke
+    ``agent-launch`` -> ``<agent>.py`` directly and previously
+    bypassed it. Embedding the check here means every entrypoint
+    respects ``alfred pause <agent>`` without touching the per-codename
+    runner scripts.
+    """
     import atexit
 
+    if is_agent_paused(name):
+        marker = agent_pause_marker_path(name)
+        try:
+            body = marker.read_text(errors="replace").strip()
+        except OSError:
+            body = ""
+        print(
+            f"[{name.upper()}-PAUSED] marker present: {marker} ({body}). "
+            "Skipping firing."
+        )
+        sys.exit(0)
     lock = AgentLock(name)
     if not lock.acquire():
         print(f"[{name}-LOCKED] previous run still active. Skipping firing.")
         sys.exit(0)
     atexit.register(lock.release)
     return lock
+
+
+# --------------------------------------------------------------------------
+# Per-agent pause marker honoring (launchd bypass fix)
+#
+# ``alfred pause <agent>`` writes ``$ALFRED_HOME/state/_paused/<codename>``.
+# The bash CLI honors that marker before kicking a one-shot run, but
+# launchd-spawned firings invoke ``agent-launch`` -> ``<agent>.py``
+# directly and bypass the gate. The ``with_lock`` helper above calls
+# ``is_agent_paused`` so every runner respects the marker without
+# touching per-agent scripts.
+# --------------------------------------------------------------------------
+PAUSE_MARKER_DIR = STATE_ROOT / "_paused"
+
+
+def agent_pause_marker_path(codename: str) -> Path:
+    """Resolve the operator-managed pause marker file for ``codename``."""
+    return PAUSE_MARKER_DIR / codename
+
+
+def is_agent_paused(codename: str) -> bool:
+    """Return True iff a pause marker exists for ``codename``."""
+    try:
+        return agent_pause_marker_path(codename).is_file()
+    except OSError:
+        return False
+
+
+def write_agent_pause_marker(codename: str, reason: str = "") -> Path:
+    """Write the pause marker for ``codename``. Idempotent.
+
+    Used by self-pause paths (fail-streak, daily cap) so the operator's
+    ``alfred agents`` view shows a paused state matching the runner's
+    blocking behaviour. ``reason`` is recorded inside the marker for
+    forensics; the body's exact shape is not load-bearing.
+    """
+    marker = agent_pause_marker_path(codename)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    body = stamp if not reason else f"{stamp} {reason}"
+    marker.write_text(body + "\n")
+    return marker
+
+
+def clear_agent_pause_marker(codename: str) -> bool:
+    """Remove the pause marker for ``codename``. Returns True iff present."""
+    marker = agent_pause_marker_path(codename)
+    try:
+        marker.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+
+
+def reset_consecutive_failures(codename: str) -> None:
+    """Reset today's ``consecutive_failures`` counter for ``codename``.
+
+    Called from ``alfred resume`` paths so an operator-driven resume
+    clears both the pause marker AND the in-runner streak gate.
+    Without this, an agent that hit the fail-streak cap would re-pause
+    one tick after resume because the spend file's streak counter
+    still has the elevated value.
+    """
+    spend = SpendState(codename)
+    if spend.state.get("consecutive_failures", 0):
+        spend.set(consecutive_failures=0)
 
 
 # --------------------------------------------------------------------------

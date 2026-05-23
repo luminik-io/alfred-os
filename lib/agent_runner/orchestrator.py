@@ -181,8 +181,99 @@ def preflight(spec: PreflightSpec) -> None:
         )
     )
     if not suppress_slack:
-        slack_post(f"🚫 {spec.agent} preflight failed: {headline}")
+        # Throttle the Slack post to once per N minutes per
+        # (agent, error_signature). When an agent's preflight fails
+        # identically on every tick (AWS profile rotation, gh auth
+        # expiry), the previous code path posted on every firing —
+        # 48+ identical posts per day. The operator stops reading
+        # the channel and the actual signal is lost. With a throttle,
+        # the operator sees one ping per error per hour (configurable
+        # via ALFRED_PREFLIGHT_SLACK_MIN_MINUTES).
+        signature = _preflight_error_signature(misses)
+        if _should_post_preflight_slack(spec.agent, signature):
+            slack_post(f"🚫 {spec.agent} preflight failed: {headline}")
+            _record_preflight_slack_post(spec.agent, signature)
+        else:
+            print(
+                f"[{spec.agent}-preflight-slack-throttled] same error within "
+                f"{_preflight_slack_min_minutes()}m; skipping Slack post.",
+                file=sys.stderr,
+            )
     raise PreflightFailed(misses)
+
+
+# --------------------------------------------------------------------------
+# Per-(agent, error_signature) Slack throttle for preflight failures.
+#
+# State file at $ALFRED_HOME/state/<agent>/last-slack-preflight-post.json
+# maps error_signature -> ISO timestamp of the most recent Slack post for
+# that signature. Default window is 60 minutes, override via
+# ALFRED_PREFLIGHT_SLACK_MIN_MINUTES. State-file errors fail-open: a
+# corrupt or unreadable state file must never silence preflight
+# escalation, only the inverse.
+# --------------------------------------------------------------------------
+
+_PREFLIGHT_SLACK_STATE_NAME = "last-slack-preflight-post.json"
+
+
+def _preflight_slack_min_minutes() -> int:
+    try:
+        return int(os.environ.get("ALFRED_PREFLIGHT_SLACK_MIN_MINUTES", "60"))
+    except ValueError:
+        return 60
+
+
+def _preflight_error_signature(misses: list[str]) -> str:
+    """Hash-stable identifier for one preflight's set of misses."""
+    return ";".join(sorted(misses))
+
+
+def _preflight_slack_state_path(agent: str) -> Path:
+    from .paths import STATE_ROOT
+    return STATE_ROOT / agent / _PREFLIGHT_SLACK_STATE_NAME
+
+
+def _should_post_preflight_slack(agent: str, signature: str) -> bool:
+    state_path = _preflight_slack_state_path(agent)
+    if not state_path.exists():
+        return True
+    try:
+        data = json.loads(state_path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return True
+    last_iso = data.get(signature) if isinstance(data, dict) else None
+    if not isinstance(last_iso, str):
+        return True
+    try:
+        last_dt = datetime.strptime(last_iso, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=UTC
+        )
+    except ValueError:
+        return True
+    delta_minutes = (datetime.now(UTC) - last_dt).total_seconds() / 60.0
+    return delta_minutes >= _preflight_slack_min_minutes()
+
+
+def _record_preflight_slack_post(agent: str, signature: str) -> None:
+    """Stamp the (agent, signature) pair. Best-effort write."""
+    state_path = _preflight_slack_state_path(agent)
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        data: dict = {}
+        if state_path.exists():
+            try:
+                loaded = json.loads(state_path.read_text())
+                if isinstance(loaded, dict):
+                    data = loaded
+            except (OSError, json.JSONDecodeError, ValueError):
+                data = {}
+        data[signature] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        state_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+    except OSError as e:
+        print(
+            f"[{agent}-preflight-slack-state-write-failed] {e}",
+            file=sys.stderr,
+        )
 
 
 # --------------------------------------------------------------------------

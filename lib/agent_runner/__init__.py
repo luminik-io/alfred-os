@@ -238,6 +238,7 @@ from .result import (
 # State (locks, spend, fleet, events, global block)
 # --------------------------------------------------------------------------
 from .state import (
+    PAUSE_MARKER_DIR,
     _LOCK_GRACE_SECONDS,
     AgentLock,
     EventLog,
@@ -245,16 +246,21 @@ from .state import (
     _atomic_write,
     _read_enabled_codenames,
     _write_enabled_codenames,
+    agent_pause_marker_path,
+    clear_agent_pause_marker,
     disable_agent,
     enable_agent,
     is_agent_enabled,
+    is_agent_paused,
     is_globally_blocked,
     list_enabled_agents,
     lock_pid_identity_matches,
     lock_pid_identity_status,
     maybe_set_global_block_for_result,
+    reset_consecutive_failures,
     set_global_block,
     with_lock,
+    write_agent_pause_marker,
 )
 
 # --------------------------------------------------------------------------
@@ -342,17 +348,23 @@ __all__ = [
     # state
     "AgentLock",
     "EventLog",
+    "PAUSE_MARKER_DIR",
     "SpendState",
+    "agent_pause_marker_path",
+    "clear_agent_pause_marker",
     "disable_agent",
     "enable_agent",
     "is_agent_enabled",
+    "is_agent_paused",
     "is_globally_blocked",
     "list_enabled_agents",
     "lock_pid_identity_matches",
     "lock_pid_identity_status",
     "maybe_set_global_block_for_result",
+    "reset_consecutive_failures",
     "set_global_block",
     "with_lock",
+    "write_agent_pause_marker",
     # github
     "CLAIM_COMMENT_PREFIX",
     "GH_REPO_TO_LOCAL",

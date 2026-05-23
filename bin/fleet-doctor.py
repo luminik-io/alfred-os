@@ -215,6 +215,117 @@ def check_spend_state() -> Finding:
     return Finding("spend-state", "green", f"{len(files)} spend file(s), no failure streaks")
 
 
+ENGINE_AUTH_WINDOW_SECONDS = 3600  # last 1h
+ENGINE_AUTH_MIN_AGENTS = 3
+
+
+def _recent_event_jsonl_paths(
+    *,
+    window_seconds: int = ENGINE_AUTH_WINDOW_SECONDS,
+    now: float | None = None,
+) -> list[Path]:
+    """Return event-log JSONL files modified within ``window_seconds``."""
+    import time as _time
+
+    now_ts = _time.time() if now is None else now
+    cutoff = now_ts - window_seconds
+    paths: list[Path] = []
+    if not STATE_ROOT.is_dir():
+        return paths
+    for agent_dir in STATE_ROOT.iterdir():
+        if not agent_dir.is_dir():
+            continue
+        events_dir = agent_dir / "events"
+        if not events_dir.is_dir():
+            continue
+        for f in events_dir.glob("*.jsonl"):
+            try:
+                if f.stat().st_mtime >= cutoff:
+                    paths.append(f)
+            except OSError:
+                continue
+    return paths
+
+
+def _file_has_engine_auth_failure(path: Path, *, cutoff_ts: float) -> bool:
+    """Return True iff ``path`` contains at least one event with
+    ``subtype: error_authentication`` AND ``engine: claude`` within
+    the window. Best-effort parser: malformed records are skipped."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                ts_str = rec.get("ts", "")
+                if isinstance(ts_str, str) and ts_str:
+                    try:
+                        rec_ts = datetime.strptime(
+                            ts_str, "%Y-%m-%dT%H:%M:%S.%fZ"
+                        ).replace(tzinfo=UTC).timestamp()
+                        if rec_ts < cutoff_ts:
+                            continue
+                    except ValueError:
+                        pass
+                if (
+                    rec.get("subtype") == "error_authentication"
+                    and rec.get("engine") == "claude"
+                ):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def check_engine_auth_streak(
+    *,
+    window_seconds: int = ENGINE_AUTH_WINDOW_SECONDS,
+    min_agents: int = ENGINE_AUTH_MIN_AGENTS,
+    now: float | None = None,
+) -> Finding:
+    """Concurrent Anthropic auth failures across the fleet.
+
+    Walks per-firing event JSONL files in the last ``window_seconds``
+    and counts distinct agents emitting ``subtype: error_authentication``
+    with ``engine: claude``. Red when ``min_agents`` or more concurrent
+    agents hit the same failure mode within the window — the root cause
+    is the operator's Anthropic session or Keychain ACL, not any
+    individual agent's prompt.
+    """
+    import time as _time
+
+    now_ts = _time.time() if now is None else now
+    cutoff_ts = now_ts - window_seconds
+    affected: set[str] = set()
+    for path in _recent_event_jsonl_paths(window_seconds=window_seconds, now=now_ts):
+        if _file_has_engine_auth_failure(path, cutoff_ts=cutoff_ts):
+            agent = path.parent.parent.name
+            affected.add(agent)
+    if len(affected) >= min_agents:
+        listed = ", ".join(sorted(affected))
+        return Finding(
+            "engine-auth-streak",
+            "alert",
+            (
+                f"🔴 Engine auth failing: {len(affected)} agents hitting "
+                f"error_authentication on engine=claude in last "
+                f"{window_seconds // 60}m ({listed}). Likely Keychain ACL "
+                "or session expiry. Run `alfred claude probe` to diagnose."
+            ),
+        )
+    return Finding(
+        "engine-auth-streak",
+        "green",
+        "No concurrent Anthropic auth failures.",
+    )
+
+
 CHECKS = [
     check_paused_repos,
     check_global_block,
@@ -222,6 +333,7 @@ CHECKS = [
     check_enabled_agents,
     check_paused_agents,
     check_spend_state,
+    check_engine_auth_streak,
 ]
 
 

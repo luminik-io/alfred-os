@@ -198,6 +198,99 @@ if wt_root.exists():
         except OSError:
             pass
 
+
+def sweep_extra_paths(
+    *,
+    paths: str,
+    max_age_hours: int,
+    now: float | None = None,
+) -> dict[str, float]:
+    """Sweep abandoned worktrees in operator-configured extra paths.
+
+    ``paths`` is a colon-separated list (typically from the
+    ``ALFRED_CLEANUP_EXTRA_PATHS`` env var). Each entry's children are
+    treated as worktrees; entries older than ``max_age_hours`` and not
+    dirty are removed via ``git worktree remove --force`` (against
+    every repo in ``WORKSPACE`` that claims them) plus a defensive
+    ``shutil.rmtree``. Dirty worktrees are skipped so cleanup never
+    destroys in-progress work.
+
+    Returns ``{"removed": int, "skipped": int, "freed_mb": float}``.
+
+    Background: the fleet pool at ``$ALFRED_HOME/worktrees`` is swept
+    by the block above; this helper extends that to operator-owned
+    pools outside the fleet pool (e.g. a per-project ``.worktrees``
+    directory where manual Claude Code sessions accumulate). Without
+    this, those pools grow unbounded.
+    """
+    now_ts = time.time() if now is None else now
+    max_age_seconds = max_age_hours * 3600
+    removed = 0
+    skipped = 0
+    freed_mb = 0.0
+
+    for raw in (paths or "").split(":"):
+        path_str = raw.strip()
+        if not path_str:
+            continue
+        root = Path(os.path.expanduser(path_str))
+        if not root.is_dir():
+            print(
+                f"[cleanup] extra path skipped: {root} (not a directory)",
+                file=sys.stderr,
+            )
+            continue
+        for wt in root.iterdir():
+            try:
+                age = now_ts - wt.stat().st_mtime
+                if age < max_age_seconds:
+                    continue
+                dirty_reason = dirty_worktree_reason(wt)
+                if dirty_reason:
+                    skipped += 1
+                    print(
+                        f"[cleanup] extra worktree skipped: {wt} "
+                        f"({dirty_reason})",
+                        file=sys.stderr,
+                    )
+                    continue
+                try:
+                    size_mb = sum(
+                        f.stat().st_size for f in wt.rglob("*") if f.is_file()
+                    ) / (1024 * 1024)
+                except OSError:
+                    size_mb = 0.0
+                for repo_dir in WORKSPACE.iterdir():
+                    if not (repo_dir / ".git").exists():
+                        continue
+                    subprocess.run(
+                        ["git", "worktree", "remove", "--force", str(wt)],
+                        cwd=str(repo_dir),
+                        capture_output=True,
+                        timeout=15,
+                    )
+                shutil.rmtree(wt, ignore_errors=True)
+                removed += 1
+                freed_mb += size_mb
+            except OSError:
+                pass
+
+    return {"removed": removed, "skipped": skipped, "freed_mb": freed_mb}
+
+
+# Operator-managed extra worktree pools (outside ALFRED_HOME).
+# ``ALFRED_CLEANUP_EXTRA_PATHS`` is a colon-separated list; each entry
+# is swept using the same dirty-skip rules as the fleet pool but with a
+# configurable age threshold via ``ALFRED_CLEANUP_MAX_AGE_HOURS``
+# (default 48h).
+extra_paths_raw = os.environ.get("ALFRED_CLEANUP_EXTRA_PATHS", "").strip()
+extra_max_age_hours = int(os.environ.get("ALFRED_CLEANUP_MAX_AGE_HOURS", "48"))
+extra_stats = sweep_extra_paths(
+    paths=extra_paths_raw,
+    max_age_hours=extra_max_age_hours,
+    now=NOW,
+)
+
 SPEND_RETENTION_DAYS = int(os.environ.get("ALFRED_SPEND_RETENTION_DAYS", "90"))
 TRANSCRIPT_RETENTION_DAYS = int(os.environ.get("ALFRED_TRANSCRIPT_RETENTION_DAYS", "30"))
 EVENTS_RETENTION_DAYS = int(os.environ.get("ALFRED_EVENTS_RETENTION_DAYS", "30"))
@@ -297,6 +390,12 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
 
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
 print(f"[cleanup] worktrees: {wt_removed} abandoned removed, {wt_skipped} dirty/unknown skipped")
+if extra_paths_raw:
+    print(
+        f"[cleanup] extra worktrees: {extra_stats['removed']} removed "
+        f"({extra_stats['freed_mb']:.1f} MB freed, >{extra_max_age_hours}h), "
+        f"{extra_stats['skipped']} dirty/unknown skipped"
+    )
 print(f"[cleanup] spend files: {spend_removed} removed (>{SPEND_RETENTION_DAYS}d)")
 print(f"[cleanup] event logs: {events_removed} removed (>{EVENTS_RETENTION_DAYS}d)")
 print(
