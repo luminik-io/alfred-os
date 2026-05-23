@@ -1,0 +1,245 @@
+---
+/**
+ * /shipped/ — weekly roundup of merged PRs from the operator's fleet.
+ *
+ * Two render modes:
+ *
+ * 1. Operator mode: site/src/data/shipped/weekly.json is populated. The
+ *    page renders summary, table, and trend from that file. The data is
+ *    a build-time import; the page is static and CDN-cacheable.
+ *
+ * 2. Cold-fork mode: weekly.json is empty/absent or has zero PRs. The
+ *    page renders an explainer telling the reader this is operator
+ *    output and shows the command to populate it after running Alfred
+ *    for a week.
+ *
+ * The emitter (`bin/alfred-shipped-public.py`) writes the JSON. The site
+ * only reads it; it does not call out to GitHub or to ~/.alfred/state at
+ * build time. This keeps the public-fork build hermetic.
+ */
+
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import ShippedSummary from "../components/marketing/ShippedSummary.astro";
+import ShippedTable from "../components/marketing/ShippedTable.astro";
+import ShippedTrend from "../components/marketing/ShippedTrend.astro";
+
+import weeklyData from "../data/shipped/weekly.json";
+
+interface WeeklyFeed {
+  version: number;
+  generated_at: string;
+  operator: string;
+  window: { from: string; to: string };
+  summary: {
+    prs_merged: number;
+    prs_reverted: number;
+    issues_closed: number;
+    agents_active: number;
+    repos_touched: number;
+    spend_cents: number;
+    merge_clean_pct: number;
+  };
+  trend: { week: string; prs_merged: number }[];
+  prs: {
+    repo: string;
+    number: number;
+    title: string;
+    codename: string;
+    merged_at: string;
+    lines_added: number;
+    lines_removed: number;
+    files_changed: number;
+    reviewed_by?: string[];
+    url: string;
+  }[];
+}
+
+const feed = weeklyData as WeeklyFeed;
+
+// Honest mode detection. A cold-forked clone gets the placeholder
+// `your-org` operator and no real PR data; we treat zero merged PRs as
+// the unambiguous signal to render the explainer.
+const isColdFork = !feed || !feed.prs || feed.prs.length === 0 || feed.summary.prs_merged === 0;
+
+const fmtGeneratedAt = (iso: string): string => {
+  try {
+    const d = new Date(iso);
+    return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
+  } catch {
+    return iso;
+  }
+};
+---
+
+<MarketingLayout
+  title="Shipped | Alfred"
+  description="Weekly roundup of pull requests the Alfred fleet merged for the operator. Real numbers, real repos, regenerated every week from the operator's own ~/.alfred/state."
+  path="/shipped/"
+  keywords={[
+    "alfred shipped",
+    "weekly pr roundup",
+    "agent shipped log",
+    "claude code agents output",
+  ]}
+>
+  <section class="m-section m-section--soft">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="SHIPPED"
+        title="A weekly roundup of the work Alfred merged."
+        lede={
+          isColdFork
+            ? "This page renders the operator's own fleet output. After you run Alfred for a week, populate it from your state directory and the numbers below light up."
+            : "Headline numbers, every merged PR, and a 12-week trend. Regenerated from the operator's ~/.alfred/state every Saturday morning."
+        }
+      />
+
+      {isColdFork ? (
+        <div class="shipped-empty m-card">
+          <div class="shipped-empty__head">
+            <span class="m-eyebrow">COLD-FORK MODE</span>
+            <span class="m-mono m-mute">site/src/data/shipped/weekly.json</span>
+          </div>
+
+          <p class="shipped-empty__body">
+            This page shows the operator's own fleet. No public mock data is rendered. After you have run Alfred for a week, generate your own feed:
+          </p>
+
+          <pre class="shipped-empty__code"><code>{`# from your alfred-os checkout
+alfred shipped --emit-public-json site/src/data/shipped/weekly.json
+
+# rebuild the site
+cd site && npm run build`}</code></pre>
+
+          <p class="shipped-empty__body">
+            The emitter reads <code>~/.alfred/state/</code>, scrubs anything outside its public allowlist (repo URLs, codenames, merge timestamps, line counts), and writes a feed that conforms to <a class="m-link" href="/data/shipped/schema.json">schema.json</a>. PR diffs and issue bodies are never emitted.
+          </p>
+
+          <div class="shipped-empty__cta">
+            <a class="m-btn" href="/docs/getting-started/install/">Install Alfred (30 min)</a>
+            <a class="m-btn m-btn--ghost" href="https://github.com/luminik-io/alfred-os/blob/main/docs/SHIPPED_PAGE.md">Read the /shipped/ guide</a>
+          </div>
+        </div>
+      ) : (
+        <>
+          <ShippedSummary
+            summary={feed.summary}
+            operator={feed.operator}
+            windowFrom={feed.window.from}
+            windowTo={feed.window.to}
+          />
+
+          <div class="shipped-trend-wrap">
+            <ShippedTrend trend={feed.trend} />
+          </div>
+
+          <div class="shipped-table-wrap">
+            <ShippedTable prs={feed.prs} />
+          </div>
+        </>
+      )}
+
+      <p class="shipped-stamp m-mono m-mute" role="status">
+        {isColdFork
+          ? "last updated: never (cold-fork)"
+          : `last updated: ${fmtGeneratedAt(feed.generated_at)} | schema v${feed.version}`}
+      </p>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="HOW THIS PAGE WORKS"
+        title="The emitter reads state, scrubs, writes JSON. The site reads JSON, renders."
+        lede="No build-time GitHub call, no live database, no telemetry pipe. The operator runs one command per week. Everyone else sees a static page."
+      />
+
+      <div class="shipped-how">
+        <article class="m-card">
+          <h3 class="m-h3">Operator mode</h3>
+          <p>The operator runs <code>alfred shipped --emit-public-json site/src/data/shipped/weekly.json</code>. The emitter reads agent state from <code>$ALFRED_HOME/state/</code>, applies the public allowlist, and writes the file. The next site build picks it up.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Cold-fork mode</h3>
+          <p>Anyone who clones <a class="m-link" href="https://github.com/luminik-io/alfred-os">alfred-os</a> gets a placeholder feed with <code>your-org</code> repos. The page detects zero merged PRs and renders the explainer instead of fake numbers.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Privacy</h3>
+          <p>The emitter never reads PR diffs or issue bodies. Only metadata (repo, number, title, codename, merge timestamp, lines changed, files changed, reviewer codenames) is allowed past the boundary. Human reviewer names collapse to <code>human</code>.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .shipped-empty { padding: 32px; }
+  .shipped-empty__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--alfred-border);
+  }
+  .shipped-empty__body {
+    color: var(--alfred-text);
+    font-size: 16px;
+    line-height: 1.65;
+    margin: 0 0 16px;
+  }
+  .shipped-empty__body code,
+  .shipped-empty__body a code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--alfred-black);
+    border: 1px solid var(--alfred-border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--alfred-text-bright);
+  }
+  .shipped-empty__code {
+    margin: 8px 0 18px;
+    padding: 14px 16px;
+    background: var(--alfred-black);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--alfred-text-bright);
+    overflow-x: auto;
+  }
+  .shipped-empty__cta {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+  }
+
+  .shipped-trend-wrap { margin-top: 24px; }
+  .shipped-table-wrap { margin-top: 24px; }
+
+  .shipped-stamp {
+    display: block;
+    margin-top: 18px;
+    font-size: 12px;
+  }
+
+  .shipped-how {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  @media (max-width: 880px) { .shipped-how { grid-template-columns: 1fr; } }
+  .shipped-how .m-card { padding: 22px; }
+  .shipped-how code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--alfred-text-bright);
+  }
+</style>

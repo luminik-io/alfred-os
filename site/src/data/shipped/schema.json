@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alfred.luminik.io/shipped/schema.json",
+  "title": "Alfred shipped public feed",
+  "description": "Versioned public schema for the operator's weekly shipped roundup. Emitted by `alfred shipped --emit-public-json`, consumed by `/shipped/`.",
+  "type": "object",
+  "required": ["version", "generated_at", "operator", "window", "summary", "trend", "prs"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Bump when shape changes; site must handle older versions gracefully."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp when this feed was emitted."
+    },
+    "operator": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Display name of the operator publishing this feed (e.g. 'luminik', 'your-org')."
+    },
+    "window": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "format": "date-time" },
+        "to": { "type": "string", "format": "date-time" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "prs_merged",
+        "prs_reverted",
+        "issues_closed",
+        "agents_active",
+        "repos_touched",
+        "spend_cents",
+        "merge_clean_pct"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "prs_merged":      { "type": "integer", "minimum": 0 },
+        "prs_reverted":    { "type": "integer", "minimum": 0 },
+        "issues_closed":   { "type": "integer", "minimum": 0 },
+        "agents_active":   { "type": "integer", "minimum": 0 },
+        "repos_touched":   { "type": "integer", "minimum": 0 },
+        "spend_cents":     { "type": "integer", "minimum": 0, "description": "Total LLM spend in USD cents for the window. Zero is allowed (CLI subscriptions report $0)." },
+        "merge_clean_pct": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Percent of merged PRs that did not require a follow-up revert in the window." }
+      }
+    },
+    "trend": {
+      "type": "array",
+      "description": "PRs merged per week, oldest first. Maximum 12 entries; site truncates if longer.",
+      "maxItems": 52,
+      "items": {
+        "type": "object",
+        "required": ["week", "prs_merged"],
+        "additionalProperties": false,
+        "properties": {
+          "week":       { "type": "string", "pattern": "^[0-9]{4}-W[0-9]{2}$", "description": "ISO 8601 week, e.g. '2026-W21'." },
+          "prs_merged": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "prs": {
+      "type": "array",
+      "description": "Per-PR metadata for the window. Metadata only; PR diffs and issue bodies are NEVER included.",
+      "items": {
+        "type": "object",
+        "required": [
+          "repo",
+          "number",
+          "title",
+          "codename",
+          "merged_at",
+          "lines_added",
+          "lines_removed",
+          "files_changed",
+          "url"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "repo":          { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+          "number":        { "type": "integer", "minimum": 1 },
+          "title":         { "type": "string", "maxLength": 200 },
+          "codename":      { "type": "string", "maxLength": 32, "description": "The Alfred agent that opened the PR (lucius, batman, drake, robin, ...) or 'human' for non-agent merges." },
+          "merged_at":     { "type": "string", "format": "date-time" },
+          "lines_added":   { "type": "integer", "minimum": 0 },
+          "lines_removed": { "type": "integer", "minimum": 0 },
+          "files_changed": { "type": "integer", "minimum": 0 },
+          "reviewed_by":   {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 32 },
+            "default": [],
+            "description": "Codenames of reviewer agents (e.g. 'ras-al-ghul'). Human reviewers are anonymised to 'human'."
+          },
+          "url":           { "type": "string", "format": "uri" }
+        }
+      }
+    }
+  }
+}

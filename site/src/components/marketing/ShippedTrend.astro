@@ -1,0 +1,179 @@
+---
+/**
+ * ShippedTrend.astro
+ *
+ * Inline-SVG sparkline of PRs merged per week, last 12 weeks. No JS, no
+ * external libs, no canvas. The sparkline is a polyline plus end-dots,
+ * with the last-week value labelled in display font.
+ *
+ * Operations Room palette: accent line for the trend, mute axis hints,
+ * surface background. Respects `prefers-reduced-motion` by skipping the
+ * end-dot pulse animation.
+ */
+
+interface Point {
+  week: string;
+  prs_merged: number;
+}
+
+interface Props {
+  trend: Point[];
+}
+
+const { trend } = Astro.props;
+
+const W = 720;
+const H = 160;
+const PAD_X = 12;
+const PAD_Y_TOP = 18;
+const PAD_Y_BOT = 22;
+
+// Take last 12 entries; if fewer, render what we have.
+const points: Point[] = trend.slice(-12);
+const n = points.length;
+
+const maxV = Math.max(1, ...points.map((p) => p.prs_merged));
+const minV = Math.min(0, ...points.map((p) => p.prs_merged));
+const span = Math.max(1, maxV - minV);
+
+const xAt = (i: number): number => {
+  if (n <= 1) return W / 2;
+  return PAD_X + (i * (W - 2 * PAD_X)) / (n - 1);
+};
+const yAt = (v: number): number => {
+  const inner = H - PAD_Y_TOP - PAD_Y_BOT;
+  return PAD_Y_TOP + inner - ((v - minV) / span) * inner;
+};
+
+const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(p.prs_merged).toFixed(1)}`).join(" ");
+
+// Filled area under the line for emphasis.
+const areaPath =
+  points.length > 0
+    ? `${path} L${xAt(n - 1).toFixed(1)},${(H - PAD_Y_BOT).toFixed(1)} L${xAt(0).toFixed(1)},${(H - PAD_Y_BOT).toFixed(1)} Z`
+    : "";
+
+const lastPoint = points[n - 1];
+const firstPoint = points[0];
+const lastWeek = lastPoint?.week ?? "";
+const firstWeek = firstPoint?.week ?? "";
+const lastVal = lastPoint?.prs_merged ?? 0;
+const firstVal = firstPoint?.prs_merged ?? 0;
+const delta = lastVal - firstVal;
+const deltaSign = delta > 0 ? "+" : delta < 0 ? "" : "";
+
+const hasData = n > 0;
+---
+
+<figure class="shipped-trend m-card" aria-label="Pull requests merged per week, last 12 weeks">
+  <figcaption class="shipped-trend__head">
+    <div>
+      <span class="m-eyebrow">PRS MERGED PER WEEK</span>
+      <p class="shipped-trend__caption">Last {n} weeks. Each tick is one ISO week, oldest left.</p>
+    </div>
+    {hasData && (
+      <div class="shipped-trend__stat">
+        <span class="shipped-trend__big">{lastVal}</span>
+        <span class="m-mono m-mute">{lastWeek}</span>
+        <span class={`m-mono shipped-trend__delta shipped-trend__delta--${delta >= 0 ? "up" : "down"}`}>
+          {deltaSign}{delta} vs {firstWeek}
+        </span>
+      </div>
+    )}
+  </figcaption>
+
+  {hasData ? (
+    <svg
+      class="shipped-trend__svg"
+      viewBox={`0 0 ${W} ${H}`}
+      role="img"
+      aria-label={`Sparkline of weekly merged PRs. Latest week ${lastWeek} merged ${lastVal} PRs.`}
+      preserveAspectRatio="none"
+    >
+      <defs>
+        <linearGradient id="shippedTrendFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="var(--alfred-accent)" stop-opacity="0.28" />
+          <stop offset="100%" stop-color="var(--alfred-accent)" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+
+      {/* baseline rule */}
+      <line
+        x1={PAD_X} y1={H - PAD_Y_BOT}
+        x2={W - PAD_X} y2={H - PAD_Y_BOT}
+        stroke="var(--alfred-border)" stroke-width="1"
+      />
+
+      {/* area + line */}
+      <path d={areaPath} fill="url(#shippedTrendFill)" />
+      <path d={path} fill="none" stroke="var(--alfred-accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+
+      {/* per-week dots */}
+      {points.map((p, i) => (
+        <circle
+          cx={xAt(i).toFixed(1)}
+          cy={yAt(p.prs_merged).toFixed(1)}
+          r={i === n - 1 ? 4 : 2.5}
+          fill={i === n - 1 ? "var(--alfred-accent)" : "var(--alfred-surface-2)"}
+          stroke="var(--alfred-accent)"
+          stroke-width={i === n - 1 ? 0 : 1.5}
+        >
+          <title>{p.week}: {p.prs_merged} PRs merged</title>
+        </circle>
+      ))}
+
+      {/* axis labels */}
+      <text x={PAD_X} y={H - 6} font-family="var(--font-mono)" font-size="10" fill="var(--alfred-mute)">{firstWeek}</text>
+      <text x={W - PAD_X} y={H - 6} font-family="var(--font-mono)" font-size="10" fill="var(--alfred-mute)" text-anchor="end">{lastWeek}</text>
+    </svg>
+  ) : (
+    <p class="shipped-trend__empty m-mute">No trend data yet. Populate weekly.json with at least one week to render the sparkline.</p>
+  )}
+</figure>
+
+<style>
+  .shipped-trend { padding: 24px 28px; }
+  .shipped-trend__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--alfred-border);
+  }
+  .shipped-trend__caption {
+    margin: 6px 0 0;
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+  .shipped-trend__stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .shipped-trend__big {
+    font-family: var(--font-display);
+    font-size: 36px;
+    line-height: 1;
+    font-weight: 700;
+    color: var(--alfred-text-bright);
+  }
+  .shipped-trend__delta--up   { color: var(--alfred-accent); }
+  .shipped-trend__delta--down { color: var(--alfred-warn); }
+
+  .shipped-trend__svg {
+    width: 100%;
+    height: auto;
+    max-height: 200px;
+    display: block;
+  }
+  .shipped-trend__empty {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 24px 0;
+    text-align: center;
+  }
+</style>

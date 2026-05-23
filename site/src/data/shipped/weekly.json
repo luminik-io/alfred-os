@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "generated_at": "2026-05-23T06:00:00Z",
+  "operator": "your-org",
+  "window": {
+    "from": "2026-05-16T00:00:00Z",
+    "to":   "2026-05-23T00:00:00Z"
+  },
+  "summary": {
+    "prs_merged": 47,
+    "prs_reverted": 3,
+    "issues_closed": 144,
+    "agents_active": 9,
+    "repos_touched": 6,
+    "spend_cents": 1200,
+    "merge_clean_pct": 92
+  },
+  "trend": [
+    { "week": "2026-W10", "prs_merged": 14 },
+    { "week": "2026-W11", "prs_merged": 22 },
+    { "week": "2026-W12", "prs_merged": 23 },
+    { "week": "2026-W13", "prs_merged": 31 },
+    { "week": "2026-W14", "prs_merged": 28 },
+    { "week": "2026-W15", "prs_merged": 35 },
+    { "week": "2026-W16", "prs_merged": 33 },
+    { "week": "2026-W17", "prs_merged": 41 },
+    { "week": "2026-W18", "prs_merged": 38 },
+    { "week": "2026-W19", "prs_merged": 44 },
+    { "week": "2026-W20", "prs_merged": 42 },
+    { "week": "2026-W21", "prs_merged": 47 }
+  ],
+  "prs": [
+    {
+      "repo": "your-org/your-backend",
+      "number": 1247,
+      "title": "Add per-agent spend caps to runner lifecycle",
+      "codename": "lucius",
+      "merged_at": "2026-05-22T18:23:00Z",
+      "lines_added": 162,
+      "lines_removed": 34,
+      "files_changed": 4,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-backend/pull/1247"
+    },
+    {
+      "repo": "your-org/your-frontend",
+      "number": 884,
+      "title": "Wire billing-v2 settings panel to new API",
+      "codename": "lucius",
+      "merged_at": "2026-05-22T14:09:00Z",
+      "lines_added": 318,
+      "lines_removed": 92,
+      "files_changed": 11,
+      "reviewed_by": ["ras-al-ghul", "human"],
+      "url": "https://github.com/your-org/your-frontend/pull/884"
+    },
+    {
+      "repo": "your-org/your-backend",
+      "number": 1246,
+      "title": "Tighten worktree cleanup on launchd timeout",
+      "codename": "robin",
+      "merged_at": "2026-05-22T09:47:00Z",
+      "lines_added": 41,
+      "lines_removed": 18,
+      "files_changed": 2,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-backend/pull/1246"
+    },
+    {
+      "repo": "your-org/your-mobile",
+      "number": 412,
+      "title": "Surface offline state in event capture screen",
+      "codename": "lucius",
+      "merged_at": "2026-05-21T21:11:00Z",
+      "lines_added": 207,
+      "lines_removed": 56,
+      "files_changed": 6,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-mobile/pull/412"
+    },
+    {
+      "repo": "your-org/your-data-acquisition",
+      "number": 89,
+      "title": "Brella extractor: retry on 5xx with backoff",
+      "codename": "lucius",
+      "merged_at": "2026-05-21T17:02:00Z",
+      "lines_added": 73,
+      "lines_removed": 12,
+      "files_changed": 3,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-data-acquisition/pull/89"
+    },
+    {
+      "repo": "your-org/your-backend",
+      "number": 1245,
+      "title": "Batman bundle: billing-v2 step 3 of 4",
+      "codename": "batman",
+      "merged_at": "2026-05-21T11:38:00Z",
+      "lines_added": 488,
+      "lines_removed": 142,
+      "files_changed": 17,
+      "reviewed_by": ["ras-al-ghul", "human"],
+      "url": "https://github.com/your-org/your-backend/pull/1245"
+    },
+    {
+      "repo": "your-org/your-agents",
+      "number": 203,
+      "title": "Add OpenAI provider to LLM client matrix",
+      "codename": "lucius",
+      "merged_at": "2026-05-20T19:54:00Z",
+      "lines_added": 128,
+      "lines_removed": 22,
+      "files_changed": 5,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-agents/pull/203"
+    },
+    {
+      "repo": "your-org/your-frontend",
+      "number": 883,
+      "title": "Drake-filed: dark mode regression on Settings",
+      "codename": "lucius",
+      "merged_at": "2026-05-20T15:28:00Z",
+      "lines_added": 22,
+      "lines_removed": 8,
+      "files_changed": 1,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-frontend/pull/883"
+    },
+    {
+      "repo": "your-org/your-nango",
+      "number": 56,
+      "title": "Add Salesforce action: opportunity-by-id",
+      "codename": "lucius",
+      "merged_at": "2026-05-20T12:14:00Z",
+      "lines_added": 95,
+      "lines_removed": 4,
+      "files_changed": 3,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-nango/pull/56"
+    },
+    {
+      "repo": "your-org/your-backend",
+      "number": 1244,
+      "title": "Idempotency keys on capture write path",
+      "codename": "lucius",
+      "merged_at": "2026-05-19T22:01:00Z",
+      "lines_added": 144,
+      "lines_removed": 28,
+      "files_changed": 4,
+      "reviewed_by": ["ras-al-ghul", "human"],
+      "url": "https://github.com/your-org/your-backend/pull/1244"
+    },
+    {
+      "repo": "your-org/your-mobile",
+      "number": 411,
+      "title": "Tap targets to 44pt on capture screen",
+      "codename": "lucius",
+      "merged_at": "2026-05-19T18:46:00Z",
+      "lines_added": 36,
+      "lines_removed": 11,
+      "files_changed": 2,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-mobile/pull/411"
+    },
+    {
+      "repo": "your-org/your-frontend",
+      "number": 882,
+      "title": "Sort enrich queue table by attempt count",
+      "codename": "robin",
+      "merged_at": "2026-05-19T10:12:00Z",
+      "lines_added": 27,
+      "lines_removed": 5,
+      "files_changed": 1,
+      "reviewed_by": ["ras-al-ghul"],
+      "url": "https://github.com/your-org/your-frontend/pull/882"
+    }
+  ]
+}
