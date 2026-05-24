@@ -92,7 +92,7 @@ Every `claude -p` invocation gets its own worktree:
 ~/.alfred/worktrees/eng-<codename>-<repo>-<issue>-<ts>/
 ```
 
-The worktree is created via `git worktree add` from a fresh `origin/main` (or whatever the agent designates), and `git worktree remove --force` after. Concurrent firings on different issues do not see each other's edits. A crashed firing can't corrupt the operator's main checkout because they're literally different directories pointing at different branches.
+The worktree is created via `git worktree add` from a fresh `origin/main` (or whatever the agent designates), and `git worktree remove --force` after. Concurrent firings on different issues do not see each other's edits. A crashed firing can't corrupt the operator's main checkout because they're separate directories pointing at different branches.
 
 ```mermaid
 flowchart TB

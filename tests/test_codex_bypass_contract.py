@@ -20,5 +20,8 @@ def test_rasalghul_codex_fallback_stays_read_only() -> None:
 
 
 def test_lucius_grants_codex_source_gitdir_for_worktree_commits() -> None:
+    """Lucius hands Codex the source repo's .git dir so it can commit from a
+    worktree. The slug-to-local mapping (``local_repo_dir``) is consulted so
+    multi-repo fleets with slug-vs-dir-name mismatches resolve correctly."""
     source = _source("lucius.py")
-    assert 'codex_add_dirs=[(WORKSPACE / repo / ".git").resolve()]' in source
+    assert 'codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()]' in source

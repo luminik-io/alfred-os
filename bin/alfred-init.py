@@ -706,6 +706,64 @@ def step_1_claude(*, non_interactive: bool) -> None:
     else:
         ok("claude responds non-interactively")
 
+    # Scheduled (launchd / systemd --user) firings can't read the host
+    # credential store interactive auth populates. Offer to mint a
+    # long-lived OAuth token so they can authenticate via env var.
+    _maybe_offer_setup_token(non_interactive=non_interactive)
+
+
+def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
+    """Detect missing ``CLAUDE_CODE_OAUTH_TOKEN`` and prompt to mint one.
+
+    Skips when the token is already set in the env or in
+    ``~/.alfredrc``. Skips silently in ``--non-interactive`` mode (CI,
+    automation) where prompting for a browser flow would hang.
+
+    The token is what scheduled agents read instead of the host
+    credential store, so without it every launchd / systemd-spawned
+    firing returns 401 even though interactive ``claude`` works fine.
+    """
+    if non_interactive:
+        return
+
+    # Env var set in the parent shell -> already configured.
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+        ok("CLAUDE_CODE_OAUTH_TOKEN already set in env")
+        return
+
+    # Check ~/.alfredrc directly so a fresh shell sees the export.
+    alfredrc = Path(os.environ.get("ALFREDRC", str(Path.home() / ".alfredrc")))
+    if alfredrc.is_file():
+        try:
+            text = alfredrc.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        for line in text.splitlines():
+            stripped = line.strip().removeprefix("export").strip()
+            if stripped.startswith("CLAUDE_CODE_OAUTH_TOKEN="):
+                ok(f"CLAUDE_CODE_OAUTH_TOKEN already set in {alfredrc}")
+                return
+
+    print(
+        "\n  Scheduled firings (launchd / systemd --user) can't read the\n"
+        "  credential store the interactive `claude` populates. The fix is\n"
+        "  a long-lived OAuth token in ~/.alfredrc that `claude` reads via\n"
+        "  the CLAUDE_CODE_OAUTH_TOKEN env var. It is tied to your existing\n"
+        "  subscription (no extra cost, no API-key billing) and rotates with\n"
+        "  `alfred setup-token --force`.\n"
+    )
+    answer = input("  Run `alfred setup-token` now? [Y/n] ").strip().lower()
+    if answer in ("", "y", "yes"):
+        script = Path(__file__).resolve().parent / "alfred-setup-token.py"
+        rc = subprocess.run([sys.executable, str(script)], check=False).returncode
+        if rc != 0:
+            warn(f"`alfred setup-token` exited {rc}. You can re-run it any time.")
+    else:
+        warn(
+            "Skipped. Scheduled firings will not authenticate until you run "
+            "`alfred setup-token` (or set CLAUDE_CODE_OAUTH_TOKEN by hand)."
+        )
+
 
 def step_2_github(state: WizardState, *, non_interactive: bool) -> None:
     step("GitHub auth")

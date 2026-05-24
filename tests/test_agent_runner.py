@@ -1154,3 +1154,37 @@ def test_issue_dedup_check_blocks_on_repo_pause(monkeypatch, tmp_path):
     out = ar2.issue_dedup_check("myrepo", 42)
     assert out["claimable"] is False
     assert out["repo_paused"] is True
+
+
+def test_run_helper_coerces_bytes_stdout_on_timeout(monkeypatch, tmp_path):
+    """``subprocess.TimeoutExpired.stdout`` returns bytes under Python 3.14
+    even with ``text=True`` (regression from earlier versions). The wrapper
+    must decode so downstream consumers that expect ``str`` (notably
+    ``Path.write_text``) do not crash with ``TypeError: data must be str``.
+
+    Forces the bytes-on-timeout case on every Python version by patching
+    ``subprocess.run`` to raise ``TimeoutExpired`` with a bytes ``output``,
+    rather than relying on the live interpreter's behaviour.
+    """
+    for m in list(sys.modules):
+        if m == "agent_runner" or m.startswith("agent_runner."):
+            del sys.modules[m]
+    from agent_runner import process as process_mod
+
+    def _fake_run(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=["fake"], timeout=1, output=b"partial-bytes-output", stderr=b""
+        )
+
+    monkeypatch.setattr(process_mod.subprocess, "run", _fake_run)
+
+    res = process_mod.run(["any"], timeout=1)
+
+    assert res.returncode == 124
+    assert isinstance(res.stdout, str)
+    assert "partial-bytes-output" in res.stdout
+    # ``Path.write_text`` must accept this without TypeError (the original
+    # crash site in rasalghul.py:295).
+    target = tmp_path / "diff.txt"
+    target.write_text(res.stdout)
+    assert target.read_text() == "partial-bytes-output"

@@ -34,6 +34,7 @@ from agent_runner import (
     invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
+    local_repo_dir,
     maybe_set_global_block_for_result,
     optional_env_int,
     preflight,
@@ -285,7 +286,7 @@ def main() -> int:
         return 0
 
     pr_num = pr["number"]
-    local_path = WORKSPACE / repo
+    local_path = WORKSPACE / local_repo_dir(repo)
     events.emit("pr_picked", repo=f"{GH_ORG}/{repo}", number=pr_num)
 
     # Fetch diff + meta + prior reviewer comments

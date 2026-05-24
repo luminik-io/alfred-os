@@ -23,7 +23,7 @@ PER_LINE_ALLOW_RE='^(\./)?(launchd/agents\.conf\.example|tests/test_alfred_init\
 # (Slack tokens, AWS access keys). The list is intentionally smaller than
 # the path allowlist; CHANGELOG.md is deliberately omitted so a paste into
 # a changelog entry trips the scan.
-SECRET_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|.*\.lock)$'
+SECRET_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|bin/alfred-setup-token\.py|tests/test_alfred_setup_token\.py|docs/CLAUDE_CODE\.md|\.github/workflows/ci\.yml|.*\.lock)$'
 
 SKIP_PATH_RE='^(\./)?(\.git/|site/node_modules/)'
 
@@ -93,6 +93,11 @@ secret_patterns=(
   # OpenAI / Anthropic API keys.
   "sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}"
   "sk-ant-api03-[A-Za-z0-9_-]{40,}"
+
+  # Claude Code long-lived OAuth tokens (claude setup-token output).
+  # docs/CLAUDE_CODE.md is on the allowlist so the obviously-fake
+  # placeholder in the setup-token example does not match.
+  "sk-ant-oat[0-9]{2}-[A-Za-z0-9_-]{40,}"
 
   # Generic private keys.
   "-----BEGIN (OPENSSH|RSA|EC|DSA|PGP) PRIVATE KEY-----"

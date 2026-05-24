@@ -109,6 +109,7 @@ from .github import (
     is_repo_paused,
     issue_dedup_check,
     list_paused_repos,
+    local_repo_dir,
     make_worktree,
     make_worktree_from_branch,
     release_issue,
@@ -376,6 +377,7 @@ __all__ = [
     "find_existing_worktree",
     "find_open_authored_pr_for_issue",
     "find_stale_claims",
+    "local_repo_dir",
     "force_release_stale_claim",
     "gh_issue_comment",
     "gh_issue_edit",
@@ -521,3 +523,26 @@ class _AgentRunnerModule(_ModuleType):
 import sys as _sys
 
 _sys.modules[__name__].__class__ = _AgentRunnerModule
+
+
+# --------------------------------------------------------------------------
+# Optional fleet overlay
+# --------------------------------------------------------------------------
+# If the operator has placed a Python module on the import path that
+# customises fleet-wide dicts (``GH_REPO_TO_LOCAL``, ``STANDARD_LABELS``,
+# ``HANDOFFS``, etc.), import it here so its module-level side effects run
+# before any consumer reads those dicts. Defaults to ``fleet_overlay``;
+# override with the ``ALFRED_FLEET_OVERLAY`` env var. Silently absent when
+# the module is missing (the OSS standalone case).
+import importlib as _importlib
+import importlib.util as _importlib_util
+import os as _os
+
+_overlay_name = _os.environ.get("ALFRED_FLEET_OVERLAY", "fleet_overlay")
+# Distinguish "overlay not present" (silent, OSS-standalone case) from
+# "overlay present but raises during import" (loud, operator bug we want
+# to surface). ``find_spec`` returning ``None`` is the missing case; any
+# exception from ``import_module`` after a spec was found is the broken
+# case, and we let it propagate.
+if _importlib_util.find_spec(_overlay_name) is not None:
+    _importlib.import_module(_overlay_name)

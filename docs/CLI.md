@@ -1,7 +1,7 @@
 # Operator analytics CLIs
 
 `alfred metrics` and `alfred logs` are read-only tools for inspecting what
-the fleet actually did on disk. They never mutate state; they read
+what the fleet wrote to disk. They never mutate state; they read
 `$ALFRED_STATE_DIR` (default `$ALFRED_HOME/state`, default `~/.alfred/state`)
 and print the result.
 

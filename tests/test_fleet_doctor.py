@@ -246,7 +246,11 @@ def test_engine_auth_streak_red_when_three_agents_hit(tmp_path, monkeypatch):
     fd = _load_doctor()
     state = fd.STATE_ROOT
     now = time.time()
-    iso = "2026-05-23T16:30:00.000000Z"
+    # Derive ts from `now` so the window check in fleet-doctor (last
+    # 1h by default) does not age the event out when the test runs at
+    # an arbitrary clock time. The earlier hard-coded literal worked
+    # only when the test ran within 1h of 16:30 UTC.
+    iso = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     for agent in ("lucius", "drake", "bane"):
         events_dir = state / agent / "events"
         path = _write_event(
@@ -274,7 +278,11 @@ def test_engine_auth_streak_ignores_non_claude_engines(tmp_path, monkeypatch):
     fd = _load_doctor()
     state = fd.STATE_ROOT
     now = time.time()
-    iso = "2026-05-23T16:30:00.000000Z"
+    # Derive ts from `now` so the window check in fleet-doctor (last
+    # 1h by default) does not age the event out when the test runs at
+    # an arbitrary clock time. The earlier hard-coded literal worked
+    # only when the test ran within 1h of 16:30 UTC.
+    iso = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     for agent in ("lucius", "drake", "bane"):
         events_dir = state / agent / "events"
         path = _write_event(
@@ -299,7 +307,11 @@ def test_engine_auth_streak_ignores_other_subtypes(tmp_path, monkeypatch):
     fd = _load_doctor()
     state = fd.STATE_ROOT
     now = time.time()
-    iso = "2026-05-23T16:30:00.000000Z"
+    # Derive ts from `now` so the window check in fleet-doctor (last
+    # 1h by default) does not age the event out when the test runs at
+    # an arbitrary clock time. The earlier hard-coded literal worked
+    # only when the test ran within 1h of 16:30 UTC.
+    iso = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     for agent in ("lucius", "drake", "bane"):
         events_dir = state / agent / "events"
         path = _write_event(
