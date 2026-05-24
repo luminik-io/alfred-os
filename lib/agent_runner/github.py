@@ -60,8 +60,14 @@ Empty by default; consumers populate it for their fleet::
     })
 """
 
-# Per-process cache for ``ensure_labels``: ``{repo_slug: True}``.
-_ENSURE_LABELS_DONE: set[str] = set()
+# Per-process cache for ``ensure_labels``: ``{repo_slug: {label_name, ...}}``.
+# Keyed on repo *and* the set of labels already created on it: the previous
+# `set[str]` shape cached on repo only, so a first call with ``LIFECYCLE_LABELS``
+# would silently no-op every later call with ``STANDARD_LABELS`` for that repo,
+# leaving (e.g.) ``batman-pr-open`` and ``agent:large-feature`` uncreated. The
+# downstream gh label-add would then fail and the caller saw "PR open failed"
+# with no obvious cause.
+_ENSURE_LABELS_DONE: dict[str, set[str]] = {}
 
 
 def _full_repo(slug: str) -> str:
@@ -147,16 +153,25 @@ RELEASE_COMMENT_PREFIX = "<!-- agent-release:"
 
 
 def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = None) -> None:
-    """Idempotent label creation. Silent on already-exists. Cached per process."""
+    """Idempotent label creation. Silent on already-exists. Cached per process.
+
+    Cache is keyed on ``(repo_slug, label_name)`` so that a first call with one
+    label catalogue (e.g. ``LIFECYCLE_LABELS`` from ``claim_issue``) does not
+    short-circuit a later call with a different catalogue (e.g.
+    ``STANDARD_LABELS`` default from ``gh_issue_edit`` / ``gh_pr_create``) on
+    the same repo. Only the label names already created against ``repo_slug``
+    are skipped; new ones in the passed list still get a ``gh label create``.
+    """
     if labels is None:
         labels = STANDARD_LABELS
     if is_dry_run():
         names = ", ".join(name for name, _, _ in labels)
         dry_run_log("gh", f"would ensure labels on {repo_slug}: {names}")
         return
-    if repo_slug in _ENSURE_LABELS_DONE:
-        return
+    done = _ENSURE_LABELS_DONE.setdefault(repo_slug, set())
     for name, color, desc in labels:
+        if name in done:
+            continue
         run(
             [
                 "gh",
@@ -172,7 +187,7 @@ def ensure_labels(repo_slug: str, labels: list[tuple[str, str, str]] | None = No
             ],
             timeout=15,
         )
-    _ENSURE_LABELS_DONE.add(repo_slug)
+        done.add(name)
 
 
 # --------------------------------------------------------------------------

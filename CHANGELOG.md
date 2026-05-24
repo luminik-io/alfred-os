@@ -4,7 +4,9 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
-(No unreleased entries.)
+### Fixed
+
+- `lib/agent_runner/github.py`: `ensure_labels` cache rewritten from `set[str]` (per repo) to `dict[str, set[str]]` (per repo + per label name). The old key meant a first call with `LIFECYCLE_LABELS` (e.g. from `claim_issue`) silently no-opped every later call with `STANDARD_LABELS` (e.g. from `gh_issue_edit` / `gh_pr_create`) on the same repo, leaving labels like `batman-pr-open`, `agent:large-feature`, `done-already` uncreated. Downstream `gh label add` then failed with "could not add label" and the runner surfaced "PR open failed" with no obvious cause. Two regression tests in `tests/test_gh_pr_create_labels.py` lock the per-label-name cache behaviour: a second call with a different catalogue creates the missing labels; a repeat call with the same catalogue is still a no-op.
 
 ## [0.4.0] - 2026-05-23
 
