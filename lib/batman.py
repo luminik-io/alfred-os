@@ -816,8 +816,15 @@ class Reporter(Protocol):
         plan: BundlePlan,
         *,
         channel: str,
-    ) -> str | None:
-        """Post the plan and return a Slack ts (string), or ``None``."""
+    ) -> tuple[str, str] | None:
+        """Post the plan; return ``(channel_id, message_ts)`` or ``None``.
+
+        ``channel_id`` is the Slack channel ID (``"C0..."``) returned by
+        ``chat.postMessage``, NOT the channel name passed in. Downstream
+        ``reactions.get`` calls reject channel names with
+        ``channel_not_found`` for private channels and some bot scopes,
+        so the envelope must carry the ID Slack just resolved for us.
+        """
         ...  # pragma: no cover
 
     def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
@@ -1110,7 +1117,7 @@ class SlackReporter:
         self._thread_root: Callable = thread_root
         self._fallback_post = fallback_post
 
-    def post_plan(self, plan: BundlePlan, *, channel: str) -> str | None:
+    def post_plan(self, plan: BundlePlan, *, channel: str) -> tuple[str, str] | None:
         summary = (
             f"plan drafted for {plan.bundle_slug} "
             f"({len(plan.children)} child issue(s), "
@@ -1131,7 +1138,15 @@ class SlackReporter:
                     severity="info",
                 )
             return None
-        return getattr(handle, "ts", None)
+        # Slack's chat.postMessage echoes back the resolved channel ID;
+        # propagate that to ApprovalEnvelope so reactions.get gets the
+        # ID it needs (channel names fail with channel_not_found on
+        # private channels and some bot scope sets).
+        ch_id = getattr(handle, "channel", None)
+        ts = getattr(handle, "ts", None)
+        if not ch_id or not ts:
+            return None
+        return (ch_id, ts)
 
     def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
         lines = [
@@ -1215,11 +1230,12 @@ class BatmanLifecycle:
         """
         if self.reporter is None:
             return None
-        ts = self.reporter.post_plan(plan, channel=self.config.slack_channel)
-        if not ts:
+        result = self.reporter.post_plan(plan, channel=self.config.slack_channel)
+        if not result:
             return None
+        channel_id, ts = result
         return ApprovalEnvelope(
-            channel=self.config.slack_channel,
+            channel=channel_id,
             message_ts=ts,
             plan=plan,
         )
