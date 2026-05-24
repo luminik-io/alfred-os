@@ -41,6 +41,7 @@ from agent_runner import (
     is_globally_blocked,
     is_repo_paused,
     load_prompt,
+    local_repo_dir,
     make_worktree,
     optional_env_int,
     preflight,
@@ -128,7 +129,7 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
         elif repo.endswith(("-frontend", "-mobile", "-web", "-nango")):
             out[repo] = "npm run lint && npx tsc --noEmit"
         else:
-            local_dir = WORKSPACE / repo
+            local_dir = WORKSPACE / local_repo_dir(repo)
             if (local_dir / "pyproject.toml").exists():
                 out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
             else:
@@ -403,7 +404,7 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
 
 def build_prompt(repo: str, issue: dict, wt: Path, branch: str, firing_id: str) -> str:
     repo_claude_md = ""
-    md = WORKSPACE / repo / "CLAUDE.md"
+    md = WORKSPACE / local_repo_dir(repo) / "CLAUDE.md"
     if md.exists():
         repo_claude_md = md.read_text()
 
@@ -687,7 +688,7 @@ def main() -> int:
         codex_bypass_approvals_and_sandbox=True,
         # Git worktrees keep commit metadata under the source checkout's
         # .git/worktrees entry, outside the checked-out worktree path.
-        codex_add_dirs=[(WORKSPACE / repo / ".git").resolve()],
+        codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()],
         on_fallback=_on_engine_fallback,
     )
     import json as _json

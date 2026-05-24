@@ -47,6 +47,7 @@ from agent_runner import (
     invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
+    local_repo_dir,
     make_worktree,
     maybe_set_global_block_for_result,
     optional_env_int,
@@ -93,7 +94,7 @@ def _load_repo_config(agent_codename: str) -> dict[str, dict[str, str]]:
                 entry["pre_push"] = "./gradlew check"
             elif repo.endswith(("-frontend", "-mobile", "-web", "-nango")):
                 entry["pre_push"] = "npm test && npm run lint"
-            elif (WORKSPACE / repo / "pyproject.toml").exists():
+            elif (WORKSPACE / local_repo_dir(repo) / "pyproject.toml").exists():
                 entry["pre_push"] = "uv run pytest && uv run ruff check ."
             else:
                 entry["pre_push"] = ""
@@ -221,7 +222,7 @@ def main() -> int:
     cfg = REPO_CONFIG.get(repo, {})
     pre_push = cfg.get("pre_push", "")
     coverage_hint = cfg.get("coverage_hint", "")
-    local_path = WORKSPACE / repo
+    local_path = WORKSPACE / local_repo_dir(repo)
     events.emit("repo_picked", repo=f"{GH_ORG}/{repo}")
 
     repo_claude_md = ""

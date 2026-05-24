@@ -42,6 +42,7 @@ from agent_runner import (
     invoke_agent_engine,
     is_globally_blocked,
     is_repo_paused,
+    local_repo_dir,
     make_worktree_from_branch,
     maybe_set_global_block_for_result,
     optional_env_int,
@@ -164,7 +165,7 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
             out[repo] = "./gradlew check"
         elif repo.endswith(("-frontend", "-mobile", "-web", "-nango")):
             out[repo] = "npm run lint && npx tsc --noEmit"
-        elif (WORKSPACE / repo / "pyproject.toml").exists():
+        elif (WORKSPACE / local_repo_dir(repo) / "pyproject.toml").exists():
             out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
         else:
             out[repo] = ""
