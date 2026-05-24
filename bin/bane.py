@@ -232,7 +232,7 @@ def main() -> int:
 
     # Worktree
     try:
-        wt, branch = make_worktree(repo, AGENT, "coverage")
+        wt, branch = make_worktree(local_repo_dir(repo), AGENT, "coverage")
     except RuntimeError as e:
         msg = f"[{AGENT.upper()}-ERROR] {e}"
         print(msg)

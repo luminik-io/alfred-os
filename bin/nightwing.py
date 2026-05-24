@@ -368,7 +368,7 @@ def main() -> int:
 
     # Worktree at the PR branch
     try:
-        wt = make_worktree_from_branch(repo, AGENT, head_ref, str(pr_num))
+        wt = make_worktree_from_branch(local_repo_dir(repo), AGENT, head_ref, str(pr_num))
     except RuntimeError as e:
         msg = f"[{AGENT.upper()}-ERROR] {e}"
         print(msg)
