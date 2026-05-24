@@ -181,6 +181,7 @@ def test_label_constants_match_agent_runner_existing_values():
     # confirm our constant matches what the live runner uses.
     runner_names = {row[0] for row in agent_runner.LIFECYCLE_LABELS}
     for required in (
+        labels.IMPLEMENT,
         labels.IN_FLIGHT,
         labels.PR_OPEN,
         labels.DONE,

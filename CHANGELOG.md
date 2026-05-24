@@ -4,7 +4,10 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
-(No unreleased entries.)
+### Fixed
+
+- `lib/agent_runner/github.py`: added `agent:implement` to `LIFECYCLE_LABELS` so `claim_issue`'s first-call `ensure_labels` creates the entry-point label alongside the in-flight / pr-open / done / sticky-modifier labels. `labels.py` already lists it in `LIFECYCLE_LABEL_SET`; the runner list was the odd one out. Test `test_label_constants_match_agent_runner_existing_values` updated to assert `IMPLEMENT in runner_names`. (`alfred-init.py` step_10_labels still handles the operator-facing bootstrap for wizard-configured repos; this change covers programmatic / non-wizard consumers.)
+- `.gitignore`: added `launchd/agents.conf` and `launchd/_generated/`. Both are per-operator artefacts (the conf names this host's fleet; the rendered plists hard-code `$ALFRED_HOME` paths). Without them gitignored, a fresh operator's first `git status` shows tracked-looking host-private files and `bin/scrub-check.sh` trips on the `/Users/<name>/.alfred` paths inside the rendered plists.
 
 ## [0.4.0] - 2026-05-23
 
