@@ -4,7 +4,9 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
-(No unreleased entries.)
+### Added
+
+- `alfred-init --config` learned `role_repos`, `role_codename`, and `role_schedule`. Each maps an agent (by codename or role-key, case-insensitive) to a per-agent override: which repos that codename operates on, what codename to expose, and what schedule string to write into `agents.conf`. Previously non-interactive mode forced every repo-operating agent to claim every visible repo, which is wrong any time the operator wants codenames scoped to different surfaces (e.g. test-coverage skipping iOS, code-map-refresh only on JS/TS repos). `step_6_codenames` / `step_7_repos` / `step_8_schedule` preserve preset values from `--config` instead of overwriting them. Unknown agent keys, codenames that don't match `^[a-z][a-z0-9-]*$`, and malformed value types are surfaced as `warn` and skipped rather than silently dropped. Cross-platform — pure stdlib, no shell tricks, same behaviour on launchd and `systemd --user` consumers.
 
 ## [0.4.0] - 2026-05-23
 
