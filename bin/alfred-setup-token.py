@@ -203,6 +203,20 @@ def run_setup_token() -> str:
     return token
 
 
+def _validate_token_shape(token: str) -> None:
+    """Reject obviously broken tokens before writing them to ~/.alfredrc."""
+    if not TOKEN_LINE_RE.fullmatch(token):
+        fail(
+            f"--token value does not look like a Claude long-lived token "
+            f"(expected prefix `sk-ant-oat<NN>-`, got {token[:16]!r}...). "
+            "Copy the exact value `claude setup-token` printed."
+        )
+    if not (_MIN_TOKEN_LEN <= len(token) <= _MAX_TOKEN_LEN) or not token.isascii():
+        fail(
+            f"--token failed sanity check (length={len(token)}, ascii={token.isascii()})."
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="alfred setup-token",
@@ -222,6 +236,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="report status without spawning `claude setup-token`",
     )
+    parser.add_argument(
+        "--token",
+        metavar="VALUE",
+        default=None,
+        help=(
+            "skip the interactive `claude setup-token` spawn and write the "
+            "given token to ~/.alfredrc directly. Use this from AI-assisted "
+            "installs where the operator runs `claude setup-token` in their "
+            "own terminal and pastes the value back."
+        ),
+    )
     args = parser.parse_args(argv)
 
     source = existing_token_source()
@@ -238,6 +263,35 @@ def main(argv: list[str] | None = None) -> int:
 
     if source and args.force:
         info(f"rotating existing token in {source} ...")
+
+    # Paste-back path: skip the Ink-based spawn entirely. Unblocks
+    # AI-assisted installs (Claude Code, Codex, automation) where the
+    # script can't spawn a TUI but the assistant CAN ask the operator
+    # to run `claude setup-token` in their own terminal and paste the
+    # result back. See issue #110 and docs/AI_ASSISTED_INSTALL.md.
+    if args.token:
+        token = args.token.strip()
+        _validate_token_shape(token)
+        write_token(token)
+        info(f"wrote {TOKEN_ENV} from --token to {ALFREDRC} (chmod 0600).")
+        info("scheduled agents will pick it up on their next firing.")
+        return 0
+
+    # Interactive spawn requires a real TTY because `claude setup-token`
+    # uses Ink (React-for-CLI) and Ink needs raw-mode stdin. Subprocess
+    # / non-TTY contexts (AI-assisted installs, CI, automation) crash
+    # with an opaque Ink stack trace. Bail clean with a path forward.
+    if not sys.stdin.isatty():
+        fail(
+            "`claude setup-token` needs an interactive terminal (the underlying "
+            "Ink TUI cannot read raw-mode stdin from a non-TTY context). Three "
+            "supported paths:\n"
+            "  1. Run `alfred setup-token` in your own shell, OR\n"
+            "  2. Run `claude setup-token` in your shell, copy the printed token, "
+            "then run: alfred setup-token --token <value>, OR\n"
+            "  3. Set CLAUDE_CODE_OAUTH_TOKEN in ~/.alfredrc by hand "
+            "(export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...) and re-run with --check-only."
+        )
 
     token = run_setup_token()
     write_token(token)

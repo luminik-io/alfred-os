@@ -157,6 +157,35 @@ alfred codex probe
 If Codex is not installed or authenticated, Alfred can still run Claude-backed
 agents. Codex is optional.
 
+## OAuth Token Setup Needs a Real Terminal
+
+`alfred setup-token` wraps `claude setup-token`, which uses Ink (the
+React-for-CLI library) and requires a real TTY. AI assistants and other
+non-TTY contexts (CI, automation, Claude Code subprocess sessions) cannot
+spawn it directly: Ink crashes with `Raw mode is not supported on the
+current process.stdin` and the process hangs until killed.
+
+Two supported paths from an AI-assisted install:
+
+1. Ask the operator to open their own terminal and run `alfred setup-token`
+   once. The script writes `CLAUDE_CODE_OAUTH_TOKEN` to `~/.alfredrc` and
+   exits; the assistant can resume from there.
+2. Use the paste-back flow: the operator runs `claude setup-token` in
+   their shell, copies the printed `sk-ant-oat...` token, and pastes it
+   back to the assistant. The assistant then runs:
+
+   ```sh
+   alfred setup-token --token sk-ant-oat01-<...>
+   ```
+
+   `--token <value>` skips the Ink spawn entirely and writes the token
+   straight to `~/.alfredrc` with the same 0600 perms as the interactive
+   path. Re-run with `--force` to rotate later.
+
+When the script is invoked without a TTY and without `--token`, it
+detects the non-TTY context, refuses to spawn, and prints the two paths
+above. No Ink stack trace.
+
 ## Safer First Run
 
 For the first real install, prefer explicit repos:

@@ -258,7 +258,60 @@ def test_main_no_args_with_unset_token_invokes_setup_token(alfredrc, monkeypatch
     fake_token = "sk-ant-oat01-fakeABC123DEFghi456JKLmno789PQRstu012VWXyzA1B2C3D4-_E5"
     mod = _load_module()
     monkeypatch.setattr(mod, "run_setup_token", lambda: fake_token)
+    # Pretend the script is running from a real TTY so the non-TTY guard
+    # doesn't short-circuit before run_setup_token is reached.
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     rc = mod.main([])
     assert rc == 0
     text = alfredrc.read_text()
     assert fake_token in text
+
+
+# ----------- issue #110: --token paste-back + non-TTY guard -----------------
+
+
+def test_main_token_flag_writes_directly_without_spawning(alfredrc, monkeypatch):
+    """`alfred setup-token --token <value>` must skip the Ink spawn and
+    write the token straight to ~/.alfredrc. AI-assisted installs use
+    this when the operator pastes the token back into the chat."""
+    fake_token = "sk-ant-oat01-pastedXYZ987abc654DEFghi321JKLmno098PQRstu765VWXyzA1B2"
+    mod = _load_module()
+    # If anyone tried to spawn `claude setup-token` here it would crash;
+    # patch run_setup_token to a sentinel so the test fails loudly if
+    # the --token path doesn't short-circuit.
+    sentinel = object()
+    monkeypatch.setattr(mod, "run_setup_token", lambda: sentinel)
+    rc = mod.main(["--token", fake_token])
+    assert rc == 0
+    assert fake_token in alfredrc.read_text()
+
+
+def test_main_token_flag_rejects_obvious_garbage(alfredrc):
+    """--token must validate the shape before persisting; otherwise an
+    AI assistant could paste a wrong/truncated value and the next firing
+    fails with a 401 instead of with a clear error here."""
+    mod = _load_module()
+    with pytest.raises(SystemExit) as exc:
+        mod.main(["--token", "definitely-not-a-real-token"])
+    assert exc.value.code != 0
+    assert not alfredrc.is_file()
+
+
+def test_main_non_tty_exits_clean_instead_of_ink_crash(alfredrc, monkeypatch):
+    """Without --token, when stdin isn't a TTY (AI-assisted install,
+    CI, automation), the script must fail with a clear message instead
+    of spawning `claude setup-token` and surfacing Ink's
+    `Raw mode is not supported` stack trace."""
+    mod = _load_module()
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    # If the guard doesn't fire we'd spawn for real; stub it to a
+    # sentinel that would explode the test if reached.
+    monkeypatch.setattr(
+        mod,
+        "run_setup_token",
+        lambda: (_ for _ in ()).throw(AssertionError("non-TTY guard did not fire")),
+    )
+    with pytest.raises(SystemExit) as exc:
+        mod.main([])
+    assert exc.value.code != 0
+    assert not alfredrc.is_file()
