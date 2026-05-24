@@ -115,6 +115,64 @@ def test_gh_pr_create_can_open_draft_pr(monkeypatch, tmp_path):
     assert "--draft" in pr_create
 
 
+def test_ensure_labels_second_call_creates_labels_not_in_first(monkeypatch, tmp_path):
+    """A first call with LIFECYCLE_LABELS must not silently no-op a later
+    call with STANDARD_LABELS on the same repo. Regression for the cache
+    key bug where ``_ENSURE_LABELS_DONE`` was a per-repo set and any later
+    call with a different catalogue returned early without creating its
+    labels."""
+    import agent_runner as ar
+    from agent_runner import github as ar_gh
+
+    ar_gh._ENSURE_LABELS_DONE.clear()
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kw):
+        cmds.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(ar, "run", fake_run)
+    ar.ensure_labels("backend", ar.LIFECYCLE_LABELS)
+    created_first = [c[3] for c in cmds if c[:3] == ["gh", "label", "create"]]
+    standard_names = {name for name, _, _ in ar.STANDARD_LABELS}
+    lifecycle_names = {name for name, _, _ in ar.LIFECYCLE_LABELS}
+
+    cmds.clear()
+    ar.ensure_labels("backend")  # defaults to STANDARD_LABELS
+    created_second = [c[3] for c in cmds if c[:3] == ["gh", "label", "create"]]
+
+    # First call should create all LIFECYCLE_LABELS.
+    assert set(created_first) == lifecycle_names
+    # Second call should create every STANDARD_LABEL not already in lifecycle.
+    expected = standard_names - lifecycle_names
+    assert set(created_second) == expected
+    # Confirm we don't redo any name already created.
+    assert standard_names & lifecycle_names <= set(created_first)
+
+
+def test_ensure_labels_third_call_with_same_catalogue_is_a_noop(monkeypatch, tmp_path):
+    """The per-label cache must still suppress duplicate work on repeat
+    calls with the same catalogue."""
+    import agent_runner as ar
+    from agent_runner import github as ar_gh
+
+    ar_gh._ENSURE_LABELS_DONE.clear()
+    cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kw):
+        cmds.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(ar, "run", fake_run)
+    ar.ensure_labels("backend", ar.STANDARD_LABELS)
+    first_count = sum(1 for c in cmds if c[:3] == ["gh", "label", "create"])
+    cmds.clear()
+    ar.ensure_labels("backend", ar.STANDARD_LABELS)
+    second_count = sum(1 for c in cmds if c[:3] == ["gh", "label", "create"])
+    assert first_count == len(ar.STANDARD_LABELS)
+    assert second_count == 0
+
+
 def test_gh_pr_create_does_not_recreate_standard_labels(monkeypatch, tmp_path):
     """STANDARD_LABELS labels are created by ensure_labels (cached
     per-process); the ad-hoc loop should NOT call gh label create on
