@@ -240,9 +240,7 @@ def test_run_setup_token_rejects_truncated_token(alfredrc, monkeypatch):
         def wait(self) -> int:
             return 0
 
-    monkeypatch.setattr(
-        subprocess, "Popen", lambda *args, **kwargs: FakeProc()
-    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: FakeProc())
     import shutil as _shutil_module
 
     monkeypatch.setattr(_shutil_module, "which", lambda _name: "/usr/local/bin/claude")
