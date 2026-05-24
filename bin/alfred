@@ -873,6 +873,22 @@ def cmd_claude(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_setup_token(args: argparse.Namespace) -> int:
+    """Forward to ``bin/alfred-setup-token.py``.
+
+    Keeps the heavy logic out of the dispatcher so the standalone script
+    is callable directly (``python3 ~/.alfred/bin/alfred-setup-token.py``)
+    for operators who prefer to bypass the ``alfred`` CLI.
+    """
+    script = _HERE / "alfred-setup-token.py"
+    cmd = [sys.executable, str(script)]
+    if args.force:
+        cmd.append("--force")
+    if args.check_only:
+        cmd.append("--check-only")
+    return subprocess.run(cmd, check=False).returncode
+
+
 def cmd_auth(args: argparse.Namespace) -> int:
     command = args.auth_command
     if command in ("status", ""):
@@ -952,6 +968,22 @@ def main(argv: list[str] | None = None) -> int:
         metavar="{status,probe}",
     )
     p_codex.set_defaults(func=cmd_codex)
+
+    p_setup_token = sub.add_parser(
+        "setup-token",
+        help="mint a long-lived Claude OAuth token for scheduled firings",
+    )
+    p_setup_token.add_argument(
+        "--force",
+        action="store_true",
+        help="re-run even if a token is already configured (rotate)",
+    )
+    p_setup_token.add_argument(
+        "--check-only",
+        action="store_true",
+        help="report status without spawning `claude setup-token`",
+    )
+    p_setup_token.set_defaults(func=cmd_setup_token)
 
     p_auth = sub.add_parser("auth", help="inspect Claude Code and Codex auth surfaces")
     p_auth.add_argument(

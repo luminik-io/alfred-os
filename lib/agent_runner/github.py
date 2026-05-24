@@ -64,6 +64,24 @@ Empty by default; consumers populate it for their fleet::
 _ENSURE_LABELS_DONE: set[str] = set()
 
 
+def local_repo_dir(repo_slug: str) -> str:
+    """Map a GitHub repo slug to its on-disk directory name.
+
+    Consults ``GH_REPO_TO_LOCAL`` and falls back to the slug itself when
+    no mapping is registered. Centralises what was historically inlined
+    as ``WORKSPACE / repo`` at every callsite: that pattern silently
+    breaks for fleets where the on-disk name differs from the GitHub
+    slug (e.g. ``acme/acme-backend`` cloned at ``product/backend``).
+
+    Pair with :data:`WORKSPACE` (from ``agent_runner.paths``) for the
+    full path::
+
+        from agent_runner import WORKSPACE, local_repo_dir
+        local = WORKSPACE / local_repo_dir(repo_slug)
+    """
+    return GH_REPO_TO_LOCAL.get(repo_slug, repo_slug)
+
+
 def _full_repo(slug: str) -> str:
     """Resolve a bare repo slug to ``<org>/<repo>`` using ``GH_ORG``.
 

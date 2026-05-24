@@ -13,7 +13,7 @@ Condensed companion to [`docs/DRY_RUN.md`](https://github.com/luminik-io/alfred-
 
 `ALFRED_DOCTOR=1` short-circuits a runner to a **preflight-only** check: it verifies host configuration and exits before the lifecycle starts.
 
-Dry-run is the opposite: it runs the **entire** lifecycle and instead stubs the calls that would touch the outside world. Use doctor mode to answer "is this host configured correctly?"; use dry-run to answer "what does a firing actually do, step by step?".
+Dry-run is the opposite: it runs the **entire** lifecycle and instead stubs the calls that would touch the outside world. Use doctor mode to answer "is this host configured correctly?"; use dry-run to answer "what does a firing do, step by step?".
 
 ## Try it in 2 minutes
 

@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Bootstrap ``CLAUDE_CODE_OAUTH_TOKEN`` for scheduler-spawned agents.
+
+Interactive auth (``claude``) stores the OAuth token in the host
+credential store (macOS Keychain on Darwin, libsecret on Linux). That
+works from your shell because the shell session can read the store, but
+launchd / ``systemd --user`` processes run in a different security
+context and cannot. Every ``claude -p`` call from a scheduled agent
+returns 401 even though the same token is on disk.
+
+The supported fix is a long-lived OAuth token that ``claude`` reads from
+the ``CLAUDE_CODE_OAUTH_TOKEN`` env var, bypassing the credential store.
+This script wraps the ``claude setup-token`` flow:
+
+  1. Detect whether a token is already set (env var or ``~/.alfredrc``).
+     Exit early when already configured, unless ``--force`` is given.
+  2. Spawn ``claude setup-token`` so the operator can approve the
+     browser flow once.
+  3. Parse the long-lived token from the resulting output.
+  4. Append ``export CLAUDE_CODE_OAUTH_TOKEN=<value>`` to
+     ``~/.alfredrc`` (idempotently: re-runs overwrite the line, not
+     duplicate it) and chmod the file 0600.
+
+The token is tied to the operator's existing subscription. There is no
+extra cost, no new account, no API-key billing. Rotate by re-running
+with ``--force`` and overwriting the line; revoke at
+https://console.anthropic.com/settings/keys if the file is exposed.
+
+Usage:
+  alfred setup-token              # interactive (recommended)
+  alfred setup-token --force      # rotate even if already set
+  alfred setup-token --check-only # report status without touching auth
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ALFREDRC = Path(os.environ.get("ALFREDRC", str(Path.home() / ".alfredrc")))
+TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
+
+# Marker block in ~/.alfredrc. Re-runs replace the block atomically
+# rather than appending duplicate exports. Accepts ``\r?\n`` line endings
+# because an operator could have saved ``~/.alfredrc`` from a CRLF editor.
+BANNER = "# alfred setup-token, do not edit by hand (re-run to rotate)"
+BLOCK_RE = re.compile(
+    rf"\r?\n?{re.escape(BANNER)}\r?\nexport {TOKEN_ENV}=[^\r\n]*\r?\n",
+    re.MULTILINE,
+)
+
+# claude setup-token prints the token on a line by itself between two
+# sets of human prose. We match the canonical prefix (``sk-ant-oat01-``)
+# and grab the longest token-shaped string on that line.
+TOKEN_LINE_RE = re.compile(r"(sk-ant-oat[0-9]{2}-[A-Za-z0-9_\-]{40,})")
+
+# Sanity bounds on a parsed token. Loose by design so a future longer
+# token format still flies, but tight enough to reject obvious garbage
+# (truncated by an ANSI escape, mangled by locale-decoder, etc.).
+_MIN_TOKEN_LEN = 50
+_MAX_TOKEN_LEN = 4096
+
+
+def info(msg: str) -> None:
+    print(f"[alfred setup-token] {msg}")
+
+
+def warn(msg: str) -> None:
+    print(f"[alfred setup-token] WARN: {msg}", file=sys.stderr)
+
+
+def fail(msg: str, code: int = 1) -> None:
+    print(f"[alfred setup-token] ERROR: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def existing_token_source() -> str | None:
+    """Return a human-readable description of where the token is already set,
+    or ``None`` if it is unset.
+
+    Checks process env first (covers shell exports), then ``~/.alfredrc``.
+    Does not validate the value, only reports presence.
+    """
+    if os.environ.get(TOKEN_ENV, "").strip():
+        return f"env var {TOKEN_ENV}"
+    if ALFREDRC.is_file():
+        try:
+            contents = ALFREDRC.read_text(encoding="utf-8")
+        except OSError as exc:
+            warn(f"could not read {ALFREDRC}: {exc}")
+            return None
+        for line in contents.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or "=" not in stripped:
+                continue
+            key = stripped.split("=", 1)[0].removeprefix("export").strip()
+            if key == TOKEN_ENV:
+                return str(ALFREDRC)
+    return None
+
+
+def write_token(token: str) -> None:
+    """Idempotently write the token export to ``~/.alfredrc`` and tighten
+    perms to 0600.
+
+    Re-runs overwrite the existing block in-place rather than duplicating
+    the export line. File is created if missing. On a shared host, the
+    file is created with 0600 perms from the start (umask narrowed during
+    the write) so there is no readable window between create and chmod.
+    """
+    ALFREDRC.parent.mkdir(parents=True, exist_ok=True)
+    existing = ALFREDRC.read_text(encoding="utf-8") if ALFREDRC.is_file() else ""
+
+    # Drop any prior alfred setup-token block so re-runs are clean.
+    cleaned = BLOCK_RE.sub("\n", existing).rstrip()
+    # Quote the value with shlex.quote so a stray shell metachar can't
+    # break the sourcing line.
+    block = f"\n{BANNER}\nexport {TOKEN_ENV}={shlex.quote(token)}\n"
+    new_contents = (cleaned + block) if cleaned else block.lstrip("\n")
+
+    # Narrow umask so the create-then-chmod window cannot leave a
+    # world-readable file holding a year-long subscription credential.
+    prior_umask = os.umask(0o077)
+    try:
+        ALFREDRC.write_text(new_contents, encoding="utf-8")
+    finally:
+        os.umask(prior_umask)
+    try:
+        ALFREDRC.chmod(0o600)
+    except OSError as exc:
+        warn(f"could not chmod 0600 {ALFREDRC}: {exc}")
+
+
+def run_setup_token() -> str:
+    """Spawn ``claude setup-token``, return the parsed token.
+
+    Stdout is teed to the operator's terminal in real time so they see
+    the browser prompt and any errors. We also capture a copy to parse
+    the token line out of afterwards.
+    """
+    if shutil.which("claude") is None:
+        fail("`claude` is not on PATH. Install it first: npm install -g @anthropic-ai/claude-code")
+
+    info("running `claude setup-token` (approve in browser when prompted) ...")
+    print("=" * 60)
+    try:
+        # Force utf-8 with replace so a non-UTF-8 host locale (LANG=C
+        # under launchd, POSIX on minimal Linux) cannot mangle the token
+        # before our regex sees it.
+        proc = subprocess.Popen(
+            ["claude", "setup-token"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as exc:
+        fail(f"could not launch `claude setup-token`: {exc}")
+
+    assert proc.stdout is not None
+    captured: list[str] = []
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        captured.append(line)
+    rc = proc.wait()
+    print("=" * 60)
+
+    if rc != 0:
+        fail(
+            f"`claude setup-token` exited {rc}. See output above for details.",
+            code=rc,
+        )
+
+    output = "".join(captured)
+    match = TOKEN_LINE_RE.search(output)
+    if not match:
+        fail(
+            "could not parse a long-lived token from `claude setup-token` output. "
+            "Run the command yourself, copy the printed token, and add this line "
+            f"to {ALFREDRC} manually:\n\n    export {TOKEN_ENV}=<your-token>\n\n"
+            "Then re-run this script with --check-only to confirm."
+        )
+    token = match.group(1)
+    # Defensive bounds: the canonical regex above already gates on prefix
+    # and minimum length, but if upstream ever emits the token with an
+    # embedded ANSI escape or similar, the match could silently truncate.
+    # Better to fail loud than to write half a credential to disk.
+    if not (_MIN_TOKEN_LEN <= len(token) <= _MAX_TOKEN_LEN) or not token.isascii():
+        fail(
+            f"parsed token failed sanity check (length={len(token)}, ascii={token.isascii()}). "
+            "The `claude setup-token` output format may have changed. "
+            "File a bug and pass --check-only after setting CLAUDE_CODE_OAUTH_TOKEN manually."
+        )
+    return token
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="alfred setup-token",
+        description=(
+            "Mint a long-lived Claude OAuth token so scheduled (launchd / "
+            "systemd --user) agents can authenticate without the host "
+            "credential store. Token goes to ~/.alfredrc."
+        ),
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="re-run even if a token is already configured (rotate)",
+    )
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="report status without spawning `claude setup-token`",
+    )
+    args = parser.parse_args(argv)
+
+    source = existing_token_source()
+    if args.check_only:
+        if source:
+            info(f"{TOKEN_ENV} is set in {source}.")
+            return 0
+        info(f"{TOKEN_ENV} is NOT set. Run `alfred setup-token` to configure.")
+        return 1
+
+    if source and not args.force:
+        info(f"{TOKEN_ENV} already set in {source}. Pass --force to rotate.")
+        return 0
+
+    if source and args.force:
+        info(f"rotating existing token in {source} ...")
+
+    token = run_setup_token()
+    write_token(token)
+
+    info(f"wrote {TOKEN_ENV} to {ALFREDRC} (chmod 0600).")
+    info("scheduled agents will pick it up on their next firing.")
+    info("rotate later with `alfred setup-token --force`.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

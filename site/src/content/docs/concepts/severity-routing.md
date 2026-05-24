@@ -53,7 +53,7 @@ flowchart TB
     coerce --> webhook
 ```
 
-## What you actually get
+## What you get
 
 In Slack, the channel timeline now reads like:
 

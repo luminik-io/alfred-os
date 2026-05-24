@@ -78,7 +78,7 @@ Look at the issue on GitHub:
 
 Check your configured fleet channel in Slack: the success message is there.
 
-## 7. Confirm dedup actually works
+## 7. Confirm dedup works
 
 Force a second firing immediately:
 
@@ -107,6 +107,6 @@ For richer agents (write code, open PRs, multi-step prompts, max-turns resume), 
 
 ## Next
 
-- [Issue claim state machine](/concepts/state-machine/): what `claim_issue` actually does
+- [Issue claim state machine](/concepts/state-machine/): what `claim_issue` does
 - [Slack setup](/guides/slack/): wire your channel
 - [agent_runner API reference](/reference/agent-runner/): every primitive available

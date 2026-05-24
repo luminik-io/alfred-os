@@ -18,8 +18,7 @@ before the lifecycle starts.
 
 Dry-run is the opposite: it runs the **entire** lifecycle and instead stubs the
 calls that would touch the outside world. Use doctor mode to answer "is this
-host configured correctly?"; use dry-run to answer "what does a firing actually
-do, step by step?".
+host configured correctly?"; use dry-run to answer "what does a firing do, step by step?".
 
 ## Activating it
 

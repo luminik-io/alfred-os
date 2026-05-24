@@ -112,6 +112,48 @@ echo "say hi" | claude -p
 
 Should print a one-line response and exit 0.
 
+### Authenticating scheduled (launchd / systemd) firings
+
+The interactive auth above stores the OAuth token in your platform's credential store: macOS Keychain on Darwin, libsecret on Linux. That works from your shell because the shell session can read those stores. **It does not work from launchd or `systemd --user`-spawned agent processes.** Those run in a different security context and cannot read the same credential, so every `claude -p` call returns 401 even though the same token is on disk.
+
+The supported fix is a long-lived OAuth token that `claude` reads from an env var, bypassing the credential store entirely. Two ways to set it up:
+
+#### Automated (recommended)
+
+```sh
+alfred setup-token
+```
+
+This detects whether the token is already configured, runs `claude setup-token` for you, captures the printed token, appends `export CLAUDE_CODE_OAUTH_TOKEN=...` to `~/.alfredrc`, and chmods the file to 0600. Rotate later with `alfred setup-token --force`. Check status without touching auth with `alfred setup-token --check-only`. The interactive browser approval step still happens. That part Anthropic owns and we cannot automate.
+
+The `alfred-init` wizard offers to run this for you on first install, so most operators never need to invoke it directly.
+
+#### Manual
+
+If you'd rather drive the flow yourself:
+
+```sh
+claude setup-token
+```
+
+Approve in the browser, copy the printed token. Add it to `~/.alfredrc` (which `agent-launch` sources on every firing):
+
+```sh
+export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+```
+
+Tighten permissions so other accounts on the host cannot read it:
+
+```sh
+chmod 600 ~/.alfredrc
+```
+
+#### Notes that apply either way
+
+The token is valid for 1 year, ties directly to your subscription (no extra cost, no API-key billing), and is what `claude` reads first when both an env var and a credential-store entry exist. Revoke via your [Anthropic account settings](https://console.anthropic.com/settings/keys) if the file is ever exposed. The same env var works on Linux for the same reason: host credential stores and user-service contexts often disagree, and the env var sidesteps both.
+
+If you prefer not to use the env var (for example, your organisation forbids long-lived subscription tokens), you can leave `claude` reading the credential store and accept that scheduled firings will not authenticate.
+
 ## Pro vs Max sizing
 
 Claude Code can run against your **subscription usage** rather than direct API token billing when you log in with a Pro or Max account and avoid API-key env vars. Usage is shared with other Claude surfaces and reset behavior is controlled by Anthropic, so treat the table as sizing guidance, not a billing guarantee:
