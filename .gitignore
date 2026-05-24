@@ -224,3 +224,4 @@ uv.lock
 .claude/
 **/.claude/
 screenshots/
+.deepsec/

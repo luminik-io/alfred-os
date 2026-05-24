@@ -4,7 +4,21 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
-(No unreleased entries.)
+### Added
+
+- `alfred setup-token` (`bin/alfred-setup-token.py`): one-command bootstrap of the long-lived OAuth token. Detects whether `CLAUDE_CODE_OAUTH_TOKEN` is already set in the env or `~/.alfredrc`; if not, spawns `claude setup-token` interactively, parses the printed token, writes a single `export` line to `~/.alfredrc`, and tightens the file to 0600. Re-runs (`--force`) replace the existing block in place so rotation is idempotent. `--check-only` reports status without touching auth. `alfred-init` step 1 now offers to run this automatically when the token is missing.
+- `CLAUDE_CODE_OAUTH_TOKEN` is the supported way to authenticate `claude` from launchd / systemd contexts. Run `claude setup-token` once (or `alfred setup-token` for the automated path) to mint a 1-year subscription token, export the value in `~/.alfredrc`, and `claude` reads it directly without touching the macOS Keychain or filesystem credential cache. See `docs/CLAUDE_CODE.md`.
+- `ALFRED_FLEET_OVERLAY` hook in `agent_runner/__init__.py`: imports an operator-supplied module (default name `fleet_overlay`) at end of package init so a fleet can populate `GH_REPO_TO_LOCAL`, `STANDARD_LABELS`, and `HANDOFFS` from one place instead of forking every `bin/*.py`. Silently absent when no overlay is on the path.
+- `preflight()` now consults `GH_REPO_TO_LOCAL` (with fallback to the slug) when resolving local checkout paths, so multi-repo workspaces with renames (`org/myorg-backend` checked out at `product/backend/`) stop reporting bogus "missing checkout" errors.
+
+### Removed
+
+- `lib/claude_proxy/`, `bin/claude-proxy.py`, `tests/test_claude_proxy_*.py`, `docs/CLAUDE_PROXY.md`, `examples/launchd/luminik.claude-proxy.plist.example`. The proxy daemon shipped in v0.4.0 worked around a macOS Keychain ACL issue that `CLAUDE_CODE_OAUTH_TOKEN` resolves natively. `ALFRED_CLAUDE_PROXY_SOCKET` is no longer read; `claude_invoke_streaming` now always uses the direct subprocess path. Operators using the proxy should `launchctl bootout` it and unset the env var; otherwise no migration is needed.
+- `bin/alfred-grant-keychain.sh` and `docs/MACOS_KEYCHAIN.md`. The targeted Keychain ACL grant is no longer the recommended workaround because the OAuth-token path bypasses Keychain entirely.
+
+### Fixed
+
+- `agent_runner/process.run()` TimeoutExpired path: Python 3.14 returns `bytes` for `e.stdout` even when `text=True` was passed to `subprocess.run`. Callers passing the result to `Path.write_text` (notably rasalghul caching `gh pr diff`) crashed with `TypeError: data must be str, not bytes`. The wrap site now decodes bytes -> utf-8 with `errors="replace"`. Regression test patches `subprocess.run` to force the bytes case on every Python version.
 
 ## [0.4.0] - 2026-05-23
 
@@ -52,12 +66,6 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 
 - `alfred serve` v1 (`bin/alfred-serve.py` + `lib/server/`): localhost-only, read-only FastAPI dashboard over `$ALFRED_HOME/state`. Three views: fleet status with HTMX auto-refresh, recent firings, single-firing detail. Reader injected as `typing.Protocol`. New `[serve]` optional dependency group for `fastapi`, `uvicorn`, `jinja2`. See `docs/SERVE.md`.
 - `bin/alfred-shipped-public.py`: self-host emitter that reads `$ALFRED_HOME/state`, applies a public field allowlist + partner-name redaction table, and writes a `weekly.json` operators can publish on their own site. See `docs/SHIPPED_EMITTER.md`.
-
-#### Infrastructure for unattended operation
-
-- `lib/claude_proxy/` and `bin/claude-proxy.py`: localhost unix-socket daemon that brokers `claude -p` invocations on behalf of launchd-spawned agent processes. Solves the macOS Keychain ACL issue that returns 401 on every `claude` call from a non-Aqua launchd session. NDJSON wire protocol with `invoke`, `health`, and `probe` requests; stdlib-only; opt-in via `ALFRED_CLAUDE_PROXY_SOCKET` with transparent fallback to direct subprocess. See `docs/CLAUDE_PROXY.md` and `docs/MACOS_KEYCHAIN.md`.
-- `examples/launchd/luminik.claude-proxy.plist.example`: sample launchd unit with `LimitLoadToSessionType=Aqua` and inline install / verify recipe. Operators must edit the placeholder paths before bootstrapping. (Brand-neutral filename rename tracked for the v0.4.1 docs PR.)
-- `lib/agent_runner.process.claude_invoke_streaming` routes through the proxy when the env var is set, falls back to direct subprocess otherwise.
 
 #### Fleet diagnostic + cleanup hardening
 

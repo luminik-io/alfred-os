@@ -61,7 +61,7 @@ mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$LOCAL_BIN"
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
 echo "[alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackages)"
-# v0.4.0 introduced subpackages (agent_runner/, claude_proxy/, connectors/,
+# v0.4.0 introduced subpackages (agent_runner/, connectors/,
 # fleet_brain/, memory/, server/). The original `cp lib/*.py` only matched
 # top-level files, so the subpackages never deployed and every agent firing
 # on a clean install crashed at first `from agent_runner import ...`.
@@ -70,9 +70,9 @@ echo "[alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackage
 cp -R "$REPO_DIR/lib/." "$RUNTIME_LIB/"
 # Restore file permissions; -R does not normalise modes uniformly.
 find "$RUNTIME_LIB" -name '*.py' -type f -exec chmod 644 {} +
-# Sanity check: assert the six v0.4.0 subpackages landed. If any are
+# Sanity check: assert the five v0.4.x subpackages landed. If any are
 # missing the deploy is broken (the original silent-failure mode).
-for pkg in agent_runner claude_proxy connectors fleet_brain memory server; do
+for pkg in agent_runner connectors fleet_brain memory server; do
   if [ ! -f "$RUNTIME_LIB/$pkg/__init__.py" ]; then
     echo "[alfred-os/deploy] ERROR: lib/$pkg/__init__.py missing after copy" >&2
     exit 1

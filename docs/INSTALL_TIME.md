@@ -1,4 +1,4 @@
-# How long does install actually take
+# How long install takes
 
 Honest read on install duration. The "30 minutes" number on the README assumes
 a lot of preconditions are already met. If you are starting cold, the real

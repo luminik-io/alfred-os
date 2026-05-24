@@ -95,7 +95,7 @@ falls back from Claude to Codex for auth, budget, and rate-limit subtypes. A
 normal Claude tool error should be fixed in the runner or prompt, not hidden by
 switching engines.
 
-**Codex cannot read GitHub auth or keychain-backed credentials.** Keep
+**Codex cannot read GitHub auth or credentials stored in the host credential store.** Keep
 review-only agents in read-only mode. For builder agents, run in a disposable
 worktree and opt into the bypass flag only at that codename's call site.
 
