@@ -383,6 +383,140 @@ def test_apply_config_overrides(init_mod, tmp_path):
     assert "planner" in state.enabled_roles
 
 
+def test_apply_config_overrides_role_repos_by_codename_and_role_key(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    init_mod.apply_config_overrides(
+        state,
+        {
+            "role_repos": {
+                "lucius": ["acme/api", "acme/web"],
+                "feature_dev": ["acme/api", "acme/web"],  # role-key alias for the same role
+                "drake": "acme/api",  # string singleton is accepted
+                "BANE": ["acme/api"],  # case-insensitive
+            },
+        },
+    )
+    assert state.role_to_repos["feature_dev"] == ["acme/api", "acme/web"]
+    assert state.role_to_repos["planner"] == ["acme/api"]
+    assert state.role_to_repos["test_coverage"] == ["acme/api"]
+
+
+def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    init_mod.apply_config_overrides(
+        state,
+        {
+            "role_codename": {"feature_dev": "implementer"},
+            "role_schedule": {"lucius": "interval:1800", "drake": "cron:7:30"},
+        },
+    )
+    assert state.role_to_codename["feature_dev"] == "implementer"
+    assert state.role_to_schedule["feature_dev"] == "interval:1800"
+    assert state.role_to_schedule["planner"] == "cron:7:30"
+
+
+def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, capsys):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    init_mod.apply_config_overrides(
+        state,
+        {
+            "role_repos": {"not-a-real-agent": ["acme/api"]},
+            "role_codename": {"also-not-real": "ghost"},
+            "role_schedule": {"phantom": "interval:60"},
+        },
+    )
+    assert "not-a-real-agent" not in state.role_to_repos
+    assert "also-not-real" not in state.role_to_codename
+    # All three warnings should hit stderr.
+    err = capsys.readouterr().err
+    assert "not-a-real-agent" in err
+    assert "also-not-real" in err
+    assert "phantom" in err
+
+
+def test_apply_config_overrides_rejects_invalid_codename(init_mod, tmp_path, capsys):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    init_mod.apply_config_overrides(
+        state, {"role_codename": {"feature_dev": "Bad Name With Spaces"}}
+    )
+    assert "feature_dev" not in state.role_to_codename
+    assert "Bad Name With Spaces" in capsys.readouterr().err
+
+
+def test_step_7_repos_preserves_role_repos_from_config(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+        gh_org="acme",
+    )
+    state.enabled_roles = ["feature_dev", "planner"]
+    state.repos = ["acme/api", "acme/web", "acme/mobile"]
+    state.role_to_repos["feature_dev"] = ["acme/api"]
+    # planner has no preset; in non-interactive mode it must fall back to
+    # repos_arg / state.repos default behaviour, not silently overwrite
+    # feature_dev's preset.
+    init_mod.step_7_repos(state, repos_arg="acme/web,acme/mobile", non_interactive=True)
+    assert state.role_to_repos["feature_dev"] == ["acme/api"]
+    assert state.role_to_repos["planner"] == ["acme/web", "acme/mobile"]
+
+
+def test_step_6_codenames_preserves_config_overrides(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    state.enabled_roles = ["feature_dev", "planner"]
+    state.role_to_codename["feature_dev"] = "implementer"
+    init_mod.step_6_codenames(state, non_interactive=True)
+    assert state.role_to_codename["feature_dev"] == "implementer"
+    assert state.role_to_codename["planner"] == "drake"  # default fill
+
+
+def test_step_6_codenames_fails_on_config_collision(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    state.enabled_roles = ["feature_dev", "planner"]
+    state.role_to_codename["feature_dev"] = "drake"
+    state.role_to_codename["planner"] = "drake"  # collision with feature_dev
+    with pytest.raises(SystemExit):
+        init_mod.step_6_codenames(state, non_interactive=True)
+
+
+def test_step_8_schedule_preserves_config_overrides(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    state.enabled_roles = ["feature_dev", "planner"]
+    state.role_to_schedule["feature_dev"] = "interval:1800"
+    init_mod.step_8_schedule(state, non_interactive=True)
+    assert state.role_to_schedule["feature_dev"] == "interval:1800"
+    # Planner gets the catalog default.
+    assert state.role_to_schedule["planner"] == init_mod.AGENT_CATALOG["planner"][3]
+
+
 def test_pick_agents_keeps_configured_agents(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",

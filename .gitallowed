@@ -13,3 +13,10 @@ bin/agent-launch
 bin/alfred-init\.py
 lib/fleet_brain/schema\.py
 systemd/render\.sh
+# CLAUDE_CODE_OAUTH_TOKEN setup uses an obviously-fake placeholder
+# value. The generic ant-token regex would otherwise flag the literal
+# prefix that ``claude setup-token`` emits in: the docs example, the
+# parser regex in ``bin/alfred-setup-token.py``, and the test fixtures.
+docs/CLAUDE_CODE\.md
+bin/alfred-setup-token\.py
+tests/test_alfred_setup_token\.py

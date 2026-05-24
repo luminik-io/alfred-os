@@ -45,6 +45,7 @@ from agent_runner import (
     PreflightFailed,
     PreflightSpec,
     doctor_mode,
+    local_repo_dir,
     preflight,
     slack_post,
     with_lock,
@@ -369,16 +370,16 @@ def build_code_map() -> dict[str, Any]:
     if BACKEND_REPO:
         repos[BACKEND_REPO] = scan_backend(WORKSPACE / BACKEND_REPO)
     if SIDECAR_REPO and SIDECAR_REPO not in repos:
-        repos[SIDECAR_REPO] = scan_sidecar_routes(WORKSPACE / SIDECAR_REPO)
+        repos[SIDECAR_REPO] = scan_sidecar_routes(WORKSPACE / local_repo_dir(SIDECAR_REPO))
     for repo in CLIENT_REPOS:
         if repo in repos:
             continue
-        repos[repo] = scan_client_repo(WORKSPACE / repo)
+        repos[repo] = scan_client_repo(WORKSPACE / local_repo_dir(repo))
     # HEAD-only entries for any remaining configured repos
     for repo in REPOS:
         if repo in repos:
             continue
-        repos[repo] = {"head_sha": _git_head(WORKSPACE / repo)}
+        repos[repo] = {"head_sha": _git_head(WORKSPACE / local_repo_dir(repo))}
 
     code_map = {
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

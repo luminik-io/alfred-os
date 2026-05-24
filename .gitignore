@@ -208,6 +208,14 @@ tempCodeRunnerFile.py
 # Local Alfred scratch worktrees
 .worktrees/
 
+# Per-operator launchd artifacts. alfred-init writes agents.conf for the
+# host's chosen fleet; deploy.sh renders host-specific plists (with absolute
+# paths to $ALFRED_HOME) into launchd/_generated. Both are operator data, not
+# source: shipping them would leak private paths and overwrite every other
+# operator's fleet config on pull.
+launchd/agents.conf
+launchd/_generated/
+
 # PyPI configuration file
 .pypirc
 
@@ -224,3 +232,4 @@ uv.lock
 .claude/
 **/.claude/
 screenshots/
+.deepsec/

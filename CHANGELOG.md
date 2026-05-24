@@ -4,8 +4,24 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ## [Next]
 
+### Added
+
+- `alfred setup-token` (`bin/alfred-setup-token.py`): one-command bootstrap of the long-lived OAuth token. Detects whether `CLAUDE_CODE_OAUTH_TOKEN` is already set in the env or `~/.alfredrc`; if not, spawns `claude setup-token` interactively, parses the printed token, writes a single `export` line to `~/.alfredrc`, and tightens the file to 0600. Re-runs (`--force`) replace the existing block in place so rotation is idempotent. `--check-only` reports status without touching auth. `alfred-init` step 1 now offers to run this automatically when the token is missing.
+- `CLAUDE_CODE_OAUTH_TOKEN` is the supported way to authenticate `claude` from launchd / systemd contexts. Run `claude setup-token` once (or `alfred setup-token` for the automated path) to mint a 1-year subscription token, export the value in `~/.alfredrc`, and `claude` reads it directly without touching the macOS Keychain or filesystem credential cache. See `docs/CLAUDE_CODE.md`.
+- `ALFRED_FLEET_OVERLAY` hook in `agent_runner/__init__.py`: imports an operator-supplied module (default name `fleet_overlay`) at end of package init so a fleet can populate `GH_REPO_TO_LOCAL`, `STANDARD_LABELS`, and `HANDOFFS` from one place instead of forking every `bin/*.py`. Silently absent when no overlay is on the path.
+- `preflight()` now consults `GH_REPO_TO_LOCAL` (with fallback to the slug) when resolving local checkout paths, so multi-repo workspaces with renames (`org/myorg-backend` checked out at `product/backend/`) stop reporting bogus "missing checkout" errors.
+- `alfred-init --config` learned `role_repos`, `role_codename`, and `role_schedule`. Each maps an agent (by codename or role-key, case-insensitive) to a per-agent override: which repos that codename operates on, what codename to expose, and what schedule string to write into `agents.conf`. Previously non-interactive mode forced every repo-operating agent to claim every visible repo, which is wrong any time the operator wants codenames scoped to different surfaces (e.g. test-coverage skipping iOS, code-map-refresh only on JS/TS repos). `step_6_codenames` / `step_7_repos` / `step_8_schedule` preserve preset values from `--config` instead of overwriting them. Unknown agent keys, codenames that don't match `^[a-z][a-z0-9-]*$`, and malformed value types are surfaced as `warn` and skipped rather than silently dropped. Cross-platform — pure stdlib, no shell tricks, same behaviour on launchd and `systemd --user` consumers.
+
+### Removed
+
+- `lib/claude_proxy/`, `bin/claude-proxy.py`, `tests/test_claude_proxy_*.py`, `docs/CLAUDE_PROXY.md`, `examples/launchd/luminik.claude-proxy.plist.example`. The proxy daemon shipped in v0.4.0 worked around a macOS Keychain ACL issue that `CLAUDE_CODE_OAUTH_TOKEN` resolves natively. `ALFRED_CLAUDE_PROXY_SOCKET` is no longer read; `claude_invoke_streaming` now always uses the direct subprocess path. Operators using the proxy should `launchctl bootout` it and unset the env var; otherwise no migration is needed.
+- `bin/alfred-grant-keychain.sh` and `docs/MACOS_KEYCHAIN.md`. The targeted Keychain ACL grant is no longer the recommended workaround because the OAuth-token path bypasses Keychain entirely.
+
 ### Fixed
 
+- `agent_runner/process.run()` TimeoutExpired path: Python 3.14 returns `bytes` for `e.stdout` even when `text=True` was passed to `subprocess.run`. Callers passing the result to `Path.write_text` (notably rasalghul caching `gh pr diff`) crashed with `TypeError: data must be str, not bytes`. The wrap site now decodes bytes -> utf-8 with `errors="replace"`. Regression test patches `subprocess.run` to force the bytes case on every Python version.
+- `lib/agent_runner/github.py`: added `agent:implement` to `LIFECYCLE_LABELS` so `claim_issue`'s first-call `ensure_labels` creates the entry-point label alongside the in-flight / pr-open / done / sticky-modifier labels. `labels.py` already lists it in `LIFECYCLE_LABEL_SET`; the runner list was the odd one out. Test `test_label_constants_match_agent_runner_existing_values` updated to assert `IMPLEMENT in runner_names`. (`alfred-init.py` step_10_labels still handles the operator-facing bootstrap for wizard-configured repos; this change covers programmatic / non-wizard consumers.)
+- `.gitignore`: added `launchd/agents.conf` and `launchd/_generated/`. Both are per-operator artefacts (the conf names this host's fleet; the rendered plists hard-code `$ALFRED_HOME` paths). Without them gitignored, a fresh operator's first `git status` shows tracked-looking host-private files and `bin/scrub-check.sh` trips on the `/Users/<name>/.alfred` paths inside the rendered plists.
 - `lib/agent_runner/github.py`: `ensure_labels` cache rewritten from `set[str]` (per repo) to `dict[str, set[str]]` (per repo + per label name). The old key meant a first call with `LIFECYCLE_LABELS` (e.g. from `claim_issue`) silently no-opped every later call with `STANDARD_LABELS` (e.g. from `gh_issue_edit` / `gh_pr_create`) on the same repo, leaving labels like `batman-pr-open`, `agent:large-feature`, `done-already` uncreated. Downstream `gh label add` then failed with "could not add label" and the runner surfaced "PR open failed" with no obvious cause. Two regression tests in `tests/test_gh_pr_create_labels.py` lock the per-label-name cache behaviour: a second call with a different catalogue creates the missing labels; a repeat call with the same catalogue is still a no-op.
 
 ## [0.4.0] - 2026-05-23
@@ -54,12 +70,6 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 
 - `alfred serve` v1 (`bin/alfred-serve.py` + `lib/server/`): localhost-only, read-only FastAPI dashboard over `$ALFRED_HOME/state`. Three views: fleet status with HTMX auto-refresh, recent firings, single-firing detail. Reader injected as `typing.Protocol`. New `[serve]` optional dependency group for `fastapi`, `uvicorn`, `jinja2`. See `docs/SERVE.md`.
 - `bin/alfred-shipped-public.py`: self-host emitter that reads `$ALFRED_HOME/state`, applies a public field allowlist + partner-name redaction table, and writes a `weekly.json` operators can publish on their own site. See `docs/SHIPPED_EMITTER.md`.
-
-#### Infrastructure for unattended operation
-
-- `lib/claude_proxy/` and `bin/claude-proxy.py`: localhost unix-socket daemon that brokers `claude -p` invocations on behalf of launchd-spawned agent processes. Solves the macOS Keychain ACL issue that returns 401 on every `claude` call from a non-Aqua launchd session. NDJSON wire protocol with `invoke`, `health`, and `probe` requests; stdlib-only; opt-in via `ALFRED_CLAUDE_PROXY_SOCKET` with transparent fallback to direct subprocess. See `docs/CLAUDE_PROXY.md` and `docs/MACOS_KEYCHAIN.md`.
-- `examples/launchd/luminik.claude-proxy.plist.example`: sample launchd unit with `LimitLoadToSessionType=Aqua` and inline install / verify recipe. Operators must edit the placeholder paths before bootstrapping. (Brand-neutral filename rename tracked for the v0.4.1 docs PR.)
-- `lib/agent_runner.process.claude_invoke_streaming` routes through the proxy when the env var is set, falls back to direct subprocess otherwise.
 
 #### Fleet diagnostic + cleanup hardening
 

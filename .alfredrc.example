@@ -71,6 +71,14 @@ WORKSPACE_ROOT=
 # without inheriting your shell's PATH.
 # CLAUDE_BIN=/usr/local/bin/claude
 
+# Long-lived OAuth token so launchd / systemd --user firings can
+# authenticate `claude` without the host credential store (Keychain on
+# macOS, libsecret on Linux). Mint with `claude setup-token` and either
+# paste the value here or, easier, run `alfred setup-token` which
+# captures it for you, chmods 0600, and inserts a managed block above.
+# Rotate with `alfred setup-token --force`. See docs/CLAUDE_CODE.md.
+# CLAUDE_CODE_OAUTH_TOKEN=
+
 # ----------------------------------------------------------------------
 # Operator-side overrides (no sensible defaults)
 # ----------------------------------------------------------------------

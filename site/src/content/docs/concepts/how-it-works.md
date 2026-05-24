@@ -68,7 +68,7 @@ Every gate is a plain function call against a file on disk or a subprocess. No n
 
 `pick_issue()` queries GitHub for the oldest open issue labelled `agent:implement` across the agent's watched repos, skipping any repo in the pause list (`is_repo_paused`).
 
-Then `claim_issue(repo, num, codename=AGENT, firing_id=...)` runs the [state machine](/concepts/state-machine/) handshake: it adds the `agent:in-flight` label, posts a structured claim comment, and re-reads recent comments to check it actually won the race. If an earlier claim exists, this firing yields and exits. If `claim_issue` returns `False` for any reason (already claimed, repo paused, blocker label present), the firing prints `[LUCIUS-DEDUP-SKIP]` and exits.
+Then `claim_issue(repo, num, codename=AGENT, firing_id=...)` runs the [state machine](/concepts/state-machine/) handshake: it adds the `agent:in-flight` label, posts a structured claim comment, and re-reads recent comments to confirm it won the race. If an earlier claim exists, this firing yields and exits. If `claim_issue` returns `False` for any reason (already claimed, repo paused, blocker label present), the firing prints `[LUCIUS-DEDUP-SKIP]` and exits.
 
 ## Stage 4: isolate and invoke
 

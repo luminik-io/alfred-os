@@ -1,5 +1,5 @@
 ---
-title: How long does install actually take
+title: How long install takes
 description: Honest read on Alfred install duration for warm-start and cold-start operators, plus the one-time gates to check before starting.
 ---
 

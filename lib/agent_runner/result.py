@@ -110,7 +110,21 @@ _BUDGET_RESULT_RE = re.compile(
 
 _RATE_LIMIT_RESULT_RE = re.compile(
     r"\brate[_ -]?limit(?:ed|_exceeded| exceeded)?\b"
-    r"|\b429\b|\btoo many requests\b|\bquota exceeded\b",
+    r"|\b429\b|\btoo many requests\b|\bquota exceeded\b"
+    # Anthropic emits this wording when a subscription-backed Claude
+    # Code session hits its hidden subscription cap. The message reads
+    # as a workspace-admin policy block ("your organization has
+    # disabled Claude subscription access for Claude Code · Use an
+    # Anthropic API key instead, or ask your admin to enable access"),
+    # but the actual cause is the cap, and the response shape is the
+    # same as a rate limit. Treating it as ``error_rate_limit`` makes
+    # hybrid agents fall back to codex automatically; without this
+    # match the result classifier falls through to generic
+    # ``error_api`` which is not in HYBRID_FALLBACK_SUBTYPES and the
+    # firing fails hard.
+    r"|\bdisabled Claude subscription access\b"
+    r"|\bClaude subscription access for Claude Code\b"
+    r"|\bsubscription access.{0,40}Claude Code\b",
     re.IGNORECASE,
 )
 

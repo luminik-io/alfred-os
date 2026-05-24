@@ -204,7 +204,7 @@ Look at the issue in GitHub: there's a new comment from your gh user, the `agent
 
 Look at your configured fleet channel in Slack: there's the success message.
 
-## Step 7: confirm dedup actually works
+## Step 7: confirm dedup works
 
 Force a second firing immediately:
 

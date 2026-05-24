@@ -169,4 +169,4 @@ explicit so operators can decide how much autonomy they want.
 - `--repos` can be bare names (`api,web`) or full slugs (`my-org/api,my-org/web`).
 - `GH_ORG` must match the owner of the selected repos.
 - Do not point agents at every checkout on your machine. Start with the repos
-  you actually want scheduled agents to touch.
+  you want scheduled agents to touch.
