@@ -301,7 +301,7 @@ export default defineConfig({
       // Starlight's docs-shell default (which read as a broken docs page).
       disable404Route: true,
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 4 },
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/custom.css", "./src/styles/cookie-banner.css"],
       components: {
         // Append a DataRavel Inc. copyright line under the default page footer.
         Footer: "./src/components/Footer.astro",

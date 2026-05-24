@@ -1,0 +1,96 @@
+/* ------------------------------------------------------------------ */
+/* Cookie consent banner                                               */
+/*                                                                     */
+/* Shared between marketing pages (src/layouts/MarketingLayout.astro)  */
+/* and Starlight docs (head config in astro.config.mjs). Lives outside */
+/* custom.css because custom.css is Starlight-only, and the marketing  */
+/* layout was rendering the banner without any of these styles applied */
+/* (banner overflowed the viewport with naked HTML defaults).          */
+/*                                                                     */
+/* The CSS custom-property fallbacks let the same rules work under     */
+/* both Starlight (--sl-color-*) and marketing (--alfred-*) tokens.    */
+/* ------------------------------------------------------------------ */
+.alfred-cookie-banner {
+  position: fixed;
+  /* Center horizontally without the left/right + max-width + margin auto
+     combo, which clipped the action buttons off-screen on the live site. */
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  width: min(720px, calc(100vw - 2rem));
+  box-sizing: border-box;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  z-index: 2147483000; /* above Starlight's sidebars + the mermaid overlay */
+  background: var(--sl-color-bg-nav, var(--alfred-surface-2, #161d2a));
+  color: var(--sl-color-text, var(--alfred-text, #c5d0e0));
+  border: 1px solid var(--alfred-border, #1f2937);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/* Narrow viewports: stack the message above the actions so neither
+   clips off the screen. Matches mobile cookie-banner UX conventions. */
+@media (max-width: 520px) {
+  .alfred-cookie-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .alfred-cookie-banner .alfred-cookie-actions {
+    justify-content: flex-end;
+  }
+}
+
+.alfred-cookie-text {
+  flex: 1 1 260px;
+  margin: 0;
+  line-height: 1.4;
+  color: var(--sl-color-gray-1, var(--alfred-text, #c5d0e0));
+}
+
+.alfred-cookie-text a {
+  color: var(--sl-color-text-accent, var(--alfred-accent, #00e5c7));
+}
+
+.alfred-cookie-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.alfred-cookie-btn {
+  padding: 0.45rem 0.95rem;
+  font: inherit;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.alfred-cookie-deny {
+  background: transparent;
+  color: var(--sl-color-text, var(--alfred-text, #c5d0e0));
+  border-color: var(--alfred-border, #1f2937);
+}
+
+.alfred-cookie-deny:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.alfred-cookie-allow {
+  background: var(--sl-color-text-accent, var(--alfred-accent, #00e5c7));
+  color: var(--sl-color-bg, var(--alfred-accent-ink, #06231f));
+}
+
+.alfred-cookie-allow:hover {
+  filter: brightness(1.08);
+}
