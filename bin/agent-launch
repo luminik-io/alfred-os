@@ -61,4 +61,34 @@ if [ ! -x "$TARGET" ]; then
   exit 127
 fi
 
+# Python interpreter resolution (Python targets only):
+#   1. ${ALFRED_PYTHON}              - explicit operator override
+#   2. ${ALFRED_HOME}/venv/bin/python - install.sh-managed venv (has
+#                                       slack-sdk + boto3 baked in)
+#   3. agent shebang                 - preserves source-checkout / dev paths
+#
+# Non-Python targets (shell scripts, etc.) always execute via their own
+# shebang so the venv-python path never tries to parse `.sh` files as
+# Python source. Detection: `.py` extension first, then the shebang line.
+is_python_target() {
+  case "$TARGET" in
+    *.py) return 0 ;;
+  esac
+  local shebang=""
+  IFS= read -r shebang < "$TARGET" 2>/dev/null || true
+  case "$shebang" in
+    "#!"*python*) return 0 ;;
+    *)            return 1 ;;
+  esac
+}
+
+if is_python_target; then
+  if [ -n "${ALFRED_PYTHON:-}" ] && [ -x "$ALFRED_PYTHON" ]; then
+    exec "$ALFRED_PYTHON" "$TARGET" "$@"
+  fi
+  if [ -x "$ALFRED_HOME/venv/bin/python" ]; then
+    exec "$ALFRED_HOME/venv/bin/python" "$TARGET" "$@"
+  fi
+fi
+
 exec "$TARGET" "$@"
