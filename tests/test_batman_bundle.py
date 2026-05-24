@@ -451,3 +451,111 @@ def test_list_large_features_skip_labels_still_apply(monkeypatch):
     monkeypatch.setattr(runner, "gh_json", lambda *_a, **_k: fake_rows)
     out = runner._list_large_features()
     assert [r["number"] for r in out] == [1]
+
+
+# ---------------------------------------------------------------------------
+# Issue #107: parse_parent_issue diagnostic + auto-fallback to loose shape.
+# ---------------------------------------------------------------------------
+
+
+def _parse_parent(body: str, title: str = "Bundle: billing-v2 rollout"):
+    import batman
+
+    return batman.parse_parent_issue(
+        body=body,
+        title=title,
+        parent_repo="myorg/backend",
+        parent_issue_number=42,
+    )
+
+
+def test_parse_parent_issue_warns_when_no_shape_matches(caplog):
+    """The lifecycle parser must surface a single warning when both the
+    canonical (`Repos:`/`Children:`) and the loose
+    (`## Affected Repos`/`## Acceptance Criteria`) shapes come up
+    empty, so operators notice the body-format miss on the FIRST firing
+    instead of after wasted cycles."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+        plan = _parse_parent("This is just a free-form description, no markers.")
+    assert plan.children == ()
+    assert plan.affected_repos == ()
+    matched = [
+        rec
+        for rec in caplog.records
+        if "parse_parent_issue" in rec.getMessage() and "EXEC_NO_CHILDREN" in rec.getMessage()
+    ]
+    assert matched, (
+        f"expected an EXEC_NO_CHILDREN warning, got: {[r.getMessage() for r in caplog.records]}"
+    )
+
+
+def test_parse_parent_issue_falls_back_to_loose_shape(caplog):
+    """When the canonical `Repos:`/`Children:` blocks are absent but the
+    loose `## Affected Repos`/`## Acceptance Criteria` shape is present,
+    the parser must synthesize one child per affected repo so the plan
+    post lands with real work the operator can approve, AND must log a
+    warning so the operator knows to tighten the body next time."""
+    import logging
+
+    body = """
+We want a billing-v2 rollout.
+
+## Affected Repos
+- backend
+- frontend
+- mobile
+
+## Acceptance Criteria
+
+### backend
+- New `/billing/...` endpoints behind the `billing-v2` feature flag.
+
+### frontend
+- Billing settings page wired to the v2 endpoints.
+
+### mobile
+- Subscription paywall reads from the v2 schema.
+"""
+    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+        plan = _parse_parent(body)
+    assert len(plan.children) == 3, [c.repo for c in plan.children]
+    child_repos = {c.repo for c in plan.children}
+    # _resolve_child_repo prefers GH_REPO_TO_LOCAL when present; with no
+    # mapping the fallback uses the parent org so the slugs become
+    # `myorg/backend` / `myorg/frontend` / `myorg/mobile`. Either form
+    # is acceptable because tests don't pin the inflection — they pin
+    # the count and the local-name presence.
+    for local in ("backend", "frontend", "mobile"):
+        assert any(local in r for r in child_repos), child_repos
+    assert any("auto-fell-back" in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]
+
+
+def test_parse_parent_issue_canonical_shape_does_not_trigger_fallback(caplog):
+    """Sanity: when the canonical shape is present, no warning should
+    fire and no auto-fallback should run."""
+    import logging
+
+    body = """
+Bundle: billing-v2 rollout
+
+Repos:
+- myorg/backend
+- myorg/frontend
+
+Children:
+- backend: introduce BillingV2Service
+- frontend: pricing page rewrite
+
+Done when:
+- All children merged to main
+"""
+    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+        plan = _parse_parent(body)
+    assert len(plan.children) == 2
+    assert all("parse_parent_issue" not in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]

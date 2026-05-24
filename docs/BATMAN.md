@@ -106,6 +106,71 @@ Posts a follow-up Slack message naming every child URL that landed and
 every repo that failed. Same channel as the plan; carries the bundle
 slug so a thread search picks both messages up together.
 
+## Parent issue body template
+
+Batman accepts two body shapes. Pick whichever feels natural; the
+parser tries the canonical shape first and falls back to the loose
+shape automatically (a warning lands in `/tmp/alfred.batman.stderr`
+when the fallback fires, so you know to tighten up next time).
+
+**Canonical shape** (matches the worked example below; explicit
+`Repos:` and `Children:` blocks):
+
+```md
+Title: Bundle: billing-v2 rollout
+Labels: agent:large-feature
+
+Bundle: billing-v2 rollout
+
+Repos:
+- your-org/your-backend
+- your-org/your-frontend
+- your-org/your-mobile
+
+Children:
+- backend: introduce BillingV2Service
+- backend: migrate /api/v1/invoices
+- frontend: pricing page rewrite
+- mobile: settings screen v2
+
+Done when:
+- All children merged to main
+- Tests green across all repos
+```
+
+**Loose shape** (markdown sections, what an operator or AI assistant
+naturally types from a prose feature description):
+
+```md
+## Affected Repos
+- your-backend
+- your-frontend
+- your-mobile
+
+## Rollout order
+- your-backend
+- your-frontend
+- your-mobile
+
+## Acceptance Criteria
+
+### your-backend
+- New `/billing/...` endpoints behind the `billing-v2` feature flag.
+
+### your-frontend
+- Billing settings page wired to the v2 endpoints.
+
+### your-mobile
+- Subscription paywall reads from the v2 schema.
+```
+
+When the loose shape fires, Batman synthesizes one child issue per
+affected repo with the title `<repo>: implement <slug>` and the
+per-repo acceptance-criteria block as the seed body. The plan post
+to Slack uses the same approval contract. Authoring the canonical
+shape gives you finer control over child titles, but the loose
+shape is enough to get a working fan-out.
+
 ## Worked example
 
 Parent issue (filed by the operator in `your-org/your-product`):

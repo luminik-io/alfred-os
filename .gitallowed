@@ -18,5 +18,6 @@ systemd/render\.sh
 # prefix that ``claude setup-token`` emits in: the docs example, the
 # parser regex in ``bin/alfred-setup-token.py``, and the test fixtures.
 docs/CLAUDE_CODE\.md
+docs/AI_ASSISTED_INSTALL\.md
 bin/alfred-setup-token\.py
 tests/test_alfred_setup_token\.py

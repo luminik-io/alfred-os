@@ -12,6 +12,7 @@ ALFRED_NIGHTWING_REVIEW_AGENT to match the codename your review agent uses.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -53,6 +54,7 @@ from agent_runner import (
     slack_post,
     with_lock,
 )
+from agent_runner.transcripts import transcript_path
 
 AGENT = os.environ.get("AGENT_CODENAME", "nightwing")
 NIGHTWING_ENGINE = agent_engine(AGENT, default="hybrid")
@@ -74,6 +76,16 @@ DAILY_TURN_CAP = int(os.environ.get("ALFRED_NIGHTWING_TURN_CAP", "600"))
 # can't see issue-comment replies, so persist to disk too).
 FIXED_COMMENT_IDS_FILE = STATE_ROOT / AGENT / "fixed-comment-ids.json"
 
+# Per-(PR, comment) consecutive-no-commit streak counter. After N misses
+# in a row Nightwing stops retrying that comment and escalates with a
+# Slack post + `nightwing:human-needed` label. The operator clears the
+# state by adding `nightwing:reset` to the PR or by deleting the entry
+# from this file. See issue #109.
+NO_COMMIT_STREAKS_FILE = STATE_ROOT / AGENT / "no-commit-streaks.json"
+NO_COMMIT_ESCALATE_AFTER = int(os.environ.get("ALFRED_NIGHTWING_ESCALATE_AFTER", "3"))
+ESCALATE_LABEL = "nightwing:human-needed"
+RESET_LABEL = "nightwing:reset"
+
 
 def load_fixed_ids() -> set:
     if not FIXED_COMMENT_IDS_FILE.exists():
@@ -91,6 +103,129 @@ def save_fixed_ids(ids: set) -> None:
 
     FIXED_COMMENT_IDS_FILE.parent.mkdir(parents=True, exist_ok=True)
     FIXED_COMMENT_IDS_FILE.write_text(json.dumps(sorted(ids)))
+
+
+def _streak_key(repo: str, pr_num: int, comment_id) -> str:
+    """Key shape mirrors the issue's recommendation: (pr_url, comment_id)."""
+    return f"{GH_ORG}/{repo}#{pr_num}:{comment_id}"
+
+
+def load_no_commit_streaks() -> dict[str, int]:
+    if not NO_COMMIT_STREAKS_FILE.exists():
+        return {}
+    try:
+        import json
+
+        data = json.loads(NO_COMMIT_STREAKS_FILE.read_text())
+        return {str(k): int(v) for k, v in data.items() if isinstance(v, int) and v >= 0}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_no_commit_streaks(streaks: dict[str, int]) -> None:
+    import json
+
+    NO_COMMIT_STREAKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    NO_COMMIT_STREAKS_FILE.write_text(json.dumps(streaks, sort_keys=True))
+
+
+def diagnose_no_commit(wt: str, debug_dir: str | None) -> str:
+    """Build the operator-facing diagnostic appended to [NIGHTWING-NO-COMMIT].
+
+    Two pieces:
+      1. ``git status --porcelain`` so the operator sees whether the engine
+         wrote files (and just didn't commit) vs. wrote nothing at all.
+      2. Pointer to the per-firing transcript dump (when one is on disk)
+         so the operator can grep for what Claude actually said.
+
+    Both are best-effort; failures fall back to a short note so the
+    NO-COMMIT log line is never empty.
+    """
+    lines: list[str] = []
+    try:
+        status = run(["git", "status", "--porcelain"], cwd=str(wt), timeout=10).stdout.strip()
+    except Exception:
+        status = ""
+    if status:
+        lines.append("  Working tree (git status --porcelain):")
+        for line in status.splitlines()[:20]:
+            lines.append(f"    {line}")
+        lines.append(
+            "  -> Possible cause: engine wrote files but did not commit; "
+            "check pre-commit hooks and the transcript for a missing `git commit`."
+        )
+    else:
+        lines.append("  Working tree: clean (no staged or unstaged changes).")
+        lines.append(
+            "  -> Possible cause: engine described the fix in prose without invoking "
+            "a write tool. Tighten the prompt to require an actual edit + commit."
+        )
+    if debug_dir:
+        lines.append(f"  Transcript: {debug_dir}")
+    return "\n".join(lines)
+
+
+def escalate_no_commit(repo: str, pr_num: int, comment_id, streak: int) -> None:
+    """After N consecutive no-commits on the same (PR, comment) tuple,
+    add the ``nightwing:human-needed`` label and post Slack once.
+
+    The label is the out-of-band signal for the operator queue; the
+    Slack post is the heads-up. Label-add failures are non-fatal so a
+    label-permission misconfig doesn't kill the firing.
+    """
+    msg = (
+        f"{AGENT.title()}: {streak} consecutive no-commits on "
+        f"{GH_ORG}/{repo}#{pr_num} comment {comment_id}. Operator action needed "
+        f"(likely an LLM hallucination or hook config issue). Marked "
+        f"`{ESCALATE_LABEL}`; add `{RESET_LABEL}` after fixing to retry."
+    )
+    print(f"[{AGENT.upper()}-ESCALATE] {msg}")
+    try:
+        slack_post(msg, severity="alert")
+    except Exception as exc:
+        print(f"[{AGENT.upper()}-ESCALATE-SLACK-FAIL] {exc}")
+    try:
+        run(
+            [
+                "gh",
+                "pr",
+                "edit",
+                str(pr_num),
+                "--repo",
+                f"{GH_ORG}/{repo}",
+                "--add-label",
+                ESCALATE_LABEL,
+            ],
+            timeout=30,
+        )
+    except Exception as exc:
+        print(f"[{AGENT.upper()}-ESCALATE-LABEL-FAIL] {exc}")
+
+
+def reset_label_present(repo: str, pr_num: int) -> bool:
+    """Operator-controlled reset: if the PR carries ``nightwing:reset``,
+    drop the streak entries for that PR and remove the label so the
+    next firing starts clean."""
+    try:
+        cp = run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_num),
+                "--repo",
+                f"{GH_ORG}/{repo}",
+                "--json",
+                "labels",
+                "--jq",
+                ".labels[].name",
+            ],
+            timeout=15,
+        )
+    except Exception:
+        return False
+    names = {line.strip() for line in cp.stdout.splitlines() if line.strip()}
+    return RESET_LABEL in names
 
 
 SECURITY_KEYWORDS = re.compile(
@@ -366,6 +501,37 @@ def main() -> int:
     head_ref = pr["headRefName"]
     events.emit("pr_picked", repo=f"{GH_ORG}/{repo}", number=pr_num, comment_count=len(comments))
 
+    # Per-(PR, comment) no-commit streak counter (issue #109). Loaded
+    # here so a single firing can both bump streaks and detect operator
+    # reset via the `nightwing:reset` label.
+    no_commit_streaks = load_no_commit_streaks()
+    if reset_label_present(repo, pr_num):
+        prefix = f"{GH_ORG}/{repo}#{pr_num}:"
+        cleared = [k for k in list(no_commit_streaks) if k.startswith(prefix)]
+        for k in cleared:
+            no_commit_streaks.pop(k, None)
+        if cleared:
+            print(
+                f"[{AGENT.upper()}-RESET] operator added `{RESET_LABEL}` to "
+                f"{GH_ORG}/{repo}#{pr_num}; cleared {len(cleared)} streak entry(ies)."
+            )
+            save_no_commit_streaks(no_commit_streaks)
+        # Best-effort label cleanup so the next firing doesn't re-reset.
+        with contextlib.suppress(Exception):
+            run(
+                [
+                    "gh",
+                    "pr",
+                    "edit",
+                    str(pr_num),
+                    "--repo",
+                    f"{GH_ORG}/{repo}",
+                    "--remove-label",
+                    RESET_LABEL,
+                ],
+                timeout=15,
+            )
+
     # Worktree at the PR branch
     try:
         wt = make_worktree_from_branch(local_repo_dir(repo), AGENT, head_ref, str(pr_num))
@@ -472,9 +638,30 @@ def main() -> int:
             timeout=10,
         ).stdout.strip()
         if not new_sha or new_sha == parent_sha:
+            # Diagnostic upgrade (issue #109): include git status and the
+            # transcript path so the operator can tell which of the
+            # five no-commit failure modes happened without grepping the
+            # firing log themselves.
+            try:
+                transcript = str(transcript_path(AGENT, events.firing_id))
+            except Exception:
+                transcript = None
+            diag = diagnose_no_commit(str(wt), transcript)
             print(
-                f"[{AGENT.upper()}-NO-COMMIT] comment {cid}: {engine_used} said success but no new commit"
+                f"[{AGENT.upper()}-NO-COMMIT] comment {cid}: {engine_used} exited 0 "
+                f"but HEAD did not advance.\n{diag}"
             )
+            # Bump the (PR, comment) streak; escalate at the configured
+            # threshold so an infinite-retry loop on the same comment
+            # surfaces as an operator-actionable Slack post + label.
+            key = _streak_key(repo, pr_num, cid)
+            streak = no_commit_streaks.get(key, 0) + 1
+            no_commit_streaks[key] = streak
+            if streak >= NO_COMMIT_ESCALATE_AFTER:
+                escalate_no_commit(repo, pr_num, cid, streak)
+                # Once escalated, drop the entry so a future
+                # nightwing:reset retry can start the streak fresh.
+                no_commit_streaks.pop(key, None)
             continue
 
         # Push + reply on the PR
@@ -492,8 +679,12 @@ def main() -> int:
         fix_summary.append(f"- {new_sha[:7]}: {cuser} comment {cid}")
         # Persist so the next firing's pick_target() skips this comment
         fixed_ids.add(cid)
+        # A successful fix clears the no-commit streak for this comment
+        # so a future regression doesn't escalate prematurely.
+        no_commit_streaks.pop(_streak_key(repo, pr_num, cid), None)
 
     save_fixed_ids(fixed_ids)
+    save_no_commit_streaks(no_commit_streaks)
     spend.increment(firings_today=1, turns_today=total_turns)
     remove_worktree(repo, wt)
     engine_summary = (

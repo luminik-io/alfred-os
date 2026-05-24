@@ -971,6 +971,75 @@ def parse_parent_issue(
     if dm:
         done_when = dm.group(1).strip()
 
+    # Auto-fallback to the loose `## Affected Repos` / `## Acceptance
+    # Criteria` shape when the canonical `Repos:` / `Children:` blocks
+    # are absent. Operators (and AI assistants) naturally type the loose
+    # shape from prose descriptions; without this, the lifecycle path
+    # silently returns children=() and the firing dies as EXEC_NO_CHILDREN.
+    # See issue #107. Note: parse_plan_from_issue falls back to the
+    # default rollout order when nothing parses; that would make every
+    # bare body look like a loose-shape match. Gate the fallback on the
+    # presence of an explicit `## Affected Repos` / `## Acceptance
+    # Criteria` H2 marker in the body so a truly-empty body still hits
+    # the EXEC_NO_CHILDREN warning.
+    _has_loose_markers = bool(
+        re.search(
+            r"^##\s*(?:Affected Repos|Acceptance Criteria)\s*$",
+            body,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+    )
+    if not repos and not children_pairs and _has_loose_markers:
+        loose = parse_plan_from_issue(body)
+        if loose.affected_repos:
+            # Map local repo names from the loose parser back to
+            # `owner/repo` slugs using GH_REPO_TO_LOCAL.
+            local_to_gh = {v: k for k, v in GH_REPO_TO_LOCAL.items()}
+            parent_org = parent_repo.split("/", 1)[0] if "/" in parent_repo else ""
+            for local in loose.affected_repos:
+                # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
+                # back to <parent_org>/<local> so a fresh fleet with no
+                # mapping still produces a usable owner/repo pair. Local
+                # name `gh_slug` avoids shadowing the `full` used in the
+                # main children-pairs loop below (which would otherwise
+                # widen its type to `str | None` and trip mypy).
+                gh_slug = local_to_gh.get(local) or (
+                    f"{parent_org}/{local}" if parent_org else local
+                )
+                if gh_slug not in repos:
+                    repos.append(gh_slug)
+            # Synthesize one child per affected repo so the plan post
+            # carries real work the operator can approve. The per-repo
+            # acceptance-criteria block (if present) becomes the seed
+            # context the implementer reads; otherwise the child body
+            # falls back to a generic "implement <slug>" stub.
+            for local in loose.affected_repos:
+                child_title = f"{local}: implement {slug or 'large-feature'}"
+                children_pairs.append((local, child_title))
+            if not done_when:
+                # Reuse the per-repo criteria as a done-when summary so
+                # the Slack plan post is not empty under "Done when".
+                joined = "\n".join(
+                    f"- {repo}: {loose.repo_criteria.get(repo, 'see acceptance criteria')}"
+                    for repo in loose.affected_repos
+                )
+                done_when = joined
+            logger.warning(
+                "parse_parent_issue: no `Repos:` / `Children:` blocks; "
+                "auto-fell-back to `## Affected Repos` / `## Acceptance Criteria` "
+                "shape (synthesized %d child(ren) across %d repo(s)). "
+                "See docs/BATMAN.md#parent-issue-body-template for the canonical shape.",
+                len(children_pairs),
+                len(loose.affected_repos),
+            )
+    elif not repos and not children_pairs:
+        logger.warning(
+            "parse_parent_issue: no `Repos:` line, no `Children:` block, no "
+            "`## Affected Repos` H2, no `## Acceptance Criteria` H3 sections found. "
+            "The plan will have children=0 and the bundle will die as "
+            "EXEC_NO_CHILDREN. See docs/BATMAN.md#parent-issue-body-template."
+        )
+
     bundle_label_str = label_constants.bundle_label(slug)
     base_labels = (label_constants.IMPLEMENT, bundle_label_str)
     children: list[ChildIssue] = []
