@@ -533,6 +533,107 @@ def test_pick_agents_keeps_configured_agents(init_mod, tmp_path):
     assert state.enabled_roles == ["bug_triage"]
 
 
+def test_pick_agents_lists_opt_in_marker(init_mod, tmp_path, capsys):
+    """Issue #104: opt-in roles need a visible `(opt-in)` marker so operators
+    can tell at a glance which agents need a follow-up `alfred enable` to fire."""
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+    available = [
+        "feature_dev",
+        "planner",
+        "bug_triage",
+        "agent_cleanup",
+        "cross_repo_coordinator",
+    ]
+    init_mod.step_5_pick_agents(state, available, agents_arg=None, non_interactive=True)
+    out = capsys.readouterr().out
+    assert "(opt-in)" in out, "Expected `(opt-in)` marker in the agent picker output"
+    # Marker must sit on Batman's line and NOT on a starter line.
+    batman_line = next(
+        (line for line in out.splitlines() if "batman" in line and "(opt-in)" in line),
+        "",
+    )
+    assert batman_line, "Expected the (opt-in) marker on Batman's row specifically"
+    starter_lines = [
+        line
+        for line in out.splitlines()
+        if any(name in line for name in ("lucius", "drake", "rasalghul"))
+    ]
+    assert starter_lines, "Expected at least one starter agent row in the output"
+    for line in starter_lines:
+        assert "(opt-in)" not in line, f"Starter agent row should not carry (opt-in): {line!r}"
+
+
+def test_pick_agents_offers_batman_when_multi_repo(init_mod, tmp_path, capsys, monkeypatch):
+    """Issue #104: multi-repo fleets should be offered Batman explicitly rather
+    than relying on the operator to spot it in the catalog. Default-no preserves
+    prior behaviour for operators who decline."""
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+        gh_org="acme",
+    )
+    state.repos = ["acme/frontend", "acme/backend", "acme/mobile"]
+    available = ["feature_dev", "planner", "bug_triage", "cross_repo_coordinator"]
+
+    # Capture every prompt input() saw and the operator's reply.
+    answers_decline = iter(["", "n"])
+    prompts_seen: list[str] = []
+
+    def fake_input(prompt: str = "") -> str:
+        prompts_seen.append(prompt)
+        return next(answers_decline)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    init_mod.step_5_pick_agents(state, available, agents_arg=None, non_interactive=False)
+
+    out = capsys.readouterr().out
+    assert "Your org has 3 visible repos" in out
+    assert any("Add Batman to this fleet?" in p for p in prompts_seen), prompts_seen
+    assert "cross_repo_coordinator" not in state.enabled_roles
+
+    # Now the operator accepts.
+    state2 = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+        gh_org="acme",
+    )
+    state2.repos = ["acme/frontend", "acme/backend"]
+    answers_accept = iter(["", "y"])
+    monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers_accept))
+    init_mod.step_5_pick_agents(state2, available, agents_arg=None, non_interactive=False)
+    assert "cross_repo_coordinator" in state2.enabled_roles
+
+
+def test_pick_agents_skips_batman_offer_for_single_repo(init_mod, tmp_path, capsys, monkeypatch):
+    """No Batman nudge when the fleet has a single repo; it adds no value."""
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+        gh_org="acme",
+    )
+    state.repos = ["acme/api"]
+    available = ["feature_dev", "planner", "bug_triage", "cross_repo_coordinator"]
+    prompts_seen: list[str] = []
+
+    def fake_input(prompt: str = "") -> str:
+        prompts_seen.append(prompt)
+        return ""
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    init_mod.step_5_pick_agents(state, available, agents_arg=None, non_interactive=False)
+    out = capsys.readouterr().out
+    assert "Add Batman to this fleet?" not in out
+    assert not any("Add Batman to this fleet?" in p for p in prompts_seen), prompts_seen
+    assert "cross_repo_coordinator" not in state.enabled_roles
+
+
 def test_repos_arg_rejects_repos_outside_gh_org(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",

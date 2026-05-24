@@ -186,8 +186,20 @@ agent.
 
 Batman is included in the catalog as an opt-in cross-repo coordinator. In the
 public release it posts bundle plans for `agent:large-feature` work; teams can
-layer their own approval-and-execution chain on top. Enable Batman when you are
-ready for multi-repo planning, not for your first starter setup.
+layer their own approval-and-execution chain on top.
+
+**When do I need Batman?**
+
+| Your fleet has | Do you need Batman? |
+| --- | --- |
+| 1 repo | No. Drake + Lucius + Ras al Ghul handle single-repo work fine on their own. |
+| 2 to 3 related repos (frontend + backend, or app + web + mobile) | Yes, highly recommended. The single-issue fans-out-to-N-PRs pattern is the daily payoff. |
+| 5+ repos with mostly-independent work | Yes for cross-repo features. Batman no-ops on firings that find nothing cross-cutting, so the cost is the firing itself. |
+| Strict approval gates required before any cross-repo work lands | Yes. Batman's `BATMAN_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |
+
+Enable Batman during `alfred-init` if any of the above match, or add it later
+with `alfred enable batman`. Adding it later is a no-cost change; it stays
+disabled at the runner gate until you arm it.
 
 ### 7. Framework-only deploy + verify
 

@@ -970,11 +970,16 @@ def step_5_pick_agents(
         return
     print()
     print("  Available agents (Enter = recommended starter fleet):")
+    print("    [starter]  shipped fleet defaults")
+    print(
+        "    (opt-in)   shipped but disabled by default; needs `alfred enable <codename>` to fire"
+    )
     starter = set(starter_roles(available))
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
         marker = "[starter]" if role in starter else "         "
-        print(f"    {marker} {codename:<20s}, {desc}")
+        suffix = " (opt-in)" if role in OPT_IN_ROLES else ""
+        print(f"    {marker} {codename:<20s}{suffix:<10s} {desc}")
     print()
     if non_interactive:
         state.enabled_roles = starter_roles(available)
@@ -985,6 +990,24 @@ def step_5_pick_agents(
     if not state.enabled_roles:
         warn("Nothing matched. Using the recommended starter fleet.")
         state.enabled_roles = starter_roles(available)
+    # Multi-repo fleets benefit from Batman (cross-repo `agent:large-feature`
+    # planner with a Slack approval gate). If the operator landed on a 2+-repo
+    # org and didn't pick Batman, surface it once as a yes/no question rather
+    # than letting the agent stay hidden behind the docs (issue #104).
+    if (
+        "cross_repo_coordinator" not in state.enabled_roles
+        and "cross_repo_coordinator" in available
+        and len(state.repos) >= 2
+    ):
+        print()
+        note(
+            f"Your org has {len(state.repos)} visible repos. Batman is the cross-repo "
+            "planner (single `agent:large-feature` issue fans out into coordinated PRs "
+            "across repos, gated by a Slack approval reaction)."
+        )
+        if ask_yes_no("Add Batman to this fleet?", default=False):
+            state.enabled_roles.append("cross_repo_coordinator")
+            ok("Batman added. Remember: `alfred enable batman` after install to arm it.")
     ok(f"{len(state.enabled_roles)} agents enabled.")
 
 
