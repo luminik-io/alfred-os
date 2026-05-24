@@ -993,6 +993,17 @@ def step_6_codenames(state: WizardState, *, non_interactive: bool) -> None:
     used: set[str] = set()
     for role in state.enabled_roles:
         default, desc, _, _ = AGENT_CATALOG[role]
+        # Honor --config role_codename overrides without re-prompting.
+        if role in state.role_to_codename:
+            preset = state.role_to_codename[role]
+            if preset in used:
+                fail(
+                    f"--config role_codename collision: {preset!r} reused. "
+                    "Fix the config or drop the duplicate."
+                )
+                sys.exit(1)
+            used.add(preset)
+            continue
         while True:
             chosen = ask(
                 f"Codename for {desc.split(' (')[0]}?", default, non_interactive=non_interactive
@@ -1048,6 +1059,10 @@ def step_7_repos(
 
     for role in repo_roles:
         codename = state.codename_for(role)
+        # Honor --config role_repos (per-agent scoping) over the broader
+        # --repos / "repos" / non-interactive default-all behaviour.
+        if role in state.role_to_repos:
+            continue
         if arg_repos is not None:
             state.role_to_repos[role] = list(arg_repos)
             continue
@@ -1056,8 +1071,8 @@ def step_7_repos(
                 state.role_to_repos[role] = list(state.repos)
                 continue
             fail(
-                "Non-interactive setup with repo agents needs --repos. "
-                "Example: --repos owner/repo or --repos repo-a,repo-b"
+                "Non-interactive setup with repo agents needs --repos or per-agent "
+                "role_repos in --config. Example: --repos owner/repo or --repos repo-a,repo-b"
             )
             sys.exit(1)
         if not state.repos:
@@ -1135,7 +1150,9 @@ def _resolve_repo_selection(
 def step_8_schedule(state: WizardState, *, non_interactive: bool) -> None:
     step("Schedules")
     for role in state.enabled_roles:
-        state.role_to_schedule[role] = AGENT_CATALOG[role][3]
+        # Preserve any --config role_schedule override; only fill defaults.
+        if role not in state.role_to_schedule:
+            state.role_to_schedule[role] = AGENT_CATALOG[role][3]
     if non_interactive:
         ok("Sensible defaults assigned.")
         return
@@ -1341,8 +1358,52 @@ def load_config(path: Path) -> dict:
         sys.exit(1)
 
 
+def _resolve_role_key(key: str) -> str | None:
+    """Map a config key (role-key or codename) to its canonical role-key.
+
+    Returns ``None`` if the key matches neither a known role nor a
+    known default codename. Lookup is case-insensitive on both sides
+    so a JSON config can use whichever surface the operator finds
+    natural (``"feature_dev"`` or ``"lucius"``).
+    """
+    k = key.lower()
+    for role in AGENT_CATALOG:
+        if role.lower() == k:
+            return role
+    for codename, role in CODENAME_TO_ROLE.items():
+        if codename.lower() == k:
+            return role
+    return None
+
+
 def apply_config_overrides(state: WizardState, cfg: dict) -> None:
-    """Honor a small set of pre-baked answers from --config."""
+    """Honor pre-baked answers from --config.
+
+    Supported keys:
+
+    - ``gh_org`` (str): GitHub org / user the fleet operates on.
+    - ``slack_webhook`` (str), ``slack_storage`` (``"env"`` or
+      ``"aws"``): Slack post target and credential storage.
+    - ``use_aws`` (bool), ``aws_agent_profiles`` (dict): per-agent
+      AWS profile names for IAM-scoped agents (huntress, gordon).
+    - ``agents`` (list[str]): codenames or role-keys to enable.
+    - ``repos`` (str | list[str]): convenience override applied to
+      every repo-operating agent. For per-agent scoping use
+      ``role_repos`` instead.
+    - ``role_repos`` (dict[str, list[str]]): per-agent repo
+      assignment. Keys are codenames (``"lucius"``) or role-keys
+      (``"feature_dev"``), case-insensitive. Values are repo slugs
+      (bare ``"my-repo"`` resolves through ``GH_ORG``; ``"org/repo"``
+      is treated as a full slug). Agents not listed fall through to
+      ``repos`` / ``--repos`` / interactive prompts.
+    - ``role_codename`` (dict[str, str]): override the default codename
+      for a role. Key is the role-key (``"feature_dev"``) or default
+      codename (``"lucius"``); value is the new codename.
+    - ``role_schedule`` (dict[str, str]): override the default
+      schedule for an agent. Key resolves the same way as
+      ``role_codename``; value is in ``agents.conf`` schedule format
+      (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
+    """
     if "gh_org" in cfg:
         state.gh_org = cfg["gh_org"]
     if "slack_webhook" in cfg:
@@ -1367,6 +1428,42 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
             state.role_to_repos["__all__"] = [repos]
         elif isinstance(repos, list):
             state.role_to_repos["__all__"] = [str(r) for r in repos]
+    if "role_repos" in cfg and isinstance(cfg["role_repos"], dict):
+        for raw_key, raw_repos in cfg["role_repos"].items():
+            role = _resolve_role_key(str(raw_key))
+            if role is None:
+                warn(f"--config role_repos: unknown agent {raw_key!r}; ignored")
+                continue
+            if isinstance(raw_repos, str):
+                state.role_to_repos[role] = [raw_repos]
+            elif isinstance(raw_repos, list):
+                state.role_to_repos[role] = [str(r) for r in raw_repos]
+            else:
+                warn(
+                    f"--config role_repos[{raw_key!r}]: expected list or str, "
+                    f"got {type(raw_repos).__name__}; ignored"
+                )
+    if "role_codename" in cfg and isinstance(cfg["role_codename"], dict):
+        for raw_key, raw_codename in cfg["role_codename"].items():
+            role = _resolve_role_key(str(raw_key))
+            if role is None:
+                warn(f"--config role_codename: unknown agent {raw_key!r}; ignored")
+                continue
+            codename = str(raw_codename)
+            if not CODENAME_RE.match(codename):
+                warn(
+                    f"--config role_codename[{raw_key!r}]: codename {codename!r} "
+                    "must match ^[a-z][a-z0-9-]*$; ignored"
+                )
+                continue
+            state.role_to_codename[role] = codename
+    if "role_schedule" in cfg and isinstance(cfg["role_schedule"], dict):
+        for raw_key, raw_schedule in cfg["role_schedule"].items():
+            role = _resolve_role_key(str(raw_key))
+            if role is None:
+                warn(f"--config role_schedule: unknown agent {raw_key!r}; ignored")
+                continue
+            state.role_to_schedule[role] = str(raw_schedule)
 
 
 def main(argv: Iterable[str] | None = None) -> int:
