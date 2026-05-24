@@ -993,9 +993,7 @@ def parse_parent_issue(
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
                 # back to <parent_org>/<local> so a fresh fleet with no
                 # mapping still produces a usable owner/repo pair.
-                full = local_to_gh.get(local) or (
-                    f"{parent_org}/{local}" if parent_org else local
-                )
+                full = local_to_gh.get(local) or (f"{parent_org}/{local}" if parent_org else local)
                 if full not in repos:
                     repos.append(full)
             # Synthesize one child per affected repo so the plan post

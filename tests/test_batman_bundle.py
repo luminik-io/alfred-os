@@ -484,10 +484,11 @@ def test_parse_parent_issue_warns_when_no_shape_matches(caplog):
     matched = [
         rec
         for rec in caplog.records
-        if "parse_parent_issue" in rec.getMessage()
-        and "EXEC_NO_CHILDREN" in rec.getMessage()
+        if "parse_parent_issue" in rec.getMessage() and "EXEC_NO_CHILDREN" in rec.getMessage()
     ]
-    assert matched, f"expected an EXEC_NO_CHILDREN warning, got: {[r.getMessage() for r in caplog.records]}"
+    assert matched, (
+        f"expected an EXEC_NO_CHILDREN warning, got: {[r.getMessage() for r in caplog.records]}"
+    )
 
 
 def test_parse_parent_issue_falls_back_to_loose_shape(caplog):
@@ -555,6 +556,6 @@ Done when:
     with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
         plan = _parse_parent(body)
     assert len(plan.children) == 2
-    assert all(
-        "parse_parent_issue" not in r.getMessage() for r in caplog.records
-    ), [r.getMessage() for r in caplog.records]
+    assert all("parse_parent_issue" not in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]

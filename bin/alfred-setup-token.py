@@ -212,9 +212,7 @@ def _validate_token_shape(token: str) -> None:
             "Copy the exact value `claude setup-token` printed."
         )
     if not (_MIN_TOKEN_LEN <= len(token) <= _MAX_TOKEN_LEN) or not token.isascii():
-        fail(
-            f"--token failed sanity check (length={len(token)}, ascii={token.isascii()})."
-        )
+        fail(f"--token failed sanity check (length={len(token)}, ascii={token.isascii()}).")
 
 
 def main(argv: list[str] | None = None) -> int:
