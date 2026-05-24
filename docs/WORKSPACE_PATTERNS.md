@@ -41,6 +41,31 @@ With that layout, set `WORKSPACE_ROOT=~/code` in `~/.alfredrc`. Alfred's
 repo-operating agents will look for local repos at
 `$WORKSPACE_ROOT/product/<repo>`.
 
+## If your repos already live somewhere else
+
+Alfred resolves `$WORKSPACE_ROOT/<subdir>/<repo>` where `<subdir>` defaults
+to `product`. Override the subdir with `WORKSPACE_SUBDIR` in `~/.alfredrc`
+when your existing layout doesn't match the default, and skip the symlink
+shim entirely:
+
+```sh
+# Your repos live at ~/repos/{api,web}/ — drop the product/ segment:
+WORKSPACE_ROOT=~/repos
+WORKSPACE_SUBDIR=""
+
+# Your repos live at ~/code/src/{api,web}/ — rename the segment:
+WORKSPACE_ROOT=~/code
+WORKSPACE_SUBDIR=src
+
+# Your repos live at "~/Claude Workspace/<repo>/" — drop the segment:
+WORKSPACE_ROOT="~/Claude Workspace"
+WORKSPACE_SUBDIR=""
+```
+
+For per-repo overrides (one repo somewhere unusual while the rest follow
+the default), use `GH_REPO_TO_LOCAL` in a fleet overlay; see
+`docs/CONNECTORS.md` for the overlay pattern.
+
 ## One Repo
 
 Use this when you have one app, one library, or one Mac/iOS app repo:

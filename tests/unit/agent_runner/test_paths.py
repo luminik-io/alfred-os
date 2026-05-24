@@ -86,3 +86,51 @@ def test_today_str_uses_utc_not_local_time(fresh_agent_runner, monkeypatch):
 
     monkeypatch.setattr(paths_mod, "datetime", _FrozenDateTime)
     assert ar.today_str() == "2026-05-24"
+
+
+def test_workspace_subdir_defaults_to_product(fresh_agent_runner):
+    """Back-compat: no ``WORKSPACE_SUBDIR`` env var keeps the historical
+    ``WORKSPACE_ROOT / product`` shape every existing operator relies on."""
+    ar = fresh_agent_runner
+    assert ar.WORKSPACE == ar.WORKSPACE_ROOT / "product"
+
+
+def test_workspace_subdir_overrides_via_env(monkeypatch, tmp_path):
+    """Operators with an existing workspace under a different subdir
+    (``~/code/src``, ``~/code/repos``, ``~/Claude Workspace``) can rename
+    the segment without symlinking. Closes the rigid-layout half of #98."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "ws"))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "src")
+    import sys
+
+    for mod in list(sys.modules):
+        if mod == "agent_runner" or mod.startswith("agent_runner."):
+            del sys.modules[mod]
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+    import agent_runner
+
+    assert agent_runner.WORKSPACE == agent_runner.WORKSPACE_ROOT / "src"
+
+
+def test_workspace_subdir_empty_collapses_to_workspace_root(monkeypatch, tmp_path):
+    """An empty ``WORKSPACE_SUBDIR`` lets the operator point Alfred at a
+    workspace root that already IS the per-repo parent (no intervening
+    ``product/`` segment). Matches the ``~/Claude Workspace`` /
+    ``~/repos`` shape several Anthropic-onboarding-style setups use."""
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "ws"))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    import sys
+
+    for mod in list(sys.modules):
+        if mod == "agent_runner" or mod.startswith("agent_runner."):
+            del sys.modules[mod]
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+    import agent_runner
+
+    assert agent_runner.WORKSPACE == agent_runner.WORKSPACE_ROOT

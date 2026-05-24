@@ -61,3 +61,41 @@ class _shutil_always_present:
     @staticmethod
     def which(name: str) -> str:
         return "/usr/bin/" + name
+
+
+def test_preflight_honours_workspace_subdir_for_checkout_check(monkeypatch, tmp_path):
+    """Setting ``WORKSPACE_SUBDIR=src`` makes ``WORKSPACE`` resolve to
+    ``$WORKSPACE_ROOT/src``; preflight must check the on-disk checkout
+    at the same path. Hard-coding ``"product"`` in the preflight loop
+    (the bug PR #100's first cut shipped) made the layout override
+    unusable for scheduled runs even when the operator's repos lived
+    at the right place.
+
+    Regression test for the Codex P1 review on PR #100."""
+    import sys
+    from pathlib import Path
+
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "ws"))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "src")
+    # Create the checkout under the OVERRIDE path, not the default
+    # ``product/`` subdir. The test fails loud if preflight still looks
+    # under ``$WORKSPACE_ROOT/product/...``.
+    repo_dir = tmp_path / "ws" / "src" / "myrepo"
+    (repo_dir / ".git").mkdir(parents=True)
+
+    for mod in list(sys.modules):
+        if mod == "agent_runner" or mod.startswith("agent_runner."):
+            del sys.modules[mod]
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+    import agent_runner as ar
+
+    spec = ar.PreflightSpec(
+        agent="testagent",
+        bins=[],
+        require_workspace_repos=["myrepo"],
+    )
+    # Should not raise: the repo exists under WORKSPACE_SUBDIR=src. Empty
+    # bins list short-circuits the binary-check loop so we don't need to
+    # stub ``shutil.which``.
+    ar.preflight(spec)

@@ -33,7 +33,7 @@ from typing import Any
 
 from .config import _env_present, _env_value_enabled
 from .notify import slack_post
-from .paths import SHARED_AGENT, WORKSPACE_ROOT
+from .paths import SHARED_AGENT, WORKSPACE
 from .process import claude_invoke, codex_invoke
 from .result import ClaudeResult
 
@@ -156,18 +156,24 @@ def preflight(spec: PreflightSpec) -> None:
                 misses.append("gh auth not active (run `gh auth login`)")
 
     # 5. Local repo checkouts present.
-    # Consult ``GH_REPO_TO_LOCAL`` (populated by an optional fleet overlay)
-    # to map a github-slug to the on-disk directory name, falling back to
-    # the slug itself when no mapping is registered. Lets operators keep
-    # their workspace tree (``product/backend``) decoupled from how the
-    # repos are named on GitHub (``myorg/myorg-backend``).
+    # Resolve via ``WORKSPACE`` (which honours ``WORKSPACE_SUBDIR``) so a
+    # fleet that ran ``alfred-init`` with ``WORKSPACE_SUBDIR=src`` (or empty,
+    # for ``$WORKSPACE_ROOT/<repo>`` directly) is checked at the same path
+    # the runtime will actually clone into. Hard-coding ``"product"`` here
+    # made the new layout override unusable for scheduled runs (preflight
+    # rejected every repo even though ``$WORKSPACE_ROOT/src/<repo>/.git``
+    # existed).
+    #
+    # Also consult ``GH_REPO_TO_LOCAL`` (populated by an optional fleet
+    # overlay) to map a github-slug to the on-disk directory name, falling
+    # back to the slug itself when no mapping is registered.
     try:
         from .github import GH_REPO_TO_LOCAL as _slug_to_local
     except ImportError:
         _slug_to_local = {}
     for repo in spec.require_workspace_repos:
         local = _slug_to_local.get(repo, repo)
-        repo_path = WORKSPACE_ROOT / "product" / local
+        repo_path = WORKSPACE / local
         if not (repo_path / ".git").exists():
             misses.append(f"checkout `{repo_path}` missing or not a git repo")
 
