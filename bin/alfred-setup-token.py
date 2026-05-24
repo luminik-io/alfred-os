@@ -31,6 +31,7 @@ Usage:
   alfred setup-token --force      # rotate even if already set
   alfred setup-token --check-only # report status without touching auth
 """
+
 from __future__ import annotations
 
 import argparse

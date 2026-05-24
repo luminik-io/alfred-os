@@ -71,8 +71,7 @@ def test_existing_token_source_reports_env(alfredrc, monkeypatch):
 
 def test_existing_token_source_reports_alfredrc(alfredrc):
     alfredrc.write_text(
-        "export GH_ORG=acme\n"
-        "export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-existing\n"
+        "export GH_ORG=acme\nexport CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-existing\n"
     )
     mod = _load_module()
     src = mod.existing_token_source()
@@ -80,10 +79,7 @@ def test_existing_token_source_reports_alfredrc(alfredrc):
 
 
 def test_existing_token_source_ignores_comment_lines(alfredrc):
-    alfredrc.write_text(
-        "# example: export CLAUDE_CODE_OAUTH_TOKEN=fake\n"
-        "export GH_ORG=acme\n"
-    )
+    alfredrc.write_text("# example: export CLAUDE_CODE_OAUTH_TOKEN=fake\nexport GH_ORG=acme\n")
     mod = _load_module()
     assert mod.existing_token_source() is None
 
