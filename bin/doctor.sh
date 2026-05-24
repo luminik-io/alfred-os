@@ -251,8 +251,38 @@ echo "        ALFRED_HOME=$ALFRED_HOME"
 echo "        WORKSPACE_ROOT=$WORKSPACE_ROOT"
 echo
 
+# --------------------------------------------------------------------------
+# Base-dep importability gate.
+#
+# v0.4.0 moved slack-sdk + boto3 from optional extras into base deps;
+# install.sh provisions a $ALFRED_HOME/venv with them installed and
+# agent-launch prefers that interpreter. If the import fails we'd hit
+# ModuleNotFoundError mid-firing (slack_approval.default_slack_client,
+# aws_secrets_token_resolver). Catch it here instead.
+# --------------------------------------------------------------------------
+venv_deps_fail=0
+if [ -x "$ALFRED_HOME/venv/bin/python" ]; then
+  venv_python="$ALFRED_HOME/venv/bin/python"
+  printf "  %-30s " "alfred-venv base deps"
+  if "$venv_python" -c "import slack_sdk, boto3" >/dev/null 2>&1; then
+    echo "✅"
+  elif [ "$DEV_MODE" = "1" ]; then
+    echo "⚠️  --dev: slack_sdk + boto3 import failed in \$ALFRED_HOME/venv"
+  else
+    echo "❌ import slack_sdk, boto3 failed against $venv_python"
+    echo "       (re-run install.sh to repair, or pip install into the venv manually)"
+    venv_deps_fail=1
+  fi
+elif [ "$DEV_MODE" = "1" ]; then
+  printf "  %-30s ⚠️  --dev: \$ALFRED_HOME/venv not provisioned (agent-launch will fall through to system python3)\n" "alfred-venv base deps"
+else
+  printf "  %-30s ⚠️  \$ALFRED_HOME/venv not provisioned; scheduled agents may hit ModuleNotFoundError on slack_sdk / boto3\n" "alfred-venv base deps"
+  echo "       (re-run install.sh to provision)"
+fi
+echo
+
 pass=0
-fail=0
+fail=$venv_deps_fail
 while IFS=$'\t' read -r label script_name; do
   [ -n "$label" ] || continue
   [ -n "$script_name" ] || continue

@@ -232,3 +232,111 @@ def test_deploy_defers_reload_for_running_jobs(tmp_path):
         line for line in launchctl_log.read_text().splitlines() if "alfred.new.plist" in line
     ]
     assert alfred_new_calls == []
+
+
+def test_agent_launch_prefers_alfred_home_venv_python(tmp_path):
+    """When ${ALFRED_HOME}/venv/bin/python exists, agent-launch must
+    invoke the target through it instead of the shebang. This is what
+    makes slack-sdk + boto3 (v0.4.0 base deps) importable from launchd
+    / systemd-spawned agents without per-host pip-into-system tricks."""
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    venv_bin = alfred / "venv" / "bin"
+    home.mkdir()
+    (alfred / "bin").mkdir(parents=True)
+    venv_bin.mkdir(parents=True)
+
+    # Fake "venv python" that writes a marker so we can prove agent-launch
+    # picked it. Has to be a real executable; tests run on macOS + Linux.
+    fake_python = venv_bin / "python"
+    fake_python.write_text(
+        '#!/usr/bin/env bash\necho VENV-PYTHON-USED\nexec /usr/bin/env python3 "$@"\n'
+    )
+    fake_python.chmod(0o755)
+
+    target = alfred / "bin" / "probe.py"
+    target.write_text("#!/usr/bin/env python3\nprint('PROBE-OK')\n")
+    target.chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "agent-launch"), "probe.py"],
+        env={**os.environ, "HOME": str(home), "ALFRED_HOME": str(alfred)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "VENV-PYTHON-USED" in res.stdout, (
+        f"agent-launch did not route through $ALFRED_HOME/venv/bin/python; "
+        f"got stdout: {res.stdout!r}"
+    )
+    assert "PROBE-OK" in res.stdout
+
+
+def test_agent_launch_falls_back_to_shebang_when_venv_absent(tmp_path):
+    """When no venv exists, agent-launch must keep the historical
+    shebang-resolution path so source-checkout / dev installs are
+    unaffected by the v0.4.x venv addition."""
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    home.mkdir()
+    (alfred / "bin").mkdir(parents=True)
+    # No venv directory at all.
+
+    target = alfred / "bin" / "probe.py"
+    target.write_text(
+        "#!/usr/bin/env python3\nimport sys; print(f'shebang-python={sys.executable}')\n"
+    )
+    target.chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "agent-launch"), "probe.py"],
+        env={**os.environ, "HOME": str(home), "ALFRED_HOME": str(alfred)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "shebang-python=" in res.stdout
+
+
+def test_agent_launch_honours_explicit_alfred_python_override(tmp_path):
+    """``ALFRED_PYTHON`` env override takes precedence over the
+    auto-detected venv so operators with a different interpreter
+    (system python with a different libs set, alternate venv) can opt
+    in without uninstalling the venv."""
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    venv_bin = alfred / "venv" / "bin"
+    home.mkdir()
+    (alfred / "bin").mkdir(parents=True)
+    venv_bin.mkdir(parents=True)
+
+    # Stub venv python that would be picked by the default path.
+    (venv_bin / "python").write_text("#!/usr/bin/env bash\necho VENV\nexit 0\n")
+    (venv_bin / "python").chmod(0o755)
+
+    # Operator-supplied override. Should take precedence.
+    override = tmp_path / "operator-python"
+    override.write_text("#!/usr/bin/env bash\necho OPERATOR-OVERRIDE\nexit 0\n")
+    override.chmod(0o755)
+
+    target = alfred / "bin" / "probe.py"
+    target.write_text("#!/usr/bin/env python3\nprint('PROBE-OK')\n")
+    target.chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "agent-launch"), "probe.py"],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "ALFRED_PYTHON": str(override),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "OPERATOR-OVERRIDE" in res.stdout
+    assert "VENV" not in res.stdout

@@ -61,4 +61,20 @@ if [ ! -x "$TARGET" ]; then
   exit 127
 fi
 
+# Python interpreter resolution order (first match wins):
+#   1. ${ALFRED_PYTHON}              - explicit operator override
+#   2. ${ALFRED_HOME}/venv/bin/python - install.sh-managed venv (has
+#                                       slack-sdk + boto3 baked in)
+#   3. agent shebang                 - preserves source-checkout / dev paths
+#
+# The launchd / systemd-spawned process tree gets the venv when it
+# exists, so base deps like slack_sdk and boto3 (promoted to required
+# in v0.4.0) are importable without needing pip on the system python.
+if [ -n "${ALFRED_PYTHON:-}" ] && [ -x "$ALFRED_PYTHON" ]; then
+  exec "$ALFRED_PYTHON" "$TARGET" "$@"
+fi
+if [ -x "$ALFRED_HOME/venv/bin/python" ]; then
+  exec "$ALFRED_HOME/venv/bin/python" "$TARGET" "$@"
+fi
+
 exec "$TARGET" "$@"

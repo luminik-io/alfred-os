@@ -319,6 +319,45 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# 5b. Python dependency venv
+#
+# v0.4.0 promoted slack-sdk + boto3 from optional extras into the base
+# `dependencies` list of pyproject.toml. Without a controlled install step
+# any agent that resolves a Slack token or hits AWS Secrets Manager
+# crashes at first-use with ModuleNotFoundError. uv pip install --system
+# either needs sudo (system Python) or refuses (uv-managed Python is
+# "externally managed"). Operator-owned venv under $ALFRED_HOME is the
+# clean middle ground: agent-launch picks ${ALFRED_HOME}/venv/bin/python
+# when present (see bin/agent-launch).
+# --------------------------------------------------------------------------
+step "Python dependency venv (\$ALFRED_HOME/venv)"
+ALFRED_VENV="$ALFRED_HOME/venv"
+if [[ -n "$SKIP_BREW" ]]; then
+  warn "Skipping venv setup per --skip-brew (use --skip-brew=false to install deps)."
+elif ! command -v uv >/dev/null 2>&1; then
+  warn "uv not on PATH; cannot bootstrap \$ALFRED_HOME/venv. Add ~/.local/bin to PATH and re-run."
+else
+  if [[ ! -x "$ALFRED_VENV/bin/python" ]]; then
+    note "uv venv --python 3.11 $ALFRED_VENV"
+    uv venv --python 3.11 "$ALFRED_VENV" >/dev/null
+    ok "created venv at $ALFRED_VENV"
+  else
+    ok "venv at $ALFRED_VENV already exists"
+  fi
+  # Install the same base deps pyproject.toml declares. Pinning the floor
+  # versions here mirrors `pyproject.toml`'s base dependencies list; if
+  # they drift, the doctor check below catches it (assertion that both
+  # imports succeed against $ALFRED_HOME/venv/bin/python).
+  note "uv pip install --python $ALFRED_VENV/bin/python slack-sdk boto3"
+  uv pip install --python "$ALFRED_VENV/bin/python" "slack-sdk>=3.27" "boto3>=1.34" >/dev/null
+  if "$ALFRED_VENV/bin/python" -c "import slack_sdk, boto3" >/dev/null 2>&1; then
+    ok "slack-sdk + boto3 importable from \$ALFRED_HOME/venv"
+  else
+    warn "venv install reported success but imports fail; check $ALFRED_VENV manually"
+  fi
+fi
+
+# --------------------------------------------------------------------------
 # 6. Operator config
 # --------------------------------------------------------------------------
 step "Operator config (~/.alfredrc)"
