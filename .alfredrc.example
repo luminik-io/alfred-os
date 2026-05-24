@@ -40,8 +40,16 @@ OPERATOR_GH_HANDLE=
 ALFRED_HOME=
 
 # Parent directory of the per-repo product checkouts. Defaults to
-# ~/code when unset. agent_runner.WORKSPACE = WORKSPACE_ROOT/product.
+# ~/code when unset. agent_runner.WORKSPACE = WORKSPACE_ROOT/<WORKSPACE_SUBDIR>.
 WORKSPACE_ROOT=
+
+# Subdirectory under WORKSPACE_ROOT that holds per-repo checkouts.
+# Defaults to "product" so the historical ~/code/product/<repo> layout
+# keeps working. Override when your repos already live at
+# WORKSPACE_ROOT/src/<repo>, WORKSPACE_ROOT/repos/<repo>, or
+# WORKSPACE_ROOT/<repo> directly (then set WORKSPACE_SUBDIR="" so the
+# product/ segment is dropped). See docs/WORKSPACE_PATTERNS.md.
+# WORKSPACE_SUBDIR=product
 
 # ----------------------------------------------------------------------
 # Slack (one of these — env var is the shortcut, AWS Secrets is the prod path)

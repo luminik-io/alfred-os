@@ -40,10 +40,21 @@ ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/
 WORKSPACE_ROOT: Path = Path(os.environ.get("WORKSPACE_ROOT") or os.path.expanduser("~/code"))
 """Root of per-repo product checkouts. Every <repo> resolves under here."""
 
+# The subdirectory under ``WORKSPACE_ROOT`` that holds per-repo checkouts.
+# Defaults to ``product`` for back-compat with the historical
+# ``~/code/product/<repo>`` layout. Operators whose existing workspace
+# lives elsewhere can override (``WORKSPACE_SUBDIR=src``,
+# ``WORKSPACE_SUBDIR=repos``) or drop the subdir entirely
+# (``WORKSPACE_SUBDIR=""``) so ``WORKSPACE`` resolves to
+# ``WORKSPACE_ROOT`` directly. Documented in
+# ``docs/WORKSPACE_PATTERNS.md``.
+_WORKSPACE_SUBDIR_RAW: str | None = os.environ.get("WORKSPACE_SUBDIR")
+_WORKSPACE_SUBDIR: str = "product" if _WORKSPACE_SUBDIR_RAW is None else _WORKSPACE_SUBDIR_RAW
+
 # Back-compat alias: many bin/*.py scripts use WORKSPACE as the parent of the
 # per-repo checkouts under product/. Keep that shape; new consumers can ignore
 # it and reference WORKSPACE_ROOT directly.
-WORKSPACE: Path = WORKSPACE_ROOT / "product"
+WORKSPACE: Path = WORKSPACE_ROOT / _WORKSPACE_SUBDIR if _WORKSPACE_SUBDIR else WORKSPACE_ROOT
 
 # --------------------------------------------------------------------------
 # GitHub org/user slug for repo-targeting helpers.
