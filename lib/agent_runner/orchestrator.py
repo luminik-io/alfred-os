@@ -156,8 +156,18 @@ def preflight(spec: PreflightSpec) -> None:
                 misses.append("gh auth not active (run `gh auth login`)")
 
     # 5. Local repo checkouts present.
+    # Consult ``GH_REPO_TO_LOCAL`` (populated by an optional fleet overlay)
+    # to map a github-slug to the on-disk directory name, falling back to
+    # the slug itself when no mapping is registered. Lets operators keep
+    # their workspace tree (``product/backend``) decoupled from how the
+    # repos are named on GitHub (``myorg/myorg-backend``).
+    try:
+        from .github import GH_REPO_TO_LOCAL as _slug_to_local
+    except ImportError:
+        _slug_to_local = {}
     for repo in spec.require_workspace_repos:
-        repo_path = WORKSPACE_ROOT / "product" / repo
+        local = _slug_to_local.get(repo, repo)
+        repo_path = WORKSPACE_ROOT / "product" / local
         if not (repo_path / ".git").exists():
             misses.append(f"checkout `{repo_path}` missing or not a git repo")
 

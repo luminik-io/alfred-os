@@ -521,3 +521,22 @@ class _AgentRunnerModule(_ModuleType):
 import sys as _sys
 
 _sys.modules[__name__].__class__ = _AgentRunnerModule
+
+
+# --------------------------------------------------------------------------
+# Optional fleet overlay
+# --------------------------------------------------------------------------
+# If the operator has placed a Python module on the import path that
+# customises fleet-wide dicts (``GH_REPO_TO_LOCAL``, ``STANDARD_LABELS``,
+# ``HANDOFFS``, etc.), import it here so its module-level side effects run
+# before any consumer reads those dicts. Defaults to ``fleet_overlay``;
+# override with the ``ALFRED_FLEET_OVERLAY`` env var. Silently absent when
+# the module is missing (the OSS standalone case).
+import importlib as _importlib
+import os as _os
+
+_overlay_name = _os.environ.get("ALFRED_FLEET_OVERLAY", "fleet_overlay")
+try:
+    _importlib.import_module(_overlay_name)
+except ImportError:
+    pass
