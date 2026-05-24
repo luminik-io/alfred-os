@@ -532,11 +532,10 @@ _sys.modules[__name__].__class__ = _AgentRunnerModule
 # before any consumer reads those dicts. Defaults to ``fleet_overlay``;
 # override with the ``ALFRED_FLEET_OVERLAY`` env var. Silently absent when
 # the module is missing (the OSS standalone case).
+import contextlib as _contextlib
 import importlib as _importlib
 import os as _os
 
 _overlay_name = _os.environ.get("ALFRED_FLEET_OVERLAY", "fleet_overlay")
-try:
+with _contextlib.suppress(ImportError):
     _importlib.import_module(_overlay_name)
-except ImportError:
-    pass
