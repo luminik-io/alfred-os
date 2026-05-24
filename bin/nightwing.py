@@ -559,9 +559,18 @@ def main() -> int:
         # comments may mention secrets or auth as context and should still be
         # eligible for the surgical auto-fix path.
         if severity == "P0" and SECURITY_KEYWORDS.search(cbody):
+            # PR-level (conversation) review comments have no `path` /
+            # `line` (the GitHub API returns null for both). Without
+            # this guard, the Slack message renders `(user, :None)`
+            # for every PR-level flag, which is what operators saw on
+            # the production fleet. Render a clean `PR-level review`
+            # marker instead so the alert is actionable on first read.
+            location = (
+                f"{cpath}:{cline}" if cpath and cline is not None else "PR-level review"
+            )
             slack_post(
                 f"⛔ {AGENT.title()} {severity} security flag - manual review needed: comment {cid} "
-                f"on PR {pr_num} ({cuser}, {cpath}:{cline})"
+                f"on PR {pr_num} ({cuser}, {location})"
             )
             continue
 
