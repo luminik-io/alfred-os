@@ -25,7 +25,9 @@ def _make_executable(path: Path) -> None:
     path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def _run(target: Path, *, alfred_home: Path, alfred_python: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    target: Path, *, alfred_home: Path, alfred_python: str | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["ALFRED_HOME"] = str(alfred_home)
     env.pop("ALFRED_PYTHON", None)
