@@ -168,20 +168,82 @@ const nav = [
 
     <script is:inline type="application/ld+json" set:html={JSON.stringify(orgSchema)} />
 
-    {/* Google Analytics 4. Set ALFRED_GA4_ID in the build environment to enable.
-        Defaults to no-op in development so we don't pollute analytics.
-        Swap the placeholder with your real measurement ID when ready. */}
-    {import.meta.env.PUBLIC_ALFRED_GA4_ID && (
-      <>
-        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_ALFRED_GA4_ID}`}></script>
-        <script is:inline define:vars={{ id: import.meta.env.PUBLIC_ALFRED_GA4_ID }}>{`
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', id, { anonymize_ip: true });
-        `}</script>
-      </>
-    )}
+    {/* Google Analytics 4. PUBLIC_ALFRED_GA4_ID overrides for forks /
+        staging; the canonical production property is hardcoded below
+        so the build emits the snippet without per-deploy env-var
+        setup. Consent Mode v2 defaults to denied so no measurement
+        runs until the visitor accepts the cookie banner (see
+        astro.config.mjs COOKIE_BANNER_SCRIPT, identical to docs). */}
+    <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_ALFRED_GA4_ID || "G-Y157X0YLN4"}`}></script>
+    <script is:inline define:vars={{ id: import.meta.env.PUBLIC_ALFRED_GA4_ID || "G-Y157X0YLN4" }}>
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function(){ window.dataLayer.push(arguments); };
+      window.gtag('consent', 'default', {
+        analytics_storage: 'denied',
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        wait_for_update: 500,
+      });
+      window.gtag('js', new Date());
+      window.gtag('config', id, { anonymize_ip: true });
+      try {
+        if (localStorage.getItem('alfred-cookie-consent') === 'allow') {
+          window.gtag('consent', 'update', { analytics_storage: 'granted' });
+        }
+      } catch (e) {}
+    </script>
+
+    {/* Cookie consent banner. Mirrors the docs (astro.config.mjs head)
+        bootstrap so behaviour is uniform across marketing + docs. The
+        banner appears on first visit; Accept flips Google Consent Mode v2
+        analytics_storage to granted (so the gtag config above starts
+        measuring) and stores "allow" in localStorage. Reject stores "deny"
+        and leaves consent denied. Styles live in src/styles/custom.css
+        (.alfred-cookie-*). */}
+    <script is:inline>
+      (function(){
+        if (typeof document === "undefined" || typeof localStorage === "undefined") return;
+        function init(){
+          try {
+            if (localStorage.getItem("alfred-cookie-consent")) return;
+          } catch (e) { return; }
+          if (document.getElementById("alfred-cookie-banner")) return;
+          var b = document.createElement("div");
+          b.id = "alfred-cookie-banner";
+          b.className = "alfred-cookie-banner";
+          b.setAttribute("role", "dialog");
+          b.setAttribute("aria-label", "Cookie consent");
+          b.innerHTML =
+            '<p class="alfred-cookie-text">' +
+              'We use Google Analytics to understand how the docs and marketing pages are used. ' +
+              'No ads, no profiling, IP anonymised. Read our ' +
+              '<a href="https://policies.google.com/technologies/partner-sites" rel="noopener">data note</a>.' +
+            '</p>' +
+            '<div class="alfred-cookie-actions">' +
+              '<button type="button" class="alfred-cookie-btn alfred-cookie-deny" data-choice="deny">Reject</button>' +
+              '<button type="button" class="alfred-cookie-btn alfred-cookie-allow" data-choice="allow">Accept</button>' +
+            '</div>';
+          document.body.appendChild(b);
+          function pick(choice){
+            try { localStorage.setItem("alfred-cookie-consent", choice); } catch (e) {}
+            if (choice === "allow" && typeof window.gtag === "function") {
+              window.gtag("consent", "update", { analytics_storage: "granted" });
+            }
+            b.remove();
+          }
+          b.addEventListener("click", function(ev){
+            var t = ev.target;
+            if (t && t.dataset && t.dataset.choice) pick(t.dataset.choice);
+          });
+        }
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", init);
+        } else {
+          init();
+        }
+      })();
+    </script>
 
     {/* Google Search Console verification. Add the meta tag value here when
         you receive it from search.google.com/search-console. Currently a

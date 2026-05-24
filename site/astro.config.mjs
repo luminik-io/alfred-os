@@ -1,8 +1,65 @@
 // @ts-check
 import { defineConfig } from "astro/config";
+import sitemap from "@astrojs/sitemap";
 import starlight from "@astrojs/starlight";
 import mermaid from "astro-mermaid";
 import { mdMirror } from "./src/integrations/md-mirror.ts";
+
+// Google Analytics 4 property. Hardcoded fallback so the build emits the
+// snippet without per-deploy env-var setup; PUBLIC_ALFRED_GA4_ID still
+// overrides for forks or staging deploys that want their own property.
+const GA4_ID = process.env.PUBLIC_ALFRED_GA4_ID ?? "G-Y157X0YLN4";
+
+// Cookie-consent banner. Self-contained vanilla-JS bootstrap that runs on
+// every page (docs + marketing) and short-circuits if the visitor has
+// already decided. Accept flips Google Consent Mode v2 analytics_storage
+// from default-denied to granted so the gtag config above starts
+// measuring. Reject / dismiss leaves consent denied and stores the
+// choice so the banner doesn't re-appear. Storage key
+// "alfred-cookie-consent" matches the conditional gtag call above.
+const COOKIE_BANNER_SCRIPT = `
+(function(){
+  if (typeof document === "undefined" || typeof localStorage === "undefined") return;
+  function init(){
+    try {
+      if (localStorage.getItem("alfred-cookie-consent")) return;
+    } catch (e) { return; }
+    if (document.getElementById("alfred-cookie-banner")) return;
+    var b = document.createElement("div");
+    b.id = "alfred-cookie-banner";
+    b.className = "alfred-cookie-banner";
+    b.setAttribute("role", "dialog");
+    b.setAttribute("aria-label", "Cookie consent");
+    b.innerHTML =
+      '<p class="alfred-cookie-text">' +
+        'We use Google Analytics to understand how the docs and marketing pages are used. ' +
+        'No ads, no profiling, IP anonymised. Read our ' +
+        '<a href="https://policies.google.com/technologies/partner-sites" rel="noopener">data note</a>.' +
+      '</p>' +
+      '<div class="alfred-cookie-actions">' +
+        '<button type="button" class="alfred-cookie-btn alfred-cookie-deny" data-choice="deny">Reject</button>' +
+        '<button type="button" class="alfred-cookie-btn alfred-cookie-allow" data-choice="allow">Accept</button>' +
+      '</div>';
+    document.body.appendChild(b);
+    function pick(choice){
+      try { localStorage.setItem("alfred-cookie-consent", choice); } catch (e) {}
+      if (choice === "allow" && typeof window.gtag === "function") {
+        window.gtag("consent", "update", { analytics_storage: "granted" });
+      }
+      b.remove();
+    }
+    b.addEventListener("click", function(ev){
+      var t = ev.target;
+      if (t && t.dataset && t.dataset.choice) pick(t.dataset.choice);
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+`;
 
 // Alfred site config.
 //
@@ -196,6 +253,13 @@ export default defineConfig({
   base: SITE_BASE,
   trailingSlash: "ignore",
   integrations: [
+    // @astrojs/sitemap emits /sitemap-index.xml + /sitemap-0.xml at build
+    // time from every page Astro renders. Hooks straight into the site
+    // URL above so canonical links match. Search engines + AI crawlers
+    // both consume sitemap-index.xml directly; the robots.txt under
+    // public/ points at it explicitly so there's no autodiscovery
+    // dependence on the hostname being on the well-known list.
+    sitemap(),
     // astro-mermaid must run before starlight: it rewrites ```mermaid fenced
     // blocks into a client-rendered <pre class="mermaid"> before Starlight's
     // markdown pipeline turns them into static code blocks. autoTheme keeps
@@ -347,25 +411,44 @@ export default defineConfig({
           tag: "script",
           content: MERMAID_ZOOM_SCRIPT,
         },
-        // Google Analytics 4 loader. Set PUBLIC_ALFRED_GA4_ID in the build
-        // environment (e.g. GitHub Actions secret -> astro env var) to enable.
+        // Google Analytics 4 + cookie-consent gate.
+        //
+        // The loader stays in a paused state until the visitor accepts the
+        // banner (alfred-cookie-consent=allow in localStorage). Until then,
+        // gtag is queued and Google Consent Mode v2 holds analytics_storage,
+        // ad_storage, ad_user_data, ad_personalization in "denied". When
+        // the operator clicks Accept on the banner we flip the consent to
+        // "granted" and the queued events flush. Clicking Reject (or
+        // dismissing) keeps consent denied and no measurement events fire.
         // Same pattern is used in src/layouts/MarketingLayout.astro for the
-        // marketing pages, so analytics are uniform across the whole site.
-        ...(process.env.PUBLIC_ALFRED_GA4_ID
+        // marketing pages, so behaviour is uniform across the whole site.
+        ...(GA4_ID
           ? /** @type {const} */ ([
               {
                 tag: /** @type {"script"} */ ("script"),
                 attrs: {
                   async: true,
-                  src: `https://www.googletagmanager.com/gtag/js?id=${process.env.PUBLIC_ALFRED_GA4_ID}`,
+                  src: `https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`,
                 },
               },
               {
                 tag: /** @type {"script"} */ ("script"),
-                content: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag("js",new Date());gtag("config","${process.env.PUBLIC_ALFRED_GA4_ID}",{anonymize_ip:true});`,
+                content: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag("consent","default",{analytics_storage:"denied",ad_storage:"denied",ad_user_data:"denied",ad_personalization:"denied",wait_for_update:500});gtag("js",new Date());gtag("config","${GA4_ID}",{anonymize_ip:true});try{var c=localStorage.getItem("alfred-cookie-consent");if(c==="allow"){gtag("consent","update",{analytics_storage:"granted"});}}catch(e){}`,
               },
             ])
           : []),
+        // Cookie consent banner. Inlines a tiny vanilla-JS bootstrapper
+        // that runs on every page (docs + marketing). The banner appears
+        // when localStorage has no record of an accept/dismiss decision;
+        // Accept flips Google Consent Mode v2 analytics_storage to
+        // granted (so the gtag config above starts measuring) and stores
+        // the choice. Reject / dismiss writes "deny" and leaves consent
+        // in the denied default. The CSS is in src/styles/custom.css
+        // (.alfred-cookie-*) so the same design tokens drive light/dark.
+        {
+          tag: /** @type {"script"} */ ("script"),
+          content: COOKIE_BANNER_SCRIPT,
+        },
         ...(process.env.PUBLIC_ALFRED_GSC_TOKEN
           ? /** @type {const} */ ([
               {
