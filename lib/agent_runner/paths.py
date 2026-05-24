@@ -101,5 +101,13 @@ def now_iso() -> str:
 
 
 def today_str() -> str:
-    """Return the local date as ``YYYY-MM-DD`` for per-day ledger filenames."""
-    return datetime.now().strftime("%Y-%m-%d")
+    """Return the UTC date as ``YYYY-MM-DD`` for per-day ledger filenames.
+
+    UTC (not local) so the daily spend ledger rotates at the same moment
+    as every other timestamp the runner records via ``now_iso``. Using
+    local time meant a firing crossing local midnight read the freshly
+    rotated empty ledger and could burn an extra cap's worth of turns
+    before the cap-check loop caught up: the hard spend cap quietly
+    leaked one cap per day for every operator outside UTC.
+    """
+    return datetime.now(UTC).strftime("%Y-%m-%d")

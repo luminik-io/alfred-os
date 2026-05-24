@@ -465,3 +465,24 @@ def test_sqlite_store_in_memory_survives_calls() -> None:
     )
     out = store.recall_lessons(codename="lucius", repo="org/api")
     assert len(out) == 1
+
+
+def test_disk_store_enables_wal_journal_mode(tmp_path: Path) -> None:
+    """The fleet_brain SQLite store must enable WAL on disk-backed dbs so
+    two short-lived writers from sibling firings (lucius + drake calling
+    ``reflect()`` within the same second) don't serialise on a writer
+    lock. Default journal mode is ``delete`` which exclusively locks the
+    database for the writer; WAL lets readers proceed concurrently and
+    halves writer contention."""
+    store = SQLiteStore(db_path=tmp_path / "brain.sqlite")
+    store.ensure_schema()
+    # Reading the PRAGMA reopens through ``_connect`` which applies the
+    # journal mode we want to assert.
+    conn = sqlite3.connect(tmp_path / "brain.sqlite")
+    try:
+        # ``journal_mode`` is sticky on disk for WAL — once set it persists
+        # across opens. Verify the on-disk mode is wal (not delete/memory).
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        assert mode == "wal", f"expected wal, got {mode!r}"
+    finally:
+        conn.close()

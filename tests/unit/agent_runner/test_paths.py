@@ -56,3 +56,33 @@ def test_binary_defaults_respect_env(fresh_agent_runner, monkeypatch):
 
     assert agent_runner.CLAUDE_BIN == "/opt/claude/bin/claude"
     assert agent_runner.CODEX_BIN == "/opt/codex/bin/codex"
+
+
+def test_today_str_uses_utc_not_local_time(fresh_agent_runner, monkeypatch):
+    """The daily spend ledger filename must rotate at UTC midnight, not at
+    the operator's local midnight. Otherwise a non-UTC operator firing
+    right after local midnight reads a freshly rotated empty ledger and
+    can burn an extra cap's worth of turns before the cap-check catches
+    up. Pin the freeze via patching ``datetime`` inside
+    ``agent_runner.paths`` (where ``today_str`` resolves it) so the
+    assertion holds regardless of the machine's timezone."""
+    ar = fresh_agent_runner
+    import datetime as _dt
+
+    import agent_runner.paths as paths_mod
+
+    # 2026-05-24 23:30 UTC = 2026-05-25 01:30 in CET (UTC+2). today_str
+    # must report 2026-05-24 (the UTC day), not 2026-05-25.
+    frozen_utc = _dt.datetime(2026, 5, 24, 23, 30, tzinfo=_dt.UTC)
+
+    class _FrozenDateTime(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                # If today_str is still calling datetime.now() without UTC,
+                # this returns local time and the date assertion fails loud.
+                return frozen_utc.astimezone().replace(tzinfo=None)
+            return frozen_utc.astimezone(tz)
+
+    monkeypatch.setattr(paths_mod, "datetime", _FrozenDateTime)
+    assert ar.today_str() == "2026-05-24"

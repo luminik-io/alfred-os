@@ -225,11 +225,23 @@ class SQLiteStore:
             if self._memory_conn is None:
                 self._memory_conn = sqlite3.connect(":memory:")
                 self._memory_conn.execute("PRAGMA foreign_keys = ON")
+                # WAL is a no-op for ``:memory:`` but the synchronous setting
+                # is harmless; keep the call shape symmetric with the disk
+                # path so a future refactor doesn't drift the two branches.
+                self._memory_conn.execute("PRAGMA journal_mode = WAL")
+                self._memory_conn.execute("PRAGMA synchronous = NORMAL")
             yield self._memory_conn
             return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.execute("PRAGMA foreign_keys = ON")
+        # WAL lets concurrent readers proceed while a writer holds the
+        # database, and lets two short-lived writers from sibling firings
+        # (lucius + drake calling reflect() inside the same second) not
+        # serialise. ``synchronous = NORMAL`` keeps WAL durable across
+        # process crashes while halving the per-commit fsync cost.
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
         try:
             yield conn
         finally:
