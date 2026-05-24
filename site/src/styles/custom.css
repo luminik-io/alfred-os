@@ -520,3 +520,80 @@ mobile-starlight-toc nav {
 .alfred-copyright-bar a {
   color: var(--sl-color-text-accent);
 }
+
+/* ------------------------------------------------------------------ */
+/* Cookie consent banner                                               */
+/* ------------------------------------------------------------------ */
+.alfred-cookie-banner {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  z-index: 2147483000; /* above Starlight's sidebars + the mermaid overlay */
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 92%, transparent);
+  color: var(--sl-color-text);
+  border: 1px solid var(--alfred-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  font-size: var(--sl-text-sm);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .alfred-cookie-banner {
+    background: var(--sl-color-bg-nav);
+  }
+}
+
+.alfred-cookie-text {
+  flex: 1 1 260px;
+  margin: 0;
+  line-height: 1.4;
+  color: var(--sl-color-gray-1);
+}
+
+.alfred-cookie-text a {
+  color: var(--sl-color-text-accent);
+}
+
+.alfred-cookie-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.alfred-cookie-btn {
+  padding: 0.45rem 0.95rem;
+  font: inherit;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.alfred-cookie-deny {
+  background: transparent;
+  color: var(--sl-color-text);
+  border-color: var(--alfred-border);
+}
+
+.alfred-cookie-deny:hover {
+  background: color-mix(in srgb, var(--sl-color-gray-7) 30%, transparent);
+}
+
+.alfred-cookie-allow {
+  background: var(--sl-color-text-accent);
+  color: var(--sl-color-bg);
+}
+
+.alfred-cookie-allow:hover {
+  filter: brightness(1.08);
+}
