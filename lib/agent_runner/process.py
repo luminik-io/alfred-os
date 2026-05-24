@@ -113,11 +113,12 @@ def run(
         # Defensive: Python 3.14 may return bytes for ``e.stdout`` even when
         # ``text=True`` was passed to ``subprocess.run``. Coerce so downstream
         # consumers that expect str (e.g. ``Path.write_text``) do not crash.
-        partial = e.stdout
-        if isinstance(partial, bytes):
-            partial = partial.decode("utf-8", errors="replace")
+        raw = e.stdout
+        partial: str = (
+            raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else (raw or "")
+        )
         return subprocess.CompletedProcess(
-            cmd, 124, stdout=partial or "", stderr=f"TIMEOUT after {timeout}s"
+            cmd, 124, stdout=partial, stderr=f"TIMEOUT after {timeout}s"
         )
     except Exception as e:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr=f"{type(e).__name__}: {e}")
