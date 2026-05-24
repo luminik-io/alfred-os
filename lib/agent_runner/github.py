@@ -132,6 +132,11 @@ labels at import time.
 
 LIFECYCLE_LABELS: list[tuple[str, str, str]] = [
     (
+        "agent:implement",
+        "0e8a16",
+        "Eligible for autonomous pickup by a planner agent.",
+    ),
+    (
         "agent:in-flight",
         "e11d21",
         "An agent is actively working this issue. Set before worktree, cleared on exit.",
