@@ -2,7 +2,7 @@
 """Bootstrap ``CLAUDE_CODE_OAUTH_TOKEN`` for scheduler-spawned agents.
 
 Interactive auth (``claude``) stores the OAuth token in the host
-credential store — macOS Keychain on Darwin, libsecret on Linux. That
+credential store (macOS Keychain on Darwin, libsecret on Linux). That
 works from your shell because the shell session can read the store, but
 launchd / ``systemd --user`` processes run in a different security
 context and cannot. Every ``claude -p`` call from a scheduled agent
@@ -18,7 +18,7 @@ This script wraps the ``claude setup-token`` flow:
      browser flow once.
   3. Parse the long-lived token from the resulting output.
   4. Append ``export CLAUDE_CODE_OAUTH_TOKEN=<value>`` to
-     ``~/.alfredrc`` (idempotently — re-runs overwrite the line, not
+     ``~/.alfredrc`` (idempotently: re-runs overwrite the line, not
      duplicate it) and chmod the file 0600.
 
 The token is tied to the operator's existing subscription. There is no
@@ -47,10 +47,11 @@ ALFREDRC = Path(os.environ.get("ALFREDRC", str(Path.home() / ".alfredrc")))
 TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
 
 # Marker block in ~/.alfredrc. Re-runs replace the block atomically
-# rather than appending duplicate exports.
+# rather than appending duplicate exports. Accepts ``\r?\n`` line endings
+# because an operator could have saved ``~/.alfredrc`` from a CRLF editor.
 BANNER = "# alfred setup-token, do not edit by hand (re-run to rotate)"
 BLOCK_RE = re.compile(
-    rf"\n?{re.escape(BANNER)}\nexport {TOKEN_ENV}=[^\n]*\n",
+    rf"\r?\n?{re.escape(BANNER)}\r?\nexport {TOKEN_ENV}=[^\r\n]*\r?\n",
     re.MULTILINE,
 )
 
@@ -58,6 +59,12 @@ BLOCK_RE = re.compile(
 # sets of human prose. We match the canonical prefix (``sk-ant-oat01-``)
 # and grab the longest token-shaped string on that line.
 TOKEN_LINE_RE = re.compile(r"(sk-ant-oat[0-9]{2}-[A-Za-z0-9_\-]{40,})")
+
+# Sanity bounds on a parsed token. Loose by design so a future longer
+# token format still flies, but tight enough to reject obvious garbage
+# (truncated by an ANSI escape, mangled by locale-decoder, etc.).
+_MIN_TOKEN_LEN = 50
+_MAX_TOKEN_LEN = 4096
 
 
 def info(msg: str) -> None:
@@ -78,7 +85,7 @@ def existing_token_source() -> str | None:
     or ``None`` if it is unset.
 
     Checks process env first (covers shell exports), then ``~/.alfredrc``.
-    Does not validate the value — only reports presence.
+    Does not validate the value, only reports presence.
     """
     if os.environ.get(TOKEN_ENV, "").strip():
         return f"env var {TOKEN_ENV}"
@@ -103,7 +110,9 @@ def write_token(token: str) -> None:
     perms to 0600.
 
     Re-runs overwrite the existing block in-place rather than duplicating
-    the export line. File is created if missing.
+    the export line. File is created if missing. On a shared host, the
+    file is created with 0600 perms from the start (umask narrowed during
+    the write) so there is no readable window between create and chmod.
     """
     ALFREDRC.parent.mkdir(parents=True, exist_ok=True)
     existing = ALFREDRC.read_text(encoding="utf-8") if ALFREDRC.is_file() else ""
@@ -115,7 +124,13 @@ def write_token(token: str) -> None:
     block = f"\n{BANNER}\nexport {TOKEN_ENV}={shlex.quote(token)}\n"
     new_contents = (cleaned + block) if cleaned else block.lstrip("\n")
 
-    ALFREDRC.write_text(new_contents, encoding="utf-8")
+    # Narrow umask so the create-then-chmod window cannot leave a
+    # world-readable file holding a year-long subscription credential.
+    prior_umask = os.umask(0o077)
+    try:
+        ALFREDRC.write_text(new_contents, encoding="utf-8")
+    finally:
+        os.umask(prior_umask)
     try:
         ALFREDRC.chmod(0o600)
     except OSError as exc:
@@ -135,12 +150,17 @@ def run_setup_token() -> str:
     info("running `claude setup-token` (approve in browser when prompted) ...")
     print("=" * 60)
     try:
+        # Force utf-8 with replace so a non-UTF-8 host locale (LANG=C
+        # under launchd, POSIX on minimal Linux) cannot mangle the token
+        # before our regex sees it.
         proc = subprocess.Popen(
             ["claude", "setup-token"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            encoding="utf-8",
+            errors="replace",
         )
     except OSError as exc:
         fail(f"could not launch `claude setup-token`: {exc}")
@@ -169,7 +189,18 @@ def run_setup_token() -> str:
             f"to {ALFREDRC} manually:\n\n    export {TOKEN_ENV}=<your-token>\n\n"
             "Then re-run this script with --check-only to confirm."
         )
-    return match.group(1)
+    token = match.group(1)
+    # Defensive bounds: the canonical regex above already gates on prefix
+    # and minimum length, but if upstream ever emits the token with an
+    # embedded ANSI escape or similar, the match could silently truncate.
+    # Better to fail loud than to write half a credential to disk.
+    if not (_MIN_TOKEN_LEN <= len(token) <= _MAX_TOKEN_LEN) or not token.isascii():
+        fail(
+            f"parsed token failed sanity check (length={len(token)}, ascii={token.isascii()}). "
+            "The `claude setup-token` output format may have changed. "
+            "File a bug and pass --check-only after setting CLAUDE_CODE_OAUTH_TOKEN manually."
+        )
+    return token
 
 
 def main(argv: list[str] | None = None) -> int:

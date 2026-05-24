@@ -177,3 +177,90 @@ def test_main_no_args_exits_zero_when_already_set(alfredrc, monkeypatch, capsys)
     out = capsys.readouterr().out
     assert "already set" in out
     assert "rotate" in out.lower()
+
+
+def test_write_token_rotates_block_with_crlf_line_endings(alfredrc):
+    """Operators who saved ``~/.alfredrc`` from a CRLF editor (Notepad,
+    some VSCode-on-Windows-shared checkouts) must still get the rotate-
+    in-place behaviour. Without the ``\\r?\\n`` allowance on ``BLOCK_RE``
+    the regex misses the prior block and the file grows duplicate
+    exports on every re-run."""
+    alfredrc.write_bytes(
+        b"export GH_ORG=acme\r\n"
+        b"# alfred setup-token, do not edit by hand (re-run to rotate)\r\n"
+        b"export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-OLD\r\n"
+    )
+    mod = _load_module()
+    mod.write_token("sk-ant-oat01-NEW")
+    text = alfredrc.read_text()
+    assert text.count("export CLAUDE_CODE_OAUTH_TOKEN=") == 1
+    assert "sk-ant-oat01-NEW" in text
+    assert "sk-ant-oat01-OLD" not in text
+
+
+def test_write_token_uses_narrow_umask(alfredrc, monkeypatch):
+    """The token file must never exist at world-readable perms, even for
+    a fraction of a second between create and chmod. Verify the wrapper
+    narrows umask around the write."""
+    seen: dict[str, int] = {}
+    real_write = type(alfredrc).write_text
+    original_umask = os.umask
+
+    def spying_umask(mask: int) -> int:
+        seen["umask_during_call"] = mask
+        return original_umask(mask)
+
+    def spying_write_text(self, *args, **kwargs):
+        # umask should be narrow at the moment of write.
+        seen["umask_at_write"] = os.umask(0o077)
+        os.umask(seen["umask_at_write"])
+        return real_write(self, *args, **kwargs)
+
+    monkeypatch.setattr(os, "umask", spying_umask)
+    monkeypatch.setattr(type(alfredrc), "write_text", spying_write_text)
+    mod = _load_module()
+    mod.write_token("sk-ant-oat01-NEWTOKEN")
+    # At the time of the actual write, umask must mask off group + other.
+    assert seen["umask_at_write"] & 0o077 == 0o077
+    final_perms = stat.S_IMODE(os.stat(alfredrc).st_mode)
+    assert final_perms == 0o600
+
+
+def test_run_setup_token_rejects_truncated_token(alfredrc, monkeypatch):
+    """If the upstream output is malformed (e.g. truncated by an ANSI
+    escape), the parser must fail loud rather than silently write a
+    partial credential."""
+    import subprocess
+
+    class FakeProc:
+        def __init__(self) -> None:
+            # Token-shaped string but only 30 chars after prefix - too short.
+            self.stdout = iter(["sk-ant-oat01-tooshort_abc123\n"])
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *args, **kwargs: FakeProc()
+    )
+    import shutil as _shutil_module
+
+    monkeypatch.setattr(_shutil_module, "which", lambda _name: "/usr/local/bin/claude")
+    mod = _load_module()
+    with pytest.raises(SystemExit) as exc:
+        mod.run_setup_token()
+    # Should exit nonzero with a clear failure message.
+    assert exc.value.code != 0
+
+
+def test_main_no_args_with_unset_token_invokes_setup_token(alfredrc, monkeypatch, capsys):
+    """The default code path (no flag, no env) must actually call
+    ``claude setup-token`` (we patch it out) and then write the parsed
+    token to ~/.alfredrc."""
+    fake_token = "sk-ant-oat01-fakeABC123DEFghi456JKLmno789PQRstu012VWXyzA1B2C3D4-_E5"
+    mod = _load_module()
+    monkeypatch.setattr(mod, "run_setup_token", lambda: fake_token)
+    rc = mod.main([])
+    assert rc == 0
+    text = alfredrc.read_text()
+    assert fake_token in text

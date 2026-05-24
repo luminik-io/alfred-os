@@ -460,6 +460,12 @@ Next steps (run them in this order):
        ${C_BLUE}claude${C_OFF}                            # Claude Code (first run prompts for sub auth)
        ${C_BLUE}aws configure --profile <agent>-cron${C_OFF}   # only if you want AWS Secrets Manager
 
+     Scheduled (launchd / systemd) firings cannot read your host
+     credential store. After 'claude' is set up, mint a long-lived
+     OAuth token so your fleet authenticates without the Keychain:
+       ${C_BLUE}claude setup-token${C_OFF}                # one-time, approve in browser
+     'alfred-init' (step 5) wraps this for you with file write + chmod.
+
   3. Create a Slack incoming webhook for your fleet channel:
        See ${C_BLUE}${SLACK_DOC}${C_OFF}
 

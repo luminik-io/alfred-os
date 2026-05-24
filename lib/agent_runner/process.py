@@ -293,8 +293,13 @@ def claude_invoke_streaming(
     launchd. Since the operator can instead expose
     ``CLAUDE_CODE_OAUTH_TOKEN`` (see ``docs/CLAUDE_CODE.md``) which makes
     ``claude`` skip Keychain entirely, the proxy was removed in v0.4.1.
-    This wrapper now exists only to preserve the ``agent`` / ``firing_id``
-    kwargs for a future per-firing JSONL transcript writer.
+
+    The wrapper survives because the ``agent`` and ``firing_id`` kwargs
+    are part of the public call signature every codename agent uses;
+    removing them would be a breaking ABI change. Both kwargs are
+    currently unused (see :func:`claude_invoke` for the actual transport)
+    but are reserved for downstream changes that need per-firing context
+    without touching every caller.
     """
     if max_turns is None:
         max_turns = _CLAUDE_UNLIMITED_TURNS

@@ -532,10 +532,15 @@ _sys.modules[__name__].__class__ = _AgentRunnerModule
 # before any consumer reads those dicts. Defaults to ``fleet_overlay``;
 # override with the ``ALFRED_FLEET_OVERLAY`` env var. Silently absent when
 # the module is missing (the OSS standalone case).
-import contextlib as _contextlib
 import importlib as _importlib
+import importlib.util as _importlib_util
 import os as _os
 
 _overlay_name = _os.environ.get("ALFRED_FLEET_OVERLAY", "fleet_overlay")
-with _contextlib.suppress(ImportError):
+# Distinguish "overlay not present" (silent, OSS-standalone case) from
+# "overlay present but raises during import" (loud, operator bug we want
+# to surface). ``find_spec`` returning ``None`` is the missing case; any
+# exception from ``import_module`` after a spec was found is the broken
+# case, and we let it propagate.
+if _importlib_util.find_spec(_overlay_name) is not None:
     _importlib.import_module(_overlay_name)
