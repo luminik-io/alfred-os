@@ -129,20 +129,93 @@ class FakeGate:
 
 
 class FakeReporter:
-    """Records calls and hands back a deterministic Slack ts."""
+    """Records calls and hands back a deterministic Slack (channel_id, ts).
 
-    def __init__(self, ts: str | None = "1700000000.000100"):
+    The channel_id is what Slack's chat.postMessage echoes back after
+    resolving the channel name; a real bot post returns the ID even when
+    the caller passed a name. Tests pin this so the BatmanLifecycle
+    contract for ``ApprovalEnvelope.channel`` (must be an ID, not a
+    name) stays asserted.
+    """
+
+    def __init__(
+        self,
+        ts: str | None = "1700000000.000100",
+        channel_id: str = "C0FAKE123",
+    ):
         self._ts = ts
+        self._channel_id = channel_id
         self.plans: list[dict] = []
         self.reports: list[dict] = []
 
     def post_plan(self, plan, *, channel):
         self.plans.append({"plan": plan, "channel": channel})
-        return self._ts
+        if self._ts is None:
+            return None
+        return (self._channel_id, self._ts)
 
     def post_report(self, envelope, *, channel):
         self.reports.append({"envelope": envelope, "channel": channel})
         return True
+
+
+# ---------- regression: ApprovalEnvelope carries the channel ID, not name ----
+
+
+def test_request_approval_stores_channel_id_from_postmessage_not_config_name():
+    """Regression for the bug where ``ApprovalEnvelope.channel`` got the
+    config'd channel NAME (``"alfred-fleet"``) instead of the channel
+    ID (``"C0..."``) that Slack's ``chat.postMessage`` actually
+    resolved. Downstream ``reactions.get`` fails with ``channel_not_found``
+    on private channels and some bot scope sets when handed a name.
+
+    The fake reporter is configured to post into ``alfred-fleet`` but
+    return the resolved id ``C0LIVECH1``; the envelope must surface
+    the id, not the config name.
+    """
+    from batman import BatmanLifecycle, BatmanLifecycleConfig
+
+    reporter = FakeReporter(channel_id="C0LIVECH1")
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(slack_channel="alfred-fleet"),
+        reporter=reporter,
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+
+    envelope = lifecycle.request_approval(plan)
+    assert envelope is not None
+    assert envelope.channel == "C0LIVECH1"  # NOT "alfred-fleet"
+    assert envelope.message_ts == "1700000000.000100"
+    # The reporter still received the config name (so it can resolve
+    # to an ID on Slack's side); the post-call propagation is what
+    # matters.
+    assert reporter.plans[-1]["channel"] == "alfred-fleet"
+
+
+def test_request_approval_returns_none_when_reporter_returns_none():
+    """When the reporter cannot resolve a channel + ts (no bot token,
+    transport down), ``request_approval`` returns ``None`` so the
+    caller falls back to the BATMAN_AUTO_EXECUTE policy."""
+    from batman import BatmanLifecycle, BatmanLifecycleConfig
+
+    reporter = FakeReporter(ts=None)
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(slack_channel="alfred-fleet"),
+        reporter=reporter,
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    assert envelope is None
 
 
 # ---------- scenario 1: well-formed parent -> plan with N children ----------
