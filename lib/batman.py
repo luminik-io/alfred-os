@@ -992,10 +992,15 @@ def parse_parent_issue(
             for local in loose.affected_repos:
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
                 # back to <parent_org>/<local> so a fresh fleet with no
-                # mapping still produces a usable owner/repo pair.
-                full = local_to_gh.get(local) or (f"{parent_org}/{local}" if parent_org else local)
-                if full not in repos:
-                    repos.append(full)
+                # mapping still produces a usable owner/repo pair. Local
+                # name `gh_slug` avoids shadowing the `full` used in the
+                # main children-pairs loop below (which would otherwise
+                # widen its type to `str | None` and trip mypy).
+                gh_slug = local_to_gh.get(local) or (
+                    f"{parent_org}/{local}" if parent_org else local
+                )
+                if gh_slug not in repos:
+                    repos.append(gh_slug)
             # Synthesize one child per affected repo so the plan post
             # carries real work the operator can approve. The per-repo
             # acceptance-criteria block (if present) becomes the seed
