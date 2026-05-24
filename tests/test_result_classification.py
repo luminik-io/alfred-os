@@ -421,3 +421,58 @@ def test_quarantine_disabled_by_env_var(monkeypatch, tmp_path) -> None:
     # File untouched.
     assert fake_creds.exists()
     assert fake_creds.read_text() == '{"foo": "bar"}'
+
+
+def test_anthropic_subscription_cap_classified_as_rate_limit() -> None:
+    """Anthropic's "subscription cap exceeded" response uses misleading
+    wording that looks like a workspace-admin policy block but is
+    actually a soft rate limit. Without classifying it as
+    ``error_rate_limit`` the result falls through to generic
+    ``error_api`` which is not in HYBRID_FALLBACK_SUBTYPES, so hybrid
+    agents fail hard instead of falling back to codex.
+
+    Regression test for the 2026-05-24 incident: ~70 firings burned
+    through the subscription cap and the whole fleet went red because
+    none of the existing patterns matched this specific wording.
+    """
+    raw = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": True,
+        "stop_reason": "stop_sequence",
+        "num_turns": 1,
+        "total_cost_usd": 0.0,
+        "result": (
+            "Your organization has disabled Claude subscription access for "
+            "Claude Code · Use an Anthropic API key instead, or ask your "
+            "admin to enable access"
+        ),
+    }
+    r = _build_claude_result(raw)
+    assert r.success is False
+    assert r.subtype == "error_rate_limit", (
+        "must classify as error_rate_limit so hybrid agents fall back to codex"
+    )
+    assert r.stop_reason == "error"
+
+
+def test_workspace_admin_policy_block_wording_also_classified() -> None:
+    """Shorter / paraphrased versions of the same Anthropic wording also
+    classify as rate-limit. The regex needs enough flex to catch the
+    common variations of "subscription access ... Claude Code"."""
+    for body in (
+        "Anthropic has disabled Claude subscription access for Claude Code in this workspace.",
+        "Subscription access for Claude Code is currently disabled.",
+        "subscription access has been temporarily restricted on Claude Code",
+    ):
+        raw = {
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "stop_reason": "stop_sequence",
+            "num_turns": 1,
+            "total_cost_usd": 0.0,
+            "result": body,
+        }
+        r = _build_claude_result(raw)
+        assert r.subtype == "error_rate_limit", f"body did not match: {body!r}"
