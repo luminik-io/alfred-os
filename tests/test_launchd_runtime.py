@@ -124,9 +124,9 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
     (src / "bin" / "probe.py").chmod(0o755)
     (src / "lib" / "dummy.py").write_text("# dummy\n")
-    # deploy.sh v0.4.0 asserts these six subpackages land after copy, so the
+    # deploy.sh v0.4.x asserts these five subpackages land after copy, so the
     # fixture must ship them. Empty __init__.py satisfies the existence check.
-    for pkg in ("agent_runner", "claude_proxy", "connectors", "fleet_brain", "memory", "server"):
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
         (src / "lib" / pkg).mkdir()
         (src / "lib" / pkg / "__init__.py").write_text("")
     (src / "launchd" / "agents.conf").write_text(
@@ -191,9 +191,9 @@ def test_deploy_defers_reload_for_running_jobs(tmp_path):
     (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
     (src / "bin" / "probe.py").chmod(0o755)
     (src / "lib" / "dummy.py").write_text("# dummy\n")
-    # deploy.sh v0.4.0 asserts these six subpackages land after copy, so the
+    # deploy.sh v0.4.x asserts these five subpackages land after copy, so the
     # fixture must ship them. Empty __init__.py satisfies the existence check.
-    for pkg in ("agent_runner", "claude_proxy", "connectors", "fleet_brain", "memory", "server"):
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
         (src / "lib" / pkg).mkdir()
         (src / "lib" / pkg / "__init__.py").write_text("")
     (src / "launchd" / "agents.conf").write_text(

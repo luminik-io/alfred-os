@@ -118,25 +118,10 @@ warn_unused_ignores = true
 no_implicit_reexport = true
 strict_equality = true
 # Excluded from type checking:
-# - lib/claude_proxy/: imported as ``lib.claude_proxy`` everywhere it is
-#   used. mypy walking ``lib/`` discovers each file under both
-#   ``claude_proxy.X`` and ``lib.claude_proxy.X`` and raises "Source
-#   file found twice". Runtime behaviour is unaffected.
 # - lib/server/: depends on fastapi which is an optional `serve` extra
 #   that CI's `uv run --with mypy mypy lib/` invocation does not pull.
 #   Local devs running mypy with the extra installed still get coverage.
-exclude = ["^lib/claude_proxy/", "^lib/server/"]
-
-[[tool.mypy.overrides]]
-# claude_proxy is dual-imported in agent_runner/process.py as both
-# `claude_proxy.X` (deployed shape) and `lib.claude_proxy.X` (test
-# harness shape). Either resolves to lib/claude_proxy/client.py; mypy
-# raises "Source file found twice" trying to follow both. follow_imports
-# = "skip" stops mypy from descending into the proxy module during
-# resolution. lib/claude_proxy/ is also excluded from type-checking above.
-module = ["claude_proxy", "claude_proxy.*", "lib.claude_proxy", "lib.claude_proxy.*"]
-follow_imports = "skip"
-ignore_missing_imports = true
+exclude = ["^lib/server/"]
 
 [[tool.mypy.overrides]]
 # agent_runner.py predates strict typing; opt in incrementally.
