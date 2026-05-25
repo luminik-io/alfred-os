@@ -174,7 +174,10 @@ def check_paused_agents() -> Finding:
 
 
 def _today_spend_files() -> list[Path]:
-    today = datetime.now().strftime("%Y-%m-%d")
+    # SpendState writes under a UTC day key (`agent_runner/spend.today_str()`);
+    # match here so non-UTC hosts during local/UTC date-skew windows don't
+    # report `no spend today` while writes are still landing on the UTC day.
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     return sorted(STATE_ROOT.glob(f"*/spend-{today}.json"))
 
 

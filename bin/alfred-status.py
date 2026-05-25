@@ -150,7 +150,10 @@ def _duration(seconds: float | None) -> str:
 
 
 def _today_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d")
+    # Match SpendState's UTC day key (see agent_runner/spend.today_str()).
+    # Local-time readers caused `no spend today` false negatives on
+    # non-UTC hosts during local/UTC date-skew windows (PR #99 follow-up).
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _codename_from_label(label: str) -> str:

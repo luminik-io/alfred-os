@@ -170,30 +170,36 @@ const nav = [
     <script is:inline type="application/ld+json" set:html={JSON.stringify(orgSchema)} />
 
     {/* Google Analytics 4. PUBLIC_ALFRED_GA4_ID overrides for forks /
-        staging; the canonical production property is hardcoded below
-        so the build emits the snippet without per-deploy env-var
-        setup. Consent Mode v2 defaults to denied so no measurement
-        runs until the visitor accepts the cookie banner (see
-        astro.config.mjs COOKIE_BANNER_SCRIPT, identical to docs). */}
-    <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_ALFRED_GA4_ID || "G-Y157X0YLN4"}`}></script>
-    <script is:inline define:vars={{ id: import.meta.env.PUBLIC_ALFRED_GA4_ID || "G-Y157X0YLN4" }}>
-      window.dataLayer = window.dataLayer || [];
-      window.gtag = function(){ window.dataLayer.push(arguments); };
-      window.gtag('consent', 'default', {
-        analytics_storage: 'denied',
-        ad_storage: 'denied',
-        ad_user_data: 'denied',
-        ad_personalization: 'denied',
-        wait_for_update: 500,
-      });
-      window.gtag('js', new Date());
-      window.gtag('config', id, { anonymize_ip: true });
-      try {
-        if (localStorage.getItem('alfred-cookie-consent') === 'allow') {
-          window.gtag('consent', 'update', { analytics_storage: 'granted' });
-        }
-      } catch (e) {}
-    </script>
+        staging; the canonical production property is the default when
+        the env var is UNSET (undefined). Setting PUBLIC_ALFRED_GA4_ID
+        to the empty string disables GA4 entirely (forks that don't want
+        analytics can opt out without forking the layout). Matches the
+        astro.config.mjs behaviour for the Starlight docs side.
+        Consent Mode v2 defaults to denied so no measurement runs until
+        the visitor accepts the cookie banner. */}
+    {((import.meta.env.PUBLIC_ALFRED_GA4_ID ?? "G-Y157X0YLN4") || null) && (
+      <>
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${import.meta.env.PUBLIC_ALFRED_GA4_ID ?? "G-Y157X0YLN4"}`}></script>
+        <script is:inline define:vars={{ id: import.meta.env.PUBLIC_ALFRED_GA4_ID ?? "G-Y157X0YLN4" }}>
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = function(){ window.dataLayer.push(arguments); };
+          window.gtag('consent', 'default', {
+            analytics_storage: 'denied',
+            ad_storage: 'denied',
+            ad_user_data: 'denied',
+            ad_personalization: 'denied',
+            wait_for_update: 500,
+          });
+          window.gtag('js', new Date());
+          window.gtag('config', id, { anonymize_ip: true });
+          try {
+            if (localStorage.getItem('alfred-cookie-consent') === 'allow') {
+              window.gtag('consent', 'update', { analytics_storage: 'granted' });
+            }
+          } catch (e) {}
+        </script>
+      </>
+    )}
 
     {/* Cookie consent banner. Mirrors the docs (astro.config.mjs head)
         bootstrap so behaviour is uniform across marketing + docs. The

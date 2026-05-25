@@ -196,3 +196,78 @@ def test_escalate_no_commit_survives_label_add_failure(nightwing, monkeypatch):
     # Should NOT raise.
     nightwing.escalate_no_commit("backend", 123, 4567890, streak=3)
     assert slack_calls
+
+
+# ---------- pick_target gates on nightwing:human-needed (PR #111 follow-up) -
+
+
+def _pick_target_pr_row(num: int, *, labels: list[str]):
+    """Build a minimal PR row in the shape `gh pr list --json` returns."""
+    return {
+        "number": num,
+        "headRefName": f"branch-{num}",
+        "reviewDecision": "",
+        "createdAt": "2026-05-25T10:00:00Z",
+        "labels": [{"name": name} for name in labels],
+    }
+
+
+def test_pick_target_skips_pr_carrying_human_needed_label(nightwing, monkeypatch):
+    """Once Nightwing escalates a PR, the operator owns it; subsequent
+    firings must not re-pick its comments and burn turns."""
+    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "backend")
+
+    def fake_gh_json(cmd, *, default):
+        if "pr" in cmd and "list" in cmd:
+            return [_pick_target_pr_row(99, labels=["agent:authored", "nightwing:human-needed"])]
+        return default
+
+    monkeypatch.setattr(nightwing, "gh_json", fake_gh_json)
+    monkeypatch.setattr(nightwing, "is_repo_paused", lambda _repo: False)
+    monkeypatch.setattr(nightwing, "WATCH_REPOS", ["backend"])
+
+    repo, pr, comments = nightwing.pick_target(fixed_ids=set())
+    assert (repo, pr, comments) == (None, None, None)
+
+
+def test_pick_target_re_admits_pr_when_reset_label_also_present(nightwing, monkeypatch):
+    """`nightwing:reset` is the operator's `try again` signal; when both
+    labels are set, the PR must enter the pool so the inner reset
+    handler can clear state and Nightwing can attempt the comments."""
+    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "backend")
+
+    fake_comment = {
+        "id": 1,
+        "user": {"login": "coderabbitai[bot]"},
+        "body": "P0: a real issue",
+        "path": "src/x.py",
+        "line": 1,
+    }
+
+    def fake_gh_json(cmd, *, default):
+        if "pr" in cmd and "list" in cmd:
+            return [
+                _pick_target_pr_row(
+                    99,
+                    labels=["agent:authored", "nightwing:human-needed", "nightwing:reset"],
+                )
+            ]
+        # /pulls/.../comments → inline review comments (return the bot
+        # P0 once); /issues/.../comments → issue-comment thread
+        # (empty for this test).
+        if "pulls/" in str(cmd):
+            return [fake_comment]
+        if "issues/" in str(cmd):
+            return []
+        return default
+
+    monkeypatch.setattr(nightwing, "gh_json", fake_gh_json)
+    monkeypatch.setattr(nightwing, "is_repo_paused", lambda _repo: False)
+    monkeypatch.setattr(nightwing, "WATCH_REPOS", ["backend"])
+
+    repo, pr, comments = nightwing.pick_target(fixed_ids=set())
+    # `agent:authored` PR with one bot P0 comment must be re-admitted when
+    # the operator has dual-labelled it with `nightwing:reset`.
+    assert repo == "backend"
+    assert pr is not None and pr["number"] == 99
+    assert [c["id"] for c in comments] == [1]

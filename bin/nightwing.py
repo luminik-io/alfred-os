@@ -333,7 +333,7 @@ def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, No
                 "--label",
                 "agent:authored",
                 "--json",
-                "number,headRefName,reviewDecision,createdAt",
+                "number,headRefName,reviewDecision,createdAt,labels",
                 "--limit",
                 "30",
             ],
@@ -345,6 +345,23 @@ def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, No
         for pr in prs:
             if pr.get("reviewDecision") == "CHANGES_REQUESTED":
                 continue  # human owns it
+            # Escalation handoff (PR #111 follow-up): when an earlier
+            # firing tripped the no-commit escalation threshold and
+            # added `nightwing:human-needed`, the operator owns the PR
+            # until they add `nightwing:reset`. Without this skip, the
+            # next `pick_target()` call selects the same comment and
+            # Nightwing burns turns retrying the very case escalation
+            # was meant to stop. The `nightwing:reset` label is the
+            # operator's "try again" signal; when both labels are
+            # present, the PR re-enters the pool and the inner
+            # reset-handler clears the state.
+            label_names = {
+                (label.get("name") or "")
+                for label in pr.get("labels") or []
+                if isinstance(label, dict)
+            }
+            if ESCALATE_LABEL in label_names and RESET_LABEL not in label_names:
+                continue
             inline_comments = gh_json(
                 [
                     "gh",
@@ -517,6 +534,10 @@ def main() -> int:
             )
             save_no_commit_streaks(no_commit_streaks)
         # Best-effort label cleanup so the next firing doesn't re-reset.
+        # Also drop `nightwing:human-needed` if it was set by a prior
+        # escalation: pick_target gated on its presence (PR #111
+        # follow-up), so leaving it on would re-block this PR after
+        # the operator's explicit reset.
         with contextlib.suppress(Exception):
             run(
                 [
@@ -528,6 +549,8 @@ def main() -> int:
                     f"{GH_ORG}/{repo}",
                     "--remove-label",
                     RESET_LABEL,
+                    "--remove-label",
+                    ESCALATE_LABEL,
                 ],
                 timeout=15,
             )
