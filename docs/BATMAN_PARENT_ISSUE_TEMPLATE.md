@@ -188,7 +188,7 @@ PY
 
 If `children: 0`, the body shape doesn't match — fix and re-run before filing the GitHub issue.
 
-(Once `bin/doctor.sh --lifecycle` ships per #119, this same validation runs automatically during setup.)
+`bin/doctor.sh --lifecycle` runs this same parser validation with a synthetic parent issue, then checks the Slack approval surface and Claude OAuth token.
 
 ## Related
 
@@ -197,5 +197,5 @@ If `children: 0`, the body shape doesn't match — fix and re-run before filing 
 - #116: lifecycle parser rejects bare repo names. This template tells you to use full slugs.
 - #117: bundle label not auto-created on target repos + ~50-char label-length limit. This template warns about both.
 - #118: meta-tracker for the broader lifecycle hardening backlog.
-- #119: `bin/doctor.sh --lifecycle` synthetic-fire validator (would automate the validation step above).
+- #119: `bin/doctor.sh --lifecycle` synthetic-fire validator.
 - #121: `alfred-batman-setup` wizard (would walk operators through this body shape interactively).

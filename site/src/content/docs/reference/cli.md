@@ -71,6 +71,7 @@ with no `launchd/agents.conf`, it reports `0 passed, 0 failed`.
 
 ```sh
 bash bin/doctor.sh
+bash bin/doctor.sh --lifecycle
 ```
 
 Homebrew wrapper:
@@ -78,6 +79,11 @@ Homebrew wrapper:
 ```sh
 alfred-doctor
 ```
+
+`--lifecycle` runs only the Batman lifecycle-path doctor: a synthetic
+parent-issue parser check, bundle-label validation, Slack `chat.postMessage`
+plus `reactions.get` smoke test with cleanup, and a bounded Claude OAuth probe.
+It does not create GitHub issues.
 
 ## `alfred claude`
 

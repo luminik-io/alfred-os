@@ -10,13 +10,17 @@
 # fresh forks and post-rotation verification (after AWS SSO refresh, after
 # changing IAM policies, after `alfred claude swap`, etc.).
 #
-# Usage: doctor.sh [--dev]
+# Usage: doctor.sh [--dev] [--lifecycle]
 #   --dev   Dev-install mode. Agents whose preflight() reports unconfigured
 #           host state (missing GH auth, repo checkouts, secrets) are printed
 #           but do NOT fail the run. Code-correctness failures (an agent that
 #           crashes on import, a syntax error) still fail hard. install.sh
 #           passes --dev on Linux hosts, which are a local dev lane rather
 #           than a scheduled-fleet host.
+#   --lifecycle
+#           Run only the Batman lifecycle-path doctor. It feeds a synthetic
+#           parent issue into the parser, validates bundle labels, probes the
+#           Slack approval surface, and probes Claude OAuth auth.
 #
 # Exit code is 0 when every agent reports DOCTOR-OK, 1 if any agent fails.
 # In --dev mode the exit code stays a real gate: it is 0 only when no
@@ -26,10 +30,12 @@ set -uo pipefail
 
 # --- arg parse -------------------------------------------------------------
 DEV_MODE=0
+LIFECYCLE_MODE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dev) DEV_MODE=1 ;;
-    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    --lifecycle) LIFECYCLE_MODE=1 ;;
+    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
     *) echo "doctor.sh: unknown argument: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
@@ -125,6 +131,20 @@ if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
 fi
 if [ -n "${OPENAI_API_KEY:-}" ]; then
   echo "doctor.sh: warning: OPENAI_API_KEY is set; Codex may use API billing instead of ChatGPT-plan auth. Alfred does not require it." >&2
+fi
+
+if [ "$LIFECYCLE_MODE" -eq 1 ]; then
+  lifecycle_fixture="$REPO_DIR/lib/agent_runner/fixtures/lifecycle_doctor_body.md"
+  lifecycle_python="python3"
+  if [ -x "$ALFRED_HOME/venv/bin/python" ]; then
+    lifecycle_python="$ALFRED_HOME/venv/bin/python"
+  fi
+  if [ -f "$lifecycle_fixture" ]; then
+    "$lifecycle_python" -m agent_runner.lifecycle_doctor --fixture "$lifecycle_fixture"
+  else
+    "$lifecycle_python" -m agent_runner.lifecycle_doctor
+  fi
+  exit $?
 fi
 
 # macOS does not ship GNU coreutils' `timeout`. Auto-detect a usable
