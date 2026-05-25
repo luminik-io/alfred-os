@@ -267,11 +267,29 @@ const nav = [
           Alfred
         </a>
         <nav class="m-nav" aria-label="primary">
-          {nav.map((item) => <a href={item.href}>{item.label}</a>)}
+          {nav.map((item) => <a href={item.href} aria-current={path === item.href ? "page" : undefined}>{item.label}</a>)}
           <ThemeToggle />
           <GitHubBadge />
         </nav>
+        <button
+          class="m-menu-button"
+          type="button"
+          aria-label="Open navigation menu"
+          aria-controls="mobile-menu"
+          aria-expanded="false"
+          data-mobile-menu-toggle
+        >
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </button>
       </div>
+      <nav id="mobile-menu" class="m-mobile-menu" aria-label="mobile primary" hidden data-mobile-menu>
+        {nav.map((item) => (
+          <a href={item.href} aria-current={path === item.href ? "page" : undefined}>{item.label}</a>
+        ))}
+        <a class="m-mobile-menu__repo" href="https://github.com/luminik-io/alfred-os" rel="noopener">GitHub</a>
+      </nav>
     </header>
 
     <main>
@@ -424,7 +442,37 @@ const nav = [
           else if (mq.addListener) mq.addListener(listener);
         }
 
-        // 4. Image-zoom: wire data-zoom-open triggers to open their dialog.
+        // 4. Mobile nav menu.
+        var menuButton = document.querySelector("[data-mobile-menu-toggle]");
+        var mobileMenu = document.querySelector("[data-mobile-menu]");
+        function setMobileMenu(open) {
+          if (!menuButton || !mobileMenu) return;
+          menuButton.setAttribute("aria-expanded", open ? "true" : "false");
+          menuButton.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+          mobileMenu.hidden = !open;
+        }
+        if (menuButton && mobileMenu) {
+          menuButton.addEventListener("click", function () {
+            setMobileMenu(menuButton.getAttribute("aria-expanded") !== "true");
+          });
+          mobileMenu.querySelectorAll("a").forEach(function (link) {
+            link.addEventListener("click", function () { setMobileMenu(false); });
+          });
+          document.addEventListener("click", function (ev) {
+            if (mobileMenu.hidden) return;
+            var target = ev.target;
+            if (target instanceof Node && (mobileMenu.contains(target) || menuButton.contains(target))) return;
+            setMobileMenu(false);
+          });
+          document.addEventListener("keydown", function (ev) {
+            if (ev.key === "Escape") setMobileMenu(false);
+          });
+          window.addEventListener("resize", function () {
+            if (window.innerWidth > 860) setMobileMenu(false);
+          }, { passive: true });
+        }
+
+        // 5. Image-zoom: wire data-zoom-open triggers to open their dialog.
         //    Backdrop click also closes (native dialogs do not do this by
         //    default). Escape close is native.
         document.querySelectorAll("[data-zoom-open]").forEach((btn) => {
@@ -445,7 +493,7 @@ const nav = [
           });
         });
 
-        // 5. Count-up animation: when a [data-countup] element enters the
+        // 6. Count-up animation: when a [data-countup] element enters the
         //    viewport, animate from 0 to its data-target over ~900ms with
         //    an ease-out curve. Then add .is-done so it stays in place.
         if (typeof IntersectionObserver !== "undefined" && !reduced) {
