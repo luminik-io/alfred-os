@@ -103,13 +103,44 @@ def test_clear_lock_clears_dead_lock(
 ) -> None:
     lock_dir = tmp_path / "agent-lock-lucius"
     lock_dir.mkdir()
+    posts: list[str] = []
     monkeypatch.setattr(cli_module, "_lock_dir_for_agent", lambda agent: lock_dir)
     monkeypatch.setattr(cli_module, "_describe_lock", lambda lock, agent: (12345, False, None))
     monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent: [])
+    monkeypatch.setattr(
+        cli_module, "_clear_lock_scheduler_health", lambda agent: "scheduler: loaded"
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner, "slack_post", lambda text: posts.append(text) or True
+    )
 
     assert cli_module.main(["clear-lock", "lucius"]) == 0
     assert not lock_dir.exists()
-    assert "cleared" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "cleared" in out
+    assert "scheduler: loaded" in out
+    assert posts == [f"alfred clear-lock: cleared lucius lock at {lock_dir}; scheduler: loaded"]
+
+
+def test_clear_lock_quiet_skips_slack_post(
+    cli_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock_dir = tmp_path / "agent-lock-lucius"
+    lock_dir.mkdir()
+    monkeypatch.setattr(cli_module, "_lock_dir_for_agent", lambda agent: lock_dir)
+    monkeypatch.setattr(cli_module, "_describe_lock", lambda lock, agent: (12345, False, None))
+    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent: [])
+    monkeypatch.setattr(
+        cli_module, "_clear_lock_scheduler_health", lambda agent: "scheduler: loaded"
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "slack_post",
+        lambda text: (_ for _ in ()).throw(AssertionError("unexpected Slack post")),
+    )
+
+    assert cli_module.main(["clear-lock", "lucius", "--quiet"]) == 0
+    assert not lock_dir.exists()
 
 
 def test_clear_lock_refuses_live_matching_holder(

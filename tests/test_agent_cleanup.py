@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -20,6 +21,25 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 CLEANUP = REPO / "bin" / "agent-cleanup.py"
+
+
+def test_help_prints_usage_without_running_cleanup(tmp_path):
+    env = os.environ.copy()
+    env["ALFRED_HOME"] = str(tmp_path / "alfred")
+    env["WORKSPACE_ROOT"] = str(tmp_path / "workspace")
+
+    res = subprocess.run(
+        [sys.executable, str(CLEANUP), "--help"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=5,
+    )
+
+    assert res.returncode == 0
+    assert "usage: agent-cleanup.py" in res.stdout
+    assert "[cleanup]" not in res.stdout
+    assert res.stderr == ""
 
 
 @pytest.fixture
@@ -118,6 +138,26 @@ def test_sweep_extra_paths_skips_dirty_worktrees(cleanup, tmp_path, monkeypatch)
     assert stats["removed"] == 0
     assert stats["skipped"] == 1
     assert dirty.exists()
+
+
+def test_dirty_worktree_reason_preserves_ahead_branches(cleanup, tmp_path, monkeypatch):
+    wt = tmp_path / "ahead-wt"
+    wt.mkdir()
+    (wt / ".git").write_text("placeholder")
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[:4] == ["git", "-C", str(wt), "status"]
+        assert "--branch" in cmd
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout="## feature...origin/main [ahead 1]\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(cleanup.subprocess, "run", fake_run)
+
+    assert cleanup.dirty_worktree_reason(wt) == "ahead-of-upstream"
 
 
 def test_sweep_extra_paths_handles_missing_directory(cleanup, tmp_path):

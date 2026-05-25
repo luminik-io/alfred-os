@@ -949,7 +949,20 @@ def _describe_lock(lock_dir: Path, agent: str) -> tuple[int | None, bool, bool |
     return pid, alive, identity_status
 
 
-def _clear_lock_one(agent: str, *, check: bool, force: bool) -> int:
+def _clear_lock_scheduler_health(agent: str) -> str:
+    label = _resolve_label(agent)
+    if label is None:
+        return "scheduler: unknown agent label"
+    unit_path = scheduler.unit_file(label)
+    if unit_path is None:
+        return f"scheduler: unsupported on this host ({scheduler.SCHEDULER})"
+    if not unit_path.exists():
+        return f"scheduler: unit file missing at {unit_path}"
+    loaded = scheduler.unit_loaded(label)
+    return f"scheduler: {'loaded' if loaded else 'not loaded'} ({scheduler.SCHEDULER})"
+
+
+def _clear_lock_one(agent: str, *, check: bool, force: bool, quiet: bool) -> int:
     lock_dir = _lock_dir_for_agent(agent)
     print(f"{agent}:")
     print(f"  lock dir: {lock_dir}")
@@ -978,6 +991,10 @@ def _clear_lock_one(agent: str, *, check: bool, force: bool) -> int:
         return 1
     shutil.rmtree(lock_dir, ignore_errors=True)
     print("  cleared")
+    health = _clear_lock_scheduler_health(agent)
+    print(f"  {health}")
+    if not quiet:
+        agent_runner.slack_post(f"alfred clear-lock: cleared {agent} lock at {lock_dir}; {health}")
     return 0
 
 
@@ -998,7 +1015,7 @@ def cmd_clear_lock(args: argparse.Namespace) -> int:
         agents = [args.codename]
     rc = 0
     for agent in agents:
-        rc = _clear_lock_one(agent, check=args.check, force=args.force) or rc
+        rc = _clear_lock_one(agent, check=args.check, force=args.force, quiet=args.quiet) or rc
     return rc
 
 
@@ -1307,6 +1324,7 @@ def main(argv: list[str] | None = None) -> int:
     p_clear_lock.add_argument(
         "--force", action="store_true", help="clear even if safety checks fail"
     )
+    p_clear_lock.add_argument("--quiet", action="store_true", help="do not post the clear event to Slack")
     p_clear_lock.set_defaults(func=cmd_clear_lock)
 
     p_status = sub.add_parser("status", help="show local fleet health")

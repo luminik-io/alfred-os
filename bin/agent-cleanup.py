@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -47,6 +48,23 @@ from agent_runner import (
 
 AGENT = os.environ.get("AGENT_CODENAME", "cleanup")
 PREFLIGHT = PreflightSpec(agent=AGENT, bins=["git"])
+
+USAGE = """usage: agent-cleanup.py
+
+Sweep stale Alfred runtime files:
+  - old agent temp files
+  - abandoned clean worktrees
+  - expired spend, event, and transcript files
+  - stale /tmp agent locks
+  - stale GitHub in-flight claims when configured
+
+Configuration is via ALFRED_* environment variables.
+"""
+
+
+if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
+    print(USAGE.rstrip())
+    sys.exit(0)
 
 # Transcripts dir is optional in the framework; default to STATE_ROOT/transcripts.
 try:
@@ -154,7 +172,15 @@ def dirty_worktree_reason(wt: Path) -> str | None:
         return "not-a-git-worktree"
     try:
         res = subprocess.run(
-            ["git", "-C", str(wt), "status", "--porcelain", "--untracked-files=all"],
+            [
+                "git",
+                "-C",
+                str(wt),
+                "status",
+                "--porcelain=v1",
+                "--branch",
+                "--untracked-files=all",
+            ],
             capture_output=True,
             text=True,
             timeout=15,
@@ -163,8 +189,13 @@ def dirty_worktree_reason(wt: Path) -> str | None:
         return f"git-status-failed:{exc.__class__.__name__}"
     if res.returncode != 0:
         return f"git-status-failed:{res.stderr.strip()[:120] or res.returncode}"
-    if res.stdout.strip():
+    lines = res.stdout.splitlines()
+    branch_line = lines[0] if lines and lines[0].startswith("## ") else ""
+    changed_lines = [line for line in lines if not line.startswith("## ")]
+    if changed_lines:
         return "dirty"
+    if "[ahead " in branch_line:
+        return "ahead-of-upstream"
     return None
 
 
@@ -384,6 +415,8 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
                 capture_output=True,
                 timeout=5,
             )
+        with contextlib.suppress(OSError):
+            os.kill(old_pid, signal.SIGTERM)
     shutil.rmtree(lock_dir, ignore_errors=True)
     locks_unlocked += 1
 
