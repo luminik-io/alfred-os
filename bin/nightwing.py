@@ -565,9 +565,7 @@ def main() -> int:
             # for every PR-level flag, which is what operators saw on
             # the production fleet. Render a clean `PR-level review`
             # marker instead so the alert is actionable on first read.
-            location = (
-                f"{cpath}:{cline}" if cpath and cline is not None else "PR-level review"
-            )
+            location = f"{cpath}:{cline}" if cpath and cline is not None else "PR-level review"
             slack_post(
                 f"⛔ {AGENT.title()} {severity} security flag - manual review needed: comment {cid} "
                 f"on PR {pr_num} ({cuser}, {location})"
