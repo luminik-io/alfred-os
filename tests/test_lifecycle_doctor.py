@@ -65,6 +65,52 @@ def test_lifecycle_doctor_happy_path() -> None:
     assert "lifecycle preflight: 4 passed, 0 failed" in out
 
 
+def test_lifecycle_doctor_uses_configured_bundle_slug_prefix() -> None:
+    from agent_runner.lifecycle_doctor import FIXTURE_PATH, run_lifecycle_doctor
+
+    stream = io.StringIO()
+    rc = run_lifecycle_doctor(
+        fixture=FIXTURE_PATH,
+        env={
+            "SLACK_BOT_TOKEN": "xoxb-test",
+            "CLAUDE_CODE_OAUTH_TOKEN": "oauth-test",
+            "BATMAN_BUNDLE_SLUG_PREFIX": "prod",
+        },
+        slack_client=FakeSlack(),
+        command_runner=fake_claude_ok,
+        stream=stream,
+    )
+
+    out = stream.getvalue()
+    assert rc == 0
+    assert 'parsed bundle slug: "prod-doctor-hello"' in out
+    assert 'full label: "agent:bundle:prod-doctor-hello"' in out
+
+
+def test_lifecycle_doctor_fails_prefixed_label_that_is_too_long() -> None:
+    from agent_runner.lifecycle_doctor import FIXTURE_PATH, run_lifecycle_doctor
+
+    stream = io.StringIO()
+    rc = run_lifecycle_doctor(
+        fixture=FIXTURE_PATH,
+        env={
+            "SLACK_BOT_TOKEN": "xoxb-test",
+            "CLAUDE_CODE_OAUTH_TOKEN": "oauth-test",
+            "BATMAN_BUNDLE_SLUG_PREFIX": "very-long-production-fleet-prefix",
+        },
+        slack_client=FakeSlack(),
+        command_runner=fake_claude_ok,
+        stream=stream,
+    )
+
+    out = stream.getvalue()
+    assert rc == 1
+    assert 'parsed bundle slug: "very-long-production-fleet-prefix-doctor-hello"' in out
+    assert "bundle label generation" in out
+    assert "length: 59 chars" in out
+    assert "Keep bundle slugs short enough for GitHub label names." in out
+
+
 def test_lifecycle_doctor_reports_missing_slack_scope() -> None:
     from agent_runner.lifecycle_doctor import FIXTURE_PATH, run_lifecycle_doctor
 

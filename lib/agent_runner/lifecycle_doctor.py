@@ -83,13 +83,18 @@ def _load_body(path: Path | None) -> str:
     return DEFAULT_PARENT_BODY
 
 
-def check_parent_parser(body: str) -> tuple[CheckResult, Any | None]:
+def check_parent_parser(
+    body: str,
+    *,
+    bundle_slug_prefix: str = "",
+) -> tuple[CheckResult, Any | None]:
     try:
         plan = parse_parent_issue(
             body=body,
             title=PARENT_TITLE,
             parent_repo=PARENT_REPO,
             parent_issue_number=PARENT_ISSUE_NUMBER,
+            bundle_slug_prefix=bundle_slug_prefix,
         )
     except Exception as exc:
         return (
@@ -106,8 +111,11 @@ def check_parent_parser(body: str) -> tuple[CheckResult, Any | None]:
         f"parsed {len(plan.affected_repos)} repos: {list(plan.affected_repos)!r}",
         f"parsed {len(plan.children)} children",
     )
+    expected_slug = (
+        f"{bundle_slug_prefix.strip('-')}-doctor-hello" if bundle_slug_prefix else "doctor-hello"
+    )
     ok = (
-        plan.bundle_slug == "doctor-hello"
+        plan.bundle_slug == expected_slug
         and len(plan.affected_repos) == 3
         and len(plan.children) == 3
     )
@@ -325,7 +333,8 @@ def run_lifecycle_doctor(
     effective_env = dict(os.environ if env is None else env)
     out = stream or sys.stdout
     body = _load_body(fixture)
-    parser_result, plan = check_parent_parser(body)
+    bundle_slug_prefix = (effective_env.get("BATMAN_BUNDLE_SLUG_PREFIX") or "").strip()
+    parser_result, plan = check_parent_parser(body, bundle_slug_prefix=bundle_slug_prefix)
     results = (
         parser_result,
         check_bundle_label(plan),
