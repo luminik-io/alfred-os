@@ -29,9 +29,7 @@ Pure stdlib. The brain is local-only: this CLI never makes a network
 call. If something here writes outside ``$ALFRED_FLEET_BRAIN_DB`` /
 ``$ALFRED_HOME``, it's a bug.
 
-The wrapper ``bin/alfred`` is expected to grow a ``brain`` subcommand
-that shells out to this file (`alfred brain status`). For now, invoke
-directly: ``python3 bin/alfred-brain.py status``.
+The wrapper ``bin/alfred`` exposes this as ``alfred brain status``.
 """
 
 from __future__ import annotations

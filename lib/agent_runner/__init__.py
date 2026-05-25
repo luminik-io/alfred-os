@@ -32,12 +32,15 @@ High-level groupings:
   ``issue_dedup_check``, ``is_repo_paused``, ``list_paused_repos``,
   ``set_repo_paused``, ``make_worktree``, ``remove_worktree``,
   ``find_existing_worktree``, ``reuse_or_make_worktree``,
-  ``make_worktree_from_branch``, ``GH_REPO_TO_LOCAL``.
+  ``make_worktree_from_branch``, ``push_current_branch``,
+  ``worktree_risk_reason``, ``create_recovery_ref``, ``GH_REPO_TO_LOCAL``.
 * **Notify**: ``slack_post``, ``SLACK_SEVERITY_INFO``,
   ``SLACK_SEVERITY_WARN``, ``SLACK_SEVERITY_ALERT``.
 * **Metadata**: ``agent_role``, ``codename_with_role``,
   ``commit_trailer``, ``HandoffTable``, ``HANDOFFS``, ``load_prompt``.
 * **Transcripts**: ``transcript_path``, ``codex_artifact_paths``.
+* **Runtime memory**: ``parse_memory_reflections``,
+  ``strip_memory_reflections``, ``format_memory_context``.
 * **Orchestrator**: ``preflight``, ``PreflightSpec``,
   ``PreflightFailed``, ``route_llm``, ``get_tier_from_labels``,
   ``recall_for``, ``reflect``, ``call_with_guardrail``,
@@ -97,6 +100,7 @@ from .github import (
     _worktree_branch,
     _worktree_is_stale,
     claim_issue,
+    create_recovery_ref,
     ensure_labels,
     find_existing_worktree,
     find_open_authored_pr_for_issue,
@@ -112,10 +116,29 @@ from .github import (
     local_repo_dir,
     make_worktree,
     make_worktree_from_branch,
+    push_current_branch,
     release_issue,
     remove_worktree,
     reuse_or_make_worktree,
     set_repo_paused,
+    worktree_risk_reason,
+)
+
+# --------------------------------------------------------------------------
+# Runtime memory helpers
+# --------------------------------------------------------------------------
+from .memory_runtime import (
+    BEGIN_MARKER,
+    END_MARKER,
+    MemoryReflection,
+    format_memory_context,
+    load_runtime_memory,
+    memory_reflection_instructions,
+    parse_memory_reflections,
+    record_firing,
+    record_reflections,
+    strip_memory_reflections,
+    with_memory_prompt,
 )
 
 # --------------------------------------------------------------------------
@@ -373,6 +396,7 @@ __all__ = [
     "RELEASE_COMMENT_PREFIX",
     "STANDARD_LABELS",
     "claim_issue",
+    "create_recovery_ref",
     "ensure_labels",
     "find_existing_worktree",
     "find_open_authored_pr_for_issue",
@@ -388,10 +412,24 @@ __all__ = [
     "list_paused_repos",
     "make_worktree",
     "make_worktree_from_branch",
+    "push_current_branch",
     "release_issue",
     "remove_worktree",
     "reuse_or_make_worktree",
     "set_repo_paused",
+    "worktree_risk_reason",
+    # runtime memory
+    "BEGIN_MARKER",
+    "END_MARKER",
+    "MemoryReflection",
+    "format_memory_context",
+    "load_runtime_memory",
+    "memory_reflection_instructions",
+    "parse_memory_reflections",
+    "record_firing",
+    "record_reflections",
+    "strip_memory_reflections",
+    "with_memory_prompt",
     # orchestrator
     "OLLAMA_HOST",
     "OLLAMA_MODEL",
@@ -451,6 +489,9 @@ from . import (
     github as _sub_github,
 )
 from . import (
+    memory_runtime as _sub_memory_runtime,
+)
+from . import (
     metadata as _sub_metadata,
 )
 from . import (
@@ -481,6 +522,7 @@ _SUBMODULE_OBJS: tuple[_ModuleType, ...] = (
     _sub_process,
     _sub_result,
     _sub_transcripts,
+    _sub_memory_runtime,
     _sub_metadata,
     _sub_notify,
     _sub_state,

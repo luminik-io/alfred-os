@@ -29,7 +29,7 @@ Substrate, observability, and approval primitives. Currently being staged on the
 - `slack_approval`: reaction-based approval gate. An agent posts a proposal, the operator reacts with the configured emoji, the agent proceeds.
 - `slop-detector`: PR-time linter for AI-authored prose patterns. Used by the new `curator` codename.
 - `curator` codename: documentation hygiene agent. Runs slop-detector against docs PRs, flags drift between code and docs.
-- fleet-brain v1: a SQLite-backed memory layer. Per-fleet, optional, zero external dependency. Backs the `MemoryProvider` protocol.
+- fleet-brain v1: a SQLite-backed memory layer. Per-fleet, local, zero external dependency. Backs the `MemoryProvider` protocol.
 - `MemoryProvider` protocol plus `gbrain` bridge: agents read and write to a memory store through a stable interface; the OSS reference is fleet-brain, and operators can drop in their own.
 - `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
 - Batman execute-after-approval: once a bundle plan is approved, Batman now executes the per-repo PR sequence rather than stopping at the plan.

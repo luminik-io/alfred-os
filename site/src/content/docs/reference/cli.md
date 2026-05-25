@@ -138,6 +138,9 @@ alfred disable <codename>
 alfred enabled-agents
 alfred status
 alfred clear-lock <codename> [--check] [--force]
+alfred brain status
+alfred brain lessons <codename> <repo>
+alfred brain reflect <codename> <repo> <body>
 alfred claude status
 alfred claude swap
 alfred claude probe
@@ -160,14 +163,32 @@ runner-gate enablement, and role text. `enable` / `disable` update
 `$ALFRED_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
 such as Batman. `engine` persists per-agent Claude/Codex mode under
 `$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`
-checks Claude and Codex auth surfaces. `status` reports local locks, pauses,
-recent firings, and Batman approval waits. `clear-lock` diagnoses stale
-`/tmp/agent-lock-*` directories and refuses to clear live holders or matching
-dirty worktrees unless `--force` is passed. `labels` creates or checks the
+checks Claude and Codex auth surfaces. `brain` inspects and seeds the local
+fleet-brain memory store. `status` reports local locks, pauses, recent firings,
+and Batman approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
+directories and refuses to clear live holders or matching dirty worktrees
+unless `--force` is passed. `labels` creates or checks the
 canonical GitHub labels needed by the lifecycle state machine, Batman planning,
 and operator overrides. `shipped` reports merged PRs, issues, LOC, and
 model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
 values.
+
+## `alfred brain`
+
+Inspect and seed the local fleet-brain memory layer.
+
+```sh
+alfred brain status
+alfred brain lessons lucius your-org/api
+alfred brain lessons - your-org/api
+alfred brain reflect lucius your-org/api "Use request fixtures for API tests" --tag tests
+alfred brain firings --codename lucius
+alfred brain forget <lesson-id>
+alfred brain export --out ~/alfred-brain.json
+```
+
+Runtime memory is on by default through the local `fleet` provider. Set
+`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection.
 
 ## `alfred labels`
 
@@ -202,7 +223,9 @@ alfred clear-lock lucius --force
 
 Without `--force`, `clear-lock` refuses to delete a lock when the recorded PID
 still appears alive or when a matching Alfred worktree is dirty or ahead of its
-remote branch. Use `--check` for a read-only report.
+remote branch. Cleanup creates local `recovery/*` refs for ahead worktrees
+before alerting, so committed work survives even when a lock or process gets
+stuck. Use `--check` for a read-only report.
 
 ## `alfred metrics`
 

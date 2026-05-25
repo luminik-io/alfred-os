@@ -51,6 +51,9 @@ Subcommands today:
   alfred logs <codename>      Inspect stream-JSON transcripts for one agent:
                               recent firings, tool-call summary, or a full
                               pretty-printed dump of one firing.
+  alfred brain ...            Inspect and seed the local fleet-brain memory
+                              layer (`status`, `lessons`, `reflect`,
+                              `firings`, `forget`, `export`).
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
 
@@ -639,6 +642,12 @@ def cmd_logs(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def cmd_brain(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-brain.py"
+    forwarded = args.brain_args or ["status"]
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
 def cmd_shipped(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-shipped-summary.py"
     cmd = [sys.executable, str(script), "--period", args.period]
@@ -916,7 +925,7 @@ def _git_output(args: list[str], cwd: Path) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _matching_worktree_risks(agent: str) -> list[str]:
+def _matching_worktree_risks(agent: str, *, create_recovery: bool = False) -> list[str]:
     root = agent_runner.WORKTREE_ROOT
     if not root.exists():
         return []
@@ -927,15 +936,13 @@ def _matching_worktree_risks(agent: str) -> list[str]:
         branch = _git_output(["branch", "--show-current"], wt)
         if agent not in wt.name and agent not in branch:
             continue
-        status = _git_output(["status", "-sb"], wt)
-        if not status:
-            continue
-        lines = status.splitlines()
-        ahead = any("ahead" in line for line in lines[:1])
-        dirty = len(lines) > 1
-        if ahead or dirty:
-            reason = "ahead of remote" if ahead else "dirty"
-            risks.append(f"{wt} ({branch or 'unknown branch'}, {reason})")
+        risk = agent_runner.worktree_risk_reason(wt)
+        if risk:
+            recovery = None
+            if create_recovery:
+                recovery = agent_runner.create_recovery_ref(wt, branch=branch or None)
+            recovery_part = f", recovery={recovery}" if recovery else ""
+            risks.append(f"{wt} ({branch or 'unknown branch'}, {risk}{recovery_part})")
     return risks
 
 
@@ -974,7 +981,7 @@ def _clear_lock_one(agent: str, *, check: bool, force: bool, quiet: bool) -> int
     print(f"  pid alive: {'yes' if alive else 'no'}")
     if identity_status is not None:
         print(f"  identity match: {'yes' if identity_status else 'no'}")
-    risks = _matching_worktree_risks(agent)
+    risks = _matching_worktree_risks(agent, create_recovery=not check)
     for risk in risks:
         print(f"  worktree risk: {risk}")
     if check:
@@ -1324,7 +1331,9 @@ def main(argv: list[str] | None = None) -> int:
     p_clear_lock.add_argument(
         "--force", action="store_true", help="clear even if safety checks fail"
     )
-    p_clear_lock.add_argument("--quiet", action="store_true", help="do not post the clear event to Slack")
+    p_clear_lock.add_argument(
+        "--quiet", action="store_true", help="do not post the clear event to Slack"
+    )
     p_clear_lock.set_defaults(func=cmd_clear_lock)
 
     p_status = sub.add_parser("status", help="show local fleet health")
@@ -1487,6 +1496,10 @@ def main(argv: list[str] | None = None) -> int:
     p_logs.add_argument("--show-tool-calls", action="store_true", help="aggregate tool/skill calls")
     p_logs.add_argument("--json", action="store_true")
     p_logs.set_defaults(func=cmd_logs)
+
+    p_brain = sub.add_parser("brain", help="inspect and seed local fleet-brain memory")
+    p_brain.add_argument("brain_args", nargs=argparse.REMAINDER)
+    p_brain.set_defaults(func=cmd_brain)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
     p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")

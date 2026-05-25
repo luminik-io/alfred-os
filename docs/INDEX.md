@@ -21,7 +21,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md): design rationale for host scheduling, worktrees, IAM, spend guards, and plan review.
 - [`AGENTS.md`](AGENTS.md): default agent roles, codenames, and how custom codenames map to stable role scripts.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
-- [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the opt-in fleet-brain memory layer.
+- [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, or hybrid routing; precedence chain; default matrix; multi-engine roadmap.
 - [`OPERATING_THE_FLEET.md`](OPERATING_THE_FLEET.md): week-two runbook. Daily Slack rhythm, CLI recipes, sentinels, logs, "fleet went quiet" troubleshooting.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md): Claude Code and Codex install, account routing, engine routing, and quota behavior.

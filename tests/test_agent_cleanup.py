@@ -140,24 +140,53 @@ def test_sweep_extra_paths_skips_dirty_worktrees(cleanup, tmp_path, monkeypatch)
     assert dirty.exists()
 
 
+def test_sweep_extra_paths_creates_recovery_ref_for_risky_worktree(cleanup, tmp_path, monkeypatch):
+    extra_root = tmp_path / "extra"
+    extra_root.mkdir()
+    risky = extra_root / "risky-wt"
+    risky.mkdir()
+    (risky / ".git").write_text("placeholder")
+
+    empty_workspace = tmp_path / "empty-workspace"
+    empty_workspace.mkdir()
+    recovery_calls: list[Path] = []
+    monkeypatch.setattr(cleanup, "WORKSPACE", empty_workspace)
+    monkeypatch.setattr(cleanup, "dirty_worktree_reason", lambda wt: "ahead-of-upstream")
+    monkeypatch.setattr(
+        cleanup,
+        "create_recovery_ref",
+        lambda wt: recovery_calls.append(wt) or "recovery/risky",
+    )
+
+    aged = time.time() - 100 * 3600
+    os.utime(risky, (aged, aged))
+
+    stats = cleanup.sweep_extra_paths(
+        paths=str(extra_root),
+        max_age_hours=48,
+        now=time.time(),
+    )
+
+    assert stats["removed"] == 0
+    assert stats["skipped"] == 1
+    assert recovery_calls == [risky]
+    assert risky.exists()
+
+
 def test_dirty_worktree_reason_preserves_ahead_branches(cleanup, tmp_path, monkeypatch):
     wt = tmp_path / "ahead-wt"
     wt.mkdir()
     (wt / ".git").write_text("placeholder")
 
-    def fake_run(cmd, **kwargs):
-        assert cmd[:4] == ["git", "-C", str(wt), "status"]
-        assert "--branch" in cmd
-        return subprocess.CompletedProcess(
-            cmd,
-            0,
-            stdout="## feature...origin/main [ahead 1]\n",
-            stderr="",
-        )
-
-    monkeypatch.setattr(cleanup.subprocess, "run", fake_run)
+    calls: list[Path] = []
+    monkeypatch.setattr(
+        cleanup,
+        "worktree_risk_reason",
+        lambda path: calls.append(path) or "ahead-of-upstream",
+    )
 
     assert cleanup.dirty_worktree_reason(wt) == "ahead-of-upstream"
+    assert calls == [wt]
 
 
 def test_sweep_extra_paths_handles_missing_directory(cleanup, tmp_path):

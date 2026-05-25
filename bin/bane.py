@@ -268,6 +268,7 @@ def main() -> int:
         codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
         codex_bypass_approvals_and_sandbox=True,
         on_fallback=_on_engine_fallback,
+        memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     events.emit(

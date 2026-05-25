@@ -169,8 +169,20 @@ def make_worktree(local_repo: str, agent: str, target: str,
                   base: str = "origin/main") -> tuple[Path, str]   # (path, branch)
 def make_worktree_from_branch(local_repo: str, agent: str,
                               head_ref: str, target: str) -> Path
+def reuse_or_make_worktree(local_repo: str, agent: str, target: str,
+                           base: str = "origin/main") -> tuple[Path, str, bool]
+def push_current_branch(wt: Path, branch: str,
+                        remote: str = "origin", timeout: int = 60) -> CompletedProcess
+def worktree_risk_reason(wt: Path, base: str = "origin/main") -> str | None
+def create_recovery_ref(wt: Path, branch: str | None = None,
+                        base: str = "origin/main") -> str | None
 def remove_worktree(local_repo: str, wt: Path) -> None
 ```
+
+`reuse_or_make_worktree()` lets a resumed firing pick up a preserved local
+worktree for the same issue. `worktree_risk_reason()` and
+`create_recovery_ref()` are the safety pair cleanup uses before removing stale
+worktrees.
 
 ## Claude invocation
 
@@ -210,9 +222,24 @@ def codex_invoke(prompt: str, *,
                  sandbox: str | None = None,
                  approval_policy: str | None = None,
                  add_dirs: list[Path] | None = None) -> ClaudeResult
+
+def invoke_agent_engine(prompt: str, *,
+                        engine: str,
+                        agent: str,
+                        firing_id: str,
+                        workdir: Path,
+                        claude_allowed_tools: str,
+                        timeout: int,
+                        memory_repo: str | None = None,
+                        memory_query: str | None = None,
+                        memory_limit: int = 3,
+                        ...) -> tuple[ClaudeResult, str]
 ```
 
 The OSS streaming variant currently delegates to `claude_invoke()` while preserving the future call shape. `codex_invoke()` shells out to `codex exec`, rejects unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`), defaults to `read-only` + `approval_policy=never`, and writes final-message/stdout/stderr artifacts to `$ALFRED_HOME/state/codex/<agent>/<YYYY-MM>/`.
+When `memory_repo` is provided, `invoke_agent_engine()` prepends local
+fleet-brain recall context and records any machine-readable memory reflection
+block returned by the engine.
 
 ## Event log + commit trailer + handoff table
 

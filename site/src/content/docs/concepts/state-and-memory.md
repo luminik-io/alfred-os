@@ -61,7 +61,7 @@ $ALFRED_HOME/state/
 
 **`worktrees/eng-<codename>-<repo>-<issue>-<ts>/`** is a throwaway git worktree, created by `make_worktree` and removed at the end of the firing. Surviving worktrees are pruned at the start of the next firing or by `agent-cleanup`.
 
-**`memory-outbox/<codename>.jsonl`** is the append-only outbox the fleet-brain ingest drainer reads. Agents do not write to the brain synchronously; they append `reflect`, `firing_log`, and `note_repo` records, and `bin/fleet-ingest.py` drains them.
+**`memory-outbox/<codename>.jsonl`** is the append-only outbox the fleet-brain ingest drainer reads. Built-in engine-aware runners now write directly to the configured memory provider, but the outbox remains available for downstream fleets, imports, and tools that want an asynchronous drain path.
 
 ## What Alfred remembers vs forgets between firings
 
@@ -77,17 +77,17 @@ $ALFRED_HOME/state/
 | In-flight worktree | no (removed on exit) | n/a | n/a |
 | Process state, in-memory caches | no | no | n/a |
 | Engine session id from `claude -p` | written to the result; not resumed | n/a | n/a |
-| Lessons in the fleet brain (opt-in) | yes | yes | yes |
+| Lessons in the fleet brain | yes | yes | yes |
 
 The contract is intentionally narrow: anything an agent must remember between firings is a JSON or JSONL file on disk. Anything else is reconstructed from GitHub, the repo checkout, or the operator's `~/.alfredrc`.
 
-## The fleet brain (opt-in memory layer)
+## The fleet brain
 
 The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, the operator's preferred PR style).
 
-That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Each firing can append a lesson to its codename's outbox, and a separate drainer pulls those records into the brain. The next firing of any agent can call `brain.recall(codename, repo)` and prepend the relevant lessons to its prompt.
+That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine, then record any durable lessons the engine returns in a machine-readable reflection block.
 
-The brain ships as opt-in. Enable it by configuring the outbox drainer in `agents.conf`. See [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md) for the full design, schema, and CLI.
+The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, or `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider. See [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md) for the full design, schema, and CLI.
 
 The brain v1 store is dependency-inverted on a `Store` Protocol, so a future PGLite or graph-backed implementation drops in without touching agent runners.
 

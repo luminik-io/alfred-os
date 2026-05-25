@@ -387,6 +387,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         codex_bypass_approvals_and_sandbox=True,
         codex_add_dirs=[WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
+        memory_repo=f"{GH_ORG}/workspace" if GH_ORG else "workspace",
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     events.emit(

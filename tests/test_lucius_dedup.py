@@ -219,3 +219,70 @@ def test_reuse_or_make_worktree_replaces_when_branch_unavailable(monkeypatch, tm
     wt, _branch, reused = ar.reuse_or_make_worktree("backend", "lucius", "275")
     assert wt == fresh_path
     assert reused is False
+
+
+def test_worktree_risk_reason_detects_ahead_branch(monkeypatch, tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".git").write_text("gitdir: somewhere")
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="## branch...origin/main\n", stderr=""
+            )
+        if cmd[:3] == ["git", "rev-list", "--count"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="1\n", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(gh, "run", fake_run)
+
+    assert ar.worktree_risk_reason(wt) == "ahead-of-upstream"
+
+
+def test_create_recovery_ref_sanitizes_branch_and_updates_ref(monkeypatch, tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    updates: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["git", "rev-list", "--count"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="2\n", stderr="")
+        if cmd[:3] == ["git", "rev-parse", "--short"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+        if cmd[:2] == ["git", "update-ref"]:
+            updates.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(gh, "run", fake_run)
+
+    ref = ar.create_recovery_ref(wt, branch="lucius/issue 42")
+
+    assert ref is not None
+    assert ref.startswith("recovery/lucius-issue-42-")
+    assert updates == [["git", "update-ref", f"refs/heads/{ref}", "HEAD"]]
+
+
+def test_push_current_branch_pushes_head_to_named_branch(monkeypatch, tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    calls: list[tuple[list[str], str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs["cwd"]))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(gh, "run", fake_run)
+
+    res = ar.push_current_branch(tmp_path, "lucius/42")
+
+    assert res.returncode == 0
+    assert calls == [(["git", "push", "-u", "origin", "HEAD:lucius/42"], str(tmp_path))]
