@@ -235,6 +235,24 @@ which path was taken. No child issues are filed.
 
 All configuration is via environment variables (12-factor).
 
+For a guided first setup, run:
+
+```sh
+python3 bin/alfred-batman-setup.py
+```
+
+The wizard checks or writes the Claude OAuth token, Slack bot token,
+operator Slack member id, approval channel, parent repo, picker, and
+approval timeout in one idempotent block in `~/.alfredrc`. It finishes
+with `bin/doctor.sh --lifecycle` unless `--skip-doctor` is passed.
+
+The same flow is also available through the operator CLI after deploy:
+
+```sh
+alfred batman setup
+alfred setup-batman --check-only
+```
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BATMAN_AUTO_EXECUTE` | `0` | Controls the gate. Values: `0` (halt after plan, the safe default), `approval-gate` (require Slack approval), `1` (execute without a gate). |
