@@ -126,6 +126,22 @@ def test_clear_lock_refuses_live_matching_holder(
     assert "refusing to clear" in capsys.readouterr().out
 
 
+def test_clear_lock_refuses_unknown_holder(
+    cli_module, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock_dir = tmp_path / "agent-lock-lucius"
+    lock_dir.mkdir()
+    monkeypatch.setattr(cli_module, "_lock_dir_for_agent", lambda agent: lock_dir)
+    monkeypatch.setattr(cli_module, "_describe_lock", lambda lock, agent: (None, False, None))
+    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent: [])
+
+    assert cli_module.main(["clear-lock", "lucius"]) == 1
+    assert lock_dir.exists()
+    out = capsys.readouterr().out
+    assert "pid is unknown" in out
+    assert "refusing to clear" in out
+
+
 def test_clear_lock_refuses_matching_unpushed_worktree(
     cli_module, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:

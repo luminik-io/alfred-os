@@ -966,6 +966,9 @@ def _clear_lock_one(agent: str, *, check: bool, force: bool) -> int:
         print(f"  worktree risk: {risk}")
     if check:
         return 1 if alive or risks else 0
+    if pid is None and not force:
+        print("  refusing to clear: lock holder pid is unknown; pass --force to override")
+        return 1
     if alive and identity_status is not False and not force:
         print("  refusing to clear: lock holder still appears alive; pass --force to override")
         return 1
