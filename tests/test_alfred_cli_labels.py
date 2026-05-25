@@ -84,9 +84,7 @@ def test_labels_bootstrap_creates_missing_labels(
     assert "labels bootstrap on acme/your-backend" in capsys.readouterr().out
 
 
-def test_labels_all_reads_fleet_repo_env(
-    cli_module, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
     repos: list[str] = []
     monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "api,web")
     monkeypatch.setenv("ALFRED_RASALGHUL_REPOS", "web,mobile")
