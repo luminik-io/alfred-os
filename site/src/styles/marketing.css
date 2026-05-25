@@ -428,6 +428,12 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   border-radius: var(--radius);
   box-sizing: border-box;
 }
+@media (max-width: 720px) {
+  .m-figure {
+    padding: 16px;
+    margin: 24px 0;
+  }
+}
 
 [data-theme="light"] .m-figure {
   box-shadow: 0 8px 24px -16px rgba(20, 30, 60, 0.18);

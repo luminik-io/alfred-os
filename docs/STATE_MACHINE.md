@@ -154,7 +154,17 @@ PAUSED_REPOS_FILE: Path
           )
    ```
 
-4. Use the shipped `bin/alfred-label-state.py` as the operator command surface. `deploy.sh` copies it to `$ALFRED_HOME/bin/` so it's available alongside the other `alfred-*` binaries. The subcommand surface:
+4. Bootstrap the labels on each repo before the fleet starts claiming issues:
+
+   ```sh
+   alfred labels check --all
+   alfred labels bootstrap --all
+   ```
+
+   `--all` reads the configured fleet repo env vars and deduplicates them.
+   Pass a single repo slug when bringing one new repo online.
+
+5. Use the shipped `bin/alfred-label-state.py` as the operator command surface. `deploy.sh` copies it to `$ALFRED_HOME/bin/` so it's available alongside the other `alfred-*` binaries. The subcommand surface:
 
    ```sh
    alfred-label-state claim       <repo>#<N> [--force]
@@ -167,7 +177,7 @@ PAUSED_REPOS_FILE: Path
 
    `sweep-claims` reads the comma-separated `LABEL_STATE_SWEEP_REPOS` env var for its default repo set. No hardcoded repo names; supply your own.
 
-5. Install the `examples/git-hooks/pre-push` hook into every repo your operator touches manually:
+6. Install the `examples/git-hooks/pre-push` hook into every repo your operator touches manually:
 
    ```sh
    ln -s "$LABEL_STATE_HOOKS/pre-push" .git/hooks/pre-push

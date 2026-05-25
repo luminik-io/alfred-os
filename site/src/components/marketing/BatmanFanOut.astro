@@ -117,4 +117,19 @@
   @media (prefers-reduced-motion: reduce) {
     .m-fan__pulse { animation: none; opacity: 0.5; }
   }
+  @media (max-width: 720px) {
+    .m-fan {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .m-fan__head {
+      position: sticky;
+      left: 0;
+      width: calc(100vw - 72px);
+    }
+    .m-fan__svg {
+      width: 780px;
+      max-width: none;
+    }
+  }
 </style>

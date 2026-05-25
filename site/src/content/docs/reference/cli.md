@@ -116,12 +116,15 @@ alfred enable <codename>
 alfred disable <codename>
 alfred enabled-agents
 alfred status
+alfred clear-lock <codename> [--check] [--force]
 alfred claude status
 alfred claude swap
 alfred claude probe
 alfred codex status
 alfred codex probe
 alfred auth status
+alfred labels bootstrap <repo>|--all [--check] [--force]
+alfred labels check <repo>|--all
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
 alfred metrics [--since 7d] [--codename <name>] [--by-day] [--json]
@@ -135,9 +138,48 @@ runner-gate enablement, and role text. `enable` / `disable` update
 such as Batman. `engine` persists per-agent Claude/Codex mode under
 `$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`
 checks Claude and Codex auth surfaces. `status` reports local locks, pauses,
-recent firings, and Batman approval waits. `shipped` reports merged PRs, issues,
-LOC, and model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit
-`--repo` values.
+recent firings, and Batman approval waits. `clear-lock` diagnoses stale
+`/tmp/agent-lock-*` directories and refuses to clear live holders or matching
+dirty worktrees unless `--force` is passed. `labels` creates or checks the
+canonical GitHub labels needed by the lifecycle state machine, Batman planning,
+and operator overrides. `shipped` reports merged PRs, issues, LOC, and
+model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
+values.
+
+## `alfred labels`
+
+Bootstrap the canonical label set on one repo or every configured fleet repo.
+Bare repo names are resolved through `GH_ORG`; pass `owner/repo` to target an
+explicit repository.
+
+```sh
+alfred labels check your-backend
+alfred labels bootstrap your-backend
+alfred labels bootstrap --all
+alfred labels bootstrap --all --check
+alfred labels bootstrap luminik-io/alfred-os --force
+```
+
+`check` and `bootstrap --check` report missing labels without creating them.
+`bootstrap` creates missing labels. `--force` also updates color and description
+metadata on labels that already exist. `--all` reads `ALFRED_*_REPOS`,
+`LABEL_STATE_SWEEP_REPOS`, and `ALFRED_CLAIM_SWEEP_REPOS`, deduplicates them,
+then applies the same operation to each repo.
+
+## `alfred clear-lock`
+
+Diagnose and clear local agent locks under `/tmp/agent-lock-<codename>`.
+
+```sh
+alfred clear-lock lucius --check
+alfred clear-lock lucius
+alfred clear-lock --all
+alfred clear-lock lucius --force
+```
+
+Without `--force`, `clear-lock` refuses to delete a lock when the recorded PID
+still appears alive or when a matching Alfred worktree is dirty or ahead of its
+remote branch. Use `--check` for a read-only report.
 
 ## `alfred metrics`
 

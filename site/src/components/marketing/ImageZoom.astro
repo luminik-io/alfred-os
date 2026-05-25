@@ -142,9 +142,9 @@ const id =
     border: none;
     background: transparent;
     color: var(--alfred-text);
-    max-width: 96vw;
-    max-height: 96vh;
-    width: min(1400px, 96vw);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    width: min(1400px, calc(100vw - 24px));
   }
   .zoomable__dialog::backdrop {
     background: rgba(3, 7, 15, 0.82);
@@ -190,7 +190,7 @@ const id =
 
   .zoomable__viewport {
     width: 100%;
-    height: 100%;
+    max-height: calc(100dvh - 24px);
     overflow: auto;
     /* On touch devices, pinch-zoom the dialog viewport. Pan-x/y too so
        users can move around an over-large image. */
@@ -204,7 +204,8 @@ const id =
   }
   .zoomable__viewport img {
     display: block;
-    width: 100%;
+    width: auto;
+    max-width: none;
     height: auto;
     border-radius: 6px;
   }
@@ -213,5 +214,36 @@ const id =
     color: var(--alfred-mute);
     font-size: 14px;
     line-height: 1.55;
+  }
+
+  @media (max-width: 720px) {
+    .zoomable__dialog {
+      position: fixed;
+      inset: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+      width: auto;
+      height: auto;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+    }
+    .zoomable__close-form {
+      position: fixed;
+      top: calc(14px + env(safe-area-inset-top));
+      right: 14px;
+    }
+    .zoomable__close {
+      width: 46px;
+      height: 46px;
+      background: color-mix(in oklab, var(--alfred-black) 82%, transparent);
+    }
+    .zoomable__viewport {
+      height: 100%;
+      max-height: none;
+      padding: 14px;
+      border-radius: 10px;
+    }
+    .zoomable__viewport img {
+      min-width: min(860px, 240vw);
+    }
   }
 </style>

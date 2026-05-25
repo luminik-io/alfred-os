@@ -176,13 +176,17 @@ These categories require their own integration surface (Apollo, Reddit, Gmail, W
 ```sh
 alfred agents                 # configured agents, schedule, enable state, role
 alfred status                 # local fleet health, locks, pauses, approval waits
+alfred clear-lock <codename>  # clear a stale /tmp lock after safety checks
 alfred enable <codename>      # add codename to the runner gate
 alfred disable <codename>     # remove codename from the runner gate
 alfred enabled-agents         # print the current runner-gate list
+alfred labels check --all     # report missing lifecycle/operator labels
+alfred labels bootstrap --all # create missing lifecycle/operator labels
 alfred shipped --period weekly # summarize merged PRs, issues, LOC, config changes
 bash deploy.sh                # sync bin/lib; render + bootstrap if agents.conf exists
 bash bin/doctor.sh            # preflight configured Python agents
 ```
 
-For issue-claim operator overrides, copy or wrap `examples/bin/label_state.py`
-in your own fleet.
+Use `alfred-label-state` for issue-claim operator overrides. Use
+`alfred clear-lock --check` before clearing a lock unless you have already
+confirmed the holder is dead and any matching worktree is preserved.

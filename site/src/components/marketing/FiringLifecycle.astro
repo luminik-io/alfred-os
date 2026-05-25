@@ -124,6 +124,18 @@
     .m-flow__pulse { animation: none; opacity: 0.55; }
   }
   @media (max-width: 880px) {
-    .m-flow__svg { min-height: 280px; }
+    .m-flow {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .m-flow__head {
+      position: sticky;
+      left: 0;
+      width: calc(100vw - 72px);
+    }
+    .m-flow__svg {
+      width: 780px;
+      max-width: none;
+    }
   }
 </style>
