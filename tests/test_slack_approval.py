@@ -340,6 +340,29 @@ def test_aws_resolver_returns_none_on_lookup_error(monkeypatch: pytest.MonkeyPat
     assert aws_secrets_token_resolver(boto3_module=FakeBoto3) is None
 
 
+def test_aws_resolver_does_not_log_secret_lookup_details(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("ALFRED_SECRETS_BACKEND", "aws")
+
+    class FakeSM:
+        def get_secret_value(self, *, SecretId: str) -> dict[str, Any]:
+            raise RuntimeError(f"lookup failed for {SecretId} with xoxb-sensitive")
+
+    class FakeBoto3:
+        @staticmethod
+        def client(name: str, region_name: str = "") -> FakeSM:
+            return FakeSM()
+
+    with caplog.at_level("WARNING", logger="alfred.slack_approval"):
+        assert aws_secrets_token_resolver(boto3_module=FakeBoto3) is None
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "configured Slack bot token secret" in logged
+    assert "alfred/slack-bot-token" not in logged
+    assert "xoxb-sensitive" not in logged
+
+
 def test_file_cache_resolver_reads_token(tmp_path: Path) -> None:
     cache = tmp_path / "slack-bot-token.cache"
     cache.write_text("xoxb-from-disk\n")

@@ -219,8 +219,10 @@ def aws_secrets_token_resolver(
     try:
         sm = boto3.client("secretsmanager", region_name=reg)
         resp = sm.get_secret_value(SecretId=sid)
-    except Exception as e:
-        logger.warning("AWS Secrets Manager lookup for %s failed: %s", sid, e)
+    except Exception:
+        logger.warning(
+            "AWS Secrets Manager lookup failed for the configured Slack bot token secret."
+        )
         return None
     val = (resp.get("SecretString") or "").strip()
     return val or None
