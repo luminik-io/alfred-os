@@ -758,6 +758,14 @@ class SubprocessGitHubChildIssueClient:
     ) -> str | None:
         import tempfile
 
+        # Pre-create any per-bundle labels (`agent:bundle:<slug>`) and
+        # the operator's ad-hoc labels before `gh issue create`,
+        # mirroring what `gh_pr_create` already does for PRs (issue #117).
+        # Without this, the first cross-repo execute fails with
+        # `could not add label: ... not found` and the operator is left
+        # with an approved plan and zero filed children.
+        for label in labels:
+            self._ensure_label(repo, label)
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".md", delete=False, encoding="utf-8"
         ) as tmp:
@@ -789,6 +797,44 @@ class SubprocessGitHubChildIssueClient:
         finally:
             with contextlib.suppress(OSError):
                 body_path.unlink()
+
+    def _ensure_label(self, repo: str, label: str) -> None:
+        """Opportunistically create ``label`` on ``repo``.
+
+        Idempotent: `gh label create` returns non-zero when the label
+        already exists, and we swallow that. The colour and description
+        are conservative defaults; per-bundle labels use the same
+        purple family as `batman-pr-open` so they cluster visually in
+        the GitHub label picker (issue #117).
+        """
+        if label.startswith(BUNDLE_LABEL_PREFIX):
+            color = "5319e7"  # matches batman-pr-open
+            desc = (
+                f"Batman bundle: {label[len(BUNDLE_LABEL_PREFIX) :]}. "
+                "Linked children share this label across repos."
+            )
+        else:
+            color = "ededed"
+            desc = "Auto-created by Batman child-issue filing on first use"
+        with contextlib.suppress(Exception):
+            subprocess.run(
+                [
+                    self._gh,
+                    "label",
+                    "create",
+                    label,
+                    "--color",
+                    color,
+                    "--description",
+                    desc,
+                    "-R",
+                    repo,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
 
 
 class ApprovalGate(Protocol):
@@ -872,17 +918,55 @@ def _slugify_bundle_title(title: str, prefix: str = "") -> str:
 
 
 def _parse_repo_lines(block: str) -> list[str]:
+    """Parse a `Repos:` block into a list of ``owner/repo`` slugs.
+
+    Accepts two shapes (issue #116):
+
+    - ``owner/repo`` (canonical) — kept verbatim.
+    - bare ``repo`` — qualified with ``GH_ORG`` when set, so the
+      operator's natural shorthand works under the common
+      "one-org fleet" setup. Without ``GH_ORG`` the bare line is
+      skipped with a stderr warning rather than silently dropped.
+
+    Lines that match neither shape (and can't be qualified) get a
+    single warning each; the previous behaviour was to drop them
+    silently, which left operators with a confusing ``children=0``
+    plan post and no visible cause (the original bug report).
+    """
+    import sys
+
     out: list[str] = []
     for line in block.splitlines():
         token = line.strip().lstrip("-*").strip()
         if not token:
             continue
-        if "/" not in token:
-            # The parent-body shape REQUIRES owner/repo so siblings can be
-            # filed cross-repo without operator-side path mapping. Skip
-            # malformed lines rather than guess.
+        if "/" in token:
+            out.append(token)
             continue
-        out.append(token)
+        # Bare repo name. Qualify with GH_ORG when available so the
+        # operator's natural shorthand (`niyora`, `niyora-web`) works
+        # in a single-org fleet without forcing them to spell out
+        # `owner/` on every line.
+        if GH_ORG:
+            qualified = f"{GH_ORG}/{token}"
+            print(
+                f"[BATMAN-PARSE-INFO] _parse_repo_lines: qualified bare repo "
+                f"name {token!r} with GH_ORG ({qualified!r}). For multi-org "
+                f"fleets, write `owner/repo` explicitly.",
+                file=sys.stderr,
+            )
+            out.append(qualified)
+            continue
+        # No GH_ORG and no slash: we cannot construct a usable slug.
+        # Warn loudly so the operator notices on first firing instead
+        # of after a wasted Slack approval cycle.
+        print(
+            f"[BATMAN-PARSE-WARN] _parse_repo_lines: skipping bare repo "
+            f"name {token!r}: no `/` and `GH_ORG` is unset. Write "
+            f"`owner/{token}` or set GH_ORG in `~/.alfredrc`. See "
+            f"docs/BATMAN_PARENT_ISSUE_TEMPLATE.md.",
+            file=sys.stderr,
+        )
     return out
 
 

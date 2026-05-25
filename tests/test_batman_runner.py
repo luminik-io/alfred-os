@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -126,3 +127,105 @@ def test_bundle_for_issue_keeps_siblings_inside_scan_scope(monkeypatch):
     assert bundle.bundle_label == "agent:bundle:checkout"
     assert seen_allowed == [["myorg/backend", "myorg/frontend"]]
     assert {row["number"] for row in bundle.issues} == {1, 2}
+
+
+# ---------------------------------------------------------------------------
+# Issue #115: idempotent approval state.
+# ---------------------------------------------------------------------------
+
+
+def test_has_pending_approval_label_detects_dict_shape(monkeypatch):
+    runner = _load_runner()
+    issue = {"labels": [{"name": "agent:large-feature"}, {"name": "agent:plan-pending-approval"}]}
+    assert runner._has_pending_approval_label(issue) is True
+
+
+def test_has_pending_approval_label_handles_string_shape(monkeypatch):
+    runner = _load_runner()
+    issue = {"labels": ["agent:large-feature", "agent:plan-pending-approval"]}
+    assert runner._has_pending_approval_label(issue) is True
+
+
+def test_has_pending_approval_label_returns_false_when_absent(monkeypatch):
+    runner = _load_runner()
+    issue = {"labels": [{"name": "agent:large-feature"}]}
+    assert runner._has_pending_approval_label(issue) is False
+
+
+def test_pending_envelope_roundtrip(monkeypatch, tmp_path):
+    """Saving then loading the envelope yields back the same channel+ts."""
+    runner = _load_runner()
+    import batman as bm
+
+    plan = bm.parse_parent_issue(
+        body="Repos:\n- myorg/backend\n\nChildren:\n- backend: scope\n",
+        title="Bundle: t",
+        parent_repo="myorg/parent",
+        parent_issue_number=42,
+        bundle_slug_prefix="",
+    )
+    env = bm.ApprovalEnvelope(channel="C0LIVE", message_ts="1700000000.123", plan=plan)
+    runner._save_pending_envelope("myorg/parent", 42, env, firing_id="fid-1")
+    loaded = runner._load_pending_envelope("myorg/parent", 42, plan=plan)
+    assert loaded is not None
+    assert loaded.channel == "C0LIVE"
+    assert loaded.message_ts == "1700000000.123"
+
+
+def test_pending_envelope_aged_out(monkeypatch, tmp_path):
+    """An envelope older than ALFRED_BATMAN_APPROVAL_MAX_AGE_HOURS must
+    re-draft, not resume — so an abandoned plan post doesn't hold a
+    parent issue hostage forever."""
+    runner = _load_runner()
+    import json
+    from datetime import datetime, timedelta
+
+    import batman as bm
+
+    plan = bm.parse_parent_issue(
+        body="Repos:\n- myorg/backend\n\nChildren:\n- backend: scope\n",
+        title="Bundle: t",
+        parent_repo="myorg/parent",
+        parent_issue_number=99,
+        bundle_slug_prefix="",
+    )
+    path = runner._pending_approval_path("myorg/parent", 99)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "channel_id": "C0OLD",
+                "message_ts": "1690000000.000",
+                "posted_at": (datetime.now(UTC) - timedelta(hours=48)).isoformat(),
+                "firing_id": "fid-old",
+                "parent_repo": "myorg/parent",
+                "parent_issue": 99,
+                "bundle_slug": "t",
+            }
+        )
+    )
+    monkeypatch.setenv("ALFRED_BATMAN_APPROVAL_MAX_AGE_HOURS", "24")
+    out = runner._load_pending_envelope("myorg/parent", 99, plan=plan)
+    assert out is None
+
+
+def test_pending_envelope_clear_is_idempotent(monkeypatch, tmp_path):
+    """Clearing an absent state file must not raise."""
+    runner = _load_runner()
+    # Should be a no-op the first time and the second time.
+    runner._clear_pending_envelope("myorg/nope", 1)
+    runner._clear_pending_envelope("myorg/nope", 1)
+
+
+def test_label_set_and_unset_are_best_effort(monkeypatch):
+    """``gh_issue_edit`` failures must not crash the firing — label
+    management is operator-visible but secondary to the firing's
+    primary path (post + poll + execute)."""
+    runner = _load_runner()
+
+    def boom(*a, **kw):
+        raise RuntimeError("gh down")
+
+    monkeypatch.setattr(runner, "gh_issue_edit", boom)
+    runner._set_pending_approval_label("myorg/p", 1)  # must not raise
+    runner._unset_pending_approval_label("myorg/p", 1)  # must not raise

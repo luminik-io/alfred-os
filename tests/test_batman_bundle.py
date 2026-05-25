@@ -559,3 +559,144 @@ Done when:
     assert all("parse_parent_issue" not in r.getMessage() for r in caplog.records), [
         r.getMessage() for r in caplog.records
     ]
+
+
+# ---------------------------------------------------------------------------
+# Issue #116: lifecycle parser silently skips bare-name repos
+# ---------------------------------------------------------------------------
+
+
+def test_parse_repo_lines_keeps_owner_repo_slugs():
+    """Canonical shape: full ``owner/repo`` slugs round-trip unchanged."""
+    import batman as bm
+
+    out = bm._parse_repo_lines("- acme/backend\n- acme/frontend\n")
+    assert out == ["acme/backend", "acme/frontend"]
+
+
+def test_parse_repo_lines_qualifies_bare_names_with_gh_org(monkeypatch, capsys):
+    """Issue #116: bare repo names get qualified with GH_ORG when set,
+    instead of being silently dropped. Operator's natural shorthand
+    (`niyora`, `niyora-web`) just works for single-org fleets."""
+    monkeypatch.setenv("GH_ORG", "acme")
+    import batman as bm
+
+    # Re-import to pick up the new GH_ORG since the fixture clears
+    # sys.modules per-test.
+    out = bm._parse_repo_lines("- niyora\n- niyora-web\n")
+    assert out == ["acme/niyora", "acme/niyora-web"]
+    captured = capsys.readouterr()
+    assert "BATMAN-PARSE-INFO" in captured.err
+    assert "qualified bare repo name" in captured.err
+
+
+def test_parse_repo_lines_warns_when_bare_and_no_gh_org(monkeypatch, capsys):
+    """Without GH_ORG and without an `owner/` prefix the parser can't
+    construct a usable slug — warn loudly so the operator sees the
+    cause on the first firing instead of after a wasted approval cycle."""
+    monkeypatch.delenv("GH_ORG", raising=False)
+    import batman as bm
+
+    out = bm._parse_repo_lines("- niyora\n- backend\n")
+    assert out == []
+    captured = capsys.readouterr()
+    assert "BATMAN-PARSE-WARN" in captured.err
+    # Both lines should warn so the operator can fix all of them in one pass.
+    assert captured.err.count("BATMAN-PARSE-WARN") == 2
+
+
+def test_parse_repo_lines_mixes_slugs_and_bare_names(monkeypatch):
+    """Half-canonical, half-bare is a realistic operator pattern when
+    they paste a list of repos with one cross-org reference. Each line
+    is handled on its own merits."""
+    monkeypatch.setenv("GH_ORG", "acme")
+    import batman as bm
+
+    out = bm._parse_repo_lines("- acme/backend\n- mobile\n- other-org/lib\n")
+    assert out == ["acme/backend", "acme/mobile", "other-org/lib"]
+
+
+# ---------------------------------------------------------------------------
+# Issue #117: Batman execute fails to file children when bundle label
+# doesn't exist on target repos.
+# ---------------------------------------------------------------------------
+
+
+def test_create_issue_pre_creates_bundle_label(monkeypatch):
+    """``SubprocessGitHubChildIssueClient.create_issue`` must opportunistically
+    call ``gh label create`` for ``agent:bundle:<slug>`` before invoking
+    ``gh issue create``, mirroring the ``gh_pr_create`` pattern. Without
+    this, the first cross-repo execute fails with ``could not add label``
+    and operator is left with an approved plan and zero filed children."""
+    import batman as bm
+
+    calls: list[list[str]] = []
+
+    class FakeProc:
+        def __init__(self, stdout="", returncode=0, stderr=""):
+            self.stdout = stdout
+            self.returncode = returncode
+            self.stderr = stderr
+
+    def fake_run(cmd, **_kw):
+        calls.append(list(cmd))
+        # `gh label create` returns 0 (created) or non-zero (exists) —
+        # either is fine. `gh issue create` returns 0 + the URL.
+        if cmd[1] == "issue" and cmd[2] == "create":
+            return FakeProc(stdout="https://github.com/acme/backend/issues/42")
+        return FakeProc()
+
+    monkeypatch.setattr(bm.subprocess, "run", fake_run)
+
+    client = bm.SubprocessGitHubChildIssueClient()
+    url = client.create_issue(
+        "acme/backend",
+        title="backend: implement billing-v2",
+        body="scope",
+        labels=["agent:bundle:billing-v2", "agent:implement"],
+    )
+    assert url == "https://github.com/acme/backend/issues/42"
+
+    # Both labels should have been pre-created, then `gh issue create`
+    # invoked with both --label flags.
+    label_creates = [c for c in calls if c[1] == "label" and c[2] == "create"]
+    assert any("agent:bundle:billing-v2" in c for c in label_creates), label_creates
+    assert any("agent:implement" in c for c in label_creates), label_creates
+
+    issue_create = next(c for c in calls if c[1] == "issue" and c[2] == "create")
+    # The label create calls happen BEFORE the issue create.
+    issue_idx = calls.index(issue_create)
+    bundle_label_idx = next(
+        i for i, c in enumerate(calls) if "agent:bundle:billing-v2" in c and c[1] == "label"
+    )
+    assert bundle_label_idx < issue_idx, calls
+
+
+def test_create_issue_continues_when_label_create_fails(monkeypatch):
+    """Label creation is best-effort: if `gh label create` blows up
+    (rate limit, transient network), the issue creation must still try
+    and likely succeed — gh will accept --label for existing labels."""
+    import batman as bm
+
+    def fake_run(cmd, **_kw):
+        if cmd[1] == "label":
+            raise RuntimeError("transient network failure")
+        if cmd[1] == "issue":
+
+            class FakeProc:
+                stdout = "https://github.com/acme/backend/issues/9"
+                returncode = 0
+                stderr = ""
+
+            return FakeProc()
+        raise AssertionError(f"unexpected command {cmd}")
+
+    monkeypatch.setattr(bm.subprocess, "run", fake_run)
+    client = bm.SubprocessGitHubChildIssueClient()
+    url = client.create_issue(
+        "acme/backend",
+        title="x",
+        body="y",
+        labels=["agent:bundle:foo"],
+    )
+    assert url == "https://github.com/acme/backend/issues/9"

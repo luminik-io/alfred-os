@@ -51,9 +51,11 @@ for candidate in (
 from agent_runner import (  # noqa: E402
     GH_ORG,
     GH_REPO_TO_LOCAL,
+    STATE_ROOT,
     PreflightSpec,
     agent_engine,
     doctor_mode,
+    gh_issue_edit,
     gh_json,
     is_agent_enabled,
     preflight,
@@ -64,6 +66,7 @@ from batman import (  # noqa: E402
     BUNDLE_LABEL_PREFIX,
     EXEC_GATE_DISABLED,
     LARGE_FEATURE_LABEL,
+    ApprovalEnvelope,
     BatmanLifecycle,
     BatmanLifecycleConfig,
     Bundle,
@@ -71,6 +74,7 @@ from batman import (  # noqa: E402
     list_issues_by_bundle_label,
     parse_plan_from_bundle,
 )
+from labels import PLAN_PENDING_APPROVAL  # noqa: E402
 from slack_format import firing_thread_root  # noqa: E402
 
 CODENAME = os.environ.get("AGENT_CODENAME", "batman")
@@ -313,12 +317,42 @@ def _run_lifecycle(
         f"children={len(plan.children)} repos={len(plan.affected_repos)}"
     )
 
-    envelope = lifecycle.request_approval(plan)
+    parent_repo = config.parent_repo
+    parent_issue_number = int(parent_issue.get("number") or 0)
+
+    # Idempotent approval state (issue #115). On a pending parent issue
+    # whose label says we already drafted a plan, do not re-post; instead
+    # resume polling the previous Slack message. Operators see one plan
+    # per parent issue instead of one per firing.
+    existing_envelope: ApprovalEnvelope | None = None
+    if _has_pending_approval_label(parent_issue):
+        existing_envelope = _load_pending_envelope(parent_repo, parent_issue_number, plan=plan)
+        if existing_envelope is not None:
+            print(
+                f"[BATMAN-APPROVAL-RESUME] parent={parent_repo}#{parent_issue_number} "
+                f"ts={existing_envelope.message_ts}; not re-posting plan"
+            )
+        else:
+            # Label says pending but state file is gone; treat as
+            # stale and re-post. Operator can still see the label drop
+            # at the end of this firing.
+            print(
+                "[BATMAN-APPROVAL-STALE-LABEL] `agent:plan-pending-approval` set "
+                "but no recoverable state; re-drafting once.",
+                file=sys.stderr,
+            )
+
+    envelope = existing_envelope
     if envelope is None:
-        print(
-            f"[BATMAN-PLAN-POSTED-NO-TS] gate unavailable; respecting {config.auto_execute!r}",
-            file=sys.stderr,
-        )
+        envelope = lifecycle.request_approval(plan)
+        if envelope is None:
+            print(
+                f"[BATMAN-PLAN-POSTED-NO-TS] gate unavailable; respecting {config.auto_execute!r}",
+                file=sys.stderr,
+            )
+        else:
+            _save_pending_envelope(parent_repo, parent_issue_number, envelope, firing_id=firing_id)
+            _set_pending_approval_label(parent_repo, parent_issue_number)
 
     # Decide whether to execute. The matrix:
     #   auto_execute=0 (off):        halt after plan, no execute.
@@ -347,9 +381,21 @@ def _run_lifecycle(
                 f"[BATMAN-APPROVAL-{verdict.verdict.upper()}] "
                 f"elapsed={verdict.elapsed_s:.0f}s detail={verdict.detail!r}"
             )
+            # On rejection or transport-down, clear the pending state so
+            # the operator's next manual nudge can start fresh. On a plain
+            # timeout (still no reaction), keep the state so the NEXT
+            # firing resumes polling the same plan post without
+            # re-posting.
+            if verdict.verdict != "approval_timeout":
+                _clear_pending_envelope(parent_repo, parent_issue_number)
+                _unset_pending_approval_label(parent_repo, parent_issue_number)
             lifecycle.report(plan, _empty_result_reason(reason=verdict.verdict))
             return 0
         print(f"[BATMAN-APPROVED] elapsed={verdict.elapsed_s:.0f}s")
+        # Approval landed: clear the pending state before execute so the
+        # next firing doesn't think we're still waiting.
+        _clear_pending_envelope(parent_repo, parent_issue_number)
+        _unset_pending_approval_label(parent_repo, parent_issue_number)
 
     result = lifecycle.execute(plan)
     print(
@@ -358,6 +404,137 @@ def _run_lifecycle(
     )
     lifecycle.report(plan, result)
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Idempotent approval state (issue #115).
+#
+# A parent issue carries `agent:plan-pending-approval` while Batman is
+# waiting on the operator's Slack reaction. The Slack `(channel_id,
+# message_ts)` we posted lives on disk under
+# `${ALFRED_HOME}/state/batman/pending-approvals/<safe-key>.json` so the
+# NEXT firing can resume polling the same message instead of drafting a
+# duplicate plan post.
+# ---------------------------------------------------------------------------
+
+
+_PENDING_APPROVAL_DIR = STATE_ROOT / "batman" / "pending-approvals"
+
+
+def _pending_approval_path(parent_repo: str, parent_issue_number: int) -> Path:
+    safe = parent_repo.replace("/", "__")
+    return _PENDING_APPROVAL_DIR / f"{safe}__{parent_issue_number}.json"
+
+
+def _has_pending_approval_label(parent_issue: dict) -> bool:
+    """Check the parent-issue JSON (from gh search) for the pending label.
+
+    Robust to either flat string entries or ``{"name": "..."}`` dicts —
+    gh's two issue-list endpoints return different shapes.
+    """
+    for raw in parent_issue.get("labels") or []:
+        name = raw.get("name") if isinstance(raw, dict) else raw
+        if name == PLAN_PENDING_APPROVAL:
+            return True
+    return False
+
+
+def _save_pending_envelope(
+    parent_repo: str,
+    parent_issue_number: int,
+    envelope: ApprovalEnvelope,
+    *,
+    firing_id: str,
+) -> None:
+    import json
+
+    _PENDING_APPROVAL_DIR.mkdir(parents=True, exist_ok=True)
+    path = _pending_approval_path(parent_repo, parent_issue_number)
+    payload = {
+        "channel_id": envelope.channel,
+        "message_ts": envelope.message_ts,
+        "posted_at": datetime.now(UTC).isoformat(),
+        "firing_id": firing_id,
+        "parent_repo": parent_repo,
+        "parent_issue": parent_issue_number,
+        "bundle_slug": envelope.plan.bundle_slug,
+    }
+    try:
+        path.write_text(json.dumps(payload, sort_keys=True))
+    except OSError as exc:
+        print(f"[BATMAN-PENDING-SAVE-WARN] {path}: {exc}", file=sys.stderr)
+
+
+def _load_pending_envelope(
+    parent_repo: str,
+    parent_issue_number: int,
+    *,
+    plan,
+) -> ApprovalEnvelope | None:
+    import json
+
+    path = _pending_approval_path(parent_repo, parent_issue_number)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        print(f"[BATMAN-PENDING-LOAD-WARN] {path}: {exc}", file=sys.stderr)
+        return None
+    channel = data.get("channel_id") or ""
+    ts = data.get("message_ts") or ""
+    if not channel or not ts:
+        return None
+    # Aged state: re-draft so an abandoned plan post doesn't hold a
+    # parent issue hostage indefinitely. Default 24h matches the
+    # operator-friendly outer bound for "how long do I expect Batman
+    # to wait before assuming I gave up on this plan?".
+    max_age_hours = int(os.environ.get("ALFRED_BATMAN_APPROVAL_MAX_AGE_HOURS", "24"))
+    try:
+        posted_at = datetime.fromisoformat(data.get("posted_at") or "")
+        age_h = (datetime.now(UTC) - posted_at).total_seconds() / 3600.0
+        if age_h > max_age_hours:
+            print(
+                f"[BATMAN-PENDING-AGED-OUT] {path}: age={age_h:.1f}h > "
+                f"max={max_age_hours}h; re-drafting.",
+                file=sys.stderr,
+            )
+            return None
+    except (ValueError, TypeError):
+        # Malformed posted_at: treat as fresh; the firing will still
+        # converge on resolution or operator action.
+        pass
+    return ApprovalEnvelope(channel=channel, message_ts=ts, plan=plan)
+
+
+def _clear_pending_envelope(parent_repo: str, parent_issue_number: int) -> None:
+    path = _pending_approval_path(parent_repo, parent_issue_number)
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        print(f"[BATMAN-PENDING-CLEAR-WARN] {path}: {exc}", file=sys.stderr)
+
+
+def _set_pending_approval_label(parent_repo: str, parent_issue_number: int) -> None:
+    try:
+        gh_issue_edit(
+            parent_repo,
+            parent_issue_number,
+            add_labels=[PLAN_PENDING_APPROVAL],
+        )
+    except Exception as exc:
+        print(f"[BATMAN-LABEL-ADD-WARN] {PLAN_PENDING_APPROVAL}: {exc}", file=sys.stderr)
+
+
+def _unset_pending_approval_label(parent_repo: str, parent_issue_number: int) -> None:
+    try:
+        gh_issue_edit(
+            parent_repo,
+            parent_issue_number,
+            remove_labels=[PLAN_PENDING_APPROVAL],
+        )
+    except Exception as exc:
+        print(f"[BATMAN-LABEL-REMOVE-WARN] {PLAN_PENDING_APPROVAL}: {exc}", file=sys.stderr)
 
 
 def _empty_result_reason(*, reason: str):
