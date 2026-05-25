@@ -669,6 +669,336 @@ def cmd_status(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+_EXTRA_BOOTSTRAP_LABELS: tuple[tuple[str, str, str], ...] = (
+    ("agent:authored", "1d76db", "PR authored by an Alfred agent."),
+    (
+        "agent:plan-pending-approval",
+        "fbca04",
+        "Batman drafted a plan and is waiting for operator approval.",
+    ),
+    ("do-not-review", "cccccc", "Operator override: automated reviewers must skip this PR."),
+    ("do-not-merge", "b60205", "Operator override: automerge must skip this PR."),
+    ("needs:info", "d4c5f9", "Reporter needs to provide more detail."),
+    ("needs:triage", "fef2c0", "Needs triage."),
+    ("bug", "ee0701", "Confirmed bug."),
+    ("test-coverage", "bfdadc", "Test coverage work."),
+    ("severity:p0", "b60205", "Production broken, data loss, or security leak."),
+    ("severity:p1", "d93f0b", "User-visible bug, not blocking."),
+    ("severity:p2", "fbca04", "Minor or polish issue."),
+    ("severity:p3", "0e8a16", "Trivial or won't fix."),
+)
+
+
+def _label_bootstrap_catalog() -> list[tuple[str, str, str]]:
+    """Return the repo label catalogue used by setup and standalone bootstrap."""
+    out: dict[str, tuple[str, str, str]] = {}
+    for name, color, desc in (
+        *agent_runner.LIFECYCLE_LABELS,
+        *agent_runner.STANDARD_LABELS,
+        *_EXTRA_BOOTSTRAP_LABELS,
+    ):
+        out.setdefault(name, (name, color, desc))
+    return list(out.values())
+
+
+def _full_repo_arg(repo: str) -> str:
+    if "/" in repo:
+        return repo
+    gh_org = os.environ.get("GH_ORG", "").strip()
+    if not gh_org:
+        raise ValueError(f"GH_ORG is unset; pass a full repo slug like owner/{repo}")
+    return f"{gh_org}/{repo}"
+
+
+def _fleet_repos_from_env() -> list[str]:
+    """Collect repos from the fleet's comma-separated repo env vars."""
+    keys = sorted(k for k in os.environ if k.startswith("ALFRED_") and k.endswith("_REPOS"))
+    keys.extend(["LABEL_STATE_SWEEP_REPOS", "ALFRED_CLAIM_SWEEP_REPOS"])
+    seen: set[str] = set()
+    repos: list[str] = []
+    for key in keys:
+        for raw in os.environ.get(key, "").split(","):
+            repo = raw.strip()
+            if not repo or repo in seen:
+                continue
+            seen.add(repo)
+            repos.append(repo)
+    return repos
+
+
+def _load_repo_labels(repo: str) -> dict[str, dict[str, str]]:
+    result = subprocess.run(
+        ["gh", "label", "list", "-R", repo, "--json", "name,color,description", "--limit", "500"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise RuntimeError(f"gh label list failed for {repo}: {detail}")
+    try:
+        labels = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"gh label list returned invalid JSON for {repo}: {exc}") from exc
+    return {
+        str(row.get("name")): {
+            "color": str(row.get("color") or "").lstrip("#").lower(),
+            "description": str(row.get("description") or ""),
+        }
+        for row in labels
+        if row.get("name")
+    }
+
+
+def _gh_label_create(repo: str, name: str, color: str, desc: str) -> int:
+    result = subprocess.run(
+        [
+            "gh",
+            "label",
+            "create",
+            name,
+            "--color",
+            color,
+            "--description",
+            desc,
+            "-R",
+            repo,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        print((result.stderr or result.stdout).strip(), file=sys.stderr)
+    return result.returncode
+
+
+def _gh_label_edit(repo: str, name: str, color: str, desc: str) -> int:
+    result = subprocess.run(
+        [
+            "gh",
+            "label",
+            "edit",
+            name,
+            "--color",
+            color,
+            "--description",
+            desc,
+            "-R",
+            repo,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        print((result.stderr or result.stdout).strip(), file=sys.stderr)
+    return result.returncode
+
+
+def _labels_bootstrap_one(repo_arg: str, *, check: bool, force: bool) -> int:
+    try:
+        repo = _full_repo_arg(repo_arg)
+    except ValueError as exc:
+        print(f"alfred labels: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        existing = _load_repo_labels(repo)
+    except RuntimeError as exc:
+        print(f"alfred labels: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"==> labels {'check' if check else 'bootstrap'} on {repo}")
+    rc = 0
+    missing: list[tuple[str, str, str]] = []
+    for name, color, desc in _label_bootstrap_catalog():
+        current = existing.get(name)
+        if current is None:
+            missing.append((name, color, desc))
+            if check:
+                print(f"  x {name} (MISSING)")
+                continue
+            created = _gh_label_create(repo, name, color, desc)
+            if created == 0:
+                print(f"  + {name}")
+            else:
+                rc = 1
+            continue
+        color_match = current["color"] == color.lower()
+        desc_match = current["description"] == desc
+        if force and not check and (not color_match or not desc_match):
+            edited = _gh_label_edit(repo, name, color, desc)
+            if edited == 0:
+                print(f"  ~ {name}")
+            else:
+                rc = 1
+        else:
+            print(f"  ok {name}")
+
+    if check and missing:
+        print(f"  Run `alfred labels bootstrap {repo_arg}` to add {len(missing)} missing label(s).")
+        return 1
+    if not check and rc == 0:
+        print(f"  ok {len(missing)} label(s) bootstrapped")
+    return rc
+
+
+def cmd_labels(args: argparse.Namespace) -> int:
+    if args.labels_command == "check":
+        args.check = True
+    if args.all:
+        repos = _fleet_repos_from_env()
+        if not repos:
+            print(
+                "alfred labels: --all found no ALFRED_*_REPOS or LABEL_STATE_SWEEP_REPOS values",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        if not args.repo:
+            print("alfred labels: repo is required unless --all is passed", file=sys.stderr)
+            return 2
+        repos = [args.repo]
+    rc = 0
+    for repo in repos:
+        rc = _labels_bootstrap_one(repo, check=args.check, force=args.force) or rc
+    return rc
+
+
+def _lock_dir_for_agent(agent: str) -> Path:
+    return Path("/tmp") / f"agent-lock-{agent}"
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _read_lock_metadata(lock_dir: Path) -> dict[str, object]:
+    metadata = lock_dir / "metadata.json"
+    if not metadata.exists():
+        return {}
+    try:
+        return json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _read_lock_pid(lock_dir: Path, metadata: dict[str, object]) -> int | None:
+    raw = metadata.get("pid")
+    if isinstance(raw, int):
+        return raw
+    pid_file = lock_dir / "pid"
+    try:
+        return int(pid_file.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _git_output(args: list[str], cwd: Path) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _matching_worktree_risks(agent: str) -> list[str]:
+    root = agent_runner.WORKTREE_ROOT
+    if not root.exists():
+        return []
+    risks: list[str] = []
+    for wt in sorted(root.iterdir()):
+        if not wt.is_dir():
+            continue
+        branch = _git_output(["branch", "--show-current"], wt)
+        if agent not in wt.name and agent not in branch:
+            continue
+        status = _git_output(["status", "-sb"], wt)
+        if not status:
+            continue
+        lines = status.splitlines()
+        ahead = any("ahead" in line for line in lines[:1])
+        dirty = len(lines) > 1
+        if ahead or dirty:
+            reason = "ahead of remote" if ahead else "dirty"
+            risks.append(f"{wt} ({branch or 'unknown branch'}, {reason})")
+    return risks
+
+
+def _describe_lock(lock_dir: Path, agent: str) -> tuple[int | None, bool, bool | None]:
+    metadata = _read_lock_metadata(lock_dir)
+    pid = _read_lock_pid(lock_dir, metadata)
+    alive = _pid_alive(pid) if pid is not None else False
+    identity_status: bool | None = None
+    if pid is not None and alive:
+        identity_status = agent_runner.lock_pid_identity_status(lock_dir, pid, expected_agent=agent)
+    return pid, alive, identity_status
+
+
+def _clear_lock_one(agent: str, *, check: bool, force: bool) -> int:
+    lock_dir = _lock_dir_for_agent(agent)
+    print(f"{agent}:")
+    print(f"  lock dir: {lock_dir}")
+    if not lock_dir.exists():
+        print("  state: no lock present")
+        return 0
+    pid, alive, identity_status = _describe_lock(lock_dir, agent)
+    print(f"  pid: {pid if pid is not None else 'unknown'}")
+    print(f"  pid alive: {'yes' if alive else 'no'}")
+    if identity_status is not None:
+        print(f"  identity match: {'yes' if identity_status else 'no'}")
+    risks = _matching_worktree_risks(agent)
+    for risk in risks:
+        print(f"  worktree risk: {risk}")
+    if check:
+        return 1 if alive or risks else 0
+    if alive and identity_status is not False and not force:
+        print("  refusing to clear: lock holder still appears alive; pass --force to override")
+        return 1
+    if risks and not force:
+        print("  refusing to clear: matching worktree has unpushed or dirty work")
+        print("  recover the worktree or pass --force after preserving it")
+        return 1
+    shutil.rmtree(lock_dir, ignore_errors=True)
+    print("  cleared")
+    return 0
+
+
+def cmd_clear_lock(args: argparse.Namespace) -> int:
+    if args.all:
+        agents = sorted(
+            p.name.removeprefix("agent-lock-")
+            for p in Path("/tmp").glob("agent-lock-*")
+            if p.is_dir()
+        )
+        if not agents:
+            print("alfred clear-lock: no agent locks found")
+            return 0
+    else:
+        if not args.codename:
+            print("alfred clear-lock: codename is required unless --all is passed", file=sys.stderr)
+            return 2
+        agents = [args.codename]
+    rc = 0
+    for agent in agents:
+        rc = _clear_lock_one(agent, check=args.check, force=args.force) or rc
+    return rc
+
+
 def _launchctl(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["launchctl", *args], check=False, capture_output=True, text=True)
 
@@ -936,10 +1266,45 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--force", action="store_true", help="run even if the agent is paused")
     p_run.set_defaults(func=cmd_run)
 
+    p_clear_lock = sub.add_parser("clear-lock", help="diagnose and clear stale agent locks")
+    p_clear_lock.add_argument("codename", nargs="?", help="agent codename")
+    p_clear_lock.add_argument("--all", action="store_true", help="sweep every /tmp/agent-lock-*")
+    p_clear_lock.add_argument("--check", action="store_true", help="report state without clearing")
+    p_clear_lock.add_argument("--force", action="store_true", help="clear even if safety checks fail")
+    p_clear_lock.set_defaults(func=cmd_clear_lock)
+
     p_status = sub.add_parser("status", help="show local fleet health")
     p_status.add_argument("--json", action="store_true")
     p_status.add_argument("--slack", action="store_true")
     p_status.set_defaults(func=cmd_status)
+
+    p_labels = sub.add_parser("labels", help="bootstrap GitHub labels on fleet repos")
+    labels_sub = p_labels.add_subparsers(dest="labels_command", required=True)
+    p_labels_bootstrap = labels_sub.add_parser(
+        "bootstrap",
+        help="add canonical Alfred labels to one repo or every configured repo",
+    )
+    p_labels_bootstrap.add_argument("repo", nargs="?", help="repo slug or owner/repo")
+    p_labels_bootstrap.add_argument("--all", action="store_true", help="use configured repo lists")
+    p_labels_bootstrap.add_argument(
+        "--check",
+        action="store_true",
+        help="report missing labels without creating them",
+    )
+    p_labels_bootstrap.add_argument(
+        "--force",
+        action="store_true",
+        help="update color/description on labels that already exist",
+    )
+    p_labels_bootstrap.set_defaults(func=cmd_labels)
+    p_labels_check = labels_sub.add_parser(
+        "check",
+        help="report missing canonical Alfred labels without creating them",
+    )
+    p_labels_check.add_argument("repo", nargs="?", help="repo slug or owner/repo")
+    p_labels_check.add_argument("--all", action="store_true", help="use configured repo lists")
+    p_labels_check.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
+    p_labels_check.set_defaults(func=cmd_labels, check=True)
 
     p_engine = sub.add_parser("engine", aliases=["provider"], help="manage per-agent engines")
     engine_sub = p_engine.add_subparsers(dest="engine_command", required=True)

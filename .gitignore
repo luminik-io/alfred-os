@@ -233,3 +233,4 @@ uv.lock
 **/.claude/
 screenshots/
 .deepsec/
+.astro/

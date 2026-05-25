@@ -118,4 +118,19 @@
   @media (prefers-reduced-motion: reduce) {
     .m-spec__pulse { animation: none; opacity: 0.5; }
   }
+  @media (max-width: 720px) {
+    .m-spec {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .m-spec__head {
+      position: sticky;
+      left: 0;
+      width: calc(100vw - 72px);
+    }
+    .m-spec__svg {
+      width: 760px;
+      max-width: none;
+    }
+  }
 </style>
