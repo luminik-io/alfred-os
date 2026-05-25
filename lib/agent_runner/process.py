@@ -70,6 +70,14 @@ from .transcripts import (
 _CLAUDE_UNLIMITED_TURNS: int = 999
 
 
+def _subprocess_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 def run(
     cmd: list[str],
     *,
@@ -113,10 +121,7 @@ def run(
         # Defensive: Python 3.14 may return bytes for ``e.stdout`` even when
         # ``text=True`` was passed to ``subprocess.run``. Coerce so downstream
         # consumers that expect str (e.g. ``Path.write_text``) do not crash.
-        raw = e.stdout
-        partial: str = (
-            raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else (raw or "")
-        )
+        partial = _subprocess_text(e.stdout)
         return subprocess.CompletedProcess(
             cmd, 124, stdout=partial, stderr=f"TIMEOUT after {timeout}s"
         )
@@ -430,14 +435,34 @@ def codex_invoke(
             error_message=f"codex CLI not found: {e}",
         )
     except subprocess.TimeoutExpired as e:
+        stdout = _subprocess_text(e.stdout or getattr(e, "output", None))
+        stderr = _subprocess_text(e.stderr)
+        with contextlib.suppress(OSError):
+            paths["stdout"].write_text(stdout)
+            paths["stderr"].write_text(stderr)
+        last_message = ""
+        with contextlib.suppress(OSError):
+            last_message = paths["last_message"].read_text().strip()
+        combined = f"{stdout}\n{stderr}"
         return ClaudeResult(
             success=False,
             subtype="error_timeout",
             num_turns=0,
             cost_usd=0.0,
-            session_id=None,
-            result_text=str(e.stdout or ""),
-            raw={},
+            session_id=_extract_codex_session_id(combined),
+            result_text=last_message or stdout,
+            raw={
+                "engine": "codex",
+                "returncode": 124,
+                "stdout_path": str(paths["stdout"]),
+                "stderr_path": str(paths["stderr"]),
+                "last_message_path": str(paths["last_message"]),
+                "tokens_used": _extract_codex_tokens(combined),
+                "model": chosen_model,
+                "sandbox": resolved_sandbox,
+                "bypass_approvals_and_sandbox": bypass_approvals_and_sandbox,
+                "timeout": timeout,
+            },
             stop_reason="error",
             error_message=f"codex_invoke exceeded {timeout}s",
         )

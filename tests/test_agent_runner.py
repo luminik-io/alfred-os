@@ -792,6 +792,36 @@ def test_codex_invoke_provider_limits_get_rate_limit_subtype(tmp_path, monkeypat
     assert out.stop_reason == "error"
 
 
+def test_codex_invoke_timeout_preserves_partial_artifacts(tmp_path, monkeypatch):
+    import agent_runner as ar
+
+    root = tmp_path / "codex"
+
+    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+        last_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        last_path.parent.mkdir(parents=True, exist_ok=True)
+        last_path.write_text("partial final message")
+        raise subprocess.TimeoutExpired(
+            cmd,
+            timeout or 30,
+            output=b"session id: codex-timeout-1\npartial stdout",
+            stderr=b"partial stderr",
+        )
+
+    monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
+    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+
+    out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
+
+    assert out.success is False
+    assert out.subtype == "error_timeout"
+    assert out.session_id == "codex-timeout-1"
+    assert out.result_text == "partial final message"
+    assert out.raw["returncode"] == 124
+    assert Path(out.raw["stdout_path"]).read_text() == "session id: codex-timeout-1\npartial stdout"
+    assert Path(out.raw["stderr_path"]).read_text() == "partial stderr"
+
+
 def test_get_tier_from_labels_accepts_codex():
     import agent_runner as ar
 

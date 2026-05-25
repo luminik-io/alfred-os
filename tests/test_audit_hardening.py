@@ -172,6 +172,17 @@ def test_rasalghul_attaches_reviewed_head_sha(monkeypatch):
     assert rasalghul.reviewed_head_sha(out) == "abc1234"
 
 
+def test_rasalghul_diff_too_large_review_stamps_head_sha(monkeypatch):
+    rasalghul = load_bin_module("rasalghul.py", monkeypatch)
+
+    out = rasalghul.diff_too_large_review_body(5039, 4000, "ABC1234")
+
+    assert out.startswith(f"{rasalghul.REVIEW_AUTHOR_PREFIX}\nReviewed-head-sha: abc1234")
+    assert "Diff is 5039 lines (cap 4000)" in out
+    assert "Ship-ready: no" in out
+    assert rasalghul.reviewed_head_sha(out) == "abc1234"
+
+
 def test_lucius_wip_salvage_pr_failure_releases_to_retry_queue(monkeypatch):
     lucius = load_bin_module("lucius.py", monkeypatch)
     releases = []

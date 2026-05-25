@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -20,6 +21,25 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 CLEANUP = REPO / "bin" / "agent-cleanup.py"
+
+
+def test_help_prints_usage_without_running_cleanup(tmp_path):
+    env = os.environ.copy()
+    env["ALFRED_HOME"] = str(tmp_path / "alfred")
+    env["WORKSPACE_ROOT"] = str(tmp_path / "workspace")
+
+    res = subprocess.run(
+        [sys.executable, str(CLEANUP), "--help"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=5,
+    )
+
+    assert res.returncode == 0
+    assert "usage: agent-cleanup.py" in res.stdout
+    assert "[cleanup]" not in res.stdout
+    assert res.stderr == ""
 
 
 @pytest.fixture

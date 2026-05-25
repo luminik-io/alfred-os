@@ -48,6 +48,23 @@ from agent_runner import (
 AGENT = os.environ.get("AGENT_CODENAME", "cleanup")
 PREFLIGHT = PreflightSpec(agent=AGENT, bins=["git"])
 
+USAGE = """usage: agent-cleanup.py
+
+Sweep stale Alfred runtime files:
+  - old agent temp files
+  - abandoned clean worktrees
+  - expired spend, event, and transcript files
+  - stale /tmp agent locks
+  - stale GitHub in-flight claims when configured
+
+Configuration is via ALFRED_* environment variables.
+"""
+
+
+if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
+    print(USAGE.rstrip())
+    sys.exit(0)
+
 # Transcripts dir is optional in the framework; default to STATE_ROOT/transcripts.
 try:
     from agent_runner import TRANSCRIPTS_ROOT  # type: ignore

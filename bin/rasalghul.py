@@ -29,6 +29,7 @@ from agent_runner import (
     codex_invoke,
     doctor_mode,
     engine_preflight_bins,
+    env_int,
     gh_json,
     gh_pr_comment,
     invoke_agent_engine,
@@ -73,6 +74,8 @@ DIFF_LINE_CAP_SPECS = int(os.environ.get("ALFRED_RASALGHUL_DIFF_CAP_SPECS", "800
 
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_RASALGHUL_TURN_CAP", "800"))
 DAILY_REVIEW_CAP = int(os.environ.get("ALFRED_RASALGHUL_REVIEW_CAP", "30"))
+RASALGHUL_TIMEOUT = env_int("ALFRED_RASALGHUL_TIMEOUT", 900, minimum=60)
+RASALGHUL_FALLBACK_TIMEOUT = env_int("ALFRED_RASALGHUL_FALLBACK_TIMEOUT", 1800, minimum=60)
 REVIEW_AUTHOR_PREFIX = f"{AGENT.title()} - review"
 REVIEWED_HEAD_SHA = re.compile(
     r"^Reviewed-head-sha:\s*([0-9a-f]{7,40})\s*$",
@@ -124,6 +127,16 @@ def attach_review_head_sha(review_body: str, head_sha: str | None) -> str:
     if not replaced:
         lines.insert(1, metadata)
     return "\n".join(lines).rstrip() + "\n"
+
+
+def diff_too_large_review_body(lines: int, line_cap: int, head_sha: str | None) -> str:
+    body = (
+        f"{REVIEW_AUTHOR_PREFIX}\n\n"
+        "## Review skipped\n"
+        f"- Diff is {lines} lines (cap {line_cap}). Please split for an effective review.\n\n"
+        "Ship-ready: no - diff exceeds review cap.\n"
+    )
+    return attach_review_head_sha(body, head_sha)
 
 
 def pick_pr() -> tuple[str, dict] | tuple[None, None]:
@@ -286,6 +299,7 @@ def main() -> int:
         return 0
 
     pr_num = pr["number"]
+    head_sha = (pr.get("headRefOid") or "").strip().lower()
     local_path = WORKSPACE / local_repo_dir(repo)
     events.emit("pr_picked", repo=f"{GH_ORG}/{repo}", number=pr_num)
 
@@ -304,11 +318,7 @@ def main() -> int:
     is_specs = repo in SPECS_REPOS
     line_cap = DIFF_LINE_CAP_SPECS if is_specs else DIFF_LINE_CAP_DEFAULT
     if lines > line_cap:
-        gh_pr_comment(
-            repo,
-            pr_num,
-            f"{REVIEW_AUTHOR_PREFIX}: this PR diff is {lines} lines (cap {line_cap}). Please split for an effective review.",
-        )
+        gh_pr_comment(repo, pr_num, diff_too_large_review_body(lines, line_cap, head_sha))
         events.emit("firing_complete", outcome="diff-too-large", lines=lines)
         return 0
 
@@ -327,7 +337,7 @@ def main() -> int:
     )
     pr_title = meta.get("title", "")
     pr_body = meta.get("body", "") or ""
-    head_sha = (meta.get("headRefOid") or pr.get("headRefOid") or "").strip().lower()
+    head_sha = (meta.get("headRefOid") or head_sha).strip().lower()
 
     # Prior reviewer comments from known bot reviewers
     prior_comments = gh_json(
@@ -479,8 +489,8 @@ Ship-ready: yes / no - <one sentence>
         agent=AGENT,
         firing_id=events.firing_id,
         claude_max_turns=optional_env_int("ALFRED_RASALGHUL_MAX_TURNS", minimum=40),
-        timeout=900,
-        codex_timeout=900,
+        timeout=RASALGHUL_TIMEOUT,
+        codex_timeout=RASALGHUL_FALLBACK_TIMEOUT,
         codex_sandbox="read-only",
         codex_add_dirs=[tmp, WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
