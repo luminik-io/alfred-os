@@ -65,6 +65,12 @@ engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 | `BATMAN_SCAN_REPOS` | `bin/batman.py` repo scan scope for `agent:large-feature` issues | (none, no-op) |
 | `BATMAN_ROLLOUT_ORDER` | `alfred-init.py` and plan parsing defaults | `backend,frontend,mobile,agents,data-acquisition` |
 | `AGENT_CODENAME_CROSS_REPO_COORDINATOR` | `alfred-init.py` codename mapping | `batman` |
+| `BATMAN_PARENT_REPO` | `bin/batman.py` parent-issue lifecycle path | (none) |
+| `BATMAN_AUTO_EXECUTE` | `lib/batman.py` plan execution mode | `0` |
+| `BATMAN_PICKER` | `lib/batman.py` parent issue selection | `oldest` |
+| `BATMAN_BUNDLE_SLUG_PREFIX` | `lib/batman.py` bundle slug rendering | (blank) |
+| `BATMAN_APPROVAL_TIMEOUT_S` | `lib/batman.py` Slack approval wait | `900` |
+| `BATMAN_SLACK_CHANNEL` | `lib/batman.py` plan and report channel | (blank, falls back to Slack home channel) |
 
 Batman is opt-in and public Alfred ships it as plan-only. It scans the
 configured repo list, groups `agent:bundle:<slug>` siblings, posts a rollout

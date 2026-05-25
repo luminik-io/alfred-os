@@ -1239,6 +1239,37 @@ def cmd_setup_token(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def cmd_batman_setup(args: argparse.Namespace) -> int:
+    """Forward to ``bin/alfred-batman-setup.py``."""
+    script = _HERE / "alfred-batman-setup.py"
+    cmd = [sys.executable, str(script)]
+    for attr, flag in (
+        ("check_only", "--check-only"),
+        ("force", "--force"),
+        ("non_interactive", "--non-interactive"),
+        ("skip_token_setup", "--skip-token-setup"),
+        ("skip_doctor", "--skip-doctor"),
+        ("run_slack_tests", "--run-slack-tests"),
+    ):
+        if getattr(args, attr, False):
+            cmd.append(flag)
+    for attr, flag in (
+        ("slack_bot_token", "--slack-bot-token"),
+        ("operator_user_id", "--operator-user-id"),
+        ("slack_channel", "--slack-channel"),
+        ("parent_repo", "--parent-repo"),
+        ("mode", "--mode"),
+        ("picker", "--picker"),
+        ("bundle_slug_prefix", "--bundle-slug-prefix"),
+    ):
+        value = getattr(args, attr, None)
+        if value:
+            cmd.extend([flag, str(value)])
+    if getattr(args, "approval_timeout_s", None) is not None:
+        cmd.extend(["--approval-timeout-s", str(args.approval_timeout_s)])
+    return subprocess.run(cmd, check=False).returncode
+
+
 def cmd_auth(args: argparse.Namespace) -> int:
     command = args.auth_command
     if command in ("status", ""):
@@ -1290,7 +1321,9 @@ def main(argv: list[str] | None = None) -> int:
     p_clear_lock.add_argument("codename", nargs="?", help="agent codename")
     p_clear_lock.add_argument("--all", action="store_true", help="sweep every /tmp/agent-lock-*")
     p_clear_lock.add_argument("--check", action="store_true", help="report state without clearing")
-    p_clear_lock.add_argument("--force", action="store_true", help="clear even if safety checks fail")
+    p_clear_lock.add_argument(
+        "--force", action="store_true", help="clear even if safety checks fail"
+    )
     p_clear_lock.add_argument("--quiet", action="store_true", help="do not post the clear event to Slack")
     p_clear_lock.set_defaults(func=cmd_clear_lock)
 
@@ -1371,6 +1404,60 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_setup_token.set_defaults(func=cmd_setup_token)
 
+    def add_batman_setup_args(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--check-only", action="store_true", help="report setup state without writing"
+        )
+        parser.add_argument(
+            "--force", action="store_true", help="prompt for values even when configured"
+        )
+        parser.add_argument(
+            "--non-interactive", action="store_true", help="accept defaults and provided flags"
+        )
+        parser.add_argument(
+            "--skip-token-setup", action="store_true", help="do not spawn alfred setup-token"
+        )
+        parser.add_argument(
+            "--skip-doctor", action="store_true", help="do not run lifecycle doctor"
+        )
+        parser.add_argument(
+            "--run-slack-tests", action="store_true", help="call Slack auth.test and users.info"
+        )
+        parser.add_argument("--slack-bot-token", default="", help="Slack bot token to persist")
+        parser.add_argument(
+            "--operator-user-id", default="", help="Slack member id whose reactions count"
+        )
+        parser.add_argument(
+            "--slack-channel", default="", help="Slack channel name or id for Batman posts"
+        )
+        parser.add_argument(
+            "--parent-repo", default="", help="owner/repo that holds Batman parent issues"
+        )
+        parser.add_argument(
+            "--mode", choices=["0", "approval-gate", "1"], default="", help="Batman execution mode"
+        )
+        parser.add_argument(
+            "--picker", choices=["oldest", "newest"], default="", help="parent issue picker"
+        )
+        parser.add_argument("--bundle-slug-prefix", default="", help="optional bundle slug prefix")
+        parser.add_argument("--approval-timeout-s", type=int, help="approval wait timeout seconds")
+
+    p_setup_batman = sub.add_parser(
+        "setup-batman",
+        help="configure Batman parent-repo and approval-gate settings",
+    )
+    add_batman_setup_args(p_setup_batman)
+    p_setup_batman.set_defaults(func=cmd_batman_setup)
+
+    p_batman = sub.add_parser("batman", help="manage Batman cross-repo coordination")
+    batman_sub = p_batman.add_subparsers(dest="batman_command", required=True)
+    p_batman_setup = batman_sub.add_parser(
+        "setup",
+        help="configure Batman parent-repo and approval-gate settings",
+    )
+    add_batman_setup_args(p_batman_setup)
+    p_batman_setup.set_defaults(func=cmd_batman_setup)
+
     p_auth = sub.add_parser("auth", help="inspect Claude Code and Codex auth surfaces")
     p_auth.add_argument(
         "auth_command",
@@ -1383,7 +1470,9 @@ def main(argv: list[str] | None = None) -> int:
     p_metrics = sub.add_parser("metrics", help="weekly fleet rollup of firings/cost/turns")
     p_metrics.add_argument("--since", default=None, help="window size (e.g. 7d, 48h, 2w)")
     p_metrics.add_argument("--days", type=int, help="window size in days (overrides --since)")
-    p_metrics.add_argument("--codename", action="append", help="restrict to one codename (repeatable)")
+    p_metrics.add_argument(
+        "--codename", action="append", help="restrict to one codename (repeatable)"
+    )
     p_metrics.add_argument("--by-agent", action="store_true", help="default per-agent view")
     p_metrics.add_argument("--by-day", action="store_true", help="per-day breakdown")
     p_metrics.add_argument("--json", action="store_true")
@@ -1392,9 +1481,10 @@ def main(argv: list[str] | None = None) -> int:
     p_logs = sub.add_parser("logs", help="inspect stream-JSON transcripts for one agent")
     p_logs.add_argument("codename", help="agent codename (directory under state/transcripts/)")
     p_logs.add_argument("--firing-id", dest="firing_id", help="dump this firing id only")
-    p_logs.add_argument("--last", type=int, default=None, help="how many recent firings (default 10)")
-    p_logs.add_argument("--show-tool-calls", action="store_true",
-                        help="aggregate tool/skill calls")
+    p_logs.add_argument(
+        "--last", type=int, default=None, help="how many recent firings (default 10)"
+    )
+    p_logs.add_argument("--show-tool-calls", action="store_true", help="aggregate tool/skill calls")
     p_logs.add_argument("--json", action="store_true")
     p_logs.set_defaults(func=cmd_logs)
 

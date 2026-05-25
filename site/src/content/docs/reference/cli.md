@@ -64,6 +64,21 @@ non-interactive setup when more than one repo is visible. The repo owner must
 match `GH_ORG`; shipped agents store bare repo names and build `GH_ORG/repo`
 when they fire.
 
+## `bin/alfred-batman-setup.py`
+
+Guided first setup for Batman's parent-repo and approval-gate path.
+
+```sh
+python3 bin/alfred-batman-setup.py
+python3 bin/alfred-batman-setup.py --check-only
+python3 bin/alfred-batman-setup.py --non-interactive --skip-token-setup --skip-doctor --mode 0 --parent-repo owner/specs
+```
+
+The wizard writes one managed block in `~/.alfredrc` for `BATMAN_PARENT_REPO`,
+`BATMAN_AUTO_EXECUTE`, Slack approval settings, picker, and approval timeout.
+It can call `alfred setup-token` interactively and runs `bin/doctor.sh
+--lifecycle` at the end unless skipped.
+
 ## `bin/doctor.sh`
 
 Runs configured Python agents under `ALFRED_DOCTOR=1`. On a fresh checkout
@@ -131,6 +146,8 @@ alfred codex probe
 alfred auth status
 alfred labels bootstrap <repo>|--all [--check] [--force]
 alfred labels check <repo>|--all
+alfred batman setup [--check-only]
+alfred setup-batman [--check-only]
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
 alfred metrics [--since 7d] [--codename <name>] [--by-day] [--json]
