@@ -18,6 +18,9 @@ Subcommands:
     alfred-brain.py firings [--codename C] [--status S] [--limit N]
         List firing audit rows.
 
+    alfred-brain.py files <repo> [--codename C] [--path P] [--limit N]
+        List recent files the fleet touched in a repo.
+
     alfred-brain.py forget <id>
         Delete one lesson by id. Use ``alfred-brain.py forget --before 30d``
         to GC anything older than 30 days.
@@ -67,6 +70,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"alfred-brain: db = {db_path}")
     print(f"  lessons     {s['lessons']}")
     print(f"  firings     {s['firings']}")
+    print(f"  file_touches {s['file_touches']}")
     print(f"  repo_notes  {s['repo_notes']}")
     print(f"  tags        {s['tags']}")
     print(f"  codenames   {s['codenames']}")
@@ -139,6 +143,41 @@ def cmd_firings(args: argparse.Namespace) -> int:
         print(f"{F.firing_id}  {started}  {F.codename}{repo_str}  status={F.status}{pr_str}")
         if F.summary:
             print(f"  {F.summary}")
+    return 0
+
+
+def cmd_files(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    touches = brain.list_file_touches(
+        repo=None if args.repo == "-" else args.repo,
+        codename=args.codename,
+        path=args.path,
+        limit=args.limit,
+    )
+    if args.json:
+        payload = [
+            {
+                "id": T.id,
+                "repo": T.repo,
+                "path": T.path,
+                "codename": T.codename,
+                "firing_id": T.firing_id,
+                "pr_url": T.pr_url,
+                "change_type": T.change_type,
+                "touched_at": T.touched_at.astimezone(UTC).isoformat(),
+            }
+            for T in touches
+        ]
+        print(json.dumps(payload, indent=2))
+        return 0
+    if not touches:
+        print("alfred-brain: no file touches recorded", file=sys.stderr)
+        return 0
+    for T in touches:
+        touched = T.touched_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
+        pr_str = f" {T.pr_url}" if T.pr_url else ""
+        firing_str = f" firing={T.firing_id}" if T.firing_id else ""
+        print(f"{touched}  {T.codename}/{T.repo}  {T.change_type}  {T.path}{firing_str}{pr_str}")
     return 0
 
 
@@ -232,6 +271,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_firings.add_argument("--status", choices=["ok", "blocked", "partial", "silent"])
     p_firings.add_argument("--limit", type=int, default=20)
     p_firings.set_defaults(func=cmd_firings)
+
+    p_files = sub.add_parser("files", help="list recent file touches")
+    p_files.add_argument("repo", help="repo full_name or '-' to widen")
+    p_files.add_argument("--codename")
+    p_files.add_argument("--path", help="exact repo-relative path")
+    p_files.add_argument("--limit", type=int, default=50)
+    p_files.add_argument("--json", action="store_true")
+    p_files.set_defaults(func=cmd_files)
 
     p_forget = sub.add_parser("forget", help="delete a lesson or GC old ones")
     p_forget.add_argument("id", nargs="?", help="lesson id to delete")

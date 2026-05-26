@@ -40,6 +40,7 @@ for L in lessons:
 | tags        | Many-to-many taxonomy buckets on a lesson       | `lesson_tags`       |
 | `RepoNote`  | Free-text running summary for one repository    | `repo_notes`        |
 | `FiringLog` | One firing's audit row (status, summary, cost)  | `firing_logs`       |
+| `FileTouch` | One repo file an agent touched during a firing  | `file_touches`      |
 
 `severity` on a lesson follows the fleet's Slack severity routing:
 
@@ -60,6 +61,7 @@ alfred brain lessons <codename> <repo>
 alfred brain lessons - your-org/api          # widen codename
 alfred brain reflect <codename> <repo> <body> [--tag T --severity warning]
 alfred brain firings [--codename C] [--status S]
+alfred brain files <repo> [--codename C] [--path P]
 alfred brain forget <id>
 alfred brain forget --before 30d
 alfred brain export [--out PATH]
@@ -81,6 +83,7 @@ $ alfred brain status
 alfred-brain: db = ~/.alfred/fleet-brain.db
   lessons     1
   firings     0
+  file_touches 0
   repo_notes  0
   tags        2
   codenames   1
@@ -146,12 +149,22 @@ Outbox record shapes:
 {"event": "firing_log", "firing_id": "01HZ...", "codename": "lucius",
  "repo": "your-org/api", "status": "ok", "summary": "...",
  "started_at": "...", "finished_at": "...", "cost_cents": 12,
- "pr_url": "...", "sentinel": null}
+ "pr_url": "...", "sentinel": null,
+ "files_touched": [{"path": "src/api.py", "change_type": "modified"}]}
 
 {"event": "note_repo", "repo": "your-org/api", "body": "..."}
+
+{"event": "file_touch", "repo": "your-org/api", "path": "src/api.py",
+ "codename": "lucius", "firing_id": "01HZ...", "pr_url": "...",
+ "change_type": "modified", "ts": "2026-05-23T12:00:00Z"}
 ```
 
 Unknown event values are logged and skipped. The cursor still advances so one malformed line never wedges the drain.
+
+`file_touch` records give operators a small local blast-radius index: which
+agent touched which repo-relative path, when, and optionally under which firing
+or PR. Query it with `alfred brain files your-org/api` or add `--path` when a
+file starts failing and you want the recent agent history for it.
 
 ## Privacy + GC
 
