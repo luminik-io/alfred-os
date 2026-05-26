@@ -494,6 +494,7 @@ Ship-ready: yes / no - <one sentence>
         codex_sandbox="read-only",
         codex_add_dirs=[tmp, WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
+        memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     events.emit(

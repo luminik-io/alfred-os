@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import secrets
+import signal
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -39,6 +41,15 @@ from .config import (
     dry_run_log,
     is_dry_run,
     normalize_engine,
+)
+from .memory_runtime import (
+    BEGIN_MARKER,
+    load_runtime_memory,
+    parse_memory_reflections,
+    record_firing,
+    record_reflections,
+    strip_memory_reflections,
+    with_memory_prompt,
 )
 from .paths import (
     CLAUDE_BIN,
@@ -78,6 +89,62 @@ def _subprocess_text(value: object) -> str:
     return str(value)
 
 
+def _terminate_process_group(proc: subprocess.Popen[str]) -> None:
+    """Terminate ``proc`` and its child process group after a timeout."""
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            proc.terminate()
+        else:
+            os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=5)
+    except (ProcessLookupError, subprocess.TimeoutExpired, OSError):
+        with contextlib.suppress(ProcessLookupError, OSError):
+            if os.name == "nt":
+                proc.kill()
+            else:
+                os.killpg(proc.pid, signal.SIGKILL)
+        with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+            proc.wait(timeout=5)
+
+
+def _popen_run_text(
+    cmd: list[str],
+    *,
+    cwd: str | None = None,
+    timeout: int = 60,
+    capture: bool = True,
+    env: dict[str, str] | None = None,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess:
+    """Run a subprocess in its own process group and reap it on timeout."""
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdin=subprocess.PIPE if input_text is not None else None,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+        text=True,
+        env=env,
+        start_new_session=(os.name != "nt"),
+    )
+    try:
+        stdout, stderr = proc.communicate(input=input_text, timeout=timeout)
+        return subprocess.CompletedProcess(cmd, proc.returncode, stdout or "", stderr or "")
+    except subprocess.TimeoutExpired as exc:
+        stdout = _subprocess_text(getattr(exc, "stdout", None) or getattr(exc, "output", None))
+        stderr = _subprocess_text(getattr(exc, "stderr", None))
+        _terminate_process_group(proc)
+        with contextlib.suppress(subprocess.TimeoutExpired, OSError, ValueError):
+            more_out, more_err = proc.communicate(timeout=1)
+            stdout += _subprocess_text(more_out)
+            stderr += _subprocess_text(more_err)
+        timeout_msg = f"TIMEOUT after {timeout}s"
+        stderr = f"{stderr}\n{timeout_msg}".strip() if stderr else timeout_msg
+        return subprocess.CompletedProcess(cmd, 124, stdout=stdout, stderr=stderr)
+
+
 def run(
     cmd: list[str],
     *,
@@ -102,29 +169,25 @@ def run(
         exceptions are caught and surfaced via the return code instead
         of propagating.
     """
-    import os
-
     proc_env = dict(os.environ)
     if env:
         proc_env.update(env)
     try:
-        return subprocess.run(
+        result = _popen_run_text(
             cmd,
             cwd=cwd,
             timeout=timeout,
-            check=check,
-            capture_output=capture,
-            text=True,
+            capture=capture,
             env=proc_env,
         )
-    except subprocess.TimeoutExpired as e:
-        # Defensive: Python 3.14 may return bytes for ``e.stdout`` even when
-        # ``text=True`` was passed to ``subprocess.run``. Coerce so downstream
-        # consumers that expect str (e.g. ``Path.write_text``) do not crash.
-        partial = _subprocess_text(e.stdout)
-        return subprocess.CompletedProcess(
-            cmd, 124, stdout=partial, stderr=f"TIMEOUT after {timeout}s"
-        )
+        if check and result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                cmd,
+                output=result.stdout,
+                stderr=result.stderr,
+            )
+        return result
     except Exception as e:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr=f"{type(e).__name__}: {e}")
 
@@ -235,6 +298,19 @@ def claude_invoke(
         cmd.extend(["--resume", resume_session])
 
     res = run(cmd, cwd=str(workdir), timeout=timeout, capture=True)
+
+    if res.returncode == 124:
+        return ClaudeResult(
+            success=False,
+            subtype="error_timeout",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=res.stdout or res.stderr or "",
+            raw={"returncode": 124, "timeout": timeout},
+            stop_reason="aborted",
+            error_message=f"claude_invoke exceeded {timeout}s",
+        )
 
     if not res.stdout:
         return ClaudeResult(
@@ -414,13 +490,12 @@ def codex_invoke(
     cmd.append("-")
 
     try:
-        proc = subprocess.run(
+        proc = _popen_run_text(
             cmd,
-            input=prompt,
             cwd=str(workdir),
             timeout=timeout,
-            capture_output=True,
-            text=True,
+            capture=True,
+            input_text=prompt,
         )
     except FileNotFoundError as e:
         return ClaudeResult(
@@ -434,9 +509,9 @@ def codex_invoke(
             stop_reason="error",
             error_message=f"codex CLI not found: {e}",
         )
-    except subprocess.TimeoutExpired as e:
-        stdout = _subprocess_text(e.stdout or getattr(e, "output", None))
-        stderr = _subprocess_text(e.stderr)
+    if proc.returncode == 124:
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
         with contextlib.suppress(OSError):
             paths["stdout"].write_text(stdout)
             paths["stderr"].write_text(stderr)
@@ -463,7 +538,7 @@ def codex_invoke(
                 "bypass_approvals_and_sandbox": bypass_approvals_and_sandbox,
                 "timeout": timeout,
             },
-            stop_reason="error",
+            stop_reason="aborted",
             error_message=f"codex_invoke exceeded {timeout}s",
         )
 
@@ -562,6 +637,9 @@ def invoke_agent_engine(
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
+    memory_repo: str | None = None,
+    memory_query: str | None = None,
+    memory_limit: int = 3,
 ) -> tuple[ClaudeResult, str]:
     """Invoke a prompt through Claude, Codex, or Claude-first hybrid.
 
@@ -574,10 +652,19 @@ def invoke_agent_engine(
     mode = normalize_engine(engine)
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
+    memory_provider = load_runtime_memory() if memory_repo else None
+    prompt_for_engine = with_memory_prompt(
+        prompt,
+        memory_provider,
+        codename=agent,
+        repo=memory_repo,
+        query=memory_query,
+        limit=memory_limit,
+    )
 
     def _invoke_claude() -> ClaudeResult:
         return claude_call(
-            prompt,
+            prompt_for_engine,
             workdir=workdir,
             allowed_tools=claude_allowed_tools,
             agent=agent,
@@ -589,7 +676,7 @@ def invoke_agent_engine(
 
     def _invoke_codex() -> ClaudeResult:
         return codex_call(
-            prompt,
+            prompt_for_engine,
             workdir=workdir,
             agent=agent,
             firing_id=firing_id,
@@ -602,11 +689,36 @@ def invoke_agent_engine(
         )
 
     if mode == "codex":
-        return _invoke_codex(), "codex"
+        result = _invoke_codex()
+        engine_used = "codex"
+    else:
+        result = _invoke_claude()
+        engine_used = "claude"
+        if mode == "hybrid" and result.subtype in HYBRID_FALLBACK_SUBTYPES:
+            if on_fallback:
+                on_fallback(result)
+            result = _invoke_codex()
+            engine_used = "codex-fallback"
 
-    result = _invoke_claude()
-    if mode == "hybrid" and result.subtype in HYBRID_FALLBACK_SUBTYPES:
-        if on_fallback:
-            on_fallback(result)
-        return _invoke_codex(), "codex-fallback"
-    return result, "claude"
+    if memory_provider is not None and memory_repo:
+        result_text = result.result_text or ""
+        reflections = parse_memory_reflections(result_text)
+        if BEGIN_MARKER in result_text:
+            result.result_text = strip_memory_reflections(result_text)
+        if reflections:
+            record_reflections(
+                memory_provider,
+                reflections,
+                codename=agent,
+                repo=memory_repo,
+                firing_id=firing_id,
+            )
+        record_firing(
+            memory_provider,
+            codename=agent,
+            repo=memory_repo,
+            firing_id=firing_id,
+            result=result,
+            engine_used=engine_used,
+        )
+    return result, engine_used

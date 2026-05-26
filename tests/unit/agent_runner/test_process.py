@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from types import SimpleNamespace
 
 
-def test_run_returns_124_on_timeout(fresh_agent_runner, monkeypatch):
+def test_run_returns_124_on_timeout(fresh_agent_runner):
     """run() catches TimeoutExpired and surfaces a returncode of 124."""
     ar = fresh_agent_runner
 
-    def fake(*args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=args[0], timeout=1, output="partial")
-
-    monkeypatch.setattr(ar.subprocess, "run", fake)
-    res = ar.run(["sleep", "5"], timeout=1)
+    res = ar.run([sys.executable, "-c", "import time; time.sleep(5)"], timeout=1)
     assert res.returncode == 124
     assert "TIMEOUT" in res.stderr
 
@@ -132,3 +129,33 @@ def test_claude_invoke_streaming_delegates_to_claude_invoke(fresh_agent_runner, 
     assert captured["timeout"] == 42
     assert "agent" not in captured
     assert "firing_id" not in captured
+
+
+def test_claude_invoke_timeout_returns_error_timeout(fresh_agent_runner, monkeypatch):
+    ar = fresh_agent_runner
+    from pathlib import Path
+
+    import agent_runner.process as proc
+
+    monkeypatch.setattr(
+        proc,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(
+            a[0],
+            124,
+            stdout="partial output",
+            stderr="TIMEOUT after 5s",
+        ),
+    )
+
+    out = ar.claude_invoke(
+        prompt="hi",
+        workdir=Path("/tmp"),
+        allowed_tools="Read",
+        timeout=5,
+    )
+
+    assert out.success is False
+    assert out.subtype == "error_timeout"
+    assert out.stop_reason == "aborted"
+    assert "5s" in (out.error_message or "")

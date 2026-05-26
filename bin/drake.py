@@ -293,6 +293,7 @@ def main() -> int:
         codex_bypass_approvals_and_sandbox=True,
         codex_add_dirs=[WORKSPACE_ROOT],
         on_fallback=_on_engine_fallback,
+        memory_repo=f"{GH_ORG}/workspace" if GH_ORG else "workspace",
     )
 
     spend.increment(

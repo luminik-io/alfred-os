@@ -675,11 +675,12 @@ def test_codex_invoke_rejects_unsupported_claude_controls():
 
 def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypatch):
     import agent_runner as ar
+    from agent_runner import process as process_mod
 
     root = tmp_path / "codex"
     commands = []
 
-    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+    def fake_run(cmd, *, cwd=None, timeout=None, capture=None, env=None, input_text=None):
         commands.append(cmd)
         last_path = Path(cmd[cmd.index("--output-last-message") + 1])
         last_path.parent.mkdir(parents=True, exist_ok=True)
@@ -692,7 +693,7 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
         )
 
     monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
-    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_mod, "_popen_run_text", fake_run)
 
     out = ar.codex_invoke(
         "review",
@@ -715,11 +716,12 @@ def test_codex_invoke_reads_last_message_and_writes_artifacts(tmp_path, monkeypa
 
 def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
     import agent_runner as ar
+    from agent_runner import process as process_mod
 
     root = tmp_path / "codex"
     commands = []
 
-    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+    def fake_run(cmd, *, cwd=None, timeout=None, capture=None, env=None, input_text=None):
         commands.append(cmd)
         last_path = Path(cmd[cmd.index("--output-last-message") + 1])
         last_path.parent.mkdir(parents=True, exist_ok=True)
@@ -727,7 +729,7 @@ def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
-    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_mod, "_popen_run_text", fake_run)
 
     out = ar.codex_invoke(
         "implement",
@@ -749,8 +751,9 @@ def test_codex_invoke_can_bypass_approvals_and_sandbox(tmp_path, monkeypatch):
 
 def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch):
     import agent_runner as ar
+    from agent_runner import process as process_mod
 
-    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+    def fake_run(cmd, *, cwd=None, timeout=None, capture=None, env=None, input_text=None):
         return subprocess.CompletedProcess(
             cmd,
             1,
@@ -759,7 +762,7 @@ def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch)
         )
 
     monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", tmp_path / "codex")
-    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_mod, "_popen_run_text", fake_run)
 
     out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
 
@@ -778,12 +781,13 @@ def test_codex_invoke_usage_limit_gets_rate_limit_subtype(tmp_path, monkeypatch)
 )
 def test_codex_invoke_provider_limits_get_rate_limit_subtype(tmp_path, monkeypatch, stderr):
     import agent_runner as ar
+    from agent_runner import process as process_mod
 
-    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+    def fake_run(cmd, *, cwd=None, timeout=None, capture=None, env=None, input_text=None):
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr=stderr)
 
     monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", tmp_path / "codex")
-    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_mod, "_popen_run_text", fake_run)
 
     out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
 
@@ -794,22 +798,23 @@ def test_codex_invoke_provider_limits_get_rate_limit_subtype(tmp_path, monkeypat
 
 def test_codex_invoke_timeout_preserves_partial_artifacts(tmp_path, monkeypatch):
     import agent_runner as ar
+    from agent_runner import process as process_mod
 
     root = tmp_path / "codex"
 
-    def fake_run(cmd, input=None, cwd=None, timeout=None, capture_output=None, text=None):
+    def fake_run(cmd, *, cwd=None, timeout=None, capture=None, env=None, input_text=None):
         last_path = Path(cmd[cmd.index("--output-last-message") + 1])
         last_path.parent.mkdir(parents=True, exist_ok=True)
         last_path.write_text("partial final message")
-        raise subprocess.TimeoutExpired(
+        return subprocess.CompletedProcess(
             cmd,
-            timeout or 30,
-            output=b"session id: codex-timeout-1\npartial stdout",
-            stderr=b"partial stderr",
+            124,
+            stdout="session id: codex-timeout-1\npartial stdout",
+            stderr="partial stderr",
         )
 
     monkeypatch.setattr(ar, "CODEX_TRANSCRIPTS_ROOT", root)
-    monkeypatch.setattr(ar.subprocess, "run", fake_run)
+    monkeypatch.setattr(process_mod, "_popen_run_text", fake_run)
 
     out = ar.codex_invoke("review", workdir=tmp_path, agent="reviewer", firing_id="fire-1")
 
@@ -1187,28 +1192,41 @@ def test_issue_dedup_check_blocks_on_repo_pause(monkeypatch, tmp_path):
 
 
 def test_run_helper_coerces_bytes_stdout_on_timeout(monkeypatch, tmp_path):
-    """``subprocess.TimeoutExpired.stdout`` returns bytes under Python 3.14
-    even with ``text=True`` (regression from earlier versions). The wrapper
-    must decode so downstream consumers that expect ``str`` (notably
-    ``Path.write_text``) do not crash with ``TypeError: data must be str``.
-
-    Forces the bytes-on-timeout case on every Python version by patching
-    ``subprocess.run`` to raise ``TimeoutExpired`` with a bytes ``output``,
-    rather than relying on the live interpreter's behaviour.
-    """
+    """The process wrapper decodes bytes captured from timeout exceptions."""
     for m in list(sys.modules):
         if m == "agent_runner" or m.startswith("agent_runner."):
             del sys.modules[m]
     from agent_runner import process as process_mod
 
-    def _fake_run(*_args, **_kwargs):
-        raise subprocess.TimeoutExpired(
-            cmd=["fake"], timeout=1, output=b"partial-bytes-output", stderr=b""
-        )
+    class FakePopen:
+        pid = 999999
+        returncode = None
 
-    monkeypatch.setattr(process_mod.subprocess, "run", _fake_run)
+        def __init__(self, *_args, **_kwargs):
+            self.calls = 0
 
-    res = process_mod.run(["any"], timeout=1)
+        def communicate(self, input=None, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(
+                    cmd=["fake"],
+                    timeout=1,
+                    output=b"partial-bytes-output",
+                    stderr=b"",
+                )
+            return "", ""
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            self.returncode = 124
+            return self.returncode
+
+    monkeypatch.setattr(process_mod.subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(process_mod, "_terminate_process_group", lambda proc: None)
+
+    res = process_mod._popen_run_text(["any"], timeout=1)
 
     assert res.returncode == 124
     assert isinstance(res.stdout, str)

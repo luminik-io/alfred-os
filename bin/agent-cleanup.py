@@ -38,12 +38,14 @@ from agent_runner import (
     WORKTREE_ROOT,
     PreflightFailed,
     PreflightSpec,
+    create_recovery_ref,
     doctor_mode,
     find_stale_claims,
     force_release_stale_claim,
     lock_pid_identity_status,
     preflight,
     slack_post,
+    worktree_risk_reason,
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "cleanup")
@@ -166,37 +168,7 @@ for p in Path("/tmp").glob(f"{AGENT}-*.json"):
 
 def dirty_worktree_reason(wt: Path) -> str | None:
     """Return why a stale worktree must be preserved, or None when clean."""
-    if not wt.is_dir():
-        return "not-a-directory"
-    if not (wt / ".git").exists():
-        return "not-a-git-worktree"
-    try:
-        res = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(wt),
-                "status",
-                "--porcelain=v1",
-                "--branch",
-                "--untracked-files=all",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return f"git-status-failed:{exc.__class__.__name__}"
-    if res.returncode != 0:
-        return f"git-status-failed:{res.stderr.strip()[:120] or res.returncode}"
-    lines = res.stdout.splitlines()
-    branch_line = lines[0] if lines and lines[0].startswith("## ") else ""
-    changed_lines = [line for line in lines if not line.startswith("## ")]
-    if changed_lines:
-        return "dirty"
-    if "[ahead " in branch_line:
-        return "ahead-of-upstream"
-    return None
+    return worktree_risk_reason(wt)
 
 
 # Sweep abandoned clean worktrees (>2h old). Dirty or unknown directories are
@@ -204,6 +176,7 @@ def dirty_worktree_reason(wt: Path) -> str | None:
 wt_root = WORKTREE_ROOT
 wt_removed = 0
 wt_skipped = 0
+wt_recovery_refs: list[str] = []
 if wt_root.exists():
     for wt in wt_root.iterdir():
         try:
@@ -213,7 +186,16 @@ if wt_root.exists():
             dirty_reason = dirty_worktree_reason(wt)
             if dirty_reason:
                 wt_skipped += 1
-                print(f"[cleanup] worktree skipped: {wt} ({dirty_reason})", file=sys.stderr)
+                recovery_ref = create_recovery_ref(wt)
+                if recovery_ref:
+                    wt_recovery_refs.append(f"{wt} -> {recovery_ref}")
+                    print(
+                        f"[cleanup] worktree skipped: {wt} ({dirty_reason}; "
+                        f"recovery={recovery_ref})",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(f"[cleanup] worktree skipped: {wt} ({dirty_reason})", file=sys.stderr)
                 continue
             for repo_dir in WORKSPACE.iterdir():
                 if not (repo_dir / ".git").exists():
@@ -279,6 +261,15 @@ def sweep_extra_paths(
                 dirty_reason = dirty_worktree_reason(wt)
                 if dirty_reason:
                     skipped += 1
+                    recovery_ref = create_recovery_ref(wt)
+                    if recovery_ref:
+                        wt_recovery_refs.append(f"{wt} -> {recovery_ref}")
+                        print(
+                            f"[cleanup] extra worktree skipped: {wt} ({dirty_reason}; "
+                            f"recovery={recovery_ref})",
+                            file=sys.stderr,
+                        )
+                        continue
                     print(
                         f"[cleanup] extra worktree skipped: {wt} ({dirty_reason})",
                         file=sys.stderr,
@@ -435,9 +426,15 @@ print(
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
 if wt_skipped:
+    recovery_note = ""
+    if wt_recovery_refs:
+        shown = "\n".join(f"- {line}" for line in wt_recovery_refs[:5])
+        extra = "" if len(wt_recovery_refs) <= 5 else f"\n- ... {len(wt_recovery_refs) - 5} more"
+        recovery_note = f"\nRecovery refs created:\n{shown}{extra}"
     slack_post(
         f"cleanup skipped {wt_skipped} stale worktree(s) because they were dirty "
-        "or could not be proven safe to remove.",
+        "or could not be proven safe to remove."
+        f"{recovery_note}",
         severity="warn",
     )
 

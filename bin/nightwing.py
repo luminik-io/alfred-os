@@ -630,6 +630,7 @@ def main() -> int:
             codex_sandbox=codex_sandbox_for_agent(AGENT, default="workspace-write"),
             codex_bypass_approvals_and_sandbox=True,
             on_fallback=_on_engine_fallback,
+            memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
         )
         total_turns += result.num_turns
         engine_counts[engine_used] = engine_counts.get(engine_used, 0) + 1

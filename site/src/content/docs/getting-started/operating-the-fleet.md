@@ -75,7 +75,7 @@ Every firing prints exactly one sentinel string on its way out. The scheduler lo
 | `[ALREADY-IMPLEMENTED]` | Work was already in the codebase. Issue closed. | Nothing. Often a sign Drake filed something Lucius had already solved. |
 | `[PARTIAL]` | Hit `error_max_turns` mid-work. Worktree left for the next firing. | Nothing. The next firing retries. If you see two in a row on the same issue, the issue may be too large; consider splitting it. |
 | `[BLOCKED]` | Engine could not resolve an error. Slack posts the reason at `warn`. | Read the Slack post. Common causes: missing dep, failing test the agent could not fix, repo convention the agent does not know. |
-| `[<AGENT>-LOCKED]` | A previous firing of this codename is still running. | Nothing, unless you see it for hours; then check `ps` and remove the stale lock under `$ALFRED_HOME/state/<codename>/`. |
+| `[<AGENT>-LOCKED]` | A previous firing of this codename is still running. | Nothing, unless you see it for hours; then run `alfred clear-lock <codename> --check`. Cleanup preserves dirty or ahead worktrees and creates local `recovery/*` refs when commits need a handle. |
 | `[<AGENT>-PREFLIGHT-FAILED]` | A required CLI is missing, `gh` auth expired, or a watched repo is gone. | Run `bash bin/doctor.sh`. It names the missing piece. |
 | `[<AGENT>-DOCTOR-OK]` | `ALFRED_DOCTOR=1` was set; the firing verified preflight and exited. | Nothing. This is how `doctor.sh` validates each agent. |
 | `[<AGENT>-GLOBAL-BLOCKED]` | A Claude provider limit is in effect; this firing exited silently. | Nothing for ~1 hour; the block clears automatically. Hybrid agents are unaffected and keep going via Codex. |

@@ -124,13 +124,37 @@ The default install is engineering-only. Future categories are tracked in [`ROAD
 
 ## Memory
 
-Every codename can recall what the last firings learned about a repo, file class, or issue type. The store is a single SQLite file in your `$ALFRED_HOME`; it never leaves the host. The next firing prepends the relevant lessons to its prompt context, so the fleet stops re-discovering the same conventions on every run.
+Every engine-aware codename that knows its target repo can recall what earlier
+firings learned about that repo, file class, or issue type. The store is a
+single SQLite file in your `$ALFRED_HOME`; it never leaves the host. The next
+firing prepends the relevant lessons to its prompt context, so the fleet stops
+rediscovering the same conventions on every run.
 
-- Reflect (write): an agent files a lesson via `brain.reflect(codename=..., repo=..., body=..., tags=[...])`, or via a JSON line in `$ALFRED_HOME/state/memory-outbox/<codename>.jsonl` consumed by `fleet-ingest.py`.
-- Recall (read): `brain.recall(codename, repo)` returns the most-recent-first lessons.
-- Operator: `python3 bin/alfred-brain.py status`, `lessons`, `reflect`, `firings`, `forget`, `export`.
+- Recall (read): the runner asks the configured memory provider for the latest
+  lessons before invoking the engine.
+- Reflect (write): the engine can append an optional machine-readable lesson
+  block at the end of its result. Alfred strips that block from the visible
+  result and records it locally.
+- Operator: `alfred brain status`, `lessons`, `reflect`, `firings`, `forget`,
+  `export`.
 
-Full reference: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md). The v1 storage is intentionally SQLite-only; a richer graph + vector store is on the roadmap.
+The shipping default is the in-tree `fleet_brain` SQLite provider. Operators
+who maintain a separate personal knowledge base can chain it as a fallback:
+
+```sh
+ALFRED_MEMORY_PROVIDERS=fleet,gbrain
+ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
+```
+
+The chain consults `fleet` first and falls through to `gbrain` only when the
+fleet-brain has nothing for that `(codename, repo)`. The `gbrain` provider is
+read-only and not bundled; it is the operator's optional personal knowledge
+base CLI, and the shim degrades to empty when the binary is missing.
+
+Set `ALFRED_MEMORY_PROVIDERS=null` to turn memory off. Full reference:
+[`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md)
+and
+[`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md).
 
 ## See also
 
@@ -138,18 +162,3 @@ Full reference: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/
 - [Architecture](/concepts/architecture/): the runtime boundary and the five non-negotiables.
 - [Issue claim state machine](/concepts/state-machine/): the coordination primitive every agent shares.
 - [How it works](/concepts/how-it-works/): one firing traced end to end.
-
-## Memory
-
-Each firing can start by asking the local memory layer what earlier firings learned about this codename and repo, and end by filing a new lesson for next time. The shipping default is the in-tree `fleet_brain` SQLite store under `$ALFRED_HOME`. Nothing leaves the host.
-
-The runner depends on a small `MemoryProvider` Protocol (`recall` + optional `reflect`), not on a concrete backend. Operators who maintain a separate personal knowledge base can chain it as a fallback by setting:
-
-```sh
-ALFRED_MEMORY_PROVIDERS=fleet,gbrain
-ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
-```
-
-The chain consults `fleet` first and falls through to `gbrain` only when the fleet-brain has nothing for that (codename, repo). The `gbrain` provider is read-only and **not** bundled; it is the operator's optional personal knowledge base CLI, and the shim degrades to empty when the binary is missing.
-
-The OSS default is fleet-brain only. Full details live in [`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md).

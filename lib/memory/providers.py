@@ -88,8 +88,7 @@ class FleetBrainProvider:
 class NullMemoryProvider:
     """No-op provider. ``recall`` returns ``[]``; ``reflect`` raises.
 
-    Used as the default when ``ALFRED_MEMORY_PROVIDERS`` is unset and
-    the operator has not enabled the fleet-brain. Keeps the runner
+    Used when the operator explicitly disables memory. Keeps the runner
     code branch-free.
     """
 

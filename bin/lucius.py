@@ -28,6 +28,7 @@ from agent_runner import (
     codex_invoke,
     codex_sandbox_for_agent,
     commit_trailer,
+    create_recovery_ref,
     doctor_mode,
     dry_run_log,
     engine_preflight_bins,
@@ -42,17 +43,19 @@ from agent_runner import (
     is_repo_paused,
     load_prompt,
     local_repo_dir,
-    make_worktree,
     optional_env_int,
     preflight,
+    push_current_branch,
     release_issue,
     remove_worktree,
+    reuse_or_make_worktree,
     run,
     set_dry_run,
     set_global_block,
     short,
     slack_post,
     with_lock,
+    worktree_risk_reason,
 )
 
 # Accept `--dry-run` as a CLI flag in addition to ALFRED_DRY_RUN=1. Flip the
@@ -482,6 +485,65 @@ def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str |
     )
 
 
+def _commits_ahead_count(wt: Path) -> int:
+    res = run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=str(wt), timeout=10)
+    if res.returncode != 0:
+        return 0
+    try:
+        return int((res.stdout or "0").strip() or "0")
+    except ValueError:
+        return 0
+
+
+def _worktree_status(wt: Path) -> str:
+    return run(["git", "status", "--porcelain"], cwd=str(wt), timeout=10).stdout.strip()
+
+
+def _preserve_or_remove_worktree(repo: str, wt: Path, branch: str, reason: str) -> str | None:
+    """Remove a safe worktree, or preserve risky local work and return details."""
+    risk = worktree_risk_reason(wt)
+    if not risk:
+        remove_worktree(local_repo_dir(repo), wt)
+        return None
+    recovery_ref = create_recovery_ref(wt, branch=branch)
+    ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+    return f"preserved worktree because {risk} after {reason}; branch={branch}{ref_part}"
+
+
+def _push_or_preserve(
+    repo: str,
+    issue_num: int,
+    firing_id: str,
+    wt: Path,
+    branch: str,
+    outcome: str,
+    *,
+    release_on_failure: bool = True,
+) -> bool:
+    """Push the current branch, preserving local work and releasing for retry on failure."""
+    push_res = push_current_branch(wt, branch)
+    if push_res.returncode == 0:
+        return True
+    recovery_ref = create_recovery_ref(wt, branch=branch)
+    if release_on_failure:
+        release_issue(
+            repo,
+            issue_num,
+            codename=AGENT,
+            firing_id=firing_id,
+            outcome=outcome,
+        )
+    detail = short(push_res.stderr or push_res.stdout, 300)
+    ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+    msg = (
+        f"[{AGENT.upper()}-PUSH-FAILED] preserved local work for #{issue_num}; "
+        f"branch={branch}{ref_part}. {detail}"
+    )
+    print(msg)
+    slack_post(msg, severity="warn")
+    return False
+
+
 def block_author_trust_unavailable(repo: str, issue_num: int, trust_note: str, events) -> None:
     gh_issue_comment(
         repo,
@@ -635,7 +697,9 @@ def main() -> int:
 
     # Worktree
     try:
-        wt, branch = make_worktree(local_repo_dir(repo), AGENT, str(issue_num))
+        wt, branch, reused_worktree = reuse_or_make_worktree(
+            local_repo_dir(repo), AGENT, str(issue_num)
+        )
     except RuntimeError as e:
         msg = f"[{AGENT.upper()}-ERROR] {e}"
         print(msg)
@@ -648,7 +712,7 @@ def main() -> int:
 
     # Invoke the configured LLM engine.
     events.emit("issue_picked", repo=f"{GH_ORG}/{repo}", number=issue_num, attempt=next_attempt)
-    events.emit("worktree_created", branch=branch, path=str(wt))
+    events.emit("worktree_created", branch=branch, path=str(wt), reused=reused_worktree)
     prompt = build_prompt(repo, issue, wt, branch, firing_id=events.firing_id)
     # Persist prompt + raw result for debugging
     debug_dir = Path(f"/tmp/{AGENT}-debug-{issue_num}-{int(__import__('time').time())}")
@@ -690,6 +754,7 @@ def main() -> int:
         # .git/worktrees entry, outside the checked-out worktree path.
         codex_add_dirs=[(WORKSPACE / local_repo_dir(repo) / ".git").resolve()],
         on_fallback=_on_engine_fallback,
+        memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
     )
     import json as _json
 
@@ -729,7 +794,7 @@ def main() -> int:
                 transition_to="agent:done",
             )
             run(["gh", "issue", "close", str(issue_num), "-R", f"{GH_ORG}/{repo}"], timeout=20)
-            remove_worktree(repo, wt)
+            remove_worktree(local_repo_dir(repo), wt)
             spend.set(consecutive_failures=0)
             spend.increment(successes_today=1)
             msg = f"✅ {AGENT.title()} #{issue_num} already implemented - closed without PR. turns={result.num_turns}"
@@ -739,7 +804,7 @@ def main() -> int:
 
         if commit_count == 0:
             # Salvage: check for unstaged changes and push as draft WIP PR
-            status = run(["git", "status", "--porcelain"], cwd=str(wt), timeout=10).stdout.strip()
+            status = _worktree_status(wt)
             if status:
                 # There ARE uncommitted changes - save them as a draft PR
                 add_res = run(["git", "add", "-A"], cwd=str(wt), timeout=30)
@@ -751,9 +816,11 @@ def main() -> int:
                         firing_id=events.firing_id,
                         outcome="partial-add-failed",
                     )
-                    remove_worktree(repo, wt)
+                    preserved = _preserve_or_remove_worktree(repo, wt, branch, "partial-add-failed")
                     spend.increment(failures_today=1, consecutive_failures=1)
                     msg = f"[{AGENT.upper()}-WIP-FAILED] git add failed after {engine_used} left changes. #{issue_num}: {short(add_res.stderr or add_res.stdout, 300)}"
+                    if preserved:
+                        msg = f"{msg} ({preserved})"
                     print(msg)
                     slack_post(msg, severity="warn")
                     return 0
@@ -779,26 +846,25 @@ def main() -> int:
                         firing_id=events.firing_id,
                         outcome="partial-commit-failed",
                     )
-                    remove_worktree(repo, wt)
+                    preserved = _preserve_or_remove_worktree(
+                        repo, wt, branch, "partial-commit-failed"
+                    )
                     spend.increment(failures_today=1, consecutive_failures=1)
                     msg = f"[{AGENT.upper()}-WIP-FAILED] git commit failed after {engine_used} left changes. #{issue_num}: {short(commit_res.stderr or commit_res.stdout, 300)}"
+                    if preserved:
+                        msg = f"{msg} ({preserved})"
                     print(msg)
                     slack_post(msg, severity="warn")
                     return 0
-                push_res = run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=60)
-                if push_res.returncode != 0:
-                    release_issue(
-                        repo,
-                        issue_num,
-                        codename=AGENT,
-                        firing_id=events.firing_id,
-                        outcome="partial-push-failed",
-                    )
-                    remove_worktree(repo, wt)
+                if not _push_or_preserve(
+                    repo,
+                    issue_num,
+                    events.firing_id,
+                    wt,
+                    branch,
+                    "partial-push-failed",
+                ):
                     spend.increment(failures_today=1, consecutive_failures=1)
-                    msg = f"[{AGENT.upper()}-WIP-FAILED] git push failed for salvaged {engine_used} changes. #{issue_num}: {short(push_res.stderr or push_res.stdout, 300)}"
-                    print(msg)
-                    slack_post(msg, severity="warn")
                     return 0
                 body_file = Path(f"/tmp/{AGENT}-wip-{issue_num}.md")
                 body_file.write_text(f"""## DRAFT - WIP PR auto-salvaged from incomplete {AGENT.title()} run
@@ -836,14 +902,14 @@ Generated by Alfred
                         firing_id=events.firing_id,
                         outcome="partial-pr-failed",
                     )
-                    remove_worktree(repo, wt)
+                    remove_worktree(local_repo_dir(repo), wt)
                     spend.increment(failures_today=1, consecutive_failures=1)
                     msg = f"[{AGENT.upper()}-WIP-FAILED] PR creation failed for salvaged {engine_used} changes. #{issue_num}, branch={branch}"
                     print(msg)
                     slack_post(msg, severity="warn")
                     return 0
                 release_wip_salvage(repo, issue_num, events.firing_id, pr_url)
-                remove_worktree(repo, wt)
+                remove_worktree(local_repo_dir(repo), wt)
                 spend.increment(failures_today=1, consecutive_failures=1)
                 msg = f"⚠️ {AGENT.title()} #{issue_num} salvaged as WIP draft: {pr_url or 'PR open failed'} (turns={result.num_turns})"
                 print(msg)
@@ -852,7 +918,7 @@ Generated by Alfred
             release_issue(
                 repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="no-commit"
             )
-            remove_worktree(repo, wt)
+            remove_worktree(local_repo_dir(repo), wt)
             spend.increment(failures_today=1, consecutive_failures=1)
             msg = f"[{AGENT.upper()}-NO-COMMIT] {engine_used} success but no commit AND no unstaged changes. #{issue_num}, turns={result.num_turns}. {short(result.result_text, 300)}"
             print(msg)
@@ -860,10 +926,16 @@ Generated by Alfred
             return 0
 
         # Push + open PR
-        if is_dry_run():
-            dry_run_log("git", f"would `git push -u origin {branch}` from {wt}; skipped")
-        else:
-            run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=60)
+        if not _push_or_preserve(
+            repo,
+            issue_num,
+            events.firing_id,
+            wt,
+            branch,
+            "push-failed",
+        ):
+            spend.increment(failures_today=1, consecutive_failures=1)
+            return 0
         commit_subject = run(
             ["git", "log", "-1", "--format=%s"], cwd=str(wt), timeout=10
         ).stdout.strip()
@@ -892,7 +964,7 @@ Generated by Alfred
         pr_url = gh_pr_create(
             repo, title=commit_subject, body_file=body_file, head=branch, labels=["agent:authored"]
         )
-        remove_worktree(repo, wt)
+        remove_worktree(local_repo_dir(repo), wt)
 
         if pr_url:
             # Transition state machine: agent:in-flight -> agent:pr-open.
@@ -936,22 +1008,43 @@ Generated by Alfred
         return 0
 
     if result.subtype == "error_max_turns":
-        new_commits = run(
-            ["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10
-        ).stdout.strip()
-        commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
+        commit_count = _commits_ahead_count(wt)
+        status = _worktree_status(wt)
+        risk = worktree_risk_reason(wt)
+        if commit_count:
+            _push_or_preserve(
+                repo,
+                issue_num,
+                events.firing_id,
+                wt,
+                branch,
+                "max-turns-push-failed",
+                release_on_failure=False,
+            )
         gh_issue_comment(
             repo,
             issue_num,
-            f"{AGENT.title()}: hit {result.num_turns}-turn cap with {commit_count} commits. Will retry next firing.",
+            f"{AGENT.title()}: hit {result.num_turns}-turn cap with "
+            f"{commit_count} commits and {'dirty changes' if status else 'no dirty changes'}. "
+            "Will retry next firing.",
         )
         # Release the claim so next firing can re-pick the issue.
         release_issue(
             repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="max-turns"
         )
-        remove_worktree(repo, wt)
+        preserved = None
+        if commit_count or status or risk:
+            preserved = f"preserved worktree for retry; branch={branch}"
+            if risk and not (commit_count or status):
+                recovery_ref = create_recovery_ref(wt, branch=branch)
+                ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+                preserved = f"{preserved}; risk={risk}{ref_part}"
+        else:
+            remove_worktree(local_repo_dir(repo), wt)
         # Don't count as failure (resume is the plan)
         msg = f"⏸️ {AGENT.title()} #{issue_num} hit max-turns ({result.num_turns}). Will retry."
+        if preserved:
+            msg = f"{msg} {preserved}."
         print(msg)
         slack_post(msg)
         return 0
@@ -964,7 +1057,7 @@ Generated by Alfred
             repo, issue_num, codename=AGENT, firing_id=events.firing_id, outcome="rate-limit"
         )
         spend.increment(failures_today=1, consecutive_failures=1)
-        remove_worktree(repo, wt)
+        preserved = _preserve_or_remove_worktree(repo, wt, branch, "rate-limit")
         if until:
             msg = (
                 f"{AGENT.title()} hit Claude provider rate limit ({result.subtype}). "
@@ -975,6 +1068,8 @@ Generated by Alfred
                 f"{AGENT.title()} hit provider rate limit ({result.subtype}, engine={engine_used}); "
                 "Claude agents are not globally blocked."
             )
+        if preserved:
+            msg = f"{msg} {preserved}."
         print(msg)
         slack_post(msg, severity="alert")
         return 0
@@ -988,8 +1083,10 @@ Generated by Alfred
         outcome=f"failure-{result.subtype}",
     )
     spend.increment(failures_today=1, consecutive_failures=1)
-    remove_worktree(repo, wt)
+    preserved = _preserve_or_remove_worktree(repo, wt, branch, f"failure-{result.subtype}")
     msg = f"❌ {AGENT.title()} #{issue_num}: engine={engine_used} subtype={result.subtype} turns={result.num_turns}. {short(result.result_text, 300)}"
+    if preserved:
+        msg = f"{msg} {preserved}."
     print(msg)
     slack_post(msg, severity="warn")
     return 0

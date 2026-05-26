@@ -211,9 +211,11 @@ with an SSD; a 1 GB repo takes about 2 seconds. We have not benchmarked
 beyond 5 GB. If your monorepo is much larger, see the "When NOT to use a
 monorepo" section.
 
-Lucius cleans the worktree in `remove_worktree(...)` at the end of every
-firing path. `agent-cleanup` sweeps any orphan worktrees older than four
-hours nightly, in case a firing crashed before cleanup.
+Lucius removes clean worktrees at the end of normal firing paths. If a firing
+times out or cannot push local commits, the worktree is preserved for the next
+retry and a local `recovery/*` ref is created when commits are ahead of base.
+`agent-cleanup` sweeps abandoned safe worktrees later, but skips anything dirty
+or ahead.
 
 ## Code-map awareness
 

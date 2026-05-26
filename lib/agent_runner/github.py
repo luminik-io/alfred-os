@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -366,6 +368,146 @@ def remove_worktree(local_repo: str, wt: Path) -> None:
         cwd=str(repo_path),
         timeout=30,
     )
+
+
+_RECOVERY_REF_SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_recovery_ref_fragment(value: str) -> str:
+    """Return a branch-name fragment safe for ``refs/heads/recovery/*``."""
+    safe = _RECOVERY_REF_SAFE_RE.sub("-", value.replace("/", "-")).strip(".-")
+    return (safe or "head")[:96]
+
+
+def push_current_branch(
+    wt: Path,
+    branch: str,
+    *,
+    remote: str = "origin",
+    timeout: int = 60,
+) -> subprocess.CompletedProcess:
+    """Push ``wt``'s current HEAD to ``remote/branch`` and set upstream."""
+    cmd = ["git", "push", "-u", remote, f"HEAD:{branch}"]
+    if is_dry_run():
+        dry_run_log("git", f"would `{' '.join(cmd)}` from {wt}; skipped")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    return run(cmd, cwd=str(wt), timeout=timeout)
+
+
+def _worktree_comparison_base(wt: Path, fallback: str | None) -> str | None:
+    """Return the best ref to compare ``HEAD`` against for safety checks."""
+    upstream = run(
+        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    upstream_ref = (upstream.stdout or "").strip()
+    if upstream.returncode == 0 and upstream_ref:
+        return upstream_ref
+
+    remote_head = run(
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    remote_head_ref = (remote_head.stdout or "").strip()
+    if remote_head.returncode == 0 and remote_head_ref:
+        return remote_head_ref
+
+    if fallback:
+        verify = run(["git", "rev-parse", "--verify", fallback], cwd=str(wt), timeout=10)
+        if verify.returncode == 0:
+            return fallback
+    return None
+
+
+def worktree_risk_reason(wt: Path, *, base: str = "origin/main") -> str | None:
+    """Return why ``wt`` must be preserved, or ``None`` when it is safe.
+
+    A worktree is risky when it has uncommitted changes, local commits
+    ahead of its upstream or default remote branch, or git cannot prove
+    either state. Cleanup callers should preserve such a worktree and,
+    when possible, create a recovery ref before alerting the operator.
+    """
+    if not wt.is_dir():
+        return "not-a-directory"
+    if not (wt / ".git").exists():
+        return "not-a-git-worktree"
+    status = run(
+        [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "--branch",
+            "--untracked-files=all",
+        ],
+        cwd=str(wt),
+        timeout=15,
+    )
+    if status.returncode != 0:
+        detail = (status.stderr or status.stdout or str(status.returncode)).strip()
+        return f"git-status-failed:{detail[:120]}"
+    lines = (status.stdout or "").splitlines()
+    changed_lines = [line for line in lines if not line.startswith("## ")]
+    if changed_lines:
+        return "dirty"
+    comparison_base = _worktree_comparison_base(wt, base)
+    if not comparison_base:
+        return "git-ahead-check-failed:no-comparison-base"
+    ahead = run(["git", "rev-list", "--count", f"{comparison_base}..HEAD"], cwd=str(wt), timeout=10)
+    if ahead.returncode != 0:
+        detail = (ahead.stderr or ahead.stdout or str(ahead.returncode)).strip()
+        return f"git-ahead-check-failed:{detail[:120]}"
+    try:
+        ahead_count = int((ahead.stdout or "0").strip() or "0")
+    except ValueError:
+        return "git-ahead-check-failed:unparseable-count"
+    if ahead_count > 0:
+        return "ahead-of-upstream"
+    return None
+
+
+def create_recovery_ref(
+    wt: Path,
+    *,
+    branch: str | None = None,
+    base: str = "origin/main",
+    prefix: str = "recovery",
+) -> str | None:
+    """Create a local recovery branch for ahead commits in ``wt``.
+
+    Returns the short ref name (for example
+    ``recovery/lucius-42-20260525-120000-abc1234``) or ``None`` when
+    there are no commits ahead of ``base`` or the ref could not be
+    written. The helper is deliberately local-only; pushing the ref is
+    an operator decision.
+    """
+    branch_name = branch or _worktree_branch(wt) or "head"
+    if is_dry_run():
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        ref = f"{prefix}/{_safe_recovery_ref_fragment(branch_name)}-{stamp}-dryrun"
+        dry_run_log("git", f"would create recovery ref {ref} at HEAD in {wt}")
+        return ref
+    comparison_base = _worktree_comparison_base(wt, base)
+    if not comparison_base:
+        return None
+    ahead = run(["git", "rev-list", "--count", f"{comparison_base}..HEAD"], cwd=str(wt), timeout=10)
+    if ahead.returncode != 0:
+        return None
+    try:
+        ahead_count = int((ahead.stdout or "0").strip() or "0")
+    except ValueError:
+        return None
+    if ahead_count <= 0:
+        return None
+    sha = run(["git", "rev-parse", "--short", "HEAD"], cwd=str(wt), timeout=10)
+    short_sha = (sha.stdout or "head").strip() if sha.returncode == 0 else "head"
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    ref = f"{prefix}/{_safe_recovery_ref_fragment(branch_name)}-{stamp}-{short_sha}"
+    res = run(["git", "update-ref", f"refs/heads/{ref}", "HEAD"], cwd=str(wt), timeout=15)
+    if res.returncode != 0:
+        return None
+    return ref
 
 
 def find_existing_worktree(local_repo: str, agent: str, target: str) -> Path | None:

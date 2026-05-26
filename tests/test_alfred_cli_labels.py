@@ -106,7 +106,7 @@ def test_clear_lock_clears_dead_lock(
     posts: list[str] = []
     monkeypatch.setattr(cli_module, "_lock_dir_for_agent", lambda agent: lock_dir)
     monkeypatch.setattr(cli_module, "_describe_lock", lambda lock, agent: (12345, False, None))
-    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent: [])
+    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent, **kw: [])
     monkeypatch.setattr(
         cli_module, "_clear_lock_scheduler_health", lambda agent: "scheduler: loaded"
     )
@@ -129,7 +129,7 @@ def test_clear_lock_quiet_skips_slack_post(
     lock_dir.mkdir()
     monkeypatch.setattr(cli_module, "_lock_dir_for_agent", lambda agent: lock_dir)
     monkeypatch.setattr(cli_module, "_describe_lock", lambda lock, agent: (12345, False, None))
-    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent: [])
+    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent, **kw: [])
     monkeypatch.setattr(
         cli_module, "_clear_lock_scheduler_health", lambda agent: "scheduler: loaded"
     )
@@ -150,7 +150,7 @@ def test_clear_lock_refuses_live_matching_holder(
     lock_dir.mkdir()
     monkeypatch.setattr(cli_module, "_lock_dir_for_agent", lambda agent: lock_dir)
     monkeypatch.setattr(cli_module, "_describe_lock", lambda lock, agent: (12345, True, True))
-    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent: [])
+    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent, **kw: [])
 
     assert cli_module.main(["clear-lock", "lucius"]) == 1
     assert lock_dir.exists()
@@ -164,7 +164,7 @@ def test_clear_lock_refuses_unknown_holder(
     lock_dir.mkdir()
     monkeypatch.setattr(cli_module, "_lock_dir_for_agent", lambda agent: lock_dir)
     monkeypatch.setattr(cli_module, "_describe_lock", lambda lock, agent: (None, False, None))
-    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent: [])
+    monkeypatch.setattr(cli_module, "_matching_worktree_risks", lambda agent, **kw: [])
 
     assert cli_module.main(["clear-lock", "lucius"]) == 1
     assert lock_dir.exists()
@@ -183,7 +183,7 @@ def test_clear_lock_refuses_matching_unpushed_worktree(
     monkeypatch.setattr(
         cli_module,
         "_matching_worktree_risks",
-        lambda agent: ["/tmp/wt-lucius (lucius/42, ahead of remote)"],
+        lambda agent, **kw: ["/tmp/wt-lucius (lucius/42, ahead of remote)"],
     )
 
     assert cli_module.main(["clear-lock", "lucius"]) == 1
@@ -191,3 +191,24 @@ def test_clear_lock_refuses_matching_unpushed_worktree(
     out = capsys.readouterr().out
     assert "worktree risk" in out
     assert "refusing to clear" in out
+
+
+def test_brain_command_forwards_to_brain_cli(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+
+    assert cli_module.main(["brain", "lessons", "lucius", "org/api"]) == 0
+    assert calls == [
+        [
+            sys.executable,
+            str(REPO_ROOT / "bin" / "alfred-brain.py"),
+            "lessons",
+            "lucius",
+            "org/api",
+        ]
+    ]

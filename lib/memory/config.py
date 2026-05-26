@@ -1,10 +1,11 @@
 """Env-driven configuration for the memory-provider chain.
 
-The operator opts in via two env vars:
+The operator tunes runtime memory via two env vars:
 
 * ``ALFRED_MEMORY_PROVIDERS`` -- comma-separated provider names, in
   consult order. Example: ``fleet,gbrain``. Unset (or empty) means
-  "fleet-brain only" -- the OSS default.
+  "fleet-brain only" -- the OSS default. Explicitly set it to
+  ``null`` or an empty string to disable runtime memory.
 * Per-provider env (e.g. ``ALFRED_GBRAIN_BIN``) -- see the provider's
   docstring.
 
