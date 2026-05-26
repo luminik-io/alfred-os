@@ -13,6 +13,7 @@ when launchd / systemd agents share the same brain file.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import sqlite3
@@ -36,6 +37,7 @@ from . import schema as schema_mod
 Severity = Literal["info", "warning", "blocker"]
 FiringStatus = Literal["ok", "blocked", "partial", "silent"]
 FileChangeType = Literal["added", "modified", "deleted", "renamed", "unknown"]
+MemoryCandidateStatus = Literal["candidate", "validated", "rejected", "retired"]
 
 
 @dataclass(frozen=True)
@@ -80,6 +82,43 @@ class FileTouch:
     firing_id: str | None = None
     pr_url: str | None = None
     change_type: FileChangeType = "modified"
+
+
+@dataclass(frozen=True)
+class MemoryCandidate:
+    """A proposed memory awaiting operator or policy review."""
+
+    id: str
+    codename: str
+    repo: str
+    body: str
+    tags: list[str]
+    severity: Severity
+    source: str
+    source_firing_id: str | None
+    evidence: str
+    confidence: float
+    status: MemoryCandidateStatus
+    created_at: datetime
+    reviewed_at: datetime | None = None
+    reviewed_by: str | None = None
+    review_note: str | None = None
+    promoted_lesson_id: str | None = None
+
+
+@dataclass(frozen=True)
+class FailureEvent:
+    """One normalized non-success outcome from a firing or integration."""
+
+    id: str
+    codename: str
+    subtype: str
+    summary: str
+    severity: Severity
+    created_at: datetime
+    repo: str | None = None
+    firing_id: str | None = None
+    engine: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +232,30 @@ class Store(Protocol):
         path: str | None = None,
         limit: int = 50,
     ) -> list[FileTouch]: ...
+
+    def insert_memory_candidate(self, candidate: MemoryCandidate) -> MemoryCandidate: ...
+
+    def get_memory_candidate(self, candidate_id: str) -> MemoryCandidate | None: ...
+
+    def update_memory_candidate(self, candidate: MemoryCandidate) -> MemoryCandidate: ...
+
+    def list_memory_candidates(
+        self,
+        status: MemoryCandidateStatus | None = None,
+        repo: str | None = None,
+        codename: str | None = None,
+        limit: int = 50,
+    ) -> list[MemoryCandidate]: ...
+
+    def insert_failure_event(self, event: FailureEvent) -> FailureEvent: ...
+
+    def list_failure_events(
+        self,
+        repo: str | None = None,
+        codename: str | None = None,
+        subtype: str | None = None,
+        limit: int = 50,
+    ) -> list[FailureEvent]: ...
 
     def stats(self) -> dict[str, int]: ...
 
@@ -557,6 +620,160 @@ class SQLiteStore:
                 for r in rows
             ]
 
+    # ----- memory candidates -------------------------------------------
+
+    def insert_memory_candidate(self, candidate: MemoryCandidate) -> MemoryCandidate:
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT INTO memory_candidates "
+                "(id, codename, repo, body, tags_json, severity, source, "
+                " source_firing_id, evidence, confidence, status, created_at, "
+                " reviewed_at, reviewed_by, review_note, promoted_lesson_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    candidate.id,
+                    candidate.codename,
+                    candidate.repo,
+                    candidate.body,
+                    _tags_to_json(candidate.tags),
+                    candidate.severity,
+                    candidate.source,
+                    candidate.source_firing_id,
+                    candidate.evidence,
+                    float(candidate.confidence),
+                    candidate.status,
+                    _to_iso(candidate.created_at),
+                    _to_iso(candidate.reviewed_at) if candidate.reviewed_at else None,
+                    candidate.reviewed_by,
+                    candidate.review_note,
+                    candidate.promoted_lesson_id,
+                ),
+            )
+        return candidate
+
+    def get_memory_candidate(self, candidate_id: str) -> MemoryCandidate | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, codename, repo, body, tags_json, severity, source, "
+                "source_firing_id, evidence, confidence, status, created_at, "
+                "reviewed_at, reviewed_by, review_note, promoted_lesson_id "
+                "FROM memory_candidates WHERE id = ?",
+                (candidate_id,),
+            ).fetchone()
+            return None if row is None else _row_to_memory_candidate(row)
+
+    def update_memory_candidate(self, candidate: MemoryCandidate) -> MemoryCandidate:
+        with self._connect() as conn, conn:
+            conn.execute(
+                "UPDATE memory_candidates SET "
+                "codename = ?, repo = ?, body = ?, tags_json = ?, severity = ?, "
+                "source = ?, source_firing_id = ?, evidence = ?, confidence = ?, "
+                "status = ?, created_at = ?, reviewed_at = ?, reviewed_by = ?, "
+                "review_note = ?, promoted_lesson_id = ? "
+                "WHERE id = ?",
+                (
+                    candidate.codename,
+                    candidate.repo,
+                    candidate.body,
+                    _tags_to_json(candidate.tags),
+                    candidate.severity,
+                    candidate.source,
+                    candidate.source_firing_id,
+                    candidate.evidence,
+                    float(candidate.confidence),
+                    candidate.status,
+                    _to_iso(candidate.created_at),
+                    _to_iso(candidate.reviewed_at) if candidate.reviewed_at else None,
+                    candidate.reviewed_by,
+                    candidate.review_note,
+                    candidate.promoted_lesson_id,
+                    candidate.id,
+                ),
+            )
+        return candidate
+
+    def list_memory_candidates(
+        self,
+        status: MemoryCandidateStatus | None = None,
+        repo: str | None = None,
+        codename: str | None = None,
+        limit: int = 50,
+    ) -> list[MemoryCandidate]:
+        wheres: list[str] = []
+        params: list[object] = []
+        if status:
+            wheres.append("status = ?")
+            params.append(status)
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if codename:
+            wheres.append("codename = ?")
+            params.append(codename)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT id, codename, repo, body, tags_json, severity, source, "
+            "source_firing_id, evidence, confidence, status, created_at, "
+            "reviewed_at, reviewed_by, review_note, promoted_lesson_id "
+            f"FROM memory_candidates {where_clause} "
+            "ORDER BY created_at DESC LIMIT ?"
+        )
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [_row_to_memory_candidate(r) for r in rows]
+
+    # ----- failure events ----------------------------------------------
+
+    def insert_failure_event(self, event: FailureEvent) -> FailureEvent:
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT INTO failure_events "
+                "(id, codename, repo, firing_id, subtype, summary, engine, severity, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    event.id,
+                    event.codename,
+                    event.repo,
+                    event.firing_id,
+                    event.subtype,
+                    event.summary,
+                    event.engine,
+                    event.severity,
+                    _to_iso(event.created_at),
+                ),
+            )
+        return event
+
+    def list_failure_events(
+        self,
+        repo: str | None = None,
+        codename: str | None = None,
+        subtype: str | None = None,
+        limit: int = 50,
+    ) -> list[FailureEvent]:
+        wheres: list[str] = []
+        params: list[object] = []
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if codename:
+            wheres.append("codename = ?")
+            params.append(codename)
+        if subtype:
+            wheres.append("subtype = ?")
+            params.append(subtype)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT id, codename, repo, firing_id, subtype, summary, engine, severity, created_at "
+            f"FROM failure_events {where_clause} "
+            "ORDER BY created_at DESC LIMIT ?"
+        )
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [_row_to_failure_event(r) for r in rows]
+
     # ----- stats ---------------------------------------------------------
 
     def stats(self) -> dict[str, int]:
@@ -565,6 +782,11 @@ class SQLiteStore:
             (lessons,) = conn.execute("SELECT COUNT(*) FROM lessons").fetchone()
             (firings,) = conn.execute("SELECT COUNT(*) FROM firing_logs").fetchone()
             (file_touches,) = conn.execute("SELECT COUNT(*) FROM file_touches").fetchone()
+            (memory_candidates,) = conn.execute("SELECT COUNT(*) FROM memory_candidates").fetchone()
+            (open_candidates,) = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates WHERE status = 'candidate'"
+            ).fetchone()
+            (failure_events,) = conn.execute("SELECT COUNT(*) FROM failure_events").fetchone()
             (notes,) = conn.execute("SELECT COUNT(*) FROM repo_notes").fetchone()
             (tags,) = conn.execute("SELECT COUNT(DISTINCT tag) FROM lesson_tags").fetchone()
             (codenames,) = conn.execute("SELECT COUNT(DISTINCT codename) FROM lessons").fetchone()
@@ -573,8 +795,79 @@ class SQLiteStore:
             "lessons": int(lessons),
             "firings": int(firings),
             "file_touches": int(file_touches),
+            "memory_candidates": int(memory_candidates),
+            "memory_candidates_open": int(open_candidates),
+            "failure_events": int(failure_events),
             "repo_notes": int(notes),
             "tags": int(tags),
             "codenames": int(codenames),
             "repos": int(repos),
         }
+
+
+def _tags_to_json(tags: list[str]) -> str:
+    return json.dumps(sorted({t.strip() for t in tags if t.strip()}), separators=(",", ":"))
+
+
+def _tags_from_json(raw: str) -> list[str]:
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(value, list):
+        return []
+    return sorted({str(tag).strip() for tag in value if str(tag).strip()})
+
+
+def _row_to_memory_candidate(row: tuple) -> MemoryCandidate:
+    (
+        candidate_id,
+        codename,
+        repo,
+        body,
+        tags_json,
+        severity,
+        source,
+        source_firing_id,
+        evidence,
+        confidence,
+        status,
+        created_at,
+        reviewed_at,
+        reviewed_by,
+        review_note,
+        promoted_lesson_id,
+    ) = row
+    return MemoryCandidate(
+        id=candidate_id,
+        codename=codename,
+        repo=repo,
+        body=body,
+        tags=_tags_from_json(tags_json),
+        severity=severity,
+        source=source,
+        source_firing_id=source_firing_id,
+        evidence=evidence,
+        confidence=float(confidence),
+        status=status,
+        created_at=_from_iso(created_at),
+        reviewed_at=_from_iso(reviewed_at) if reviewed_at else None,
+        reviewed_by=reviewed_by,
+        review_note=review_note,
+        promoted_lesson_id=promoted_lesson_id,
+    )
+
+
+def _row_to_failure_event(row: tuple) -> FailureEvent:
+    event_id, codename, repo, firing_id, subtype, summary, engine, severity, created_at = row
+    return FailureEvent(
+        id=event_id,
+        codename=codename,
+        repo=repo,
+        firing_id=firing_id,
+        subtype=subtype,
+        summary=summary,
+        engine=engine,
+        severity=severity,
+        created_at=_from_iso(created_at),
+    )

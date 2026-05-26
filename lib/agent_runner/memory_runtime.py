@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ _MEMORY_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 _VALID_SEVERITIES = {"info", "warning", "blocker"}
+_REFLECTION_MODES = {"direct", "candidate", "off"}
 
 
 @dataclass(frozen=True)
@@ -166,17 +168,43 @@ def record_reflections(
     """Persist parsed lessons. Returns the count written."""
     if provider is None:
         return 0
+    mode = os.environ.get("ALFRED_MEMORY_REFLECTION_MODE", "direct").strip().lower()
+    if mode not in _REFLECTION_MODES:
+        mode = "direct"
+    if mode == "off":
+        return 0
     written = 0
     for reflection in reflections:
         try:
-            provider.reflect(
-                codename=codename,
-                repo=repo,
-                body=reflection.body,
-                tags=reflection.tags,
-                severity=reflection.severity,
-                firing_id=firing_id,
-            )
+            if mode == "candidate":
+                stored = False
+                for candidate in _iter_writable_memory_providers(provider):
+                    brain = getattr(candidate, "brain", None)
+                    if brain is None or not hasattr(brain, "propose_memory"):
+                        continue
+                    brain.propose_memory(
+                        codename=codename,
+                        repo=repo,
+                        body=reflection.body,
+                        tags=reflection.tags,
+                        severity=reflection.severity,
+                        source="engine-reflection",
+                        source_firing_id=firing_id,
+                        confidence=0.6,
+                    )
+                    stored = True
+                    break
+                if not stored:
+                    raise NotImplementedError("no candidate-capable memory provider")
+            else:
+                provider.reflect(
+                    codename=codename,
+                    repo=repo,
+                    body=reflection.body,
+                    tags=reflection.tags,
+                    severity=reflection.severity,
+                    firing_id=firing_id,
+                )
             written += 1
         except NotImplementedError:
             continue
@@ -214,6 +242,19 @@ def record_firing(
                 sentinel=result.subtype,
                 finished_at=datetime.now(UTC),
             )
+            if status != "ok" and hasattr(brain, "record_failure"):
+                try:
+                    brain.record_failure(
+                        codename=codename,
+                        repo=repo,
+                        firing_id=firing_id,
+                        subtype=result.subtype,
+                        summary=summary,
+                        engine=engine_used,
+                        severity="warning",
+                    )
+                except Exception:
+                    _LOG.exception("memory runtime: record_failure failed")
             return True
         except Exception:
             _LOG.exception("memory runtime: firing_log failed")

@@ -34,6 +34,13 @@ Outbox record shape (JSON per line)::
      "codename": "lucius", "firing_id": "01HZ...", "pr_url": "...",
      "change_type": "modified", "ts": "2026-05-23T12:00:00Z"}
 
+    {"event": "memory_candidate", "codename": "lucius", "repo": "your-org/api",
+     "body": "...", "tags": ["tests"], "source": "import", "confidence": 0.8}
+
+    {"event": "failure_event", "codename": "huntress", "repo": "your-org/web",
+     "firing_id": "01HZ...", "subtype": "error_timeout", "summary": "...",
+     "engine": "claude", "severity": "warning"}
+
 Unknown ``event`` values are logged and skipped; the cursor still
 advances so a malformed line doesn't wedge the drain forever.
 """
@@ -105,6 +112,8 @@ class Counts:
     firings: int = 0
     file_touches: int = 0
     notes: int = 0
+    candidates: int = 0
+    failures: int = 0
     skipped: int = 0
     errors: int = 0
 
@@ -115,6 +124,8 @@ class Counts:
             "firings": self.firings,
             "file_touches": self.file_touches,
             "notes": self.notes,
+            "candidates": self.candidates,
+            "failures": self.failures,
             "skipped": self.skipped,
             "errors": self.errors,
         }
@@ -162,6 +173,34 @@ def dispatch(brain: FleetBrain, record: dict[str, Any]) -> list[str]:
     if event == "file_touch":
         brain.record_file_touch(**_file_touch_kwargs(record))
         return ["file_touch"]
+    if event == "memory_candidate":
+        raw_tags = record.get("tags") or []
+        tags = raw_tags if isinstance(raw_tags, list) else []
+        brain.propose_memory(
+            codename=record["codename"],
+            repo=record["repo"],
+            body=record["body"],
+            tags=tags,
+            severity=record.get("severity", "info"),
+            source=record.get("source", "outbox"),
+            source_firing_id=record.get("source_firing_id") or record.get("firing_id"),
+            evidence=record.get("evidence", ""),
+            confidence=float(record.get("confidence", 0.5)),
+            created_at=_parse_ts(record.get("ts")),
+        )
+        return ["candidate"]
+    if event == "failure_event":
+        brain.record_failure(
+            codename=record["codename"],
+            repo=record.get("repo"),
+            firing_id=record.get("firing_id"),
+            subtype=record["subtype"],
+            summary=record.get("summary", ""),
+            engine=record.get("engine"),
+            severity=record.get("severity", "warning"),
+            created_at=_parse_ts(record.get("ts")),
+        )
+        return ["failure"]
     raise ValueError(f"unknown event: {event!r}")
 
 
@@ -267,7 +306,7 @@ def drain_file(brain: FleetBrain, path: Path, cursor: dict[str, int], max_record
             continue
         try:
             kinds = dispatch(brain, record)
-        except (KeyError, ValueError) as e:
+        except (KeyError, ValueError, TypeError, AttributeError) as e:
             _LOG.warning("%s:%d dispatch failed: %s", path.name, i, e)
             cursor[path.name] = i + 1
             counts.errors += 1
@@ -281,6 +320,10 @@ def drain_file(brain: FleetBrain, path: Path, cursor: dict[str, int], max_record
                 counts.file_touches += 1
             elif kind == "note":
                 counts.notes += 1
+            elif kind == "candidate":
+                counts.candidates += 1
+            elif kind == "failure":
+                counts.failures += 1
         cursor[path.name] = i + 1
     return counts
 
@@ -305,6 +348,8 @@ def drain(brain: FleetBrain, root: Path, max_records: int, codenames: list[str] 
         totals.firings += c.firings
         totals.file_touches += c.file_touches
         totals.notes += c.notes
+        totals.candidates += c.candidates
+        totals.failures += c.failures
         totals.skipped += c.skipped
         totals.errors += c.errors
     save_cursor(cursor)

@@ -27,11 +27,14 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(
-    0,
-    (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
-)
-from agent_runner import (
+_HERE = Path(__file__).resolve().parent
+for candidate in (
+    Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) / "lib",
+    _HERE.parent / "lib",
+):
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+from agent_runner import (  # noqa: E402
     ALFRED_HOME,
     STATE_ROOT,
     WORKSPACE,

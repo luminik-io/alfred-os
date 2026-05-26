@@ -61,6 +61,8 @@ def test_cli_status_empty(
     out = capsys.readouterr().out
     assert "lessons     0" in out
     assert "file_touches 0" in out
+    assert "candidates  0 (0 open)" in out
+    assert "failures    0" in out
     assert str(brain_db) in out
 
 
@@ -104,6 +106,45 @@ def test_cli_lessons_json(
     assert len(payload) == 1
     assert payload[0]["body"] == "first lesson"
     assert payload[0]["codename"] == "lucius"
+
+
+def test_cli_candidate_promote_and_reject(
+    cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = cli_mod.main(
+        [
+            "propose",
+            "lucius",
+            "org/api",
+            "Use the API fixture factory.",
+            "--tag",
+            "tests",
+            "--confidence",
+            "0.75",
+            "--json",
+        ]
+    )
+    assert rc == 0
+    candidate = json.loads(capsys.readouterr().out)
+    assert candidate["status"] == "candidate"
+    assert candidate["confidence"] == 0.75
+
+    rc = cli_mod.main(["promote", candidate["id"], "--reviewer", "alice", "--json"])
+    assert rc == 0
+    promoted = json.loads(capsys.readouterr().out)
+    assert promoted["lesson_id"]
+
+    cli_mod.main(["candidates", "--status", "validated", "--json"])
+    candidates = json.loads(capsys.readouterr().out)
+    assert candidates[0]["promoted_lesson_id"] == promoted["lesson_id"]
+
+    cli_mod.main(["propose", "lucius", "org/api", "too vague", "--json"])
+    rejected_candidate = json.loads(capsys.readouterr().out)
+    rc = cli_mod.main(["reject", rejected_candidate["id"], "--note", "too vague", "--json"])
+    assert rc == 0
+    rejected = json.loads(capsys.readouterr().out)
+    assert rejected["status"] == "rejected"
+    assert rejected["review_note"] == "too vague"
 
 
 def test_cli_lessons_wildcard_codename(
@@ -209,6 +250,34 @@ def test_cli_files(cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFi
     assert payload[0]["codename"] == "lucius"
 
 
+def test_cli_failures_and_doctor(
+    cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    from fleet_brain import FleetBrain
+
+    brain = FleetBrain(db_path=brain_db)
+    brain.record_failure(
+        codename="huntress",
+        repo="org/web",
+        firing_id="fid",
+        subtype="error_timeout",
+        summary="browser install missing",
+        engine="claude",
+    )
+    capsys.readouterr()
+    rc = cli_mod.main(["failures", "--json"])
+    assert rc == 0
+    failures = json.loads(capsys.readouterr().out)
+    assert failures[0]["subtype"] == "error_timeout"
+
+    rc = cli_mod.main(["doctor", "--json"])
+    assert rc in (0, 1)
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] in {"ok", "warn", "fail"}
+    assert report["db"] == str(brain_db)
+
+
 # ---------------------------------------------------------------------------
 # fleet-ingest.py
 # ---------------------------------------------------------------------------
@@ -263,6 +332,26 @@ def test_ingest_drains_outbox(
                         "change_type": "added",
                     }
                 ),
+                json.dumps(
+                    {
+                        "event": "memory_candidate",
+                        "codename": "lucius",
+                        "repo": "org/api",
+                        "body": "candidate-from-outbox",
+                        "tags": ["candidate"],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "failure_event",
+                        "codename": "lucius",
+                        "repo": "org/api",
+                        "firing_id": "fid-1",
+                        "subtype": "error_timeout",
+                        "summary": "timeout",
+                        "engine": "claude",
+                    }
+                ),
                 "",  # blank line
                 "{not-json",
                 json.dumps({"event": "unknown_kind", "x": 1}),
@@ -285,6 +374,8 @@ def test_ingest_drains_outbox(
     files = brain.list_file_touches(repo="org/api", codename="lucius")
     assert {T.path for T in files} == {"src/api.py", "src/embedded.py"}
     assert brain.get_repo_note("org/api") is not None
+    assert brain.list_memory_candidates()[0].body == "candidate-from-outbox"
+    assert brain.list_failures()[0].subtype == "error_timeout"
 
     # Re-running consumes nothing new (cursor advanced).
     rc = ingest_mod.main([])

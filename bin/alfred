@@ -648,6 +648,18 @@ def cmd_brain(args: argparse.Namespace) -> int:
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-mcp.py"
+    forwarded = args.mcp_args or ["serve"]
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
+def cmd_spec(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-spec.py"
+    forwarded = args.spec_args or ["--help"]
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
 def cmd_shipped(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-shipped-summary.py"
     cmd = [sys.executable, str(script), "--period", args.period]
@@ -1500,6 +1512,14 @@ def main(argv: list[str] | None = None) -> int:
     p_brain = sub.add_parser("brain", help="inspect and seed local fleet-brain memory")
     p_brain.add_argument("brain_args", nargs=argparse.REMAINDER)
     p_brain.set_defaults(func=cmd_brain)
+
+    p_mcp = sub.add_parser("mcp", help="serve read-only Alfred MCP tools")
+    p_mcp.add_argument("mcp_args", nargs=argparse.REMAINDER)
+    p_mcp.set_defaults(func=cmd_mcp)
+
+    p_spec = sub.add_parser("spec", help="create and lint specs for agent work")
+    p_spec.add_argument("spec_args", nargs=argparse.REMAINDER)
+    p_spec.set_defaults(func=cmd_spec)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
     p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")

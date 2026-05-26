@@ -29,6 +29,13 @@ uses specs to reduce both failure modes.
 
 ## Minimal Spec Shape
 
+You can scaffold this shape with:
+
+```sh
+alfred spec new "Feature name" --repo my-org/api --out docs/specs/feature.md
+alfred spec lint docs/specs/feature.md
+```
+
 ```md
 # Feature: <name>
 

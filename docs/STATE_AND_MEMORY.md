@@ -88,9 +88,14 @@ That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/f
 
 The same brain stores recent file touches when an agent or outbox import knows
 which repo-relative paths changed. Use `alfred brain files <repo>` to inspect
-that local history.
+that local history. It also stores reviewable memory candidates and normalized
+failure events so repeated runtime problems are searchable instead of living
+only in Slack.
 
 The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, or `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider. See [Fleet brain](./FLEET_BRAIN.md) for the full design, schema, and CLI.
+
+Use `alfred brain doctor` for a read-only health check, and `alfred mcp serve`
+when a local MCP client needs read-only memory access.
 
 The brain v1 store is dependency-inverted on a `Store` Protocol, so a future PGLite or graph-backed implementation drops in without touching agent runners.
 

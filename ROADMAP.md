@@ -29,7 +29,9 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `slop-detector`: PR-time linter for AI-authored prose patterns. Used by the new `curator` codename.
 - `curator` codename: documentation hygiene agent. Runs slop-detector against docs PRs, flags drift between code and docs.
 - fleet-brain v1: a SQLite-backed memory layer. Per-fleet, optional, zero external dependency. Backs the `MemoryProvider` protocol.
+- fleet-brain reliability tools: reviewable memory candidates, failure-event history, `alfred brain doctor`, and a read-only memory MCP bridge.
 - `MemoryProvider` protocol plus `gbrain` bridge: agents can read and write to a memory store through a stable interface; the OSS reference is fleet-brain, and operators can drop in their own.
+- `alfred spec`: template and lint helpers for specs-driven development.
 - `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
 - Batman execute-after-approval: once a bundle plan is approved, Batman now executes the per-repo PR sequence rather than stopping at the plan.
 - `alfred serve` v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
@@ -54,7 +56,6 @@ Items with active work and a committed IC.
 Committed for the following quarter. Design first, then code.
 
 - **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
-- **Spec linter and template generator.** `alfred spec lint` checks a spec file for missing acceptance criteria, missing test plan, and other lifecycle gaps. `alfred spec new` scaffolds a fresh spec from a template. Effort: S. Issue: TBD.
 - **Better Batman v2.** Post-approval per-repo execution sweep with bundle-completion detection: Batman keeps watch on the PR chain it opened, reports per-repo progress, and closes the bundle once every PR has landed or been explicitly dropped. Effort: M. Issue: TBD.
 - **`alfred dry-run <codename>` for every shipped codename.** Today dry-run is wired through specific runners; widen it so every codename in the tree runs end-to-end with no side effects. Effort: S. Issue: TBD.
 - **`alfred serve` v2.** v0.4.0 shipped a read-only localhost dashboard ([`docs/SERVE.md`](docs/SERVE.md)) with three views: fleet status, recent firings, single-firing detail. v2 adds per-agent cost and success trends, full trace tree per firing, and transcript pretty-printing. Cross-platform precursor to any future native menu-bar UI. Effort: S. Issue: TBD.

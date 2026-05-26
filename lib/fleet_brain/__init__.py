@@ -22,13 +22,13 @@ Quick start::
 
 Public surface:
 
-* :class:`FleetBrain` — the main API: ``recall``, ``reflect``,
+* :class:`FleetBrain`: the main API: ``recall``, ``reflect``,
   ``firing_log``, ``record_file_touch``, ``note_repo``, ``forget``,
   ``export``.
 * :class:`fleet_brain.store.Lesson`, :class:`FiringLog`,
-  :class:`FileTouch`, :class:`RepoNote` — entity dataclasses,
+  :class:`FileTouch`, :class:`RepoNote`: entity dataclasses,
   re-exported here.
-* :class:`fleet_brain.store.Store` — the Protocol the public API
+* :class:`fleet_brain.store.Store`: the Protocol the public API
   depends on. The default impl is :class:`SQLiteStore`; a
   PGLite/AGE-backed impl drops in for v2.
 
@@ -46,17 +46,20 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from .store import (
+    FailureEvent,
     FileChangeType,
     FileTouch,
     FiringLog,
     FiringStatus,
     Lesson,
+    MemoryCandidate,
+    MemoryCandidateStatus,
     RepoNote,
     Severity,
     SQLiteStore,
@@ -66,12 +69,15 @@ from .store import (
 )
 
 __all__ = [
+    "FailureEvent",
     "FileChangeType",
     "FileTouch",
     "FiringLog",
     "FiringStatus",
     "FleetBrain",
     "Lesson",
+    "MemoryCandidate",
+    "MemoryCandidateStatus",
     "RepoNote",
     "SQLiteStore",
     "Severity",
@@ -97,13 +103,15 @@ class FleetBrain:
 
     Method names map to the operator-facing verbs:
 
-    * :meth:`reflect` — file a lesson the firing learned.
-    * :meth:`recall`  — pull lessons relevant to the next firing.
-    * :meth:`firing_log` — record one firing's audit row.
-    * :meth:`record_file_touch` — record a file changed by an agent.
-    * :meth:`note_repo` — upsert a free-text repo summary.
-    * :meth:`forget`  — remove a lesson by id.
-    * :meth:`export`  — JSON-serializable snapshot for backup or
+    * :meth:`reflect`: file a lesson the firing learned.
+    * :meth:`recall`: pull lessons relevant to the next firing.
+    * :meth:`firing_log`: record one firing's audit row.
+    * :meth:`record_file_touch`: record a file changed by an agent.
+    * :meth:`propose_memory`: stage a lesson candidate for review.
+    * :meth:`record_failure`: normalize non-success outcomes for later diagnosis.
+    * :meth:`note_repo`: upsert a free-text repo summary.
+    * :meth:`forget`: remove a lesson by id.
+    * :meth:`export`: JSON-serializable snapshot for backup or
       cross-host export (the operator must do the transfer; the
       brain never phones home).
     """
@@ -228,6 +236,143 @@ class FleetBrain:
         )
         return self.store.insert_file_touch(touch)
 
+    def propose_memory(
+        self,
+        *,
+        codename: str,
+        repo: str,
+        body: str,
+        tags: Iterable[str] | None = None,
+        severity: Severity = "info",
+        source: str = "manual",
+        source_firing_id: str | None = None,
+        evidence: str = "",
+        confidence: float = 0.5,
+        candidate_id: str | None = None,
+        created_at: datetime | None = None,
+    ) -> MemoryCandidate:
+        """Stage a lesson candidate without adding it to prompt recall.
+
+        ``reflect`` is intentionally direct for trusted operator input.
+        ``propose_memory`` is the safer path for automated summaries,
+        imported notes, and speculative engine reflections: the row is
+        visible to ``alfred brain candidates`` and can later be promoted
+        into a real lesson.
+        """
+        if not codename or not repo or not body:
+            raise ValueError("propose_memory: codename, repo, and body are required")
+        if severity not in ("info", "warning", "blocker"):
+            raise ValueError(f"propose_memory: unknown severity {severity!r}")
+        if not 0.0 <= float(confidence) <= 1.0:
+            raise ValueError("propose_memory: confidence must be between 0 and 1")
+        candidate = MemoryCandidate(
+            id=candidate_id or new_id(),
+            codename=codename.strip(),
+            repo=repo.strip(),
+            body=body.strip(),
+            tags=sorted({t.strip() for t in (tags or []) if t.strip()}),
+            severity=severity,
+            source=(source or "manual").strip(),
+            source_firing_id=source_firing_id,
+            evidence=evidence.strip(),
+            confidence=float(confidence),
+            status="candidate",
+            created_at=created_at or datetime.now(UTC),
+        )
+        return self.store.insert_memory_candidate(candidate)
+
+    def promote_memory_candidate(
+        self,
+        candidate_id: str,
+        *,
+        reviewer: str = "operator",
+        review_note: str = "",
+        reviewed_at: datetime | None = None,
+    ) -> Lesson:
+        """Promote a candidate into a trusted lesson and mark it validated."""
+        candidate = self.store.get_memory_candidate(candidate_id)
+        if candidate is None:
+            raise ValueError(f"promote_memory_candidate: unknown candidate {candidate_id!r}")
+        if candidate.status != "candidate":
+            raise ValueError(
+                f"promote_memory_candidate: candidate {candidate_id!r} is {candidate.status}"
+            )
+        lesson = self.reflect(
+            codename=candidate.codename,
+            repo=candidate.repo,
+            body=candidate.body,
+            tags=candidate.tags,
+            firing_id=candidate.source_firing_id,
+            severity=candidate.severity,
+        )
+        self.store.update_memory_candidate(
+            replace(
+                candidate,
+                status="validated",
+                reviewed_at=reviewed_at or datetime.now(UTC),
+                reviewed_by=reviewer.strip() or "operator",
+                review_note=review_note.strip() or None,
+                promoted_lesson_id=lesson.id,
+            )
+        )
+        return lesson
+
+    def reject_memory_candidate(
+        self,
+        candidate_id: str,
+        *,
+        reviewer: str = "operator",
+        review_note: str = "",
+        reviewed_at: datetime | None = None,
+    ) -> MemoryCandidate:
+        """Reject a candidate so it remains auditable but never enters recall."""
+        candidate = self.store.get_memory_candidate(candidate_id)
+        if candidate is None:
+            raise ValueError(f"reject_memory_candidate: unknown candidate {candidate_id!r}")
+        if candidate.status != "candidate":
+            raise ValueError(
+                f"reject_memory_candidate: candidate {candidate_id!r} is {candidate.status}"
+            )
+        updated = replace(
+            candidate,
+            status="rejected",
+            reviewed_at=reviewed_at or datetime.now(UTC),
+            reviewed_by=reviewer.strip() or "operator",
+            review_note=review_note.strip() or None,
+        )
+        return self.store.update_memory_candidate(updated)
+
+    def record_failure(
+        self,
+        *,
+        codename: str,
+        subtype: str,
+        summary: str,
+        repo: str | None = None,
+        firing_id: str | None = None,
+        engine: str | None = None,
+        severity: Severity = "warning",
+        event_id: str | None = None,
+        created_at: datetime | None = None,
+    ) -> FailureEvent:
+        """Persist a normalized non-success event for later diagnosis."""
+        if not codename or not subtype:
+            raise ValueError("record_failure: codename and subtype are required")
+        if severity not in ("info", "warning", "blocker"):
+            raise ValueError(f"record_failure: unknown severity {severity!r}")
+        event = FailureEvent(
+            id=event_id or new_id(),
+            codename=codename.strip(),
+            repo=repo.strip() if repo else None,
+            firing_id=firing_id,
+            subtype=subtype.strip(),
+            summary=(summary or "").strip(),
+            engine=engine.strip() if engine else None,
+            severity=severity,
+            created_at=created_at or datetime.now(UTC),
+        )
+        return self.store.insert_failure_event(event)
+
     # ----- read paths ---------------------------------------------------
 
     def recall(
@@ -281,8 +426,83 @@ class FleetBrain:
             limit=clamped,
         )
 
+    def list_memory_candidates(
+        self,
+        status: MemoryCandidateStatus | None = "candidate",
+        repo: str | None = None,
+        codename: str | None = None,
+        limit: int = 50,
+    ) -> list[MemoryCandidate]:
+        clamped = max(1, min(int(limit), 500))
+        return self.store.list_memory_candidates(
+            status=status,
+            repo=repo,
+            codename=codename,
+            limit=clamped,
+        )
+
+    def list_failures(
+        self,
+        repo: str | None = None,
+        codename: str | None = None,
+        subtype: str | None = None,
+        limit: int = 50,
+    ) -> list[FailureEvent]:
+        clamped = max(1, min(int(limit), 500))
+        return self.store.list_failure_events(
+            repo=repo,
+            codename=codename,
+            subtype=subtype,
+            limit=clamped,
+        )
+
     def stats(self) -> dict[str, int]:
         return self.store.stats()
+
+    def doctor(self) -> dict[str, Any]:
+        """Return a read-only health report for the memory store."""
+        from .schema import SCHEMA_VERSION
+
+        stats = self.stats()
+        checks: list[dict[str, str]] = []
+
+        def check(name: str, status: str, detail: str) -> None:
+            checks.append({"name": name, "status": status, "detail": detail})
+
+        check("schema", "ok", f"expected schema v{SCHEMA_VERSION}")
+        open_candidates = stats.get("memory_candidates_open", 0)
+        if open_candidates > 100:
+            check("candidate_backlog", "fail", f"{open_candidates} candidates need review")
+        elif open_candidates > 20:
+            check("candidate_backlog", "warn", f"{open_candidates} candidates need review")
+        else:
+            check("candidate_backlog", "ok", f"{open_candidates} open candidates")
+
+        recent_failures = self.list_failures(limit=20)
+        blocker_failures = [F for F in recent_failures if F.severity == "blocker"]
+        if blocker_failures:
+            check("recent_failures", "fail", f"{len(blocker_failures)} blocker failure(s)")
+        elif recent_failures:
+            check("recent_failures", "warn", f"{len(recent_failures)} recorded failure(s)")
+        else:
+            check("recent_failures", "ok", "no recorded failures")
+
+        if stats.get("lessons", 0) == 0 and open_candidates == 0:
+            check("recall_seed", "warn", "no trusted lessons or candidates yet")
+        else:
+            check("recall_seed", "ok", "memory has seed data")
+
+        status = "ok"
+        if any(c["status"] == "fail" for c in checks):
+            status = "fail"
+        elif any(c["status"] == "warn" for c in checks):
+            status = "warn"
+        return {
+            "status": status,
+            "checked_at": datetime.now(UTC).isoformat(),
+            "stats": stats,
+            "checks": checks,
+        }
 
     # ----- delete paths -------------------------------------------------
 
@@ -311,16 +531,18 @@ class FleetBrain:
         Format::
 
             {
-              "schema_version": 1,
+              "schema_version": 3,
               "exported_at": "2026-05-23T...Z",
               "lessons": [{...}, ...],
               "repo_notes": [{...}, ...],
               "firings": [{...}, ...],
-              "file_touches": [{...}, ...]
+              "file_touches": [{...}, ...],
+              "memory_candidates": [{...}, ...],
+              "failure_events": [{...}, ...]
             }
 
         ``alfred brain export`` writes this to disk. Restoring is
-        currently manual — re-run reflect/firing_log/note_repo on the
+        currently manual: re-run reflect/firing_log/note_repo on the
         target host. A round-trip ``import`` lives in the v2 roadmap.
         """
         from .schema import SCHEMA_VERSION
@@ -332,6 +554,11 @@ class FleetBrain:
             "repo_notes": [_serialize(asdict(n)) for n in self._all_repo_notes()],
             "firings": [_serialize(asdict(F)) for F in self.list_firings(limit=10_000)],
             "file_touches": [_serialize(asdict(T)) for T in self.list_file_touches(limit=10_000)],
+            "memory_candidates": [
+                _serialize(asdict(C))
+                for C in self.list_memory_candidates(status=None, limit=10_000)
+            ],
+            "failure_events": [_serialize(asdict(F)) for F in self.list_failures(limit=10_000)],
         }
 
     def _all_repo_notes(self) -> list[RepoNote]:

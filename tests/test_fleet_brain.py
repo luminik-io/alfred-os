@@ -73,6 +73,8 @@ def test_ensure_schema_is_idempotent(db_path: Path) -> None:
             "repo_notes",
             "firing_logs",
             "file_touches",
+            "memory_candidates",
+            "failure_events",
             "schema_version",
         }.issubset(names)
     finally:
@@ -83,6 +85,27 @@ def test_fleetbrain_creates_db_file(tmp_path: Path) -> None:
     db = tmp_path / "nested" / "brain.db"
     FleetBrain(db_path=db)
     assert db.exists()
+
+
+def test_memory_doctor_warns_for_v2_database_missing_additive_tables(tmp_path: Path) -> None:
+    from fleet_brain.doctor import run_memory_doctor
+
+    db = tmp_path / "v2.db"
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("CREATE TABLE schema_version (version INTEGER NOT NULL, applied_at TEXT)")
+        conn.execute("INSERT INTO schema_version (version, applied_at) VALUES (2, 'now')")
+        for table in ("lessons", "lesson_tags", "repo_notes", "firing_logs", "file_touches"):
+            conn.execute(f"CREATE TABLE {table} (id TEXT)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    report = run_memory_doctor(db)
+    assert report["status"] == "warn"
+    table_check = next(c for c in report["checks"] if c["name"] == "tables")
+    assert table_check["status"] == "warn"
+    assert "additive schema tables missing" in table_check["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +298,73 @@ def test_file_touch_validates_inputs(brain: FleetBrain) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Memory candidates
+# ---------------------------------------------------------------------------
+
+
+def test_memory_candidate_promote_and_reject(brain: FleetBrain) -> None:
+    candidate = brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Use the API fixture factory.",
+        tags=["tests", "tests"],
+        severity="warning",
+        source="engine-reflection",
+        source_firing_id="fid",
+        confidence=0.7,
+    )
+    assert len(candidate.id) == 26
+    assert candidate.tags == ["tests"]
+    assert candidate.status == "candidate"
+
+    assert brain.recall(codename="lucius", repo="org/api") == []
+    lesson = brain.promote_memory_candidate(candidate.id, reviewer="alice", review_note="true")
+    assert lesson.body == "Use the API fixture factory."
+    assert lesson.severity == "warning"
+
+    promoted = brain.list_memory_candidates(status="validated")[0]
+    assert promoted.promoted_lesson_id == lesson.id
+    assert promoted.reviewed_by == "alice"
+
+    rejected = brain.propose_memory(codename="lucius", repo="org/api", body="speculative")
+    out = brain.reject_memory_candidate(rejected.id, reviewer="bob", review_note="too vague")
+    assert out.status == "rejected"
+    assert out.review_note == "too vague"
+
+
+def test_memory_candidate_validates_inputs(brain: FleetBrain) -> None:
+    with pytest.raises(ValueError):
+        brain.propose_memory(codename="", repo="org/api", body="x")
+    with pytest.raises(ValueError):
+        brain.propose_memory(codename="lucius", repo="org/api", body="x", confidence=2)
+    with pytest.raises(ValueError):
+        brain.promote_memory_candidate("missing")
+
+
+# ---------------------------------------------------------------------------
+# Failure events
+# ---------------------------------------------------------------------------
+
+
+def test_failure_event_record_and_query(brain: FleetBrain) -> None:
+    event = brain.record_failure(
+        codename="huntress",
+        repo="org/web",
+        firing_id="fid",
+        subtype="error_timeout",
+        summary="browser install missing",
+        engine="claude",
+    )
+    assert len(event.id) == 26
+    out = brain.list_failures(repo="org/web", codename="huntress")
+    assert len(out) == 1
+    assert out[0].subtype == "error_timeout"
+    assert out[0].engine == "claude"
+
+    assert brain.list_failures(subtype="different") == []
+
+
+# ---------------------------------------------------------------------------
 # Repo note
 # ---------------------------------------------------------------------------
 
@@ -298,6 +388,8 @@ def test_export_round_trip_shape(brain: FleetBrain) -> None:
     brain.note_repo(repo="org/api", body="rollup")
     brain.firing_log(firing_id="fid", codename="lucius", status="ok", summary="done")
     brain.record_file_touch(repo="org/api", path="src/api.py", codename="lucius")
+    brain.propose_memory(codename="lucius", repo="org/api", body="candidate")
+    brain.record_failure(codename="lucius", subtype="error_timeout", summary="timeout")
     payload = brain.export()
     # Must be JSON-roundtrippable.
     s = json.dumps(payload, default=str)
@@ -310,6 +402,8 @@ def test_export_round_trip_shape(brain: FleetBrain) -> None:
     assert len(data["firings"]) == 1
     assert len(data["file_touches"]) == 1
     assert data["file_touches"][0]["path"] == "src/api.py"
+    assert len(data["memory_candidates"]) == 1
+    assert len(data["failure_events"]) == 1
 
 
 def test_forget_by_id(brain: FleetBrain) -> None:
@@ -421,8 +515,37 @@ class FakeStore:
     def list_file_touches(self, repo=None, codename=None, path=None, limit=50):  # type: ignore[no-untyped-def]
         return []
 
+    def insert_memory_candidate(self, candidate):  # type: ignore[no-untyped-def]
+        return candidate
+
+    def get_memory_candidate(self, candidate_id):  # type: ignore[no-untyped-def]
+        return None
+
+    def update_memory_candidate(self, candidate):  # type: ignore[no-untyped-def]
+        return candidate
+
+    def list_memory_candidates(self, status=None, repo=None, codename=None, limit=50):  # type: ignore[no-untyped-def]
+        return []
+
+    def insert_failure_event(self, event):  # type: ignore[no-untyped-def]
+        return event
+
+    def list_failure_events(self, repo=None, codename=None, subtype=None, limit=50):  # type: ignore[no-untyped-def]
+        return []
+
     def stats(self):  # type: ignore[no-untyped-def]
-        return {"lessons": len(self.lessons), "file_touches": 0}
+        return {
+            "lessons": len(self.lessons),
+            "firings": 0,
+            "file_touches": 0,
+            "memory_candidates": 0,
+            "memory_candidates_open": 0,
+            "failure_events": 0,
+            "repo_notes": 0,
+            "tags": 0,
+            "codenames": 0,
+            "repos": 0,
+        }
 
 
 def test_store_protocol_injection() -> None:
@@ -484,10 +607,15 @@ def test_stats_reports_counts(brain: FleetBrain) -> None:
     brain.firing_log(firing_id="fid", codename="lucius", status="ok")
     brain.note_repo(repo="org/api", body="rollup")
     brain.record_file_touch(repo="org/api", path="src/api.py", codename="lucius")
+    brain.propose_memory(codename="lucius", repo="org/api", body="candidate")
+    brain.record_failure(codename="lucius", subtype="error_timeout", summary="timeout")
     s = brain.stats()
     assert s["lessons"] == 2
     assert s["firings"] == 1
     assert s["file_touches"] == 1
+    assert s["memory_candidates"] == 1
+    assert s["memory_candidates_open"] == 1
+    assert s["failure_events"] == 1
     assert s["repo_notes"] == 1
     assert s["tags"] == 2
     assert s["codenames"] == 2

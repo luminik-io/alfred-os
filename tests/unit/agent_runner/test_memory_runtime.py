@@ -40,9 +40,13 @@ def test_invoke_agent_engine_prepends_memory_and_records_reflection(monkeypatch)
     class Brain:
         def __init__(self) -> None:
             self.firings = []
+            self.failures = []
 
         def firing_log(self, **kwargs):
             self.firings.append(kwargs)
+
+        def record_failure(self, **kwargs):
+            self.failures.append(kwargs)
 
     class Provider:
         name = "fleet"
@@ -100,6 +104,82 @@ def test_invoke_agent_engine_prepends_memory_and_records_reflection(monkeypatch)
     assert provider.reflections[0]["body"] == "Use the API fixture factory."
     assert provider.reflections[0]["repo"] == "org/api"
     assert provider.brain.firings[0]["firing_id"] == "fid-1"
+
+
+def test_record_reflections_can_stage_candidates(monkeypatch) -> None:
+    from agent_runner import memory_runtime as runtime
+
+    class Brain:
+        def __init__(self) -> None:
+            self.candidates = []
+
+        def propose_memory(self, **kwargs):
+            self.candidates.append(kwargs)
+
+    class Provider:
+        name = "fleet"
+
+        def __init__(self) -> None:
+            self.brain = Brain()
+
+    provider = Provider()
+    monkeypatch.setenv("ALFRED_MEMORY_REFLECTION_MODE", "candidate")
+    written = runtime.record_reflections(
+        provider,
+        [runtime.MemoryReflection(body="Use fixture factory.", tags=("tests",))],
+        codename="lucius",
+        repo="org/api",
+        firing_id="fid-1",
+    )
+    assert written == 1
+    assert provider.brain.candidates[0]["source"] == "engine-reflection"
+    assert provider.brain.candidates[0]["source_firing_id"] == "fid-1"
+
+
+def test_record_firing_records_failure_memory() -> None:
+    from agent_runner import memory_runtime as runtime
+    from agent_runner.result import ClaudeResult
+
+    class Brain:
+        def __init__(self) -> None:
+            self.firings = []
+            self.failures = []
+
+        def firing_log(self, **kwargs):
+            self.firings.append(kwargs)
+
+        def record_failure(self, **kwargs):
+            self.failures.append(kwargs)
+
+    class Provider:
+        name = "fleet"
+
+        def __init__(self) -> None:
+            self.brain = Brain()
+
+    provider = Provider()
+    result = ClaudeResult(
+        success=False,
+        subtype="error_timeout",
+        num_turns=0,
+        cost_usd=0,
+        session_id=None,
+        result_text="",
+        raw={},
+        stop_reason=None,
+        error_message="timeout",
+    )
+    assert runtime.record_firing(
+        provider,
+        codename="huntress",
+        repo="org/web",
+        firing_id="fid-2",
+        result=result,
+        engine_used="claude",
+    )
+    assert provider.brain.firings[0]["status"] == "partial"
+    assert provider.brain.failures[0]["subtype"] == "error_timeout"
+    assert provider.brain.failures[0]["engine"] == "claude"
 
 
 def test_invoke_agent_engine_strips_malformed_memory_block(monkeypatch) -> None:

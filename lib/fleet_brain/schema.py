@@ -23,6 +23,10 @@ The schema deliberately mirrors the entity model documented in
   cost, sentinel for crash-debug. Audit trail.
 * ``file_touches`` — one row per repo file an agent touched, optionally
   linked to a firing and PR.
+* ``memory_candidates`` — reviewable lessons proposed by an agent or
+  operator before they become prompt context.
+* ``failure_events`` — normalized non-success outcomes, so repeated
+  runner failures become searchable instead of Slack-only noise.
 * ``lesson_tags`` — many-to-many over ``lessons`` so a lesson can
   be filed under several taxonomy buckets without splitting rows.
 * ``schema_version`` — single-row record of the applied schema
@@ -34,7 +38,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 2
+SCHEMA_VERSION: Final[int] = 3
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -101,6 +105,43 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         CHECK (change_type IN ('added', 'modified', 'deleted', 'renamed', 'unknown'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS memory_candidates (
+        id                 TEXT    NOT NULL PRIMARY KEY,
+        codename           TEXT    NOT NULL,
+        repo               TEXT    NOT NULL,
+        body               TEXT    NOT NULL,
+        tags_json          TEXT    NOT NULL DEFAULT '[]',
+        severity           TEXT    NOT NULL DEFAULT 'info',
+        source             TEXT    NOT NULL DEFAULT 'manual',
+        source_firing_id   TEXT,
+        evidence           TEXT    NOT NULL DEFAULT '',
+        confidence         REAL    NOT NULL DEFAULT 0.5,
+        status             TEXT    NOT NULL DEFAULT 'candidate',
+        created_at         TEXT    NOT NULL,
+        reviewed_at        TEXT,
+        reviewed_by        TEXT,
+        review_note        TEXT,
+        promoted_lesson_id TEXT,
+        CHECK (severity IN ('info', 'warning', 'blocker')),
+        CHECK (confidence >= 0.0 AND confidence <= 1.0),
+        CHECK (status IN ('candidate', 'validated', 'rejected', 'retired'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS failure_events (
+        id         TEXT    NOT NULL PRIMARY KEY,
+        codename   TEXT    NOT NULL,
+        repo       TEXT,
+        firing_id  TEXT,
+        subtype    TEXT    NOT NULL,
+        summary    TEXT    NOT NULL DEFAULT '',
+        engine     TEXT,
+        severity   TEXT    NOT NULL DEFAULT 'warning',
+        created_at TEXT    NOT NULL,
+        CHECK (severity IN ('info', 'warning', 'blocker'))
+    )
+    """,
     # Indexes — recall is read-heavy on (codename, repo) and recent-first,
     # so we cover that path explicitly.
     """
@@ -134,6 +175,34 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
     """
     CREATE INDEX IF NOT EXISTS file_touches_firing_idx
         ON file_touches (firing_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS memory_candidates_status_created_idx
+        ON memory_candidates (status, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS memory_candidates_repo_status_idx
+        ON memory_candidates (repo, status, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS memory_candidates_codename_status_idx
+        ON memory_candidates (codename, status, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS failure_events_codename_created_idx
+        ON failure_events (codename, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS failure_events_repo_created_idx
+        ON failure_events (repo, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS failure_events_subtype_created_idx
+        ON failure_events (subtype, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS failure_events_firing_idx
+        ON failure_events (firing_id)
     """,
 )
 

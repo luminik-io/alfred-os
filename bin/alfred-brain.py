@@ -15,6 +15,24 @@ Subcommands:
         Manually file a lesson from the shell. Useful for seeding the
         brain with operator knowledge before any agent has fired.
 
+    alfred-brain.py propose <codename> <repo> <body>
+        Stage a memory candidate for later review.
+
+    alfred-brain.py candidates [--status candidate|validated|rejected|retired|all]
+        List staged memory candidates.
+
+    alfred-brain.py promote <candidate-id>
+        Turn a reviewed candidate into a trusted lesson.
+
+    alfred-brain.py reject <candidate-id>
+        Mark a staged candidate as rejected.
+
+    alfred-brain.py failures
+        List normalized non-success events.
+
+    alfred-brain.py doctor
+        Read-only health summary for the memory layer.
+
     alfred-brain.py firings [--codename C] [--status S] [--limit N]
         List firing audit rows.
 
@@ -56,6 +74,7 @@ for candidate in (
         sys.path.insert(0, str(candidate))
 
 from fleet_brain import FleetBrain, default_db_path  # noqa: E402
+from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 
 
 def _build_brain(args: argparse.Namespace) -> FleetBrain:
@@ -71,6 +90,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"  lessons     {s['lessons']}")
     print(f"  firings     {s['firings']}")
     print(f"  file_touches {s['file_touches']}")
+    print(f"  candidates  {s['memory_candidates']} ({s['memory_candidates_open']} open)")
+    print(f"  failures    {s['failure_events']}")
     print(f"  repo_notes  {s['repo_notes']}")
     print(f"  tags        {s['tags']}")
     print(f"  codenames   {s['codenames']}")
@@ -114,6 +135,19 @@ def cmd_lessons(args: argparse.Namespace) -> int:
 def cmd_reflect(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     tags = [t.strip() for t in (args.tag or [])]
+    if args.candidate:
+        candidate = brain.propose_memory(
+            codename=args.codename,
+            repo=args.repo,
+            body=args.body,
+            tags=tags,
+            severity=args.severity,
+            source="manual",
+            source_firing_id=args.firing_id,
+            confidence=args.confidence,
+        )
+        print(f"alfred-brain: proposed candidate {candidate.id}")
+        return 0
     lesson = brain.reflect(
         codename=args.codename,
         repo=args.repo,
@@ -123,6 +157,102 @@ def cmd_reflect(args: argparse.Namespace) -> int:
         firing_id=args.firing_id,
     )
     print(f"alfred-brain: reflected lesson {lesson.id}")
+    return 0
+
+
+def cmd_propose(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    candidate = brain.propose_memory(
+        codename=args.codename,
+        repo=args.repo,
+        body=args.body,
+        tags=[t.strip() for t in (args.tag or [])],
+        severity=args.severity,
+        source=args.source,
+        source_firing_id=args.firing_id,
+        evidence=args.evidence or "",
+        confidence=args.confidence,
+    )
+    if args.json:
+        print(json.dumps(_candidate_to_dict(candidate), indent=2))
+    else:
+        print(f"alfred-brain: proposed candidate {candidate.id}")
+    return 0
+
+
+def cmd_candidates(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    status = None if args.status == "all" else args.status
+    candidates = brain.list_memory_candidates(
+        status=status,
+        repo=args.repo,
+        codename=args.codename,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps([_candidate_to_dict(C) for C in candidates], indent=2))
+        return 0
+    if not candidates:
+        print("alfred-brain: no memory candidates match", file=sys.stderr)
+        return 0
+    for C in candidates:
+        created = C.created_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
+        tags = (" [" + ",".join(C.tags) + "]") if C.tags else ""
+        reviewed = f" reviewed_by={C.reviewed_by}" if C.reviewed_by else ""
+        print(
+            f"{C.id}  {created}  {C.status}  {C.codename}/{C.repo} "
+            f"severity={C.severity} confidence={C.confidence:.2f}{reviewed}"
+        )
+        print(f"  source={C.source}{tags}")
+        print(f"  {C.body}")
+        if C.evidence:
+            print(f"  evidence: {C.evidence}")
+    return 0
+
+
+def cmd_promote(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    try:
+        lesson = brain.promote_memory_candidate(
+            args.id,
+            reviewer=args.reviewer,
+            review_note=args.note or "",
+        )
+    except ValueError as exc:
+        print(f"alfred-brain: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "candidate_id": args.id,
+                    "lesson_id": lesson.id,
+                    "codename": lesson.codename,
+                    "repo": lesson.repo,
+                },
+                indent=2,
+            )
+        )
+    else:
+        print(f"alfred-brain: promoted {args.id} -> lesson {lesson.id}")
+    return 0
+
+
+def cmd_reject(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    try:
+        candidate = brain.reject_memory_candidate(
+            args.id,
+            reviewer=args.reviewer,
+            review_note=args.note or "",
+        )
+    except ValueError as exc:
+        print(f"alfred-brain: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(_candidate_to_dict(candidate), indent=2))
+    else:
+        print(f"alfred-brain: rejected {args.id}")
     return 0
 
 
@@ -181,6 +311,45 @@ def cmd_files(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_failures(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    failures = brain.list_failures(
+        repo=args.repo,
+        codename=args.codename,
+        subtype=args.subtype,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps([_failure_to_dict(F) for F in failures], indent=2))
+        return 0
+    if not failures:
+        print("alfred-brain: no failures recorded", file=sys.stderr)
+        return 0
+    for F in failures:
+        created = F.created_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
+        repo = f" {F.repo}" if F.repo else ""
+        engine = f" engine={F.engine}" if F.engine else ""
+        firing = f" firing={F.firing_id}" if F.firing_id else ""
+        print(
+            f"{F.id}  {created}  {F.codename}{repo}  subtype={F.subtype} "
+            f"severity={F.severity}{engine}{firing}"
+        )
+        if F.summary:
+            print(f"  {F.summary}")
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    report = run_memory_doctor(args.db or os.environ.get("ALFRED_FLEET_BRAIN_DB"))
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"alfred-brain doctor: {report['status']}")
+        for check in report["checks"]:
+            print(f"  {check['status']:4} {check['name']}: {check['detail']}")
+    return 1 if report["status"] == "fail" else 0
+
+
 def cmd_forget(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     if args.before:
@@ -234,6 +403,43 @@ def _parse_duration_days(value: str) -> int | None:
     return None
 
 
+def _candidate_to_dict(candidate) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    return {
+        "id": candidate.id,
+        "codename": candidate.codename,
+        "repo": candidate.repo,
+        "body": candidate.body,
+        "tags": candidate.tags,
+        "severity": candidate.severity,
+        "source": candidate.source,
+        "source_firing_id": candidate.source_firing_id,
+        "evidence": candidate.evidence,
+        "confidence": candidate.confidence,
+        "status": candidate.status,
+        "created_at": candidate.created_at.astimezone(UTC).isoformat(),
+        "reviewed_at": candidate.reviewed_at.astimezone(UTC).isoformat()
+        if candidate.reviewed_at
+        else None,
+        "reviewed_by": candidate.reviewed_by,
+        "review_note": candidate.review_note,
+        "promoted_lesson_id": candidate.promoted_lesson_id,
+    }
+
+
+def _failure_to_dict(event) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    return {
+        "id": event.id,
+        "codename": event.codename,
+        "repo": event.repo,
+        "firing_id": event.firing_id,
+        "subtype": event.subtype,
+        "summary": event.summary,
+        "engine": event.engine,
+        "severity": event.severity,
+        "created_at": event.created_at.astimezone(UTC).isoformat(),
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="alfred-brain",
@@ -264,7 +470,52 @@ def build_parser() -> argparse.ArgumentParser:
     p_reflect.add_argument("--tag", action="append", help="tag (repeatable)")
     p_reflect.add_argument("--severity", choices=["info", "warning", "blocker"], default="info")
     p_reflect.add_argument("--firing-id", dest="firing_id")
+    p_reflect.add_argument(
+        "--candidate",
+        action="store_true",
+        help="stage as a reviewable candidate instead of a trusted lesson",
+    )
+    p_reflect.add_argument("--confidence", type=float, default=0.5)
     p_reflect.set_defaults(func=cmd_reflect)
+
+    p_propose = sub.add_parser("propose", help="stage a reviewable memory candidate")
+    p_propose.add_argument("codename")
+    p_propose.add_argument("repo")
+    p_propose.add_argument("body")
+    p_propose.add_argument("--tag", action="append", help="tag (repeatable)")
+    p_propose.add_argument("--severity", choices=["info", "warning", "blocker"], default="info")
+    p_propose.add_argument("--source", default="manual")
+    p_propose.add_argument("--firing-id", dest="firing_id")
+    p_propose.add_argument("--evidence")
+    p_propose.add_argument("--confidence", type=float, default=0.5)
+    p_propose.add_argument("--json", action="store_true")
+    p_propose.set_defaults(func=cmd_propose)
+
+    p_candidates = sub.add_parser("candidates", help="list reviewable memory candidates")
+    p_candidates.add_argument(
+        "--status",
+        choices=["candidate", "validated", "rejected", "retired", "all"],
+        default="candidate",
+    )
+    p_candidates.add_argument("--repo")
+    p_candidates.add_argument("--codename")
+    p_candidates.add_argument("--limit", type=int, default=50)
+    p_candidates.add_argument("--json", action="store_true")
+    p_candidates.set_defaults(func=cmd_candidates)
+
+    p_promote = sub.add_parser("promote", aliases=["approve"], help="promote a candidate")
+    p_promote.add_argument("id")
+    p_promote.add_argument("--reviewer", default="operator")
+    p_promote.add_argument("--note")
+    p_promote.add_argument("--json", action="store_true")
+    p_promote.set_defaults(func=cmd_promote)
+
+    p_reject = sub.add_parser("reject", help="reject a candidate")
+    p_reject.add_argument("id")
+    p_reject.add_argument("--reviewer", default="operator")
+    p_reject.add_argument("--note")
+    p_reject.add_argument("--json", action="store_true")
+    p_reject.set_defaults(func=cmd_reject)
 
     p_firings = sub.add_parser("firings", help="list firing audit rows")
     p_firings.add_argument("--codename")
@@ -279,6 +530,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_files.add_argument("--limit", type=int, default=50)
     p_files.add_argument("--json", action="store_true")
     p_files.set_defaults(func=cmd_files)
+
+    p_failures = sub.add_parser("failures", help="list normalized non-success events")
+    p_failures.add_argument("--repo")
+    p_failures.add_argument("--codename")
+    p_failures.add_argument("--subtype")
+    p_failures.add_argument("--limit", type=int, default=50)
+    p_failures.add_argument("--json", action="store_true")
+    p_failures.set_defaults(func=cmd_failures)
+
+    p_doctor = sub.add_parser("doctor", help="memory-layer health checks")
+    p_doctor.add_argument("--json", action="store_true")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_forget = sub.add_parser("forget", help="delete a lesson or GC old ones")
     p_forget.add_argument("id", nargs="?", help="lesson id to delete")
