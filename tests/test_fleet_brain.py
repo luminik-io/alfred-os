@@ -31,7 +31,7 @@ import pytest
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
-from fleet_brain import FleetBrain, Lesson, SQLiteStore  # noqa: E402
+from fleet_brain import FileTouch, FleetBrain, Lesson, SQLiteStore  # noqa: E402
 from fleet_brain.schema import (  # noqa: E402
     SCHEMA_VERSION,
     applied_version,
@@ -72,6 +72,7 @@ def test_ensure_schema_is_idempotent(db_path: Path) -> None:
             "lesson_tags",
             "repo_notes",
             "firing_logs",
+            "file_touches",
             "schema_version",
         }.issubset(names)
     finally:
@@ -233,6 +234,47 @@ def test_firing_log_upserts_on_firing_id(brain: FleetBrain) -> None:
 
 
 # ---------------------------------------------------------------------------
+# File touches
+# ---------------------------------------------------------------------------
+
+
+def test_file_touch_record_and_query(brain: FleetBrain) -> None:
+    touched = brain.record_file_touch(
+        repo="org/api",
+        path="src/api.py",
+        codename="lucius",
+        firing_id="fid",
+        pr_url="https://github.com/org/api/pull/42",
+        change_type="modified",
+    )
+    assert isinstance(touched, FileTouch)
+    assert len(touched.id) == 26
+
+    out = brain.list_file_touches(repo="org/api", codename="lucius")
+    assert len(out) == 1
+    assert out[0].path == "src/api.py"
+    assert out[0].firing_id == "fid"
+    assert out[0].pr_url.endswith("/42")
+
+    assert brain.list_file_touches(repo="org/api", path="src/api.py")[0].id == touched.id
+    assert brain.list_file_touches(repo="org/api", path="missing.py") == []
+
+
+def test_file_touch_validates_inputs(brain: FleetBrain) -> None:
+    with pytest.raises(ValueError):
+        brain.record_file_touch(repo="", path="src/api.py", codename="lucius")
+    with pytest.raises(ValueError):
+        brain.record_file_touch(repo="org/api", path="", codename="lucius")
+    with pytest.raises(ValueError):
+        brain.record_file_touch(
+            repo="org/api",
+            path="src/api.py",
+            codename="lucius",
+            change_type="bad",  # type: ignore[arg-type]
+        )
+
+
+# ---------------------------------------------------------------------------
 # Repo note
 # ---------------------------------------------------------------------------
 
@@ -255,6 +297,7 @@ def test_export_round_trip_shape(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="alpha", tags=["x"])
     brain.note_repo(repo="org/api", body="rollup")
     brain.firing_log(firing_id="fid", codename="lucius", status="ok", summary="done")
+    brain.record_file_touch(repo="org/api", path="src/api.py", codename="lucius")
     payload = brain.export()
     # Must be JSON-roundtrippable.
     s = json.dumps(payload, default=str)
@@ -265,6 +308,8 @@ def test_export_round_trip_shape(brain: FleetBrain) -> None:
     assert len(data["repo_notes"]) == 1
     assert data["repo_notes"][0]["body"] == "rollup"
     assert len(data["firings"]) == 1
+    assert len(data["file_touches"]) == 1
+    assert data["file_touches"][0]["path"] == "src/api.py"
 
 
 def test_forget_by_id(brain: FleetBrain) -> None:
@@ -370,8 +415,14 @@ class FakeStore:
     def list_firing_logs(self, codename=None, status=None, limit=50):  # type: ignore[no-untyped-def]
         return []
 
+    def insert_file_touch(self, touch):  # type: ignore[no-untyped-def]
+        return touch
+
+    def list_file_touches(self, repo=None, codename=None, path=None, limit=50):  # type: ignore[no-untyped-def]
+        return []
+
     def stats(self):  # type: ignore[no-untyped-def]
-        return {"lessons": len(self.lessons)}
+        return {"lessons": len(self.lessons), "file_touches": 0}
 
 
 def test_store_protocol_injection() -> None:
@@ -432,9 +483,11 @@ def test_stats_reports_counts(brain: FleetBrain) -> None:
     brain.reflect(codename="drake", repo="org/web", body="y", tags=["b"])
     brain.firing_log(firing_id="fid", codename="lucius", status="ok")
     brain.note_repo(repo="org/api", body="rollup")
+    brain.record_file_touch(repo="org/api", path="src/api.py", codename="lucius")
     s = brain.stats()
     assert s["lessons"] == 2
     assert s["firings"] == 1
+    assert s["file_touches"] == 1
     assert s["repo_notes"] == 1
     assert s["tags"] == 2
     assert s["codenames"] == 2

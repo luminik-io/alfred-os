@@ -136,7 +136,12 @@ rediscovering the same conventions on every run.
   block at the end of its result. Alfred strips that block from the visible
   result and records it locally.
 - Operator: `alfred brain status`, `lessons`, `reflect`, `firings`, `forget`,
-  `export`.
+  `files`, `export`.
+
+The brain also records file touches when a runner or outbox import knows the
+repo-relative paths changed by a firing or PR. `alfred brain files your-org/api`
+answers the practical question "what did the fleet touch here recently?"
+without requiring a hosted dashboard or external index.
 
 The shipping default is the in-tree `fleet_brain` SQLite provider. Operators
 who maintain a separate personal knowledge base can chain it as a fallback:

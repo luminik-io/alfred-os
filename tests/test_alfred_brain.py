@@ -60,6 +60,7 @@ def test_cli_status_empty(
     assert rc == 0
     out = capsys.readouterr().out
     assert "lessons     0" in out
+    assert "file_touches 0" in out
     assert str(brain_db) in out
 
 
@@ -188,6 +189,26 @@ def test_cli_firings(
     assert "status=ok" in out
 
 
+def test_cli_files(cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    from fleet_brain import FleetBrain
+
+    brain = FleetBrain(db_path=brain_db)
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/api.py",
+        codename="lucius",
+        firing_id="fid",
+        pr_url="https://github.com/org/api/pull/42",
+    )
+    capsys.readouterr()
+    rc = cli_mod.main(["files", "org/api", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload[0]["path"] == "src/api.py"
+    assert payload[0]["codename"] == "lucius"
+
+
 # ---------------------------------------------------------------------------
 # fleet-ingest.py
 # ---------------------------------------------------------------------------
@@ -221,6 +242,8 @@ def test_ingest_drains_outbox(
                         "codename": "lucius",
                         "status": "ok",
                         "summary": "done",
+                        "repo": "org/api",
+                        "files_touched": [{"path": "src/embedded.py", "change_type": "modified"}],
                     }
                 ),
                 json.dumps(
@@ -228,6 +251,16 @@ def test_ingest_drains_outbox(
                         "event": "note_repo",
                         "repo": "org/api",
                         "body": "running summary",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "event": "file_touch",
+                        "repo": "org/api",
+                        "path": "src/api.py",
+                        "codename": "lucius",
+                        "firing_id": "fid-1",
+                        "change_type": "added",
                     }
                 ),
                 "",  # blank line
@@ -249,6 +282,8 @@ def test_ingest_drains_outbox(
     out = brain.recall(codename="lucius", repo="org/api")
     assert any(L.body == "from-outbox" for L in out)
     assert brain.list_firings(codename="lucius")[0].firing_id == "fid-1"
+    files = brain.list_file_touches(repo="org/api", codename="lucius")
+    assert {T.path for T in files} == {"src/api.py", "src/embedded.py"}
     assert brain.get_repo_note("org/api") is not None
 
     # Re-running consumes nothing new (cursor advanced).

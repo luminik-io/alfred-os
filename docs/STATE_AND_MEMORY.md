@@ -86,6 +86,10 @@ The state files above are operational memory. They tell Alfred what is blocked, 
 
 That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine, then record any durable lessons the engine returns in a machine-readable reflection block.
 
+The same brain stores recent file touches when an agent or outbox import knows
+which repo-relative paths changed. Use `alfred brain files <repo>` to inspect
+that local history.
+
 The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, or `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider. See [Fleet brain](./FLEET_BRAIN.md) for the full design, schema, and CLI.
 
 The brain v1 store is dependency-inverted on a `Store` Protocol, so a future PGLite or graph-backed implementation drops in without touching agent runners.

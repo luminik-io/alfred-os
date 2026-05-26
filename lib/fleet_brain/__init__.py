@@ -23,9 +23,11 @@ Quick start::
 Public surface:
 
 * :class:`FleetBrain` — the main API: ``recall``, ``reflect``,
-  ``firing_log``, ``note_repo``, ``forget``, ``export``.
+  ``firing_log``, ``record_file_touch``, ``note_repo``, ``forget``,
+  ``export``.
 * :class:`fleet_brain.store.Lesson`, :class:`FiringLog`,
-  :class:`RepoNote` — entity dataclasses, re-exported here.
+  :class:`FileTouch`, :class:`RepoNote` — entity dataclasses,
+  re-exported here.
 * :class:`fleet_brain.store.Store` — the Protocol the public API
   depends on. The default impl is :class:`SQLiteStore`; a
   PGLite/AGE-backed impl drops in for v2.
@@ -50,6 +52,8 @@ from pathlib import Path
 from typing import Any
 
 from .store import (
+    FileChangeType,
+    FileTouch,
     FiringLog,
     FiringStatus,
     Lesson,
@@ -62,6 +66,8 @@ from .store import (
 )
 
 __all__ = [
+    "FileChangeType",
+    "FileTouch",
     "FiringLog",
     "FiringStatus",
     "FleetBrain",
@@ -94,6 +100,7 @@ class FleetBrain:
     * :meth:`reflect` — file a lesson the firing learned.
     * :meth:`recall`  — pull lessons relevant to the next firing.
     * :meth:`firing_log` — record one firing's audit row.
+    * :meth:`record_file_touch` — record a file changed by an agent.
     * :meth:`note_repo` — upsert a free-text repo summary.
     * :meth:`forget`  — remove a lesson by id.
     * :meth:`export`  — JSON-serializable snapshot for backup or
@@ -192,6 +199,35 @@ class FleetBrain:
         )
         return self.store.upsert_repo_note(note)
 
+    def record_file_touch(
+        self,
+        *,
+        repo: str,
+        path: str,
+        codename: str,
+        firing_id: str | None = None,
+        pr_url: str | None = None,
+        change_type: FileChangeType = "modified",
+        touch_id: str | None = None,
+        touched_at: datetime | None = None,
+    ) -> FileTouch:
+        """Persist one repo file touched by an agent firing or PR."""
+        if not repo or not path or not codename:
+            raise ValueError("record_file_touch: repo, path, and codename are required")
+        if change_type not in ("added", "modified", "deleted", "renamed", "unknown"):
+            raise ValueError(f"record_file_touch: unknown change_type {change_type!r}")
+        touch = FileTouch(
+            id=touch_id or new_id(),
+            repo=repo.strip(),
+            path=path.strip(),
+            codename=codename.strip(),
+            firing_id=firing_id,
+            pr_url=pr_url,
+            change_type=change_type,
+            touched_at=touched_at or datetime.now(UTC),
+        )
+        return self.store.insert_file_touch(touch)
+
     # ----- read paths ---------------------------------------------------
 
     def recall(
@@ -230,6 +266,21 @@ class FleetBrain:
     ) -> list[FiringLog]:
         return self.store.list_firing_logs(codename=codename, status=status, limit=limit)
 
+    def list_file_touches(
+        self,
+        repo: str | None = None,
+        codename: str | None = None,
+        path: str | None = None,
+        limit: int = 50,
+    ) -> list[FileTouch]:
+        clamped = max(1, min(int(limit), 500))
+        return self.store.list_file_touches(
+            repo=repo,
+            codename=codename,
+            path=path,
+            limit=clamped,
+        )
+
     def stats(self) -> dict[str, int]:
         return self.store.stats()
 
@@ -264,7 +315,8 @@ class FleetBrain:
               "exported_at": "2026-05-23T...Z",
               "lessons": [{...}, ...],
               "repo_notes": [{...}, ...],
-              "firings": [{...}, ...]
+              "firings": [{...}, ...],
+              "file_touches": [{...}, ...]
             }
 
         ``alfred brain export`` writes this to disk. Restoring is
@@ -279,6 +331,7 @@ class FleetBrain:
             "lessons": [_serialize(asdict(L)) for L in self.list_lessons()],
             "repo_notes": [_serialize(asdict(n)) for n in self._all_repo_notes()],
             "firings": [_serialize(asdict(F)) for F in self.list_firings(limit=10_000)],
+            "file_touches": [_serialize(asdict(T)) for T in self.list_file_touches(limit=10_000)],
         }
 
     def _all_repo_notes(self) -> list[RepoNote]:

@@ -30,6 +30,10 @@ Outbox record shape (JSON per line)::
 
     {"event": "note_repo", "repo": "your-org/api", "body": "..."}
 
+    {"event": "file_touch", "repo": "your-org/api", "path": "src/api.py",
+     "codename": "lucius", "firing_id": "01HZ...", "pr_url": "...",
+     "change_type": "modified", "ts": "2026-05-23T12:00:00Z"}
+
 Unknown ``event`` values are logged and skipped; the cursor still
 advances so a malformed line doesn't wedge the drain forever.
 """
@@ -99,6 +103,7 @@ class Counts:
     seen: int = 0
     lessons: int = 0
     firings: int = 0
+    file_touches: int = 0
     notes: int = 0
     skipped: int = 0
     errors: int = 0
@@ -108,14 +113,15 @@ class Counts:
             "seen": self.seen,
             "lessons": self.lessons,
             "firings": self.firings,
+            "file_touches": self.file_touches,
             "notes": self.notes,
             "skipped": self.skipped,
             "errors": self.errors,
         }
 
 
-def dispatch(brain: FleetBrain, record: dict[str, Any]) -> str:
-    """Apply one outbox record. Returns a tag identifying what fired."""
+def dispatch(brain: FleetBrain, record: dict[str, Any]) -> list[str]:
+    """Apply one outbox record. Returns tags identifying what fired."""
     event = record.get("event")
     if event == "reflect":
         brain.reflect(
@@ -127,7 +133,7 @@ def dispatch(brain: FleetBrain, record: dict[str, Any]) -> str:
             severity=record.get("severity", "info"),
             created_at=_parse_ts(record.get("ts")),
         )
-        return "lesson"
+        return ["lesson"]
     if event == "firing_log":
         brain.firing_log(
             firing_id=record["firing_id"],
@@ -141,15 +147,84 @@ def dispatch(brain: FleetBrain, record: dict[str, Any]) -> str:
             pr_url=record.get("pr_url"),
             sentinel=record.get("sentinel"),
         )
-        return "firing"
+        kinds = ["firing"]
+        for touch in _embedded_file_touches(record):
+            brain.record_file_touch(**touch)
+            kinds.append("file_touch")
+        return kinds
     if event == "note_repo":
         brain.note_repo(
             repo=record["repo"],
             body=record["body"],
             updated_at=_parse_ts(record.get("ts")),
         )
-        return "note"
+        return ["note"]
+    if event == "file_touch":
+        brain.record_file_touch(**_file_touch_kwargs(record))
+        return ["file_touch"]
     raise ValueError(f"unknown event: {event!r}")
+
+
+def _file_touch_kwargs(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "repo": record["repo"],
+        "path": record["path"],
+        "codename": record["codename"],
+        "firing_id": record.get("firing_id"),
+        "pr_url": record.get("pr_url"),
+        "change_type": _coerce_change_type(record.get("change_type")),
+        "touched_at": _parse_ts(record.get("touched_at") or record.get("ts")),
+    }
+
+
+def _embedded_file_touches(record: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_files = record.get("files_touched") or record.get("files") or []
+    if not isinstance(raw_files, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw_files:
+        if isinstance(item, str):
+            item = {"path": item}
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or item.get("filename") or "").strip()
+        if not path:
+            continue
+        out.append(
+            {
+                "repo": item.get("repo") or record.get("repo"),
+                "path": path,
+                "codename": item.get("codename") or record.get("codename"),
+                "firing_id": item.get("firing_id") or record.get("firing_id"),
+                "pr_url": item.get("pr_url") or record.get("pr_url"),
+                "change_type": _coerce_change_type(item.get("change_type") or item.get("status")),
+                "touched_at": _parse_ts(
+                    item.get("touched_at")
+                    or item.get("ts")
+                    or record.get("finished_at")
+                    or record.get("started_at")
+                ),
+            }
+        )
+    return [touch for touch in out if touch.get("repo") and touch.get("codename")]
+
+
+def _coerce_change_type(value: Any) -> str:
+    text = str(value or "modified").strip().lower()
+    aliases = {
+        "added": "added",
+        "add": "added",
+        "created": "added",
+        "modified": "modified",
+        "modify": "modified",
+        "changed": "modified",
+        "deleted": "deleted",
+        "removed": "deleted",
+        "renamed": "renamed",
+        "moved": "renamed",
+        "unknown": "unknown",
+    }
+    return aliases.get(text, "unknown")
 
 
 def _parse_ts(s: Any) -> datetime | None:
@@ -191,18 +266,21 @@ def drain_file(brain: FleetBrain, path: Path, cursor: dict[str, int], max_record
             counts.errors += 1
             continue
         try:
-            kind = dispatch(brain, record)
+            kinds = dispatch(brain, record)
         except (KeyError, ValueError) as e:
             _LOG.warning("%s:%d dispatch failed: %s", path.name, i, e)
             cursor[path.name] = i + 1
             counts.errors += 1
             continue
-        if kind == "lesson":
-            counts.lessons += 1
-        elif kind == "firing":
-            counts.firings += 1
-        elif kind == "note":
-            counts.notes += 1
+        for kind in kinds:
+            if kind == "lesson":
+                counts.lessons += 1
+            elif kind == "firing":
+                counts.firings += 1
+            elif kind == "file_touch":
+                counts.file_touches += 1
+            elif kind == "note":
+                counts.notes += 1
         cursor[path.name] = i + 1
     return counts
 
@@ -225,6 +303,7 @@ def drain(brain: FleetBrain, root: Path, max_records: int, codenames: list[str] 
         totals.seen += c.seen
         totals.lessons += c.lessons
         totals.firings += c.firings
+        totals.file_touches += c.file_touches
         totals.notes += c.notes
         totals.skipped += c.skipped
         totals.errors += c.errors

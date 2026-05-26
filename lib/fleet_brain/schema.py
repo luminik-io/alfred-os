@@ -21,6 +21,8 @@ The schema deliberately mirrors the entity model documented in
   that lessons roll up into. Upserted, not appended.
 * ``firing_logs`` — one row per agent firing: status, summary,
   cost, sentinel for crash-debug. Audit trail.
+* ``file_touches`` — one row per repo file an agent touched, optionally
+  linked to a firing and PR.
 * ``lesson_tags`` — many-to-many over ``lessons`` so a lesson can
   be filed under several taxonomy buckets without splitting rows.
 * ``schema_version`` — single-row record of the applied schema
@@ -32,7 +34,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 1
+SCHEMA_VERSION: Final[int] = 2
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -86,6 +88,19 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         CHECK (status IN ('ok', 'blocked', 'partial', 'silent'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS file_touches (
+        id          TEXT    NOT NULL PRIMARY KEY,
+        repo        TEXT    NOT NULL,
+        path        TEXT    NOT NULL,
+        codename    TEXT    NOT NULL,
+        firing_id   TEXT,
+        pr_url      TEXT,
+        change_type TEXT    NOT NULL DEFAULT 'modified',
+        touched_at  TEXT    NOT NULL,
+        CHECK (change_type IN ('added', 'modified', 'deleted', 'renamed', 'unknown'))
+    )
+    """,
     # Indexes — recall is read-heavy on (codename, repo) and recent-first,
     # so we cover that path explicitly.
     """
@@ -107,6 +122,18 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
     """
     CREATE INDEX IF NOT EXISTS firing_logs_status_idx
         ON firing_logs (status, started_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS file_touches_repo_path_touched_idx
+        ON file_touches (repo, path, touched_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS file_touches_codename_touched_idx
+        ON file_touches (codename, touched_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS file_touches_firing_idx
+        ON file_touches (firing_id)
     """,
 )
 
