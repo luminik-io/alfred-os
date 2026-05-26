@@ -394,13 +394,40 @@ def push_current_branch(
     return run(cmd, cwd=str(wt), timeout=timeout)
 
 
+def _worktree_comparison_base(wt: Path, fallback: str | None) -> str | None:
+    """Return the best ref to compare ``HEAD`` against for safety checks."""
+    upstream = run(
+        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    upstream_ref = (upstream.stdout or "").strip()
+    if upstream.returncode == 0 and upstream_ref:
+        return upstream_ref
+
+    remote_head = run(
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    remote_head_ref = (remote_head.stdout or "").strip()
+    if remote_head.returncode == 0 and remote_head_ref:
+        return remote_head_ref
+
+    if fallback:
+        verify = run(["git", "rev-parse", "--verify", fallback], cwd=str(wt), timeout=10)
+        if verify.returncode == 0:
+            return fallback
+    return None
+
+
 def worktree_risk_reason(wt: Path, *, base: str = "origin/main") -> str | None:
     """Return why ``wt`` must be preserved, or ``None`` when it is safe.
 
     A worktree is risky when it has uncommitted changes, local commits
-    ahead of ``base``, or git cannot prove either state. Cleanup callers
-    should preserve such a worktree and, when possible, create a
-    recovery ref before alerting the operator.
+    ahead of its upstream or default remote branch, or git cannot prove
+    either state. Cleanup callers should preserve such a worktree and,
+    when possible, create a recovery ref before alerting the operator.
     """
     if not wt.is_dir():
         return "not-a-directory"
@@ -424,7 +451,10 @@ def worktree_risk_reason(wt: Path, *, base: str = "origin/main") -> str | None:
     changed_lines = [line for line in lines if not line.startswith("## ")]
     if changed_lines:
         return "dirty"
-    ahead = run(["git", "rev-list", "--count", f"{base}..HEAD"], cwd=str(wt), timeout=10)
+    comparison_base = _worktree_comparison_base(wt, base)
+    if not comparison_base:
+        return "git-ahead-check-failed:no-comparison-base"
+    ahead = run(["git", "rev-list", "--count", f"{comparison_base}..HEAD"], cwd=str(wt), timeout=10)
     if ahead.returncode != 0:
         detail = (ahead.stderr or ahead.stdout or str(ahead.returncode)).strip()
         return f"git-ahead-check-failed:{detail[:120]}"
@@ -458,7 +488,10 @@ def create_recovery_ref(
         ref = f"{prefix}/{_safe_recovery_ref_fragment(branch_name)}-{stamp}-dryrun"
         dry_run_log("git", f"would create recovery ref {ref} at HEAD in {wt}")
         return ref
-    ahead = run(["git", "rev-list", "--count", f"{base}..HEAD"], cwd=str(wt), timeout=10)
+    comparison_base = _worktree_comparison_base(wt, base)
+    if not comparison_base:
+        return None
+    ahead = run(["git", "rev-list", "--count", f"{comparison_base}..HEAD"], cwd=str(wt), timeout=10)
     if ahead.returncode != 0:
         return None
     try:
