@@ -15,7 +15,7 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
-### v0.4.1 — unreleased
+### v0.4.1: unreleased
 
 Reliability and first-run trust polish.
 
@@ -25,7 +25,7 @@ Reliability and first-run trust polish.
 - Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
 - Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
 
-### v0.4.0 — 2026-05-23
+### v0.4.0: 2026-05-23
 
 Substrate, observability, planning, approval, memory, and connector primitives. Merged to `main` on 2026-05-23 via PRs #89 and #90; tagged as `v0.4.0`.
 
