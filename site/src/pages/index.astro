@@ -151,6 +151,56 @@ const why = [
     </div>
   </section>
 
+  <section class="m-section m-section--soft" id="memory">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="LOCAL MEMORY"
+        title="The fleet remembers what actually happened."
+        lede="Alfred keeps operational memory on your machine: lessons you approve, files agents touched, failure patterns, GitHub queues, bundle state, and worker heartbeats. It is inspectable, reviewable, and never a hosted black box."
+      />
+      <div class="memory-grid">
+        <div class="memory-copy">
+          <div class="memory-point">
+            <span class="memory-point__kicker m-mono">01</span>
+            <h3 class="m-h3">Lessons need evidence.</h3>
+            <p>Agents can propose durable lessons, but they do not become prompt context until you promote them. That keeps memory useful without turning model guesses into truth.</p>
+          </div>
+          <div class="memory-point">
+            <span class="memory-point__kicker m-mono">02</span>
+            <h3 class="m-h3">Failures become patterns.</h3>
+            <p>Setup blockers, engine timeouts, stale workers, and repeated test failures land in one local brain so the next diagnosis starts with history instead of Slack archaeology.</p>
+          </div>
+          <div class="memory-point">
+            <span class="memory-point__kicker m-mono">03</span>
+            <h3 class="m-h3">Queues stay visible.</h3>
+            <p>A GitHub poller mirrors issue, PR, and bundle state locally, so multi-repo work can be inspected even when no agent is currently running.</p>
+          </div>
+          <p class="memory-link">
+            <a class="m-link" href="/concepts/fleet-brain/">Read the fleet-brain design</a>
+          </p>
+        </div>
+        <CodeBlock
+          title="fleet-brain"
+          lines={[
+            "$ alfred brain status",
+            "ok    lessons              18",
+            "ok    memory candidates    4",
+            "ok    github items         37",
+            "ok    bundle items         6",
+            "ok    stale workers        0",
+            "",
+            "$ alfred brain promotions",
+            "12    lucius  your-api  evidence: PR#248",
+            "19    batman  bundle    evidence: issue#504",
+            "",
+            "$ alfred brain failures --codename huntress",
+            "timeout  playwright browser missing  3x",
+          ]}
+        />
+      </div>
+    </div>
+  </section>
+
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
@@ -317,6 +367,51 @@ const why = [
     gap: 20px;
   }
   @media (max-width: 720px) { .why-grid { grid-template-columns: 1fr; } }
+
+  .memory-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .memory-copy {
+    display: grid;
+    gap: 18px;
+  }
+  .memory-point {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 16px;
+    row-gap: 6px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--alfred-border);
+  }
+  .memory-point:last-of-type { border-bottom: none; }
+  .memory-point__kicker {
+    grid-row: span 2;
+    color: var(--alfred-accent);
+    letter-spacing: 0.16em;
+    padding-top: 3px;
+  }
+  .memory-point p {
+    margin: 0;
+    color: var(--alfred-text);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .memory-link { margin: 4px 0 0; }
+  @media (max-width: 880px) {
+    .memory-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .memory-point {
+      grid-template-columns: 1fr;
+      row-gap: 8px;
+    }
+    .memory-point__kicker {
+      grid-row: auto;
+    }
+  }
 
   .steps {
     list-style: none;
