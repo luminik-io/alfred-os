@@ -637,6 +637,7 @@ class ApprovalResult:
     verdict: str
     detail: str = ""
     elapsed_s: float = 0.0
+    feedback: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1330,6 +1331,30 @@ def _issue_link(repo: str, number: int) -> str:
         return f"<https://github.com/{repo}/issues/{number}|{repo}#{number}>"
 
 
+def _approval_feedback(raw: object) -> tuple[str, ...]:
+    """Extract operator thread replies from a Slack approval result."""
+    out: list[str] = []
+    for item in getattr(raw, "feedback", ()) or ():
+        text = getattr(item, "text", None)
+        if text is None and isinstance(item, dict):
+            text = item.get("text")
+        cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+        if cleaned:
+            out.append(cleaned)
+    return tuple(out)
+
+
+def _append_operator_feedback(body: str, feedback: Iterable[str]) -> str:
+    """Append approved Slack-thread amendments to a child issue body."""
+    clean = [re.sub(r"\s+", " ", text).strip() for text in feedback]
+    clean = [text for text in clean if text]
+    if not clean:
+        return body
+    lines = [body.rstrip(), "", "## Operator Slack Amendments", ""]
+    lines.extend(f"- {text}" for text in clean)
+    return "\n".join(lines).rstrip() + "\n"
+
+
 # ---------------------------------------------------------------------------
 # Default reporter (Slack-backed). Tests inject a FakeReporter instead.
 # ---------------------------------------------------------------------------
@@ -1450,6 +1475,7 @@ class BatmanLifecycle:
     gate: ApprovalGate | None = None
     gh_client: GitHubChildIssueClient = field(default_factory=SubprocessGitHubChildIssueClient)
     reporter: Reporter | None = None
+    operator_feedback: tuple[str, ...] = field(default=(), init=False, repr=False)
 
     # ---- plan ----
 
@@ -1515,6 +1541,8 @@ class BatmanLifecycle:
         )
         approved = bool(getattr(raw, "approved", False))
         verdict_raw = getattr(raw, "verdict", "unknown")
+        feedback = _approval_feedback(raw)
+        self.operator_feedback = feedback
         from slack_approval import (
             APPROVAL_GRANTED,
             APPROVAL_REJECTED,
@@ -1537,6 +1565,7 @@ class BatmanLifecycle:
             verdict=verdict,
             detail=str(getattr(raw, "detail", "")),
             elapsed_s=float(getattr(raw, "elapsed_s", 0.0)),
+            feedback=feedback,
         )
 
     # ---- execute ----
@@ -1560,7 +1589,7 @@ class BatmanLifecycle:
             url = self.gh_client.create_issue(
                 child.repo,
                 title=child.title,
-                body=child.body,
+                body=_append_operator_feedback(child.body, self.operator_feedback),
                 labels=list(child.labels),
             )
             if url:

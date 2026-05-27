@@ -114,6 +114,7 @@ class FakeApprovalResult:
     verdict: str
     detail: str = ""
     elapsed_s: float = 0.0
+    feedback: tuple[object, ...] = ()
 
 
 class FakeGate:
@@ -391,6 +392,49 @@ def test_approval_granted_then_happy_path_files_all_children():
     envelope_out = reporter.reports[0]["envelope"]
     assert envelope_out.bundle_slug == "billing-v2"
     assert len(envelope_out.created) == 4
+
+
+def test_approval_thread_feedback_is_appended_to_child_issues():
+    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from slack_approval import APPROVAL_GRANTED
+
+    gh = FakeGitHubClient()
+    gate = FakeGate(
+        FakeApprovalResult(
+            approved=True,
+            verdict=APPROVAL_GRANTED,
+            feedback=({"text": "Use the simpler onboarding copy Neha requested."},),
+        )
+    )
+
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=FakeReporter(),
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    verdict = lifecycle.await_approval(envelope)
+
+    assert verdict.approved is True
+    assert verdict.verdict == EXEC_OK
+    assert verdict.feedback == ("Use the simpler onboarding copy Neha requested.",)
+
+    result = lifecycle.execute(plan)
+
+    assert result.reason == EXEC_OK
+    assert "## Operator Slack Amendments" in gh.issued[0]["body"]
+    assert "Use the simpler onboarding copy Neha requested." in gh.issued[0]["body"]
 
 
 # ---------- scenario 5: partial execute failure ----------

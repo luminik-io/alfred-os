@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -125,6 +126,15 @@ class ApprovalRequest:
 
 
 @dataclass(frozen=True)
+class ThreadFeedback:
+    """Operator-authored text captured from the approval thread."""
+
+    author: str
+    text: str
+    ts: str
+
+
+@dataclass(frozen=True)
 class ApprovalResult:
     """Outcome of one approval cycle."""
 
@@ -133,6 +143,7 @@ class ApprovalResult:
     elapsed_s: float = 0.0
     detail: str = ""
     label_hint: str = field(default=LABEL_AGENT_PLAN_PENDING_APPROVAL)
+    feedback: tuple[ThreadFeedback, ...] = ()
 
     @property
     def approved(self) -> bool:
@@ -438,12 +449,14 @@ class SlackApproval:
                         verdict=APPROVAL_GRANTED,
                         reactor=self._operator_user_id,
                         elapsed_s=_now() - start,
+                        feedback=self._fetch_thread_feedback(request),
                     )
                 if self._operator_reacted_with(reactions, self._reject_emojis):
                     return ApprovalResult(
                         verdict=APPROVAL_REJECTED,
                         reactor=self._operator_user_id,
                         elapsed_s=_now() - start,
+                        feedback=self._fetch_thread_feedback(request),
                     )
             now = _now()
             if now >= deadline:
@@ -496,6 +509,49 @@ class SlackApproval:
                 return True
         return False
 
+    def _fetch_thread_feedback(self, request: ApprovalRequest) -> tuple[ThreadFeedback, ...]:
+        """Best-effort read of operator replies on the plan thread.
+
+        Slack replies are treated as explicit amendments only when they
+        come from the configured operator. API failures are non-fatal:
+        reaction approval still works even when the bot lacks
+        ``channels:history`` / ``groups:history``.
+        """
+        replies = getattr(self._client, "conversations_replies", None)
+        if replies is None:
+            return ()
+        try:
+            resp = replies(channel=request.channel, ts=request.message_ts, limit=100)
+        except Exception as exc:
+            logger.warning("conversations.replies failed while collecting plan feedback: %s", exc)
+            return ()
+        data = _as_mapping(resp)
+        if not data.get("ok", False):
+            logger.warning(
+                "conversations.replies not-ok while collecting plan feedback: %s",
+                data.get("error") or "unknown",
+            )
+            return ()
+        out: list[ThreadFeedback] = []
+        for message in data.get("messages") or []:
+            if not isinstance(message, dict):
+                continue
+            if str(message.get("ts") or "") == request.message_ts:
+                continue
+            if message.get("user") != self._operator_user_id:
+                continue
+            text = _clean_thread_text(str(message.get("text") or ""))
+            if not text:
+                continue
+            out.append(
+                ThreadFeedback(
+                    author=self._operator_user_id,
+                    text=text,
+                    ts=str(message.get("ts") or ""),
+                )
+            )
+        return tuple(out)
+
 
 class _TransportError(Exception):
     """Internal marker for an API-level failure (raised in
@@ -519,6 +575,10 @@ def _as_mapping(resp: Any) -> dict[str, Any]:
         return {}
 
 
+def _clean_thread_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
 __all__ = [
     "APPROVAL_GRANTED",
     "APPROVAL_REJECTED",
@@ -533,6 +593,7 @@ __all__ = [
     "SecretsResolver",
     "SlackApproval",
     "SlackClient",
+    "ThreadFeedback",
     "aws_secrets_token_resolver",
     "default_slack_client",
     "default_token_resolvers",

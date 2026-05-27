@@ -98,6 +98,12 @@ bot token resolved above, posts the plan, and polls reactions on that one
 message until the configured operator reacts with `:white_check_mark:` (or
 `:x:` to reject).
 
+The plan thread is also the amendment surface. The configured operator can
+reply in plain English before reacting, and Alfred captures those replies as
+operator amendments when the plan is approved. Use that for changes such as
+"remove mobile", "make this read-only", "add an empty state", or "split this
+into two PRs".
+
 ```sh
 # the only Slack user whose reactions count
 export ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
@@ -107,8 +113,9 @@ export ALFRED_SECRETS_BACKEND=aws
 ```
 
 Required Slack scopes (in addition to `chat:write`): `reactions:read`,
-`channels:read`, `groups:read`. Install the optional `[slack]` extra
-(`pip install 'alfred-os[slack]'`).
+`channels:read`, `groups:read`. Add `channels:history` and `groups:history`
+when you want Alfred to capture operator replies from approval threads.
+Install the optional `[slack]` extra (`pip install 'alfred-os[slack]'`).
 
 Full walkthrough at [`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_APPROVAL.md):
 app manifest snippet, env var reference, fallback strategy ordering,

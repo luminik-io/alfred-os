@@ -101,11 +101,15 @@ def test_issue_readiness_blocks_vague_drafts() -> None:
     )
 
     assert not result.ok
+    assert isinstance(result.findings, tuple)
+    assert isinstance(result.questions, tuple)
     codes = {finding.code for finding in result.findings}
     assert "missing_problem" in codes
     assert "missing_desired_behavior" in codes
     assert "missing_test_plan" in codes
     assert result.questions
+    assert all("Neha" not in question for question in result.questions)
+    assert all("Prasad" not in question for question in result.questions)
 
 
 def test_issue_readiness_renders_github_ready_issue() -> None:
@@ -166,6 +170,15 @@ def test_issue_readiness_does_not_add_todo_for_optional_blanks() -> None:
     assert result.ok
     assert "TODO" not in result.issue_body
     assert not any(f.code == "template_placeholders" for f in result.findings)
+
+
+def test_issue_readiness_result_is_immutable() -> None:
+    from spec_helper import IssueDraft, assess_issue_draft
+
+    result = assess_issue_draft(IssueDraft(title="Make it better"))
+
+    assert isinstance(result.findings, tuple)
+    assert isinstance(result.questions, tuple)
 
 
 def test_alfred_spec_cli_new_and_lint(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]

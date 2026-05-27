@@ -397,7 +397,7 @@ def test_redis_provider_health_uses_health_endpoint() -> None:
     calls: list[dict[str, object]] = []
 
     def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
-        calls.append({"method": method, "url": url, "payload": payload})
+        calls.append({"method": method, "url": url, "payload": payload, "headers": headers})
         return {"status": "healthy"}
 
     provider = RedisAgentMemoryProvider(base_url="http://memory.local", transport=transport)
@@ -411,6 +411,7 @@ def test_redis_provider_health_uses_health_endpoint() -> None:
             "method": "GET",
             "url": "http://memory.local/v1/health",
             "payload": None,
+            "headers": {"Accept": "application/json"},
         }
     ]
 
@@ -513,6 +514,7 @@ def test_redis_provider_sync_lesson_mirrors_trusted_lesson() -> None:
     payload = calls[0]["payload"]
     assert isinstance(payload, dict)
     memory = payload["memories"][0]
+    assert memory["id"] == lesson.id
     assert memory["text"] == "Redis should receive reviewed lessons"
     assert "codename:bane" in memory["topics"]
     assert "repo:acme/api" in memory["topics"]

@@ -126,6 +126,7 @@ class RedisAgentMemoryProvider:
         severity: Severity = "info",
         firing_id: str | None = None,
         created_at: datetime | None = None,
+        memory_id: str | None = None,
     ) -> Lesson:
         created = created_at or datetime.now(UTC)
         clean_tags = sorted({str(tag).strip() for tag in (tags or []) if str(tag).strip()})
@@ -139,7 +140,7 @@ class RedisAgentMemoryProvider:
             }
         )
         lesson = Lesson(
-            id=new_id(),
+            id=memory_id or new_id(),
             codename=codename,
             repo=repo,
             body=body.strip(),
@@ -191,6 +192,7 @@ class RedisAgentMemoryProvider:
                 severity=lesson.severity,
                 firing_id=lesson.firing_id,
                 created_at=lesson.created_at,
+                memory_id=lesson.id,
             )
         except NotImplementedError:
             return False
@@ -203,7 +205,9 @@ class RedisAgentMemoryProvider:
         payload: dict[str, Any] | None,
     ) -> Any:
         url = f"{self.base_url}{path}"
-        headers = {"Accept": _JSON, "Content-Type": _JSON}
+        headers = {"Accept": _JSON}
+        if payload is not None:
+            headers["Content-Type"] = _JSON
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         if self.transport is not None:

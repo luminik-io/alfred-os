@@ -55,8 +55,8 @@ class IssueReadinessResult:
 
     ok: bool
     score: int
-    findings: list[SpecFinding]
-    questions: list[str]
+    findings: tuple[SpecFinding, ...]
+    questions: tuple[str, ...]
     issue_body: str
 
 
@@ -217,7 +217,7 @@ def assess_issue_draft(draft: IssueDraft) -> IssueReadinessResult:
                 "Add checklist-style acceptance criteria with observable outcomes.",
             )
         )
-        questions.append("How will Neha or Prasad verify this worked?")
+        questions.append("How will you verify this worked after Alfred opens a PR?")
     elif any(_looks_vague(item) for item in actionable_acceptance):
         findings.append(
             _finding(
@@ -261,8 +261,8 @@ def assess_issue_draft(draft: IssueDraft) -> IssueReadinessResult:
     return IssueReadinessResult(
         ok=blocker_count == 0,
         score=score,
-        findings=findings,
-        questions=_dedupe(questions),
+        findings=tuple(findings),
+        questions=tuple(_dedupe(questions)),
         issue_body=issue_body,
     )
 

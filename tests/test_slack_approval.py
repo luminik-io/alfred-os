@@ -48,11 +48,15 @@ class FakeSlackClient:
     call to ``reactions_get`` consumes the next entry. The last entry is
     repeated indefinitely if the caller polls past the supplied script."""
 
-    def __init__(self, responses: list[Any]) -> None:
+    def __init__(
+        self, responses: list[Any], *, replies: list[dict[str, Any]] | None = None
+    ) -> None:
         if not responses:
             raise ValueError("FakeSlackClient needs at least one scripted response")
         self._responses = responses
+        self._replies = replies or []
         self.calls: list[dict[str, Any]] = []
+        self.reply_calls: list[dict[str, Any]] = []
 
     def reactions_get(self, *, channel: str, timestamp: str, full: bool = True) -> Any:
         self.calls.append({"channel": channel, "timestamp": timestamp, "full": full})
@@ -61,6 +65,10 @@ class FakeSlackClient:
         if isinstance(item, Exception):
             raise item
         return item
+
+    def conversations_replies(self, *, channel: str, ts: str, limit: int = 100) -> Any:
+        self.reply_calls.append({"channel": channel, "ts": ts, "limit": limit})
+        return {"ok": True, "messages": self._replies}
 
 
 def _ok(reactions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -112,6 +120,37 @@ def test_operator_approves_returns_granted() -> None:
     assert result.approved is True
     assert result.reactor == OPERATOR
     assert len(client.calls) == 2
+
+
+def test_operator_thread_replies_return_as_feedback() -> None:
+    client = FakeSlackClient(
+        [_ok([{"name": "white_check_mark", "users": [OPERATOR], "count": 1}])],
+        replies=[
+            {"ts": TS, "user": OPERATOR, "text": "root message ignored"},
+            {"ts": "1716480001.000001", "user": TEAMMATE, "text": "not the operator"},
+            {
+                "ts": "1716480002.000002",
+                "user": OPERATOR,
+                "text": "Please keep copy simple and add the mobile case.",
+            },
+        ],
+    )
+    clock = _Clock()
+
+    result = SlackApproval(client, OPERATOR).await_approval(
+        CHANNEL,
+        TS,
+        timeout_s=60,
+        poll_interval_s=10,
+        _now=clock.now,
+        _sleep=clock.sleep,
+    )
+
+    assert result.verdict == APPROVAL_GRANTED
+    assert [item.text for item in result.feedback] == [
+        "Please keep copy simple and add the mobile case."
+    ]
+    assert client.reply_calls == [{"channel": CHANNEL, "ts": TS, "limit": 100}]
 
 
 def test_non_operator_reaction_is_ignored_until_timeout() -> None:
