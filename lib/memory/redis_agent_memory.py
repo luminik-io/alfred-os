@@ -17,7 +17,7 @@ import os
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -222,8 +222,10 @@ def _entry_to_lesson(
     text = record.get("text") or record.get("body") or record.get("content")
     if not isinstance(text, str) or not text.strip():
         return None
-    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    topics = record.get("topics") if isinstance(record.get("topics"), list) else []
+    raw_metadata = record.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    raw_topics = record.get("topics")
+    topics: list[Any] = raw_topics if isinstance(raw_topics, list) else []
     control = _control_topics(topics)
     tags = sorted(
         {
@@ -234,11 +236,11 @@ def _entry_to_lesson(
             and ":" not in str(topic).strip()
         }
     )
-    severity_raw = metadata.get("severity") if isinstance(metadata, dict) else None
+    severity_raw = metadata.get("severity")
     severity_candidate = severity_raw or control.get("severity")
-    severity: Severity = (
-        severity_candidate if severity_candidate in ("info", "warning", "blocker") else "info"
-    )
+    severity: Severity = "info"
+    if severity_candidate in ("info", "warning", "blocker"):
+        severity = cast(Severity, severity_candidate)
     created_at = _parse_created_at(record.get("created_at") or metadata.get("created_at"))
     return Lesson(
         id=str(record.get("id") or new_id()),
