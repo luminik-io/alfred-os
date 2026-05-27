@@ -6,9 +6,10 @@ no writes. The operator's pane of glass for "what is the fleet doing right
 now".
 
 Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
-cards, human-readable timestamps, mobile card layouts, a saved-plan inbox,
-and action summaries as a cross-platform precursor to any future native
-menu-bar UI.
+cards, human-readable timestamps, responsive table shells, mobile card
+layouts, a sticky header, a saved-plan inbox, external issue/PR links that
+open in a separate tab, and action summaries as a cross-platform precursor to
+any future native menu-bar UI.
 
 ## Install
 

@@ -46,6 +46,7 @@
   --ops-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
   --ops-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ops-sans: "Quicksand", ui-rounded, "Avenir Next", system-ui, sans-serif;
+  --ops-header-offset: 5.25rem;
 }
 
 html,
@@ -54,7 +55,6 @@ body {
   color: var(--ops-fg);
   font-family: var(--ops-sans);
   letter-spacing: 0;
-  overflow-x: hidden;
 }
 
 a {
@@ -79,8 +79,17 @@ button {
 }
 
 .ops-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   border-bottom: 1px solid var(--ops-line);
   background: rgba(7, 11, 17, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+[id] {
+  scroll-margin-top: var(--ops-header-offset);
 }
 
 .ops-nav {
@@ -330,9 +339,15 @@ button {
   text-decoration: none;
 }
 
-#fleet-table {
+.table-shell {
   max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 8px;
+}
+
+.table-shell .ops-table {
+  margin-bottom: 0;
 }
 
 .ops-table {
@@ -342,6 +357,14 @@ button {
   font-size: 0.92rem;
 }
 
+.fleet-table {
+  min-width: 44rem;
+}
+
+.firings-table {
+  min-width: 49rem;
+}
+
 .ops-table th {
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -349,20 +372,41 @@ button {
   color: var(--ops-muted);
 }
 
-.ops-table th:nth-child(1) {
+.fleet-table th:nth-child(1) {
   width: 11rem;
 }
 
-.ops-table th:nth-child(2) {
+.fleet-table th:nth-child(2) {
   width: 7.5rem;
 }
 
-.ops-table th:nth-child(3) {
+.fleet-table th:nth-child(3) {
   width: 14rem;
 }
 
-.ops-table th:nth-child(4) {
+.fleet-table th:nth-child(4) {
   width: 8rem;
+}
+
+.fleet-table th:nth-child(5) {
+  width: 9rem;
+}
+
+.firings-table th:nth-child(1) {
+  width: 11rem;
+}
+
+.firings-table th:nth-child(2) {
+  width: 8.5rem;
+}
+
+.firings-table th:nth-child(3) {
+  width: 8.5rem;
+}
+
+.firings-table th:nth-child(4),
+.firings-table th:nth-child(5) {
+  width: 9.5rem;
 }
 
 .ops-table td {
@@ -560,6 +604,8 @@ pre code {
 
 .meta dd {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .event-log {
@@ -587,7 +633,11 @@ pre code {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
+  :root {
+    --ops-header-offset: 8.5rem;
+  }
+
   .ops-nav {
     min-height: auto;
     flex-direction: column;
@@ -649,7 +699,7 @@ pre code {
     align-items: start;
   }
 
-  #fleet-table {
+  .table-shell {
     overflow: visible;
   }
 
@@ -659,6 +709,11 @@ pre code {
     white-space: normal;
     border-collapse: separate;
     border-spacing: 0;
+  }
+
+  .fleet-table,
+  .firings-table {
+    min-width: 0;
   }
 
   .ops-table thead {
@@ -714,5 +769,34 @@ pre code {
 
   .dim {
     white-space: normal;
+  }
+
+  .meta {
+    grid-template-columns: 1fr;
+  }
+
+  .meta dt {
+    align-self: end;
+  }
+
+  .meta dd + dt {
+    margin-top: 0.55rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .ops-main {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .ops-table td {
+    grid-template-columns: 6.2rem minmax(0, 1fr);
+    gap: 0.6rem;
+    padding: 0.7rem 0.75rem;
+  }
+
+  .view-tabs a {
+    padding: 0 0.35rem;
   }
 }

@@ -1,9 +1,10 @@
 <div id="fleet-table"
+     class="table-shell"
      hx-get="/"
      hx-trigger="every 10s"
      hx-swap="outerHTML">
 {% if agents %}
-<table role="grid" class="ops-table">
+<table role="grid" class="ops-table fleet-table">
   <thead>
     <tr>
       <th>codename</th>

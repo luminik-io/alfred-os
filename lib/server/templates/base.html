@@ -29,5 +29,26 @@
   <footer class="ops-footer">
     <small>Alfred local cockpit</small>
   </footer>
+  <script>
+    (() => {
+      const markExternalLinks = (root = document) => {
+        root.querySelectorAll('a[href^="http://"], a[href^="https://"]').forEach((link) => {
+          try {
+            const url = new URL(link.href, window.location.href);
+            if (url.origin === window.location.origin) return;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+          } catch {
+            // Ignore malformed operator-provided URLs in local state.
+          }
+        });
+      };
+
+      document.addEventListener("DOMContentLoaded", () => markExternalLinks());
+      document.body.addEventListener("htmx:afterSwap", (event) => {
+        markExternalLinks(event.target);
+      });
+    })();
+  </script>
 </body>
 </html>

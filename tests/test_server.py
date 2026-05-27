@@ -139,6 +139,9 @@ def test_fleet_view_lists_codenames(populated_state: Path) -> None:
     client = _client(populated_state)
     response = client.get("/")
     assert response.status_code == 200
+    assert 'id="fleet-table"' in response.text
+    assert 'class="table-shell"' in response.text
+    assert 'class="ops-table fleet-table"' in response.text
     assert "lucius" in response.text
     assert "drake" in response.text
     # Reserved subdir must not be enumerated as a codename.
@@ -185,6 +188,8 @@ def test_firings_view_lists_recent(populated_state: Path) -> None:
     client = _client(populated_state)
     response = client.get("/firings")
     assert response.status_code == 200
+    assert 'class="table-shell"' in response.text
+    assert 'class="ops-table firings-table"' in response.text
     assert "2026-05-23-1200-aa" in response.text
     assert "2026-05-22-0900-bb" in response.text
     assert "2026-05-23-1100-cc" in response.text
@@ -279,6 +284,11 @@ def test_plans_view_lists_saved_batman_plans(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "Batman Plan for Issue #61" in response.text
     assert "backend, frontend" in response.text
+    assert 'target="_blank" rel="noopener noreferrer"' in response.text
+
+    detail = client.get("/plans/61-plan")
+    assert detail.status_code == 200
+    assert 'target="_blank" rel="noopener noreferrer"' in detail.text
 
 
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:
