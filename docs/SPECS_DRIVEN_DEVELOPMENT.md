@@ -80,7 +80,8 @@ How to revert or disable the change if it breaks.
    opt-in and capped at three bundles per firing.
 3. **Batman plans multi-repo work.** A labelled `agent:large-feature` issue,
    optionally grouped with `agent:bundle:<slug>`, becomes a rollout plan across
-   the configured repos. Public Batman stops at the plan.
+   the configured repos. The plan is visible in Slack and in `alfred serve`
+   under Plans.
 4. **Lucius implements one repo at a time.** It claims a single
    `agent:implement` issue, opens an isolated worktree, invokes Claude Code or
    Codex, pushes a branch, and opens a PR.
@@ -167,8 +168,14 @@ The issue body should name:
 - human approval checklist
 
 Batman scans `BATMAN_SCAN_REPOS`, drafts the rollout plan, posts it to Slack or
-local logs, and stops. That stop is intentional in the public package. The
-operator decides when to split the plan into implementation issues.
+local logs, and saves the draft under `$ALFRED_HOME/batman-plans`. Treat the
+Slack thread as the place to change the plan before approval. Plain-English
+feedback is enough: "remove mobile", "make this read-only", "add an empty
+state", or "split this into two PRs".
+
+Poorly scoped parent issues should not go straight to implementation. If the
+issue does not name repos, acceptance criteria, and done-when checks, keep it
+in planning and ask Batman or the operator to tighten the issue first.
 
 ## Good Agent-Readable Specs
 

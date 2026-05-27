@@ -77,6 +77,8 @@ alfred brain github [--repo R] [--kind issue|pr] [--bundle slug]
 alfred brain bundles [bundle-slug]
 alfred brain workers [--stale]
 alfred brain promotions
+alfred brain failure-patterns [--codename C] [--repo R]
+alfred brain governor [--json]
 alfred brain doctor [--json]
 alfred github-poll --repo your-org/api --repo your-org/web
 alfred brain forget <id>
@@ -145,8 +147,17 @@ export ALFRED_MEMORY_PROVIDERS=fleet,gbrain
 export ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 ```
 
+To add an already-running Redis Agent Memory Server as an optional fallback:
+
+```sh
+export ALFRED_MEMORY_PROVIDERS=fleet,redis
+export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
+export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
+```
+
 The fleet-brain remains the first writable provider, so reflection never writes
-to the optional fallback.
+to the optional fallback unless you put that fallback before `fleet` in
+`ALFRED_MEMORY_PROVIDERS`.
 
 By default, engine-returned reflection blocks are trusted and written as
 lessons. If you want a review queue first, set:
@@ -237,6 +248,18 @@ candidate backlog, failure history, GitHub poll freshness, and bundle counts.
 high-confidence candidates with evidence, tags, or warning/blocker severity so
 the operator can promote the useful lessons and reject noise.
 
+`alfred brain failure-patterns` groups repeated non-success outcomes by
+codename, repo, subtype, and engine, then classifies the likely cause. The
+local setup classifier catches errors such as missing Playwright browser
+binaries and turns them into a concrete setup action instead of treating them
+as product regressions.
+
+`alfred brain governor` combines repeated failure patterns, stale workers, and
+memory-promotion suggestions into one operator action list. It is still
+read-only: it does not pause a codename, create an issue, or mutate memory. It
+gives the operator and the local dashboard a single place to see what needs
+attention next.
+
 ## Read-only MCP bridge
 
 `alfred mcp serve` exposes a small JSON-RPC stdio surface for local MCP clients
@@ -274,20 +297,23 @@ GC controls:
 ## What to build next
 
 The v1 brain is intentionally small: local lessons, file touches, failure
-events, reviewable candidates, and read-only MCP access. The useful next work
-is not "more storage"; it is closing feedback loops:
+events, reviewable candidates, repeated-failure classification, and read-only
+MCP access. The useful next work is not "more storage"; it is closing feedback
+loops:
 
 1. **Evidence-linked lesson promotion.** Every promoted lesson should point to
    the firing, PR, issue, file touch, or operator note that made it trustworthy.
    That keeps memory from becoming folklore.
-2. **Failure-pattern routing.** Repeated `FailureEvent` groups should become
-   concrete operator actions: pause one codename, file a setup issue, suggest a
-   missing browser install, or mark a flaky external dependency.
+2. **Action execution for governor findings.** The governor now proposes
+   actions; a future pass should let the operator approve safe follow-ups such
+   as filing a setup issue or pausing one codename.
 3. **Spec and bundle memory.** Batman and specs-driven workflows should remember
    which specs generated which issues, which PRs landed, and which acceptance
    criteria needed follow-up.
 4. **Semantic recall.** Substring matching is enough for v1. v2 should support
-   query-based recall across lessons, plans, and failure summaries.
+   query-based recall across lessons, plans, and failure summaries. Operators
+   who already run Redis AMS can pilot that shape through the optional `redis`
+   provider before Alfred grows a default semantic backend.
 5. **Memory quality gates.** Candidate promotion should run lightweight checks:
    no secrets, source attached, confidence present, not contradicted by a newer
    lesson, and scoped to a codename/repo when possible.

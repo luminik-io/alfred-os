@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import views
+from .formatting import friendly_time, short_firing_id, timestamp_title
 from .reader import FleetReader
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,9 @@ def create_app(reader: FleetReader) -> FastAPI:
     )
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["friendly_time"] = friendly_time
+    templates.env.filters["timestamp_title"] = timestamp_title
+    templates.env.filters["short_firing_id"] = short_firing_id
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

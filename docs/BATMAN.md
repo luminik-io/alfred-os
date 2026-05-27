@@ -72,6 +72,13 @@ channel unset, transport down), the envelope is `None` and Batman halts
 after the plan no matter what `BATMAN_AUTO_EXECUTE` says, never silently
 executes without a captured approval message.
 
+Operators should treat that Slack thread as the working room for the plan:
+ask Batman to tighten scope, add acceptance criteria, remove a repo, or
+split the bundle before approving. A non-engineer can stay in plain English:
+"make the mobile part read-only", "do not touch billing yet", "add empty
+states", or "turn this into two smaller issues" is enough signal for the
+next planning pass.
+
 ### 3. await_approval(envelope) -> ApprovalResult
 
 Polls `reactions.get` on the plan message every 30s by default until
@@ -294,6 +301,10 @@ issues already).
 - Partial-execute failures do not crash. Every target is attempted,
   every outcome is recorded, the report names what landed and what
   failed.
+- Poorly scoped parent issues should halt at the plan stage. If Batman
+  cannot parse repos and children, the plan shows no children and execute
+  returns `no_children` rather than letting Lucius build from vague prose.
+  Add `Repos:`, `Children:`, and `Done when:` before approving.
 - To abort mid-execute: kill the runner process. The next firing
   re-parses the parent issue from scratch; children that already landed
   are not re-filed (gh `issue create` is idempotent on title within a

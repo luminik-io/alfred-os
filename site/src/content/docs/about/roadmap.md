@@ -25,6 +25,9 @@ Reliability and first-run trust polish.
 - Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.
 - Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
 - Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
+- Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions.
+- Optional Redis AMS provider: `ALFRED_MEMORY_PROVIDERS=fleet,redis` lets advanced operators test external semantic memory without changing the default local install.
+- `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Batman plans, human-readable timestamps, and mobile card layouts.
 
 ### v0.4.0: 2026-05-23
 
@@ -59,9 +62,9 @@ Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Cross-platform menubar app.** A small native menubar (macOS first, Linux tray second) that surfaces fleet status and click-throughs to the local `alfred serve` UI. Read-only. IC: core. Effort: M. Issue: TBD.
+- **Local client v2.** Keep `alfred serve` as the source of truth, then add a thin native shell only when the web cockpit proves the workflows: plan inbox, memory review, safe pause/resume, and dry-run launch. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so local clients can read fleet memory. IC: core. Effort: L. Issue: TBD.
-- **Memory quality loop.** Add evidence-linked lesson promotion, repeated-failure routing, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
+- **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 
 ## Next (next quarter)
 

@@ -5,6 +5,8 @@ Three views:
 * ``GET /``                  Fleet status (HTMX auto-refresh every 10s).
 * ``GET /firings``           Recent firings (optionally filtered by codename).
 * ``GET /firings/{id}``      Single firing detail.
+* ``GET /plans``             Saved Batman plans.
+* ``GET /plans/{id}``        Single saved Batman plan.
 
 Two HTMX partials live behind the same URLs via the ``HX-Request`` header,
 ``htmx-only`` reduces the round trip to just the table body rather than
@@ -25,13 +27,24 @@ def register_routes(app: FastAPI) -> None:
         reader = request.app.state.reader
         templates = request.app.state.templates
         agents = reader.list_agents()
-        template = (
-            "fleet_table.html" if request.headers.get("HX-Request") == "true" else "fleet.html"
-        )
+        if request.headers.get("HX-Request") == "true":
+            return templates.TemplateResponse(
+                request,
+                "fleet_table.html",
+                {
+                    "agents": agents,
+                    "total_today": sum(a.firings_today for a in agents),
+                },
+            )
+        reliability = reader.reliability_report()
         return templates.TemplateResponse(
             request,
-            template,
-            {"agents": agents, "total_today": sum(a.firings_today for a in agents)},
+            "fleet.html",
+            {
+                "agents": agents,
+                "total_today": sum(a.firings_today for a in agents),
+                "reliability": reliability,
+            },
         )
 
     @app.get("/firings", response_class=HTMLResponse)
@@ -61,13 +74,52 @@ def register_routes(app: FastAPI) -> None:
             return templates.TemplateResponse(
                 request,
                 "not_found.html",
-                {"firing_id": firing_id},
+                {
+                    "title": "Firing not found",
+                    "item_id": firing_id,
+                    "back_url": "/firings",
+                    "back_label": "back to firings",
+                },
                 status_code=404,
             )
         return templates.TemplateResponse(
             request,
             "firing_detail.html",
             {"firing": record},
+        )
+
+    @app.get("/plans", response_class=HTMLResponse)
+    async def plans(request: Request) -> HTMLResponse:
+        reader = request.app.state.reader
+        templates = request.app.state.templates
+        rows = reader.list_plans(limit=50)
+        return templates.TemplateResponse(
+            request,
+            "plans.html",
+            {"rows": rows},
+        )
+
+    @app.get("/plans/{plan_id}", response_class=HTMLResponse)
+    async def plan_detail(request: Request, plan_id: str) -> HTMLResponse:
+        reader = request.app.state.reader
+        templates = request.app.state.templates
+        plan = reader.get_plan(plan_id)
+        if plan is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                {
+                    "title": "Plan not found",
+                    "item_id": plan_id,
+                    "back_url": "/plans",
+                    "back_label": "back to plans",
+                },
+                status_code=404,
+            )
+        return templates.TemplateResponse(
+            request,
+            "plan_detail.html",
+            {"plan": plan},
         )
 
     @app.get("/healthz", response_class=HTMLResponse)

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.title }} · Alfred{% endblock %}
+{% block content %}
+<section>
+  <div class="detail-heading">
+    <div>
+      <a href="/plans">Plans</a>
+      <h1>{{ plan.title }}</h1>
+      <p>
+        <span class="status-pill">{{ plan.status }}</span>
+        {% if plan.updated_at %}
+        <time datetime="{{ plan.updated_at }}" title="{{ plan.updated_at|timestamp_title }}">{{ plan.updated_at|friendly_time }}</time>
+        {% endif %}
+      </p>
+    </div>
+    {% if plan.parent %}
+    <a href="{{ plan.parent }}" role="button" class="secondary">Open issue</a>
+    {% endif %}
+  </div>
+
+  <article class="markdown-panel">
+    <pre><code>{{ plan.content }}</code></pre>
+  </article>
+</section>
+{% endblock %}

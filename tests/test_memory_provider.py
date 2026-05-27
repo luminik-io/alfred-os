@@ -43,6 +43,7 @@ from memory.providers import (  # noqa: E402
     FleetBrainProvider,
     NullMemoryProvider,
 )
+from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -67,9 +68,11 @@ def test_protocol_isinstance_for_all_concrete_providers(
     null = NullMemoryProvider()
     gbrain = GBrainProvider()
     chain = ChainedMemoryProvider(providers=[null])
+    redis = RedisAgentMemoryProvider()
     assert isinstance(fleet_brain_provider, MemoryProvider)
     assert isinstance(null, MemoryProvider)
     assert isinstance(gbrain, MemoryProvider)
+    assert isinstance(redis, MemoryProvider)
     assert isinstance(chain, MemoryProvider)
 
 
@@ -79,6 +82,7 @@ def test_protocol_required_attributes(fleet_brain_provider: FleetBrainProvider) 
         fleet_brain_provider,
         NullMemoryProvider(),
         GBrainProvider(),
+        RedisAgentMemoryProvider(),
         ChainedMemoryProvider(providers=[NullMemoryProvider()]),
     ):
         assert isinstance(p.name, str) and p.name
@@ -311,6 +315,169 @@ def test_gbrain_provider_tolerates_garbage_output(tmp_path: Path) -> None:
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     provider = GBrainProvider(binary_path=binary)
     assert provider.recall(query="x") == []
+
+
+# ---------------------------------------------------------------------------
+# RedisAgentMemoryProvider
+# ---------------------------------------------------------------------------
+
+
+def test_redis_provider_from_env() -> None:
+    provider = RedisAgentMemoryProvider.from_env(
+        env={
+            "ALFRED_REDIS_MEMORY_URL": "http://memory.local/",
+            "ALFRED_REDIS_MEMORY_TOKEN": "token",
+            "ALFRED_REDIS_MEMORY_NAMESPACE": "team",
+            "ALFRED_REDIS_MEMORY_USER_ID": "operator",
+            "ALFRED_REDIS_MEMORY_TIMEOUT_S": "1.5",
+        }
+    )
+
+    assert provider.base_url == "http://memory.local"
+    assert provider.token == "token"
+    assert provider.namespace == "team"
+    assert provider.user_id == "operator"
+    assert provider.timeout_s == 1.5
+
+
+def test_redis_provider_recall_posts_search_payload() -> None:
+    calls: list[dict[str, object]] = []
+
+    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        calls.append(
+            {
+                "url": url,
+                "payload": payload,
+                "headers": headers,
+                "timeout_s": timeout_s,
+            }
+        )
+        return {
+            "memories": [
+                {
+                    "memory": {
+                        "id": "redis-1",
+                        "text": "Use owner/repo in Batman plans.",
+                        "topics": ["batman", "plans"],
+                        "metadata": {
+                            "codename": "batman",
+                            "repo": "acme/app",
+                            "severity": "warning",
+                        },
+                    }
+                }
+            ]
+        }
+
+    provider = RedisAgentMemoryProvider(
+        base_url="http://memory.local",
+        token="secret",
+        namespace="alfred",
+        transport=transport,
+    )
+
+    lessons = provider.recall(query="plans", codename="batman", repo="acme/app", limit=2)
+
+    assert lessons[0].body == "Use owner/repo in Batman plans."
+    assert lessons[0].tags == ["batman", "plans"]
+    assert calls[0]["url"] == "http://memory.local/v1/long-term-memory/search"
+    payload = calls[0]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["text"] == "plans"
+    assert payload["limit"] == 2
+    assert payload["namespace"] == {"eq": "alfred"}
+    headers = calls[0]["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer secret"
+
+
+def test_redis_provider_recall_parses_supported_record_fields() -> None:
+    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        return {
+            "memories": [
+                {
+                    "id": "redis-2",
+                    "text": "Prompt seeding should happen before dry-run.",
+                    "topics": [
+                        "alfred",
+                        "codename:batman",
+                        "repo:acme/app",
+                        "severity:blocker",
+                        "plans",
+                    ],
+                    "session_id": "fire-1",
+                    "created_at": "2026-05-27T12:00:00Z",
+                }
+            ],
+            "total": 1,
+        }
+
+    provider = RedisAgentMemoryProvider(transport=transport)
+    lessons = provider.recall(query="dry-run")
+
+    assert lessons[0].codename == "batman"
+    assert lessons[0].repo == "acme/app"
+    assert lessons[0].severity == "blocker"
+    assert lessons[0].tags == ["plans"]
+    assert lessons[0].firing_id == "fire-1"
+
+
+def test_redis_provider_reflect_uses_supported_record_fields() -> None:
+    calls: list[dict[str, object]] = []
+
+    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        calls.append({"url": url, "payload": payload})
+        return {"status": "ok"}
+
+    provider = RedisAgentMemoryProvider(
+        base_url="http://memory.local",
+        namespace="alfred",
+        user_id="operator",
+        transport=transport,
+    )
+
+    provider.reflect(
+        codename="lucius",
+        repo="acme/app",
+        body="Prefer a small scoped PR after plan approval.",
+        tags=["planning"],
+        severity="warning",
+        firing_id="fire-2",
+    )
+
+    assert calls[0]["url"] == "http://memory.local/v1/long-term-memory/"
+    payload = calls[0]["payload"]
+    assert isinstance(payload, dict)
+    assert set(payload) == {"memories", "deduplicate"}
+    memory = payload["memories"][0]
+    assert memory["namespace"] == "alfred"
+    assert memory["user_id"] == "operator"
+    assert memory["session_id"] == "fire-2"
+    assert memory["entities"] == ["lucius", "acme/app"]
+    assert "metadata" not in memory
+    assert "codename:lucius" in memory["topics"]
+    assert "repo:acme/app" in memory["topics"]
+    assert "severity:warning" in memory["topics"]
+
+
+def test_redis_provider_reflect_falls_through_on_write_error() -> None:
+    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        raise RuntimeError("down")
+
+    provider = RedisAgentMemoryProvider(transport=transport)
+
+    with pytest.raises(NotImplementedError):
+        provider.reflect(codename="lucius", repo="acme/app", body="remember this")
+
+
+def test_build_chain_supports_redis_provider() -> None:
+    out = build_chain(
+        ["redis", "null"],
+        env={"ALFRED_REDIS_MEMORY_URL": "http://memory.local"},
+    )
+
+    assert isinstance(out, ChainedMemoryProvider)
+    assert [p.name for p in out.providers] == ["redis", "null"]
 
 
 # ---------------------------------------------------------------------------

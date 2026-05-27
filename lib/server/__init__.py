@@ -12,12 +12,13 @@ split into:
 from __future__ import annotations
 
 from .app import create_app
-from .reader import AgentSummary, FilesystemReader, FiringRecord, FleetReader
+from .reader import AgentSummary, FilesystemReader, FiringRecord, FleetReader, PlanDraft
 
 __all__ = [
     "AgentSummary",
     "FilesystemReader",
     "FiringRecord",
     "FleetReader",
+    "PlanDraft",
     "create_app",
 ]

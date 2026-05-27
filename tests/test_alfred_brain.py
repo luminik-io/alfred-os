@@ -288,6 +288,37 @@ def test_cli_failures_and_doctor(
     assert report["db"] == str(brain_db)
 
 
+def test_cli_failure_patterns_and_governor(
+    cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    from fleet_brain import FleetBrain
+
+    brain = FleetBrain(db_path=brain_db)
+    for idx in range(2):
+        brain.record_failure(
+            codename="huntress",
+            repo="org/web",
+            firing_id=f"fid-{idx}",
+            subtype="error_timeout",
+            summary="browserType.launch: Executable doesn't exist at chromium_headless_shell",
+            engine="claude",
+        )
+    capsys.readouterr()
+
+    rc = cli_mod.main(["failure-patterns", "--json"])
+    assert rc == 0
+    patterns = json.loads(capsys.readouterr().out)
+    assert patterns[0]["classification"] == "local_setup"
+    assert patterns[0]["suggested_action"] == "file_setup_issue"
+
+    rc = cli_mod.main(["governor", "--json"])
+    assert rc == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "fail"
+    assert report["actions"][0]["kind"] == "failure_pattern"
+
+
 def test_cli_workers_github_bundles_and_promotions(
     cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

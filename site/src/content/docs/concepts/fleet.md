@@ -156,6 +156,11 @@ fleet-brain has nothing for that `(codename, repo)`. The `gbrain` provider is
 read-only and not bundled; it is the operator's optional personal knowledge
 base CLI, and the shim degrades to empty when the binary is missing.
 
+If you already run Redis Agent Memory Server locally, add it as an optional
+provider with `ALFRED_MEMORY_PROVIDERS=fleet,redis` and
+`ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000`. Alfred does not install or
+start Redis for you.
+
 Set `ALFRED_MEMORY_PROVIDERS=null` to turn memory off. Full reference:
 [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md)
 and

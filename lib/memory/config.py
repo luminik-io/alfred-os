@@ -27,6 +27,7 @@ from .providers import (
     FleetBrainProvider,
     NullMemoryProvider,
 )
+from .redis_agent_memory import RedisAgentMemoryProvider
 
 if TYPE_CHECKING:
     from . import MemoryProvider
@@ -48,6 +49,7 @@ ProviderFactory = Callable[[Mapping[str, str]], "MemoryProvider"]
 PROVIDER_REGISTRY: dict[str, ProviderFactory] = {
     "fleet": lambda _env: FleetBrainProvider(),
     "gbrain": lambda env: GBrainProvider.from_env(env=dict(env)),
+    "redis": lambda env: RedisAgentMemoryProvider.from_env(env=env),
     "null": lambda _env: NullMemoryProvider(),
 }
 

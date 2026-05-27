@@ -16,13 +16,19 @@
   <tbody>
     {% for agent in agents %}
     <tr>
-      <td><strong>{{ agent.codename }}</strong></td>
-      <td><span class="dot dot-{{ agent.status }}" aria-label="{{ agent.status }}"></span> {{ agent.status }}</td>
-      <td><code class="ts">{{ agent.last_run_at or "never" }}</code></td>
-      <td>{{ agent.firings_today }}</td>
-      <td>
+      <td data-label="Codename"><strong>{{ agent.codename }}</strong></td>
+      <td data-label="Status"><span class="dot dot-{{ agent.status }}" aria-label="{{ agent.status }}"></span> {{ agent.status }}</td>
+      <td data-label="Last run">
+        {% if agent.last_run_at %}
+          <time class="time-pill" datetime="{{ agent.last_run_at }}" title="{{ agent.last_run_at|timestamp_title }}">{{ agent.last_run_at|friendly_time }}</time>
+        {% else %}
+          <span class="time-muted">never</span>
+        {% endif %}
+      </td>
+      <td data-label="Firings today">{{ agent.firings_today }}</td>
+      <td data-label="Last firing">
         {% if agent.last_firing_id %}
-          <a href="/firings/{{ agent.last_firing_id }}"><code>{{ agent.last_firing_id }}</code></a>
+          <a class="firing-link" href="/firings/{{ agent.last_firing_id }}" title="{{ agent.last_firing_id }}">{{ agent.last_firing_id|short_firing_id }}</a>
           <small class="dim">{{ agent.last_summary }}</small>
         {% else %}
           <small class="dim">no firings yet</small>

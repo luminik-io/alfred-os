@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,7 @@ if str(LIB) not in sys.path:
 
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
+from server.formatting import friendly_time, short_firing_id  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -151,6 +153,34 @@ def test_fleet_view_htmx_partial(populated_state: Path) -> None:
     assert "<header" not in response.text  # partial, not full shell
 
 
+def test_fleet_view_htmx_partial_skips_reliability_report(populated_state: Path) -> None:
+    class CountingReader(FilesystemReader):
+        reliability_calls = 0
+
+        def reliability_report(self) -> dict[str, object]:
+            self.reliability_calls += 1
+            return {
+                "status": "ok",
+                "actions": [],
+                "failure_patterns": [],
+                "stale_workers": [],
+                "promotion_suggestions": [],
+            }
+
+    reader = CountingReader(state_root=populated_state)
+    client = TestClient(create_app(reader))
+
+    response = client.get("/", headers={"HX-Request": "true"})
+
+    assert response.status_code == 200
+    assert "fleet-table" in response.text
+    assert reader.reliability_calls == 0
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert reader.reliability_calls == 1
+
+
 def test_firings_view_lists_recent(populated_state: Path) -> None:
     client = _client(populated_state)
     response = client.get("/firings")
@@ -158,6 +188,7 @@ def test_firings_view_lists_recent(populated_state: Path) -> None:
     assert "2026-05-23-1200-aa" in response.text
     assert "2026-05-22-0900-bb" in response.text
     assert "2026-05-23-1100-cc" in response.text
+    assert "time-pill" in response.text
 
 
 def test_firings_view_filter_by_codename(populated_state: Path) -> None:
@@ -166,6 +197,28 @@ def test_firings_view_filter_by_codename(populated_state: Path) -> None:
     assert response.status_code == 200
     assert "2026-05-23-1100-cc" in response.text
     assert "2026-05-23-1200-aa" not in response.text
+
+
+def test_firing_complete_marks_record_finished(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    (state / "lucius" / "events").mkdir(parents=True)
+    _write_jsonl(
+        state / "lucius" / "events" / "2026-05-27-1224-aa.jsonl",
+        [
+            {"ts": "2026-05-27T12:24:00Z", "event": "firing_started", "agent": "lucius"},
+            {
+                "ts": "2026-05-27T12:25:00Z",
+                "event": "firing_complete",
+                "agent": "lucius",
+                "outcome": "silent_no_work",
+            },
+        ],
+    )
+    record = FilesystemReader(state_root=state).get_firing("2026-05-27-1224-aa")
+
+    assert record is not None
+    assert record.status == "ok"
+    assert record.ended_at == "2026-05-27T12:25:00Z"
 
 
 def test_firing_detail_renders_events(populated_state: Path) -> None:
@@ -197,6 +250,46 @@ def test_unknown_firing_returns_404(populated_state: Path) -> None:
     assert "not located" in response.text
 
 
+def test_friendly_time_and_short_firing_id_are_scan_friendly() -> None:
+    now = datetime(2026, 5, 27, 12, 30, tzinfo=UTC)
+
+    assert friendly_time("2026-05-27T12:24:59Z", now=now) == "5m ago"
+    assert friendly_time("2026-05-26T12:24:59Z", now=now) == "yesterday 12:24"
+    assert short_firing_id("20260527-122459-1d31") == "20260527-122459-1d31"
+    assert short_firing_id("20260527-122459-extra-long-1d31") == "20260527-122459...1d31"
+
+
+def test_plans_view_lists_saved_batman_plans(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    plans = tmp_path / "batman-plans"
+    plans.mkdir()
+    (plans / "61-plan.md").write_text(
+        "# Batman Plan for Issue #61\n\n"
+        "**Status:** Draft (awaiting approval)\n\n"
+        "**Issue URL:** https://github.com/example/repo/issues/61\n\n"
+        "**Affected Repos:** backend, frontend\n\n"
+        "Plan Preview:\n",
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    response = client.get("/plans")
+
+    assert response.status_code == 200
+    assert "Batman Plan for Issue #61" in response.text
+    assert "backend, frontend" in response.text
+
+
+def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    reader = FilesystemReader(state_root=state)
+
+    assert reader.get_plan("../secrets") is None
+    assert reader.get_plan(".hidden") is None
+
+
 def test_firing_id_rejects_path_traversal(populated_state: Path) -> None:
     """Operator-supplied firing id must not be able to read arbitrary files."""
     _client(populated_state)
@@ -214,6 +307,19 @@ def test_healthz(populated_state: Path) -> None:
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.text == "ok"
+
+
+def test_reliability_report_missing_brain_db_is_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "missing-fleet-brain.db"
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
+
+    report = FilesystemReader(state_root=tmp_path / "state").reliability_report()
+
+    assert report["status"] == "unknown"
+    assert "not initialized" in report["error"]
+    assert not db_path.exists()
 
 
 def test_malformed_jsonl_does_not_crash(tmp_path: Path) -> None:

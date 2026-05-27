@@ -342,6 +342,55 @@ def cmd_failures(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_failure_patterns(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    patterns = brain.list_failure_patterns(
+        repo=args.repo,
+        codename=args.codename,
+        window_days=args.window_days,
+        min_count=args.min_count,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps(patterns, indent=2))
+        return 0
+    if not patterns:
+        print("alfred-brain: no repeated failure patterns", file=sys.stderr)
+        return 0
+    for pattern in patterns:
+        repo = f" repo={pattern['repo']}" if pattern.get("repo") else ""
+        engine = f" engine={pattern['engine']}" if pattern.get("engine") else ""
+        print(
+            f"{pattern['codename']}{repo} subtype={pattern['subtype']}{engine} "
+            f"count={pattern['count']} class={pattern['classification']} "
+            f"action={pattern['suggested_action']}"
+        )
+        if pattern.get("latest_summary"):
+            print(f"  {pattern['latest_summary']}")
+    return 0
+
+
+def cmd_governor(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    report = brain.reliability_report(
+        window_days=args.window_days,
+        failure_min_count=args.min_count,
+        stale_worker_minutes=args.stale_worker_minutes,
+        limit=args.limit,
+    )
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 1 if report["status"] == "fail" else 0
+    print(f"alfred-brain governor: {report['status']}")
+    actions = report.get("actions") or []
+    if not actions:
+        print("  ok   no reliability actions")
+        return 0
+    for action in actions:
+        print(f"  {action['severity']:7} {action['kind']}: {action['summary']}")
+    return 1 if report["status"] == "fail" else 0
+
+
 def cmd_github(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     items = brain.list_github_items(
@@ -708,6 +757,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_failures.add_argument("--limit", type=int, default=50)
     p_failures.add_argument("--json", action="store_true")
     p_failures.set_defaults(func=cmd_failures)
+
+    p_failure_patterns = sub.add_parser(
+        "failure-patterns",
+        help="group repeated failures and suggest operator actions",
+    )
+    p_failure_patterns.add_argument("--repo")
+    p_failure_patterns.add_argument("--codename")
+    p_failure_patterns.add_argument("--window-days", type=int, default=7)
+    p_failure_patterns.add_argument("--min-count", type=int, default=2)
+    p_failure_patterns.add_argument("--limit", type=int, default=20)
+    p_failure_patterns.add_argument("--json", action="store_true")
+    p_failure_patterns.set_defaults(func=cmd_failure_patterns)
+
+    p_governor = sub.add_parser(
+        "governor",
+        help="reliability governor report with failures, stale workers, and promotions",
+    )
+    p_governor.add_argument("--window-days", type=int, default=7)
+    p_governor.add_argument("--min-count", type=int, default=2)
+    p_governor.add_argument("--stale-worker-minutes", type=int, default=60)
+    p_governor.add_argument("--limit", type=int, default=10)
+    p_governor.add_argument("--json", action="store_true")
+    p_governor.set_defaults(func=cmd_governor)
 
     p_github = sub.add_parser("github", help="list cached GitHub issue/PR state")
     p_github.add_argument("--repo")

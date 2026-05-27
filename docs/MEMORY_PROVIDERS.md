@@ -25,6 +25,8 @@ when one of these is true:
   `ALFRED_MEMORY_PROVIDERS=null`).
 - You're writing a custom provider for a downstream fleet (e.g. a
   team wiki shim) and want to chain it behind the fleet-brain.
+- You already run Redis Agent Memory Server and want Alfred to consult
+  it as an optional second memory surface.
 
 ## The Protocol
 
@@ -66,6 +68,7 @@ chain wrapper catches it and tries the next writer.
 |---|---|---|---|
 | `fleet` | `lib/memory/providers.py` | yes | Wraps `fleet_brain.FleetBrain`. SQLite under `$ALFRED_HOME`. |
 | `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into the operator's personal knowledge base CLI. Not bundled functionality. |
+| `redis` | `lib/memory/redis_agent_memory.py` | yes | Optional bridge to Redis Agent Memory Server. Not installed or started by Alfred. |
 | `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Default when env is empty. |
 
 ## Configuration
@@ -81,6 +84,12 @@ ALFRED_MEMORY_PROVIDERS=fleet,gbrain
 # Read by gbrain_stub; the binary is invoked with a JSON payload on
 # stdin and must emit a JSON list of lessons on stdout.
 ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
+
+# Optional: Redis Agent Memory Server.
+ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
+ALFRED_REDIS_MEMORY_NAMESPACE=alfred
+ALFRED_REDIS_MEMORY_USER_ID=operator-id
+ALFRED_REDIS_MEMORY_TOKEN=
 ```
 
 Sample shell config for a chained setup:
@@ -94,6 +103,15 @@ Sample shell config for "memory off":
 
 ```sh
 export ALFRED_MEMORY_PROVIDERS=null
+```
+
+Sample shell config for Redis AMS as a fallback after the local
+fleet-brain:
+
+```sh
+export ALFRED_MEMORY_PROVIDERS=fleet,redis
+export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
+export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ```
 
 ## How chaining works
@@ -173,6 +191,9 @@ Now `ALFRED_MEMORY_PROVIDERS=fleet,team_wiki` works.
 - Nothing in the memory layer phones home. The fleet-brain is a
   SQLite file under `$ALFRED_HOME`; the gbrain shim invokes a
   subprocess the operator already installed locally.
+- The `redis` provider only runs when the operator opts in by env.
+  Alfred does not install Redis, start Redis AMS, or make it a hard
+  runtime dependency.
 - Read-only providers cannot exfiltrate the fleet-brain. Writes flow
   the other direction (to the first writer in the chain), never out
   to gbrain.
@@ -184,8 +205,8 @@ Now `ALFRED_MEMORY_PROVIDERS=fleet,team_wiki` works.
   v2 (PGLite + pgvector, see `docs/FLEET_BRAIN.md`).
 - **Reflect-everywhere.** Today `reflect` writes to the first
   writable provider only. A "broadcast" mode that fans the write
-  out to every writer is intentionally out of scope until there is a
-  second writable backend in-tree.
+  out to every writer is intentionally out of scope until users prove
+  they want Redis and fleet-brain written on every firing.
 - **Per-provider limits.** `limit` is passed verbatim to every
   provider in the chain; a smarter chain could split the budget.
 - **Cache.** No caching between calls. Each provider is hit fresh on

@@ -3,28 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{% block title %}alfred serve{% endblock %}</title>
+  <title>{% block title %}Alfred{% endblock %}</title>
+  <link rel="icon" type="image/png" href="/static/alfred-logo.png" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
 </head>
 <body>
   <header class="ops-header">
-    <nav class="container-fluid">
-      <ul>
-        <li><strong class="brand">alfred serve</strong></li>
-      </ul>
-      <ul>
-        <li><a href="/">fleet</a></li>
-        <li><a href="/firings">firings</a></li>
-      </ul>
+    <nav class="container-fluid ops-nav">
+      <a class="brand" href="/" aria-label="Alfred home">
+        <img src="/static/alfred-logo.png" alt="" />
+        <strong>Alfred</strong>
+      </a>
+      <div class="view-tabs" aria-label="Primary views">
+        <a class="{{ 'is-active' if request.url.path == '/' else '' }}" href="/">Fleet</a>
+        <a class="{{ 'is-active' if request.url.path.startswith('/firings') else '' }}" href="/firings">Firings</a>
+        <a class="{{ 'is-active' if request.url.path.startswith('/plans') else '' }}" href="/plans">Plans</a>
+      </div>
     </nav>
   </header>
   <main class="container ops-main">
     {% block content %}{% endblock %}
   </main>
   <footer class="ops-footer">
-    <small>read-only · localhost · $ALFRED_HOME/state</small>
+    <small>Alfred local cockpit</small>
   </footer>
 </body>
 </html>

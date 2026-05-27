@@ -32,7 +32,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,21 @@ class AgentSummary:
     firings_today: int
 
 
+@dataclass(frozen=True)
+class PlanDraft:
+    """One locally saved Batman plan."""
+
+    plan_id: str
+    title: str
+    status: str
+    parent: str | None
+    affected_repos: str | None
+    updated_at: str | None
+    path: str
+    preview: str
+    content: str
+
+
 # ---------------------------------------------------------------------------
 # Protocol
 # ---------------------------------------------------------------------------
@@ -88,6 +103,12 @@ class FleetReader(Protocol):
     ) -> list[FiringRecord]: ...
 
     def get_firing(self, firing_id: str) -> FiringRecord | None: ...
+
+    def reliability_report(self) -> dict[str, Any]: ...
+
+    def list_plans(self, *, limit: int = 20) -> list[PlanDraft]: ...
+
+    def get_plan(self, plan_id: str) -> PlanDraft | None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +225,64 @@ class FilesystemReader:
             return _firing_from_events(codename, firing_id, [data], str(opt))
         return None
 
+    def reliability_report(self) -> dict[str, Any]:
+        """Return a best-effort fleet-brain reliability report.
+
+        The dashboard is read-only and must keep rendering if the brain
+        has not been initialized yet, so any memory-layer problem becomes
+        a soft "unknown" report rather than an HTTP 500.
+        """
+        try:
+            from fleet_brain import FleetBrain, default_db_path
+
+            db_path = default_db_path()
+            if not db_path.exists():
+                return {
+                    "status": "unknown",
+                    "actions": [],
+                    "failure_patterns": [],
+                    "stale_workers": [],
+                    "promotion_suggestions": [],
+                    "error": f"fleet brain database not initialized: {db_path}",
+                }
+
+            return FleetBrain(db_path=db_path).reliability_report(limit=6)
+        except Exception as exc:  # pragma: no cover - defensive UI path
+            return {
+                "status": "unknown",
+                "actions": [],
+                "failure_patterns": [],
+                "stale_workers": [],
+                "promotion_suggestions": [],
+                "error": str(exc),
+            }
+
+    def list_plans(self, *, limit: int = 20) -> list[PlanDraft]:
+        """Return saved Batman plan drafts, newest first."""
+        plan_root = self._plan_root()
+        if not plan_root.is_dir():
+            return []
+        candidates = sorted(
+            plan_root.glob("*.md"),
+            key=lambda path: _safe_stat_mtime(path),
+            reverse=True,
+        )
+        plans: list[PlanDraft] = []
+        for path in candidates[: max(1, int(limit))]:
+            plan = self._read_plan(path)
+            if plan is not None:
+                plans.append(plan)
+        return plans
+
+    def get_plan(self, plan_id: str) -> PlanDraft | None:
+        """Read one saved Batman plan by filename stem."""
+        if "/" in plan_id or "\\" in plan_id or plan_id.startswith("."):
+            return None
+        path = self._plan_root() / f"{plan_id}.md"
+        if not path.exists():
+            return None
+        return self._read_plan(path)
+
     # -- internals ----------------------------------------------------------
 
     def _iter_codenames(self) -> list[str]:
@@ -301,6 +380,24 @@ class FilesystemReader:
         except (TypeError, ValueError):
             return 0
 
+    def _plan_root(self) -> Path:
+        """Resolve the Batman plan directory next to ``state/``."""
+        return self.state_root.parent / "batman-plans"
+
+    def _read_plan(self, path: Path) -> PlanDraft | None:
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.debug("read plan %s: %s", path, exc)
+            return None
+        updated_at = _mtime_iso(path)
+        return _plan_from_markdown(
+            plan_id=path.stem,
+            path=str(path),
+            updated_at=updated_at,
+            content=content,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -327,7 +424,7 @@ def _firing_from_events(
     summary_text = ""
     for event in events:
         name = str(event.get("event") or "")
-        if name in {"firing_ended", "end", "ok", "done"}:
+        if name in {"firing_ended", "firing_complete", "end", "ok", "done"}:
             ended = event.get("ts") or ended
             status = "ok"
             summary_text = _short_summary(event) or summary_text
@@ -359,6 +456,69 @@ def _firing_from_events(
         events_path=events_path,
         raw_events=events,
     )
+
+
+def _plan_from_markdown(
+    *,
+    plan_id: str,
+    path: str,
+    updated_at: str | None,
+    content: str,
+) -> PlanDraft:
+    title = "Batman plan"
+    status = "draft"
+    parent = None
+    affected_repos = None
+    preview = ""
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#") and title == "Batman plan":
+            title = line.lstrip("#").strip() or title
+            continue
+        if line.lower().startswith("**status:**"):
+            status = _strip_markdown_value(line)
+            continue
+        if line.lower().startswith("**issue url:**"):
+            parent = _strip_markdown_value(line)
+            continue
+        if line.lower().startswith("**affected repos:**"):
+            affected_repos = _strip_markdown_value(line)
+            continue
+        if not preview and not line.startswith("#") and not line.startswith("**"):
+            preview = line
+    if not preview:
+        preview = "Awaiting review."
+    return PlanDraft(
+        plan_id=plan_id,
+        title=title,
+        status=status or "draft",
+        parent=parent,
+        affected_repos=affected_repos,
+        updated_at=updated_at,
+        path=path,
+        preview=preview,
+        content=content,
+    )
+
+
+def _strip_markdown_value(line: str) -> str:
+    return line.split(":", 1)[-1].strip().strip("*").strip()
+
+
+def _safe_stat_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _mtime_iso(path: Path) -> str | None:
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
+    except OSError:
+        return None
 
 
 def _short_summary(event: dict) -> str:

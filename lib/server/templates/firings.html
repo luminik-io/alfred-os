@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}firings · alfred serve{% endblock %}
+{% block title %}Firings · Alfred{% endblock %}
 {% block content %}
 <section>
-  <hgroup>
-    <h2>Recent firings</h2>
+  <hgroup class="page-heading">
+    <h1>Firings</h1>
     <p>{% if codename %}filtered to <code>{{ codename }}</code> · <a href="/firings">clear filter</a>{% else %}all codenames, last {{ rows|length }}{% endif %}</p>
   </hgroup>
 
@@ -18,7 +18,7 @@
   {% endif %}
 
   {% if rows %}
-  <table role="grid" class="ops-table">
+  <table role="grid" class="ops-table firings-table">
     <thead>
       <tr>
         <th>firing</th>
@@ -32,12 +32,24 @@
     <tbody>
       {% for row in rows %}
       <tr>
-        <td><a href="/firings/{{ row.firing_id }}"><code>{{ row.firing_id }}</code></a></td>
-        <td>{{ row.codename }}</td>
-        <td><span class="dot dot-{{ row.status }}"></span> {{ row.status }}</td>
-        <td><code class="ts">{{ row.started_at or "?" }}</code></td>
-        <td><code class="ts">{{ row.ended_at or "?" }}</code></td>
-        <td><small class="dim">{{ row.summary }}</small></td>
+        <td data-label="Firing"><a class="firing-link" href="/firings/{{ row.firing_id }}" title="{{ row.firing_id }}">{{ row.firing_id|short_firing_id }}</a></td>
+        <td data-label="Codename">{{ row.codename }}</td>
+        <td data-label="Status"><span class="dot dot-{{ row.status }}"></span> {{ row.status }}</td>
+        <td data-label="Started">
+          {% if row.started_at %}
+            <time class="time-pill" datetime="{{ row.started_at }}" title="{{ row.started_at|timestamp_title }}">{{ row.started_at|friendly_time }}</time>
+          {% else %}
+            <span class="time-muted">unknown</span>
+          {% endif %}
+        </td>
+        <td data-label="Ended">
+          {% if row.ended_at %}
+            <time class="time-pill" datetime="{{ row.ended_at }}" title="{{ row.ended_at|timestamp_title }}">{{ row.ended_at|friendly_time }}</time>
+          {% else %}
+            <span class="time-muted">running</span>
+          {% endif %}
+        </td>
+        <td data-label="Summary"><small class="dim">{{ row.summary }}</small></td>
       </tr>
       {% endfor %}
     </tbody>
