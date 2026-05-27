@@ -1,8 +1,12 @@
 # `alfred serve`
 
-A small, localhost-only, read-only dashboard over `$ALFRED_HOME/state`. Three views, no auth, no writes. The operator's pane of glass for "what is the fleet doing right now".
+A small, localhost-only, read-only dashboard over `$ALFRED_HOME/state` and the
+local fleet brain. Three core views, no auth, no writes. The operator's pane of
+glass for "what is the fleet doing right now".
 
-Status: shipped in v0.4.0 as a cross-platform precursor to any future native menu-bar UI.
+Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
+cards and action summaries as a cross-platform precursor to any future native
+menu-bar UI.
 
 ## Install
 
@@ -20,12 +24,14 @@ From a checkout:
 
 ```bash
 python bin/alfred-serve.py
+# or
+python bin/alfred serve
 ```
 
-From an installed environment, once the console script lands:
+From a deployed checkout:
 
 ```bash
-alfred-serve
+alfred serve
 ```
 
 Defaults:
@@ -42,6 +48,11 @@ The dashboard auto-refreshes the fleet table every 10 seconds via HTMX. Detail v
 ## What it reads
 
 The default reader walks `$ALFRED_HOME/state` (falling back to `~/.alfred/state` if the env var is unset). All reads are best-effort: missing directories render an empty state, malformed JSONL lines are skipped, the dashboard never throws.
+
+If `$ALFRED_HOME/fleet-brain.db` exists, the reader also asks the fleet brain
+for a read-only reliability report. Missing optional dependencies or a missing
+brain database degrade to an "unknown" governor panel instead of failing the
+page.
 
 Canonical layout (written by `lib/agent_runner.py`):
 
@@ -64,14 +75,19 @@ $ALFRED_HOME/state/firings/<firing_id>.json
 
 ### `GET /` - Fleet status
 
-One row per codename:
+Summary cards plus one row per codename:
 
+- reliability-governor status and top action
+- repeated failure-pattern count
+- stale-worker count
+- memory-promotion suggestions
 - status dot (idle, live, error)
 - last-run timestamp
 - firings-today count (read from the per-day spend ledger)
 - last firing id (linked to the detail view) plus a one-line summary
 
-Auto-refreshes every 10 seconds via HTMX. The refresh swaps just the table body, not the whole shell.
+The table auto-refreshes every 10 seconds via HTMX. The refresh swaps just the
+table body, not the whole shell.
 
 ### `GET /firings` - Recent firings
 

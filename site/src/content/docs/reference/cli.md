@@ -202,6 +202,8 @@ alfred brain github --state open
 alfred brain bundles <bundle-slug>
 alfred brain workers --stale
 alfred brain promotions
+alfred brain failure-patterns --codename huntress
+alfred brain governor --json
 alfred brain doctor
 alfred brain forget <lesson-id>
 alfred brain export --out ~/alfred-brain.json
@@ -212,6 +214,16 @@ Runtime memory is on by default through the local `fleet` provider. Set
 `ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection. Set
 `ALFRED_MEMORY_REFLECTION_MODE=candidate` when you want engine-written lessons
 to enter the review queue before future recall.
+
+## `alfred serve`
+
+Runs the read-only localhost dashboard over fleet state and reliability
+governor actions.
+
+```sh
+alfred serve --port 7000
+alfred serve --port 7000 --no-browser
+```
 
 ## `alfred labels`
 

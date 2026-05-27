@@ -1,11 +1,77 @@
 {% extends "base.html" %}
-{% block title %}fleet · alfred serve{% endblock %}
+{% block title %}Alfred{% endblock %}
 {% block content %}
+<section class="ops-hero">
+  <div>
+    <span class="status-pill status-pill--{{ reliability.status }}">{{ reliability.status }}</span>
+    <h1>Alfred</h1>
+    <p>{{ agents|length }} agents, {{ total_today }} firing{{ '' if total_today == 1 else 's' }} today.</p>
+  </div>
+  <div class="hero-actions" aria-label="Page actions">
+    <a href="/" role="button">Refresh</a>
+    {% if reliability.actions %}
+    <a href="#action-queue" role="button" class="secondary">Action queue</a>
+    {% endif %}
+    <a href="/firings" role="button" class="secondary">Recent firings</a>
+  </div>
+</section>
+
 <section>
-  <hgroup>
-    <h2>Fleet status</h2>
-    <p>{{ agents|length }} codename{{ '' if agents|length == 1 else 's' }} · {{ total_today }} firing{{ '' if total_today == 1 else 's' }} today</p>
-  </hgroup>
+  <div class="ops-grid" aria-label="Fleet summary">
+    <article class="ops-panel ops-panel--{{ reliability.status }}">
+      <small class="panel-kicker">Governor</small>
+      <strong>{{ reliability.status }}</strong>
+      {% if reliability.actions %}
+        <p>{{ reliability.actions|length }} action{{ '' if reliability.actions|length == 1 else 's' }} waiting</p>
+      {% elif reliability.error %}
+        <p>{{ reliability.error }}</p>
+      {% else %}
+        <p>no actions waiting</p>
+      {% endif %}
+    </article>
+    <article class="ops-panel">
+      <small class="panel-kicker">Patterns</small>
+      <strong>{{ reliability.failure_patterns|length }}</strong>
+      <p>repeated failures</p>
+    </article>
+    <article class="ops-panel">
+      <small class="panel-kicker">Workers</small>
+      <strong>{{ reliability.stale_workers|length }}</strong>
+      <p>stale runs</p>
+    </article>
+    <article class="ops-panel">
+      <small class="panel-kicker">Memory</small>
+      <strong>{{ reliability.promotion_suggestions|length }}</strong>
+      <p>review candidates</p>
+    </article>
+  </div>
+
+  {% if reliability.actions %}
+  <div id="action-queue" class="action-list" aria-label="Reliability actions">
+    <div class="section-heading">
+      <h2>Action Queue</h2>
+      <a href="/firings">View all firings</a>
+    </div>
+    {% for action in reliability.actions %}
+    <article class="action-item action-item--{{ action.severity }}">
+      <div>
+        <small class="panel-kicker">{{ action.action }}</small>
+        <p>{{ action.summary }}</p>
+      </div>
+      {% if action.target %}
+        <a class="mini-action" href="/firings?codename={{ action.target }}">Open {{ action.target }}</a>
+      {% else %}
+        <a class="mini-action" href="/firings">Open firings</a>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="section-heading">
+    <h2>Agents</h2>
+    <a href="/firings">Recent firings</a>
+  </div>
   {% include "fleet_table.html" %}
 </section>
 {% endblock %}

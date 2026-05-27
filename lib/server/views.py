@@ -25,13 +25,18 @@ def register_routes(app: FastAPI) -> None:
         reader = request.app.state.reader
         templates = request.app.state.templates
         agents = reader.list_agents()
+        reliability = reader.reliability_report()
         template = (
             "fleet_table.html" if request.headers.get("HX-Request") == "true" else "fleet.html"
         )
         return templates.TemplateResponse(
             request,
             template,
-            {"agents": agents, "total_today": sum(a.firings_today for a in agents)},
+            {
+                "agents": agents,
+                "total_today": sum(a.firings_today for a in agents),
+                "reliability": reliability,
+            },
         )
 
     @app.get("/firings", response_class=HTMLResponse)

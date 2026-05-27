@@ -25,6 +25,8 @@ Reliability and first-run trust polish.
 - Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.
 - Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
 - Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
+- Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions.
+- `alfred serve` reliability cards: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, and memory review suggestions.
 
 ### v0.4.0: 2026-05-23
 
@@ -61,7 +63,7 @@ Items with active work and a committed IC.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
 - **Cross-platform menubar app.** A small native menubar (macOS first, Linux tray second) that surfaces fleet status and click-throughs to the local `alfred serve` UI. Read-only. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so local clients can read fleet memory. IC: core. Effort: L. Issue: TBD.
-- **Memory quality loop.** Add evidence-linked lesson promotion, repeated-failure routing, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
+- **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 
 ## Next (next quarter)
 

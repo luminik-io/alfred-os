@@ -48,6 +48,8 @@ alfred brain github --state open
 alfred brain bundles billing
 alfred brain workers --stale
 alfred brain promotions
+alfred brain failure-patterns --codename huntress
+alfred brain governor
 alfred brain doctor
 alfred mcp serve
 ```
@@ -70,7 +72,8 @@ ones.
 The GitHub poller keeps issue, PR, and bundle state in the same local memory
 store. The doctor command uses that cache to report poll freshness, open bundle
 shape, stale worker heartbeats, repeated failures, and high-confidence memory
-candidates that are ready for review.
+candidates that are ready for review. The governor command turns those signals
+into a read-only action list for the operator and the local dashboard.
 
 ## MCP access
 
@@ -98,8 +101,8 @@ operator-owned.
 
 The next useful layer is reliability, not more mystery:
 
-- Auto-route repeated failure patterns into actions: pause a codename, file a
-  setup issue, or suggest a missing local dependency.
+- Add approved follow-up execution for governor findings, such as filing a
+  setup issue or pausing a single codename.
 - Let Batman and specs-driven workflows remember which specs generated which
   issues and PRs.
 - Add semantic recall for lessons, plans, and failure summaries.

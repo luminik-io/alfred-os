@@ -32,7 +32,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,8 @@ class FleetReader(Protocol):
     ) -> list[FiringRecord]: ...
 
     def get_firing(self, firing_id: str) -> FiringRecord | None: ...
+
+    def reliability_report(self) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +205,27 @@ class FilesystemReader:
             codename = str(data.get("agent") or data.get("codename") or "unknown")
             return _firing_from_events(codename, firing_id, [data], str(opt))
         return None
+
+    def reliability_report(self) -> dict[str, Any]:
+        """Return a best-effort fleet-brain reliability report.
+
+        The dashboard is read-only and must keep rendering if the brain
+        has not been initialized yet, so any memory-layer problem becomes
+        a soft "unknown" report rather than an HTTP 500.
+        """
+        try:
+            from fleet_brain import FleetBrain
+
+            return FleetBrain().reliability_report(limit=6)
+        except Exception as exc:  # pragma: no cover - defensive UI path
+            return {
+                "status": "unknown",
+                "actions": [],
+                "failure_patterns": [],
+                "stale_workers": [],
+                "promotion_suggestions": [],
+                "error": str(exc),
+            }
 
     # -- internals ----------------------------------------------------------
 

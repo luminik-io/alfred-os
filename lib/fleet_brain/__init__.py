@@ -104,6 +104,30 @@ _LOG = logging.getLogger(__name__)
 # Cap recall output so a runaway codename can't blow up a prompt.
 _RECALL_DEFAULT = 8
 _RECALL_MAX = 50
+_NON_ACTIONABLE_FAILURE_SUBTYPES = {
+    "already_implemented",
+    "already-implemented",
+    "daily-cap",
+    "dedup-skip",
+    "dedup_skip",
+    "fixes-landed",
+    "green",
+    "idle-no-candidates",
+    "idle-no-comments",
+    "idle-no-pr",
+    "noop",
+    "ok",
+    "pr-opened",
+    "review-cap",
+    "review-posted",
+    "silent-no-work",
+    "silent_no_work",
+    "success",
+    "test-ok",
+    "test_ok",
+    "triage-cap",
+    "triaged",
+}
 
 
 class FleetBrain:
@@ -653,6 +677,76 @@ class FleetBrain:
             if hb.heartbeat_at < cutoff
         ]
 
+    def list_failure_patterns(
+        self,
+        *,
+        repo: str | None = None,
+        codename: str | None = None,
+        window_days: int = 7,
+        min_count: int = 2,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Group repeated failures and attach a suggested operator action.
+
+        This is the "reliability governor" read path. It does not mutate
+        fleet state. The goal is to turn repeated Slack-style error noise
+        into a small queue of concrete next actions.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=max(1, int(window_days)))
+        grouped: dict[tuple[str, str, str, str], list[FailureEvent]] = {}
+        for failure in self.list_failures(repo=repo, codename=codename, limit=500):
+            if failure.created_at < cutoff:
+                continue
+            key = (
+                failure.codename,
+                failure.repo or "",
+                failure.subtype or "unknown",
+                failure.engine or "",
+            )
+            grouped.setdefault(key, []).append(failure)
+
+        patterns: list[dict[str, Any]] = []
+        threshold = max(1, int(min_count))
+        for (agent, failure_repo, subtype, engine), rows in grouped.items():
+            if len(rows) < threshold:
+                continue
+            rows.sort(key=lambda item: item.created_at)
+            latest = rows[-1]
+            if _is_non_actionable_failure_pattern(subtype, latest.summary):
+                continue
+            classification = _classify_failure_pattern(subtype, latest.summary, agent)
+            action = _suggest_failure_action(
+                classification=classification,
+                codename=agent,
+                count=len(rows),
+            )
+            severity = "blocker" if action in {"pause_agent", "file_setup_issue"} else "warning"
+            patterns.append(
+                {
+                    "key": "|".join([agent, failure_repo or "-", subtype, engine or "-"]),
+                    "codename": agent,
+                    "repo": failure_repo or None,
+                    "subtype": subtype,
+                    "engine": engine or None,
+                    "count": len(rows),
+                    "first_seen": rows[0].created_at.isoformat(),
+                    "last_seen": latest.created_at.isoformat(),
+                    "latest_summary": latest.summary,
+                    "classification": classification,
+                    "suggested_action": action,
+                    "severity": severity,
+                    "evidence_ids": [row.id for row in rows[-5:]],
+                }
+            )
+        patterns.sort(
+            key=lambda item: (
+                item["severity"] != "blocker",
+                -int(item["count"]),
+                str(item["last_seen"]),
+            )
+        )
+        return patterns[: max(1, min(int(limit), 100))]
+
     def suggest_memory_promotions(
         self,
         *,
@@ -700,6 +794,76 @@ class FleetBrain:
             )
         suggestions.sort(key=lambda item: float(item["score"]), reverse=True)
         return suggestions[: max(1, min(int(limit), 100))]
+
+    def reliability_report(
+        self,
+        *,
+        window_days: int = 7,
+        failure_min_count: int = 2,
+        stale_worker_minutes: int = 60,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Return the operator-facing reliability governor report."""
+        patterns = self.list_failure_patterns(
+            window_days=window_days,
+            min_count=failure_min_count,
+            limit=limit,
+        )
+        stale_workers = self.list_stale_workers(max_age_minutes=stale_worker_minutes)
+        promotions = self.suggest_memory_promotions(limit=limit)
+        actions: list[dict[str, Any]] = []
+        for pattern in patterns:
+            actions.append(
+                {
+                    "kind": "failure_pattern",
+                    "severity": pattern["severity"],
+                    "action": pattern["suggested_action"],
+                    "summary": _failure_action_summary(pattern),
+                    "target": pattern["codename"],
+                    "evidence": pattern["evidence_ids"],
+                }
+            )
+        for worker in stale_workers[:limit]:
+            actions.append(
+                {
+                    "kind": "stale_worker",
+                    "severity": "warning",
+                    "action": "inspect_worker",
+                    "summary": (
+                        f"{worker.codename} firing {worker.firing_id} has not "
+                        f"sent a heartbeat recently"
+                    ),
+                    "target": worker.codename,
+                    "evidence": [worker.id],
+                }
+            )
+        if promotions:
+            actions.append(
+                {
+                    "kind": "memory_promotion",
+                    "severity": "info",
+                    "action": "review_memory",
+                    "summary": f"{len(promotions)} memory candidate(s) look promotable",
+                    "target": "memory",
+                    "evidence": [str(item["candidate_id"]) for item in promotions[:limit]],
+                }
+            )
+
+        status = "ok"
+        if any(item["severity"] == "blocker" for item in actions):
+            status = "fail"
+        elif actions:
+            status = "warn"
+        return {
+            "status": status,
+            "checked_at": datetime.now(UTC).isoformat(),
+            "window_days": max(1, int(window_days)),
+            "failure_min_count": max(1, int(failure_min_count)),
+            "failure_patterns": patterns,
+            "stale_workers": [_serialize(asdict(worker)) for worker in stale_workers[:limit]],
+            "promotion_suggestions": promotions,
+            "actions": actions[:limit],
+        }
 
     def stats(self) -> dict[str, int]:
         return self.store.stats()
@@ -752,6 +916,19 @@ class FleetBrain:
             check("promotion_loop", "warn", f"{len(suggestions)} candidate(s) look promotable")
         else:
             check("promotion_loop", "ok", "no high-confidence candidates waiting")
+
+        patterns = self.list_failure_patterns(limit=5)
+        blocker_patterns = [p for p in patterns if p["severity"] == "blocker"]
+        if blocker_patterns:
+            check(
+                "reliability_governor",
+                "fail",
+                f"{len(blocker_patterns)} repeated blocker failure pattern(s)",
+            )
+        elif patterns:
+            check("reliability_governor", "warn", f"{len(patterns)} repeated pattern(s)")
+        else:
+            check("reliability_governor", "ok", "no repeated failure patterns")
 
         if stats.get("lessons", 0) == 0 and open_candidates == 0:
             check("recall_seed", "warn", "no trusted lessons or candidates yet")
@@ -862,6 +1039,58 @@ def _serialize(d: dict[str, Any]) -> dict[str, Any]:
         else:
             out[k] = v
     return out
+
+
+def _classify_failure_pattern(subtype: str, summary: str, codename: str) -> str:
+    text = f"{subtype} {summary} {codename}".lower()
+    if any(token in text for token in ("executable doesn't exist", "playwright", "chromium")):
+        return "local_setup"
+    if any(token in text for token in ("auth", "token", "sso", "accessdenied", "permission")):
+        return "auth"
+    if any(token in text for token in ("rate_limit", "quota", "budget", "too many requests")):
+        return "provider_limit"
+    if any(token in text for token in ("timeout", "timed out", "error_timeout")):
+        return "timeout"
+    if any(token in text for token in ("no-commit", "no commit", "wip", "salvage")):
+        return "agent_quality"
+    return "unknown"
+
+
+def _is_non_actionable_failure_pattern(subtype: str, summary: str) -> bool:
+    normalized = str(subtype or "").strip().lower()
+    if normalized in _NON_ACTIONABLE_FAILURE_SUBTYPES:
+        return True
+    text = f"{normalized} {summary or ''}".lower()
+    if any(token in text for token in ("error", "fail", "timeout", "blocked", "crash")):
+        return False
+    return normalized.endswith("-cap")
+
+
+def _suggest_failure_action(*, classification: str, codename: str, count: int) -> str:
+    if classification == "local_setup":
+        return "file_setup_issue"
+    if classification == "auth":
+        return "ask_human"
+    if classification == "provider_limit":
+        return "retry_later"
+    if classification == "agent_quality":
+        return "review_prompt_or_checks"
+    if classification == "timeout" and count >= 3:
+        return "pause_agent"
+    if classification == "timeout":
+        return "retry_later"
+    if count >= 3:
+        return "pause_agent"
+    return "inspect"
+
+
+def _failure_action_summary(pattern: dict[str, Any]) -> str:
+    repo = f" on {pattern['repo']}" if pattern.get("repo") else ""
+    return (
+        f"{pattern['codename']} has {pattern['count']} repeated "
+        f"{pattern['classification']} failure(s){repo}: "
+        f"{pattern['suggested_action']}"
+    )
 
 
 def _canonical_memory_body(body: str) -> str:

@@ -718,6 +718,94 @@ def test_stats_reports_counts(brain: FleetBrain) -> None:
     assert s["repos"] == 2
 
 
+def test_failure_patterns_classify_repeated_setup_failures(brain: FleetBrain) -> None:
+    now = datetime.now(UTC)
+    for idx in range(2):
+        brain.record_failure(
+            codename="huntress",
+            repo="org/web",
+            firing_id=f"fid-{idx}",
+            subtype="error_timeout",
+            summary=(
+                "browserType.launch: Executable doesn't exist at "
+                "chromium_headless_shell"
+            ),
+            engine="claude",
+            created_at=now - timedelta(minutes=idx),
+        )
+
+    patterns = brain.list_failure_patterns(window_days=7, min_count=2)
+
+    assert len(patterns) == 1
+    assert patterns[0]["classification"] == "local_setup"
+    assert patterns[0]["suggested_action"] == "file_setup_issue"
+    assert patterns[0]["severity"] == "blocker"
+
+
+def test_failure_patterns_ignore_informational_terminal_events(brain: FleetBrain) -> None:
+    for idx in range(3):
+        brain.record_failure(
+            codename="rasalghul",
+            repo="org/app",
+            firing_id=f"review-{idx}",
+            subtype="review-posted",
+            summary="review-posted",
+        )
+    for idx in range(2):
+        brain.record_failure(
+            codename="lucius",
+            repo="org/app",
+            firing_id=f"test-{idx}",
+            subtype="test_ok",
+            summary="test_ok",
+        )
+
+    assert brain.list_failure_patterns(window_days=7, min_count=2) == []
+
+
+def test_reliability_report_surfaces_actions(brain: FleetBrain) -> None:
+    stale_at = datetime.now(UTC) - timedelta(hours=2)
+    brain.upsert_worker_heartbeat(
+        codename="lucius",
+        firing_id="stale",
+        status="running",
+        heartbeat_at=stale_at,
+    )
+    brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Use request fixtures.",
+        evidence="Observed in PR 42.",
+        confidence=0.9,
+    )
+
+    report = brain.reliability_report()
+
+    assert report["status"] == "warn"
+    assert {item["kind"] for item in report["actions"]} == {
+        "stale_worker",
+        "memory_promotion",
+    }
+
+
+def test_doctor_flags_repeated_blocker_patterns(brain: FleetBrain) -> None:
+    for idx in range(3):
+        brain.record_failure(
+            codename="lucius",
+            subtype="error_timeout",
+            summary="implementation timed out",
+            event_id=f"failure-{idx}",
+        )
+
+    report = brain.doctor()
+
+    assert report["status"] == "fail"
+    assert any(
+        check["name"] == "reliability_governor" and check["status"] == "fail"
+        for check in report["checks"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # SQLiteStore direct
 # ---------------------------------------------------------------------------

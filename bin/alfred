@@ -56,7 +56,10 @@ Subcommands today:
                               pretty-printed dump of one firing.
   alfred brain ...            Inspect and seed the local fleet-brain memory
                               layer (`status`, `lessons`, `reflect`,
-                              `firings`, `forget`, `export`).
+                              `governor`, `failure-patterns`, `firings`,
+                              `forget`, `export`).
+  alfred serve                Open the read-only localhost dashboard over
+                              fleet state and reliability-governor actions.
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
 
@@ -830,6 +833,12 @@ def cmd_github_poll(args: argparse.Namespace) -> int:
 def cmd_mcp(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-mcp.py"
     forwarded = args.mcp_args or ["serve"]
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-serve.py"
+    forwarded = args.serve_args or []
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
@@ -1722,6 +1731,10 @@ def main(argv: list[str] | None = None) -> int:
     p_mcp = sub.add_parser("mcp", help="serve read-only Alfred MCP tools")
     p_mcp.add_argument("mcp_args", nargs=argparse.REMAINDER)
     p_mcp.set_defaults(func=cmd_mcp)
+
+    p_serve = sub.add_parser("serve", help="open the read-only localhost dashboard")
+    p_serve.add_argument("serve_args", nargs=argparse.REMAINDER)
+    p_serve.set_defaults(func=cmd_serve)
 
     p_spec = sub.add_parser("spec", help="create and lint specs for agent work")
     p_spec.add_argument("spec_args", nargs=argparse.REMAINDER)
