@@ -785,6 +785,29 @@ def test_reliability_report_surfaces_actions(brain: FleetBrain) -> None:
     }
 
 
+def test_reliability_report_actions_cover_each_visible_signal(brain: FleetBrain) -> None:
+    for pattern_idx in range(6):
+        for event_idx in range(2):
+            brain.record_failure(
+                codename=f"agent-{pattern_idx}",
+                subtype="error_timeout",
+                summary="implementation timed out",
+                event_id=f"failure-{pattern_idx}-{event_idx}",
+            )
+    brain.upsert_worker_heartbeat(
+        codename="stale-agent",
+        firing_id="stale",
+        status="running",
+        heartbeat_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+
+    report = brain.reliability_report(limit=6)
+
+    assert len(report["failure_patterns"]) == 6
+    assert len(report["stale_workers"]) == 1
+    assert any(action["kind"] == "stale_worker" for action in report["actions"])
+
+
 def test_doctor_flags_repeated_blocker_patterns(brain: FleetBrain) -> None:
     for idx in range(3):
         brain.record_failure(

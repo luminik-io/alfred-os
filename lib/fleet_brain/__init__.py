@@ -862,7 +862,7 @@ class FleetBrain:
             "failure_patterns": patterns,
             "stale_workers": [_serialize(asdict(worker)) for worker in stale_workers[:limit]],
             "promotion_suggestions": promotions,
-            "actions": actions[:limit],
+            "actions": actions,
         }
 
     def stats(self) -> dict[str, int]:

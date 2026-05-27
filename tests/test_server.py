@@ -151,6 +151,34 @@ def test_fleet_view_htmx_partial(populated_state: Path) -> None:
     assert "<header" not in response.text  # partial, not full shell
 
 
+def test_fleet_view_htmx_partial_skips_reliability_report(populated_state: Path) -> None:
+    class CountingReader(FilesystemReader):
+        reliability_calls = 0
+
+        def reliability_report(self) -> dict[str, object]:
+            self.reliability_calls += 1
+            return {
+                "status": "ok",
+                "actions": [],
+                "failure_patterns": [],
+                "stale_workers": [],
+                "promotion_suggestions": [],
+            }
+
+    reader = CountingReader(state_root=populated_state)
+    client = TestClient(create_app(reader))
+
+    response = client.get("/", headers={"HX-Request": "true"})
+
+    assert response.status_code == 200
+    assert "fleet-table" in response.text
+    assert reader.reliability_calls == 0
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert reader.reliability_calls == 1
+
+
 def test_firings_view_lists_recent(populated_state: Path) -> None:
     client = _client(populated_state)
     response = client.get("/firings")
