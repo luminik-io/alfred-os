@@ -214,9 +214,20 @@ class FilesystemReader:
         a soft "unknown" report rather than an HTTP 500.
         """
         try:
-            from fleet_brain import FleetBrain
+            from fleet_brain import FleetBrain, default_db_path
 
-            return FleetBrain().reliability_report(limit=6)
+            db_path = default_db_path()
+            if not db_path.exists():
+                return {
+                    "status": "unknown",
+                    "actions": [],
+                    "failure_patterns": [],
+                    "stale_workers": [],
+                    "promotion_suggestions": [],
+                    "error": f"fleet brain database not initialized: {db_path}",
+                }
+
+            return FleetBrain(db_path=db_path).reliability_report(limit=6)
         except Exception as exc:  # pragma: no cover - defensive UI path
             return {
                 "status": "unknown",

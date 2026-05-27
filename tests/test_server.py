@@ -216,6 +216,19 @@ def test_healthz(populated_state: Path) -> None:
     assert response.text == "ok"
 
 
+def test_reliability_report_missing_brain_db_is_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "missing-fleet-brain.db"
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
+
+    report = FilesystemReader(state_root=tmp_path / "state").reliability_report()
+
+    assert report["status"] == "unknown"
+    assert "not initialized" in report["error"]
+    assert not db_path.exists()
+
+
 def test_malformed_jsonl_does_not_crash(tmp_path: Path) -> None:
     state = tmp_path / "state"
     (state / "lucius" / "events").mkdir(parents=True)
