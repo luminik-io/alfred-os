@@ -387,10 +387,7 @@ def cmd_governor(args: argparse.Namespace) -> int:
         print("  ok   no reliability actions")
         return 0
     for action in actions:
-        print(
-            f"  {action['severity']:7} {action['kind']}: "
-            f"{action['summary']}"
-        )
+        print(f"  {action['severity']:7} {action['kind']}: {action['summary']}")
     return 1 if report["status"] == "fail" else 0
 
 

@@ -726,10 +726,7 @@ def test_failure_patterns_classify_repeated_setup_failures(brain: FleetBrain) ->
             repo="org/web",
             firing_id=f"fid-{idx}",
             subtype="error_timeout",
-            summary=(
-                "browserType.launch: Executable doesn't exist at "
-                "chromium_headless_shell"
-            ),
+            summary=("browserType.launch: Executable doesn't exist at chromium_headless_shell"),
             engine="claude",
             created_at=now - timedelta(minutes=idx),
         )
