@@ -844,7 +844,7 @@ class FleetBrain:
                     "severity": "info",
                     "action": "review_memory",
                     "summary": f"{len(promotions)} memory candidate(s) look promotable",
-                    "target": "memory",
+                    "target": None,
                     "evidence": [str(item["candidate_id"]) for item in promotions[:limit]],
                 }
             )

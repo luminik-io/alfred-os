@@ -783,6 +783,8 @@ def test_reliability_report_surfaces_actions(brain: FleetBrain) -> None:
         "stale_worker",
         "memory_promotion",
     }
+    memory_action = next(item for item in report["actions"] if item["kind"] == "memory_promotion")
+    assert memory_action["target"] is None
 
 
 def test_reliability_report_actions_cover_each_visible_signal(brain: FleetBrain) -> None:
