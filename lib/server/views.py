@@ -7,6 +7,7 @@ Three views:
 * ``GET /firings/{id}``      Single firing detail.
 * ``GET /plans``             Saved Batman plans.
 * ``GET /plans/{id}``        Single saved Batman plan.
+* ``GET/POST /planning``     Local issue/spec readiness helper.
 
 Two HTMX partials live behind the same URLs via the ``HX-Request`` header,
 ``htmx-only`` reduces the round trip to just the table body rather than
@@ -15,8 +16,15 @@ re-rendering the whole shell. Keeps the dashboard cheap to refresh.
 
 from __future__ import annotations
 
+import os
+import re
+from datetime import UTC, datetime
+from pathlib import Path
+from urllib.parse import parse_qs
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from spec_helper import IssueDraft, assess_issue_draft
 
 
 def register_routes(app: FastAPI) -> None:
@@ -122,7 +130,93 @@ def register_routes(app: FastAPI) -> None:
             {"plan": plan},
         )
 
+    @app.get("/planning", response_class=HTMLResponse)
+    async def planning(request: Request) -> HTMLResponse:
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "planning.html",
+            {
+                "draft": _empty_draft(),
+                "result": None,
+                "saved_path": None,
+            },
+        )
+
+    @app.post("/planning", response_class=HTMLResponse)
+    async def planning_submit(request: Request) -> HTMLResponse:
+        templates = request.app.state.templates
+        form = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+        draft = _draft_from_form(form)
+        result = assess_issue_draft(draft)
+        saved_path = None
+        if _first(form, "action") == "save":
+            saved_path = str(_save_issue_draft(request, draft, result.issue_body))
+        return templates.TemplateResponse(
+            request,
+            "planning.html",
+            {
+                "draft": draft,
+                "result": result,
+                "saved_path": saved_path,
+            },
+        )
+
     @app.get("/healthz", response_class=HTMLResponse)
     async def healthz() -> HTMLResponse:
         # Minimal liveness probe. Returns 200 with "ok" body, no template.
         return HTMLResponse("ok")
+
+
+def _empty_draft() -> IssueDraft:
+    return IssueDraft(title="")
+
+
+def _draft_from_form(form: dict[str, list[str]]) -> IssueDraft:
+    return IssueDraft(
+        title=_first(form, "title"),
+        problem=_first(form, "problem"),
+        user=_first(form, "user"),
+        current_behavior=_first(form, "current_behavior"),
+        desired_behavior=_first(form, "desired_behavior"),
+        repos=_lines(_first(form, "repos")),
+        acceptance_criteria=_lines(_first(form, "acceptance_criteria")),
+        test_plan=_first(form, "test_plan"),
+        out_of_scope=_first(form, "out_of_scope"),
+        rollout=_first(form, "rollout"),
+        open_questions=_first(form, "open_questions"),
+    )
+
+
+def _first(form: dict[str, list[str]], key: str) -> str:
+    values = form.get(key) or [""]
+    return values[0].strip()
+
+
+def _lines(value: str) -> list[str]:
+    return [line.strip().lstrip("- ").strip() for line in value.splitlines() if line.strip()]
+
+
+def _save_issue_draft(request: Request, draft: IssueDraft, body: str) -> Path:
+    root = _planning_root(request)
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    path = root / f"{stamp}-{_slug(draft.title)}.md"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _planning_root(request: Request) -> Path:
+    reader = request.app.state.reader
+    state_root = getattr(reader, "state_root", None)
+    if isinstance(state_root, Path):
+        return state_root.parent / "planning-drafts"
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    return Path(base) / "planning-drafts"
+
+
+def _slug(value: str) -> str:
+    text = value.strip().lower() or "draft"
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    text = re.sub(r"-+", "-", text).strip("-")
+    return text[:80] or "draft"

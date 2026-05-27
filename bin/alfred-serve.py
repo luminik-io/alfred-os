@@ -3,8 +3,7 @@
 
 Runs a tiny FastAPI app under uvicorn. Binds to ``127.0.0.1`` by default,
 reads state from ``$ALFRED_HOME/state`` (or ``~/.alfred/state``), and
-ships three views: a fleet status page, a recent-firings list, and a
-single-firing detail page.
+ships fleet, firing, plan, and planning views.
 
 Usage::
 
@@ -12,9 +11,10 @@ Usage::
     python bin/alfred-serve.py --port 7000
     python bin/alfred-serve.py --host 0.0.0.0 --port 9000 --no-browser
 
-Read-only: no route mutates state. Binding to ``0.0.0.0`` is allowed but
-discouraged, the dashboard exposes paths and event payloads that may
-contain repo URLs or other operator context.
+Fleet views are read-only. The planning helper can save draft issue/spec
+Markdown under ``$ALFRED_HOME/planning-drafts``. Binding to ``0.0.0.0`` is
+allowed but discouraged, the dashboard exposes paths and event payloads
+that may contain repo URLs or other operator context.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ logger = logging.getLogger("alfred-serve")
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="alfred-serve",
-        description="Localhost read-only dashboard over $ALFRED_HOME/state.",
+        description="Localhost dashboard over $ALFRED_HOME/state.",
     )
     p.add_argument(
         "--host",

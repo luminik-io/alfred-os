@@ -291,6 +291,62 @@ def test_plans_view_lists_saved_batman_plans(tmp_path: Path) -> None:
     assert 'target="_blank" rel="noopener noreferrer"' in detail.text
 
 
+def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.get("/planning")
+    assert response.status_code == 200
+    assert "Planning" in response.text
+
+    vague = client.post(
+        "/planning",
+        data={
+            "title": "Make it better",
+            "problem": "Confusing.",
+            "desired_behavior": "Improve stuff.",
+            "repos": "luminik-io/alfred-os",
+            "acceptance_criteria": "Make it nice",
+            "action": "preview",
+        },
+    )
+    assert vague.status_code == 200
+    assert "Needs scope" in vague.text
+    assert "What problem is the user facing today?" in vague.text
+
+    clear = client.post(
+        "/planning",
+        data={
+            "title": "Add Slack plan revision flow",
+            "problem": (
+                "Designers need to discuss a Batman plan before implementation "
+                "so Alfred does not ship the wrong workflow."
+            ),
+            "user": "Non-developer repo owner",
+            "current_behavior": "Batman posts a plan and waits for emoji approval.",
+            "desired_behavior": (
+                "Batman keeps implementation paused when a plan needs revision "
+                "and accepts thread feedback before child issues are filed."
+            ),
+            "repos": "luminik-io/alfred-os",
+            "acceptance_criteria": (
+                "A plan with unresolved questions is marked needs-scope.\n"
+                "Slack plan messages tell the operator how to reply with changes."
+            ),
+            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
+            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
+            "action": "save",
+        },
+    )
+    assert clear.status_code == 200
+    assert "Ready for Alfred" in clear.text
+    assert "Draft saved" in clear.text
+    saved = list((tmp_path / "planning-drafts").glob("*.md"))
+    assert len(saved) == 1
+    assert "## Acceptance Criteria" in saved[0].read_text(encoding="utf-8")
+
+
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()

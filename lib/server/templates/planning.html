@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Planning · Alfred{% endblock %}
+{% block content %}
+<section class="planning-shell">
+  <hgroup class="page-heading">
+    <h1>Planning</h1>
+    <p>Shape the work before Alfred files issues or opens PRs.</p>
+  </hgroup>
+
+  {% if saved_path %}
+  <article class="notice notice--ok">
+    <strong>Draft saved</strong>
+    <span>{{ saved_path }}</span>
+  </article>
+  {% endif %}
+
+  <div class="planning-grid">
+    <form class="planning-form" method="post" action="/planning">
+      <label>
+        Title
+        <input name="title" value="{{ draft.title }}" placeholder="Add Slack plan revision flow" />
+      </label>
+
+      <label>
+        Problem
+        <textarea name="problem" rows="4" placeholder="What is going wrong today?">{{ draft.problem }}</textarea>
+      </label>
+
+      <div class="field-pair">
+        <label>
+          User
+          <input name="user" value="{{ draft.user }}" placeholder="Non-developer repo owner" />
+        </label>
+        <label>
+          Repositories
+          <textarea name="repos" rows="3" placeholder="luminik-io/alfred-os">{{ draft.repos|join('\n') }}</textarea>
+        </label>
+      </div>
+
+      <label>
+        Current behavior
+        <textarea name="current_behavior" rows="3">{{ draft.current_behavior }}</textarea>
+      </label>
+
+      <label>
+        Desired behavior
+        <textarea name="desired_behavior" rows="4">{{ draft.desired_behavior }}</textarea>
+      </label>
+
+      <label>
+        Acceptance criteria
+        <textarea name="acceptance_criteria" rows="5" placeholder="One observable outcome per line">{{ draft.acceptance_criteria|join('\n') }}</textarea>
+      </label>
+
+      <label>
+        Test plan
+        <textarea name="test_plan" rows="3">{{ draft.test_plan }}</textarea>
+      </label>
+
+      <div class="field-pair">
+        <label>
+          Non-goals
+          <textarea name="out_of_scope" rows="3">{{ draft.out_of_scope }}</textarea>
+        </label>
+        <label>
+          Rollout
+          <textarea name="rollout" rows="3">{{ draft.rollout }}</textarea>
+        </label>
+      </div>
+
+      <label>
+        Open questions
+        <textarea name="open_questions" rows="3">{{ draft.open_questions }}</textarea>
+      </label>
+
+      <div class="form-actions">
+        <button name="action" value="preview" type="submit">Assess</button>
+        <button name="action" value="save" type="submit" class="secondary">Save draft</button>
+      </div>
+    </form>
+
+    <aside class="readiness-panel">
+      {% if result %}
+      <div class="score-card score-card--{{ 'ok' if result.ok else 'blocked' }}">
+        <small class="panel-kicker">Readiness</small>
+        <strong>{{ result.score }}</strong>
+        <p>{{ 'Ready for Alfred' if result.ok else 'Needs scope' }}</p>
+      </div>
+
+      {% if result.findings %}
+      <div class="finding-list">
+        {% for finding in result.findings %}
+        <article class="finding finding--{{ finding.severity }}">
+          <strong>{{ finding.severity }}</strong>
+          <span>{{ finding.message }}</span>
+        </article>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if result.questions %}
+      <article class="question-list">
+        <small class="panel-kicker">Questions</small>
+        {% for question in result.questions %}
+        <p>{{ question }}</p>
+        {% endfor %}
+      </article>
+      {% endif %}
+
+      <label class="issue-preview">
+        GitHub issue draft
+        <textarea readonly rows="18">{{ result.issue_body }}</textarea>
+      </label>
+      {% else %}
+      <div class="score-card">
+        <small class="panel-kicker">Readiness</small>
+        <strong>--</strong>
+        <p>Draft not assessed yet</p>
+      </div>
+      {% endif %}
+    </aside>
+  </div>
+</section>
+{% endblock %}

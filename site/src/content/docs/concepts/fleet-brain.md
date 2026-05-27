@@ -69,6 +69,17 @@ export ALFRED_MEMORY_REFLECTION_MODE=candidate
 Then use `alfred brain candidates` to promote useful lessons and reject noisy
 ones.
 
+If you already run Redis Agent Memory Server, keep it optional and explicit:
+
+```sh
+alfred brain redis-status
+alfred brain redis-sync --dry-run
+alfred brain redis-sync --codename lucius --repo your-org/api
+```
+
+Only reviewed local lessons are synced. Raw transcripts, event logs, and
+pending memory candidates stay local.
+
 The GitHub poller keeps issue, PR, and bundle state in the same local memory
 store. The doctor command uses that cache to report poll freshness, open bundle
 shape, stale worker heartbeats, repeated failures, and high-confidence memory

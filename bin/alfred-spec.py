@@ -17,7 +17,13 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from spec_helper import lint_spec_file, render_spec_template, write_spec_template  # noqa: E402
+from spec_helper import (  # noqa: E402
+    IssueDraft,
+    assess_issue_draft,
+    lint_spec_file,
+    render_spec_template,
+    write_spec_template,
+)
 
 
 def cmd_new(args: argparse.Namespace) -> int:
@@ -64,6 +70,46 @@ def cmd_template(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_assess(args: argparse.Namespace) -> int:
+    draft = IssueDraft(
+        title=args.title,
+        problem=args.problem or "",
+        user=args.user or "",
+        current_behavior=args.current_behavior or "",
+        desired_behavior=args.desired_behavior or "",
+        repos=[repo.strip() for repo in (args.repo or []) if repo.strip()],
+        acceptance_criteria=[item.strip() for item in (args.acceptance or []) if item.strip()],
+        test_plan=args.test_plan or "",
+        out_of_scope=args.out_of_scope or "",
+        rollout=args.rollout or "",
+        open_questions=args.open_questions or "",
+    )
+    result = assess_issue_draft(draft)
+    payload = {
+        "ok": result.ok,
+        "score": result.score,
+        "findings": [
+            {"code": f.code, "severity": f.severity, "message": f.message} for f in result.findings
+        ],
+        "questions": result.questions,
+        "issue_body": result.issue_body,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        status = "ready" if result.ok else "needs scope"
+        print(f"alfred-spec: {status} score={result.score}")
+        for finding in result.findings:
+            print(f"  {finding.severity}: {finding.code}: {finding.message}")
+        if result.questions:
+            print("questions:")
+            for question in result.questions:
+                print(f"  - {question}")
+        if args.print_body:
+            print("\n" + result.issue_body)
+    return 0 if result.ok else 1
+
+
 def _slug(title: str) -> str:
     out = []
     last_dash = False
@@ -97,6 +143,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_template.add_argument("title")
     p_template.add_argument("--repo", action="append", help="affected repo (repeatable)")
     p_template.set_defaults(func=cmd_template)
+
+    p_assess = sub.add_parser("assess", help="assess a GitHub issue draft")
+    p_assess.add_argument("title")
+    p_assess.add_argument("--problem")
+    p_assess.add_argument("--user")
+    p_assess.add_argument("--current-behavior")
+    p_assess.add_argument("--desired-behavior")
+    p_assess.add_argument("--repo", action="append", help="affected repo (repeatable)")
+    p_assess.add_argument("--acceptance", action="append", help="acceptance criterion")
+    p_assess.add_argument("--test-plan")
+    p_assess.add_argument("--out-of-scope")
+    p_assess.add_argument("--rollout")
+    p_assess.add_argument("--open-questions")
+    p_assess.add_argument("--print-body", action="store_true")
+    p_assess.add_argument("--json", action="store_true")
+    p_assess.set_defaults(func=cmd_assess)
 
     return parser
 

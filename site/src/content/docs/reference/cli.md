@@ -205,6 +205,8 @@ alfred brain promotions
 alfred brain failure-patterns --codename huntress
 alfred brain governor --json
 alfred brain doctor
+alfred brain redis-status
+alfred brain redis-sync --dry-run
 alfred brain forget <lesson-id>
 alfred brain export --out ~/alfred-brain.json
 alfred mcp serve
@@ -217,8 +219,8 @@ to enter the review queue before future recall.
 
 ## `alfred serve`
 
-Runs the read-only localhost dashboard over fleet state, reliability
-governor actions, recent firings, and saved Batman plans.
+Runs the localhost dashboard over fleet state, reliability governor actions,
+recent firings, saved Batman plans, and local Planning drafts.
 
 ```sh
 alfred serve --port 7000

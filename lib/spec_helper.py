@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REQUIRED_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -30,6 +30,34 @@ class SpecLintResult:
     path: str
     ok: bool
     findings: list[SpecFinding]
+
+
+@dataclass(frozen=True)
+class IssueDraft:
+    """Structured issue/spec intake used by the local planning UI."""
+
+    title: str
+    problem: str = ""
+    user: str = ""
+    current_behavior: str = ""
+    desired_behavior: str = ""
+    repos: list[str] = field(default_factory=list)
+    acceptance_criteria: list[str] = field(default_factory=list)
+    test_plan: str = ""
+    out_of_scope: str = ""
+    rollout: str = ""
+    open_questions: str = ""
+
+
+@dataclass(frozen=True)
+class IssueReadinessResult:
+    """Readiness verdict for Alfred-operated work."""
+
+    ok: bool
+    score: int
+    findings: list[SpecFinding]
+    questions: list[str]
+    issue_body: str
 
 
 def render_spec_template(title: str, repos: list[str] | None = None) -> str:
@@ -123,6 +151,158 @@ def lint_spec_file(path: Path) -> SpecLintResult:
     return lint_spec_text(path.read_text(encoding="utf-8"), path=str(path))
 
 
+def assess_issue_draft(draft: IssueDraft) -> IssueReadinessResult:
+    """Assess whether a local issue/spec draft is concrete enough to run.
+
+    The bar is intentionally practical: Alfred should not implement when
+    the problem, expected behavior, repo scope, acceptance criteria, or
+    verification path are missing. Warnings still allow saving the draft,
+    but blockers should keep Batman/Lucius in planning mode.
+    """
+    issue_body = render_issue_body(draft)
+    findings: list[SpecFinding] = []
+    questions: list[str] = []
+
+    if len(draft.title.strip()) < 8:
+        findings.append(_finding("missing_title", "error", "Add a specific issue title."))
+        questions.append("What should Alfred call this work?")
+    elif _looks_vague(draft.title):
+        findings.append(
+            _finding(
+                "vague_title",
+                "warning",
+                "Title uses broad wording. Name the user-visible outcome.",
+            )
+        )
+
+    if len(_plain(draft.problem)) < 30:
+        findings.append(
+            _finding(
+                "missing_problem",
+                "error",
+                "Explain the user/operator problem in at least one concrete paragraph.",
+            )
+        )
+        questions.append("What problem is the user facing today?")
+
+    if len(_plain(draft.desired_behavior)) < 30:
+        findings.append(
+            _finding(
+                "missing_desired_behavior",
+                "error",
+                "Describe the exact behavior Alfred should make true.",
+            )
+        )
+        questions.append("What should be different when this ships?")
+
+    clean_repos = [repo for repo in draft.repos if _valid_repo(repo)]
+    if not clean_repos:
+        findings.append(
+            _finding(
+                "missing_repo_scope",
+                "error",
+                "Choose at least one concrete GitHub repo, such as owner/repo.",
+            )
+        )
+        questions.append("Which repository or repositories should Alfred touch?")
+
+    actionable_acceptance = [
+        item for item in draft.acceptance_criteria if _plain(item) and not _is_placeholder(item)
+    ]
+    if not actionable_acceptance:
+        findings.append(
+            _finding(
+                "missing_acceptance_criteria",
+                "error",
+                "Add checklist-style acceptance criteria with observable outcomes.",
+            )
+        )
+        questions.append("How will Neha or Prasad verify this worked?")
+    elif any(_looks_vague(item) for item in actionable_acceptance):
+        findings.append(
+            _finding(
+                "vague_acceptance_criteria",
+                "warning",
+                "Some acceptance criteria use vague wording. Prefer observable checks.",
+            )
+        )
+
+    if len(_plain(draft.test_plan)) < 15:
+        findings.append(
+            _finding(
+                "missing_test_plan",
+                "error",
+                "Add a verification plan, even if it is a manual check.",
+            )
+        )
+        questions.append("What should Alfred test or manually check before opening a PR?")
+
+    if not _plain(draft.out_of_scope):
+        findings.append(
+            _finding(
+                "missing_non_goals",
+                "warning",
+                "Add out-of-scope notes so Alfred does not overbuild.",
+            )
+        )
+
+    if _contains_placeholder(issue_body):
+        findings.append(
+            _finding(
+                "template_placeholders",
+                "warning",
+                "Draft still contains placeholders or TODO text.",
+            )
+        )
+
+    blocker_count = sum(1 for finding in findings if finding.severity == "error")
+    warning_count = sum(1 for finding in findings if finding.severity == "warning")
+    score = max(0, 100 - blocker_count * 22 - warning_count * 6)
+    return IssueReadinessResult(
+        ok=blocker_count == 0,
+        score=score,
+        findings=findings,
+        questions=_dedupe(questions),
+        issue_body=issue_body,
+    )
+
+
+def render_issue_body(draft: IssueDraft) -> str:
+    """Render a GitHub-ready issue body from structured local intake."""
+    repos = draft.repos or ["owner/repo"]
+    acceptance = draft.acceptance_criteria or ["TODO"]
+    repo_lines = (
+        "\n".join(f"- `{repo.strip()}`" for repo in repos if repo.strip()) or "- `owner/repo`"
+    )
+    acceptance_lines = (
+        "\n".join(f"- [ ] {item.strip()}" for item in acceptance if item.strip()) or "- [ ] TODO"
+    )
+    sections = [
+        f"# {draft.title.strip() or 'Untitled Alfred work'}",
+        "## Problem",
+        draft.problem.strip() or "TODO",
+        "## User",
+        draft.user.strip() or "Operator or product user",
+        "## Current Behavior",
+        draft.current_behavior.strip() or "Not specified.",
+        "## Desired Behavior",
+        draft.desired_behavior.strip() or "TODO",
+        "## Repositories",
+        repo_lines,
+        "## Acceptance Criteria",
+        acceptance_lines,
+        "## Test Plan",
+        draft.test_plan.strip() or "TODO",
+        "## Non-goals",
+        draft.out_of_scope.strip() or "Not specified.",
+        "## Rollout",
+        draft.rollout.strip() or "Normal Alfred PR review.",
+        "## Open Questions",
+        draft.open_questions.strip() or "None.",
+    ]
+    return "\n\n".join(sections).strip() + "\n"
+
+
 def _headings(text: str) -> list[str]:
     return [m.group(1).strip() for m in re.finditer(r"^#{1,6}\s+(.+?)\s*$", text, re.MULTILINE)]
 
@@ -164,3 +344,52 @@ def _looks_like_empty_template(text: str) -> bool:
     lines = [line.rstrip() for line in text.splitlines()]
     empty_bullets = sum(1 for line in lines if line in {"- ", "- [ ] "})
     return empty_bullets >= 2 or "What user or operator problem are we solving?" in text
+
+
+def _finding(code: str, severity: str, message: str) -> SpecFinding:
+    return SpecFinding(code=code, severity=severity, message=message)
+
+
+def _plain(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def _valid_repo(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value.strip()))
+
+
+def _contains_placeholder(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in ("todo", "tbd", "???", "placeholder"))
+
+
+def _is_placeholder(value: str) -> bool:
+    lowered = _plain(value).lower()
+    return not lowered or lowered in {"todo", "tbd", "none", "n/a", "placeholder"}
+
+
+def _looks_vague(value: str) -> bool:
+    lowered = _plain(value).lower()
+    vague_terms = {
+        "better",
+        "clean up",
+        "etc",
+        "improve",
+        "maybe",
+        "nice",
+        "polish",
+        "stuff",
+        "things",
+    }
+    return any(re.search(rf"\b{re.escape(term)}\b", lowered) for term in vague_terms)
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out

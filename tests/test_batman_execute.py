@@ -254,6 +254,12 @@ def test_plan_parses_well_formed_parent_into_four_children():
     # Plan markdown shows up readable.
     assert "billing-v2" in plan.plan_markdown
     assert "pricing page rewrite" in plan.plan_markdown
+    assert (
+        "<https://github.com/your-org/your-product/issues/42|your-org/your-product#42>"
+        in plan.plan_markdown
+    )
+    assert "reply in this thread with changes" in plan.plan_markdown
+    assert "Readiness:* ready for approval" in plan.plan_markdown
 
 
 # ---------- scenario 2: approval timeout ----------
@@ -489,6 +495,40 @@ Children:
     assert len(plan.children) == 1
     assert plan.children[0].repo == "your-org/your-backend"
     assert plan.children[0].title == "real one"
+
+
+def test_vague_child_scope_blocks_execution_before_filing():
+    from batman import EXEC_NEEDS_SCOPE, BatmanLifecycle, BatmanLifecycleConfig
+
+    body = """Bundle: vague-plan
+
+Repos:
+- your-org/your-backend
+
+Children:
+- backend: TODO
+
+Done when:
+- Tests pass
+"""
+    gh = FakeGitHubClient()
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(auto_execute="1"),
+        gh_client=gh,
+    )
+
+    plan = lifecycle.plan(
+        body=body,
+        title="Bundle: vague-plan",
+        parent_repo="your-org/parent",
+        parent_issue_number=9,
+    )
+    result = lifecycle.execute(plan)
+
+    assert result.reason == EXEC_NEEDS_SCOPE
+    assert result.executed is False
+    assert gh.issued == []
+    assert "too vague" in result.detail
 
 
 def test_config_from_env_validates_auto_execute(monkeypatch):

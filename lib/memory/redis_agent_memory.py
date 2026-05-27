@@ -31,7 +31,7 @@ _JSON = "application/json"
 _DEFAULT_URL = "http://127.0.0.1:8000"
 _DEFAULT_TIMEOUT_S = 5.0
 
-Transport = Callable[[str, dict[str, Any], dict[str, str], float], Any]
+Transport = Callable[[str, str, dict[str, Any] | None, dict[str, str], float], Any]
 
 
 @dataclass
@@ -87,11 +87,34 @@ class RedisAgentMemoryProvider:
         if self.user_id:
             payload["user_id"] = {"eq": self.user_id}
         try:
-            response = self._post("/v1/long-term-memory/search", payload)
+            response = self._request("POST", "/v1/long-term-memory/search", payload)
         except Exception as exc:
             _LOG.debug("memory.redis: recall failed: %s", exc)
             return []
         return _parse_search_response(response, codename=codename, repo=repo)
+
+    def health(self) -> dict[str, Any]:
+        """Return Redis AMS health data, normalized for ``alfred brain``.
+
+        The AMS REST API exposes ``GET /v1/health``. Alfred keeps this
+        helper on the provider rather than the Protocol because health
+        checks are operator tooling, not runner context.
+        """
+        try:
+            response = self._request("GET", "/v1/health", None)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "base_url": self.base_url,
+                "namespace": self.namespace,
+                "error": str(exc),
+            }
+        return {
+            "ok": True,
+            "base_url": self.base_url,
+            "namespace": self.namespace,
+            "response": response,
+        }
 
     def reflect(
         self,
@@ -144,7 +167,7 @@ class RedisAgentMemoryProvider:
         if self.user_id:
             payload["memories"][0]["user_id"] = self.user_id
         try:
-            self._post("/v1/long-term-memory/", payload)
+            self._request("POST", "/v1/long-term-memory/", payload)
         except Exception as exc:
             raise NotImplementedError(
                 "RedisAgentMemoryProvider could not write; falling through "
@@ -152,27 +175,55 @@ class RedisAgentMemoryProvider:
             ) from exc
         return lesson
 
-    def _post(self, path: str, payload: dict[str, Any]) -> Any:
+    def sync_lesson(self, lesson: Lesson) -> bool:
+        """Mirror one trusted fleet-brain lesson into Redis AMS.
+
+        This is deliberately explicit. Alfred does not stream raw event
+        logs or unreviewed candidates into Redis; operators sync trusted
+        lessons after review.
+        """
+        try:
+            self.reflect(
+                codename=lesson.codename,
+                repo=lesson.repo,
+                body=lesson.body,
+                tags=lesson.tags,
+                severity=lesson.severity,
+                firing_id=lesson.firing_id,
+                created_at=lesson.created_at,
+            )
+        except NotImplementedError:
+            return False
+        return True
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None,
+    ) -> Any:
         url = f"{self.base_url}{path}"
         headers = {"Accept": _JSON, "Content-Type": _JSON}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         if self.transport is not None:
-            return self.transport(url, payload, headers, self.timeout_s)
-        return _default_transport(url, payload, headers, self.timeout_s)
+            return self.transport(method, url, payload, headers, self.timeout_s)
+        return _default_transport(method, url, payload, headers, self.timeout_s)
 
 
 def _default_transport(
+    method: str,
     url: str,
-    payload: dict[str, Any],
+    payload: dict[str, Any] | None,
     headers: dict[str, str],
     timeout_s: float,
 ) -> Any:
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
     request = Request(
         url,
-        data=json.dumps(payload).encode("utf-8"),
+        data=data,
         headers=headers,
-        method="POST",
+        method=method,
     )
     try:
         with urlopen(request, timeout=timeout_s) as response:

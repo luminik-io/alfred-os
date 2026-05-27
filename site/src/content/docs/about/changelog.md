@@ -12,9 +12,9 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
 - **`preflight()` slug-to-local mapping**: consults `GH_REPO_TO_LOCAL` when checking that local checkouts exist, so multi-repo workspaces with renames (`org/myorg-backend` cloned at `product/backend/`) stop reporting bogus "missing checkout" errors.
 - **Python 3.14 bytes/str fix**: `subprocess.TimeoutExpired.stdout` returns bytes on Python 3.14 even when `text=True` is passed to `subprocess.run`. The `agent_runner.process.run` wrapper now decodes so downstream callers that hand the result to `Path.write_text` keep working.
 - **Fleet memory reliability tools**: reviewable memory candidates, normalized failure-event history, `alfred brain doctor`, and a read-only `alfred mcp serve` bridge for local MCP clients.
-- **Optional Redis AMS memory provider**: operators who already run Redis Agent Memory Server can set `ALFRED_MEMORY_PROVIDERS=fleet,redis` and keep the default install local and dependency-light.
-- **`alfred serve` cockpit polish**: Fleet / Firings / Plans tabs, saved Batman plan inbox, human-readable timestamps, and mobile card layouts for the previously cramped tables.
-- **`alfred spec`**: template and lint helpers for specs-driven development, including acceptance criteria and rollout checks.
+- **Optional Redis AMS memory provider**: operators who already run Redis Agent Memory Server can set `ALFRED_MEMORY_PROVIDERS=fleet,redis`, check it with `alfred brain redis-status`, and sync reviewed lessons with `alfred brain redis-sync` while keeping the default install local and dependency-light.
+- **`alfred serve` cockpit polish**: Fleet / Firings / Plans / Planning tabs, saved Batman plan inbox, issue/spec intake, human-readable timestamps, and mobile card layouts for the previously cramped tables.
+- **`alfred spec`**: template, lint, and readiness helpers for specs-driven development, including acceptance criteria, rollout checks, and GitHub-ready issue drafts.
 - **Removed**: `lib/claude_proxy/`, `bin/claude-proxy.py`, the four proxy tests, `docs/CLAUDE_PROXY.md`, `docs/MACOS_KEYCHAIN.md`, `bin/alfred-grant-keychain.sh`, and `examples/launchd/luminik.claude-proxy.plist.example`. The proxy daemon shipped in v0.4.0 worked around a macOS Keychain ACL issue that `CLAUDE_CODE_OAUTH_TOKEN` resolves natively. Operators who installed the proxy should `launchctl bootout` it and unset `ALFRED_CLAUDE_PROXY_SOCKET`. No agent-script changes needed.
 
 ## 0.4.0 (2026-05-23)

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -73,6 +74,9 @@ SEVERITY_EMOJI = {
 HEADER_MAX = 150
 SECTION_MAX = 3000
 _TRUNC = "...[truncated]"
+_GITHUB_ISSUE_OR_PR_RE = re.compile(
+    r"^https://github\.com/(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+)/(?:issues|pull)/(?P<number>\d+)$"
+)
 
 
 @dataclass
@@ -91,6 +95,24 @@ class ThreadHandle:
     channel: str
     ts: str
     permalink: str | None = None
+
+
+def github_issue_link(repo: str, number: int, *, label: str | None = None) -> str:
+    """Return a Slack mrkdwn link for a GitHub issue."""
+    display = label or f"{repo}#{number}"
+    return f"<https://github.com/{repo}/issues/{number}|{display}>"
+
+
+def github_url_link(url: str, *, label: str | None = None) -> str:
+    """Return a Slack mrkdwn link for a GitHub URL, with a useful label."""
+    text = (url or "").strip()
+    if not text:
+        return ""
+    match = _GITHUB_ISSUE_OR_PR_RE.match(text)
+    display = label
+    if display is None and match:
+        display = f"{match.group('owner')}/{match.group('repo')}#{match.group('number')}"
+    return f"<{text}|{display or text}>"
 
 
 def _resolve_bot_token() -> str | None:

@@ -33,6 +33,12 @@ Subcommands:
     alfred-brain.py doctor
         Read-only health summary for the memory layer.
 
+    alfred-brain.py redis-status
+        Check an optional Redis Agent Memory Server endpoint.
+
+    alfred-brain.py redis-sync
+        Mirror reviewed fleet-brain lessons into Redis AMS.
+
     alfred-brain.py firings [--codename C] [--status S] [--limit N]
         List firing audit rows.
 
@@ -75,6 +81,7 @@ for candidate in (
 
 from fleet_brain import FleetBrain, default_db_path  # noqa: E402
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
+from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 
 
 def _build_brain(args: argparse.Namespace) -> FleetBrain:
@@ -519,6 +526,71 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 1 if report["status"] == "fail" else 0
 
 
+def _build_redis_provider() -> RedisAgentMemoryProvider:
+    return RedisAgentMemoryProvider.from_env()
+
+
+def cmd_redis_status(args: argparse.Namespace) -> int:
+    provider = _build_redis_provider()
+    health = provider.health()
+    if args.json:
+        print(json.dumps(health, indent=2))
+        return 0 if health.get("ok") else 1
+    if health.get("ok"):
+        print(f"alfred-brain redis: ok {health['base_url']} namespace={health['namespace']}")
+        response = health.get("response")
+        if isinstance(response, dict):
+            detail = response.get("status") or response.get("version") or response.get("service")
+            if detail:
+                print(f"  server {detail}")
+        return 0
+    print(
+        f"alfred-brain redis: unavailable {health['base_url']} namespace={health['namespace']}",
+        file=sys.stderr,
+    )
+    print(f"  {health.get('error', 'unknown error')}", file=sys.stderr)
+    return 1
+
+
+def cmd_redis_sync(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    provider = _build_redis_provider()
+    codename = None if args.codename in (None, "-") else args.codename
+    repo = None if args.repo in (None, "-") else args.repo
+    lessons = brain.recall(
+        codename=codename,
+        repo=repo,
+        query=args.query,
+        limit=args.limit,
+    )
+    synced = 0
+    failed: list[str] = []
+    for lesson in lessons:
+        if args.dry_run:
+            synced += 1
+            continue
+        if provider.sync_lesson(lesson):
+            synced += 1
+        else:
+            failed.append(lesson.id)
+
+    payload = {
+        "dry_run": bool(args.dry_run),
+        "matched": len(lessons),
+        "synced": synced,
+        "failed": failed,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    elif args.dry_run:
+        print(f"alfred-brain redis: would sync {synced} reviewed lesson(s)")
+    else:
+        print(f"alfred-brain redis: synced {synced}/{len(lessons)} reviewed lesson(s)")
+        if failed:
+            print(f"  failed: {', '.join(failed)}", file=sys.stderr)
+    return 1 if failed else 0
+
+
 def cmd_forget(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     if args.before:
@@ -827,6 +899,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor = sub.add_parser("doctor", help="memory-layer health checks")
     p_doctor.add_argument("--json", action="store_true")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    p_redis_status = sub.add_parser("redis-status", help="check Redis Agent Memory Server")
+    p_redis_status.add_argument("--json", action="store_true")
+    p_redis_status.set_defaults(func=cmd_redis_status)
+
+    p_redis_sync = sub.add_parser("redis-sync", help="sync reviewed lessons to Redis AMS")
+    p_redis_sync.add_argument("--codename", help="codename filter, or '-' to widen")
+    p_redis_sync.add_argument("--repo", help="repo full_name filter, or '-' to widen")
+    p_redis_sync.add_argument("--query", help="literal substring filter on body")
+    p_redis_sync.add_argument("--limit", type=int, default=100)
+    p_redis_sync.add_argument("--dry-run", action="store_true")
+    p_redis_sync.add_argument("--json", action="store_true")
+    p_redis_sync.set_defaults(func=cmd_redis_sync)
 
     p_forget = sub.add_parser("forget", help="delete a lesson or GC old ones")
     p_forget.add_argument("id", nargs="?", help="lesson id to delete")

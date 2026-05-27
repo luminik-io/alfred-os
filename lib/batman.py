@@ -532,6 +532,7 @@ EXEC_TRANSPORT = "approval_transport_down"
 EXEC_NO_CHILDREN = "no_children_parsed"
 EXEC_PARTIAL = "partial"
 EXEC_GATE_DISABLED = "gate_disabled"
+EXEC_NEEDS_SCOPE = "needs_scope"
 
 # Env contract -- documented in docs/BATMAN.md.
 ENV_AUTO_EXECUTE = "BATMAN_AUTO_EXECUTE"
@@ -545,6 +546,13 @@ AUTO_EXECUTE_OFF = "0"
 AUTO_EXECUTE_GATE = "approval-gate"
 AUTO_EXECUTE_FORCE = "1"
 VALID_AUTO_EXECUTE = (AUTO_EXECUTE_OFF, AUTO_EXECUTE_GATE, AUTO_EXECUTE_FORCE)
+
+
+@dataclass(frozen=True)
+class PlanReadinessFinding:
+    code: str
+    severity: str
+    message: str
 
 
 @dataclass(frozen=True)
@@ -582,6 +590,7 @@ class BundlePlan:
         done_when: free-text "Done when" block lifted from the body.
         plan_markdown: the rendered markdown a human reads in Slack. The
             execute step does NOT use this; tests pin it for clarity.
+        readiness_findings: warnings or blockers discovered while parsing.
     """
 
     bundle_slug: str
@@ -592,6 +601,11 @@ class BundlePlan:
     children: tuple[ChildIssue, ...]
     done_when: str
     plan_markdown: str
+    readiness_findings: tuple[PlanReadinessFinding, ...] = ()
+
+    @property
+    def readiness_blockers(self) -> tuple[PlanReadinessFinding, ...]:
+        return tuple(f for f in self.readiness_findings if f.severity == "error")
 
 
 @dataclass(frozen=True)
@@ -1149,6 +1163,12 @@ def parse_parent_issue(
             )
         )
 
+    readiness_findings = _assess_plan_readiness(
+        affected_repos=repos,
+        children=children,
+        done_when=done_when,
+    )
+
     plan_md = _render_plan_markdown(
         slug=slug,
         parent_repo=parent_repo,
@@ -1157,6 +1177,7 @@ def parse_parent_issue(
         affected_repos=repos,
         children=children,
         done_when=done_when,
+        readiness_findings=readiness_findings,
     )
 
     return BundlePlan(
@@ -1168,6 +1189,7 @@ def parse_parent_issue(
         children=tuple(children),
         done_when=done_when,
         plan_markdown=plan_md,
+        readiness_findings=tuple(readiness_findings),
     )
 
 
@@ -1202,14 +1224,21 @@ def _render_plan_markdown(
     affected_repos: list[str],
     children: list[ChildIssue],
     done_when: str,
+    readiness_findings: list[PlanReadinessFinding],
 ) -> str:
     """Render the markdown Batman posts to Slack for approval."""
     lines: list[str] = []
     lines.append(f"*Batman plan: `{slug}`*")
+    lines.append(f"*Title:* {parent_title}")
+    lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
     lines.append(
-        f"*Parent:* <https://github.com/{parent_repo}/issues/{parent_issue}|"
-        f"{parent_repo}#{parent_issue}> -- {parent_title}"
+        "*Decision:* approve with :white_check_mark:, reject with :x:, or reply in this thread with changes."
     )
+    blockers = [finding for finding in readiness_findings if finding.severity == "error"]
+    if blockers:
+        lines.append("*Readiness:* needs scope before implementation")
+    else:
+        lines.append("*Readiness:* ready for approval")
     if affected_repos:
         lines.append("*Affected repos:* " + ", ".join(affected_repos))
     else:
@@ -1218,16 +1247,87 @@ def _render_plan_markdown(
     lines.append("*Children to file:*")
     if children:
         for c in children:
-            lines.append(f"  - `{c.repo}` -- {c.title}")
+            lines.append(f"  - `{c.repo}`: {c.title}")
     else:
         lines.append("  - (none parsed; check the parent-issue body shape)")
     if done_when.strip():
         lines.append("")
         lines.append("*Done when:*")
         lines.append(done_when)
+    if readiness_findings:
+        lines.append("")
+        lines.append("*Scope checks:*")
+        for finding in readiness_findings:
+            lines.append(f"  - `{finding.severity}` {finding.message}")
     lines.append("")
-    lines.append("React with :white_check_mark: to approve, :x: to reject.")
+    lines.append("Alfred will not file child issues until this plan is approved.")
     return "\n".join(lines)
+
+
+def _assess_plan_readiness(
+    *,
+    affected_repos: list[str],
+    children: list[ChildIssue],
+    done_when: str,
+) -> list[PlanReadinessFinding]:
+    findings: list[PlanReadinessFinding] = []
+    if not affected_repos:
+        findings.append(
+            PlanReadinessFinding(
+                code="missing_repos",
+                severity="error",
+                message="No affected repositories were parsed.",
+            )
+        )
+    if not children:
+        findings.append(
+            PlanReadinessFinding(
+                code="missing_children",
+                severity="error",
+                message="No child issues were parsed from the parent body.",
+            )
+        )
+    if children:
+        for child in children:
+            plain_title = re.sub(r"\s+", " ", child.title).strip()
+            if len(plain_title) < 5 or re.search(
+                r"\b(?:todo|tbd|placeholder)\b", plain_title, re.I
+            ):
+                findings.append(
+                    PlanReadinessFinding(
+                        code="vague_child_scope",
+                        severity="error",
+                        message=f"`{child.repo}` child scope is too vague: {plain_title or '(empty)'}",
+                    )
+                )
+            elif re.search(
+                r"\b(?:better|etc|improve|maybe|nice|stuff|things)\b", plain_title, re.I
+            ):
+                findings.append(
+                    PlanReadinessFinding(
+                        code="soft_child_scope",
+                        severity="warning",
+                        message=f"`{child.repo}` child scope may need a sharper outcome: {plain_title}",
+                    )
+                )
+    if not done_when.strip():
+        findings.append(
+            PlanReadinessFinding(
+                code="missing_done_when",
+                severity="warning",
+                message="Add a Done when block so the implementer knows what to verify.",
+            )
+        )
+    return findings
+
+
+def _issue_link(repo: str, number: int) -> str:
+    try:
+        from slack_format import github_issue_link
+
+        return github_issue_link(repo, number)
+    except Exception:
+        return f"<https://github.com/{repo}/issues/{number}|{repo}#{number}>"
 
 
 # ---------------------------------------------------------------------------
@@ -1451,6 +1551,9 @@ class BatmanLifecycle:
         """
         if not plan.children:
             return ExecuteResult(executed=False, reason=EXEC_NO_CHILDREN)
+        if plan.readiness_blockers:
+            detail = "; ".join(f.message for f in plan.readiness_blockers)
+            return ExecuteResult(executed=False, reason=EXEC_NEEDS_SCOPE, detail=detail)
         created: list[str] = []
         failed: list[str] = []
         for child in plan.children:
@@ -1516,6 +1619,7 @@ __all__ = [
     "ENV_SLACK_CHANNEL",
     "EXEC_APPROVAL_TIMEOUT",
     "EXEC_GATE_DISABLED",
+    "EXEC_NEEDS_SCOPE",
     "EXEC_NO_CHILDREN",
     "EXEC_OK",
     "EXEC_PARTIAL",
@@ -1531,6 +1635,7 @@ __all__ = [
     "ChildIssue",
     "ExecuteResult",
     "GitHubChildIssueClient",
+    "PlanReadinessFinding",
     "PlanShape",
     "ReportEnvelope",
     "Reporter",

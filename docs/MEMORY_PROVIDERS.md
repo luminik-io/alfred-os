@@ -90,6 +90,7 @@ ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
 ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ALFRED_REDIS_MEMORY_USER_ID=operator-id
 ALFRED_REDIS_MEMORY_TOKEN=
+ALFRED_REDIS_MEMORY_SEARCH_MODE=hybrid
 ```
 
 Sample shell config for a chained setup:
@@ -113,6 +114,23 @@ export ALFRED_MEMORY_PROVIDERS=fleet,redis
 export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
 export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ```
+
+Check the bridge before putting it in the provider chain:
+
+```sh
+alfred brain redis-status
+alfred brain redis-status --json
+```
+
+Mirror reviewed local lessons into Redis explicitly:
+
+```sh
+alfred brain redis-sync --dry-run
+alfred brain redis-sync --codename lucius --repo your-org/api
+```
+
+The sync path only reads trusted lessons from the fleet-brain. It does not
+upload raw transcripts, event logs, or unreviewed memory candidates.
 
 ## How chaining works
 
@@ -194,6 +212,8 @@ Now `ALFRED_MEMORY_PROVIDERS=fleet,team_wiki` works.
 - The `redis` provider only runs when the operator opts in by env.
   Alfred does not install Redis, start Redis AMS, or make it a hard
   runtime dependency.
+- `alfred brain redis-sync` is explicit and one-way from reviewed local
+  lessons to Redis AMS.
 - Read-only providers cannot exfiltrate the fleet-brain. Writes flow
   the other direction (to the first writer in the chain), never out
   to gbrain.
