@@ -215,3 +215,16 @@ def test_truncate_aggressive_with_marker():
     long = sf._truncate("a" * 200, 50)
     assert long.endswith("...[truncated]")
     assert len(long) == 50
+
+
+def test_github_links_render_as_slack_mrkdwn():
+    import slack_format as sf
+
+    assert (
+        sf.github_issue_link("luminik-io/alfred-os", 113)
+        == "<https://github.com/luminik-io/alfred-os/issues/113|luminik-io/alfred-os#113>"
+    )
+    assert (
+        sf.github_url_link("https://github.com/luminik-io/alfred-os/pull/139")
+        == "<https://github.com/luminik-io/alfred-os/pull/139|luminik-io/alfred-os#139>"
+    )

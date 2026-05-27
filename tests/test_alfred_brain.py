@@ -218,6 +218,56 @@ def test_cli_export_writes_file(cli_mod: ModuleType, brain_db: Path, tmp_path: P
     assert payload["lessons"][0]["body"] == "alpha"
 
 
+def test_cli_redis_status_json(
+    cli_mod: ModuleType,
+    brain_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class FakeRedis:
+        def health(self) -> dict[str, object]:
+            return {
+                "ok": True,
+                "base_url": "http://memory.local",
+                "namespace": "alfred",
+                "response": {"status": "healthy"},
+            }
+
+    monkeypatch.setattr(cli_mod, "_build_redis_provider", lambda: FakeRedis())
+
+    rc = cli_mod.main(["redis-status", "--json"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["response"]["status"] == "healthy"
+
+
+def test_cli_redis_sync_pushes_reviewed_lessons(
+    cli_mod: ModuleType,
+    brain_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli_mod.main(["reflect", "lucius", "org/api", "sync me"])
+    capsys.readouterr()
+    synced: list[str] = []
+
+    class FakeRedis:
+        def sync_lesson(self, lesson) -> bool:  # type: ignore[no-untyped-def]
+            synced.append(lesson.body)
+            return True
+
+    monkeypatch.setattr(cli_mod, "_build_redis_provider", lambda: FakeRedis())
+
+    rc = cli_mod.main(["redis-sync", "--codename", "lucius", "--repo", "org/api", "--json"])
+
+    assert rc == 0
+    assert synced == ["sync me"]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"dry_run": False, "matched": 1, "synced": 1, "failed": []}
+
+
 def test_cli_firings(
     cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

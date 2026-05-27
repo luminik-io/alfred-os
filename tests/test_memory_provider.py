@@ -343,9 +343,10 @@ def test_redis_provider_from_env() -> None:
 def test_redis_provider_recall_posts_search_payload() -> None:
     calls: list[dict[str, object]] = []
 
-    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
         calls.append(
             {
+                "method": method,
                 "url": url,
                 "payload": payload,
                 "headers": headers,
@@ -380,6 +381,7 @@ def test_redis_provider_recall_posts_search_payload() -> None:
 
     assert lessons[0].body == "Use owner/repo in Batman plans."
     assert lessons[0].tags == ["batman", "plans"]
+    assert calls[0]["method"] == "POST"
     assert calls[0]["url"] == "http://memory.local/v1/long-term-memory/search"
     payload = calls[0]["payload"]
     assert isinstance(payload, dict)
@@ -391,8 +393,45 @@ def test_redis_provider_recall_posts_search_payload() -> None:
     assert headers["Authorization"] == "Bearer secret"
 
 
+def test_redis_provider_health_uses_health_endpoint() -> None:
+    calls: list[dict[str, object]] = []
+
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        calls.append({"method": method, "url": url, "payload": payload, "headers": headers})
+        return {"status": "healthy"}
+
+    provider = RedisAgentMemoryProvider(base_url="http://memory.local", transport=transport)
+
+    health = provider.health()
+
+    assert health["ok"] is True
+    assert health["response"] == {"status": "healthy"}
+    assert calls == [
+        {
+            "method": "GET",
+            "url": "http://memory.local/v1/health",
+            "payload": None,
+            "headers": {"Accept": "application/json"},
+        }
+    ]
+
+
+def test_redis_provider_health_reports_error() -> None:
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        raise RuntimeError("down")
+
+    provider = RedisAgentMemoryProvider(base_url="http://memory.local", transport=transport)
+
+    assert provider.health() == {
+        "ok": False,
+        "base_url": "http://memory.local",
+        "namespace": "alfred",
+        "error": "down",
+    }
+
+
 def test_redis_provider_recall_parses_supported_record_fields() -> None:
-    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
         return {
             "memories": [
                 {
@@ -425,8 +464,8 @@ def test_redis_provider_recall_parses_supported_record_fields() -> None:
 def test_redis_provider_reflect_uses_supported_record_fields() -> None:
     calls: list[dict[str, object]] = []
 
-    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
-        calls.append({"url": url, "payload": payload})
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        calls.append({"method": method, "url": url, "payload": payload})
         return {"status": "ok"}
 
     provider = RedisAgentMemoryProvider(
@@ -445,6 +484,7 @@ def test_redis_provider_reflect_uses_supported_record_fields() -> None:
         firing_id="fire-2",
     )
 
+    assert calls[0]["method"] == "POST"
     assert calls[0]["url"] == "http://memory.local/v1/long-term-memory/"
     payload = calls[0]["payload"]
     assert isinstance(payload, dict)
@@ -460,8 +500,28 @@ def test_redis_provider_reflect_uses_supported_record_fields() -> None:
     assert "severity:warning" in memory["topics"]
 
 
+def test_redis_provider_sync_lesson_mirrors_trusted_lesson() -> None:
+    calls: list[dict[str, object]] = []
+
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        calls.append({"method": method, "url": url, "payload": payload})
+        return {"status": "ok"}
+
+    provider = RedisAgentMemoryProvider(transport=transport)
+    lesson = _make_lesson("Redis should receive reviewed lessons", codename="bane", repo="acme/api")
+
+    assert provider.sync_lesson(lesson) is True
+    payload = calls[0]["payload"]
+    assert isinstance(payload, dict)
+    memory = payload["memories"][0]
+    assert memory["id"] == lesson.id
+    assert memory["text"] == "Redis should receive reviewed lessons"
+    assert "codename:bane" in memory["topics"]
+    assert "repo:acme/api" in memory["topics"]
+
+
 def test_redis_provider_reflect_falls_through_on_write_error() -> None:
-    def transport(url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
         raise RuntimeError("down")
 
     provider = RedisAgentMemoryProvider(transport=transport)

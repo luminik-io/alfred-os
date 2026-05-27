@@ -114,6 +114,7 @@ class FakeApprovalResult:
     verdict: str
     detail: str = ""
     elapsed_s: float = 0.0
+    feedback: tuple[object, ...] = ()
 
 
 class FakeGate:
@@ -254,6 +255,12 @@ def test_plan_parses_well_formed_parent_into_four_children():
     # Plan markdown shows up readable.
     assert "billing-v2" in plan.plan_markdown
     assert "pricing page rewrite" in plan.plan_markdown
+    assert (
+        "<https://github.com/your-org/your-product/issues/42|your-org/your-product#42>"
+        in plan.plan_markdown
+    )
+    assert "reply in this thread with changes" in plan.plan_markdown
+    assert "Readiness:* ready for approval" in plan.plan_markdown
 
 
 # ---------- scenario 2: approval timeout ----------
@@ -387,6 +394,49 @@ def test_approval_granted_then_happy_path_files_all_children():
     assert len(envelope_out.created) == 4
 
 
+def test_approval_thread_feedback_is_appended_to_child_issues():
+    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from slack_approval import APPROVAL_GRANTED
+
+    gh = FakeGitHubClient()
+    gate = FakeGate(
+        FakeApprovalResult(
+            approved=True,
+            verdict=APPROVAL_GRANTED,
+            feedback=({"text": "Use the simpler onboarding copy Neha requested."},),
+        )
+    )
+
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=FakeReporter(),
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    verdict = lifecycle.await_approval(envelope)
+
+    assert verdict.approved is True
+    assert verdict.verdict == EXEC_OK
+    assert verdict.feedback == ("Use the simpler onboarding copy Neha requested.",)
+
+    result = lifecycle.execute(plan)
+
+    assert result.reason == EXEC_OK
+    assert "## Operator Slack Amendments" in gh.issued[0]["body"]
+    assert "Use the simpler onboarding copy Neha requested." in gh.issued[0]["body"]
+
+
 # ---------- scenario 5: partial execute failure ----------
 
 
@@ -489,6 +539,40 @@ Children:
     assert len(plan.children) == 1
     assert plan.children[0].repo == "your-org/your-backend"
     assert plan.children[0].title == "real one"
+
+
+def test_vague_child_scope_blocks_execution_before_filing():
+    from batman import EXEC_NEEDS_SCOPE, BatmanLifecycle, BatmanLifecycleConfig
+
+    body = """Bundle: vague-plan
+
+Repos:
+- your-org/your-backend
+
+Children:
+- backend: TODO
+
+Done when:
+- Tests pass
+"""
+    gh = FakeGitHubClient()
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(auto_execute="1"),
+        gh_client=gh,
+    )
+
+    plan = lifecycle.plan(
+        body=body,
+        title="Bundle: vague-plan",
+        parent_repo="your-org/parent",
+        parent_issue_number=9,
+    )
+    result = lifecycle.execute(plan)
+
+    assert result.reason == EXEC_NEEDS_SCOPE
+    assert result.executed is False
+    assert gh.issued == []
+    assert "too vague" in result.detail
 
 
 def test_config_from_env_validates_auto_execute(monkeypatch):

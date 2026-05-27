@@ -80,6 +80,8 @@ alfred brain promotions
 alfred brain failure-patterns [--codename C] [--repo R]
 alfred brain governor [--json]
 alfred brain doctor [--json]
+alfred brain redis-status [--json]
+alfred brain redis-sync [--codename C] [--repo R] [--dry-run]
 alfred github-poll --repo your-org/api --repo your-org/web
 alfred brain forget <id>
 alfred brain forget --before 30d
@@ -158,6 +160,11 @@ export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 The fleet-brain remains the first writable provider, so reflection never writes
 to the optional fallback unless you put that fallback before `fleet` in
 `ALFRED_MEMORY_PROVIDERS`.
+
+Use `alfred brain redis-status` to check Redis AMS health. Use
+`alfred brain redis-sync --dry-run` before `alfred brain redis-sync` to mirror
+reviewed local lessons into Redis. Sync is explicit by design: unreviewed
+memory candidates and raw event logs stay local.
 
 By default, engine-returned reflection blocks are trusted and written as
 lessons. If you want a review queue first, set:

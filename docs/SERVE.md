@@ -1,15 +1,15 @@
 # `alfred serve`
 
-A small, localhost-only, read-only dashboard over `$ALFRED_HOME/state`,
-saved Batman plans, and the local fleet brain. Four core views, no auth,
-no writes. The operator's pane of glass for "what is the fleet doing right
-now".
+A small, localhost-only dashboard over `$ALFRED_HOME/state`, saved Batman
+plans, the local fleet brain, and local planning drafts. It is read-only for
+runtime state and can write issue/spec drafts under `$ALFRED_HOME/planning-drafts`.
+The operator's pane of glass for "what is the fleet doing right now".
 
 Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
 cards, human-readable timestamps, responsive table shells, mobile card
-layouts, a sticky header, a saved-plan inbox, external issue/PR links that
-open in a separate tab, and action summaries as a cross-platform precursor to
-any future native menu-bar UI.
+layouts, a sticky header, a saved-plan inbox, a Planning intake page, external
+issue/PR links that open in a separate tab, and action summaries as a
+cross-platform precursor to any future native menu-bar UI.
 
 ## Install
 
@@ -80,6 +80,12 @@ Batman plan drafts are read from:
 $ALFRED_HOME/batman-plans/*.md
 ```
 
+Planning drafts are written to:
+
+```
+$ALFRED_HOME/planning-drafts/*.md
+```
+
 ## Views
 
 ### `GET /` - Fleet status
@@ -118,6 +124,18 @@ link.
 Renders the saved markdown exactly as it exists on disk. This keeps the local
 cockpit aligned with the Slack plan that the operator is approving or editing.
 
+### `GET/POST /planning` - Issue/spec readiness
+
+A local intake form for shaping work before Alfred files issues or opens PRs.
+It turns title, problem, desired behavior, repo scope, acceptance criteria,
+test plan, non-goals, rollout, and open questions into a GitHub-ready issue
+draft.
+
+The readiness panel blocks vague or incomplete work from feeling ready. It
+asks concrete follow-up questions when problem, desired behavior, repo scope,
+acceptance criteria, or test plan are missing. Saving writes a markdown draft
+locally under `$ALFRED_HOME/planning-drafts`; it does not create a GitHub issue.
+
 ### `GET /firings/{firing_id}` - Single firing detail
 
 - meta (start, end, status, summary, events file path, transcript path if present)
@@ -139,7 +157,7 @@ lib/server/
   reader.py         # FleetReader Protocol + FilesystemReader
   app.py            # create_app(reader) -> FastAPI
   formatting.py     # timestamp and firing-id presentation helpers
-  views.py          # fleet, firings, plans, detail, health routes
+  views.py          # fleet, firings, plans, planning, detail, health routes
   templates/        # base + pages + 1 HTMX partial
   static/style.css  # Operations Room theme
 bin/alfred-serve.py # argparse driver, runs uvicorn
@@ -149,7 +167,11 @@ The reader is injected into the FastAPI app via `create_app(reader)`. Tests pass
 
 ## Security model
 
-Default bind is `127.0.0.1`. Every route is a `GET`; nothing mutates state. The reader's path-traversal guard rejects firing ids containing `/`, `\\`, or a leading `.` before any filesystem read.
+Default bind is `127.0.0.1`. Runtime-state routes are read-only. The Planning
+page accepts a local `POST` only to write markdown drafts under
+`$ALFRED_HOME/planning-drafts`; it does not call GitHub, Slack, or model
+providers. The reader's path-traversal guard rejects firing ids containing
+`/`, `\\`, or a leading `.` before any filesystem read.
 
 That said: the dashboard surfaces repo URLs, file paths, and event payloads that may contain operator context. Treat `--host 0.0.0.0` like exposing the raw state directory over HTTP, only do it on a network you trust.
 
@@ -161,4 +183,5 @@ pytest tests/test_server.py -q
 
 Covers empty state, populated state via `tmp_path`, codename filter, HTMX
 partial swap, 404 on unknown firing, path-traversal rejection, saved plan
-listing, timestamp formatting, malformed-JSONL tolerance, and `/healthz`.
+listing, planning draft readiness/saving, timestamp formatting,
+malformed-JSONL tolerance, and `/healthz`.

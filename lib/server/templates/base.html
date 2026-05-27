@@ -20,6 +20,7 @@
         <a class="{{ 'is-active' if request.url.path == '/' else '' }}" href="/">Fleet</a>
         <a class="{{ 'is-active' if request.url.path.startswith('/firings') else '' }}" href="/firings">Firings</a>
         <a class="{{ 'is-active' if request.url.path.startswith('/plans') else '' }}" href="/plans">Plans</a>
+        <a class="{{ 'is-active' if request.url.path.startswith('/planning') else '' }}" href="/planning">Planning</a>
       </div>
     </nav>
   </header>

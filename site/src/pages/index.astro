@@ -172,8 +172,8 @@ const why = [
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">03</span>
-            <h3 class="m-h3">Queues stay visible.</h3>
-            <p>A GitHub poller mirrors issue, PR, and bundle state locally, so multi-repo work can be inspected even when no agent is currently running.</p>
+            <h3 class="m-h3">Redis stays optional.</h3>
+            <p>Already run Redis Agent Memory Server? Alfred can check it and sync reviewed lessons explicitly, while the default install stays local and dependency-light.</p>
           </div>
           <p class="memory-link">
             <a class="m-link" href="/concepts/fleet-brain/">Read the fleet-brain design</a>
@@ -195,6 +195,9 @@ const why = [
             "",
             "$ alfred brain failures --codename huntress",
             "timeout  playwright browser missing  3x",
+            "",
+            "$ alfred brain redis-sync --dry-run",
+            "would sync 18 reviewed lessons",
           ]}
         />
       </div>

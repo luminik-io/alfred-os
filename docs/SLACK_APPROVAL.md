@@ -23,8 +23,9 @@ Reactions beat reply-text on two axes that matter for autonomous fleets:
   type "approved" every time adds friction.
 
 If you need richer feedback than approve/reject, post the plan, capture
-the reaction verdict, and *then* read the threaded replies. Do not try
-to merge the two signals in one polling loop.
+the reaction verdict, and *then* read the threaded replies. Alfred now
+does this for Batman plans: the reaction remains the hard gate, while
+operator replies in the thread become explicit amendments on approval.
 
 ## 1. Create the Slack app
 
@@ -43,6 +44,8 @@ Scopes**:
 | `reactions:read` | Read which users reacted with which emoji. |
 | `channels:read` | Resolve channel names to channel ids. |
 | `groups:read` | Same, for private channels. |
+| `channels:history` | Read operator replies from public-channel plan threads. |
+| `groups:history` | Read operator replies from private-channel plan threads. |
 | `im:read` | Same, if the operator wants approvals in DM. |
 | `users:read` | Optional. Useful for logging the operator's display name. |
 
@@ -65,6 +68,8 @@ oauth_config:
       - reactions:read
       - channels:read
       - groups:read
+      - channels:history
+      - groups:history
       - im:read
       - users:read
 settings:
@@ -167,6 +172,8 @@ result = gate.await_approval(
     timeout_s=900,
 )
 if result.approved:
+    for item in result.feedback:
+        print(f"operator amendment: {item.text}")
     proceed()
 elif result.rejected:
     abort_with_message(f"Operator rejected: see {post['ts']}")
