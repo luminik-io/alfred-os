@@ -74,11 +74,13 @@ executes without a captured approval message.
 
 Operators should treat that Slack thread as the working room for the plan:
 ask Batman to tighten scope, add acceptance criteria, remove a repo, or
-split the bundle before approving. A non-engineer can stay in plain English:
-"make the mobile part read-only", "do not touch billing yet", "add empty
-states", or "turn this into two smaller issues" is enough signal. When the
+split the bundle before approving. Technical teammates can use structured
+commands, and non-technical teammates can stay in plain English: "make the
+mobile part read-only", "do not touch billing yet", "add empty states", or
+"turn this into two smaller issues" is enough signal. When the
 configured operator approves, Alfred reads the thread and appends those
-operator replies to every child issue as explicit amendments.
+operator replies to every child issue as explicit amendments. Repo add/remove
+replies also amend Batman's execution scope before child issues are filed.
 
 ### 3. await_approval(envelope) -> ApprovalResult
 

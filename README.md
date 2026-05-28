@@ -224,7 +224,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
-| [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, and carries approved thread amendments into child issues. |
+| [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |

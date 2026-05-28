@@ -78,6 +78,44 @@ def refine_issue_draft(
     )
 
 
+def apply_repository_scope_feedback(
+    base_repos: Iterable[str],
+    messages: Iterable[str],
+    *,
+    default_org: str | None = None,
+) -> tuple[str, ...]:
+    """Apply only repo-scope commands from operator feedback.
+
+    This keeps Batman's approval gate honest: if Slack feedback says
+    ``remove repo: web`` or ``add repo: owner/api``, execution uses the
+    amended repository list rather than merely appending a note.
+    """
+
+    repos = _dedupe(str(repo).strip() for repo in base_repos if str(repo).strip())
+    clean_messages = tuple(
+        _normalize_message(message) for message in messages if _clean_text(message)
+    )
+    for message in clean_messages:
+        for line in _message_lines(message):
+            action = _parse_line(line)
+            if action is None:
+                continue
+            key, value = action
+            if key == "remove_repo":
+                removals = _split_items(value)
+                repos = [
+                    repo
+                    for repo in repos
+                    if not any(_repo_scope_matches(repo, item) for item in removals)
+                ]
+            elif key == "repos":
+                for item in _split_items(value):
+                    repo = _qualify_repo_scope(item, default_org=default_org)
+                    if not any(_repo_scope_matches(existing, repo) for existing in repos):
+                        repos.append(repo)
+    return tuple(repos)
+
+
 def render_development_spec(
     draft: IssueDraft,
     *,
@@ -234,8 +272,9 @@ def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
         "operator_messages": list(messages),
     }
     return (
-        "You are Alfred's planning assistant. Tighten the draft so a non-engineer "
-        "can describe work safely before an autonomous engineering agent starts.\n\n"
+        "You are Alfred's planning assistant. Tighten the draft so technical and "
+        "non-technical teammates can describe work safely before an autonomous "
+        "engineering agent starts.\n\n"
         "Return JSON only with any of these keys: title, problem, user, "
         "current_behavior, desired_behavior, repos, acceptance_criteria, test_plan, "
         "out_of_scope, rollout, open_questions. Use arrays for repos and "
@@ -441,6 +480,28 @@ def _apply_action(draft: IssueDraft, action: tuple[str, str]) -> IssueDraft:
     if key == "user":
         return replace(draft, user=value)
     return draft
+
+
+def _qualify_repo_scope(value: str, *, default_org: str | None = None) -> str:
+    cleaned = _clean_text(value).strip()
+    if default_org and cleaned and "/" not in cleaned:
+        return f"{default_org}/{cleaned}"
+    return cleaned
+
+
+def _repo_scope_matches(repo: str, candidate: str) -> bool:
+    repo_clean = _clean_text(repo).lower()
+    candidate_clean = _clean_text(candidate).lower()
+    if not repo_clean or not candidate_clean:
+        return False
+    if repo_clean == candidate_clean:
+        return True
+    if "/" not in candidate_clean:
+        tail = repo_clean.rsplit("/", 1)[-1]
+        return tail == candidate_clean or tail.endswith(
+            (f"-{candidate_clean}", f"_{candidate_clean}")
+        )
+    return False
 
 
 def _summarize_amendments(messages: tuple[str, ...]) -> tuple[str, ...]:

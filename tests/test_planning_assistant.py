@@ -9,6 +9,7 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 from planning_assistant import (  # noqa: E402
+    apply_repository_scope_feedback,
     build_refiner_prompt,
     refine_issue_draft,
     render_development_spec,
@@ -22,10 +23,10 @@ def _draft() -> IssueDraft:
     return IssueDraft(
         title="Add Slack plan revision flow",
         problem=(
-            "Designers need a way to correct Alfred plans before implementation "
+            "Operators and teammates need a way to correct Alfred plans before implementation "
             "so the wrong workflow is not developed."
         ),
-        user="Non-developer repo owner",
+        user="Repo owner or teammate",
         current_behavior="Batman posts a plan and waits for emoji approval.",
         desired_behavior=(
             "Batman keeps implementation paused while plan questions are open "
@@ -66,7 +67,7 @@ def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
         _draft(),
         [
             "acceptance: the plan can be revised before approval\n"
-            "Use friendlier language for non-engineers."
+            "Use friendlier language for non-technical teammates."
         ],
     )
 
@@ -75,7 +76,10 @@ def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
     assert any(
         "Add acceptance criterion: the plan can be revised" in item for item in result.amendments
     )
-    assert "Capture operator note: Use friendlier language for non-engineers." in result.amendments
+    assert (
+        "Capture operator note: Use friendlier language for non-technical teammates."
+        in result.amendments
+    )
 
 
 def test_refine_issue_draft_handles_plural_repo_commands() -> None:
@@ -92,11 +96,21 @@ def test_refine_issue_draft_handles_plural_repo_commands() -> None:
     assert "s: example-org" not in " ".join(result.draft.repos)
 
 
+def test_repository_scope_feedback_updates_execution_repos() -> None:
+    repos = apply_repository_scope_feedback(
+        ["example-org/api", "example-org/web"],
+        ["remove repo: web\nadd repo: mobile"],
+        default_org="example-org",
+    )
+
+    assert repos == ("example-org/api", "example-org/mobile")
+
+
 def test_refine_issue_draft_accepts_injected_refiner_patch() -> None:
     def fake_refiner(draft: IssueDraft, messages: tuple[str, ...]) -> dict:
         assert messages == ("Make the title friendlier.",)
         return {
-            "title": "Guide non-engineers through Slack plan edits",
+            "title": "Guide teammates through Slack plan edits",
             "acceptance_criteria": [
                 *draft.acceptance_criteria,
                 "The planning assistant rewrites vague operator notes into reviewable scope.",
@@ -105,7 +119,7 @@ def test_refine_issue_draft_accepts_injected_refiner_patch() -> None:
 
     result = refine_issue_draft(_draft(), ["Make the title friendlier."], refiner=fake_refiner)
 
-    assert result.draft.title == "Guide non-engineers through Slack plan edits"
+    assert result.draft.title == "Guide teammates through Slack plan edits"
     assert "rewrites vague operator notes" in result.draft.acceptance_criteria[-1]
 
 
@@ -113,7 +127,7 @@ def test_render_operator_amendments_includes_interpretation() -> None:
     block = render_operator_amendments(
         [
             "acceptance: the PR body links to the original GitHub issue",
-            "Use simpler copy for designers.",
+            "Use simpler copy for teammates.",
         ]
     )
 

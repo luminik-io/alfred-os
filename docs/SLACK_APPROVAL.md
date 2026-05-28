@@ -37,8 +37,10 @@ question: should this wait for a clearer spec?
 ```
 
 Plain-language replies are still captured as operator notes. Alfred posts
-a concise "captured your plan update" reply in-thread, then passes the
-interpreted amendments into child issues and repo-worker prompts.
+a concise "captured your plan update" reply in-thread. On approval,
+repo add/remove replies amend execution scope before children are filed;
+the interpreted notes are also carried into child issues and repo-worker
+prompts.
 
 ## 1. Create the Slack app
 

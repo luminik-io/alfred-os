@@ -165,7 +165,7 @@ def test_operator_thread_replies_trigger_feedback_callback_once() -> None:
             {
                 "ts": "1716480002.000002",
                 "user": OPERATOR,
-                "text": "acceptance: plan edits are acknowledged in thread",
+                "text": "remove repo: web\nadd repo: mobile",
             },
         ],
     )
@@ -183,7 +183,7 @@ def test_operator_thread_replies_trigger_feedback_callback_once() -> None:
     )
 
     assert result.verdict == APPROVAL_GRANTED
-    assert callbacks == [["acceptance: plan edits are acknowledged in thread"]]
+    assert callbacks == [["remove repo: web\nadd repo: mobile"]]
 
 
 def test_non_operator_reaction_is_ignored_until_timeout() -> None:

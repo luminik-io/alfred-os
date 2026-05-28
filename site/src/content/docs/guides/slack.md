@@ -101,8 +101,10 @@ message until the configured operator reacts with `:white_check_mark:` (or
 The plan thread is also the amendment surface. The configured operator can
 reply in plain English before reacting. Alfred acknowledges newly captured
 plan replies in-thread, then carries those replies as operator amendments when
-the plan is approved. Use that for changes such as "remove mobile", "make this
-read-only", "add an empty state", or "split this into two PRs".
+the plan is approved. Repo add/remove replies update execution scope before
+child issues or worktrees are created. Use the thread for changes such as
+"remove mobile", "make this read-only", "add an empty state", or "split this
+into two PRs".
 
 Structured replies work too:
 

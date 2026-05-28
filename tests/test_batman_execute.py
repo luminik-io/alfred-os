@@ -462,6 +462,56 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
     assert "Planning Assistant Interpretation" in gh.issued[0]["body"]
 
 
+def test_approval_repo_feedback_changes_child_issue_scope():
+    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from slack_approval import APPROVAL_GRANTED
+
+    gh = FakeGitHubClient()
+    gate = FakeGate(
+        FakeApprovalResult(
+            approved=True,
+            verdict=APPROVAL_GRANTED,
+            feedback=(
+                {
+                    "text": "remove repo: mobile\nadd repo: your-org/your-admin",
+                },
+            ),
+        )
+    )
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=FakeReporter(),
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    lifecycle.await_approval(envelope)
+
+    result = lifecycle.execute(plan)
+
+    assert result.reason == EXEC_OK
+    assert [item["repo"] for item in gh.issued] == [
+        "your-org/your-backend",
+        "your-org/your-backend",
+        "your-org/your-frontend",
+        "your-org/your-admin",
+    ]
+    assert all(item["repo"] != "your-org/your-mobile" for item in gh.issued)
+    assert gh.issued[-1]["title"] == "your-admin: implement billing-v2"
+    assert "Remove repository scope: mobile" in gh.issued[-1]["body"]
+    assert "Add repository scope: your-org/your-admin" in gh.issued[-1]["body"]
+
+
 # ---------- scenario 5: partial execute failure ----------
 
 

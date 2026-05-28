@@ -107,7 +107,8 @@ question: should this be behind a feature flag?
 Use `Refine draft` to apply those notes, then save either the GitHub issue body
 or the generated spec locally. The same command vocabulary works in Batman's
 Slack approval thread: reply with changes before reacting, then approve only
-when the plan reflects what you want built.
+when the plan reflects what you want built. `add repo:` and `remove repo:`
+replies update the execution scope before implementation starts.
 
 ## One Repo
 

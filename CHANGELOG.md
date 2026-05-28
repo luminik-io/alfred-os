@@ -23,7 +23,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - fleet-brain reliability tools: reviewable memory candidates (`alfred brain propose/candidates/promote/reject`), normalized failure-event history (`alfred brain failures`), read-only health checks (`alfred brain doctor`), and a read-only JSON-RPC stdio bridge (`alfred mcp serve`) that exposes allowlisted memory summaries to local MCP clients.
 - Optional Redis Agent Memory Server provider: operators who already run Redis AMS can set `ALFRED_MEMORY_PROVIDERS=fleet,redis` plus `ALFRED_REDIS_MEMORY_URL` to consult it as a fallback memory source without adding a default dependency. `alfred brain redis-status` checks the server and `alfred brain redis-sync` mirrors reviewed local lessons into Redis explicitly.
 - `alfred spec`: template, lint, and readiness helpers for specs-driven development. `alfred spec new` writes a repo-scoped Markdown template; `alfred spec lint` checks for acceptance criteria, test plan, non-goals, rollout, repo scope, and open questions; `alfred spec assess` turns a structured issue draft into a readiness verdict and GitHub-ready issue body.
-- `alfred serve` Planning tab: local issue/spec intake for non-developer operators. It scores drafts, asks concrete scope questions, renders a GitHub-ready issue body, and saves markdown drafts under `$ALFRED_HOME/planning-drafts` without calling GitHub or an LLM.
+- `alfred serve` Planning tab: local issue/spec intake for operators and teammates. It scores drafts, asks concrete scope questions, renders a GitHub-ready issue body, and saves markdown drafts under `$ALFRED_HOME/planning-drafts` without calling GitHub or an LLM.
 
 ### Changed
 
@@ -34,6 +34,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - `alfred serve` now has a cleaner local cockpit layout with Fleet / Firings / Plans / Planning tabs, mobile card rendering for tables, human-readable timestamps with raw UTC values in titles, and a saved Batman plan inbox sourced from `$ALFRED_HOME/batman-plans`.
 - `alfred serve` keeps the header sticky, wraps tables in responsive scroll/card shells across viewport sizes, and opens external issue/PR links in a new tab.
 - Batman plan Slack messages now show a clearer title, parent issue link, readiness verdict, child issue list, done-when checks, and explicit approve/reject/reply instructions. Child filing is blocked when parsed child scopes are placeholders.
+- Batman approval-thread repo commands now update execution scope before child issues or worktrees are created; `remove repo:` no longer leaves the removed repo in the run as a note-only amendment.
 
 ### Removed
 

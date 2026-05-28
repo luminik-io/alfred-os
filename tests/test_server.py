@@ -320,10 +320,10 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
         data={
             "title": "Add Slack plan revision flow",
             "problem": (
-                "Designers need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a Batman plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
-            "user": "Non-developer repo owner",
+            "user": "Repo owner or teammate",
             "current_behavior": "Batman posts a plan and waits for emoji approval.",
             "desired_behavior": (
                 "Batman keeps implementation paused when a plan needs revision "
@@ -350,10 +350,10 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
         data={
             "title": "Add Slack plan revision flow",
             "problem": (
-                "Designers need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a Batman plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
-            "user": "Non-developer repo owner",
+            "user": "Repo owner or teammate",
             "current_behavior": "Batman posts a plan and waits for emoji approval.",
             "desired_behavior": (
                 "Batman keeps implementation paused when a plan needs revision "
@@ -381,10 +381,10 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
         data={
             "title": "Add Slack plan revision flow",
             "problem": (
-                "Designers need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a Batman plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
-            "user": "Non-developer repo owner",
+            "user": "Repo owner or teammate",
             "current_behavior": "Batman posts a plan and waits for emoji approval.",
             "desired_behavior": (
                 "Batman keeps implementation paused when a plan needs revision "
@@ -428,7 +428,7 @@ def test_planning_refine_engine_uses_existing_workspace_root(
         data={
             "title": "Add Slack plan revision flow",
             "problem": (
-                "Designers need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a Batman plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
             "desired_behavior": (

@@ -595,7 +595,9 @@ def _as_mapping(resp: Any) -> dict[str, Any]:
 
 
 def _clean_thread_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    return "\n".join(
+        re.sub(r"\s+", " ", line).strip() for line in str(text or "").splitlines() if line.strip()
+    )
 
 
 __all__ = [

@@ -521,6 +521,7 @@ from typing import Protocol  # noqa: E402
 
 import labels as label_constants  # noqa: E402
 from planning_assistant import (  # noqa: E402
+    apply_repository_scope_feedback,
     render_operator_amendments,
     render_operator_feedback_ack,
 )
@@ -1355,7 +1356,11 @@ def _feedback_texts(items: Iterable[object]) -> tuple[str, ...]:
             text = item.get("text")
         if text is None:
             text = str(item)
-        cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+        cleaned = "\n".join(
+            re.sub(r"\s+", " ", line).strip()
+            for line in str(text or "").splitlines()
+            if line.strip()
+        )
         if cleaned:
             out.append(cleaned)
     return tuple(out)
@@ -1367,6 +1372,82 @@ def _append_operator_feedback(body: str, feedback: Iterable[str]) -> str:
     if not amendment_block:
         return body
     return f"{body.rstrip()}\n\n{amendment_block}"
+
+
+def _apply_operator_feedback_to_plan(
+    plan: BundlePlan,
+    feedback: Iterable[str],
+) -> BundlePlan:
+    """Apply Slack repo-scope amendments before filing child issues."""
+
+    default_org = plan.parent_repo.split("/", 1)[0] if "/" in plan.parent_repo else None
+    affected_repos = apply_repository_scope_feedback(
+        plan.affected_repos,
+        feedback,
+        default_org=default_org,
+    )
+    if affected_repos == plan.affected_repos:
+        return plan
+
+    affected_lookup = {repo.lower() for repo in affected_repos}
+    children: list[ChildIssue] = [
+        child for child in plan.children if child.repo.lower() in affected_lookup
+    ]
+    existing_children = {child.repo.lower() for child in children}
+    base_labels = (
+        plan.children[0].labels
+        if plan.children
+        else (
+            label_constants.IMPLEMENT,
+            label_constants.bundle_label(plan.bundle_slug),
+        )
+    )
+    for repo in affected_repos:
+        if repo.lower() in existing_children:
+            continue
+        short_repo = repo.rsplit("/", 1)[-1]
+        child_title = f"{short_repo}: implement {plan.bundle_slug}"
+        children.append(
+            ChildIssue(
+                repo=repo,
+                title=child_title,
+                body=_render_child_body(
+                    parent_repo=plan.parent_repo,
+                    parent_issue=plan.parent_issue_number,
+                    parent_title=plan.parent_title,
+                    bundle_slug=plan.bundle_slug,
+                    child_title=child_title,
+                    done_when=plan.done_when,
+                ),
+                labels=base_labels,
+            )
+        )
+
+    readiness_findings = _assess_plan_readiness(
+        affected_repos=list(affected_repos),
+        children=children,
+        done_when=plan.done_when,
+    )
+    return BundlePlan(
+        bundle_slug=plan.bundle_slug,
+        parent_repo=plan.parent_repo,
+        parent_issue_number=plan.parent_issue_number,
+        parent_title=plan.parent_title,
+        affected_repos=affected_repos,
+        children=tuple(children),
+        done_when=plan.done_when,
+        plan_markdown=_render_plan_markdown(
+            slug=plan.bundle_slug,
+            parent_repo=plan.parent_repo,
+            parent_issue=plan.parent_issue_number,
+            parent_title=plan.parent_title,
+            affected_repos=list(affected_repos),
+            children=children,
+            done_when=plan.done_when,
+            readiness_findings=readiness_findings,
+        ),
+        readiness_findings=tuple(readiness_findings),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1629,6 +1710,7 @@ class BatmanLifecycle:
         :meth:`report` so the operator can pick up the failed repos
         manually.
         """
+        plan = _apply_operator_feedback_to_plan(plan, self.operator_feedback)
         if not plan.children:
             return ExecuteResult(executed=False, reason=EXEC_NO_CHILDREN)
         if plan.readiness_blockers:

@@ -143,7 +143,9 @@ question: should approval happen after edits or after a new plan?
 ```
 
 `Refine draft` applies those edits locally, re-runs readiness, and renders both
-the GitHub issue draft and a spec draft. `Save draft` writes the issue body
+the GitHub issue draft and a spec draft. In Batman Slack approvals, the same
+repo add/remove commands also amend execution scope before implementation.
+`Save draft` writes the issue body
 under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec body under
 `$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
 

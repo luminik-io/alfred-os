@@ -143,7 +143,8 @@ Slack thread as the place to change the plan before approval. Plain-English
 feedback is enough: "remove mobile", "make this read-only", "add an empty
 state", or "split this into two PRs". Alfred acknowledges newly captured plan
 replies in-thread, and when the configured operator approves with a reaction,
-Alfred passes those replies along as operator amendments.
+Alfred passes those replies along as operator amendments. Repo add/remove
+replies update execution scope before implementation starts.
 
 The local Planning tab in `alfred serve` uses the same command vocabulary:
 
