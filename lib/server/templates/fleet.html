@@ -5,35 +5,55 @@
   <div>
     <span class="status-pill status-pill--{{ reliability.status }}">{{ reliability.status }}</span>
     <h1>Alfred</h1>
-    <p>{{ agents|length }} agents, {{ total_today }} firing{{ '' if total_today == 1 else 's' }} today.</p>
+    <p>{{ agents|length }} agents · {{ fleet_counts.running }} running · {{ reliability.actions|length }} item{{ '' if reliability.actions|length == 1 else 's' }} need{{ 's' if reliability.actions|length == 1 else '' }} you</p>
   </div>
   <div class="hero-actions" aria-label="Page actions">
-    <a href="/" role="button">Refresh</a>
-    {% if reliability.actions %}
-    <a href="#action-queue" role="button" class="secondary">Action queue</a>
-    {% endif %}
-    <a href="/firings" role="button" class="secondary">Recent firings</a>
-    <a href="/plans" role="button" class="secondary">Plans</a>
+    <a href="/planning" role="button">Shape work</a>
+    <a href="/" role="button" class="secondary">Refresh</a>
+    <a href="/firings" role="button" class="secondary">Firings</a>
   </div>
 </section>
 
 <section class="signal-strip" aria-label="Fleet signals">
   <div class="signal-item">
-    <small>live</small>
+    <small>ready</small>
     <strong>{{ fleet_counts.live }}</strong>
   </div>
   <div class="signal-item">
-    <small>running</small>
+    <small>active</small>
     <strong>{{ fleet_counts.running }}</strong>
   </div>
   <div class="signal-item">
-    <small>actions</small>
+    <small>needs you</small>
     <strong>{{ reliability.actions|length }}</strong>
   </div>
   <div class="signal-item">
     <small>plans</small>
     <strong>{{ recent_plans|length }}</strong>
   </div>
+</section>
+
+<section class="command-board" aria-label="Alfred command board">
+  <a class="command-card command-card--primary" href="/planning">
+    <small>shape</small>
+    <strong>Plan a change</strong>
+    <span>Turn rough intent into a scoped issue or spec with readiness checks.</span>
+  </a>
+  <a class="command-card" href="/plans">
+    <small>review</small>
+    <strong>Approve plans</strong>
+    <span>See saved rollout plans before agents start repo work.</span>
+  </a>
+  <a class="command-card" href="#action-queue">
+    <small>triage</small>
+    <strong>Resolve blockers</strong>
+    <span>{{ reliability.actions|length }} item{{ '' if reliability.actions|length == 1 else 's' }} waiting for a human call.</span>
+  </a>
+  <a class="command-card" href="/firings">
+    <small>inspect</small>
+    <strong>Audit activity</strong>
+    <span>{{ total_today }} run{{ '' if total_today == 1 else 's' }} today, with readable timelines.</span>
+  </a>
 </section>
 
 <section class="ops-dashboard">
@@ -70,7 +90,7 @@
     </div>
 
     <div class="section-heading">
-      <h2>Action Queue</h2>
+      <h2>Needs You</h2>
       <a href="/firings">View all firings</a>
     </div>
     {% if reliability.actions %}
@@ -105,7 +125,7 @@
 
   <aside class="dashboard-secondary" aria-label="Recent Alfred activity">
     <div class="section-heading section-heading--compact">
-      <h2>Recent</h2>
+      <h2>Recent Work</h2>
       <a href="/firings">All</a>
     </div>
     {% if recent_firings %}
@@ -128,7 +148,7 @@
     {% endif %}
 
     <div class="section-heading section-heading--compact">
-      <h2>Plans</h2>
+      <h2>Plan Queue</h2>
       <a href="/plans">All</a>
     </div>
     {% if recent_plans %}

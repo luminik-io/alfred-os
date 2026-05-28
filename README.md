@@ -38,7 +38,8 @@ state machine that keeps multiple agents from stepping on each other.
   summaries. No bespoke dashboard, no proprietary control plane.
 - Treat Slack as the planning surface: teammates can reply in a Batman plan
   thread with scope changes, questions, and acceptance criteria while the
-  operator keeps approval authority.
+  operator keeps approval authority. Follow-up replies after PR links are
+  captured as context for the next pass, not as implicit merge approval.
 - Route engines by role. Run implementation on Claude Code and review on
   Codex, or keep Claude as primary with Codex fallback for selected agents.
 - Bring your own subscription. Alfred shells out to your local `claude` and

@@ -31,6 +31,7 @@ Reliability and first-run trust polish.
 - `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Batman plans, Planning intake, human-readable timestamps, and mobile card layouts.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.
 - Slack planning assistant: Batman approval threads and the local Planning tab now share `acceptance:`, `test:`, `add repo:`, `remove repo:`, and `question:` commands so operators can adjust plans before implementation. Repo add/remove replies are applied to execution scope before child issues or worktrees are created.
+- Slack follow-up loop: trusted replies after Batman reports or PR links are classified and carried as context for the next plan or PR pass without silently approving, merging, or changing code.
 
 ### v0.4.0: 2026-05-23
 

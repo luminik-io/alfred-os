@@ -17,6 +17,7 @@ Every Alfred Slack message should do one job.
 | Plan revised | Alfred applied feedback | The reader sees the new scope and knows whether approval is possible. |
 | Implementation started | Approval landed | The reader sees which repos are being worked in and where to follow progress. |
 | PR opened | A worker shipped work | The reader can open the PR, issue, and run context. |
+| Follow-up captured | Someone replied after a report or PR link | The reader knows the feedback is context for the next pass, not merge approval. |
 | Needs input | Alfred cannot safely continue | The reader sees the exact question or smallest next action. |
 | Failed | A run broke | The reader sees whether it is environment, code, quota, or missing context. |
 
@@ -24,7 +25,7 @@ Every Alfred Slack message should do one job.
 
 Use this order for approval and action messages:
 
-1. Short title with state: `Batman plan · billing-v2 · needs approval`.
+1. Short title with state: `Batman plan ready · billing-v2`.
 2. Primary links: parent issue, PR, or Slack thread.
 3. Decision needed: approve, reject, answer a question, or edit scope.
 4. Execution scope: repos, child issues, rollout order.
@@ -57,6 +58,28 @@ Rules:
   reaction appeared.
 - A rejection ends the firing cleanly and keeps the thread as the audit trail.
 
+## Post-report And PR Replies
+
+After Alfred posts child issues, PR links, or a report, trusted thread replies
+can be captured as follow-up context:
+
+```text
+change: tighten the empty state copy
+fix: the docs link points to the old page
+test: add coverage for the approval thread
+question: should this also touch mobile?
+```
+
+Rules:
+
+- Captured replies do not approve, merge, or change code by themselves.
+- `question:`, `hold:`, `blocker:`, and scope-changing replies require a
+  decision before more work starts.
+- The acknowledgement should link the relevant issue or PR, summarize the next
+  action items, and state the safety boundary clearly.
+- Follow-up context belongs in the next plan, child issue, or PR pass so Slack
+  remains the audit trail.
+
 ## Tone
 
 Alfred should sound like a calm engineering lead:
@@ -72,7 +95,7 @@ Alfred should sound like a calm engineering lead:
 ## Good Plan Post
 
 ```text
-*Batman plan · `billing-v2` · needs approval*
+*Batman plan ready* · `billing-v2`
 *Parent:* <https://github.com/example/api/issues/42|example/api#42>
 *Title:* Add invoice payment retries
 *Decision:* react :white_check_mark: to approve, :x: to reject, or reply with changes before approving.

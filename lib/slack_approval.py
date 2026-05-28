@@ -561,47 +561,75 @@ class SlackApproval:
         reaction approval still works even when the bot lacks
         ``channels:history`` / ``groups:history``.
         """
-        replies = getattr(self._client, "conversations_replies", None)
-        if replies is None:
-            return ()
-        try:
-            resp = replies(channel=request.channel, ts=request.message_ts, limit=100)
-        except Exception as exc:
-            logger.warning("conversations.replies failed while collecting plan feedback: %s", exc)
-            return ()
-        data = _as_mapping(resp)
-        if not data.get("ok", False):
-            logger.warning(
-                "conversations.replies not-ok while collecting plan feedback: %s",
-                data.get("error") or "unknown",
-            )
-            return ()
-        out: list[ThreadFeedback] = []
-        for message in data.get("messages") or []:
-            if not isinstance(message, dict):
-                continue
-            if str(message.get("ts") or "") == request.message_ts:
-                continue
-            author = str(message.get("user") or "")
-            if author not in self._feedback_user_ids:
-                continue
-            text = _clean_thread_text(str(message.get("text") or ""))
-            if not text:
-                continue
-            out.append(
-                ThreadFeedback(
-                    author=author,
-                    text=text,
-                    ts=str(message.get("ts") or ""),
-                )
-            )
-        return tuple(out)
+        return collect_trusted_thread_feedback(
+            self._client,
+            channel=request.channel,
+            message_ts=request.message_ts,
+            feedback_user_ids=self._feedback_user_ids,
+            purpose="plan feedback",
+        )
 
 
 class _TransportError(Exception):
     """Internal marker for an API-level failure (raised in
     ``_fetch_reactions``, caught in ``await_approval``). Not part of the
     public surface."""
+
+
+def collect_trusted_thread_feedback(
+    client: SlackClient,
+    *,
+    channel: str,
+    message_ts: str,
+    feedback_user_ids: Iterable[str],
+    purpose: str = "thread feedback",
+) -> tuple[ThreadFeedback, ...]:
+    """Best-effort read of trusted replies on any Alfred Slack thread.
+
+    This is shared by the plan approval gate and follow-up workflows so
+    post-report or post-PR replies can be captured without granting any
+    extra approval authority.
+    """
+
+    replies = getattr(client, "conversations_replies", None)
+    if replies is None:
+        return ()
+    trusted = set(_dedupe_user_ids(feedback_user_ids))
+    if not trusted:
+        return ()
+    try:
+        resp = replies(channel=channel, ts=message_ts, limit=100)
+    except Exception as exc:
+        logger.warning("conversations.replies failed while collecting %s: %s", purpose, exc)
+        return ()
+    data = _as_mapping(resp)
+    if not data.get("ok", False):
+        logger.warning(
+            "conversations.replies not-ok while collecting %s: %s",
+            purpose,
+            data.get("error") or "unknown",
+        )
+        return ()
+    out: list[ThreadFeedback] = []
+    for message in data.get("messages") or []:
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("ts") or "") == message_ts:
+            continue
+        author = str(message.get("user") or "")
+        if author not in trusted:
+            continue
+        text = _clean_thread_text(str(message.get("text") or ""))
+        if not text:
+            continue
+        out.append(
+            ThreadFeedback(
+                author=author,
+                text=text,
+                ts=str(message.get("ts") or ""),
+            )
+        )
+    return tuple(out)
 
 
 def _as_mapping(resp: Any) -> dict[str, Any]:
@@ -655,6 +683,7 @@ __all__ = [
     "SlackClient",
     "ThreadFeedback",
     "aws_secrets_token_resolver",
+    "collect_trusted_thread_feedback",
     "default_slack_client",
     "default_token_resolvers",
     "env_token_resolver",

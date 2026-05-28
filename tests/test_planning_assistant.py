@@ -10,9 +10,12 @@ if str(LIB) not in sys.path:
 
 from planning_assistant import (  # noqa: E402
     PlanningMemoryItem,
+    PostPrFeedbackItem,
     apply_repository_scope_feedback,
     build_refiner_prompt,
+    classify_post_pr_feedback,
     plan_feedback_requires_resolution,
+    post_pr_feedback_requires_resolution,
     recall_planning_memory,
     refine_issue_draft,
     render_development_spec,
@@ -20,6 +23,8 @@ from planning_assistant import (  # noqa: E402
     render_operator_feedback_ack,
     render_plan_revision_ack,
     render_planning_memory,
+    render_post_pr_feedback_ack,
+    render_post_pr_followup_block,
 )
 from spec_helper import IssueDraft  # noqa: E402
 
@@ -72,7 +77,7 @@ def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
         _draft(),
         [
             "acceptance: the plan can be revised before approval\n"
-            "Use friendlier language for non-technical teammates."
+            "Use friendlier language for operators."
         ],
     )
 
@@ -81,10 +86,7 @@ def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
     assert any(
         "Add acceptance criterion: the plan can be revised" in item for item in result.amendments
     )
-    assert (
-        "Capture operator note: Use friendlier language for non-technical teammates."
-        in result.amendments
-    )
+    assert "Capture operator note: Use friendlier language for operators." in result.amendments
 
 
 def test_refine_issue_draft_handles_plural_repo_commands() -> None:
@@ -244,7 +246,7 @@ def test_render_operator_feedback_ack_is_concise_for_slack() -> None:
         ]
     )
 
-    assert "[ALFRED-PLAN-FEEDBACK]" in block
+    assert "*Plan feedback captured*" in block
     assert "Add acceptance criterion" in block
     assert "Should we keep this limited to Batman?" in block
     assert "keep replying in this thread" in block
@@ -257,12 +259,55 @@ def test_render_plan_revision_ack_shows_scope_and_blocks_questions() -> None:
         child_count=2,
     )
 
-    assert "[ALFRED-PLAN-REVISION]" in block
+    assert "*Plan revised*" in block
     assert "Execution scope if approved now" in block
     assert "example-org/mobile" in block
     assert "Needs a decision before execution" in block
     assert "will not execute" in block
     assert plan_feedback_requires_resolution(["question: Should we include the onboarding state?"])
+
+
+def test_post_pr_followup_feedback_is_classified_and_acknowledged() -> None:
+    items = classify_post_pr_feedback(
+        [
+            "change: tighten the empty state copy\n"
+            "test: add coverage for the approval thread\n"
+            "question: should this also touch mobile?"
+        ]
+    )
+
+    assert items == (
+        PostPrFeedbackItem(
+            "change",
+            "Change: tighten the empty state copy",
+            "change: tighten the empty state copy",
+        ),
+        PostPrFeedbackItem(
+            "test",
+            "Test: add coverage for the approval thread",
+            "test: add coverage for the approval thread",
+        ),
+        PostPrFeedbackItem(
+            "question",
+            "Question: should this also touch mobile?",
+            "question: should this also touch mobile?",
+            True,
+        ),
+    )
+    assert post_pr_feedback_requires_resolution(["question: should this also touch mobile?"])
+
+    ack = render_post_pr_feedback_ack(
+        [item.text for item in items],
+        pr_urls=["https://github.com/luminik-io/alfred-os/pull/142"],
+        issue_url="https://github.com/luminik-io/alfred-os/issues/118",
+    )
+    assert "Follow-up feedback captured" in ack
+    assert "<https://github.com/luminik-io/alfred-os/pull/142|PR 1>" in ack
+    assert "does not approve, merge, or change code by itself" in ack
+
+    block = render_post_pr_followup_block([item.text for item in items])
+    assert "## Slack Follow-up Feedback" in block
+    assert "`question` needs decision" in block
 
 
 def test_development_spec_and_refiner_prompt_are_useful() -> None:

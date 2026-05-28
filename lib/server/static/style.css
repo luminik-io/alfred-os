@@ -43,10 +43,15 @@
   --ops-warn: #F2B84B;
   --ops-line: #243148;
   --ops-line-soft: rgba(198, 208, 224, 0.12);
+  --ops-focus: rgba(17, 215, 191, 0.42);
   --ops-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
   --ops-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ops-sans: "Quicksand", ui-rounded, "Avenir Next", system-ui, sans-serif;
   --ops-header-offset: 5.25rem;
+}
+
+html {
+  color-scheme: dark;
 }
 
 html,
@@ -66,16 +71,47 @@ a:hover {
   color: #68F5E6;
 }
 
+a:focus-visible,
+button:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid var(--ops-focus);
+  outline-offset: 3px;
+}
+
 [role="button"],
 button {
   border-radius: 8px;
   font-weight: 700;
 }
 
-[role="button"].secondary {
+[role="button"],
+button:not(.secondary) {
+  border-color: var(--ops-accent);
+  background: var(--ops-accent);
+  color: #021014;
+}
+
+[role="button"]:hover,
+button:not(.secondary):hover {
+  border-color: #68F5E6;
+  background: #68F5E6;
+  color: #021014;
+}
+
+[role="button"].secondary,
+button.secondary {
   background: transparent;
   border-color: var(--ops-line);
   color: var(--ops-soft);
+}
+
+[role="button"].secondary:hover,
+button.secondary:hover {
+  border-color: rgba(17, 215, 191, 0.55);
+  background: rgba(17, 215, 191, 0.08);
+  color: var(--ops-fg);
 }
 
 .ops-header {
@@ -165,7 +201,7 @@ button {
 
 .ops-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, max-content);
   align-items: end;
   gap: 1.5rem;
   margin-bottom: 1.5rem;
@@ -196,6 +232,11 @@ button {
   flex-wrap: wrap;
   gap: 0.65rem;
   justify-content: flex-end;
+}
+
+.hero-actions a {
+  min-width: 7.5rem;
+  text-align: center;
 }
 
 .signal-strip {
@@ -229,6 +270,68 @@ button {
   font-family: var(--ops-display);
   font-size: 1.35rem;
   line-height: 1;
+}
+
+.command-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1.35rem;
+}
+
+.command-card {
+  position: relative;
+  display: grid;
+  gap: 0.35rem;
+  min-height: 8.25rem;
+  padding: 1rem;
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
+  background: var(--ops-surface);
+  color: var(--ops-fg);
+  text-decoration: none;
+  overflow: hidden;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.command-card:hover {
+  border-color: rgba(17, 215, 191, 0.45);
+  background: #101923;
+  color: var(--ops-fg);
+  transform: translateY(-1px);
+}
+
+.command-card--primary {
+  background: #0A1820;
+  border-color: rgba(17, 215, 191, 0.38);
+}
+
+.command-card--primary::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--ops-accent);
+}
+
+.command-card small {
+  color: var(--ops-accent);
+  font-family: var(--ops-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-card strong {
+  font-family: var(--ops-display);
+  font-size: 1.18rem;
+  line-height: 1.15;
+}
+
+.command-card span {
+  color: var(--ops-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .status-pill {
@@ -412,7 +515,7 @@ button {
 }
 
 .fleet-table {
-  min-width: 44rem;
+  min-width: 40rem;
 }
 
 .firings-table {
@@ -427,19 +530,19 @@ button {
 }
 
 .fleet-table th:nth-child(1) {
-  width: 11rem;
+  width: 9rem;
 }
 
 .fleet-table th:nth-child(2) {
-  width: 7.5rem;
+  width: 6.5rem;
 }
 
 .fleet-table th:nth-child(3) {
-  width: 14rem;
+  width: 8.5rem;
 }
 
 .fleet-table th:nth-child(4) {
-  width: 8rem;
+  width: 7rem;
 }
 
 .fleet-table th:nth-child(5) {
@@ -1004,6 +1107,10 @@ pre code {
   .ops-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .command-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -1055,6 +1162,7 @@ pre code {
 
   .ops-grid,
   .signal-strip,
+  .command-board,
   .action-item,
   .section-heading,
   .plan-card,
@@ -1070,6 +1178,10 @@ pre code {
 
   .signal-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .command-card {
+    min-height: auto;
   }
 
   .action-item {
@@ -1192,6 +1304,7 @@ pre code {
 
   .view-tabs a {
     padding: 0 0.35rem;
+    font-size: 0.82rem;
   }
 
 }

@@ -118,6 +118,13 @@ Posts a follow-up Slack message naming every child URL that landed and
 every repo that failed. Same channel as the plan; carries the bundle
 slug so a thread search picks both messages up together.
 
+Trusted replies on report or PR threads can be captured as follow-up context
+with the same operator safety boundary as planning feedback. `change:`,
+`fix:`, `test:`, and plain-language notes become action items for the next
+pass. `question:`, `hold:`, `blocker:`, and scope changes require a decision
+before more work starts. These replies never approve, merge, or change code by
+themselves.
+
 ## Parent issue body template
 
 Batman accepts two body shapes. Pick whichever feels natural; the
@@ -216,7 +223,7 @@ issue, derives `billing-v2` as the bundle slug, and posts to
 ```
 batman, plan drafted for billing-v2 (4 child issue(s), 3 repo(s))
 
-*Batman plan · `billing-v2` · needs approval*
+*Batman plan ready* · `billing-v2`
 *Parent:* <https://github.com/your-org/your-product/issues/42|your-org/your-product#42>
 *Title:* Bundle: billing-v2 rollout
 *Decision:* react :white_check_mark: to approve, :x: to reject, or reply with changes before approving.

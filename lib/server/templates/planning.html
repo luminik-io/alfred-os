@@ -3,8 +3,8 @@
 {% block content %}
 <section class="planning-shell">
   <hgroup class="page-heading">
-    <h1>Planning</h1>
-    <p>Shape the work before Alfred files issues or opens PRs.</p>
+    <h1>Plan Work</h1>
+    <p>Shape a change until it is specific enough for Alfred to execute safely.</p>
   </hgroup>
 
   {% if saved_path %}
@@ -33,13 +33,13 @@
       <section class="assistant-card">
         <div>
           <small class="panel-kicker">Plan with Alfred</small>
-          <p>Describe the change naturally or use short commands like <code>acceptance:</code>, <code>test:</code>, <code>add repo:</code>, and <code>remove repo:</code>.</p>
+          <p>Write naturally, then tighten with <code>acceptance:</code>, <code>test:</code>, <code>add repo:</code>, <code>remove repo:</code>, or <code>question:</code>.</p>
         </div>
         <label>
           Chat note
-          <textarea name="chat_message" rows="4" placeholder="Example: acceptance: the Slack plan thread shows clear next steps before approval">{{ chat_message }}</textarea>
+          <textarea name="chat_message" rows="4" placeholder="Example: change: keep this to Slack plan replies first, then add PR follow-ups">{{ chat_message }}</textarea>
         </label>
-        <button name="action" value="refine" type="submit">Refine draft</button>
+        <button name="action" value="refine" type="submit">Refine</button>
       </section>
 
       <label>
@@ -55,7 +55,7 @@
       <div class="field-pair">
         <label>
           User
-          <input name="user" value="{{ draft.user }}" placeholder="Non-developer repo owner" />
+          <input name="user" value="{{ draft.user }}" placeholder="Maintainer, founder, product lead, or repo owner" />
         </label>
         <label>
           Repositories
@@ -101,8 +101,8 @@
 
       <div class="form-actions">
         <button name="action" value="preview" type="submit">Assess</button>
-        <button name="action" value="save" type="submit" class="secondary">Save draft</button>
-        <button name="action" value="save_spec" type="submit" class="secondary">Save spec</button>
+        <button name="action" value="save" type="submit" class="secondary">Save issue draft</button>
+        <button name="action" value="save_spec" type="submit" class="secondary">Save spec draft</button>
       </div>
     </form>
 

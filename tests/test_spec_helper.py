@@ -108,8 +108,7 @@ def test_issue_readiness_blocks_vague_drafts() -> None:
     assert "missing_desired_behavior" in codes
     assert "missing_test_plan" in codes
     assert result.questions
-    assert all("Neha" not in question for question in result.questions)
-    assert all("Prasad" not in question for question in result.questions)
+    assert all("specific teammate" not in question.lower() for question in result.questions)
 
 
 def test_issue_readiness_renders_github_ready_issue() -> None:

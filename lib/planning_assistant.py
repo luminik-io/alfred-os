@@ -53,6 +53,16 @@ class PlanningAssistantResult:
     memory: tuple[PlanningMemoryItem, ...] = ()
 
 
+@dataclass(frozen=True)
+class PostPrFeedbackItem:
+    """Trusted Slack follow-up captured after a report or PR link is posted."""
+
+    kind: str
+    summary: str
+    text: str
+    requires_resolution: bool = False
+
+
 def refine_issue_draft(
     draft: IssueDraft,
     messages: Iterable[str],
@@ -338,9 +348,9 @@ def render_operator_feedback_ack(feedback: Iterable[str]) -> str:
     amendments = _summarize_amendments(clean)
     questions = _explicit_questions_from_messages(clean)
     lines = [
-        "[ALFRED-PLAN-FEEDBACK] Captured plan changes.",
+        "*Plan feedback captured*",
         "",
-        f"*Captured:* {len(amendments)} change(s)",
+        f"*Captured:* {len(amendments)} update(s)",
         "",
         "*Applied now:*",
     ]
@@ -375,9 +385,9 @@ def render_plan_revision_ack(
     questions = _explicit_questions_from_messages(clean)
     repos = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
     lines = [
-        "[ALFRED-PLAN-REVISION] Plan revised.",
+        "*Plan revised*",
         "",
-        f"*Captured so far:* {len(amendments)} change(s)",
+        f"*Captured so far:* {len(amendments)} update(s)",
         "",
         "*Current draft now includes:*",
     ]
@@ -417,6 +427,102 @@ def plan_feedback_requires_resolution(feedback: Iterable[str]) -> bool:
     return bool(_explicit_questions_from_messages(clean))
 
 
+def classify_post_pr_feedback(feedback: Iterable[str]) -> tuple[PostPrFeedbackItem, ...]:
+    """Classify trusted follow-up replies posted after a report or PR link.
+
+    The output is intentionally descriptive, not executable. A later agent
+    can use these items as context, but this helper never grants approval,
+    changes code, or widens scope by itself.
+    """
+
+    clean = tuple(_normalize_message(item) for item in feedback if _clean_text(item))
+    out: list[PostPrFeedbackItem] = []
+    for message in clean:
+        for line in _message_lines(message):
+            item = _post_pr_feedback_item(line)
+            if item is not None:
+                out.append(item)
+    return tuple(out)
+
+
+def render_post_pr_feedback_ack(
+    feedback: Iterable[str],
+    *,
+    pr_urls: Iterable[str] = (),
+    issue_url: str | None = None,
+) -> str:
+    """Render a Slack acknowledgement for trusted report/PR follow-up replies."""
+
+    items = classify_post_pr_feedback(feedback)
+    if not items:
+        return ""
+    context_links = _feedback_context_links(pr_urls=pr_urls, issue_url=issue_url)
+    blockers = [item for item in items if item.requires_resolution]
+    action_items = [item for item in items if not item.requires_resolution]
+    lines = [
+        "*Follow-up feedback captured*",
+    ]
+    if context_links:
+        lines.extend(["", f"*Context:* {', '.join(context_links)}"])
+    if action_items:
+        lines.extend(["", "*Action items for the next pass:*"])
+        lines.extend(f"- `{item.kind}` {item.summary}" for item in action_items[:8])
+        if len(action_items) > 8:
+            lines.append(f"- ...and {len(action_items) - 8} more item(s).")
+    if blockers:
+        lines.extend(["", "*Needs a decision before more work:*"])
+        lines.extend(f"- {item.summary}" for item in blockers[:6])
+    lines.extend(
+        [
+            "",
+            "*Safety:* this reply does not approve, merge, or change code by itself. "
+            "Alfred will use it as follow-up context for the next plan or PR pass.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_post_pr_followup_block(
+    feedback: Iterable[str],
+    *,
+    pr_urls: Iterable[str] = (),
+    issue_url: str | None = None,
+) -> str:
+    """Render trusted post-report replies as a Markdown context block."""
+
+    items = classify_post_pr_feedback(feedback)
+    if not items:
+        return ""
+    context_links = _feedback_context_links(
+        pr_urls=pr_urls,
+        issue_url=issue_url,
+        markdown=True,
+    )
+    lines = [
+        "## Slack Follow-up Feedback",
+        "",
+        "These trusted thread replies were captured after Alfred posted a report or PR link.",
+        "Treat them as follow-up context only; do not merge or expand scope without operator approval.",
+        "",
+    ]
+    if context_links:
+        lines.extend(["### Linked Context", ""])
+        lines.extend(f"- {link}" for link in context_links)
+        lines.append("")
+    lines.extend(["### Items", ""])
+    lines.extend(
+        f"- `{item.kind}`{' needs decision' if item.requires_resolution else ''}: {item.summary}"
+        for item in items
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def post_pr_feedback_requires_resolution(feedback: Iterable[str]) -> bool:
+    """Return True when report/PR follow-up includes a blocking question."""
+
+    return any(item.requires_resolution for item in classify_post_pr_feedback(feedback))
+
+
 def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
     """Prompt text for an optional local engine backed refiner."""
 
@@ -438,7 +544,7 @@ def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
     }
     return (
         "You are Alfred's planning assistant. Tighten the draft so technical and "
-        "non-technical teammates can describe work safely before an autonomous "
+        "non-technical operators can describe work safely before an autonomous "
         "engineering agent starts.\n\n"
         "Return JSON only with any of these keys: title, problem, user, "
         "current_behavior, desired_behavior, repos, acceptance_criteria, test_plan, "
@@ -701,6 +807,84 @@ def _explicit_questions_from_messages(messages: tuple[str, ...]) -> tuple[str, .
             if action is not None and action[0] == "open_questions":
                 questions.extend(_split_items(action[1]))
     return tuple(_dedupe(questions))
+
+
+def _post_pr_feedback_item(line: str) -> PostPrFeedbackItem | None:
+    cleaned = _clean_text(line)
+    if not cleaned:
+        return None
+    action = _parse_line(cleaned)
+    if action is not None:
+        key, value = action
+        if key == "open_questions":
+            return PostPrFeedbackItem("question", f"Question: {value}", cleaned, True)
+        if key == "acceptance_criteria":
+            return PostPrFeedbackItem("acceptance", f"Acceptance: {value}", cleaned)
+        if key == "test_plan":
+            return PostPrFeedbackItem("test", f"Test: {value}", cleaned)
+        if key in {"repos", "remove_repo"}:
+            label = "Scope change"
+            return PostPrFeedbackItem("scope", f"{label}: {value}", cleaned, True)
+        return PostPrFeedbackItem("change", f"{key.replace('_', ' ')}: {value}", cleaned)
+    prefixed = _feedback_prefix(cleaned)
+    if prefixed is not None:
+        kind, value = prefixed
+        requires = kind in {"blocker", "hold", "question"}
+        summary_prefix = {
+            "blocker": "Blocker",
+            "bug": "Bug",
+            "change": "Change",
+            "fix": "Fix",
+            "follow_up": "Follow-up",
+            "hold": "Hold",
+            "question": "Question",
+        }.get(kind, kind.replace("_", " ").title())
+        return PostPrFeedbackItem(kind, f"{summary_prefix}: {value}", cleaned, requires)
+    requires = cleaned.endswith("?")
+    kind = "question" if requires else "note"
+    prefix = "Question" if requires else "Note"
+    return PostPrFeedbackItem(kind, f"{prefix}: {cleaned}", cleaned, requires)
+
+
+def _feedback_prefix(line: str) -> tuple[str, str] | None:
+    if ":" not in line:
+        return None
+    raw, value = line.split(":", 1)
+    field = " ".join(raw.replace("_", " ").replace("-", " ").lower().split())
+    value = value.strip()
+    if not value:
+        return None
+    mapping = {
+        "blocker": "blocker",
+        "bug": "bug",
+        "change": "change",
+        "fix": "fix",
+        "follow up": "follow_up",
+        "followup": "follow_up",
+        "hold": "hold",
+        "question": "question",
+    }
+    kind = mapping.get(field)
+    return (kind, value) if kind else None
+
+
+def _feedback_context_links(
+    *,
+    pr_urls: Iterable[str] = (),
+    issue_url: str | None = None,
+    markdown: bool = False,
+) -> tuple[str, ...]:
+    links: list[str] = []
+    if issue_url and issue_url.strip():
+        url = issue_url.strip()
+        links.append(f"[issue]({url})" if markdown else f"<{url}|issue>")
+    for index, raw in enumerate(pr_urls, start=1):
+        url = str(raw or "").strip()
+        if not url:
+            continue
+        label = f"PR {index}"
+        links.append(f"[{label}]({url})" if markdown else f"<{url}|{label}>")
+    return tuple(links)
 
 
 def _planning_memory_query(draft: IssueDraft) -> str | None:

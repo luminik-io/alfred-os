@@ -1244,20 +1244,20 @@ def _render_plan_markdown(
     child_label = "child issue" if child_count == 1 else "child issues"
 
     lines: list[str] = []
-    lines.append(f"*Plan approval needed* · `{slug}`")
+    lines.append(f"*Batman plan ready* · `{slug}`")
     lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
     lines.append(f"*Work:* {parent_title}")
     if blockers:
         lines.append("*Readiness:* needs scope before implementation")
     else:
         lines.append("*Readiness:* ready for approval")
-    lines.append(
-        "*How to steer:* reply in this thread with changes before approval. Plain language works."
-    )
+    lines.append("*Steer here before approval:* plain language works.")
     lines.append(
         "*Useful shortcuts:* `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`"
     )
-    lines.append("*Decision:* react :white_check_mark: to approve, :x: to reject.")
+    lines.append(
+        "*Decision:* react :white_check_mark: to approve this exact plan, or :x: to stop it."
+    )
     lines.append("")
 
     lines.append(f"*Scope if approved now:* {repo_count} {repo_label}, {child_count} {child_label}")
@@ -1366,6 +1366,18 @@ def _issue_link(repo: str, number: int) -> str:
         return github_issue_link(repo, number)
     except Exception:
         return f"<https://github.com/{repo}/issues/{number}|{repo}#{number}>"
+
+
+def _slack_url_link(url: str, *, label: str | None = None) -> str:
+    try:
+        from slack_format import github_url_link
+
+        return github_url_link(url, label=label)
+    except Exception:
+        clean = str(url or "").strip()
+        if not clean:
+            return ""
+        return f"<{clean}|{label}>" if label else clean
 
 
 def _approval_feedback(raw: object) -> tuple[str, ...]:
@@ -1584,17 +1596,26 @@ class SlackReporter:
 
     def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
         lines = [
-            f"*Batman bundle `{envelope.bundle_slug}` -- {envelope.reason}*",
+            f"*Batman report* · `{envelope.bundle_slug}` · `{envelope.reason}`",
             f"*Parent:* {envelope.parent_title}",
         ]
         if envelope.created:
             lines.append("*Filed children:*")
-            for url in envelope.created:
-                lines.append(f"  - {url}")
+            for index, url in enumerate(envelope.created, start=1):
+                lines.append(f"  - {_slack_url_link(url, label=f'child {index}')}")
         if envelope.failed_repos:
             lines.append("*Failed repos:*")
             for repo in envelope.failed_repos:
                 lines.append(f"  - {repo}")
+        lines.extend(
+            [
+                "",
+                "*Keep shaping this work:*",
+                "Reply with `change:`, `fix:`, `test:`, `question:`, or plain "
+                "language. Alfred captures trusted replies for the next pass. "
+                "Replies never approve or merge code.",
+            ]
+        )
         text = "\n".join(lines)
         summary = f"bundle {envelope.bundle_slug} report ({envelope.reason})"
         handle = self._thread_root(

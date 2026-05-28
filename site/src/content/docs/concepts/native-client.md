@@ -7,6 +7,11 @@ The native Alfred client should be a local control plane, not a second Alfred.
 Slack remains the primary collaboration UI: plans, replies, approvals, and
 post-PR follow-up belong in Slack threads.
 
+The current `alfred serve` redesign is the web contract for that client: a
+sticky command center, health signals, plans, firings, memory review, and safe
+next actions. A Mac/Linux shell should wrap this contract before inventing a
+new one.
+
 The client is for trust and operations:
 
 - what needs my attention now

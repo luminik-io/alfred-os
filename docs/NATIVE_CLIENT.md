@@ -29,8 +29,9 @@ and CLI commands the operator can inspect by hand.
   before showing logs or historical data.
 - Explain before acting: write actions show the exact command, target, and
   rollback path before running.
-- Non-technical friendly: use product language first, shell commands second.
-  The app can reveal details without making them the default.
+- Accessible to technical and non-technical operators: use product language
+  first, shell commands second. The app can reveal details without making them
+  the default.
 
 ## Information Architecture
 

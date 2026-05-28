@@ -19,6 +19,7 @@ Every message has one job:
 - plan revised
 - implementation started
 - PR opened
+- follow-up captured
 - needs input
 - failed
 
@@ -41,6 +42,20 @@ question: should this include the docs site?
 Questions block execution. Scope changes are echoed back before approval. Once
 approved, Alfred copies the accepted amendments into child issues so the PR work
 does not drift from the discussion.
+
+## Reply after a PR or report
+
+Threads keep working after implementation starts. Trusted users can reply with:
+
+```text
+change: tighten the empty state copy
+fix: the docs link points to the old page
+test: add coverage for the approval thread
+question: should this also touch mobile?
+```
+
+Alfred treats those replies as follow-up context for the next plan, issue, or
+PR pass. They do not approve, merge, or change code by themselves.
 
 ## Local UI boundary
 

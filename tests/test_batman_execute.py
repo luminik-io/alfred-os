@@ -281,7 +281,7 @@ def test_plan_parses_well_formed_parent_into_four_children():
         "<https://github.com/your-org/your-product/issues/42|your-org/your-product#42>"
         in plan.plan_markdown
     )
-    assert "reply in this thread with changes" in plan.plan_markdown
+    assert "Steer here before approval" in plan.plan_markdown
     assert "Readiness:* ready for approval" in plan.plan_markdown
 
 
@@ -425,7 +425,7 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
         FakeApprovalResult(
             approved=True,
             verdict=APPROVAL_GRANTED,
-            feedback=({"text": "Use the simpler onboarding copy Neha requested."},),
+            feedback=({"text": "Use the simpler onboarding copy requested by the operator."},),
         )
     )
 
@@ -451,15 +451,15 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
 
     assert verdict.approved is True
     assert verdict.verdict == EXEC_OK
-    assert verdict.feedback == ("Use the simpler onboarding copy Neha requested.",)
+    assert verdict.feedback == ("Use the simpler onboarding copy requested by the operator.",)
     assert reporter.feedback == [
         {
             "channel": "C0FAKE123",
             "message_ts": "1700000000.000100",
-            "feedback": ("Use the simpler onboarding copy Neha requested.",),
+            "feedback": ("Use the simpler onboarding copy requested by the operator.",),
             "kwargs": {
                 "plan": plan,
-                "all_feedback": ("Use the simpler onboarding copy Neha requested.",),
+                "all_feedback": ("Use the simpler onboarding copy requested by the operator.",),
                 "revised_repos": plan.affected_repos,
             },
         }
@@ -470,7 +470,7 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
     assert result.reason == EXEC_OK
     assert "## Operator Slack Amendments" in gh.issued[0]["body"]
     assert "Treat these as approved plan changes" in gh.issued[0]["body"]
-    assert "Use the simpler onboarding copy Neha requested." in gh.issued[0]["body"]
+    assert "Use the simpler onboarding copy requested by the operator." in gh.issued[0]["body"]
     assert "Planning Assistant Interpretation" in gh.issued[0]["body"]
 
 
