@@ -110,6 +110,11 @@ Slack approval thread: reply with changes before reacting, then approve only
 when the plan reflects what you want built. `add repo:` and `remove repo:`
 replies update the execution scope before implementation starts.
 
+When promoted repo lessons exist, Alfred shows them as advisory planning memory
+and embeds them in saved specs. Saving a useful spec also queues a reviewable
+memory candidate, so future work can learn from the decision only after
+promotion.
+
 ## One Repo
 
 For a single app or library, keep specs in the repo:

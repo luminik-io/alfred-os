@@ -608,6 +608,15 @@ pre code {
   overflow-wrap: anywhere;
 }
 
+.detail-panel {
+  margin-bottom: 1rem;
+}
+
+.detail-panel h3 {
+  margin-top: 0;
+  font-family: var(--ops-display);
+}
+
 .event-log {
   background: #05080C;
   border: 1px solid var(--ops-line);
@@ -646,7 +655,8 @@ pre code {
 }
 
 .assistant-card,
-.assistant-result {
+.assistant-result,
+.memory-list {
   display: grid;
   gap: 0.75rem;
   border: 1px solid var(--ops-line);
@@ -655,7 +665,8 @@ pre code {
   background: #080D14;
 }
 
-.assistant-card p {
+.assistant-card p,
+.memory-list p {
   margin: 0.35rem 0 0;
   color: var(--ops-muted);
 }
@@ -679,6 +690,23 @@ pre code {
   margin: 0;
   padding-left: 1rem;
   color: var(--ops-muted);
+}
+
+.memory-item {
+  display: grid;
+  gap: 0.35rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--ops-line);
+}
+
+.memory-item strong {
+  color: var(--ops-accent);
+  font-family: var(--ops-mono);
+  font-size: 0.78rem;
+}
+
+.memory-item span {
+  color: var(--ops-soft);
 }
 
 .planning-form label,

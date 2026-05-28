@@ -204,6 +204,29 @@ def test_firings_view_filter_by_codename(populated_state: Path) -> None:
     assert "2026-05-23-1200-aa" not in response.text
 
 
+def test_json_api_status_and_firings(populated_state: Path) -> None:
+    client = _client(populated_state)
+
+    status = client.get("/api/status")
+    assert status.status_code == 200
+    payload = status.json()
+    assert {row["codename"] for row in payload["agents"]} == {"drake", "lucius"}
+    assert "status" in payload["reliability"]
+
+    firings = client.get("/api/firings", params={"codename": "lucius", "limit": 1})
+    assert firings.status_code == 200
+    rows = firings.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["codename"] == "lucius"
+
+    detail = client.get("/api/firings/2026-05-23-1200-aa")
+    assert detail.status_code == 200
+    assert detail.json()["raw_events"][1]["event"] == "issue_picked"
+
+    missing = client.get("/api/firings/does-not-exist")
+    assert missing.status_code == 404
+
+
 def test_firing_complete_marks_record_finished(tmp_path: Path) -> None:
     state = tmp_path / "state"
     (state / "lucius" / "events").mkdir(parents=True)
@@ -289,6 +312,14 @@ def test_plans_view_lists_saved_batman_plans(tmp_path: Path) -> None:
     detail = client.get("/plans/61-plan")
     assert detail.status_code == 200
     assert 'target="_blank" rel="noopener noreferrer"' in detail.text
+
+    api_list = client.get("/api/plans")
+    assert api_list.status_code == 200
+    assert api_list.json()["rows"][0]["plan_id"] == "61-plan"
+
+    api_detail = client.get("/api/plans/61-plan")
+    assert api_detail.status_code == 200
+    assert api_detail.json()["title"] == "Batman Plan for Issue #61"
 
 
 def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
@@ -478,6 +509,65 @@ def test_planning_refine_engine_uses_existing_workspace_root(
     assert captured["workdir"] == tmp_path
     assert not (tmp_path / "planning-drafts").exists()
     assert "Engine refined Slack plan" in response.text
+
+
+def test_planning_page_surfaces_memory_and_queues_spec_candidate(tmp_path: Path) -> None:
+    class Memory:
+        name = "test"
+
+        def __init__(self) -> None:
+            self.candidates: list[dict[str, object]] = []
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            return [
+                {
+                    "repo": repo,
+                    "body": "Slack plans should show explicit revision commands.",
+                    "tags": ["planning"],
+                }
+            ]
+
+        def propose_memory(self, **kwargs):
+            self.candidates.append(kwargs)
+            return f"candidate-{len(self.candidates)}"
+
+    state = tmp_path / "state"
+    state.mkdir()
+    memory = Memory()
+    app = create_app(FilesystemReader(state_root=state))
+    app.state.planning_memory_provider = memory
+    app.state.planning_memory_writer = memory
+    client = TestClient(app)
+
+    response = client.post(
+        "/planning",
+        data={
+            "title": "Add Slack plan revision flow",
+            "problem": (
+                "Operators and teammates need to discuss a Batman plan before "
+                "implementation so Alfred does not ship the wrong workflow."
+            ),
+            "user": "Repo owner or teammate",
+            "current_behavior": "Batman posts a plan and waits for emoji approval.",
+            "desired_behavior": (
+                "Batman keeps implementation paused when a plan needs revision "
+                "and accepts thread feedback before child issues are filed."
+            ),
+            "repos": "luminik-io/alfred-os",
+            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
+            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
+            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
+            "action": "save_spec",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Planning memory" in response.text
+    assert "Slack plans should show explicit revision commands." in response.text
+    assert "Memory review queued" in response.text
+    assert len(memory.candidates) == 1
+    assert memory.candidates[0]["source"] == "planning-ui"
+    assert memory.candidates[0]["repo"] == "luminik-io/alfred-os"
 
 
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:

@@ -21,6 +21,13 @@
   </article>
   {% endif %}
 
+  {% if memory_candidate_ids %}
+  <article class="notice notice--ok">
+    <strong>Memory review queued</strong>
+    <span>{{ memory_candidate_ids|length }} candidate{{ '' if memory_candidate_ids|length == 1 else 's' }} waiting for promotion.</span>
+  </article>
+  {% endif %}
+
   <div class="planning-grid">
     <form class="planning-form" method="post" action="/planning">
       <section class="assistant-card">
@@ -111,6 +118,19 @@
           {% endfor %}
         </ul>
         {% endif %}
+      </article>
+      {% endif %}
+
+      {% if assistant_result and assistant_result.memory %}
+      <article class="memory-list">
+        <small class="panel-kicker">Planning memory</small>
+        <p>Hints from promoted local lessons. Current code and issue scope still win.</p>
+        {% for item in assistant_result.memory %}
+        <div class="memory-item">
+          <strong>{{ item.repo or 'all repos' }}</strong>
+          <span>{{ item.body }}</span>
+        </div>
+        {% endfor %}
       </article>
       {% endif %}
 

@@ -35,7 +35,7 @@
       <tr>
         <td data-label="Firing"><a class="firing-link" href="/firings/{{ row.firing_id }}" title="{{ row.firing_id }}">{{ row.firing_id|short_firing_id }}</a></td>
         <td data-label="Codename">{{ row.codename }}</td>
-        <td data-label="Status"><span class="dot dot-{{ row.status }}"></span> {{ row.status }}</td>
+        <td data-label="Status"><span class="dot dot-{{ row.status }}" aria-hidden="true"></span> {{ row.status }}</td>
         <td data-label="Started">
           {% if row.started_at %}
             <time class="time-pill" datetime="{{ row.started_at }}" title="{{ row.started_at|timestamp_title }}">{{ row.started_at|friendly_time }}</time>

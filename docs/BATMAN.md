@@ -216,21 +216,24 @@ issue, derives `billing-v2` as the bundle slug, and posts to
 ```
 batman, plan drafted for billing-v2 (4 child issue(s), 3 repo(s))
 
-*Batman plan: `billing-v2`*
-*Parent:* <https://github.com/your-org/your-product/issues/42|your-org/your-product#42> -- Bundle: billing-v2 rollout
-*Affected repos:* your-org/your-backend, your-org/your-frontend, your-org/your-mobile
+*Batman plan · `billing-v2` · needs approval*
+*Parent:* <https://github.com/your-org/your-product/issues/42|your-org/your-product#42>
+*Title:* Bundle: billing-v2 rollout
+*Decision:* react :white_check_mark: to approve, :x: to reject, or reply with changes before approving.
+*Reply commands:* `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`, or plain language.
+*Readiness:* ready for approval
 
-*Children to file:*
-  - `your-org/your-backend` -- introduce BillingV2Service
-  - `your-org/your-backend` -- migrate /api/v1/invoices
-  - `your-org/your-frontend` -- pricing page rewrite
-  - `your-org/your-mobile` -- settings screen v2
+*Execution scope if approved now:* 3 repos, 4 child issues
+  - `your-org/your-backend`: introduce BillingV2Service
+  - `your-org/your-backend`: migrate /api/v1/invoices
+  - `your-org/your-frontend`: pricing page rewrite
+  - `your-org/your-mobile`: settings screen v2
 
 *Done when:*
 - All children merged to main
 - Tests green across all repos
 
-React with :white_check_mark: to approve, :x: to reject.
+No child issues are filed until this plan is approved.
 ```
 
 Operator reacts with `:white_check_mark:`. Batman files four child

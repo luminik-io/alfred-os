@@ -1236,44 +1236,72 @@ def _render_plan_markdown(
     readiness_findings: list[PlanReadinessFinding],
 ) -> str:
     """Render the markdown Batman posts to Slack for approval."""
-    lines: list[str] = []
-    lines.append(f"*Batman plan: `{slug}`*")
-    lines.append(f"*Title:* {parent_title}")
-    lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
-    lines.append(
-        "*Decision:* approve with :white_check_mark:, reject with :x:, or reply in this thread with changes."
-    )
-    lines.append(
-        "*Planning replies:* use `acceptance:`, `test:`, `add repo:`, `remove repo:`, "
-        "or plain language. Alfred carries approved replies into every child issue."
-    )
     blockers = [finding for finding in readiness_findings if finding.severity == "error"]
+    warnings = [finding for finding in readiness_findings if finding.severity == "warning"]
+    repo_count = len(affected_repos)
+    child_count = len(children)
+    repo_label = "repo" if repo_count == 1 else "repos"
+    child_label = "child issue" if child_count == 1 else "child issues"
+
+    lines: list[str] = []
+    lines.append(f"*Batman plan · `{slug}` · needs approval*")
+    lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
+    lines.append(f"*Title:* {parent_title}")
+    lines.append(
+        "*Decision:* react :white_check_mark: to approve, :x: to reject, "
+        "or reply in this thread with changes before approving."
+    )
+    lines.append(
+        "*Reply commands:* `acceptance:`, `test:`, `add repo:`, "
+        "`remove repo:`, `question:`, or plain language."
+    )
     if blockers:
         lines.append("*Readiness:* needs scope before implementation")
     else:
         lines.append("*Readiness:* ready for approval")
-    if affected_repos:
-        lines.append("*Affected repos:* " + ", ".join(affected_repos))
-    else:
-        lines.append("*Affected repos:* (none parsed)")
     lines.append("")
-    lines.append("*Children to file:*")
+
+    lines.append(
+        f"*Execution scope if approved now:* {repo_count} {repo_label}, {child_count} {child_label}"
+    )
     if children:
         for c in children:
             lines.append(f"  - `{c.repo}`: {c.title}")
+    elif affected_repos:
+        for repo in affected_repos:
+            lines.append(f"  - `{repo}`: child scope not parsed yet")
     else:
-        lines.append("  - (none parsed; check the parent-issue body shape)")
+        lines.append("  - no repository scope parsed yet")
+
     if done_when.strip():
         lines.append("")
         lines.append("*Done when:*")
         lines.append(done_when)
+
     if readiness_findings:
         lines.append("")
         lines.append("*Scope checks:*")
         for finding in readiness_findings:
-            lines.append(f"  - `{finding.severity}` {finding.message}")
+            icon = ":no_entry:" if finding.severity == "error" else ":warning:"
+            lines.append(f"  - {icon} `{finding.severity}` {finding.message}")
+
     lines.append("")
-    lines.append("Alfred will not file child issues until this plan is approved.")
+    lines.append("*What Alfred will do after approval:*")
+    lines.append("  1. File the scoped child issues.")
+    lines.append("  2. Run each repo in the rollout order.")
+    lines.append("  3. Report PR links, failed repos, and merge order in this thread.")
+
+    lines.append("")
+    if blockers:
+        lines.append(
+            "Alfred will not execute while scope blockers remain. Reply with fixes, then approve."
+        )
+    elif warnings:
+        lines.append(
+            "Warnings do not block approval, but this is the right moment to tighten the plan."
+        )
+    else:
+        lines.append("No child issues are filed until this plan is approved.")
     return "\n".join(lines)
 
 

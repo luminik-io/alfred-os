@@ -9,14 +9,17 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 from planning_assistant import (  # noqa: E402
+    PlanningMemoryItem,
     apply_repository_scope_feedback,
     build_refiner_prompt,
     plan_feedback_requires_resolution,
+    recall_planning_memory,
     refine_issue_draft,
     render_development_spec,
     render_operator_amendments,
     render_operator_feedback_ack,
     render_plan_revision_ack,
+    render_planning_memory,
 )
 from spec_helper import IssueDraft  # noqa: E402
 
@@ -123,6 +126,73 @@ def test_refine_issue_draft_accepts_injected_refiner_patch() -> None:
 
     assert result.draft.title == "Guide teammates through Slack plan edits"
     assert "rewrites vague operator notes" in result.draft.acceptance_criteria[-1]
+
+
+def test_refine_issue_draft_recalls_planning_memory() -> None:
+    class Provider:
+        name = "test"
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            assert repo == "luminik-io/alfred-os"
+            assert query and "Slack plan revision" in query
+            return [
+                {
+                    "repo": repo,
+                    "codename": "batman",
+                    "body": "Plan threads should state approval and revision commands.",
+                    "tags": ["slack", "planning"],
+                }
+            ]
+
+    result = refine_issue_draft(_draft(), [], memory_provider=Provider())
+
+    assert result.memory == (
+        PlanningMemoryItem(
+            body="Plan threads should state approval and revision commands.",
+            repo="luminik-io/alfred-os",
+            codename="batman",
+            tags=("slack", "planning"),
+        ),
+    )
+    assert "## Planning Memory" in result.spec_body
+    assert "Plan threads should state approval" in result.spec_body
+
+
+def test_recall_planning_memory_falls_back_to_repo_recent_lessons() -> None:
+    class Provider:
+        name = "test"
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            self.calls.append((repo, query, limit))
+            if query is not None:
+                return []
+            return [{"repo": repo, "body": "Use existing test factories."}]
+
+    provider = Provider()
+    memory = recall_planning_memory(_draft(), provider)
+
+    assert memory[0].body == "Use existing test factories."
+    assert provider.calls[0][1] is not None
+    assert provider.calls[1][1] is None
+
+
+def test_render_planning_memory_is_prompt_safe() -> None:
+    block = render_planning_memory(
+        [
+            PlanningMemoryItem(
+                body="Prefer Slack thread replies over new dashboards.",
+                repo="luminik-io/alfred-os",
+                severity="warning",
+                tags=("operator-preference",),
+            )
+        ]
+    )
+
+    assert "Use these as hints only" in block
+    assert "`luminik-io/alfred-os` warning [operator-preference]" in block
 
 
 def test_render_operator_amendments_includes_interpretation() -> None:

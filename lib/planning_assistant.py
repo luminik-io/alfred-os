@@ -29,6 +29,17 @@ Refiner = Callable[[IssueDraft, tuple[str, ...]], dict[str, Any] | str | None]
 
 
 @dataclass(frozen=True)
+class PlanningMemoryItem:
+    """Prompt-safe memory hint surfaced while shaping a plan."""
+
+    body: str
+    repo: str
+    codename: str = ""
+    severity: str = "info"
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class PlanningAssistantResult:
     """Result of one planning-assistant turn."""
 
@@ -39,6 +50,7 @@ class PlanningAssistantResult:
     questions: tuple[str, ...]
     issue_body: str
     spec_body: str
+    memory: tuple[PlanningMemoryItem, ...] = ()
 
 
 def refine_issue_draft(
@@ -46,6 +58,8 @@ def refine_issue_draft(
     messages: Iterable[str],
     *,
     refiner: Refiner | None = None,
+    memory_provider: Any | None = None,
+    memory_limit: int = 3,
 ) -> PlanningAssistantResult:
     """Apply operator messages to ``draft`` and return a readiness snapshot.
 
@@ -63,10 +77,11 @@ def refine_issue_draft(
     if refiner is not None and clean_messages:
         amended = _apply_refiner(amended, clean_messages, refiner)
     readiness = assess_issue_draft(amended)
+    memory = recall_planning_memory(amended, memory_provider, limit=memory_limit)
     amendments = _summarize_amendments(clean_messages)
     questions = _planning_questions(amended, readiness)
     summary = _summary_for(readiness, amendments)
-    spec_body = render_development_spec(amended, readiness=readiness)
+    spec_body = render_development_spec(amended, readiness=readiness, memory=memory)
     return PlanningAssistantResult(
         draft=amended,
         readiness=readiness,
@@ -75,7 +90,55 @@ def refine_issue_draft(
         questions=questions,
         issue_body=readiness.issue_body,
         spec_body=spec_body,
+        memory=memory,
     )
+
+
+def recall_planning_memory(
+    draft: IssueDraft,
+    provider: Any | None,
+    *,
+    limit: int = 3,
+) -> tuple[PlanningMemoryItem, ...]:
+    """Recall relevant promoted lessons for a planning draft.
+
+    Planning memory is advisory. It is shown beside the readiness report
+    and embedded in saved specs, but it never bypasses readiness checks or
+    invents repository scope.
+    """
+
+    if provider is None or getattr(provider, "name", "") == "null" or limit <= 0:
+        return ()
+    query = _planning_memory_query(draft)
+    repos: list[str | None] = [repo for repo in draft.repos if repo]
+    if not repos:
+        repos = [None]
+    out: list[PlanningMemoryItem] = []
+    seen: set[str] = set()
+    for repo in repos:
+        for use_query in (query, None):
+            if len(out) >= limit:
+                break
+            try:
+                lessons = provider.recall(repo=repo, query=use_query, limit=limit)
+            except TypeError:
+                lessons = provider.recall(repo=repo, limit=limit)
+            except Exception:
+                lessons = []
+            for lesson in lessons or []:
+                item = _memory_item_from_lesson(lesson, fallback_repo=repo or "")
+                if item is None:
+                    continue
+                key = f"{item.repo}|{item.body}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(item)
+                if len(out) >= limit:
+                    break
+            if out and use_query is not None:
+                break
+    return tuple(out)
 
 
 def apply_repository_scope_feedback(
@@ -120,10 +183,12 @@ def render_development_spec(
     draft: IssueDraft,
     *,
     readiness: IssueReadinessResult | None = None,
+    memory: Iterable[PlanningMemoryItem] = (),
 ) -> str:
     """Render a practical spec document from an issue draft."""
 
     readiness = readiness or assess_issue_draft(draft)
+    memory_block = render_planning_memory(memory)
     repos = draft.repos or ["owner/repo"]
     acceptance = draft.acceptance_criteria or ["TODO"]
     repo_lines = "\n".join(f"- `{repo}`" for repo in repos)
@@ -178,6 +243,8 @@ def render_development_spec(
 
 {draft.open_questions.strip() or "None."}
 
+{memory_block}
+
 ## Alfred Readiness
 
 - Score: {readiness.score}
@@ -198,6 +265,26 @@ def render_development_spec(
 - Do not expand beyond the non-goals without operator approval.
 - Treat acceptance criteria and verification plan as the merge gate.
 """
+
+
+def render_planning_memory(memory: Iterable[PlanningMemoryItem]) -> str:
+    """Render recalled planning memory for a spec or UI panel."""
+
+    items = tuple(memory)
+    if not items:
+        return ""
+    lines = [
+        "## Planning Memory",
+        "",
+        "Use these as hints only. Trust the current repository and issue first.",
+        "",
+    ]
+    for item in items:
+        tags = f" [{', '.join(item.tags)}]" if item.tags else ""
+        severity = "" if item.severity == "info" else f" {item.severity}"
+        repo = item.repo or "all repos"
+        lines.append(f"- `{repo}`{severity}{tags}: {item.body}")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def render_operator_amendments(feedback: Iterable[str]) -> str:
@@ -233,20 +320,22 @@ def render_operator_feedback_ack(feedback: Iterable[str]) -> str:
     amendments = _summarize_amendments(clean)
     questions = _explicit_questions_from_messages(clean)
     lines = [
-        "[ALFRED-PLAN-FEEDBACK] captured your plan update.",
+        "[ALFRED-PLAN-FEEDBACK] Plan update captured.",
         "",
-        "*Understood:*",
+        f"*Captured:* {len(amendments)} update(s)",
+        "",
+        "*Applied to the draft:*",
     ]
     lines.extend(f"- {item}" for item in amendments[:6])
     if len(amendments) > 6:
-        lines.append(f"- ...and {len(amendments) - 6} more amendment(s).")
+        lines.append(f"- ...and {len(amendments) - 6} more update(s).")
     if questions:
-        lines.extend(["", "*Open questions you asked Alfred to track:*"])
+        lines.extend(["", "*Open questions now block execution:*"])
         lines.extend(f"- {question}" for question in questions[:4])
     lines.extend(
         [
             "",
-            "Reply with more changes, or approve with :white_check_mark: when the plan is ready.",
+            "*Next:* Reply with more changes, or react :white_check_mark: when the plan is ready.",
         ]
     )
     return "\n".join(lines)
@@ -267,13 +356,15 @@ def render_plan_revision_ack(
     questions = _explicit_questions_from_messages(clean)
     repos = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
     lines = [
-        "[ALFRED-PLAN-REVISION] captured your plan update.",
+        "[ALFRED-PLAN-REVISION] Plan updated.",
+        "",
+        f"*Captured so far:* {len(amendments)} update(s)",
         "",
         "*Applied to the current draft:*",
     ]
     lines.extend(f"- {item}" for item in amendments[:8])
     if len(amendments) > 8:
-        lines.append(f"- ...and {len(amendments) - 8} more amendment(s).")
+        lines.append(f"- ...and {len(amendments) - 8} more update(s).")
     if repos:
         scope_label = "repo" if len(repos) == 1 else "repos"
         child_label = ""
@@ -286,14 +377,14 @@ def render_plan_revision_ack(
         if len(repos) > 10:
             lines.append(f"- ...and {len(repos) - 10} more repo(s).")
     if questions:
-        lines.extend(["", "*Open questions still need a decision:*"])
+        lines.extend(["", "*Open questions still need a decision before execution:*"])
         lines.extend(f"- {question}" for question in questions[:6])
         lines.append("")
-        lines.append("Alfred will not execute this plan while these questions remain open.")
+        lines.append("Alfred will not execute until these are resolved in this thread.")
     lines.extend(
         [
             "",
-            "Reply with more changes, or approve with :white_check_mark: when the plan is ready.",
+            "*Next:* Reply with more changes, or react :white_check_mark: when the plan is ready.",
         ]
     )
     return "\n".join(lines)
@@ -590,6 +681,57 @@ def _explicit_questions_from_messages(messages: tuple[str, ...]) -> tuple[str, .
             if action is not None and action[0] == "open_questions":
                 questions.extend(_split_items(action[1]))
     return tuple(_dedupe(questions))
+
+
+def _planning_memory_query(draft: IssueDraft) -> str | None:
+    for value in (
+        draft.title,
+        draft.problem,
+        draft.desired_behavior,
+        " ".join(draft.acceptance_criteria),
+    ):
+        cleaned = _clean_text(value)
+        if cleaned:
+            return cleaned[:120]
+    return None
+
+
+def _memory_item_from_lesson(
+    lesson: Any,
+    *,
+    fallback_repo: str,
+) -> PlanningMemoryItem | None:
+    if isinstance(lesson, dict):
+        body = str(lesson.get("body") or lesson.get("text") or "").strip()
+        repo = str(lesson.get("repo") or fallback_repo).strip()
+        codename = str(
+            lesson.get("codename") or lesson.get("agent") or lesson.get("source") or ""
+        ).strip()
+        severity = str(lesson.get("severity") or "info").strip().lower()
+        tags_raw = lesson.get("tags") or ()
+    else:
+        body = str(getattr(lesson, "body", "") or "").strip()
+        repo = str(getattr(lesson, "repo", "") or fallback_repo).strip()
+        codename = str(
+            getattr(lesson, "codename", "")
+            or getattr(lesson, "agent", "")
+            or getattr(lesson, "source", "")
+        ).strip()
+        severity = str(getattr(lesson, "severity", "info") or "info").strip().lower()
+        tags_raw = getattr(lesson, "tags", ()) or ()
+    if not body:
+        return None
+    if isinstance(tags_raw, str):
+        tags = tuple(_split_items(tags_raw))
+    else:
+        tags = tuple(str(tag).strip() for tag in tags_raw if str(tag).strip())
+    return PlanningMemoryItem(
+        body=body,
+        repo=repo,
+        codename=codename,
+        severity=severity or "info",
+        tags=tags,
+    )
 
 
 def _prefixed_command_value(cleaned: str, command: str) -> str | None:

@@ -149,6 +149,13 @@ repo add/remove commands also amend execution scope before implementation.
 under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec body under
 `$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
 
+When fleet-brain is available, the Planning page recalls a small number of
+promoted lessons for the selected repos and shows them as planning memory.
+Those hints are embedded in saved specs under a "Planning Memory" section, but
+they never override the current issue or readiness checks. Saving a spec also
+queues a reviewable memory candidate so useful spec-to-issue lessons can be
+promoted explicitly.
+
 By default refinement is deterministic and offline. Advanced operators can set
 `ALFRED_PLANNING_ASSISTANT_ENGINE=<engine>` to let the configured local engine
 rewrite the draft after the command parser has applied obvious edits. Use
@@ -168,6 +175,23 @@ Returns 404 for unknown firing ids. The id is validated against path traversal b
 ### `GET /healthz`
 
 Returns plain text `ok` with status 200. Useful for liveness probes if you run `alfred serve` behind a process supervisor.
+
+### JSON API
+
+The browser UI and future native client can read the same localhost data
+through JSON endpoints:
+
+```text
+GET /api/status
+GET /api/actions
+GET /api/firings?codename=<name>&limit=50
+GET /api/firings/{firing_id}
+GET /api/plans?limit=50
+GET /api/plans/{plan_id}
+```
+
+These endpoints are read-only. They intentionally mirror the HTML pages before
+adding any write-action surface for a native client.
 
 ## Architecture
 

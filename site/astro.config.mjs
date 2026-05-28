@@ -485,6 +485,8 @@ export default defineConfig({
             { label: "Issue claim state machine", slug: "concepts/state-machine" },
             { label: "State and memory", slug: "concepts/state-and-memory" },
             { label: "Fleet brain", slug: "concepts/fleet-brain" },
+            { label: "Slack-native planning", slug: "concepts/slack-native-planning" },
+            { label: "Native local client", slug: "concepts/native-client" },
             { label: "Engine routing", slug: "concepts/engine-routing" },
             { label: "Severity routing", slug: "concepts/severity-routing" },
           ],

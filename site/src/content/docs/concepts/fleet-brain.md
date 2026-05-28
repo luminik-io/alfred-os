@@ -86,6 +86,12 @@ shape, stale worker heartbeats, repeated failures, and high-confidence memory
 candidates that are ready for review. The governor command turns those signals
 into a read-only action list for the operator and the local dashboard.
 
+The Planning tab also uses the brain. When promoted lessons exist for the repos
+in a draft, Alfred recalls a small prompt-safe set as advisory planning memory.
+Saved specs include those hints under "Planning Memory" and queue a reviewable
+candidate so useful spec-to-issue lessons can be promoted explicitly. Current
+code and the current issue still win over memory.
+
 ## MCP access
 
 `alfred mcp serve` exposes a small read-only JSON-RPC stdio surface for local
@@ -114,8 +120,8 @@ The next useful layer is reliability, not more mystery:
 
 - Add approved follow-up execution for governor findings, such as filing a
   setup issue or pausing a single codename.
-- Let Batman and specs-driven workflows remember which specs generated which
-  issues and PRs.
+- Connect saved planning candidates to Batman and Drake so the brain can answer
+  which spec generated which issues and PRs.
 - Add semantic recall for lessons, plans, and failure summaries.
 - Add lightweight memory-quality checks before candidate promotion.
 

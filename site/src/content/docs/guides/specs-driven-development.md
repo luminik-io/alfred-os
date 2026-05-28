@@ -160,7 +160,10 @@ question: should this be behind a feature flag?
 ```
 
 Use it to refine rough ideas into a GitHub issue draft and a spec draft before
-Drake, Batman, or Lucius sees the work.
+Drake, Batman, or Lucius sees the work. When promoted repo lessons exist,
+Alfred shows them as advisory planning memory and embeds them in saved specs.
+Saving a useful spec also queues a reviewable memory candidate, so future work
+can learn from the decision only after promotion.
 
 Poorly scoped parent issues should not go straight to implementation. If the
 issue does not name repos, acceptance criteria, and done-when checks, keep it
