@@ -74,7 +74,7 @@ $ALFRED_HOME/state/codenames/<codename>/...
 $ALFRED_HOME/state/firings/<firing_id>.json
 ```
 
-Batman plan drafts are read from:
+Alfred plan drafts are read from:
 
 ```
 $ALFRED_HOME/batman-plans/*.md
@@ -113,9 +113,9 @@ Filters:
 
 - `?codename=<name>` restricts the list to one codename. The clickable filter strip at the top of the page renders one link per known codename plus an "all" reset.
 
-### `GET /plans` - Saved Batman plans
+### `GET /plans` - Saved Alfred plans
 
-Lists saved Batman plan drafts from `$ALFRED_HOME/batman-plans`. Each card
+Lists saved Alfred plan drafts from `$ALFRED_HOME/batman-plans`. Each card
 shows status, affected repos, parent issue, update time, and a local detail
 link.
 
@@ -145,9 +145,18 @@ question: should approval happen after edits or after a new plan?
 `Refine draft` applies those edits locally, re-runs readiness, and renders both
 the GitHub issue draft and a spec draft. In Batman Slack approvals, the same
 repo add/remove commands also amend execution scope before implementation.
-`Save draft` writes the issue body
-under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec body under
-`$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
+Trusted replies after reports or PR links are captured during Batman's
+report-feedback window and written to `$ALFRED_HOME/batman-followups/` as
+context for the next pass, never as merge approval. `Save draft` writes the
+issue body under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec
+body under `$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
+
+When fleet-brain is available, the Planning page recalls a small number of
+promoted lessons for the selected repos and shows them as planning memory.
+Those hints are embedded in saved specs under a "Planning Memory" section, but
+they never override the current issue or readiness checks. Saving a spec also
+queues a reviewable memory candidate so useful spec-to-issue lessons can be
+promoted explicitly.
 
 By default refinement is deterministic and offline. Advanced operators can set
 `ALFRED_PLANNING_ASSISTANT_ENGINE=<engine>` to let the configured local engine
@@ -168,6 +177,23 @@ Returns 404 for unknown firing ids. The id is validated against path traversal b
 ### `GET /healthz`
 
 Returns plain text `ok` with status 200. Useful for liveness probes if you run `alfred serve` behind a process supervisor.
+
+### JSON API
+
+The browser UI and future native client can read the same localhost data
+through JSON endpoints:
+
+```text
+GET /api/status
+GET /api/actions
+GET /api/firings?codename=<name>&limit=50
+GET /api/firings/{firing_id}
+GET /api/plans?limit=50
+GET /api/plans/{plan_id}
+```
+
+These endpoints are read-only. They intentionally mirror the HTML pages before
+adding any write-action surface for a native client.
 
 ## Architecture
 

@@ -220,7 +220,7 @@ to enter the review queue before future recall.
 ## `alfred serve`
 
 Runs the localhost dashboard over fleet state, reliability governor actions,
-recent firings, saved Batman plans, and local Planning drafts.
+recent firings, saved Alfred plans, and local Planning drafts.
 
 ```sh
 alfred serve --port 7000

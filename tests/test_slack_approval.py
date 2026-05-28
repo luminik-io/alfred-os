@@ -26,6 +26,7 @@ from slack_approval import (  # noqa: E402
     TRANSPORT_FAIL_THRESHOLD,
     SlackApproval,
     aws_secrets_token_resolver,
+    collect_trusted_thread_feedback,
     env_token_resolver,
     file_cache_token_resolver,
     operator_user_id_from_env,
@@ -152,6 +153,27 @@ def test_operator_thread_replies_return_as_feedback() -> None:
         "Please keep copy simple and add the mobile case."
     ]
     assert client.reply_calls == [{"channel": CHANNEL, "ts": TS, "limit": 100}]
+
+
+def test_collect_trusted_thread_feedback_reusable_for_followup_threads() -> None:
+    client = FakeSlackClient(
+        [_ok([])],
+        replies=[
+            {"ts": TS, "user": OPERATOR, "text": "root message ignored"},
+            {"ts": "1716480001.000001", "user": TEAMMATE, "text": "fix: update docs"},
+            {"ts": "1716480002.000002", "user": "UOTHER", "text": "ignore me"},
+        ],
+    )
+
+    feedback = collect_trusted_thread_feedback(
+        client,
+        channel=CHANNEL,
+        message_ts=TS,
+        feedback_user_ids=(TEAMMATE,),
+        purpose="follow-up feedback",
+    )
+
+    assert [(item.author, item.text) for item in feedback] == [(TEAMMATE, "fix: update docs")]
 
 
 def test_trusted_teammate_thread_reply_can_amend_without_approving() -> None:

@@ -609,11 +609,19 @@ def main() -> int:
         f"({len(bundle.issues)} issue(s), {len(plan.affected_repos)} repo(s))"
     )
     body = (
-        f"*Issue:* <{primary.get('url')}|{primary.get('title')}>\n"
+        f"*Alfred plan ready* · <{primary.get('url')}|{primary.get('title')}>\n"
         f"*Bundle:* `{bundle.slug}`\n"
-        f"*Affected repos:* {', '.join(plan.affected_repos) or '(none)'}\n"
-        f"*Rollout order:* {' → '.join(plan.affected_repos) or '(default)'}\n"
-        f"*Configured engine:* `{BATMAN_ENGINE}`\n"
+        f"*Scope:* {', '.join(plan.affected_repos) or '(none)'}\n"
+        f"*Rollout:* {' -> '.join(plan.affected_repos) or '(default)'}\n"
+        f"*Engine:* `{BATMAN_ENGINE}`\n\n"
+        f"*Next step:* reply in this thread to steer the plan, or approve only if it is right.\n"
+        f"*Replies Alfred understands:*\n"
+        f"- `change:` adjust behavior or scope\n"
+        f"- `acceptance:` add a done condition\n"
+        f"- `test:` require a verification step\n"
+        f"- `add repo:` or `remove repo:` change execution scope\n"
+        f"- `question:` blocks execution until answered\n\n"
+        f"*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.\n"
     )
     # Try the bot-token thread root first; fall back to the
     # webhook surface so the operator gets *some* visibility on

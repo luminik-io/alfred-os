@@ -2,16 +2,36 @@
 {% block title %}{{ firing.firing_id }} · Alfred{% endblock %}
 {% block content %}
 <section>
-  <hgroup>
-    <h2><code>{{ firing.firing_id }}</code></h2>
-    <p><a href="/firings?codename={{ firing.codename }}">{{ firing.codename }}</a> · <span class="dot dot-{{ firing.status }}"></span> {{ firing.status }}</p>
-  </hgroup>
+  <div class="detail-heading">
+    <div>
+      <a href="/firings">Firings</a>
+      <h1>{{ firing.firing_id|short_firing_id }}</h1>
+      <p>
+        <a href="/firings?codename={{ firing.codename }}">{{ firing.codename }}</a>
+        <span class="status-chip status-chip--{{ firing.status }}"><span class="dot dot-{{ firing.status }}" aria-hidden="true"></span>{{ firing.status }}</span>
+      </p>
+    </div>
+  </div>
 
-  <article>
+  <article class="ops-panel detail-panel">
     <h3>Meta</h3>
     <dl class="meta">
-      <dt>started</dt><dd><code class="ts">{{ firing.started_at or "?" }}</code></dd>
-      <dt>ended</dt><dd><code class="ts">{{ firing.ended_at or "?" }}</code></dd>
+      <dt>started</dt>
+      <dd>
+        {% if firing.started_at %}
+          <time class="time-pill" datetime="{{ firing.started_at }}" title="{{ firing.started_at|timestamp_title }}">{{ firing.started_at|friendly_time }}</time>
+        {% else %}
+          <span class="time-muted">unknown</span>
+        {% endif %}
+      </dd>
+      <dt>ended</dt>
+      <dd>
+        {% if firing.ended_at %}
+          <time class="time-pill" datetime="{{ firing.ended_at }}" title="{{ firing.ended_at|timestamp_title }}">{{ firing.ended_at|friendly_time }}</time>
+        {% else %}
+          <span class="time-muted">running</span>
+        {% endif %}
+      </dd>
       <dt>summary</dt><dd>{{ firing.summary }}</dd>
       <dt>events file</dt><dd><code>{{ firing.events_path }}</code></dd>
       {% if firing.transcript_path %}
@@ -20,7 +40,7 @@
     </dl>
   </article>
 
-  <article>
+  <article class="detail-panel">
     <h3>Event stream</h3>
     {% if firing.raw_events %}
     <pre class="event-log"><code>{% for event in firing.raw_events %}{{ event | tojson }}

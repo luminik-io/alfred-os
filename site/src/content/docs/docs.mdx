@@ -104,6 +104,12 @@ flowchart TB
 />
 
 <LinkCard
+  title="Plan in Slack"
+  description="Reply to Batman plans with plain language or structured scope commands before Alfred files child issues."
+  href="/concepts/slack-native-planning/"
+/>
+
+<LinkCard
   title="Build your first agent"
   description="The Echo tutorial: pick → claim → invoke → act → release → report. The shape every richer codename inherits."
   href="/getting-started/tutorial/"
@@ -127,6 +133,12 @@ flowchart TB
   href="/concepts/fleet/"
 />
 
+<LinkCard
+  title="Native local client direction"
+  description="The Mac/Linux app should be a thin local control plane while Slack stays the collaboration surface."
+  href="/concepts/native-client/"
+/>
+
 ## Roadmap
 
 The engineering fleet ships today. The local memory layer and read-only fleet
@@ -144,7 +156,7 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.4.0. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, and a mobile-friendly local cockpit with saved Batman plans. See the [changelog](/about/changelog/) and [roadmap](/about/roadmap/) for the full ledger.
+Latest release: v0.4.0. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a mobile-friendly local cockpit with saved Alfred plans. See the [changelog](/about/changelog/) and [roadmap](/about/roadmap/) for the full ledger.
 
 Additional unreleased work adds explicit Redis AMS memory sync and Planning intake in the local cockpit.
 

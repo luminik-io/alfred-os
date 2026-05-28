@@ -301,6 +301,17 @@ GC controls:
 - `bin/alfred-mcp.py`: read-only JSON-RPC stdio bridge.
 - `bin/fleet-ingest.py`: outbox drainer.
 
+## Planning memory
+
+`alfred serve` uses promoted lessons while shaping new work. The Planning tab
+recalls a small prompt-safe set of repo lessons, shows them beside the draft,
+and embeds them in saved specs under "Planning Memory." Those hints are
+advisory: current code, current issues, and readiness checks still win.
+
+Saving a spec queues a reviewable memory candidate, so useful spec-to-issue
+lessons can be promoted explicitly instead of silently becoming future prompt
+context.
+
 ## What to build next
 
 The v1 brain is intentionally small: local lessons, file touches, failure
@@ -314,9 +325,10 @@ loops:
 2. **Action execution for governor findings.** The governor now proposes
    actions; a future pass should let the operator approve safe follow-ups such
    as filing a setup issue or pausing one codename.
-3. **Spec and bundle memory.** Batman and specs-driven workflows should remember
-   which specs generated which issues, which PRs landed, and which acceptance
-   criteria needed follow-up.
+3. **Spec and bundle memory.** Planning drafts now queue candidates; next,
+   Batman and specs-driven workflows should remember which specs generated
+   which issues, which PRs landed, and which acceptance criteria needed
+   follow-up.
 4. **Semantic recall.** Substring matching is enough for v1. v2 should support
    query-based recall across lessons, plans, and failure summaries. Operators
    who already run Redis AMS can pilot that shape through the optional `redis`

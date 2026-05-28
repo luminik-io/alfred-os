@@ -123,7 +123,7 @@ def test_firing_thread_root_no_duplicate_text_in_attachment(monkeypatch):
     )
     payload = captured["payload"]
     # Top-level text is the generic preview, not the post body.
-    assert payload["text"] == "alfred fleet · lucius firing"
+    assert payload["text"] == "Alfred · lucius firing"
     # Attachment carries the body inside blocks, NOT in a top-level
     # attachment[].text field.
     assert "text" not in payload["attachments"][0]

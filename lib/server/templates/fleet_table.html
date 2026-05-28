@@ -18,7 +18,9 @@
     {% for agent in agents %}
     <tr>
       <td data-label="Codename"><strong>{{ agent.codename }}</strong></td>
-      <td data-label="Status"><span class="dot dot-{{ agent.status }}" aria-label="{{ agent.status }}"></span> {{ agent.status }}</td>
+      <td data-label="Status">
+        <span class="status-chip status-chip--{{ agent.status }}"><span class="dot dot-{{ agent.status }}" aria-hidden="true"></span>{{ agent.status }}</span>
+      </td>
       <td data-label="Last run">
         {% if agent.last_run_at %}
           <time class="time-pill" datetime="{{ agent.last_run_at }}" title="{{ agent.last_run_at|timestamp_title }}">{{ agent.last_run_at|friendly_time }}</time>

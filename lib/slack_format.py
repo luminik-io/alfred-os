@@ -333,7 +333,7 @@ def firing_thread_root(
     # notification preview here so the channel UI shows only the Block
     # Kit attachment, while phone / screen-reader / push-notification
     # surfaces still get something meaningful via this field.
-    notify_preview = f"alfred fleet · {codename} firing"
+    notify_preview = f"Alfred · {codename} firing"
     resp = _api_post(
         "chat.postMessage",
         {
@@ -395,7 +395,7 @@ def firing_thread_reply(
             "fallback": body,
         }
     ]
-    notify_preview = "alfred fleet · thread reply"
+    notify_preview = "Alfred · thread reply"
     resp = _api_post(
         "chat.postMessage",
         {

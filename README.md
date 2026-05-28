@@ -38,7 +38,8 @@ state machine that keeps multiple agents from stepping on each other.
   summaries. No bespoke dashboard, no proprietary control plane.
 - Treat Slack as the planning surface: teammates can reply in a Batman plan
   thread with scope changes, questions, and acceptance criteria while the
-  operator keeps approval authority.
+  operator keeps approval authority. Follow-up replies after PR links are
+  captured as context for the next pass, not as implicit merge approval.
 - Route engines by role. Run implementation on Claude Code and review on
   Codex, or keep Claude as primary with Codex fallback for selected agents.
 - Bring your own subscription. Alfred shells out to your local `claude` and
@@ -253,6 +254,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Architecture](ARCHITECTURE.md): design rationale.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Fleet brain](docs/FLEET_BRAIN.md): local memory, reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
+- [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
 - [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
@@ -292,7 +294,7 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, and a mobile-friendly local cockpit with saved Batman plans. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
+**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a mobile-friendly local cockpit with saved Alfred plans. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
 Additional unreleased work adds explicit Redis AMS memory sync, trusted Slack
 plan collaborators, revision previews in approval threads, and Planning intake

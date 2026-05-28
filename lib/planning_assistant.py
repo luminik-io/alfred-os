@@ -29,6 +29,17 @@ Refiner = Callable[[IssueDraft, tuple[str, ...]], dict[str, Any] | str | None]
 
 
 @dataclass(frozen=True)
+class PlanningMemoryItem:
+    """Prompt-safe memory hint surfaced while shaping a plan."""
+
+    body: str
+    repo: str
+    codename: str = ""
+    severity: str = "info"
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class PlanningAssistantResult:
     """Result of one planning-assistant turn."""
 
@@ -39,6 +50,17 @@ class PlanningAssistantResult:
     questions: tuple[str, ...]
     issue_body: str
     spec_body: str
+    memory: tuple[PlanningMemoryItem, ...] = ()
+
+
+@dataclass(frozen=True)
+class PostPrFeedbackItem:
+    """Trusted Slack follow-up captured after a report or PR link is posted."""
+
+    kind: str
+    summary: str
+    text: str
+    requires_resolution: bool = False
 
 
 def refine_issue_draft(
@@ -46,6 +68,8 @@ def refine_issue_draft(
     messages: Iterable[str],
     *,
     refiner: Refiner | None = None,
+    memory_provider: Any | None = None,
+    memory_limit: int = 3,
 ) -> PlanningAssistantResult:
     """Apply operator messages to ``draft`` and return a readiness snapshot.
 
@@ -63,10 +87,11 @@ def refine_issue_draft(
     if refiner is not None and clean_messages:
         amended = _apply_refiner(amended, clean_messages, refiner)
     readiness = assess_issue_draft(amended)
+    memory = recall_planning_memory(amended, memory_provider, limit=memory_limit)
     amendments = _summarize_amendments(clean_messages)
     questions = _planning_questions(amended, readiness)
     summary = _summary_for(readiness, amendments)
-    spec_body = render_development_spec(amended, readiness=readiness)
+    spec_body = render_development_spec(amended, readiness=readiness, memory=memory)
     return PlanningAssistantResult(
         draft=amended,
         readiness=readiness,
@@ -75,7 +100,73 @@ def refine_issue_draft(
         questions=questions,
         issue_body=readiness.issue_body,
         spec_body=spec_body,
+        memory=memory,
     )
+
+
+def recall_planning_memory(
+    draft: IssueDraft,
+    provider: Any | None,
+    *,
+    limit: int = 3,
+) -> tuple[PlanningMemoryItem, ...]:
+    """Recall relevant promoted lessons for a planning draft.
+
+    Planning memory is advisory. It is shown beside the readiness report
+    and embedded in saved specs, but it never bypasses readiness checks or
+    invents repository scope.
+    """
+
+    if provider is None or getattr(provider, "name", "") == "null" or limit <= 0:
+        return ()
+    query = _planning_memory_query(draft)
+    repos: list[str | None] = [repo for repo in draft.repos if repo]
+    if not repos:
+        repos = [None]
+    out: list[PlanningMemoryItem] = []
+    seen: set[str] = set()
+    for repo in repos:
+        for use_query in (query, None):
+            if len(out) >= limit:
+                break
+            lessons = _safe_memory_recall(
+                provider,
+                repo=repo,
+                query=use_query,
+                limit=limit,
+            )
+            for lesson in lessons or []:
+                item = _memory_item_from_lesson(lesson, fallback_repo=repo or "")
+                if item is None:
+                    continue
+                key = f"{item.repo}|{item.body}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(item)
+                if len(out) >= limit:
+                    break
+            if out and use_query is not None:
+                break
+    return tuple(out)
+
+
+def _safe_memory_recall(
+    provider: Any,
+    *,
+    repo: str | None,
+    query: str | None,
+    limit: int,
+) -> Iterable[Any]:
+    try:
+        return provider.recall(repo=repo, query=query, limit=limit) or ()
+    except TypeError:
+        try:
+            return provider.recall(repo=repo, limit=limit) or ()
+        except Exception:
+            return ()
+    except Exception:
+        return ()
 
 
 def apply_repository_scope_feedback(
@@ -120,10 +211,12 @@ def render_development_spec(
     draft: IssueDraft,
     *,
     readiness: IssueReadinessResult | None = None,
+    memory: Iterable[PlanningMemoryItem] = (),
 ) -> str:
     """Render a practical spec document from an issue draft."""
 
     readiness = readiness or assess_issue_draft(draft)
+    memory_block = render_planning_memory(memory)
     repos = draft.repos or ["owner/repo"]
     acceptance = draft.acceptance_criteria or ["TODO"]
     repo_lines = "\n".join(f"- `{repo}`" for repo in repos)
@@ -178,6 +271,8 @@ def render_development_spec(
 
 {draft.open_questions.strip() or "None."}
 
+{memory_block}
+
 ## Alfred Readiness
 
 - Score: {readiness.score}
@@ -198,6 +293,26 @@ def render_development_spec(
 - Do not expand beyond the non-goals without operator approval.
 - Treat acceptance criteria and verification plan as the merge gate.
 """
+
+
+def render_planning_memory(memory: Iterable[PlanningMemoryItem]) -> str:
+    """Render recalled planning memory for a spec or UI panel."""
+
+    items = tuple(memory)
+    if not items:
+        return ""
+    lines = [
+        "## Planning Memory",
+        "",
+        "Use these as hints only. Trust the current repository and issue first.",
+        "",
+    ]
+    for item in items:
+        tags = f" [{', '.join(item.tags)}]" if item.tags else ""
+        severity = "" if item.severity == "info" else f" {item.severity}"
+        repo = item.repo or "all repos"
+        lines.append(f"- `{repo}`{severity}{tags}: {item.body}")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def render_operator_amendments(feedback: Iterable[str]) -> str:
@@ -233,20 +348,23 @@ def render_operator_feedback_ack(feedback: Iterable[str]) -> str:
     amendments = _summarize_amendments(clean)
     questions = _explicit_questions_from_messages(clean)
     lines = [
-        "[ALFRED-PLAN-FEEDBACK] captured your plan update.",
+        "*Plan feedback captured*",
         "",
-        "*Understood:*",
+        f"*Captured:* {len(amendments)} update(s)",
+        "",
+        "*Applied now:*",
     ]
     lines.extend(f"- {item}" for item in amendments[:6])
     if len(amendments) > 6:
-        lines.append(f"- ...and {len(amendments) - 6} more amendment(s).")
+        lines.append(f"- ...and {len(amendments) - 6} more update(s).")
     if questions:
-        lines.extend(["", "*Open questions you asked Alfred to track:*"])
+        lines.extend(["", "*Needs a decision before execution:*"])
         lines.extend(f"- {question}" for question in questions[:4])
     lines.extend(
         [
             "",
-            "Reply with more changes, or approve with :white_check_mark: when the plan is ready.",
+            "*Next:* keep replying in this thread to shape the work. React "
+            ":white_check_mark: only when the plan is ready to run.",
         ]
     )
     return "\n".join(lines)
@@ -267,13 +385,15 @@ def render_plan_revision_ack(
     questions = _explicit_questions_from_messages(clean)
     repos = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
     lines = [
-        "[ALFRED-PLAN-REVISION] captured your plan update.",
+        "*Plan revised*",
         "",
-        "*Applied to the current draft:*",
+        f"*Captured so far:* {len(amendments)} update(s)",
+        "",
+        "*Current draft now includes:*",
     ]
     lines.extend(f"- {item}" for item in amendments[:8])
     if len(amendments) > 8:
-        lines.append(f"- ...and {len(amendments) - 8} more amendment(s).")
+        lines.append(f"- ...and {len(amendments) - 8} more update(s).")
     if repos:
         scope_label = "repo" if len(repos) == 1 else "repos"
         child_label = ""
@@ -286,14 +406,15 @@ def render_plan_revision_ack(
         if len(repos) > 10:
             lines.append(f"- ...and {len(repos) - 10} more repo(s).")
     if questions:
-        lines.extend(["", "*Open questions still need a decision:*"])
+        lines.extend(["", "*Needs a decision before execution:*"])
         lines.extend(f"- {question}" for question in questions[:6])
         lines.append("")
-        lines.append("Alfred will not execute this plan while these questions remain open.")
+        lines.append("Alfred will not execute until these are resolved in this thread.")
     lines.extend(
         [
             "",
-            "Reply with more changes, or approve with :white_check_mark: when the plan is ready.",
+            "*Next:* keep replying with changes, or react :white_check_mark: "
+            "when this is the right plan.",
         ]
     )
     return "\n".join(lines)
@@ -304,6 +425,102 @@ def plan_feedback_requires_resolution(feedback: Iterable[str]) -> bool:
 
     clean = tuple(_normalize_message(item) for item in feedback if _clean_text(item))
     return bool(_explicit_questions_from_messages(clean))
+
+
+def classify_post_pr_feedback(feedback: Iterable[str]) -> tuple[PostPrFeedbackItem, ...]:
+    """Classify trusted follow-up replies posted after a report or PR link.
+
+    The output is intentionally descriptive, not executable. A later agent
+    can use these items as context, but this helper never grants approval,
+    changes code, or widens scope by itself.
+    """
+
+    clean = tuple(_normalize_message(item) for item in feedback if _clean_text(item))
+    out: list[PostPrFeedbackItem] = []
+    for message in clean:
+        for line in _message_lines(message):
+            item = _post_pr_feedback_item(line)
+            if item is not None:
+                out.append(item)
+    return tuple(out)
+
+
+def render_post_pr_feedback_ack(
+    feedback: Iterable[str],
+    *,
+    pr_urls: Iterable[str] = (),
+    issue_url: str | None = None,
+) -> str:
+    """Render a Slack acknowledgement for trusted report/PR follow-up replies."""
+
+    items = classify_post_pr_feedback(feedback)
+    if not items:
+        return ""
+    context_links = _feedback_context_links(pr_urls=pr_urls, issue_url=issue_url)
+    blockers = [item for item in items if item.requires_resolution]
+    action_items = [item for item in items if not item.requires_resolution]
+    lines = [
+        "*Follow-up feedback captured*",
+    ]
+    if context_links:
+        lines.extend(["", f"*Context:* {', '.join(context_links)}"])
+    if action_items:
+        lines.extend(["", "*Action items for the next pass:*"])
+        lines.extend(f"- `{item.kind}` {item.summary}" for item in action_items[:8])
+        if len(action_items) > 8:
+            lines.append(f"- ...and {len(action_items) - 8} more item(s).")
+    if blockers:
+        lines.extend(["", "*Needs a decision before more work:*"])
+        lines.extend(f"- {item.summary}" for item in blockers[:6])
+    lines.extend(
+        [
+            "",
+            "*Safety:* this reply does not approve, merge, or change code by itself. "
+            "Alfred will use it as follow-up context for the next plan or PR pass.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_post_pr_followup_block(
+    feedback: Iterable[str],
+    *,
+    pr_urls: Iterable[str] = (),
+    issue_url: str | None = None,
+) -> str:
+    """Render trusted post-report replies as a Markdown context block."""
+
+    items = classify_post_pr_feedback(feedback)
+    if not items:
+        return ""
+    context_links = _feedback_context_links(
+        pr_urls=pr_urls,
+        issue_url=issue_url,
+        markdown=True,
+    )
+    lines = [
+        "## Slack Follow-up Feedback",
+        "",
+        "These trusted thread replies were captured after Alfred posted a report or PR link.",
+        "Treat them as follow-up context only; do not merge or expand scope without operator approval.",
+        "",
+    ]
+    if context_links:
+        lines.extend(["### Linked Context", ""])
+        lines.extend(f"- {link}" for link in context_links)
+        lines.append("")
+    lines.extend(["### Items", ""])
+    lines.extend(
+        f"- `{item.kind}`{' needs decision' if item.requires_resolution else ''}: {item.summary}"
+        for item in items
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def post_pr_feedback_requires_resolution(feedback: Iterable[str]) -> bool:
+    """Return True when report/PR follow-up includes a blocking question."""
+
+    return any(item.requires_resolution for item in classify_post_pr_feedback(feedback))
 
 
 def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
@@ -327,7 +544,7 @@ def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
     }
     return (
         "You are Alfred's planning assistant. Tighten the draft so technical and "
-        "non-technical teammates can describe work safely before an autonomous "
+        "non-technical operators can describe work safely before an autonomous "
         "engineering agent starts.\n\n"
         "Return JSON only with any of these keys: title, problem, user, "
         "current_behavior, desired_behavior, repos, acceptance_criteria, test_plan, "
@@ -590,6 +807,135 @@ def _explicit_questions_from_messages(messages: tuple[str, ...]) -> tuple[str, .
             if action is not None and action[0] == "open_questions":
                 questions.extend(_split_items(action[1]))
     return tuple(_dedupe(questions))
+
+
+def _post_pr_feedback_item(line: str) -> PostPrFeedbackItem | None:
+    cleaned = _clean_text(line)
+    if not cleaned:
+        return None
+    action = _parse_line(cleaned)
+    if action is not None:
+        key, value = action
+        if key == "open_questions":
+            return PostPrFeedbackItem("question", f"Question: {value}", cleaned, True)
+        if key == "acceptance_criteria":
+            return PostPrFeedbackItem("acceptance", f"Acceptance: {value}", cleaned)
+        if key == "test_plan":
+            return PostPrFeedbackItem("test", f"Test: {value}", cleaned)
+        if key in {"repos", "remove_repo"}:
+            label = "Scope change"
+            return PostPrFeedbackItem("scope", f"{label}: {value}", cleaned, True)
+        return PostPrFeedbackItem("change", f"{key.replace('_', ' ')}: {value}", cleaned)
+    prefixed = _feedback_prefix(cleaned)
+    if prefixed is not None:
+        kind, value = prefixed
+        requires = kind in {"blocker", "hold", "question"}
+        summary_prefix = {
+            "blocker": "Blocker",
+            "bug": "Bug",
+            "change": "Change",
+            "fix": "Fix",
+            "follow_up": "Follow-up",
+            "hold": "Hold",
+            "question": "Question",
+        }.get(kind, kind.replace("_", " ").title())
+        return PostPrFeedbackItem(kind, f"{summary_prefix}: {value}", cleaned, requires)
+    requires = cleaned.endswith("?")
+    kind = "question" if requires else "note"
+    prefix = "Question" if requires else "Note"
+    return PostPrFeedbackItem(kind, f"{prefix}: {cleaned}", cleaned, requires)
+
+
+def _feedback_prefix(line: str) -> tuple[str, str] | None:
+    if ":" not in line:
+        return None
+    raw, value = line.split(":", 1)
+    field = " ".join(raw.replace("_", " ").replace("-", " ").lower().split())
+    value = value.strip()
+    if not value:
+        return None
+    mapping = {
+        "blocker": "blocker",
+        "bug": "bug",
+        "change": "change",
+        "fix": "fix",
+        "follow up": "follow_up",
+        "followup": "follow_up",
+        "hold": "hold",
+        "question": "question",
+    }
+    kind = mapping.get(field)
+    return (kind, value) if kind else None
+
+
+def _feedback_context_links(
+    *,
+    pr_urls: Iterable[str] = (),
+    issue_url: str | None = None,
+    markdown: bool = False,
+) -> tuple[str, ...]:
+    links: list[str] = []
+    if issue_url and issue_url.strip():
+        url = issue_url.strip()
+        links.append(f"[issue]({url})" if markdown else f"<{url}|issue>")
+    for index, raw in enumerate(pr_urls, start=1):
+        url = str(raw or "").strip()
+        if not url:
+            continue
+        label = f"PR {index}"
+        links.append(f"[{label}]({url})" if markdown else f"<{url}|{label}>")
+    return tuple(links)
+
+
+def _planning_memory_query(draft: IssueDraft) -> str | None:
+    for value in (
+        draft.title,
+        draft.problem,
+        draft.desired_behavior,
+        " ".join(draft.acceptance_criteria),
+    ):
+        cleaned = _clean_text(value)
+        if cleaned:
+            return cleaned[:120]
+    return None
+
+
+def _memory_item_from_lesson(
+    lesson: Any,
+    *,
+    fallback_repo: str,
+) -> PlanningMemoryItem | None:
+    if isinstance(lesson, dict):
+        body = str(lesson.get("body") or lesson.get("text") or "").strip()
+        repo = str(lesson.get("repo") or fallback_repo).strip()
+        codename = str(
+            lesson.get("codename") or lesson.get("agent") or lesson.get("source") or ""
+        ).strip()
+        severity = str(lesson.get("severity") or "info").strip().lower()
+        tags_raw = lesson.get("tags") or ()
+    else:
+        body = str(getattr(lesson, "body", "") or "").strip()
+        repo = str(getattr(lesson, "repo", "") or fallback_repo).strip()
+        codename = str(
+            getattr(lesson, "codename", "")
+            or getattr(lesson, "agent", "")
+            or getattr(lesson, "source", "")
+        ).strip()
+        severity = str(getattr(lesson, "severity", "info") or "info").strip().lower()
+        tags_raw = getattr(lesson, "tags", ()) or ()
+    if not body:
+        return None
+    if isinstance(tags_raw, str):
+        tags = tuple(_split_items(tags_raw))
+    else:
+        tags = tuple(str(tag).strip() for tag in tags_raw if str(tag).strip())
+    return PlanningMemoryItem(
+        body=body,
+        repo=repo,
+        codename=codename,
+        severity=severity or "info",
+        tags=tags,
+    )
 
 
 def _prefixed_command_value(cleaned: str, command: str) -> str | None:

@@ -517,15 +517,18 @@ import os  # noqa: E402
 import subprocess  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 from pathlib import Path  # noqa: E402
-from typing import Protocol  # noqa: E402
+from typing import Protocol, cast  # noqa: E402
 
 import labels as label_constants  # noqa: E402
 from planning_assistant import (  # noqa: E402
     apply_repository_scope_feedback,
     plan_feedback_requires_resolution,
+    post_pr_feedback_requires_resolution,
     render_operator_amendments,
     render_operator_feedback_ack,
     render_plan_revision_ack,
+    render_post_pr_feedback_ack,
+    render_post_pr_followup_block,
 )
 
 logger = logging.getLogger("alfred.batman.lifecycle")
@@ -548,11 +551,76 @@ ENV_PICKER = "BATMAN_PICKER"
 ENV_BUNDLE_SLUG_PREFIX = "BATMAN_BUNDLE_SLUG_PREFIX"
 ENV_APPROVAL_TIMEOUT_S = "BATMAN_APPROVAL_TIMEOUT_S"
 ENV_SLACK_CHANNEL = "BATMAN_SLACK_CHANNEL"
+ENV_REPORT_FEEDBACK_TIMEOUT_S = "BATMAN_REPORT_FEEDBACK_TIMEOUT_S"
 
 AUTO_EXECUTE_OFF = "0"
 AUTO_EXECUTE_GATE = "approval-gate"
 AUTO_EXECUTE_FORCE = "1"
 VALID_AUTO_EXECUTE = (AUTO_EXECUTE_OFF, AUTO_EXECUTE_GATE, AUTO_EXECUTE_FORCE)
+
+
+def _non_negative_int(
+    raw: str | None,
+    *,
+    default: int,
+    override: int | None = None,
+) -> int:
+    if override is not None:
+        return max(0, int(override))
+    try:
+        return max(0, int((raw or str(default)).strip() or str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _feedback_texts(items: Iterable[object]) -> tuple[str, ...]:
+    """Extract clean text from Slack feedback objects, dicts, or strings."""
+
+    texts: list[str] = []
+    for item in items:
+        text = getattr(item, "text", None)
+        if text is None and isinstance(item, dict):
+            text = item.get("text")
+        if text is None:
+            text = str(item)
+        cleaned = "\n".join(
+            re.sub(r"\s+", " ", line).strip()
+            for line in str(text or "").splitlines()
+            if line.strip()
+        )
+        if cleaned:
+            texts.append(cleaned)
+    return tuple(texts)
+
+
+def _alfred_runtime_home() -> Path:
+    return Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
+
+
+def _safe_filename(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "").strip()).strip("-")
+    return cleaned or "feedback"
+
+
+def _report_feedback_prompt(timeout_s: int) -> str:
+    base = (
+        "Reply with `change:`, `fix:`, `test:`, `question:`, or plain language. "
+        "Trusted replies become context for the next pass; they never approve, "
+        "merge, or change code by themselves."
+    )
+    if timeout_s <= 0:
+        return base
+    return f"Reply in the next {_compact_duration(timeout_s)}. {base}"
+
+
+def _compact_duration(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return f"{minutes}m"
+    minutes, remainder = divmod(seconds, 60)
+    return f"{minutes}m {remainder}s"
 
 
 @dataclass(frozen=True)
@@ -1236,44 +1304,69 @@ def _render_plan_markdown(
     readiness_findings: list[PlanReadinessFinding],
 ) -> str:
     """Render the markdown Batman posts to Slack for approval."""
-    lines: list[str] = []
-    lines.append(f"*Batman plan: `{slug}`*")
-    lines.append(f"*Title:* {parent_title}")
-    lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
-    lines.append(
-        "*Decision:* approve with :white_check_mark:, reject with :x:, or reply in this thread with changes."
-    )
-    lines.append(
-        "*Planning replies:* use `acceptance:`, `test:`, `add repo:`, `remove repo:`, "
-        "or plain language. Alfred carries approved replies into every child issue."
-    )
     blockers = [finding for finding in readiness_findings if finding.severity == "error"]
+    warnings = [finding for finding in readiness_findings if finding.severity == "warning"]
+    repo_count = len(affected_repos)
+    child_count = len(children)
+    repo_label = "repo" if repo_count == 1 else "repos"
+    child_label = "child issue" if child_count == 1 else "child issues"
+
+    lines: list[str] = []
+    lines.append(f"*Alfred plan ready* · `{slug}`")
+    lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
+    lines.append(f"*Work:* {parent_title}")
     if blockers:
         lines.append("*Readiness:* needs scope before implementation")
     else:
         lines.append("*Readiness:* ready for approval")
-    if affected_repos:
-        lines.append("*Affected repos:* " + ", ".join(affected_repos))
-    else:
-        lines.append("*Affected repos:* (none parsed)")
+    lines.append(
+        "*Next step:* reply in this thread to steer the plan, or approve only if it is right."
+    )
+    lines.append(
+        "*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`"
+    )
+    lines.append("*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.")
     lines.append("")
-    lines.append("*Children to file:*")
+
+    lines.append(f"*Scope if approved now:* {repo_count} {repo_label}, {child_count} {child_label}")
     if children:
         for c in children:
             lines.append(f"  - `{c.repo}`: {c.title}")
+    elif affected_repos:
+        for repo in affected_repos:
+            lines.append(f"  - `{repo}`: child scope not parsed yet")
     else:
-        lines.append("  - (none parsed; check the parent-issue body shape)")
+        lines.append("  - no repository scope parsed yet")
+
     if done_when.strip():
         lines.append("")
         lines.append("*Done when:*")
         lines.append(done_when)
+
     if readiness_findings:
         lines.append("")
         lines.append("*Scope checks:*")
         for finding in readiness_findings:
-            lines.append(f"  - `{finding.severity}` {finding.message}")
+            icon = ":no_entry:" if finding.severity == "error" else ":warning:"
+            lines.append(f"  - {icon} `{finding.severity}` {finding.message}")
+
     lines.append("")
-    lines.append("Alfred will not file child issues until this plan is approved.")
+    lines.append("*After approval Alfred will:*")
+    lines.append("  1. File the scoped child issues.")
+    lines.append("  2. Run each repo in the rollout order.")
+    lines.append("  3. Report PR links, failed repos, and merge order in this thread.")
+
+    lines.append("")
+    if blockers:
+        lines.append(
+            "Alfred will not execute while scope blockers remain. Reply with fixes, then approve."
+        )
+    elif warnings:
+        lines.append(
+            "Warnings do not block approval, but this is the right moment to tighten the plan."
+        )
+    else:
+        lines.append("No child issues are filed until this plan is approved.")
     return "\n".join(lines)
 
 
@@ -1343,29 +1436,21 @@ def _issue_link(repo: str, number: int) -> str:
         return f"<https://github.com/{repo}/issues/{number}|{repo}#{number}>"
 
 
+def _slack_url_link(url: str, *, label: str | None = None) -> str:
+    try:
+        from slack_format import github_url_link
+
+        return github_url_link(url, label=label)
+    except Exception:
+        clean = str(url or "").strip()
+        if not clean:
+            return ""
+        return f"<{clean}|{label}>" if label else clean
+
+
 def _approval_feedback(raw: object) -> tuple[str, ...]:
     """Extract operator thread replies from a Slack approval result."""
     return _feedback_texts(getattr(raw, "feedback", ()) or ())
-
-
-def _feedback_texts(items: Iterable[object]) -> tuple[str, ...]:
-    """Extract clean text from Slack feedback objects, dicts, or strings."""
-
-    out: list[str] = []
-    for item in items:
-        text = getattr(item, "text", None)
-        if text is None and isinstance(item, dict):
-            text = item.get("text")
-        if text is None:
-            text = str(item)
-        cleaned = "\n".join(
-            re.sub(r"\s+", " ", line).strip()
-            for line in str(text or "").splitlines()
-            if line.strip()
-        )
-        if cleaned:
-            out.append(cleaned)
-    return tuple(out)
 
 
 def _append_operator_feedback(body: str, feedback: Iterable[str]) -> str:
@@ -1474,6 +1559,11 @@ class SlackReporter:
         codename: str = "batman",
         thread_root: Callable | None = None,
         fallback_post: Callable | None = None,
+        report_feedback_timeout_s: int | None = None,
+        feedback_reader: Callable[[str, str], Iterable[object]] | None = None,
+        feedback_reply: Callable | None = None,
+        followup_dir: Path | None = None,
+        sleeper: Callable[[float], None] | None = None,
     ) -> None:
         self._firing_id = firing_id
         self._codename = codename
@@ -1491,6 +1581,15 @@ class SlackReporter:
         assert thread_root is not None
         self._thread_root: Callable = thread_root
         self._fallback_post = fallback_post
+        self._report_feedback_timeout_s = _non_negative_int(
+            os.environ.get(ENV_REPORT_FEEDBACK_TIMEOUT_S),
+            default=60,
+            override=report_feedback_timeout_s,
+        )
+        self._feedback_reader = feedback_reader
+        self._feedback_reply = feedback_reply
+        self._followup_dir = followup_dir
+        self._sleeper = sleeper
 
     def post_plan(self, plan: BundlePlan, *, channel: str) -> tuple[str, str] | None:
         summary = (
@@ -1559,17 +1658,25 @@ class SlackReporter:
 
     def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
         lines = [
-            f"*Batman bundle `{envelope.bundle_slug}` -- {envelope.reason}*",
-            f"*Parent:* {envelope.parent_title}",
+            f"*Alfred report* · `{envelope.bundle_slug}`",
+            f"*Outcome:* `{envelope.reason}`",
+            f"*Work:* {envelope.parent_title}",
         ]
         if envelope.created:
-            lines.append("*Filed children:*")
-            for url in envelope.created:
-                lines.append(f"  - {url}")
+            lines.append("*Created for implementation:*")
+            for index, url in enumerate(envelope.created, start=1):
+                lines.append(f"  - {_slack_url_link(url, label=f'child {index}')}")
         if envelope.failed_repos:
             lines.append("*Failed repos:*")
             for repo in envelope.failed_repos:
                 lines.append(f"  - {repo}")
+        lines.extend(
+            [
+                "",
+                "*Need a tweak?*",
+                _report_feedback_prompt(self._report_feedback_timeout_s),
+            ]
+        )
         text = "\n".join(lines)
         summary = f"bundle {envelope.bundle_slug} report ({envelope.reason})"
         handle = self._thread_root(
@@ -1581,11 +1688,108 @@ class SlackReporter:
             body=text,
         )
         if handle is not None:
+            self._capture_report_feedback(handle, envelope)
             return True
         if self._fallback_post is not None:
             self._fallback_post(f"[BATMAN-REPORT] {summary}\n{text}", severity="info")
             return True
         return False
+
+    def _capture_report_feedback(self, handle: object, envelope: ReportEnvelope) -> None:
+        """Best-effort capture of trusted Slack replies after a report post."""
+
+        if self._report_feedback_timeout_s > 0:
+            if self._sleeper is not None:
+                self._sleeper(float(self._report_feedback_timeout_s))
+            else:
+                import time
+
+                time.sleep(self._report_feedback_timeout_s)
+        channel = str(getattr(handle, "channel", "") or "")
+        ts = str(getattr(handle, "ts", "") or "")
+        if not channel or not ts:
+            return
+        feedback = self._read_report_feedback(channel, ts)
+        if not feedback:
+            return
+        ack = render_post_pr_feedback_ack(
+            feedback,
+            pr_urls=envelope.created,
+        )
+        if ack:
+            severity = "warn" if post_pr_feedback_requires_resolution(feedback) else "info"
+            self._post_report_feedback_ack(handle, ack, severity=severity)
+        self._write_report_followup(envelope, feedback)
+
+    def _read_report_feedback(self, channel: str, ts: str) -> tuple[str, ...]:
+        reader = self._feedback_reader
+        if reader is not None:
+            return _feedback_texts(reader(channel, ts))
+        try:
+            from slack_approval import (
+                collect_trusted_thread_feedback,
+                default_slack_client,
+                operator_user_id_from_env,
+                trusted_feedback_user_ids_from_env,
+            )
+        except Exception:  # pragma: no cover - optional Slack surface
+            return ()
+        operator_id = operator_user_id_from_env()
+        feedback_user_ids = trusted_feedback_user_ids_from_env(operator_id)
+        if not feedback_user_ids:
+            return ()
+        try:
+            client = default_slack_client()
+        except Exception as exc:  # pragma: no cover - env-dependent
+            logger.debug("cannot build Slack client for report feedback: %s", exc)
+            return ()
+        feedback = collect_trusted_thread_feedback(
+            client,
+            channel=channel,
+            message_ts=ts,
+            feedback_user_ids=feedback_user_ids,
+            purpose="report feedback",
+        )
+        return _feedback_texts(feedback)
+
+    def _post_report_feedback_ack(
+        self,
+        handle: object,
+        text: str,
+        *,
+        severity: str,
+    ) -> bool:
+        reply: Callable[..., object] | None = self._feedback_reply
+        if reply is None:
+            try:
+                from slack_format import firing_thread_reply as imported_reply
+            except Exception:  # pragma: no cover - optional Slack surface
+                return False
+            reply = cast(Callable[..., object], imported_reply)
+        return bool(reply(handle, text=text, severity=severity))
+
+    def _write_report_followup(
+        self,
+        envelope: ReportEnvelope,
+        feedback: Iterable[str],
+    ) -> Path | None:
+        block = render_post_pr_followup_block(
+            feedback,
+            pr_urls=envelope.created,
+        )
+        if not block:
+            return None
+        root = self._followup_dir or _alfred_runtime_home() / "batman-followups"
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            path = root / (
+                f"{_safe_filename(self._firing_id)}-{_safe_filename(envelope.bundle_slug)}.md"
+            )
+            path.write_text(block, encoding="utf-8")
+            return path
+        except OSError as exc:
+            logger.warning("could not write Batman follow-up feedback: %s", exc)
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -1826,6 +2030,7 @@ __all__ = [
     "ENV_BUNDLE_SLUG_PREFIX",
     "ENV_PARENT_REPO",
     "ENV_PICKER",
+    "ENV_REPORT_FEEDBACK_TIMEOUT_S",
     "ENV_SLACK_CHANNEL",
     "EXEC_APPROVAL_TIMEOUT",
     "EXEC_GATE_DISABLED",
