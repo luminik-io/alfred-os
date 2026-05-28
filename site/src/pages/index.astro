@@ -63,7 +63,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
   },
   {
     title: "Batman coordinates and executes across repos",
-    body: "Reads a large agent:large-feature issue, drafts a bundle plan across every affected repo, posts to Slack for approval, then runs the rollout end-to-end. Files scoped child issues per repo, opens worktrees, and tracks each PR through to merge.",
+    body: "Reads a large agent:large-feature issue, drafts a bundle plan across every affected repo, posts to Slack for discussion and approval, then runs the rollout end-to-end. Trusted teammates can refine scope in-thread, while only the operator can approve.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
       "[10:31] batman posted plan to Slack for approval",
@@ -82,6 +82,10 @@ const why = [
   {
     title: "Self-hosted on your own machine",
     body: "No cloud agent vendor. No API key billing. Alfred runs on a Mac or Linux box you already own, under launchd or systemd, using the Claude Code and Codex subscriptions you already pay for.",
+  },
+  {
+    title: "Slack-native planning",
+    body: "The plan thread is the collaboration UI. Reply with acceptance criteria, repo changes, open questions, or plain-English direction before the operator approves execution.",
   },
   {
     title: "Multi-repo and monorepo, both",

@@ -131,10 +131,32 @@ It turns title, problem, desired behavior, repo scope, acceptance criteria,
 test plan, non-goals, rollout, and open questions into a GitHub-ready issue
 draft.
 
+The form also has a small planning-assistant box. You can type natural notes or
+structured commands:
+
+```text
+acceptance: the Slack plan thread shows clear next steps before approval
+test: add coverage for thread feedback parsing
+add repo: my-org/mobile
+remove repo: my-org/website
+question: should approval happen after edits or after a new plan?
+```
+
+`Refine draft` applies those edits locally, re-runs readiness, and renders both
+the GitHub issue draft and a spec draft. In Batman Slack approvals, the same
+repo add/remove commands also amend execution scope before implementation.
+`Save draft` writes the issue body
+under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec body under
+`$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
+
+By default refinement is deterministic and offline. Advanced operators can set
+`ALFRED_PLANNING_ASSISTANT_ENGINE=<engine>` to let the configured local engine
+rewrite the draft after the command parser has applied obvious edits. Use
+`ALFRED_PLANNING_ASSISTANT_TIMEOUT` to cap that optional call.
+
 The readiness panel blocks vague or incomplete work from feeling ready. It
 asks concrete follow-up questions when problem, desired behavior, repo scope,
-acceptance criteria, or test plan are missing. Saving writes a markdown draft
-locally under `$ALFRED_HOME/planning-drafts`; it does not create a GitHub issue.
+acceptance criteria, or test plan are missing.
 
 ### `GET /firings/{firing_id}` - Single firing detail
 
@@ -169,8 +191,9 @@ The reader is injected into the FastAPI app via `create_app(reader)`. Tests pass
 
 Default bind is `127.0.0.1`. Runtime-state routes are read-only. The Planning
 page accepts a local `POST` only to write markdown drafts under
-`$ALFRED_HOME/planning-drafts`; it does not call GitHub, Slack, or model
-providers. The reader's path-traversal guard rejects firing ids containing
+`$ALFRED_HOME/planning-drafts` and `$ALFRED_HOME/spec-drafts`; it does not call
+GitHub or Slack. It only calls a model provider when
+`ALFRED_PLANNING_ASSISTANT_ENGINE` is explicitly set. The reader's path-traversal guard rejects firing ids containing
 `/`, `\\`, or a leading `.` before any filesystem read.
 
 That said: the dashboard surfaces repo URLs, file paths, and event payloads that may contain operator context. Treat `--host 0.0.0.0` like exposing the raw state directory over HTTP, only do it on a network you trust.

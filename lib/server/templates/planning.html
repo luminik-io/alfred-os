@@ -14,8 +14,27 @@
   </article>
   {% endif %}
 
+  {% if spec_saved_path %}
+  <article class="notice notice--ok">
+    <strong>Spec saved</strong>
+    <span>{{ spec_saved_path }}</span>
+  </article>
+  {% endif %}
+
   <div class="planning-grid">
     <form class="planning-form" method="post" action="/planning">
+      <section class="assistant-card">
+        <div>
+          <small class="panel-kicker">Plan with Alfred</small>
+          <p>Describe the change naturally or use short commands like <code>acceptance:</code>, <code>test:</code>, <code>add repo:</code>, and <code>remove repo:</code>.</p>
+        </div>
+        <label>
+          Chat note
+          <textarea name="chat_message" rows="4" placeholder="Example: acceptance: the Slack plan thread shows clear next steps before approval">{{ chat_message }}</textarea>
+        </label>
+        <button name="action" value="refine" type="submit">Refine draft</button>
+      </section>
+
       <label>
         Title
         <input name="title" value="{{ draft.title }}" placeholder="Add Slack plan revision flow" />
@@ -76,10 +95,25 @@
       <div class="form-actions">
         <button name="action" value="preview" type="submit">Assess</button>
         <button name="action" value="save" type="submit" class="secondary">Save draft</button>
+        <button name="action" value="save_spec" type="submit" class="secondary">Save spec</button>
       </div>
     </form>
 
     <aside class="readiness-panel">
+      {% if assistant_result %}
+      <article class="assistant-result">
+        <small class="panel-kicker">Assistant</small>
+        <strong>{{ assistant_result.summary }}</strong>
+        {% if assistant_result.amendments %}
+        <ul>
+          {% for amendment in assistant_result.amendments %}
+          <li>{{ amendment }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </article>
+      {% endif %}
+
       {% if result %}
       <div class="score-card score-card--{{ 'ok' if result.ok else 'blocked' }}">
         <small class="panel-kicker">Readiness</small>
@@ -111,6 +145,12 @@
         GitHub issue draft
         <textarea readonly rows="18">{{ result.issue_body }}</textarea>
       </label>
+      {% if assistant_result %}
+      <label class="issue-preview">
+        Spec draft
+        <textarea readonly rows="18">{{ assistant_result.spec_body }}</textarea>
+      </label>
+      {% endif %}
       {% else %}
       <div class="score-card">
         <small class="panel-kicker">Readiness</small>

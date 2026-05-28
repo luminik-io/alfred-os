@@ -27,6 +27,9 @@ Configuration is via env vars (12-factor):
 ================================  =================================================
 ``ALFRED_OPERATOR_SLACK_USER_ID``  Slack user id of the only person whose reactions
                                   count, e.g. ``U0123ABCDEF``. Required.
+``ALFRED_TRUSTED_SLACK_USER_IDS``  Optional comma-separated Slack user ids whose
+                                  thread replies can amend a plan. Their
+                                  reactions still do not approve or reject.
 ``SLACK_BOT_TOKEN``                Slack bot token (``xoxb-...``). Used directly when
                                   set; falls through to the next strategy otherwise.
 ``ALFRED_SECRETS_BACKEND``         Set to ``aws`` to enable the AWS Secrets Manager
@@ -63,6 +66,7 @@ See ``docs/SLACK_APPROVAL.md`` for the full walkthrough.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import re
@@ -98,6 +102,7 @@ DEFAULT_REJECT_EMOJIS: tuple[str, ...] = ("x", "thumbsdown", "-1")
 
 # Env var names
 ENV_OPERATOR_USER_ID = "ALFRED_OPERATOR_SLACK_USER_ID"
+ENV_TRUSTED_FEEDBACK_USER_IDS = "ALFRED_TRUSTED_SLACK_USER_IDS"
 ENV_BOT_TOKEN = "SLACK_BOT_TOKEN"
 ENV_SECRETS_BACKEND = "ALFRED_SECRETS_BACKEND"
 ENV_SECRET_ID = "ALFRED_SLACK_BOT_TOKEN_SECRET_ID"
@@ -218,9 +223,7 @@ def aws_secrets_token_resolver(
     boto3 = boto3_module
     if boto3 is None:
         try:
-            import boto3 as _boto3  # type: ignore[import-untyped]
-
-            boto3 = _boto3
+            boto3 = importlib.import_module("boto3")
         except ImportError:
             logger.warning(
                 "ALFRED_SECRETS_BACKEND=aws but boto3 is not installed; "
@@ -342,6 +345,20 @@ def operator_user_id_from_env() -> str | None:
     return val or None
 
 
+def trusted_feedback_user_ids_from_env(
+    operator_user_id: str | None = None,
+) -> tuple[str, ...]:
+    """Read trusted Slack users whose thread replies can amend a plan."""
+
+    raw = (os.environ.get(ENV_TRUSTED_FEEDBACK_USER_IDS) or "").strip()
+    ids = [operator_user_id.strip()] if operator_user_id and operator_user_id.strip() else []
+    for item in re.split(r"[,;\s]+", raw):
+        cleaned = item.strip()
+        if cleaned:
+            ids.append(cleaned)
+    return tuple(_dedupe_user_ids(ids))
+
+
 class SlackApproval:
     """Reaction-based plan approval gate.
 
@@ -356,6 +373,7 @@ class SlackApproval:
         *,
         approve_emojis: tuple[str, ...] = DEFAULT_APPROVE_EMOJIS,
         reject_emojis: tuple[str, ...] = DEFAULT_REJECT_EMOJIS,
+        feedback_user_ids: Iterable[str] | None = None,
         transport_fail_threshold: int = TRANSPORT_FAIL_THRESHOLD,
     ) -> None:
         if not operator_user_id:
@@ -365,6 +383,12 @@ class SlackApproval:
             )
         self._client = client
         self._operator_user_id = operator_user_id
+        trusted_feedback = (
+            tuple(feedback_user_ids)
+            if feedback_user_ids is not None
+            else trusted_feedback_user_ids_from_env(operator_user_id)
+        )
+        self._feedback_user_ids = frozenset(_dedupe_user_ids(trusted_feedback))
         self._approve_emojis = approve_emojis
         self._reject_emojis = reject_emojis
         self._transport_fail_threshold = transport_fail_threshold
@@ -381,6 +405,7 @@ class SlackApproval:
         timeout_s: int = 900,
         poll_interval_s: int = 30,
         kill_check: Callable[[], bool] | None = None,
+        feedback_callback: Callable[[tuple[ThreadFeedback, ...]], None] | None = None,
         _now: Callable[[], float] = time.time,
         _sleep: Callable[[float], None] = time.sleep,
     ) -> ApprovalResult:
@@ -404,6 +429,7 @@ class SlackApproval:
         start = _now()
         deadline = start + timeout_s
         consecutive_failures = 0
+        seen_feedback_ts: set[str] = set()
         logger.info(
             "approval poll starting: channel=%s ts=%s operator=%s timeout_s=%d",
             channel,
@@ -412,6 +438,7 @@ class SlackApproval:
             timeout_s,
         )
         while True:
+            current_feedback: tuple[ThreadFeedback, ...] | None = None
             if kill_check is not None:
                 try:
                     if kill_check():
@@ -444,19 +471,36 @@ class SlackApproval:
                     )
             else:
                 consecutive_failures = 0
+                if feedback_callback is not None:
+                    current_feedback = self._fetch_thread_feedback(request)
+                    new_feedback = tuple(
+                        item
+                        for item in current_feedback
+                        if item.ts and item.ts not in seen_feedback_ts
+                    )
+                    if new_feedback:
+                        seen_feedback_ts.update(item.ts for item in new_feedback if item.ts)
+                        try:
+                            feedback_callback(new_feedback)
+                        except Exception as exc:
+                            logger.warning("plan feedback callback failed: %s", exc)
                 if self._operator_reacted_with(reactions, self._approve_emojis):
+                    if current_feedback is None:
+                        current_feedback = self._fetch_thread_feedback(request)
                     return ApprovalResult(
                         verdict=APPROVAL_GRANTED,
                         reactor=self._operator_user_id,
                         elapsed_s=_now() - start,
-                        feedback=self._fetch_thread_feedback(request),
+                        feedback=current_feedback,
                     )
                 if self._operator_reacted_with(reactions, self._reject_emojis):
+                    if current_feedback is None:
+                        current_feedback = self._fetch_thread_feedback(request)
                     return ApprovalResult(
                         verdict=APPROVAL_REJECTED,
                         reactor=self._operator_user_id,
                         elapsed_s=_now() - start,
-                        feedback=self._fetch_thread_feedback(request),
+                        feedback=current_feedback,
                     )
             now = _now()
             if now >= deadline:
@@ -510,10 +554,10 @@ class SlackApproval:
         return False
 
     def _fetch_thread_feedback(self, request: ApprovalRequest) -> tuple[ThreadFeedback, ...]:
-        """Best-effort read of operator replies on the plan thread.
+        """Best-effort read of trusted replies on the plan thread.
 
-        Slack replies are treated as explicit amendments only when they
-        come from the configured operator. API failures are non-fatal:
+        Slack replies are treated as explicit amendments only when they come
+        from the configured operator or trusted feedback users. API failures are non-fatal:
         reaction approval still works even when the bot lacks
         ``channels:history`` / ``groups:history``.
         """
@@ -538,14 +582,15 @@ class SlackApproval:
                 continue
             if str(message.get("ts") or "") == request.message_ts:
                 continue
-            if message.get("user") != self._operator_user_id:
+            author = str(message.get("user") or "")
+            if author not in self._feedback_user_ids:
                 continue
             text = _clean_thread_text(str(message.get("text") or ""))
             if not text:
                 continue
             out.append(
                 ThreadFeedback(
-                    author=self._operator_user_id,
+                    author=author,
                     text=text,
                     ts=str(message.get("ts") or ""),
                 )
@@ -576,7 +621,21 @@ def _as_mapping(resp: Any) -> dict[str, Any]:
 
 
 def _clean_thread_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    return "\n".join(
+        re.sub(r"\s+", " ", line).strip() for line in str(text or "").splitlines() if line.strip()
+    )
+
+
+def _dedupe_user_ids(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        cleaned = str(value or "").strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        out.append(cleaned)
+    return out
 
 
 __all__ = [
@@ -587,6 +646,7 @@ __all__ = [
     "DEFAULT_APPROVE_EMOJIS",
     "DEFAULT_REJECT_EMOJIS",
     "ENV_OPERATOR_USER_ID",
+    "ENV_TRUSTED_FEEDBACK_USER_IDS",
     "TRANSPORT_FAIL_THRESHOLD",
     "ApprovalRequest",
     "ApprovalResult",
@@ -601,4 +661,5 @@ __all__ = [
     "file_cache_token_resolver",
     "operator_user_id_from_env",
     "resolve_bot_token",
+    "trusted_feedback_user_ids_from_env",
 ]

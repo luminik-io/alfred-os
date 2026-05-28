@@ -141,9 +141,26 @@ Batman scans `BATMAN_SCAN_REPOS`, drafts the rollout plan, posts it to Slack or
 local logs, and saves the draft under `$ALFRED_HOME/batman-plans`. Treat the
 Slack thread as the place to change the plan before approval. Plain-English
 feedback is enough: "remove mobile", "make this read-only", "add an empty
-state", or "split this into two PRs". When the configured operator approves
-with a reaction, Alfred captures those thread replies and passes them along as
-operator amendments.
+state", or "split this into two PRs". Alfred acknowledges newly captured plan
+replies in-thread with the execution scope if approved now, and when the
+configured operator approves with a reaction, Alfred passes those replies along
+as operator amendments. Trusted feedback users can amend the plan without
+approval authority. Repo add/remove replies update execution scope before
+implementation starts, and `question:` replies keep the plan paused until they
+are resolved.
+
+The local Planning tab in `alfred serve` uses the same command vocabulary:
+
+```text
+acceptance: reviewer can verify the new state on the settings page
+test: run npm test for the settings components
+add repo: my-org/web
+remove repo: my-org/mobile
+question: should this be behind a feature flag?
+```
+
+Use it to refine rough ideas into a GitHub issue draft and a spec draft before
+Drake, Batman, or Lucius sees the work.
 
 Poorly scoped parent issues should not go straight to implementation. If the
 issue does not name repos, acceptance criteria, and done-when checks, keep it

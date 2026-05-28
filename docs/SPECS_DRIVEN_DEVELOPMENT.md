@@ -90,6 +90,26 @@ How to revert or disable the change if it breaks.
 6. **Slack and shipped summaries show the outcome.** The operator sees what was
    planned, claimed, opened, merged, or blocked.
 
+## Planning Assistant
+
+`alfred serve` includes a Planning tab for turning a rough request into a
+reviewable issue and spec before an agent starts. The assistant accepts plain
+language, plus short commands that are easy to type in Slack or the local UI:
+
+```text
+acceptance: reviewer can verify the new state from the settings page
+test: run npm test for the settings components
+add repo: my-org/web
+remove repo: my-org/mobile
+question: should this be behind a feature flag?
+```
+
+Use `Refine draft` to apply those notes, then save either the GitHub issue body
+or the generated spec locally. The same command vocabulary works in Batman's
+Slack approval thread: reply with changes before reacting, then approve only
+when the plan reflects what you want built. `add repo:` and `remove repo:`
+replies update the execution scope before implementation starts.
+
 ## One Repo
 
 For a single app or library, keep specs in the repo:
@@ -172,6 +192,13 @@ local logs, and saves the draft under `$ALFRED_HOME/batman-plans`. Treat the
 Slack thread as the place to change the plan before approval. Plain-English
 feedback is enough: "remove mobile", "make this read-only", "add an empty
 state", or "split this into two PRs".
+
+When the bot has thread-history access, Alfred acknowledges newly captured
+plan replies in-thread with the execution scope if approved now, so the
+operator can keep refining before approval. Trusted feedback users can amend
+plans without approval authority. The final approval reaction is still the
+execution gate, and explicit `question:` replies keep the plan from executing
+until the question is resolved.
 
 Poorly scoped parent issues should not go straight to implementation. If the
 issue does not name repos, acceptance criteria, and done-when checks, keep it

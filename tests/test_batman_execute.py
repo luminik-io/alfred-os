@@ -124,8 +124,18 @@ class FakeGate:
         self._result = result
         self.calls: list[tuple[str, str]] = []
 
-    def await_approval(self, channel, message_ts, *, timeout_s=900, poll_interval_s=30):
+    def await_approval(
+        self,
+        channel,
+        message_ts,
+        *,
+        timeout_s=900,
+        poll_interval_s=30,
+        feedback_callback=None,
+    ):
         self.calls.append((channel, message_ts))
+        if feedback_callback is not None and self._result.feedback:
+            feedback_callback(self._result.feedback)
         return self._result
 
 
@@ -148,6 +158,7 @@ class FakeReporter:
         self._channel_id = channel_id
         self.plans: list[dict] = []
         self.reports: list[dict] = []
+        self.feedback: list[dict] = []
 
     def post_plan(self, plan, *, channel):
         self.plans.append({"plan": plan, "channel": channel})
@@ -157,6 +168,17 @@ class FakeReporter:
 
     def post_report(self, envelope, *, channel):
         self.reports.append({"envelope": envelope, "channel": channel})
+        return True
+
+    def post_plan_feedback(self, *, channel, message_ts, feedback, **kwargs):
+        self.feedback.append(
+            {
+                "channel": channel,
+                "message_ts": message_ts,
+                "feedback": feedback,
+                "kwargs": kwargs,
+            }
+        )
         return True
 
 
@@ -407,6 +429,113 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
         )
     )
 
+    reporter = FakeReporter()
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=reporter,
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    verdict = lifecycle.await_approval(envelope)
+
+    assert verdict.approved is True
+    assert verdict.verdict == EXEC_OK
+    assert verdict.feedback == ("Use the simpler onboarding copy Neha requested.",)
+    assert reporter.feedback == [
+        {
+            "channel": "C0FAKE123",
+            "message_ts": "1700000000.000100",
+            "feedback": ("Use the simpler onboarding copy Neha requested.",),
+            "kwargs": {
+                "plan": plan,
+                "all_feedback": ("Use the simpler onboarding copy Neha requested.",),
+                "revised_repos": plan.affected_repos,
+            },
+        }
+    ]
+
+    result = lifecycle.execute(plan)
+
+    assert result.reason == EXEC_OK
+    assert "## Operator Slack Amendments" in gh.issued[0]["body"]
+    assert "Treat these as approved plan changes" in gh.issued[0]["body"]
+    assert "Use the simpler onboarding copy Neha requested." in gh.issued[0]["body"]
+    assert "Planning Assistant Interpretation" in gh.issued[0]["body"]
+
+
+def test_approval_repo_feedback_changes_child_issue_scope():
+    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig
+    from slack_approval import APPROVAL_GRANTED
+
+    gh = FakeGitHubClient()
+    gate = FakeGate(
+        FakeApprovalResult(
+            approved=True,
+            verdict=APPROVAL_GRANTED,
+            feedback=(
+                {
+                    "text": "remove repo: mobile\nadd repo: your-org/your-admin",
+                },
+            ),
+        )
+    )
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=FakeReporter(),
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    lifecycle.await_approval(envelope)
+
+    result = lifecycle.execute(plan)
+
+    assert result.reason == EXEC_OK
+    assert [item["repo"] for item in gh.issued] == [
+        "your-org/your-backend",
+        "your-org/your-backend",
+        "your-org/your-frontend",
+        "your-org/your-admin",
+    ]
+    assert all(item["repo"] != "your-org/your-mobile" for item in gh.issued)
+    assert gh.issued[-1]["title"] == "your-admin: implement billing-v2"
+    assert "Remove repository scope: mobile" in gh.issued[-1]["body"]
+    assert "Add repository scope: your-org/your-admin" in gh.issued[-1]["body"]
+
+
+def test_approval_feedback_with_open_question_blocks_execution():
+    from batman import EXEC_NEEDS_SCOPE, BatmanLifecycle, BatmanLifecycleConfig
+    from slack_approval import APPROVAL_GRANTED
+
+    gh = FakeGitHubClient()
+    gate = FakeGate(
+        FakeApprovalResult(
+            approved=True,
+            verdict=APPROVAL_GRANTED,
+            feedback=({"text": "question: Should this include mobile?"},),
+        )
+    )
     lifecycle = BatmanLifecycle(
         config=BatmanLifecycleConfig(
             auto_execute="approval-gate",
@@ -426,15 +555,11 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
     envelope = lifecycle.request_approval(plan)
     verdict = lifecycle.await_approval(envelope)
 
-    assert verdict.approved is True
-    assert verdict.verdict == EXEC_OK
-    assert verdict.feedback == ("Use the simpler onboarding copy Neha requested.",)
-
+    assert verdict.approved is False
+    assert verdict.verdict == EXEC_NEEDS_SCOPE
     result = lifecycle.execute(plan)
-
-    assert result.reason == EXEC_OK
-    assert "## Operator Slack Amendments" in gh.issued[0]["body"]
-    assert "Use the simpler onboarding copy Neha requested." in gh.issued[0]["body"]
+    assert result.reason == EXEC_NEEDS_SCOPE
+    assert gh.issued == []
 
 
 # ---------- scenario 5: partial execute failure ----------

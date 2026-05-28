@@ -119,10 +119,10 @@ def test_issue_readiness_renders_github_ready_issue() -> None:
         IssueDraft(
             title="Add Slack plan revision flow",
             problem=(
-                "Designers need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a Batman plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
-            user="Non-developer repo owner",
+            user="Repo owner or teammate",
             current_behavior="Batman posts a plan and waits for emoji approval.",
             desired_behavior=(
                 "Batman keeps implementation paused when a plan needs revision "
@@ -151,7 +151,7 @@ def test_issue_readiness_does_not_add_todo_for_optional_blanks() -> None:
         IssueDraft(
             title="Add Slack plan revision flow",
             problem=(
-                "Designers need to discuss a Batman plan before implementation "
+                "Operators and teammates need to discuss a Batman plan before implementation "
                 "so Alfred does not ship the wrong workflow."
             ),
             desired_behavior=(
