@@ -614,14 +614,15 @@ def main() -> int:
         f"*Scope:* {', '.join(plan.affected_repos) or '(none)'}\n"
         f"*Rollout:* {' -> '.join(plan.affected_repos) or '(default)'}\n"
         f"*Engine:* `{BATMAN_ENGINE}`\n\n"
-        f"*Steer here before approval:*\n"
+        f"*Before Alfred runs:* steer this thread until the scope feels right.\n"
+        f"*Fast replies:*\n"
         f"- `change:` adjust behavior or scope\n"
         f"- `acceptance:` add a done condition\n"
         f"- `test:` require a verification step\n"
         f"- `add repo:` or `remove repo:` change execution scope\n"
         f"- `question:` blocks execution until answered\n\n"
-        f"*Decision:* react :white_check_mark: to approve this exact plan, "
-        f"or :x: to stop it.\n"
+        f"*Decision:* react :white_check_mark: only when this exact scope should run; "
+        f"react :x: to stop.\n"
     )
     # Try the bot-token thread root first; fall back to the
     # webhook surface so the operator gets *some* visibility on

@@ -334,6 +334,57 @@ button.secondary:hover {
   line-height: 1.45;
 }
 
+.workflow-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 1.35rem;
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(17, 215, 191, 0.07), rgba(62, 123, 250, 0.05)),
+    #080D14;
+  overflow: hidden;
+}
+
+.workflow-step {
+  min-width: 0;
+  padding: 1rem;
+  border-right: 1px solid var(--ops-line-soft);
+}
+
+.workflow-step:last-child {
+  border-right: 0;
+}
+
+.workflow-step span {
+  display: inline-flex;
+  margin-bottom: 0.65rem;
+  color: var(--ops-muted);
+  font-family: var(--ops-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+}
+
+.workflow-step strong {
+  display: block;
+  color: var(--ops-fg);
+  font-family: var(--ops-display);
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
+.workflow-step p {
+  margin: 0.45rem 0 0;
+  color: var(--ops-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.workflow-step--active span,
+.workflow-step--active strong {
+  color: var(--ops-accent);
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -1111,6 +1162,18 @@ pre code {
   .command-board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .workflow-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-step:nth-child(2) {
+    border-right: 0;
+  }
+
+  .workflow-step:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--ops-line-soft);
+  }
 }
 
 @media (max-width: 760px) {
@@ -1170,6 +1233,20 @@ pre code {
   .planning-grid,
   .field-pair {
     grid-template-columns: 1fr;
+  }
+
+  .workflow-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-step,
+  .workflow-step:nth-child(2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--ops-line-soft);
+  }
+
+  .workflow-step:last-child {
+    border-bottom: 0;
   }
 
   .ops-grid {

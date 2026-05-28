@@ -118,12 +118,12 @@ Posts a follow-up Slack message naming every child URL that landed and
 every repo that failed. Same channel as the plan; carries the bundle
 slug so a thread search picks both messages up together.
 
-Trusted replies on report or PR threads can be captured as follow-up context
-with the same operator safety boundary as planning feedback. `change:`,
-`fix:`, `test:`, and plain-language notes become action items for the next
-pass. `question:`, `hold:`, `blocker:`, and scope changes require a decision
-before more work starts. These replies never approve, merge, or change code by
-themselves.
+Trusted replies on report or PR threads are captured during the configured
+report-feedback window and saved under `$ALFRED_HOME/batman-followups/` as
+follow-up context. `change:`, `fix:`, `test:`, and plain-language notes become
+action items for the next pass. `question:`, `hold:`, `blocker:`, and scope
+changes require a decision before more work starts. These replies never approve,
+merge, or change code by themselves.
 
 ## Parent issue body template
 
@@ -282,6 +282,7 @@ alfred setup-batman --check-only
 | `BATMAN_PICKER` | `oldest` | `oldest` (FIFO by `createdAt`) or `newest`. |
 | `BATMAN_BUNDLE_SLUG_PREFIX` | empty | Optional prefix prepended to the derived slug. Useful when several teams share a Slack channel and want their bundles distinguishable. |
 | `BATMAN_APPROVAL_TIMEOUT_S` | `900` | Wall-clock seconds the gate will wait for a reaction. |
+| `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `60` | Seconds Batman waits after posting a report so trusted Slack replies can be captured as follow-up context. Set `0` to skip the wait. |
 | `BATMAN_SLACK_CHANNEL` | empty | Channel to post the plan and report to. When empty, falls back to the framework's default channel (`slack_format._home_channel`). |
 
 The Slack approval gate also reads these (from `slack_approval`):
@@ -289,7 +290,7 @@ The Slack approval gate also reads these (from `slack_approval`):
 | Variable | Purpose |
 |----------|---------|
 | `ALFRED_OPERATOR_SLACK_USER_ID` | Required when `BATMAN_AUTO_EXECUTE=approval-gate`. Slack user id whose reactions count. |
-| `SLACK_BOT_TOKEN` | Bot token with `chat:write`, `reactions:read`. |
+| `SLACK_BOT_TOKEN` | Bot token with `chat:write`, `reactions:read`, and `channels:history` or `groups:history` when thread feedback should be captured. |
 
 ### `BATMAN_AUTO_EXECUTE` matrix
 

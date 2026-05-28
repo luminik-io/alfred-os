@@ -79,6 +79,9 @@ Rules:
   action items, and state the safety boundary clearly.
 - Follow-up context belongs in the next plan, child issue, or PR pass so Slack
   remains the audit trail.
+- Batman waits `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` seconds after a report post
+  before collecting trusted replies. Captured context is also written to
+  `$ALFRED_HOME/batman-followups/`.
 
 ## Tone
 

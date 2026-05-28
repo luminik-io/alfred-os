@@ -182,6 +182,13 @@ class FakeReporter:
         return True
 
 
+@dataclass
+class FakeThreadHandle:
+    channel: str = "C0REPORT"
+    ts: str = "1700000000.000200"
+    permalink: str | None = None
+
+
 # ---------- regression: ApprovalEnvelope carries the channel ID, not name ----
 
 
@@ -281,7 +288,7 @@ def test_plan_parses_well_formed_parent_into_four_children():
         "<https://github.com/your-org/your-product/issues/42|your-org/your-product#42>"
         in plan.plan_markdown
     )
-    assert "Steer here before approval" in plan.plan_markdown
+    assert "Before Alfred runs" in plan.plan_markdown
     assert "Readiness:* ready for approval" in plan.plan_markdown
 
 
@@ -610,6 +617,62 @@ Children:
     assert result.executed is True  # 3 landed; partial-with-some-survivors
     assert len(result.created_issue_urls) == 3
     assert set(result.failed_repos) == {"your-org/repo-b", "your-org/repo-d"}
+
+
+def test_slack_reporter_captures_trusted_report_followup(tmp_path):
+    from batman import ReportEnvelope, SlackReporter
+
+    root_calls = []
+    replies = []
+
+    def fake_root(**kwargs):
+        root_calls.append(kwargs)
+        return FakeThreadHandle()
+
+    def fake_reader(channel, ts):
+        assert channel == "C0REPORT"
+        assert ts == "1700000000.000200"
+        return (
+            "change: keep the onboarding copy warmer",
+            "question: should this include the docs page too?",
+        )
+
+    def fake_reply(handle, *, text, severity):
+        replies.append({"handle": handle, "text": text, "severity": severity})
+        return True
+
+    reporter = SlackReporter(
+        firing_id="20260528-120000-test",
+        thread_root=fake_root,
+        report_feedback_timeout_s=0,
+        feedback_reader=fake_reader,
+        feedback_reply=fake_reply,
+        followup_dir=tmp_path / "followups",
+    )
+
+    posted = reporter.post_report(
+        ReportEnvelope(
+            bundle_slug="planning-loop",
+            parent_title="Improve planning loop",
+            created=("https://github.com/your-org/your-product/issues/123",),
+            failed_repos=(),
+            reason="ok",
+        ),
+        channel="alfred",
+    )
+
+    assert posted is True
+    assert root_calls
+    assert replies
+    assert replies[0]["severity"] == "warn"
+    assert "Follow-up feedback captured" in replies[0]["text"]
+    assert "Needs a decision before more work" in replies[0]["text"]
+    saved = list((tmp_path / "followups").glob("*.md"))
+    assert len(saved) == 1
+    body = saved[0].read_text()
+    assert "Slack Follow-up Feedback" in body
+    assert "`change`: Change: keep the onboarding copy warmer" in body
+    assert "`question` needs decision" in body
 
 
 # ---------- bonus: parser robustness ----------
