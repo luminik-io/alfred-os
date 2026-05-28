@@ -1202,6 +1202,39 @@ def test_force_release_stale_claim_label_drift_keeps_in_flight(monkeypatch):
     assert edits == []
 
 
+def test_force_release_stale_claim_missing_claim_strips_in_flight(monkeypatch):
+    import agent_runner as ar
+
+    edits = []
+    comments = []
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a: comments.append(a) or True)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "comments": [],
+            "labels": [{"name": "agent:in-flight"}],
+            "state": "OPEN",
+        },
+    )
+
+    assert ar.force_release_stale_claim(
+        "myrepo",
+        42,
+        sweep_id="sweep-1",
+        released_codename="?",
+        released_firing_id="?",
+    )
+    assert comments == []
+    assert edits == [
+        (
+            ("myrepo", 42),
+            {"add_labels": ["agent:implement"], "remove_labels": ["agent:in-flight"]},
+        )
+    ]
+
+
 def test_stale_unreleased_claim_comment_does_not_block_forever(monkeypatch):
     import agent_runner as ar
 

@@ -1172,7 +1172,8 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
                     "codename": "?",
                     "firing_id": "?",
                     "age_hours": float("inf"),
-                    "label_drift": True,
+                    "label_drift": False,
+                    "missing_claim": True,
                 }
             )
             continue
@@ -1223,14 +1224,17 @@ def force_release_stale_claim(
         return True
     codename = released_codename or "cleanup"
     firing_id = released_firing_id or sweep_id
-    commented = gh_issue_comment(
-        repo_slug,
-        num,
-        f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
-        f"outcome=stale-swept swept_by={sweep_id} ts={now_iso()} -->",
-    )
-    if not commented:
-        return False
+    has_claim_identity = bool(codename) and bool(firing_id) and codename != "?" and firing_id != "?"
+    commented = True
+    if has_claim_identity:
+        commented = gh_issue_comment(
+            repo_slug,
+            num,
+            f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
+            f"outcome=stale-swept swept_by={sweep_id} ts={now_iso()} -->",
+        )
+        if not commented:
+            return False
     state = _issue_state(repo_slug, num)
     labels = {label["name"] for label in state.get("labels", [])}
     if label_drift:
@@ -1241,7 +1245,7 @@ def force_release_stale_claim(
         return gh_issue_edit(repo_slug, num, add_labels=["agent:implement"], remove_labels=[])
     keep_in_flight = _has_fresh_unreleased_claim(
         state.get("comments", []),
-        released_key=(codename, firing_id),
+        released_key=(codename, firing_id) if has_claim_identity else ("", ""),
     )
     if keep_in_flight:
         return True
