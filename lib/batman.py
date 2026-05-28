@@ -1252,20 +1252,15 @@ def _render_plan_markdown(
     else:
         lines.append("*Readiness:* ready for approval")
     lines.append(
-        "*How to steer:* reply in this thread with changes before approval. "
-        "Plain language works."
+        "*How to steer:* reply in this thread with changes before approval. Plain language works."
     )
     lines.append(
-        "*Useful shortcuts:* `acceptance:`, `test:`, `add repo:`, "
-        "`remove repo:`, `question:`"
+        "*Useful shortcuts:* `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`"
     )
     lines.append("*Decision:* react :white_check_mark: to approve, :x: to reject.")
     lines.append("")
 
-    lines.append(
-        f"*Scope if approved now:* {repo_count} {repo_label}, "
-        f"{child_count} {child_label}"
-    )
+    lines.append(f"*Scope if approved now:* {repo_count} {repo_label}, {child_count} {child_label}")
     if children:
         for c in children:
             lines.append(f"  - `{c.repo}`: {c.title}")
