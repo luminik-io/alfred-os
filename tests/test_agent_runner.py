@@ -1092,10 +1092,7 @@ def test_stale_unreleased_claim_comment_does_not_block_forever(monkeypatch):
         lambda repo, num: {"comments": comments_data, "labels": [], "state": "OPEN"},
     )
 
-    assert (
-        ar._detect_contested_claim("myrepo", 42, codename="batman", firing_id="new-fid")
-        is None
-    )
+    assert ar._detect_contested_claim("myrepo", 42, codename="batman", firing_id="new-fid") is None
 
 
 def test_fresh_unreleased_claim_still_wins_race(monkeypatch):
