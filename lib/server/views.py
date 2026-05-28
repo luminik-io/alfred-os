@@ -24,6 +24,11 @@ from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from planning_assistant import (
+    PlanningAssistantResult,
+    engine_refiner_from_env,
+    refine_issue_draft,
+)
 from spec_helper import IssueDraft, assess_issue_draft
 
 
@@ -139,7 +144,10 @@ def register_routes(app: FastAPI) -> None:
             {
                 "draft": _empty_draft(),
                 "result": None,
+                "assistant_result": None,
+                "chat_message": "",
                 "saved_path": None,
+                "spec_saved_path": None,
             },
         )
 
@@ -148,17 +156,44 @@ def register_routes(app: FastAPI) -> None:
         templates = request.app.state.templates
         form = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
         draft = _draft_from_form(form)
-        result = assess_issue_draft(draft)
+        action = _first(form, "action")
+        chat_message = _first(form, "chat_message")
+        assistant_result: PlanningAssistantResult | None = None
+        if action == "refine":
+            assistant_result = refine_issue_draft(
+                draft,
+                [chat_message],
+                refiner=engine_refiner_from_env(workdir=_planning_root(request)),
+            )
+            draft = assistant_result.draft
+            result = assistant_result.readiness
+        else:
+            result = assess_issue_draft(draft)
         saved_path = None
-        if _first(form, "action") == "save":
+        spec_saved_path = None
+        if action == "save":
             saved_path = str(_save_issue_draft(request, draft, result.issue_body))
+        elif action == "save_spec":
+            assistant_result = assistant_result or refine_issue_draft(draft, [])
+            spec_saved_path = str(
+                _save_planning_text(
+                    request,
+                    draft,
+                    assistant_result.spec_body,
+                    directory="spec-drafts",
+                    suffix="spec",
+                )
+            )
         return templates.TemplateResponse(
             request,
             "planning.html",
             {
                 "draft": draft,
                 "result": result,
+                "assistant_result": assistant_result,
+                "chat_message": "",
                 "saved_path": saved_path,
+                "spec_saved_path": spec_saved_path,
             },
         )
 
@@ -198,21 +233,32 @@ def _lines(value: str) -> list[str]:
 
 
 def _save_issue_draft(request: Request, draft: IssueDraft, body: str) -> Path:
-    root = _planning_root(request)
+    return _save_planning_text(request, draft, body, directory="planning-drafts", suffix="issue")
+
+
+def _save_planning_text(
+    request: Request,
+    draft: IssueDraft,
+    body: str,
+    *,
+    directory: str,
+    suffix: str,
+) -> Path:
+    root = _planning_root(request, directory=directory)
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    path = root / f"{stamp}-{_slug(draft.title)}.md"
+    path = root / f"{stamp}-{_slug(draft.title)}-{suffix}.md"
     path.write_text(body, encoding="utf-8")
     return path
 
 
-def _planning_root(request: Request) -> Path:
+def _planning_root(request: Request, *, directory: str = "planning-drafts") -> Path:
     reader = request.app.state.reader
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
-        return state_root.parent / "planning-drafts"
+        return state_root.parent / directory
     base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-    return Path(base) / "planning-drafts"
+    return Path(base) / directory
 
 
 def _slug(value: str) -> str:

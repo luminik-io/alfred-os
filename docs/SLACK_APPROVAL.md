@@ -26,6 +26,18 @@ If you need richer feedback than approve/reject, post the plan, capture
 the reaction verdict, and *then* read the threaded replies. Alfred now
 does this for Batman plans: the reaction remains the hard gate, while
 operator replies in the thread become explicit amendments on approval.
+Batman understands common planning commands in those replies:
+
+```text
+acceptance: reviewer can verify the issue link in the PR body
+test: add coverage for the approval thread parser
+add repo: my-org/mobile
+remove repo: my-org/site
+question: should this wait for a clearer spec?
+```
+
+Plain-language replies are still captured as operator notes. Alfred passes
+the interpreted amendments into child issues and repo-worker prompts.
 
 ## 1. Create the Slack app
 

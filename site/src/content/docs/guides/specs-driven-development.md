@@ -145,6 +145,19 @@ state", or "split this into two PRs". When the configured operator approves
 with a reaction, Alfred captures those thread replies and passes them along as
 operator amendments.
 
+The local Planning tab in `alfred serve` uses the same command vocabulary:
+
+```text
+acceptance: reviewer can verify the new state on the settings page
+test: run npm test for the settings components
+add repo: my-org/web
+remove repo: my-org/mobile
+question: should this be behind a feature flag?
+```
+
+Use it to refine rough ideas into a GitHub issue draft and a spec draft before
+Drake, Batman, or Lucius sees the work.
+
 Poorly scoped parent issues should not go straight to implementation. If the
 issue does not name repos, acceptance criteria, and done-when checks, keep it
 in planning and tighten the issue first.

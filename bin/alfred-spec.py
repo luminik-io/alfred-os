@@ -17,6 +17,7 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
+from planning_assistant import refine_issue_draft  # noqa: E402
 from spec_helper import (  # noqa: E402
     IssueDraft,
     assess_issue_draft,
@@ -110,6 +111,43 @@ def cmd_assess(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def cmd_refine(args: argparse.Namespace) -> int:
+    draft = IssueDraft(
+        title=args.title,
+        problem=args.problem or "",
+        user=args.user or "",
+        current_behavior=args.current_behavior or "",
+        desired_behavior=args.desired_behavior or "",
+        repos=[repo.strip() for repo in (args.repo or []) if repo.strip()],
+        acceptance_criteria=[item.strip() for item in (args.acceptance or []) if item.strip()],
+        test_plan=args.test_plan or "",
+        out_of_scope=args.out_of_scope or "",
+        rollout=args.rollout or "",
+        open_questions=args.open_questions or "",
+    )
+    result = refine_issue_draft(draft, args.message or [])
+    payload = {
+        "ok": result.readiness.ok,
+        "score": result.readiness.score,
+        "summary": result.summary,
+        "amendments": result.amendments,
+        "questions": result.questions,
+        "issue_body": result.issue_body,
+        "spec_body": result.spec_body,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"alfred-spec: {result.summary}")
+        for amendment in result.amendments:
+            print(f"  - {amendment}")
+        if args.print_body:
+            print("\n" + result.issue_body)
+        if args.print_spec:
+            print("\n" + result.spec_body)
+    return 0 if result.readiness.ok else 1
+
+
 def _slug(title: str) -> str:
     out = []
     last_dash = False
@@ -159,6 +197,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_assess.add_argument("--print-body", action="store_true")
     p_assess.add_argument("--json", action="store_true")
     p_assess.set_defaults(func=cmd_assess)
+
+    p_refine = sub.add_parser("refine", help="apply chat-style planning feedback")
+    p_refine.add_argument("title")
+    p_refine.add_argument("--message", action="append", help="chat or Slack feedback")
+    p_refine.add_argument("--problem")
+    p_refine.add_argument("--user")
+    p_refine.add_argument("--current-behavior")
+    p_refine.add_argument("--desired-behavior")
+    p_refine.add_argument("--repo", action="append", help="affected repo (repeatable)")
+    p_refine.add_argument("--acceptance", action="append", help="acceptance criterion")
+    p_refine.add_argument("--test-plan")
+    p_refine.add_argument("--out-of-scope")
+    p_refine.add_argument("--rollout")
+    p_refine.add_argument("--open-questions")
+    p_refine.add_argument("--print-body", action="store_true")
+    p_refine.add_argument("--print-spec", action="store_true")
+    p_refine.add_argument("--json", action="store_true")
+    p_refine.set_defaults(func=cmd_refine)
 
     return parser
 

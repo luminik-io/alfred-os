@@ -434,7 +434,9 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
 
     assert result.reason == EXEC_OK
     assert "## Operator Slack Amendments" in gh.issued[0]["body"]
+    assert "Treat these as approved plan changes" in gh.issued[0]["body"]
     assert "Use the simpler onboarding copy Neha requested." in gh.issued[0]["body"]
+    assert "Planning Assistant Interpretation" in gh.issued[0]["body"]
 
 
 # ---------- scenario 5: partial execute failure ----------

@@ -645,6 +645,42 @@ pre code {
   gap: 0.85rem;
 }
 
+.assistant-card,
+.assistant-result {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid var(--ops-line);
+  border-radius: 8px;
+  padding: 0.9rem;
+  background: #080D14;
+}
+
+.assistant-card p {
+  margin: 0.35rem 0 0;
+  color: var(--ops-muted);
+}
+
+.assistant-card code {
+  color: var(--ops-accent);
+  font-family: var(--ops-mono);
+}
+
+.assistant-card button {
+  width: max-content;
+}
+
+.assistant-result strong {
+  color: var(--ops-fg);
+}
+
+.assistant-result ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--ops-muted);
+}
+
 .planning-form label,
 .issue-preview {
   color: var(--ops-soft);
@@ -858,6 +894,10 @@ pre code {
 
   .readiness-panel {
     position: static;
+  }
+
+  .assistant-card button {
+    width: 100%;
   }
 
   .table-shell {

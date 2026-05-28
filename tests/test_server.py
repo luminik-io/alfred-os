@@ -315,6 +315,36 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
     assert "Needs scope" in vague.text
     assert "What problem is the user facing today?" in vague.text
 
+    refined = client.post(
+        "/planning",
+        data={
+            "title": "Add Slack plan revision flow",
+            "problem": (
+                "Designers need to discuss a Batman plan before implementation "
+                "so Alfred does not ship the wrong workflow."
+            ),
+            "user": "Non-developer repo owner",
+            "current_behavior": "Batman posts a plan and waits for emoji approval.",
+            "desired_behavior": (
+                "Batman keeps implementation paused when a plan needs revision "
+                "and accepts thread feedback before child issues are filed."
+            ),
+            "repos": "luminik-io/alfred-os\nexample-org/web",
+            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
+            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
+            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
+            "chat_message": (
+                "acceptance: the child issue body includes approved Slack amendments\n"
+                "remove repo: example-org/web"
+            ),
+            "action": "refine",
+        },
+    )
+    assert refined.status_code == 200
+    assert "2 amendment(s) applied" in refined.text
+    assert "the child issue body includes approved Slack amendments" in refined.text
+    assert "luminik-io/alfred-os" in refined.text
+
     clear = client.post(
         "/planning",
         data={
@@ -345,6 +375,33 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
     saved = list((tmp_path / "planning-drafts").glob("*.md"))
     assert len(saved) == 1
     assert "## Acceptance Criteria" in saved[0].read_text(encoding="utf-8")
+
+    spec = client.post(
+        "/planning",
+        data={
+            "title": "Add Slack plan revision flow",
+            "problem": (
+                "Designers need to discuss a Batman plan before implementation "
+                "so Alfred does not ship the wrong workflow."
+            ),
+            "user": "Non-developer repo owner",
+            "current_behavior": "Batman posts a plan and waits for emoji approval.",
+            "desired_behavior": (
+                "Batman keeps implementation paused when a plan needs revision "
+                "and accepts thread feedback before child issues are filed."
+            ),
+            "repos": "luminik-io/alfred-os",
+            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
+            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
+            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
+            "action": "save_spec",
+        },
+    )
+    assert spec.status_code == 200
+    assert "Spec saved" in spec.text
+    specs = list((tmp_path / "spec-drafts").glob("*.md"))
+    assert len(specs) == 1
+    assert "## Implementation Guardrails" in specs[0].read_text(encoding="utf-8")
 
 
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:

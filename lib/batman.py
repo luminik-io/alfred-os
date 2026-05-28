@@ -520,6 +520,7 @@ from pathlib import Path  # noqa: E402
 from typing import Protocol  # noqa: E402
 
 import labels as label_constants  # noqa: E402
+from planning_assistant import render_operator_amendments  # noqa: E402
 
 logger = logging.getLogger("alfred.batman.lifecycle")
 
@@ -1235,6 +1236,10 @@ def _render_plan_markdown(
     lines.append(
         "*Decision:* approve with :white_check_mark:, reject with :x:, or reply in this thread with changes."
     )
+    lines.append(
+        "*Planning replies:* use `acceptance:`, `test:`, `add repo:`, `remove repo:`, "
+        "or plain language. Alfred carries approved replies into every child issue."
+    )
     blockers = [finding for finding in readiness_findings if finding.severity == "error"]
     if blockers:
         lines.append("*Readiness:* needs scope before implementation")
@@ -1346,13 +1351,10 @@ def _approval_feedback(raw: object) -> tuple[str, ...]:
 
 def _append_operator_feedback(body: str, feedback: Iterable[str]) -> str:
     """Append approved Slack-thread amendments to a child issue body."""
-    clean = [re.sub(r"\s+", " ", text).strip() for text in feedback]
-    clean = [text for text in clean if text]
-    if not clean:
+    amendment_block = render_operator_amendments(feedback)
+    if not amendment_block:
         return body
-    lines = [body.rstrip(), "", "## Operator Slack Amendments", ""]
-    lines.extend(f"- {text}" for text in clean)
-    return "\n".join(lines).rstrip() + "\n"
+    return f"{body.rstrip()}\n\n{amendment_block}"
 
 
 # ---------------------------------------------------------------------------

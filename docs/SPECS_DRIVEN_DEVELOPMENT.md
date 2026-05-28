@@ -90,6 +90,25 @@ How to revert or disable the change if it breaks.
 6. **Slack and shipped summaries show the outcome.** The operator sees what was
    planned, claimed, opened, merged, or blocked.
 
+## Planning Assistant
+
+`alfred serve` includes a Planning tab for turning a rough request into a
+reviewable issue and spec before an agent starts. The assistant accepts plain
+language, plus short commands that are easy to type in Slack or the local UI:
+
+```text
+acceptance: reviewer can verify the new state from the settings page
+test: run npm test for the settings components
+add repo: my-org/web
+remove repo: my-org/mobile
+question: should this be behind a feature flag?
+```
+
+Use `Refine draft` to apply those notes, then save either the GitHub issue body
+or the generated spec locally. The same command vocabulary works in Batman's
+Slack approval thread: reply with changes before reacting, then approve only
+when the plan reflects what you want built.
+
 ## One Repo
 
 For a single app or library, keep specs in the repo:

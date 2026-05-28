@@ -104,6 +104,16 @@ operator amendments when the plan is approved. Use that for changes such as
 "remove mobile", "make this read-only", "add an empty state", or "split this
 into two PRs".
 
+Structured replies work too:
+
+```text
+acceptance: the PR body links back to the original GitHub issue
+test: add coverage for the plan-thread parser
+add repo: my-org/mobile
+remove repo: my-org/site
+question: should this wait for a clearer spec?
+```
+
 ```sh
 # the only Slack user whose reactions count
 export ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
