@@ -60,6 +60,27 @@ def test_refine_issue_draft_applies_structured_chat_commands() -> None:
     assert "## Implementation Guardrails" in result.spec_body
 
 
+def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
+    result = refine_issue_draft(
+        _draft(),
+        [
+            "acceptance: the plan can be revised before approval\n"
+            "Use friendlier language for non-engineers."
+        ],
+    )
+
+    assert "the plan can be revised" in result.draft.acceptance_criteria[-1]
+    assert "Operator note: Use friendlier language" in result.draft.open_questions
+    assert any(
+        "Add acceptance criterion: the plan can be revised" in item
+        for item in result.amendments
+    )
+    assert (
+        "Capture operator note: Use friendlier language for non-engineers."
+        in result.amendments
+    )
+
+
 def test_refine_issue_draft_accepts_injected_refiner_patch() -> None:
     def fake_refiner(draft: IssueDraft, messages: tuple[str, ...]) -> dict:
         assert messages == ("Make the title friendlier.",)
@@ -89,6 +110,21 @@ def test_render_operator_amendments_includes_interpretation() -> None:
     assert "the PR body links" in block
     assert "Planning Assistant Interpretation" in block
     assert "Capture operator note: Use simpler copy" in block
+    assert "What problem is the user facing today?" not in block
+    assert "What should Alfred call this work?" not in block
+
+
+def test_render_operator_amendments_only_lists_explicit_questions() -> None:
+    block = render_operator_amendments(
+        [
+            "acceptance: the PR body links to the original GitHub issue\n"
+            "question: Should the operator approve after edits?"
+        ]
+    )
+
+    assert "### Follow-up Questions" in block
+    assert "Should the operator approve after edits?" in block
+    assert "Which repository or repositories should Alfred touch?" not in block
 
 
 def test_development_spec_and_refiner_prompt_are_useful() -> None:

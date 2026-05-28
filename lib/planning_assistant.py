@@ -165,10 +165,11 @@ def render_development_spec(
 def render_operator_amendments(feedback: Iterable[str]) -> str:
     """Render Slack thread replies as a structured prompt/issue block."""
 
-    clean = tuple(_clean_text(item) for item in feedback if _clean_text(item))
+    clean = tuple(_normalize_message(item) for item in feedback if _clean_text(item))
     if not clean:
         return ""
-    result = refine_issue_draft(IssueDraft(title="Operator amendments"), clean)
+    amendments = _summarize_amendments(clean)
+    questions = _explicit_questions_from_messages(clean)
     lines = [
         "## Operator Slack Amendments",
         "",
@@ -176,12 +177,12 @@ def render_operator_amendments(feedback: Iterable[str]) -> str:
         "",
     ]
     lines.extend(f"- {item}" for item in clean)
-    if result.amendments:
+    if amendments:
         lines.extend(["", "### Planning Assistant Interpretation", ""])
-        lines.extend(f"- {item}" for item in result.amendments)
-    if result.questions:
+        lines.extend(f"- {item}" for item in amendments)
+    if questions:
         lines.extend(["", "### Follow-up Questions", ""])
-        lines.extend(f"- {question}" for question in result.questions)
+        lines.extend(f"- {question}" for question in questions)
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -261,15 +262,12 @@ def _apply_deterministic_feedback(draft: IssueDraft, messages: tuple[str, ...]) 
     current = draft
     freeform: list[str] = []
     for message in messages:
-        handled = False
         for line in _message_lines(message):
             action = _parse_line(line)
             if action is None:
+                freeform.append(line)
                 continue
-            handled = True
             current = _apply_action(current, action)
-        if not handled:
-            freeform.append(message)
     if freeform:
         notes = _append_paragraphs(
             current.open_questions, [f"Operator note: {item}" for item in freeform]
@@ -328,17 +326,26 @@ def _parse_line(line: str) -> tuple[str, str] | None:
     cleaned = _clean_text(line).strip("-* ").strip()
     if not cleaned:
         return None
-    remove_match = re.match(r"remove\s+repo(?:s)?\s*:?\s*(.+)$", cleaned, re.I)
-    if remove_match:
-        return ("remove_repo", remove_match.group(1).strip())
-    add_match = re.match(r"add\s+repo(?:s)?\s*:?\s*(.+)$", cleaned, re.I)
-    if add_match:
-        return ("repos", add_match.group(1).strip())
-    field_match = re.match(r"([a-z][a-z\s_-]{1,30})\s*:\s*(.+)$", cleaned, re.I)
-    if not field_match:
+    remove_value = _prefixed_command_value(cleaned, "remove repo")
+    if remove_value:
+        return ("remove_repo", remove_value)
+    remove_value = _prefixed_command_value(cleaned, "remove repos")
+    if remove_value:
+        return ("remove_repo", remove_value)
+    add_value = _prefixed_command_value(cleaned, "add repo")
+    if add_value:
+        return ("repos", add_value)
+    add_value = _prefixed_command_value(cleaned, "add repos")
+    if add_value:
+        return ("repos", add_value)
+    if ":" not in cleaned:
         return None
-    field = re.sub(r"[\s_-]+", " ", field_match.group(1).strip().lower())
-    value = field_match.group(2).strip()
+    raw_field, raw_value = cleaned.split(":", 1)
+    raw_field = raw_field.strip()
+    value = raw_value.strip()
+    if not value or not raw_field[:1].isalpha() or len(raw_field) > 30:
+        return None
+    field = " ".join(raw_field.replace("_", " ").replace("-", " ").lower().split())
     mapping = {
         "title": "title",
         "problem": "problem",
@@ -411,12 +418,11 @@ def _apply_action(draft: IssueDraft, action: tuple[str, str]) -> IssueDraft:
 def _summarize_amendments(messages: tuple[str, ...]) -> tuple[str, ...]:
     summaries: list[str] = []
     for message in messages:
-        message_had_action = False
         for line in _message_lines(message):
             action = _parse_line(line)
             if action is None:
+                summaries.append(f"Capture operator note: {line}")
                 continue
-            message_had_action = True
             key, value = action
             if key == "remove_repo":
                 summaries.append(f"Remove repository scope: {value}")
@@ -428,11 +434,29 @@ def _summarize_amendments(messages: tuple[str, ...]) -> tuple[str, ...]:
                 summaries.append(f"Track open question: {value}")
             else:
                 summaries.append(f"Update {key.replace('_', ' ')}: {value}")
-        if not message_had_action:
-            summaries.append(f"Capture operator note: {message}")
     if not summaries:
         summaries = [f"Capture operator note: {message}" for message in messages]
     return tuple(_dedupe(summaries))
+
+
+def _explicit_questions_from_messages(messages: tuple[str, ...]) -> tuple[str, ...]:
+    questions: list[str] = []
+    for message in messages:
+        for line in _message_lines(message):
+            action = _parse_line(line)
+            if action is not None and action[0] == "open_questions":
+                questions.extend(_split_items(action[1]))
+    return tuple(_dedupe(questions))
+
+
+def _prefixed_command_value(cleaned: str, command: str) -> str | None:
+    lowered = cleaned.lower()
+    if not lowered.startswith(command):
+        return None
+    rest = cleaned[len(command) :].lstrip()
+    if rest.startswith(":"):
+        rest = rest[1:].lstrip()
+    return rest or None
 
 
 def _planning_questions(

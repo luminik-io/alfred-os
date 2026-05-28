@@ -17,7 +17,7 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from planning_assistant import refine_issue_draft  # noqa: E402
+from planning_assistant import engine_refiner_from_env, refine_issue_draft  # noqa: E402
 from spec_helper import (  # noqa: E402
     IssueDraft,
     assess_issue_draft,
@@ -125,7 +125,11 @@ def cmd_refine(args: argparse.Namespace) -> int:
         rollout=args.rollout or "",
         open_questions=args.open_questions or "",
     )
-    result = refine_issue_draft(draft, args.message or [])
+    result = refine_issue_draft(
+        draft,
+        args.message or [],
+        refiner=engine_refiner_from_env(workdir=Path.cwd()),
+    )
     payload = {
         "ok": result.readiness.ok,
         "score": result.readiness.score,
