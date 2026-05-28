@@ -296,7 +296,7 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 Additional unreleased work adds explicit Redis AMS memory sync, trusted Slack
 plan collaborators, revision previews in approval threads, and Planning intake
-in the local cockpit. A future native Mac/Windows client should be a thin local
+in the local cockpit. A future native Mac/Linux client should be a thin local
 control plane for setup, health, logs, credentials, pause/resume, and recovery.
 Slack remains the primary collaboration UI.
 
