@@ -517,7 +517,7 @@ import os  # noqa: E402
 import subprocess  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 from pathlib import Path  # noqa: E402
-from typing import Protocol  # noqa: E402
+from typing import Protocol, cast  # noqa: E402
 
 import labels as label_constants  # noqa: E402
 from planning_assistant import (  # noqa: E402
@@ -574,10 +574,20 @@ def _non_negative_int(
 
 
 def _feedback_texts(items: Iterable[object]) -> tuple[str, ...]:
+    """Extract clean text from Slack feedback objects, dicts, or strings."""
+
     texts: list[str] = []
     for item in items:
-        text = getattr(item, "text", item)
-        cleaned = str(text or "").strip()
+        text = getattr(item, "text", None)
+        if text is None and isinstance(item, dict):
+            text = item.get("text")
+        if text is None:
+            text = str(item)
+        cleaned = "\n".join(
+            re.sub(r"\s+", " ", line).strip()
+            for line in str(text or "").splitlines()
+            if line.strip()
+        )
         if cleaned:
             texts.append(cleaned)
     return tuple(texts)
@@ -1302,20 +1312,20 @@ def _render_plan_markdown(
     child_label = "child issue" if child_count == 1 else "child issues"
 
     lines: list[str] = []
-    lines.append(f"*Batman plan ready* · `{slug}`")
+    lines.append(f"*Alfred plan ready* · `{slug}`")
     lines.append(f"*Parent:* {_issue_link(parent_repo, parent_issue)}")
     lines.append(f"*Work:* {parent_title}")
     if blockers:
         lines.append("*Readiness:* needs scope before implementation")
     else:
         lines.append("*Readiness:* ready for approval")
-    lines.append("*Before Alfred runs:* steer this thread until the scope feels right.")
     lines.append(
-        "*Fast replies:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`"
+        "*Next step:* reply in this thread to steer the plan, or approve only if it is right."
     )
     lines.append(
-        "*Decision:* react :white_check_mark: only when this exact scope should run; react :x: to stop."
+        "*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`"
     )
+    lines.append("*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.")
     lines.append("")
 
     lines.append(f"*Scope if approved now:* {repo_count} {repo_label}, {child_count} {child_label}")
@@ -1341,7 +1351,7 @@ def _render_plan_markdown(
             lines.append(f"  - {icon} `{finding.severity}` {finding.message}")
 
     lines.append("")
-    lines.append("*What Alfred will do after approval:*")
+    lines.append("*After approval Alfred will:*")
     lines.append("  1. File the scoped child issues.")
     lines.append("  2. Run each repo in the rollout order.")
     lines.append("  3. Report PR links, failed repos, and merge order in this thread.")
@@ -1441,26 +1451,6 @@ def _slack_url_link(url: str, *, label: str | None = None) -> str:
 def _approval_feedback(raw: object) -> tuple[str, ...]:
     """Extract operator thread replies from a Slack approval result."""
     return _feedback_texts(getattr(raw, "feedback", ()) or ())
-
-
-def _feedback_texts(items: Iterable[object]) -> tuple[str, ...]:
-    """Extract clean text from Slack feedback objects, dicts, or strings."""
-
-    out: list[str] = []
-    for item in items:
-        text = getattr(item, "text", None)
-        if text is None and isinstance(item, dict):
-            text = item.get("text")
-        if text is None:
-            text = str(item)
-        cleaned = "\n".join(
-            re.sub(r"\s+", " ", line).strip()
-            for line in str(text or "").splitlines()
-            if line.strip()
-        )
-        if cleaned:
-            out.append(cleaned)
-    return tuple(out)
 
 
 def _append_operator_feedback(body: str, feedback: Iterable[str]) -> str:
@@ -1668,7 +1658,7 @@ class SlackReporter:
 
     def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
         lines = [
-            f"*Batman report* · `{envelope.bundle_slug}`",
+            f"*Alfred report* · `{envelope.bundle_slug}`",
             f"*Outcome:* `{envelope.reason}`",
             f"*Work:* {envelope.parent_title}",
         ]
@@ -1683,7 +1673,7 @@ class SlackReporter:
         lines.extend(
             [
                 "",
-                "*Talk back here:*",
+                "*Need a tweak?*",
                 _report_feedback_prompt(self._report_feedback_timeout_s),
             ]
         )
@@ -1769,12 +1759,13 @@ class SlackReporter:
         *,
         severity: str,
     ) -> bool:
-        reply = self._feedback_reply
+        reply: Callable[..., object] | None = self._feedback_reply
         if reply is None:
             try:
-                from slack_format import firing_thread_reply as reply
+                from slack_format import firing_thread_reply as imported_reply
             except Exception:  # pragma: no cover - optional Slack surface
                 return False
+            reply = cast(Callable[..., object], imported_reply)
         return bool(reply(handle, text=text, severity=severity))
 
     def _write_report_followup(

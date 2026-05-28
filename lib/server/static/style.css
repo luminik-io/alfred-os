@@ -60,6 +60,7 @@ body {
   color: var(--ops-fg);
   font-family: var(--ops-sans);
   letter-spacing: 0;
+  overflow-x: hidden;
 }
 
 a {
@@ -129,6 +130,8 @@ button.secondary:hover {
 }
 
 .ops-nav {
+  width: 100%;
+  min-width: 0;
   min-height: 4.25rem;
   display: flex;
   align-items: center;
@@ -165,16 +168,24 @@ button.secondary:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+  max-width: 100%;
+  overflow-x: auto;
   padding: 0.25rem;
   border: 1px solid var(--ops-line);
   border-radius: 999px;
   background: rgba(18, 26, 37, 0.72);
+  scrollbar-width: none;
+}
+
+.view-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .view-tabs a {
   min-height: 2.25rem;
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   padding: 0 0.8rem;
   border-radius: 999px;
   text-decoration: none;
@@ -188,6 +199,8 @@ button.secondary:hover {
 
 .ops-main {
   width: min(100%, 76rem);
+  max-width: 100%;
+  box-sizing: border-box;
   padding-top: 2rem;
   padding-bottom: 3rem;
 }
@@ -232,6 +245,7 @@ button.secondary:hover {
   flex-wrap: wrap;
   gap: 0.65rem;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .hero-actions a {
@@ -247,6 +261,7 @@ button.secondary:hover {
 }
 
 .signal-item {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -281,6 +296,7 @@ button.secondary:hover {
 
 .command-card {
   position: relative;
+  min-width: 0;
   display: grid;
   gap: 0.35rem;
   min-height: 8.25rem;
@@ -1191,7 +1207,7 @@ pre code {
 
   .view-tabs {
     width: 100%;
-    justify-content: stretch;
+    min-width: 0;
   }
 
   .view-tabs a {
@@ -1371,6 +1387,14 @@ pre code {
   .ops-main {
     padding-left: 0.75rem;
     padding-right: 0.75rem;
+  }
+
+  .hero-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .signal-strip {
+    grid-template-columns: 1fr;
   }
 
   .ops-table td {

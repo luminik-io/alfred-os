@@ -74,7 +74,7 @@ $ALFRED_HOME/state/codenames/<codename>/...
 $ALFRED_HOME/state/firings/<firing_id>.json
 ```
 
-Batman plan drafts are read from:
+Alfred plan drafts are read from:
 
 ```
 $ALFRED_HOME/batman-plans/*.md
@@ -113,9 +113,9 @@ Filters:
 
 - `?codename=<name>` restricts the list to one codename. The clickable filter strip at the top of the page renders one link per known codename plus an "all" reset.
 
-### `GET /plans` - Saved Batman plans
+### `GET /plans` - Saved Alfred plans
 
-Lists saved Batman plan drafts from `$ALFRED_HOME/batman-plans`. Each card
+Lists saved Alfred plan drafts from `$ALFRED_HOME/batman-plans`. Each card
 shows status, affected repos, parent issue, update time, and a local detail
 link.
 

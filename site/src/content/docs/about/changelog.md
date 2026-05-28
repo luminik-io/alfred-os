@@ -14,7 +14,7 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
 - **Fleet memory reliability tools**: reviewable memory candidates, normalized failure-event history, `alfred brain doctor`, and a read-only `alfred mcp serve` bridge for local MCP clients.
 - **Optional Redis AMS memory provider**: operators who already run Redis Agent Memory Server can set `ALFRED_MEMORY_PROVIDERS=fleet,redis`, check it with `alfred brain redis-status`, and sync reviewed lessons with `alfred brain redis-sync` while keeping the default install local and dependency-light.
 - **Planning memory loop**: the Planning tab recalls promoted repo lessons while drafting, embeds advisory hints in saved specs, and queues reviewable spec-to-issue memory candidates.
-- **`alfred serve` cockpit polish**: Fleet / Firings / Plans / Planning tabs, saved Batman plan inbox, issue/spec intake, human-readable timestamps, and mobile card layouts for the previously cramped tables.
+- **`alfred serve` cockpit polish**: Fleet / Firings / Plans / Planning tabs, saved Alfred plan inbox, issue/spec intake, human-readable timestamps, and mobile card layouts for the previously cramped tables.
 - **Batman planning replies**: `add repo:` and `remove repo:` replies in the approval thread now amend execution scope before child issues or worktrees are created.
 - **Slack follow-up capture**: trusted replies after Batman reports or PR links are classified, acknowledged, and carried as context for the next plan or PR pass without granting merge approval.
 - **`alfred spec`**: template, lint, and readiness helpers for specs-driven development, including acceptance criteria, rollout checks, and GitHub-ready issue drafts.

@@ -223,14 +223,15 @@ issue, derives `billing-v2` as the bundle slug, and posts to
 ```
 batman, plan drafted for billing-v2 (4 child issue(s), 3 repo(s))
 
-*Batman plan ready* · `billing-v2`
+*Alfred plan ready* · `billing-v2`
 *Parent:* <https://github.com/your-org/your-product/issues/42|your-org/your-product#42>
-*Title:* Bundle: billing-v2 rollout
-*Decision:* react :white_check_mark: to approve, :x: to reject, or reply with changes before approving.
-*Reply commands:* `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`, or plain language.
+*Work:* Bundle: billing-v2 rollout
 *Readiness:* ready for approval
+*Next step:* reply in this thread to steer the plan, or approve only if it is right.
+*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`
+*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.
 
-*Execution scope if approved now:* 3 repos, 4 child issues
+*Scope if approved now:* 3 repos, 4 child issues
   - `your-org/your-backend`: introduce BillingV2Service
   - `your-org/your-backend`: migrate /api/v1/invoices
   - `your-org/your-frontend`: pricing page rewrite

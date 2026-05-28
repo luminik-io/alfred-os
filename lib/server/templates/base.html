@@ -6,7 +6,7 @@
   <title>{% block title %}Alfred{% endblock %}</title>
   <link rel="icon" type="image/png" href="/static/alfred-logo.png" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
-  <link rel="stylesheet" href="/static/style.css?v=20260528-local-client-4" />
+  <link rel="stylesheet" href="/static/style.css?v=20260528-command-center-5" />
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
 </head>
 <body>
@@ -17,10 +17,10 @@
         <strong>Alfred</strong>
       </a>
       <div class="view-tabs" aria-label="Primary views">
-        <a class="{{ 'is-active' if request.url.path == '/' else '' }}" href="/">Fleet</a>
-        <a class="{{ 'is-active' if request.url.path.startswith('/firings') else '' }}" href="/firings">Firings</a>
-        <a class="{{ 'is-active' if request.url.path.startswith('/plans') else '' }}" href="/plans">Plans</a>
-        <a class="{{ 'is-active' if request.url.path.startswith('/planning') else '' }}" href="/planning">Planning</a>
+        <a class="{{ 'is-active' if request.url.path == '/' else '' }}" href="/" {% if request.url.path == '/' %}aria-current="page"{% endif %}>Fleet</a>
+        <a class="{{ 'is-active' if request.url.path.startswith('/firings') else '' }}" href="/firings" {% if request.url.path.startswith('/firings') %}aria-current="page"{% endif %}>Firings</a>
+        <a class="{{ 'is-active' if request.url.path.startswith('/plans') else '' }}" href="/plans" {% if request.url.path.startswith('/plans') %}aria-current="page"{% endif %}>Plans</a>
+        <a class="{{ 'is-active' if request.url.path.startswith('/planning') else '' }}" href="/planning" {% if request.url.path.startswith('/planning') %}aria-current="page"{% endif %}>Planning</a>
       </div>
     </nav>
   </header>
@@ -28,7 +28,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="ops-footer">
-    <small>Alfred local cockpit</small>
+    <small>Alfred command center</small>
   </footer>
   <script>
     (() => {

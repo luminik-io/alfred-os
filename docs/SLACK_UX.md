@@ -25,9 +25,9 @@ Every Alfred Slack message should do one job.
 
 Use this order for approval and action messages:
 
-1. Short title with state: `Batman plan ready · billing-v2`.
+1. Short title with state: `Alfred plan ready · billing-v2`.
 2. Primary links: parent issue, PR, or Slack thread.
-3. Decision needed: approve, reject, answer a question, or edit scope.
+3. Next step: approve, reject, answer a question, or edit scope.
 4. Execution scope: repos, child issues, rollout order.
 5. Readiness: ready, needs scope, blocked by questions, or failed.
 6. Next step: one concrete action.
@@ -98,14 +98,15 @@ Alfred should sound like a calm engineering lead:
 ## Good Plan Post
 
 ```text
-*Batman plan ready* · `billing-v2`
+*Alfred plan ready* · `billing-v2`
 *Parent:* <https://github.com/example/api/issues/42|example/api#42>
-*Title:* Add invoice payment retries
-*Decision:* react :white_check_mark: to approve, :x: to reject, or reply with changes before approving.
-*Reply commands:* `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`, or plain language.
+*Work:* Add invoice payment retries
 *Readiness:* ready for approval
+*Next step:* reply in this thread to steer the plan, or approve only if it is right.
+*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`
+*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.
 
-*Execution scope if approved now:* 2 repos, 2 child issues
+*Scope if approved now:* 2 repos, 2 child issues
   - `example/api`: backend retries and idempotency
   - `example/web`: retry state in invoice UI
 

@@ -609,20 +609,19 @@ def main() -> int:
         f"({len(bundle.issues)} issue(s), {len(plan.affected_repos)} repo(s))"
     )
     body = (
-        f"*Batman plan ready* · <{primary.get('url')}|{primary.get('title')}>\n"
+        f"*Alfred plan ready* · <{primary.get('url')}|{primary.get('title')}>\n"
         f"*Bundle:* `{bundle.slug}`\n"
         f"*Scope:* {', '.join(plan.affected_repos) or '(none)'}\n"
         f"*Rollout:* {' -> '.join(plan.affected_repos) or '(default)'}\n"
         f"*Engine:* `{BATMAN_ENGINE}`\n\n"
-        f"*Before Alfred runs:* steer this thread until the scope feels right.\n"
-        f"*Fast replies:*\n"
+        f"*Next step:* reply in this thread to steer the plan, or approve only if it is right.\n"
+        f"*Replies Alfred understands:*\n"
         f"- `change:` adjust behavior or scope\n"
         f"- `acceptance:` add a done condition\n"
         f"- `test:` require a verification step\n"
         f"- `add repo:` or `remove repo:` change execution scope\n"
         f"- `question:` blocks execution until answered\n\n"
-        f"*Decision:* react :white_check_mark: only when this exact scope should run; "
-        f"react :x: to stop.\n"
+        f"*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.\n"
     )
     # Try the bot-token thread root first; fall back to the
     # webhook surface so the operator gets *some* visibility on

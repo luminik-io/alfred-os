@@ -294,7 +294,7 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a mobile-friendly local cockpit with saved Batman plans. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
+**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a mobile-friendly local cockpit with saved Alfred plans. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
 Additional unreleased work adds explicit Redis AMS memory sync, trusted Slack
 plan collaborators, revision previews in approval threads, and Planning intake

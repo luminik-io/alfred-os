@@ -288,7 +288,7 @@ def test_plan_parses_well_formed_parent_into_four_children():
         "<https://github.com/your-org/your-product/issues/42|your-org/your-product#42>"
         in plan.plan_markdown
     )
-    assert "Before Alfred runs" in plan.plan_markdown
+    assert "Next step" in plan.plan_markdown
     assert "Readiness:* ready for approval" in plan.plan_markdown
 
 
