@@ -16,6 +16,7 @@ re-rendering the whole shell. Keeps the dashboard cheap to refresh.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import asdict, is_dataclass
@@ -164,6 +165,7 @@ def register_routes(app: FastAPI) -> None:
                     "stale_workers": reliability.get("stale_workers", []),
                     "promotion_suggestions": reliability.get("promotion_suggestions", []),
                     "error": reliability.get("error"),
+                    "errors": reliability.get("errors", {}),
                 }
             )
         )
@@ -354,7 +356,11 @@ def _planning_memory_provider(request: Request):
         return configured
     if _env_disabled("ALFRED_PLANNING_MEMORY"):
         return None
-    if not (os.environ.get("ALFRED_HOME") or os.environ.get("ALFRED_FLEET_BRAIN_DB")):
+    if not (
+        os.environ.get("ALFRED_HOME")
+        or os.environ.get("ALFRED_FLEET_BRAIN_DB")
+        or _reader_uses_default_state_root(request)
+    ):
         return None
     try:
         from memory.config import load_provider
@@ -369,8 +375,34 @@ def _planning_memory_writer(request: Request, *, provider=None):
     if configured is not None:
         return configured
     provider = provider or _planning_memory_provider(request)
+    return _memory_candidate_writer(provider)
+
+
+def _reader_uses_default_state_root(request: Request) -> bool:
+    reader = request.app.state.reader
+    state_root = getattr(reader, "state_root", None)
+    if not isinstance(state_root, Path):
+        return True
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    try:
+        return state_root.expanduser().resolve() == (Path(base) / "state").expanduser().resolve()
+    except OSError:
+        return False
+
+
+def _memory_candidate_writer(provider):
+    if provider is None:
+        return None
     brain = getattr(provider, "brain", None)
-    return brain if brain is not None else provider
+    if brain is not None and hasattr(brain, "propose_memory"):
+        return brain
+    if hasattr(provider, "propose_memory"):
+        return provider
+    for child in getattr(provider, "providers", ()) or ():
+        writer = _memory_candidate_writer(child)
+        if writer is not None:
+            return writer
+    return None
 
 
 def _propose_planning_memory_candidate(
@@ -393,6 +425,7 @@ def _propose_planning_memory_candidate(
         "title": draft.title,
         "readiness_chars": len(spec_body),
     }
+    evidence_json = json.dumps(evidence, sort_keys=True)
     ids: list[str] = []
     for repo in draft.repos or ["planning"]:
         try:
@@ -403,7 +436,7 @@ def _propose_planning_memory_candidate(
                 tags=["planning", "spec"],
                 severity="info",
                 source="planning-ui",
-                evidence=str(spec_path),
+                evidence=evidence_json,
                 confidence=0.72,
             )
         except TypeError:

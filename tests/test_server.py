@@ -227,6 +227,26 @@ def test_json_api_status_and_firings(populated_state: Path) -> None:
     assert missing.status_code == 404
 
 
+def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
+    class Reader(FilesystemReader):
+        def reliability_report(self) -> dict[str, object]:
+            return {
+                "status": "warn",
+                "actions": [],
+                "failure_patterns": [],
+                "stale_workers": [],
+                "promotion_suggestions": [],
+                "errors": {"promotion_suggestions": "bridge unavailable"},
+            }
+
+    client = TestClient(create_app(Reader(state_root=tmp_path / "state")))
+
+    response = client.get("/api/actions")
+
+    assert response.status_code == 200
+    assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}
+
+
 def test_firing_complete_marks_record_finished(tmp_path: Path) -> None:
     state = tmp_path / "state"
     (state / "lucius" / "events").mkdir(parents=True)
@@ -568,6 +588,71 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(tmp_path: Path)
     assert len(memory.candidates) == 1
     assert memory.candidates[0]["source"] == "planning-ui"
     assert memory.candidates[0]["repo"] == "luminik-io/alfred-os"
+    assert json.loads(memory.candidates[0]["evidence"])["kind"] == "planning_spec"
+
+
+def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path: Path) -> None:
+    class ReadOnly:
+        name = "readonly"
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            return []
+
+    class Writable:
+        name = "writable"
+
+        def __init__(self) -> None:
+            self.candidates: list[dict[str, object]] = []
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            return []
+
+        def propose_memory(self, **kwargs):
+            self.candidates.append(kwargs)
+            return "candidate-1"
+
+    class Chain:
+        name = "chained"
+
+        def __init__(self) -> None:
+            self.writable = Writable()
+            self.providers = [ReadOnly(), self.writable]
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            return []
+
+    state = tmp_path / "state"
+    state.mkdir()
+    chain = Chain()
+    app = create_app(FilesystemReader(state_root=state))
+    app.state.planning_memory_provider = chain
+    client = TestClient(app)
+
+    response = client.post(
+        "/planning",
+        data={
+            "title": "Add Slack plan revision flow",
+            "problem": (
+                "Operators and teammates need to discuss a Batman plan before "
+                "implementation so Alfred does not ship the wrong workflow."
+            ),
+            "user": "Repo owner or teammate",
+            "current_behavior": "Batman posts a plan and waits for emoji approval.",
+            "desired_behavior": (
+                "Batman keeps implementation paused when a plan needs revision "
+                "and accepts thread feedback before child issues are filed."
+            ),
+            "repos": "luminik-io/alfred-os",
+            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
+            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
+            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
+            "action": "save_spec",
+        },
+    )
+
+    assert response.status_code == 200
+    assert chain.writable.candidates
+    assert chain.writable.candidates[0]["repo"] == "luminik-io/alfred-os"
 
 
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:
