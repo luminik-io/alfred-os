@@ -163,7 +163,7 @@ def register_routes(app: FastAPI) -> None:
             assistant_result = refine_issue_draft(
                 draft,
                 [chat_message],
-                refiner=engine_refiner_from_env(workdir=_planning_root(request)),
+                refiner=engine_refiner_from_env(workdir=_planning_workdir(request)),
             )
             draft = assistant_result.draft
             result = assistant_result.readiness
@@ -259,6 +259,15 @@ def _planning_root(request: Request, *, directory: str = "planning-drafts") -> P
         return state_root.parent / directory
     base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base) / directory
+
+
+def _planning_workdir(request: Request) -> Path:
+    reader = request.app.state.reader
+    state_root = getattr(reader, "state_root", None)
+    if isinstance(state_root, Path):
+        return state_root.parent
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    return Path(base)
 
 
 def _slug(value: str) -> str:
