@@ -13,6 +13,7 @@ from planning_assistant import (  # noqa: E402
     refine_issue_draft,
     render_development_spec,
     render_operator_amendments,
+    render_operator_feedback_ack,
 )
 from spec_helper import IssueDraft  # noqa: E402
 
@@ -121,6 +122,20 @@ def test_render_operator_amendments_only_lists_explicit_questions() -> None:
     assert "### Follow-up Questions" in block
     assert "Should the operator approve after edits?" in block
     assert "Which repository or repositories should Alfred touch?" not in block
+
+
+def test_render_operator_feedback_ack_is_concise_for_slack() -> None:
+    block = render_operator_feedback_ack(
+        [
+            "acceptance: the Slack thread acknowledges plan edits\n"
+            "question: Should we keep this limited to Batman?"
+        ]
+    )
+
+    assert "[ALFRED-PLAN-FEEDBACK]" in block
+    assert "Add acceptance criterion" in block
+    assert "Should we keep this limited to Batman?" in block
+    assert "Reply with more changes" in block
 
 
 def test_development_spec_and_refiner_prompt_are_useful() -> None:

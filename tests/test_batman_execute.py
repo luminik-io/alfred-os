@@ -124,8 +124,18 @@ class FakeGate:
         self._result = result
         self.calls: list[tuple[str, str]] = []
 
-    def await_approval(self, channel, message_ts, *, timeout_s=900, poll_interval_s=30):
+    def await_approval(
+        self,
+        channel,
+        message_ts,
+        *,
+        timeout_s=900,
+        poll_interval_s=30,
+        feedback_callback=None,
+    ):
         self.calls.append((channel, message_ts))
+        if feedback_callback is not None and self._result.feedback:
+            feedback_callback(self._result.feedback)
         return self._result
 
 
@@ -148,6 +158,7 @@ class FakeReporter:
         self._channel_id = channel_id
         self.plans: list[dict] = []
         self.reports: list[dict] = []
+        self.feedback: list[dict] = []
 
     def post_plan(self, plan, *, channel):
         self.plans.append({"plan": plan, "channel": channel})
@@ -157,6 +168,10 @@ class FakeReporter:
 
     def post_report(self, envelope, *, channel):
         self.reports.append({"envelope": envelope, "channel": channel})
+        return True
+
+    def post_plan_feedback(self, *, channel, message_ts, feedback):
+        self.feedback.append({"channel": channel, "message_ts": message_ts, "feedback": feedback})
         return True
 
 
@@ -407,6 +422,7 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
         )
     )
 
+    reporter = FakeReporter()
     lifecycle = BatmanLifecycle(
         config=BatmanLifecycleConfig(
             auto_execute="approval-gate",
@@ -415,7 +431,7 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
         ),
         gate=gate,
         gh_client=gh,
-        reporter=FakeReporter(),
+        reporter=reporter,
     )
     plan = lifecycle.plan(
         body=SAMPLE_BODY,
@@ -429,6 +445,13 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
     assert verdict.approved is True
     assert verdict.verdict == EXEC_OK
     assert verdict.feedback == ("Use the simpler onboarding copy Neha requested.",)
+    assert reporter.feedback == [
+        {
+            "channel": "C0FAKE123",
+            "message_ts": "1700000000.000100",
+            "feedback": ("Use the simpler onboarding copy Neha requested.",),
+        }
+    ]
 
     result = lifecycle.execute(plan)
 

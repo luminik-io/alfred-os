@@ -520,7 +520,10 @@ from pathlib import Path  # noqa: E402
 from typing import Protocol  # noqa: E402
 
 import labels as label_constants  # noqa: E402
-from planning_assistant import render_operator_amendments  # noqa: E402
+from planning_assistant import (  # noqa: E402
+    render_operator_amendments,
+    render_operator_feedback_ack,
+)
 
 logger = logging.getLogger("alfred.batman.lifecycle")
 
@@ -867,6 +870,7 @@ class ApprovalGate(Protocol):
         *,
         timeout_s: int = 900,
         poll_interval_s: int = 30,
+        feedback_callback: Callable | None = None,
     ) -> object: ...  # pragma: no cover
 
 
@@ -1338,11 +1342,19 @@ def _issue_link(repo: str, number: int) -> str:
 
 def _approval_feedback(raw: object) -> tuple[str, ...]:
     """Extract operator thread replies from a Slack approval result."""
+    return _feedback_texts(getattr(raw, "feedback", ()) or ())
+
+
+def _feedback_texts(items: Iterable[object]) -> tuple[str, ...]:
+    """Extract clean text from Slack feedback objects, dicts, or strings."""
+
     out: list[str] = []
-    for item in getattr(raw, "feedback", ()) or ():
+    for item in items:
         text = getattr(item, "text", None)
         if text is None and isinstance(item, dict):
             text = item.get("text")
+        if text is None:
+            text = str(item)
         cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
         if cleaned:
             out.append(cleaned)
@@ -1427,6 +1439,29 @@ class SlackReporter:
         if not ch_id or not ts:
             return None
         return (ch_id, ts)
+
+    def post_plan_feedback(
+        self,
+        *,
+        channel: str,
+        message_ts: str,
+        feedback: Iterable[str],
+    ) -> bool:
+        """Acknowledge operator planning feedback in the original plan thread."""
+        text = render_operator_feedback_ack(feedback)
+        if not text:
+            return False
+        try:
+            from slack_format import ThreadHandle, firing_thread_reply
+        except Exception:  # pragma: no cover
+            return False
+        return bool(
+            firing_thread_reply(
+                ThreadHandle(channel=channel, ts=message_ts),
+                text=text,
+                severity="info",
+            )
+        )
 
     def post_report(self, envelope: ReportEnvelope, *, channel: str) -> bool:
         lines = [
@@ -1536,10 +1571,24 @@ class BatmanLifecycle:
                 detail="no SlackApproval injected",
             )
         timeout = timeout_s if timeout_s is not None else self.config.approval_timeout_s
+        feedback_callback: Callable[[tuple[object, ...]], None] | None = None
+        post_plan_feedback = getattr(self.reporter, "post_plan_feedback", None)
+        if callable(post_plan_feedback):
+
+            def feedback_callback(raw_feedback: tuple[object, ...]) -> None:
+                feedback = _feedback_texts(raw_feedback)
+                if feedback:
+                    post_plan_feedback(
+                        channel=envelope.channel,
+                        message_ts=envelope.message_ts,
+                        feedback=feedback,
+                    )
+
         raw = self.gate.await_approval(
             envelope.channel,
             envelope.message_ts,
             timeout_s=timeout,
+            feedback_callback=feedback_callback,
         )
         approved = bool(getattr(raw, "approved", False))
         verdict_raw = getattr(raw, "verdict", "unknown")

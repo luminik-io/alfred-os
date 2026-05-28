@@ -63,6 +63,7 @@ See ``docs/SLACK_APPROVAL.md`` for the full walkthrough.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import re
@@ -218,9 +219,7 @@ def aws_secrets_token_resolver(
     boto3 = boto3_module
     if boto3 is None:
         try:
-            import boto3 as _boto3  # type: ignore[import-untyped]
-
-            boto3 = _boto3
+            boto3 = importlib.import_module("boto3")
         except ImportError:
             logger.warning(
                 "ALFRED_SECRETS_BACKEND=aws but boto3 is not installed; "
@@ -381,6 +380,7 @@ class SlackApproval:
         timeout_s: int = 900,
         poll_interval_s: int = 30,
         kill_check: Callable[[], bool] | None = None,
+        feedback_callback: Callable[[tuple[ThreadFeedback, ...]], None] | None = None,
         _now: Callable[[], float] = time.time,
         _sleep: Callable[[float], None] = time.sleep,
     ) -> ApprovalResult:
@@ -404,6 +404,7 @@ class SlackApproval:
         start = _now()
         deadline = start + timeout_s
         consecutive_failures = 0
+        seen_feedback_ts: set[str] = set()
         logger.info(
             "approval poll starting: channel=%s ts=%s operator=%s timeout_s=%d",
             channel,
@@ -412,6 +413,7 @@ class SlackApproval:
             timeout_s,
         )
         while True:
+            current_feedback: tuple[ThreadFeedback, ...] | None = None
             if kill_check is not None:
                 try:
                     if kill_check():
@@ -444,19 +446,36 @@ class SlackApproval:
                     )
             else:
                 consecutive_failures = 0
+                if feedback_callback is not None:
+                    current_feedback = self._fetch_thread_feedback(request)
+                    new_feedback = tuple(
+                        item
+                        for item in current_feedback
+                        if item.ts and item.ts not in seen_feedback_ts
+                    )
+                    if new_feedback:
+                        seen_feedback_ts.update(item.ts for item in new_feedback if item.ts)
+                        try:
+                            feedback_callback(new_feedback)
+                        except Exception as exc:
+                            logger.warning("plan feedback callback failed: %s", exc)
                 if self._operator_reacted_with(reactions, self._approve_emojis):
+                    if current_feedback is None:
+                        current_feedback = self._fetch_thread_feedback(request)
                     return ApprovalResult(
                         verdict=APPROVAL_GRANTED,
                         reactor=self._operator_user_id,
                         elapsed_s=_now() - start,
-                        feedback=self._fetch_thread_feedback(request),
+                        feedback=current_feedback,
                     )
                 if self._operator_reacted_with(reactions, self._reject_emojis):
+                    if current_feedback is None:
+                        current_feedback = self._fetch_thread_feedback(request)
                     return ApprovalResult(
                         verdict=APPROVAL_REJECTED,
                         reactor=self._operator_user_id,
                         elapsed_s=_now() - start,
-                        feedback=self._fetch_thread_feedback(request),
+                        feedback=current_feedback,
                     )
             now = _now()
             if now >= deadline:

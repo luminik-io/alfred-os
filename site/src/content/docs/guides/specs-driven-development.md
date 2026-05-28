@@ -141,9 +141,9 @@ Batman scans `BATMAN_SCAN_REPOS`, drafts the rollout plan, posts it to Slack or
 local logs, and saves the draft under `$ALFRED_HOME/batman-plans`. Treat the
 Slack thread as the place to change the plan before approval. Plain-English
 feedback is enough: "remove mobile", "make this read-only", "add an empty
-state", or "split this into two PRs". When the configured operator approves
-with a reaction, Alfred captures those thread replies and passes them along as
-operator amendments.
+state", or "split this into two PRs". Alfred acknowledges newly captured plan
+replies in-thread, and when the configured operator approves with a reaction,
+Alfred passes those replies along as operator amendments.
 
 The local Planning tab in `alfred serve` uses the same command vocabulary:
 

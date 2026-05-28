@@ -192,6 +192,10 @@ Slack thread as the place to change the plan before approval. Plain-English
 feedback is enough: "remove mobile", "make this read-only", "add an empty
 state", or "split this into two PRs".
 
+When the bot has thread-history access, Alfred acknowledges newly captured
+plan replies in-thread so the operator can keep refining before approval.
+The final approval reaction is still the execution gate.
+
 Poorly scoped parent issues should not go straight to implementation. If the
 issue does not name repos, acceptance criteria, and done-when checks, keep it
 in planning and ask Batman or the operator to tighten the issue first.

@@ -22,11 +22,11 @@ Reactions beat reply-text on two axes that matter for autonomous fleets:
   A reply has the same author field but pressuring the operator to
   type "approved" every time adds friction.
 
-If you need richer feedback than approve/reject, post the plan, capture
-the reaction verdict, and *then* read the threaded replies. Alfred now
-does this for Batman plans: the reaction remains the hard gate, while
-operator replies in the thread become explicit amendments on approval.
-Batman understands common planning commands in those replies:
+If you need richer feedback than approve/reject, use the plan thread as
+the planning surface. Alfred now does this for Batman plans: the reaction
+remains the hard gate, while operator replies in the thread are
+acknowledged live and then carried into child issues on approval. Batman
+understands common planning commands in those replies:
 
 ```text
 acceptance: reviewer can verify the issue link in the PR body
@@ -36,8 +36,9 @@ remove repo: my-org/site
 question: should this wait for a clearer spec?
 ```
 
-Plain-language replies are still captured as operator notes. Alfred passes
-the interpreted amendments into child issues and repo-worker prompts.
+Plain-language replies are still captured as operator notes. Alfred posts
+a concise "captured your plan update" reply in-thread, then passes the
+interpreted amendments into child issues and repo-worker prompts.
 
 ## 1. Create the Slack app
 

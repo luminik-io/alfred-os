@@ -186,6 +186,34 @@ def render_operator_amendments(feedback: Iterable[str]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_operator_feedback_ack(feedback: Iterable[str]) -> str:
+    """Render a concise Slack acknowledgement for newly-captured feedback."""
+
+    clean = tuple(_normalize_message(item) for item in feedback if _clean_text(item))
+    if not clean:
+        return ""
+    amendments = _summarize_amendments(clean)
+    questions = _explicit_questions_from_messages(clean)
+    lines = [
+        "[ALFRED-PLAN-FEEDBACK] captured your plan update.",
+        "",
+        "*Understood:*",
+    ]
+    lines.extend(f"- {item}" for item in amendments[:6])
+    if len(amendments) > 6:
+        lines.append(f"- ...and {len(amendments) - 6} more amendment(s).")
+    if questions:
+        lines.extend(["", "*Open questions you asked Alfred to track:*"])
+        lines.extend(f"- {question}" for question in questions[:4])
+    lines.extend(
+        [
+            "",
+            "Reply with more changes, or approve with :white_check_mark: when the plan is ready.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
     """Prompt text for an optional local engine backed refiner."""
 

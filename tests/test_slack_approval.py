@@ -153,6 +153,39 @@ def test_operator_thread_replies_return_as_feedback() -> None:
     assert client.reply_calls == [{"channel": CHANNEL, "ts": TS, "limit": 100}]
 
 
+def test_operator_thread_replies_trigger_feedback_callback_once() -> None:
+    client = FakeSlackClient(
+        [
+            _ok([]),
+            _ok([]),
+            _ok([{"name": "white_check_mark", "users": [OPERATOR], "count": 1}]),
+        ],
+        replies=[
+            {"ts": TS, "user": OPERATOR, "text": "root message ignored"},
+            {
+                "ts": "1716480002.000002",
+                "user": OPERATOR,
+                "text": "acceptance: plan edits are acknowledged in thread",
+            },
+        ],
+    )
+    clock = _Clock()
+    callbacks: list[list[str]] = []
+
+    result = SlackApproval(client, OPERATOR).await_approval(
+        CHANNEL,
+        TS,
+        timeout_s=60,
+        poll_interval_s=10,
+        feedback_callback=lambda items: callbacks.append([item.text for item in items]),
+        _now=clock.now,
+        _sleep=clock.sleep,
+    )
+
+    assert result.verdict == APPROVAL_GRANTED
+    assert callbacks == [["acceptance: plan edits are acknowledged in thread"]]
+
+
 def test_non_operator_reaction_is_ignored_until_timeout() -> None:
     client = FakeSlackClient(
         [
