@@ -911,7 +911,7 @@ def _has_fresh_unreleased_claim(
         if key == released_key:
             continue
         ts = _parse_github_ts(claim.get("createdAt"))
-        if ts is None or ts >= cutoff:
+        if ts is not None and ts >= cutoff:
             return True
     return False
 
@@ -1097,6 +1097,8 @@ def _detect_contested_claim(
     for claim in unreleased:
         key = claim.get("_key")
         ts = claim.get("createdAt", "")
+        if not isinstance(key, tuple) or len(key) < 2:
+            continue
         if key == own_key:
             continue
         if ts and ts < own_ts:
