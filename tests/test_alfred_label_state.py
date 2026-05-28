@@ -288,18 +288,19 @@ def test_sweep_claims_force_releases(
                 "firing_id": "x",
                 "age_hours": 5.0,
                 "title": "stuck",
+                "label_drift": True,
             }
         ],
     )
-    force_calls: list[tuple[str, int]] = []
+    force_calls: list[tuple[str, int, bool]] = []
     monkeypatch.setattr(
         cli_module,
         "force_release_stale_claim",
-        lambda repo, num, **kw: (force_calls.append((repo, num)), True)[1],
+        lambda repo, num, **kw: (force_calls.append((repo, num, kw["label_drift"])), True)[1],
     )
     rc = cli_module.main(["sweep-claims", "--repo", "your-backend"])
     assert rc == 0
-    assert force_calls == [("your-backend", 99)]
+    assert force_calls == [("your-backend", 99, True)]
 
 
 def test_sweep_claims_errors_when_no_repos(

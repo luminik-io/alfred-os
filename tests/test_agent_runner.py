@@ -1170,6 +1170,38 @@ def test_force_release_stale_claim_does_not_keep_malformed_timestamp(monkeypatch
     ]
 
 
+def test_force_release_stale_claim_label_drift_keeps_in_flight(monkeypatch):
+    import agent_runner as ar
+
+    edits = []
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a: True)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "comments": [
+                {
+                    "createdAt": "2026-05-09T13:34:44Z",
+                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                }
+            ],
+            "labels": [{"name": "agent:in-flight"}],
+            "state": "OPEN",
+        },
+    )
+
+    assert ar.force_release_stale_claim(
+        "myrepo",
+        42,
+        sweep_id="sweep-1",
+        released_codename="lucius",
+        released_firing_id="old-fid",
+        label_drift=True,
+    )
+    assert edits == []
+
+
 def test_stale_unreleased_claim_comment_does_not_block_forever(monkeypatch):
     import agent_runner as ar
 

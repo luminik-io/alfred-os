@@ -1202,6 +1202,7 @@ def force_release_stale_claim(
     sweep_id: str,
     released_codename: str | None = None,
     released_firing_id: str | None = None,
+    label_drift: bool = False,
 ) -> bool:
     """Forcibly release a stale claim and restore ``agent:implement``.
 
@@ -1222,11 +1223,6 @@ def force_release_stale_claim(
         return True
     codename = released_codename or "cleanup"
     firing_id = released_firing_id or sweep_id
-    state = _issue_state(repo_slug, num)
-    keep_in_flight = _has_fresh_unreleased_claim(
-        state.get("comments", []),
-        released_key=(codename, firing_id),
-    )
     commented = gh_issue_comment(
         repo_slug,
         num,
@@ -1235,6 +1231,18 @@ def force_release_stale_claim(
     )
     if not commented:
         return False
+    state = _issue_state(repo_slug, num)
+    labels = {label["name"] for label in state.get("labels", [])}
+    if label_drift:
+        if "agent:in-flight" in labels:
+            return True
+        if "agent:implement" in labels:
+            return True
+        return gh_issue_edit(repo_slug, num, add_labels=["agent:implement"], remove_labels=[])
+    keep_in_flight = _has_fresh_unreleased_claim(
+        state.get("comments", []),
+        released_key=(codename, firing_id),
+    )
     if keep_in_flight:
         return True
     edited = gh_issue_edit(
