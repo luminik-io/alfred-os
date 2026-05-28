@@ -142,9 +142,12 @@ local logs, and saves the draft under `$ALFRED_HOME/batman-plans`. Treat the
 Slack thread as the place to change the plan before approval. Plain-English
 feedback is enough: "remove mobile", "make this read-only", "add an empty
 state", or "split this into two PRs". Alfred acknowledges newly captured plan
-replies in-thread, and when the configured operator approves with a reaction,
-Alfred passes those replies along as operator amendments. Repo add/remove
-replies update execution scope before implementation starts.
+replies in-thread with the execution scope if approved now, and when the
+configured operator approves with a reaction, Alfred passes those replies along
+as operator amendments. Trusted feedback users can amend the plan without
+approval authority. Repo add/remove replies update execution scope before
+implementation starts, and `question:` replies keep the plan paused until they
+are resolved.
 
 The local Planning tab in `alfred serve` uses the same command vocabulary:
 

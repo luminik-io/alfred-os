@@ -170,8 +170,15 @@ class FakeReporter:
         self.reports.append({"envelope": envelope, "channel": channel})
         return True
 
-    def post_plan_feedback(self, *, channel, message_ts, feedback):
-        self.feedback.append({"channel": channel, "message_ts": message_ts, "feedback": feedback})
+    def post_plan_feedback(self, *, channel, message_ts, feedback, **kwargs):
+        self.feedback.append(
+            {
+                "channel": channel,
+                "message_ts": message_ts,
+                "feedback": feedback,
+                "kwargs": kwargs,
+            }
+        )
         return True
 
 
@@ -450,6 +457,11 @@ def test_approval_thread_feedback_is_appended_to_child_issues():
             "channel": "C0FAKE123",
             "message_ts": "1700000000.000100",
             "feedback": ("Use the simpler onboarding copy Neha requested.",),
+            "kwargs": {
+                "plan": plan,
+                "all_feedback": ("Use the simpler onboarding copy Neha requested.",),
+                "revised_repos": plan.affected_repos,
+            },
         }
     ]
 
@@ -510,6 +522,44 @@ def test_approval_repo_feedback_changes_child_issue_scope():
     assert gh.issued[-1]["title"] == "your-admin: implement billing-v2"
     assert "Remove repository scope: mobile" in gh.issued[-1]["body"]
     assert "Add repository scope: your-org/your-admin" in gh.issued[-1]["body"]
+
+
+def test_approval_feedback_with_open_question_blocks_execution():
+    from batman import EXEC_NEEDS_SCOPE, BatmanLifecycle, BatmanLifecycleConfig
+    from slack_approval import APPROVAL_GRANTED
+
+    gh = FakeGitHubClient()
+    gate = FakeGate(
+        FakeApprovalResult(
+            approved=True,
+            verdict=APPROVAL_GRANTED,
+            feedback=({"text": "question: Should this include mobile?"},),
+        )
+    )
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gate=gate,
+        gh_client=gh,
+        reporter=FakeReporter(),
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    envelope = lifecycle.request_approval(plan)
+    verdict = lifecycle.await_approval(envelope)
+
+    assert verdict.approved is False
+    assert verdict.verdict == EXEC_NEEDS_SCOPE
+    result = lifecycle.execute(plan)
+    assert result.reason == EXEC_NEEDS_SCOPE
+    assert gh.issued == []
 
 
 # ---------- scenario 5: partial execute failure ----------

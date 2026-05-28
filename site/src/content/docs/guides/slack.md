@@ -98,13 +98,15 @@ bot token resolved above, posts the plan, and polls reactions on that one
 message until the configured operator reacts with `:white_check_mark:` (or
 `:x:` to reject).
 
-The plan thread is also the amendment surface. The configured operator can
-reply in plain English before reacting. Alfred acknowledges newly captured
-plan replies in-thread, then carries those replies as operator amendments when
+The plan thread is also the amendment surface. The configured operator, plus
+any trusted feedback users, can reply in plain English before the operator
+reacts. Alfred acknowledges newly captured plan replies in-thread with the
+execution scope if approved now, then carries those replies as amendments when
 the plan is approved. Repo add/remove replies update execution scope before
 child issues or worktrees are created. Use the thread for changes such as
 "remove mobile", "make this read-only", "add an empty state", or "split this
-into two PRs".
+into two PRs". A `question:` reply keeps execution paused until the plan is
+resolved.
 
 Structured replies work too:
 
@@ -119,6 +121,7 @@ question: should this wait for a clearer spec?
 ```sh
 # the only Slack user whose reactions count
 export ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
+export ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
 
 # enable the AWS Secrets Manager resolver if you store the bot token there
 export ALFRED_SECRETS_BACKEND=aws

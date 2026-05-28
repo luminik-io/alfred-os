@@ -194,8 +194,11 @@ feedback is enough: "remove mobile", "make this read-only", "add an empty
 state", or "split this into two PRs".
 
 When the bot has thread-history access, Alfred acknowledges newly captured
-plan replies in-thread so the operator can keep refining before approval.
-The final approval reaction is still the execution gate.
+plan replies in-thread with the execution scope if approved now, so the
+operator can keep refining before approval. Trusted feedback users can amend
+plans without approval authority. The final approval reaction is still the
+execution gate, and explicit `question:` replies keep the plan from executing
+until the question is resolved.
 
 Poorly scoped parent issues should not go straight to implementation. If the
 issue does not name repos, acceptance criteria, and done-when checks, keep it

@@ -522,8 +522,10 @@ from typing import Protocol  # noqa: E402
 import labels as label_constants  # noqa: E402
 from planning_assistant import (  # noqa: E402
     apply_repository_scope_feedback,
+    plan_feedback_requires_resolution,
     render_operator_amendments,
     render_operator_feedback_ack,
+    render_plan_revision_ack,
 )
 
 logger = logging.getLogger("alfred.batman.lifecycle")
@@ -1527,9 +1529,20 @@ class SlackReporter:
         channel: str,
         message_ts: str,
         feedback: Iterable[str],
+        plan: BundlePlan | None = None,
+        all_feedback: Iterable[str] = (),
+        revised_repos: Iterable[str] = (),
     ) -> bool:
         """Acknowledge operator planning feedback in the original plan thread."""
-        text = render_operator_feedback_ack(feedback)
+        if plan is not None:
+            effective_repos = tuple(revised_repos) or plan.affected_repos
+            text = render_plan_revision_ack(
+                all_feedback or feedback,
+                revised_repos=effective_repos,
+                child_count=len(plan.children),
+            )
+        else:
+            text = render_operator_feedback_ack(feedback)
         if not text:
             return False
         try:
@@ -1653,16 +1666,35 @@ class BatmanLifecycle:
             )
         timeout = timeout_s if timeout_s is not None else self.config.approval_timeout_s
         feedback_callback: Callable[[tuple[object, ...]], None] | None = None
+        accumulated_feedback: list[str] = []
         post_plan_feedback = getattr(self.reporter, "post_plan_feedback", None)
         if callable(post_plan_feedback):
 
             def feedback_callback(raw_feedback: tuple[object, ...]) -> None:
                 feedback = _feedback_texts(raw_feedback)
                 if feedback:
+                    accumulated_feedback.extend(feedback)
+                    default_org = (
+                        envelope.plan.parent_repo.split("/", 1)[0]
+                        if "/" in envelope.plan.parent_repo
+                        else None
+                    )
+                    revised_repos = apply_repository_scope_feedback(
+                        envelope.plan.affected_repos,
+                        accumulated_feedback,
+                        default_org=default_org,
+                    )
+                    revised_plan = _apply_operator_feedback_to_plan(
+                        envelope.plan,
+                        accumulated_feedback,
+                    )
                     post_plan_feedback(
                         channel=envelope.channel,
                         message_ts=envelope.message_ts,
                         feedback=feedback,
+                        plan=revised_plan,
+                        all_feedback=tuple(accumulated_feedback),
+                        revised_repos=revised_repos,
                     )
 
         raw = self.gate.await_approval(
@@ -1683,19 +1715,29 @@ class BatmanLifecycle:
         )
 
         if verdict_raw == APPROVAL_GRANTED:
-            verdict = EXEC_OK
+            if plan_feedback_requires_resolution(feedback):
+                approved = False
+                verdict = EXEC_NEEDS_SCOPE
+                detail = "Slack feedback contains open questions; resolve them before approval."
+            else:
+                verdict = EXEC_OK
+                detail = str(getattr(raw, "detail", ""))
         elif verdict_raw == APPROVAL_REJECTED:
             verdict = EXEC_REJECTED
+            detail = str(getattr(raw, "detail", ""))
         elif verdict_raw == APPROVAL_TIMEOUT:
             verdict = EXEC_APPROVAL_TIMEOUT
+            detail = str(getattr(raw, "detail", ""))
         elif verdict_raw == APPROVAL_TRANSPORT_DOWN:
             verdict = EXEC_TRANSPORT
+            detail = str(getattr(raw, "detail", ""))
         else:
             verdict = str(verdict_raw)
+            detail = str(getattr(raw, "detail", ""))
         return ApprovalResult(
             approved=approved,
             verdict=verdict,
-            detail=str(getattr(raw, "detail", "")),
+            detail=detail,
             elapsed_s=float(getattr(raw, "elapsed_s", 0.0)),
             feedback=feedback,
         )
@@ -1710,6 +1752,12 @@ class BatmanLifecycle:
         :meth:`report` so the operator can pick up the failed repos
         manually.
         """
+        if plan_feedback_requires_resolution(self.operator_feedback):
+            return ExecuteResult(
+                executed=False,
+                reason=EXEC_NEEDS_SCOPE,
+                detail="Slack feedback contains open questions.",
+            )
         plan = _apply_operator_feedback_to_plan(plan, self.operator_feedback)
         if not plan.children:
             return ExecuteResult(executed=False, reason=EXEC_NO_CHILDREN)

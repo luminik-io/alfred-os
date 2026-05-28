@@ -24,9 +24,9 @@ Reactions beat reply-text on two axes that matter for autonomous fleets:
 
 If you need richer feedback than approve/reject, use the plan thread as
 the planning surface. Alfred now does this for Batman plans: the reaction
-remains the hard gate, while operator replies in the thread are
-acknowledged live and then carried into child issues on approval. Batman
-understands common planning commands in those replies:
+remains the hard gate, while trusted thread replies are acknowledged live
+with a revised execution preview and then carried into child issues on
+approval. Batman understands common planning commands in those replies:
 
 ```text
 acceptance: reviewer can verify the issue link in the PR body
@@ -37,10 +37,12 @@ question: should this wait for a clearer spec?
 ```
 
 Plain-language replies are still captured as operator notes. Alfred posts
-a concise "captured your plan update" reply in-thread. On approval,
-repo add/remove replies amend execution scope before children are filed;
-the interpreted notes are also carried into child issues and repo-worker
-prompts.
+a concise plan-revision reply in-thread. On approval, repo add/remove
+replies amend execution scope before children are filed; the interpreted
+notes are also carried into child issues and repo-worker prompts. Replies
+from trusted teammates can amend the plan, but only the configured
+operator's reaction can approve or reject it. Any explicit `question:`
+reply keeps the plan from executing until it is resolved.
 
 ## 1. Create the Slack app
 
@@ -146,6 +148,13 @@ export ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
 If this variable is unset the gate refuses to start; we never silently
 accept any reactor.
 
+Optional trusted feedback users can discuss and amend the plan in the same
+thread without getting approval authority:
+
+```sh
+export ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
+```
+
 ## 4. Install `slack-sdk`
 
 The default Slack client wraps `slack_sdk.WebClient`. It is an optional
@@ -201,6 +210,7 @@ else:
 | Variable | Purpose | Default |
 |---|---|---|
 | `ALFRED_OPERATOR_SLACK_USER_ID` | Slack user id whose reactions are the only ones that count | (required) |
+| `ALFRED_TRUSTED_SLACK_USER_IDS` | Comma-separated Slack user ids whose thread replies can amend plans | operator only |
 | `SLACK_BOT_TOKEN` | Bot token; used directly when set | unset |
 | `ALFRED_SECRETS_BACKEND` | Set to `aws` to enable the AWS Secrets Manager resolver | unset (disabled) |
 | `ALFRED_SLACK_BOT_TOKEN_SECRET_ID` | Secret id used by the AWS resolver | `alfred/slack-bot-token` |

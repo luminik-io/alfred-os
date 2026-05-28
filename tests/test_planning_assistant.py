@@ -11,10 +11,12 @@ if str(LIB) not in sys.path:
 from planning_assistant import (  # noqa: E402
     apply_repository_scope_feedback,
     build_refiner_prompt,
+    plan_feedback_requires_resolution,
     refine_issue_draft,
     render_development_spec,
     render_operator_amendments,
     render_operator_feedback_ack,
+    render_plan_revision_ack,
 )
 from spec_helper import IssueDraft  # noqa: E402
 
@@ -164,6 +166,21 @@ def test_render_operator_feedback_ack_is_concise_for_slack() -> None:
     assert "Add acceptance criterion" in block
     assert "Should we keep this limited to Batman?" in block
     assert "Reply with more changes" in block
+
+
+def test_render_plan_revision_ack_shows_scope_and_blocks_questions() -> None:
+    block = render_plan_revision_ack(
+        ["remove repo: web\nadd repo: mobile\nquestion: Should we include the onboarding state?"],
+        revised_repos=["example-org/api", "example-org/mobile"],
+        child_count=2,
+    )
+
+    assert "[ALFRED-PLAN-REVISION]" in block
+    assert "Execution scope if approved now" in block
+    assert "example-org/mobile" in block
+    assert "Open questions still need a decision" in block
+    assert "will not execute" in block
+    assert plan_feedback_requires_resolution(["question: Should we include the onboarding state?"])
 
 
 def test_development_spec_and_refiner_prompt_are_useful() -> None:

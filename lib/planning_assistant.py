@@ -252,6 +252,60 @@ def render_operator_feedback_ack(feedback: Iterable[str]) -> str:
     return "\n".join(lines)
 
 
+def render_plan_revision_ack(
+    feedback: Iterable[str],
+    *,
+    revised_repos: Iterable[str] = (),
+    child_count: int | None = None,
+) -> str:
+    """Render a Slack acknowledgement with the plan state if approved now."""
+
+    clean = tuple(_normalize_message(item) for item in feedback if _clean_text(item))
+    if not clean:
+        return ""
+    amendments = _summarize_amendments(clean)
+    questions = _explicit_questions_from_messages(clean)
+    repos = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
+    lines = [
+        "[ALFRED-PLAN-REVISION] captured your plan update.",
+        "",
+        "*Applied to the current draft:*",
+    ]
+    lines.extend(f"- {item}" for item in amendments[:8])
+    if len(amendments) > 8:
+        lines.append(f"- ...and {len(amendments) - 8} more amendment(s).")
+    if repos:
+        scope_label = "repo" if len(repos) == 1 else "repos"
+        child_label = ""
+        if child_count is not None:
+            child_label = f", {child_count} child issue(s)"
+        lines.extend(
+            ["", f"*Execution scope if approved now ({len(repos)} {scope_label}{child_label}):*"]
+        )
+        lines.extend(f"- `{repo}`" for repo in repos[:10])
+        if len(repos) > 10:
+            lines.append(f"- ...and {len(repos) - 10} more repo(s).")
+    if questions:
+        lines.extend(["", "*Open questions still need a decision:*"])
+        lines.extend(f"- {question}" for question in questions[:6])
+        lines.append("")
+        lines.append("Alfred will not execute this plan while these questions remain open.")
+    lines.extend(
+        [
+            "",
+            "Reply with more changes, or approve with :white_check_mark: when the plan is ready.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def plan_feedback_requires_resolution(feedback: Iterable[str]) -> bool:
+    """Return True when Slack feedback contains explicit open questions."""
+
+    clean = tuple(_normalize_message(item) for item in feedback if _clean_text(item))
+    return bool(_explicit_questions_from_messages(clean))
+
+
 def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
     """Prompt text for an optional local engine backed refiner."""
 

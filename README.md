@@ -36,6 +36,9 @@ state machine that keeps multiple agents from stepping on each other.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
   summaries. No bespoke dashboard, no proprietary control plane.
+- Treat Slack as the planning surface: teammates can reply in a Batman plan
+  thread with scope changes, questions, and acceptance criteria while the
+  operator keeps approval authority.
 - Route engines by role. Run implementation on Claude Code and review on
   Codex, or keep Claude as primary with Codex fallback for selected agents.
 - Bring your own subscription. Alfred shells out to your local `claude` and
@@ -291,7 +294,11 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 **Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, and a mobile-friendly local cockpit with saved Batman plans. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
-Additional unreleased work adds explicit Redis AMS memory sync and Planning intake in the local cockpit.
+Additional unreleased work adds explicit Redis AMS memory sync, trusted Slack
+plan collaborators, revision previews in approval threads, and Planning intake
+in the local cockpit. A future native Mac/Windows client should be a thin local
+control plane for setup, health, logs, credentials, pause/resume, and recovery.
+Slack remains the primary collaboration UI.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 

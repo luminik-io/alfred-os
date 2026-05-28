@@ -30,6 +30,7 @@ from slack_approval import (  # noqa: E402
     file_cache_token_resolver,
     operator_user_id_from_env,
     resolve_bot_token,
+    trusted_feedback_user_ids_from_env,
 )
 
 OPERATOR = "U0123ABCDEF"
@@ -151,6 +152,44 @@ def test_operator_thread_replies_return_as_feedback() -> None:
         "Please keep copy simple and add the mobile case."
     ]
     assert client.reply_calls == [{"channel": CHANNEL, "ts": TS, "limit": 100}]
+
+
+def test_trusted_teammate_thread_reply_can_amend_without_approving() -> None:
+    client = FakeSlackClient(
+        [_ok([{"name": "white_check_mark", "users": [OPERATOR], "count": 1}])],
+        replies=[
+            {"ts": TS, "user": OPERATOR, "text": "root message ignored"},
+            {
+                "ts": "1716480001.000001",
+                "user": TEAMMATE,
+                "text": "acceptance: include a friendly empty state",
+            },
+            {
+                "ts": "1716480002.000002",
+                "user": "USTRANGER",
+                "text": "remove repo: everything",
+            },
+        ],
+    )
+    clock = _Clock()
+
+    result = SlackApproval(
+        client,
+        OPERATOR,
+        feedback_user_ids=(OPERATOR, TEAMMATE),
+    ).await_approval(
+        CHANNEL,
+        TS,
+        timeout_s=60,
+        poll_interval_s=10,
+        _now=clock.now,
+        _sleep=clock.sleep,
+    )
+
+    assert result.verdict == APPROVAL_GRANTED
+    assert [(item.author, item.text) for item in result.feedback] == [
+        (TEAMMATE, "acceptance: include a friendly empty state")
+    ]
 
 
 def test_operator_thread_replies_trigger_feedback_callback_once() -> None:
@@ -368,6 +407,14 @@ def test_response_with_data_attribute_is_handled() -> None:
 def test_env_resolver_returns_value_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-1234")
     assert env_token_resolver() == "xoxb-test-1234"
+
+
+def test_trusted_feedback_users_env_includes_operator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", f"{TEAMMATE}, UOTHER")
+
+    assert trusted_feedback_user_ids_from_env(OPERATOR) == (OPERATOR, TEAMMATE, "UOTHER")
 
 
 def test_env_resolver_returns_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
