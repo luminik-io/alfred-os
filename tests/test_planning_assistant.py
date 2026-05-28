@@ -78,6 +78,20 @@ def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:
     assert "Capture operator note: Use friendlier language for non-engineers." in result.amendments
 
 
+def test_refine_issue_draft_handles_plural_repo_commands() -> None:
+    result = refine_issue_draft(
+        _draft(),
+        ["add repos: example-org/api, example-org/mobile\nremove repos: example-org/web"],
+    )
+
+    assert result.draft.repos == [
+        "luminik-io/alfred-os",
+        "example-org/api",
+        "example-org/mobile",
+    ]
+    assert "s: example-org" not in " ".join(result.draft.repos)
+
+
 def test_refine_issue_draft_accepts_injected_refiner_patch() -> None:
     def fake_refiner(draft: IssueDraft, messages: tuple[str, ...]) -> dict:
         assert messages == ("Make the title friendlier.",)

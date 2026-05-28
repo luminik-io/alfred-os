@@ -354,16 +354,16 @@ def _parse_line(line: str) -> tuple[str, str] | None:
     cleaned = _clean_text(line).strip("-* ").strip()
     if not cleaned:
         return None
-    remove_value = _prefixed_command_value(cleaned, "remove repo")
-    if remove_value:
-        return ("remove_repo", remove_value)
     remove_value = _prefixed_command_value(cleaned, "remove repos")
     if remove_value:
         return ("remove_repo", remove_value)
-    add_value = _prefixed_command_value(cleaned, "add repo")
+    remove_value = _prefixed_command_value(cleaned, "remove repo")
+    if remove_value:
+        return ("remove_repo", remove_value)
+    add_value = _prefixed_command_value(cleaned, "add repos")
     if add_value:
         return ("repos", add_value)
-    add_value = _prefixed_command_value(cleaned, "add repos")
+    add_value = _prefixed_command_value(cleaned, "add repo")
     if add_value:
         return ("repos", add_value)
     if ":" not in cleaned:
