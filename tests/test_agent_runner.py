@@ -1032,6 +1032,15 @@ def test_force_release_stale_claim_preserves_original_claim_identity(monkeypatch
     comments = []
     monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
     monkeypatch.setattr(ar, "gh_issue_comment", lambda *a: comments.append(a) or True)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "comments": [],
+            "labels": [{"name": "agent:in-flight"}],
+            "state": "OPEN",
+        },
+    )
     monkeypatch.setattr(ar, "now_iso", lambda: "2026-05-09T10:00:00Z")
 
     assert ar.force_release_stale_claim(
@@ -1063,6 +1072,15 @@ def test_force_release_stale_claim_reports_comment_failure(monkeypatch):
 
     monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: True)
     monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: False)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "comments": [],
+            "labels": [{"name": "agent:in-flight"}],
+            "state": "OPEN",
+        },
+    )
 
     assert not ar.force_release_stale_claim(
         "myrepo",
@@ -1073,9 +1091,48 @@ def test_force_release_stale_claim_reports_comment_failure(monkeypatch):
     )
 
 
+def test_force_release_stale_claim_keeps_fresh_in_flight(monkeypatch):
+    import agent_runner as ar
+
+    edits = []
+    comments = []
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a: comments.append(a) or True)
+    monkeypatch.setenv("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "comments": [
+                {
+                    "createdAt": "2026-05-09T13:34:44Z",
+                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                },
+                {
+                    "createdAt": "2099-01-01T00:00:00Z",
+                    "body": "<!-- agent-claim:codename=batman firing_id=new-fid ts=2099-01-01T00:00:00Z -->",
+                },
+            ],
+            "labels": [{"name": "agent:in-flight"}],
+            "state": "OPEN",
+        },
+    )
+
+    assert ar.force_release_stale_claim(
+        "myrepo",
+        42,
+        sweep_id="sweep-1",
+        released_codename="lucius",
+        released_firing_id="old-fid",
+    )
+    assert edits == []
+    assert comments and "codename=lucius" in comments[0][2]
+
+
 def test_stale_unreleased_claim_comment_does_not_block_forever(monkeypatch):
     import agent_runner as ar
 
+    monkeypatch.setenv("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
     comments_data = [
         {
             "createdAt": "2026-05-09T13:34:44Z",
@@ -1098,6 +1155,7 @@ def test_stale_unreleased_claim_comment_does_not_block_forever(monkeypatch):
 def test_fresh_unreleased_claim_still_wins_race(monkeypatch):
     import agent_runner as ar
 
+    monkeypatch.setenv("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
     comments_data = [
         {
             "createdAt": "2099-01-01T00:00:00Z",

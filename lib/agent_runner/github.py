@@ -892,6 +892,30 @@ def _parse_github_ts(value: str | None) -> float | None:
         return None
 
 
+def _has_fresh_unreleased_claim(
+    comments: list[dict],
+    *,
+    released_key: tuple[str, str],
+    max_age_hours: int | None = None,
+) -> bool:
+    """Return True when another active claim should keep issue ownership.
+
+    Stale sweeps may release more than one historical claim on the same issue.
+    If a new agent claims the issue between sweep discovery and release, cleanup
+    must not remove that fresh agent's ``agent:in-flight`` label.
+    """
+    window_hours = max_age_hours or _claim_window_hours()
+    cutoff = datetime.now(UTC).timestamp() - window_hours * 3600
+    for claim in _unreleased_claims(comments):
+        key = claim.get("_key")
+        if key == released_key:
+            continue
+        ts = _parse_github_ts(claim.get("createdAt"))
+        if ts is None or ts >= cutoff:
+            return True
+    return False
+
+
 def _unreleased_claims(comments: list[dict]) -> list[dict]:
     """Return claim comments that do not have a paired release comment."""
     claims: list[dict] = []
@@ -1194,19 +1218,28 @@ def force_release_stale_claim(
             f"remove agent:in-flight, add agent:implement",
         )
         return True
-    edited = gh_issue_edit(
-        repo_slug,
-        num,
-        add_labels=["agent:implement"],
-        remove_labels=["agent:in-flight"],
-    )
     codename = released_codename or "cleanup"
     firing_id = released_firing_id or sweep_id
+    state = _issue_state(repo_slug, num)
+    keep_in_flight = _has_fresh_unreleased_claim(
+        state.get("comments", []),
+        released_key=(codename, firing_id),
+    )
     commented = gh_issue_comment(
         repo_slug,
         num,
         f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
         f"outcome=stale-swept swept_by={sweep_id} ts={now_iso()} -->",
+    )
+    if not commented:
+        return False
+    if keep_in_flight:
+        return True
+    edited = gh_issue_edit(
+        repo_slug,
+        num,
+        add_labels=["agent:implement"],
+        remove_labels=["agent:in-flight"],
     )
     return edited and commented
 
