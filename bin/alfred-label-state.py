@@ -229,6 +229,7 @@ def cmd_sweep_claims(args: argparse.Namespace) -> int:
                         sweep_id=sweep_id,
                         released_codename=entry.get("codename"),
                         released_firing_id=entry.get("firing_id"),
+                        label_drift=bool(entry.get("label_drift")),
                     )
                     if not released:
                         raise RuntimeError("GitHub label/comment update returned false")

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -872,6 +873,67 @@ def _parse_claim_comment(body: str) -> dict:
     return out
 
 
+def _claim_window_hours() -> int:
+    """How long an unreleased claim comment should block a fresh claim."""
+    raw = os.environ.get("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 4
+    return max(value, 1)
+
+
+def _parse_github_ts(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _has_fresh_unreleased_claim(
+    comments: list[dict],
+    *,
+    released_key: tuple[str, str],
+    max_age_hours: int | None = None,
+) -> bool:
+    """Return True when another active claim should keep issue ownership.
+
+    Stale sweeps may release more than one historical claim on the same issue.
+    If a new agent claims the issue between sweep discovery and release, cleanup
+    must not remove that fresh agent's ``agent:in-flight`` label.
+    """
+    window_hours = max_age_hours or _claim_window_hours()
+    cutoff = datetime.now(UTC).timestamp() - window_hours * 3600
+    for claim in _unreleased_claims(comments):
+        key = claim.get("_key")
+        if key == released_key:
+            continue
+        ts = _parse_github_ts(claim.get("createdAt"))
+        if ts is not None and ts >= cutoff:
+            return True
+    return False
+
+
+def _unreleased_claims(comments: list[dict]) -> list[dict]:
+    """Return claim comments that do not have a paired release comment."""
+    claims: list[dict] = []
+    releases: set[tuple] = set()
+    for c in comments:
+        body = (c.get("body") or "").strip()
+        if body.startswith(CLAIM_COMMENT_PREFIX):
+            meta = _parse_claim_comment(body)
+            key = (meta.get("codename"), meta.get("firing_id"))
+            meta["createdAt"] = c.get("createdAt") or ""
+            meta["_key"] = key
+            claims.append(meta)
+        elif body.startswith(RELEASE_COMMENT_PREFIX):
+            meta = _parse_claim_comment(body)
+            releases.add((meta.get("codename"), meta.get("firing_id")))
+    return [claim for claim in claims if claim.get("_key") not in releases]
+
+
 def _issue_state(repo_slug: str, num: int) -> dict:
     """One-shot fetch of labels + comments + state for claim/release/sweep."""
     return gh_json(
@@ -1025,75 +1087,83 @@ def _detect_contested_claim(
     """Return ``"codename:firing_id"`` of the contesting claimant on race-loss, else ``None``."""
     state = _issue_state(repo_slug, num)
     comments = state.get("comments", [])
-    claims: dict[tuple, str] = {}
-    releases: set[tuple] = set()
-    for c in comments[-50:]:
-        body = (c.get("body") or "").strip()
-        created = c.get("createdAt") or ""
-        if body.startswith(CLAIM_COMMENT_PREFIX):
-            meta = _parse_claim_comment(body)
-            key = (meta.get("codename"), meta.get("firing_id"))
-            if key not in claims:
-                claims[key] = created
-        elif body.startswith(RELEASE_COMMENT_PREFIX):
-            meta = _parse_claim_comment(body)
-            releases.add((meta.get("codename"), meta.get("firing_id")))
+    unreleased = _unreleased_claims(comments[-50:])
     own_key = (codename, firing_id)
-    own_ts = claims.get(own_key, "")
+    own_claim = next((claim for claim in unreleased if claim.get("_key") == own_key), None)
+    own_ts = own_claim.get("createdAt", "") if own_claim else ""
     if not own_ts:
         return None
-    for key, ts in claims.items():
-        if key == own_key or key in releases:
+    stale_cutoff = datetime.now(UTC).timestamp() - _claim_window_hours() * 3600
+    for claim in unreleased:
+        key = claim.get("_key")
+        ts = claim.get("createdAt", "")
+        if not isinstance(key, tuple) or len(key) < 2:
+            continue
+        if key == own_key:
             continue
         if ts and ts < own_ts:
+            claim_ts = _parse_github_ts(ts)
+            if claim_ts is not None and claim_ts < stale_cutoff:
+                continue
             return f"{key[0]}:{key[1]}"
     return None
 
 
+def _issues_for_stale_claim_scan(repo_slug: str) -> list[dict]:
+    """Open issues whose labels can carry or hide claim-comment drift."""
+    by_number: dict[int, dict] = {}
+    for label in ("agent:in-flight", "agent:implement"):
+        rows = gh_json(
+            [
+                "gh",
+                "issue",
+                "list",
+                "-R",
+                _full_repo(repo_slug),
+                "--label",
+                label,
+                "--state",
+                "open",
+                "--json",
+                "number,title,labels",
+                "--limit",
+                "100",
+            ],
+            default=[],
+        )
+        if not isinstance(rows, list):
+            continue
+        for issue in rows:
+            try:
+                by_number[int(issue["number"])] = issue
+            except (KeyError, TypeError, ValueError):
+                continue
+    return list(by_number.values())
+
+
 def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
-    """List in-flight issues whose latest unreleased claim is older than ``max_age_hours``.
+    """List issues with stale unreleased claim comments.
 
     Returns dicts with ``number`` / ``title`` / ``codename`` /
     ``firing_id`` / ``age_hours``. The caller decides whether to
     force-release.
+
+    The primary queue state is the ``agent:in-flight`` label, but past
+    crashes and manual label edits can leave an unreleased claim comment
+    behind after the label drifted back to ``agent:implement``. Scan both
+    labels so cleanup can pair-release the old comment trail instead of
+    letting future claims yield forever.
     """
-    issues = gh_json(
-        [
-            "gh",
-            "issue",
-            "list",
-            "-R",
-            _full_repo(repo_slug),
-            "--label",
-            "agent:in-flight",
-            "--state",
-            "open",
-            "--json",
-            "number,title",
-            "--limit",
-            "100",
-        ],
-        default=[],
-    )
+    issues = _issues_for_stale_claim_scan(repo_slug)
     cutoff = datetime.now(UTC).timestamp() - max_age_hours * 3600
     stale: list[dict] = []
     for issue in issues:
         num = issue["number"]
         state = _issue_state(repo_slug, num)
+        labels = {label["name"] for label in state.get("labels", [])}
         comments = state.get("comments", [])
-        latest_claim_ts: str | None = None
-        latest_claim_meta: dict | None = None
-        releases: set[tuple] = set()
-        for c in comments:
-            body = (c.get("body") or "").strip()
-            if body.startswith(CLAIM_COMMENT_PREFIX):
-                meta = _parse_claim_comment(body)
-                latest_claim_ts = c.get("createdAt") or latest_claim_ts
-                latest_claim_meta = meta
-            elif body.startswith(RELEASE_COMMENT_PREFIX):
-                meta = _parse_claim_comment(body)
-                releases.add((meta.get("codename"), meta.get("firing_id")))
-        if not latest_claim_meta or not latest_claim_ts:
+        unreleased = _unreleased_claims(comments)
+        if "agent:in-flight" in labels and not unreleased:
             stale.append(
                 {
                     "repo": repo_slug,
@@ -1102,34 +1172,16 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
                     "codename": "?",
                     "firing_id": "?",
                     "age_hours": float("inf"),
+                    "label_drift": False,
+                    "missing_claim": True,
                 }
             )
             continue
-        key = (
-            latest_claim_meta.get("codename"),
-            latest_claim_meta.get("firing_id"),
-        )
-        if key in releases:
-            stale.append(
-                {
-                    "repo": repo_slug,
-                    "number": num,
-                    "title": issue.get("title", ""),
-                    "codename": key[0] or "?",
-                    "firing_id": key[1] or "?",
-                    "age_hours": 0.0,
-                    "label_drift": True,
-                }
-            )
-            continue
-        try:
-            ts = datetime.strptime(
-                latest_claim_ts.replace("Z", "+0000"),
-                "%Y-%m-%dT%H:%M:%S%z",
-            ).timestamp()
-        except (ValueError, AttributeError):
-            continue
-        if ts < cutoff:
+        for claim in unreleased:
+            key = claim.get("_key") or (claim.get("codename"), claim.get("firing_id"))
+            ts = _parse_github_ts(claim.get("createdAt"))
+            if ts is None or ts >= cutoff:
+                continue
             stale.append(
                 {
                     "repo": repo_slug,
@@ -1138,6 +1190,7 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
                     "codename": key[0] or "?",
                     "firing_id": key[1] or "?",
                     "age_hours": (datetime.now(UTC).timestamp() - ts) / 3600,
+                    "label_drift": "agent:in-flight" not in labels,
                 }
             )
     return stale
@@ -1150,6 +1203,7 @@ def force_release_stale_claim(
     sweep_id: str,
     released_codename: str | None = None,
     released_firing_id: str | None = None,
+    label_drift: bool = False,
 ) -> bool:
     """Forcibly release a stale claim and restore ``agent:implement``.
 
@@ -1168,19 +1222,38 @@ def force_release_stale_claim(
             f"remove agent:in-flight, add agent:implement",
         )
         return True
+    codename = released_codename or "cleanup"
+    firing_id = released_firing_id or sweep_id
+    has_claim_identity = bool(codename) and bool(firing_id) and codename != "?" and firing_id != "?"
+    commented = True
+    if has_claim_identity:
+        commented = gh_issue_comment(
+            repo_slug,
+            num,
+            f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
+            f"outcome=stale-swept swept_by={sweep_id} ts={now_iso()} -->",
+        )
+        if not commented:
+            return False
+    state = _issue_state(repo_slug, num)
+    labels = {label["name"] for label in state.get("labels", [])}
+    if label_drift:
+        if "agent:in-flight" in labels:
+            return True
+        if "agent:implement" in labels:
+            return True
+        return gh_issue_edit(repo_slug, num, add_labels=["agent:implement"], remove_labels=[])
+    keep_in_flight = _has_fresh_unreleased_claim(
+        state.get("comments", []),
+        released_key=(codename, firing_id) if has_claim_identity else ("", ""),
+    )
+    if keep_in_flight:
+        return True
     edited = gh_issue_edit(
         repo_slug,
         num,
         add_labels=["agent:implement"],
         remove_labels=["agent:in-flight"],
-    )
-    codename = released_codename or "cleanup"
-    firing_id = released_firing_id or sweep_id
-    commented = gh_issue_comment(
-        repo_slug,
-        num,
-        f"{RELEASE_COMMENT_PREFIX}codename={codename} firing_id={firing_id} "
-        f"outcome=stale-swept swept_by={sweep_id} ts={now_iso()} -->",
     )
     return edited and commented
 
