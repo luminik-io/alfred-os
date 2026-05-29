@@ -12,7 +12,7 @@ If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in yo
 - An **incoming webhook URL** scoped to one channel (e.g. `#fleet`, `#dev-bots`, `#engineering-agents`).
 - *(Optional)* a **bot token** (`xoxb-...`) for Block Kit firing threads and
   other Web API calls webhooks cannot do.
-- *(Optional)* an **app-level token** (`xapp-1-…`) for Socket Mode if you want to receive interactive messages back.
+- *(Optional)* an **app-level token** (`xapp-1-…`) for Socket Mode if you want Alfred to receive planning messages and thread replies.
 
 The webhook URL is enough for plain `slack_post()` messages. The bot token is
 used today by `firing_thread_root`, `firing_thread_reply`, and
@@ -162,15 +162,69 @@ SLACK_BOT_TOKEN_SECRET_REGION=us-east-1
 `SLACK_HOME_CHANNEL` can be a channel name or ID. If posting by name fails in
 your workspace, use the channel ID (`C...`) from Slack's channel details.
 
-## Optional: app-level token (`xapp-1-`)
+## Optional: Slack planning listener
 
-Required only if you want to receive Slack events (slash commands, interactive button clicks) via Socket Mode, a backchannel that doesn't need a public webhook.
+Required only if you want Alfred to receive Slack events via Socket Mode. The
+planning listener lets trusted users DM or mention Alfred with rough work, and
+lets Alfred capture replies in registered plan/report threads. Chat edits
+drafts and follow-up context only; implementation still needs the normal
+approval gate.
 
 1. Same Slack app → **Settings → Basic Information**.
 2. Scroll to **App-Level Tokens** → **Generate Token and Scopes**.
 3. Name it (e.g. `socket-mode`), add scope `connections:write`.
 4. Copy the token (starts with `xapp-1-`).
 5. Store at `alfred/slack-app-token` in AWS the same way as above.
+
+Then enable Socket Mode and events:
+
+1. **Settings → Socket Mode** → toggle **Enable Socket Mode** on.
+2. **Features → Event Subscriptions** → toggle **Enable Events** on.
+3. Under **Subscribe to bot events**, add:
+   - `app_mention`
+   - `message.im`
+   - `message.channels` if you want public-channel thread replies
+   - `message.groups` if you want private-channel thread replies
+4. Under **OAuth & Permissions**, add the matching read scopes:
+   - `app_mentions:read`
+   - `im:history`
+   - `channels:history` for public-channel replies
+   - `groups:history` for private-channel replies
+5. Reinstall the app after changing scopes.
+
+Runtime env:
+
+```sh
+SLACK_APP_TOKEN=xapp-1-...
+SLACK_BOT_TOKEN=xoxb-...
+ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
+ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
+ALFRED_SLACK_BOT_USER_ID=U0BOTUSERID
+```
+
+Run it:
+
+```sh
+alfred slack-listener run
+```
+
+For a local smoke test without posting:
+
+```sh
+alfred slack-listener once payload.json --trusted-user U0123ABCDEF --no-post
+```
+
+Safety model:
+
+- Only `ALFRED_OPERATOR_SLACK_USER_ID` and `ALFRED_TRUSTED_SLACK_USER_IDS`
+  are allowed to create drafts or amend registered threads.
+- If no trusted users are configured, the listener ignores every event.
+- Alfred only treats a thread as actionable after it registered the root
+  message in `$ALFRED_HOME/state/slack-threads/`.
+- Direct Slack intake writes local draft JSON under
+  `$ALFRED_HOME/state/planning-drafts/`; it does not file GitHub issues.
+- Thread feedback is stored under
+  `$ALFRED_HOME/state/slack-threads/feedback/` for the next plan or PR pass.
 
 ## Rotating a webhook
 

@@ -158,6 +158,8 @@ alfred engine set <codename> <claude|codex|hybrid>
 alfred metrics [--since 7d] [--codename <name>] [--by-day] [--json]
 alfred logs <codename> [--last N] [--firing-id ID] [--show-tool-calls] [--json]
 alfred shipped --period weekly
+alfred slack-listener run
+alfred slack-listener once payload.json --trusted-user U0123ABCDEF --no-post
 ```
 
 `alfred agents` reads `launchd/agents.conf` and shows schedule, load column,
@@ -181,6 +183,23 @@ native dry-run support to execute under `ALFRED_DRY_RUN=1`; other codenames use
 a safe simulation that never invokes an engine, scheduler, Slack, GitHub,
 Playwright, AWS, or a worktree mutation.
 `github-poll` pulls issue and PR state through `gh` into the fleet brain.
+
+## `alfred slack-listener`
+
+Runs the optional Slack-native planning listener over Socket Mode. It accepts
+trusted DMs, app mentions, and replies in registered Alfred threads, then saves
+planning drafts and feedback context locally. It does not approve or execute
+work.
+
+```sh
+alfred slack-listener run
+alfred slack-listener once payload.json --trusted-user U0123ABCDEF --no-post
+alfred slack-listener once - --trusted-user U0123ABCDEF --allow-ignored
+```
+
+`run` requires `SLACK_APP_TOKEN` or `ALFRED_SLACK_APP_TOKEN`, plus the bot token
+used by Slack approval. `once` processes one Slack event payload from a file or
+stdin for local smoke tests.
 
 ## `alfred brain`
 

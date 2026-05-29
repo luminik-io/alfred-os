@@ -675,6 +675,40 @@ def test_slack_reporter_captures_trusted_report_followup(tmp_path):
     assert "`question` needs decision" in body
 
 
+def test_slack_reporter_registers_plan_thread(tmp_path, monkeypatch):
+    from batman import SlackReporter, parse_parent_issue
+    from slack_thread_registry import SlackThreadRegistry
+
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "alfred"))
+
+    def fake_root(**_kwargs):
+        return FakeThreadHandle(channel="C0PLAN", ts="1700000000.000300")
+
+    reporter = SlackReporter(
+        firing_id="20260528-120000-test",
+        thread_root=fake_root,
+        report_feedback_timeout_s=0,
+    )
+    plan = parse_parent_issue(
+        body="Repos:\n- your-org/backend\n\nChildren:\n- backend: add a clear setup page\n",
+        title="Bundle: setup-page",
+        parent_repo="your-org/parent",
+        parent_issue_number=77,
+    )
+
+    assert reporter.post_plan(plan, channel="alfred") == ("C0PLAN", "1700000000.000300")
+
+    record = SlackThreadRegistry(tmp_path / "alfred" / "state" / "slack-threads").lookup(
+        "C0PLAN", "1700000000.000300"
+    )
+    assert record is not None
+    assert record.kind == "plan"
+    assert record.parent_repo == "your-org/parent"
+    assert record.parent_issue == 77
+    assert record.plan_path
+    assert Path(record.plan_path).exists()
+
+
 # ---------- bonus: parser robustness ----------
 
 

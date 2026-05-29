@@ -86,9 +86,31 @@ SLACK_HOME_CHANNEL=alfred
 Or store the token in AWS Secrets Manager at `alfred/slack-bot-token` and leave
 `SLACK_BOT_TOKEN` unset. See [Slack setup → Optional: bot token](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-bot-token-xoxb-).
 
-## Optional: app-level token (`xapp-1-`)
+## Optional: Slack planning listener
 
-Required only for Socket Mode (slash commands, button clicks). See [Slack setup → Optional: app-level token](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-app-level-token-xapp-1-).
+Required only for Socket Mode planning intake. Trusted users can DM or mention
+Alfred with rough work, and Alfred saves a local draft plus readiness questions.
+Registered plan/report threads can also capture trusted replies as context for
+the next pass. Chat text never approves execution; the reaction gate remains
+the only approval signal.
+
+```sh
+SLACK_APP_TOKEN=xapp-1-...
+SLACK_BOT_TOKEN=xoxb-...
+ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
+ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
+ALFRED_SLACK_BOT_USER_ID=U0BOTUSERID
+
+alfred slack-listener run
+```
+
+For local smoke tests:
+
+```sh
+alfred slack-listener once payload.json --trusted-user U0123ABCDEF --no-post
+```
+
+See [Slack setup → Optional: Slack planning listener](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md#optional-slack-planning-listener).
 
 ## Optional: plan-mode approval gate
 

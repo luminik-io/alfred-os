@@ -1620,6 +1620,7 @@ class SlackReporter:
         ts = getattr(handle, "ts", None)
         if not ch_id or not ts:
             return None
+        self._register_plan_thread(plan, channel=str(ch_id), ts=str(ts))
         return (ch_id, ts)
 
     def post_plan_feedback(
@@ -1688,12 +1689,81 @@ class SlackReporter:
             body=text,
         )
         if handle is not None:
+            self._register_report_thread(envelope, handle)
             self._capture_report_feedback(handle, envelope)
             return True
         if self._fallback_post is not None:
             self._fallback_post(f"[BATMAN-REPORT] {summary}\n{text}", severity="info")
             return True
         return False
+
+    def _register_plan_thread(self, plan: BundlePlan, *, channel: str, ts: str) -> None:
+        try:
+            from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
+        except Exception:  # pragma: no cover - optional local state helper
+            return
+        plan_path = self._write_plan_copy(plan)
+        try:
+            SlackThreadRegistry().register(
+                SlackThreadRecord(
+                    kind="plan",
+                    channel=channel,
+                    thread_ts=ts,
+                    codename=self._codename,
+                    firing_id=self._firing_id,
+                    title=plan.parent_title,
+                    status="awaiting_approval",
+                    parent_repo=plan.parent_repo,
+                    parent_issue=plan.parent_issue_number,
+                    plan_path=str(plan_path) if plan_path else "",
+                    metadata={
+                        "bundle_slug": plan.bundle_slug,
+                        "affected_repos": list(plan.affected_repos),
+                    },
+                )
+            )
+        except Exception as exc:  # pragma: no cover - local state best effort
+            logger.debug("could not register Slack plan thread: %s", exc)
+
+    def _register_report_thread(self, envelope: ReportEnvelope, handle: object) -> None:
+        try:
+            from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
+        except Exception:  # pragma: no cover - optional local state helper
+            return
+        channel = str(getattr(handle, "channel", "") or "")
+        ts = str(getattr(handle, "ts", "") or "")
+        if not channel or not ts:
+            return
+        try:
+            SlackThreadRegistry().register(
+                SlackThreadRecord(
+                    kind="report",
+                    channel=channel,
+                    thread_ts=ts,
+                    codename=self._codename,
+                    firing_id=f"{self._firing_id}-report",
+                    title=envelope.parent_title,
+                    status=envelope.reason,
+                    metadata={
+                        "bundle_slug": envelope.bundle_slug,
+                        "created": list(envelope.created),
+                        "failed_repos": list(envelope.failed_repos),
+                    },
+                )
+            )
+        except Exception as exc:  # pragma: no cover - local state best effort
+            logger.debug("could not register Slack report thread: %s", exc)
+
+    def _write_plan_copy(self, plan: BundlePlan) -> Path | None:
+        try:
+            root = _alfred_runtime_home() / "batman-plans"
+            root.mkdir(parents=True, exist_ok=True)
+            path = root / f"{_safe_filename(self._firing_id)}-{_safe_filename(plan.bundle_slug)}.md"
+            path.write_text(plan.plan_markdown, encoding="utf-8")
+            return path
+        except OSError as exc:
+            logger.debug("could not write Batman plan copy: %s", exc)
+            return None
 
     def _capture_report_feedback(self, handle: object, envelope: ReportEnvelope) -> None:
         """Best-effort capture of trusted Slack replies after a report post."""

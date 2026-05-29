@@ -25,6 +25,11 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 - `alfred spec`: template, lint, and readiness helpers for specs-driven development. `alfred spec new` writes a repo-scoped Markdown template; `alfred spec lint` checks for acceptance criteria, test plan, non-goals, rollout, repo scope, and open questions; `alfred spec assess` turns a structured issue draft into a readiness verdict and GitHub-ready issue body.
 - `alfred serve` Planning tab: local issue/spec intake for operators and teammates. It scores drafts, asks concrete scope questions, renders a GitHub-ready issue body, recalls advisory planning memory from promoted lessons, embeds prompt-safe hints in saved specs, and queues reviewable spec-to-issue memory candidates without creating GitHub issues.
 - Slack follow-up capture primitives: trusted replies after Batman reports or PR links are classified as `change`, `fix`, `test`, `question`, `scope`, or notes, rendered as Slack acknowledgements, and available as Markdown context for the next plan or PR pass without granting merge approval.
+- Slack planning listener: optional Socket Mode listener for trusted DMs, app
+  mentions, and registered Alfred plan/report threads. It stores local planning
+  drafts under `$ALFRED_HOME/state/planning-drafts/`, records feedback under
+  `$ALFRED_HOME/state/slack-threads/feedback/`, ignores events when no trusted
+  users are configured, and keeps reaction approval as the only execution gate.
 - `docs/NATIVE_CLIENT.md`: Mac/Linux client direction. Slack stays the collaboration surface; a future Tauri shell wraps the local cockpit, setup doctor, memory review, safe actions, and recovery without adding a gateway or shadow database.
 
 ### Changed

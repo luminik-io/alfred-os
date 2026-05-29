@@ -17,6 +17,10 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
 - **`alfred serve` cockpit polish**: Fleet / Firings / Plans / Planning tabs, saved Alfred plan inbox, issue/spec intake, human-readable timestamps, and mobile card layouts for the previously cramped tables.
 - **Batman planning replies**: `add repo:` and `remove repo:` replies in the approval thread now amend execution scope before child issues or worktrees are created.
 - **Slack follow-up capture**: trusted replies after Batman reports or PR links are classified, acknowledged, and carried as context for the next plan or PR pass without granting merge approval.
+- **Slack planning listener**: optional Socket Mode listener for trusted DMs,
+  app mentions, and registered Alfred threads. It saves local planning drafts
+  and feedback context while keeping reaction approval as the only execution
+  gate.
 - **`alfred spec`**: template, lint, and readiness helpers for specs-driven development, including acceptance criteria, rollout checks, and GitHub-ready issue drafts.
 - **Removed**: `lib/claude_proxy/`, `bin/claude-proxy.py`, the four proxy tests, `docs/CLAUDE_PROXY.md`, `docs/MACOS_KEYCHAIN.md`, `bin/alfred-grant-keychain.sh`, and `examples/launchd/luminik.claude-proxy.plist.example`. The proxy daemon shipped in v0.4.0 worked around a macOS Keychain ACL issue that `CLAUDE_CODE_OAUTH_TOKEN` resolves natively. Operators who installed the proxy should `launchctl bootout` it and unset `ALFRED_CLAUDE_PROXY_SOCKET`. No agent-script changes needed.
 

@@ -18,6 +18,7 @@ The client is for trust and operations:
 - which plans are waiting
 - why a run failed
 - which memory candidates are ready to review
+- which Slack-created planning drafts need more scope
 - whether setup, Slack, GitHub, engines, and schedules are healthy
 - which safe action can repair the fleet
 
@@ -52,6 +53,10 @@ The core tabs are:
 | Agents | Pause, resume, dry-run, clear stale locks with proof, inspect schedule. |
 | Memory | Promote or reject candidates with evidence, inspect recalled planning hints. |
 | Setup | Run doctor, repair Slack/GitHub/engine/scheduler/browser setup. |
+
+Plans should show whether work started in the local form, a Slack DM, an app
+mention, or a registered thread. That keeps Slack as the collaboration trail
+while still giving the native client a clean draft inbox.
 
 ## Design direction
 

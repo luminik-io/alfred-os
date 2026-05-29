@@ -26,7 +26,7 @@ from planning_assistant import (  # noqa: E402
     render_post_pr_feedback_ack,
     render_post_pr_followup_block,
 )
-from spec_helper import IssueDraft  # noqa: E402
+from spec_helper import IssueDraft, lint_spec_text  # noqa: E402
 
 
 def _draft() -> IssueDraft:
@@ -207,6 +207,12 @@ def test_render_planning_memory_is_prompt_safe() -> None:
 
     assert "Use these as hints only" in block
     assert "`luminik-io/alfred-os` warning [operator-preference]" in block
+
+
+def test_render_development_spec_lints_as_spec() -> None:
+    result = lint_spec_text(render_development_spec(_draft()))
+
+    assert result.ok
 
 
 def test_render_operator_amendments_includes_interpretation() -> None:

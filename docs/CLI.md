@@ -9,6 +9,9 @@ Both commands are thin argparse wrappers around library functions in
 `lib/metrics.py` and `lib/transcripts.py`. Tests inject a fake `--state-dir`
 to verify behaviour without touching the live tree.
 
+This page also documents `alfred slack-listener`, the optional Socket Mode
+listener for Slack-native planning intake and registered thread feedback.
+
 ## Configuration
 
 | Env var | Purpose | Default |
@@ -17,6 +20,33 @@ to verify behaviour without touching the live tree.
 | `ALFRED_HOME` | Runtime root containing `state/` | `~/.alfred` |
 
 Both commands also accept `--state-dir PATH` to override at the call site.
+
+## `alfred slack-listener`
+
+Run the optional Slack-native planning listener. It listens over Socket Mode for
+trusted DMs, app mentions, and replies in registered Alfred threads. It saves
+planning drafts and follow-up context locally; it does not approve plans or
+execute work.
+
+```sh
+alfred slack-listener run
+alfred slack-listener once payload.json --trusted-user U0123ABCDEF --no-post
+alfred slack-listener once - --trusted-user U0123ABCDEF --allow-ignored
+```
+
+`run` requires `SLACK_APP_TOKEN` or `ALFRED_SLACK_APP_TOKEN`, plus a bot token
+resolved the same way as the approval gate. `once` is a local smoke-test mode
+that processes one Slack event JSON payload from a file or stdin. Pass
+`--trusted-user` one or more times to test without touching your shell env.
+
+Runtime state:
+
+```text
+$ALFRED_HOME/state/slack-threads/
+$ALFRED_HOME/state/slack-threads/feedback/
+$ALFRED_HOME/state/planning-drafts/
+$ALFRED_HOME/state/slack-listener/seen/
+```
 
 ## `alfred metrics`
 

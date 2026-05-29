@@ -31,6 +31,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md): Claude Code and Codex install, account routing, engine routing, and quota behavior.
 - [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md): Codex engine modes, diagnostics, runtime contract, and billing posture.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): incoming webhook and optional bot-token setup.
+- [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md): reaction approval gate, trusted feedback users, and Socket Mode listener boundary.
 - [`AWS_SETUP.md`](AWS_SETUP.md): per-agent IAM and Secrets Manager setup.
 - [`SKILLS.md`](SKILLS.md): recommended Claude Code skills.
 - [`INTEGRATIONS.md`](INTEGRATIONS.md): what Alfred does and does not bundle.

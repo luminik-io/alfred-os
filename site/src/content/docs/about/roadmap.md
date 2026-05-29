@@ -32,6 +32,9 @@ Reliability and first-run trust polish.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.
 - Slack planning assistant: Batman approval threads and the local Planning tab now share `acceptance:`, `test:`, `add repo:`, `remove repo:`, and `question:` commands so operators can adjust plans before implementation. Repo add/remove replies are applied to execution scope before child issues or worktrees are created.
 - Slack follow-up loop: trusted replies after Batman reports or PR links are classified and carried as context for the next plan or PR pass without silently approving, merging, or changing code.
+- Slack planning listener: optional Socket Mode intake for trusted DMs, app
+  mentions, and registered Alfred threads. It writes local drafts and feedback
+  context without making chat text an approval mechanism.
 
 ### v0.4.0: 2026-05-23
 
