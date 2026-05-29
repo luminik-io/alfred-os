@@ -318,11 +318,8 @@ mod tests {
 
     #[test]
     fn post_allowlist_uses_path_without_query() {
-        let err = validate_api_path(
-            "/api/plans/followup?next=/convert-followup",
-            &Method::POST,
-        )
-        .expect_err("query string must not satisfy the POST allowlist");
+        let err = validate_api_path("/api/plans/followup?next=/convert-followup", &Method::POST)
+            .expect_err("query string must not satisfy the POST allowlist");
         assert!(err.contains("desktop contract"));
     }
 
