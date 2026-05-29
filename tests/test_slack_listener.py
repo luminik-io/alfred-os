@@ -142,6 +142,36 @@ def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
     assert "Planning draft saved" in poster.messages[0]["text"]
 
 
+def test_threaded_app_mention_does_not_register_parent_thread(tmp_path: Path) -> None:
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+    )
+    payload = {
+        "event_id": "EvThreadDraft",
+        "event": {
+            "type": "app_mention",
+            "channel": "C1",
+            "user": "U1",
+            "text": (
+                "<@UALFRED> title: Scope this safely\n"
+                "problem: This mention lives inside a human-owned thread.\n"
+                "desired: Alfred saves a draft without making the parent thread actionable."
+            ),
+            "ts": "1716480011.000001",
+            "thread_ts": "1716480000.000000",
+        },
+    }
+
+    result = listener.handle_payload(payload)
+
+    assert result.handled is True
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    assert registry.lookup("C1", "1716480000.000000") is None
+    assert registry.lookup("C1", "1716480011.000001") is not None
+
+
 def test_draft_from_slack_text_extracts_repos_and_title() -> None:
     draft = draft_from_slack_text(
         "title: Add memory review\nrepo: luminik-io/alfred-os\n"
@@ -150,3 +180,16 @@ def test_draft_from_slack_text_extracts_repos_and_title() -> None:
 
     assert draft.title == "Add memory review"
     assert draft.repos == ["luminik-io/alfred-os"]
+
+
+def test_draft_from_slack_text_keeps_repeated_acceptance_lines() -> None:
+    draft = draft_from_slack_text(
+        "title: Add planning guardrails\n"
+        "acceptance: vague requests are held for scope\n"
+        "acceptance: test plans are required before implementation"
+    )
+
+    assert draft.acceptance_criteria == [
+        "vague requests are held for scope",
+        "test plans are required before implementation",
+    ]

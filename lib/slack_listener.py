@@ -166,11 +166,12 @@ class SlackPlanningListener:
         draft = draft_from_slack_text(event.text)
         refined = refine_issue_draft(draft, [])
         draft_path = self._save_draft(event, refined.draft, refined.issue_body, refined.spec_body)
+        registered_thread_ts = event.ts if event.is_thread_reply else event.root_ts
         record = self.registry.register(
             SlackThreadRecord(
                 kind="draft",
                 channel=event.channel,
-                thread_ts=event.root_ts,
+                thread_ts=registered_thread_ts,
                 codename="planning",
                 title=refined.draft.title,
                 status="ready" if refined.readiness.ok else "needs_scope",
@@ -339,14 +340,22 @@ def _structured_fields(lines: list[str]) -> dict[str, str]:
             continue
         key, value = line.split(":", 1)
         normalized = " ".join(key.lower().replace("_", " ").replace("-", " ").split())
-        if normalized and value.strip():
-            out[normalized] = value.strip()
+        cleaned = value.strip()
+        if normalized and cleaned:
+            if normalized in {"acceptance", "acceptance criteria"} and normalized in out:
+                out[normalized] = f"{out[normalized]}\n{cleaned}"
+            else:
+                out[normalized] = cleaned
     return out
 
 
 def _list_field(fields: dict[str, str], key: str) -> list[str]:
     raw = fields.get(key) or fields.get(f"{key} criteria") or ""
-    return [item.strip().lstrip("-*").strip() for item in re.split(r",|;", raw) if item.strip()]
+    return [
+        item.strip().lstrip("-*").strip()
+        for item in re.split(r",|;|\n", raw)
+        if item.strip()
+    ]
 
 
 def _repos_from_text(text: str) -> list[str]:
