@@ -215,7 +215,6 @@ fn build_alfred_action(
             vec!["status".to_string(), "--json".to_string()],
         )),
         "agents" => Ok(("alfred".to_string(), vec!["agents".to_string()])),
-        "enabled_agents" => Ok(("alfred".to_string(), vec!["enabled-agents".to_string()])),
         "auth_status" => Ok((
             "alfred".to_string(),
             vec!["auth".to_string(), "status".to_string()],

@@ -89,7 +89,6 @@ export type NativeAction =
   | "dry_run"
   | "status"
   | "agents"
-  | "enabled_agents"
   | "auth_status"
   | "brain_doctor"
   | "redis_status";
