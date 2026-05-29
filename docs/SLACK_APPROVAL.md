@@ -199,7 +199,7 @@ gate = SlackApproval(client, operator_user_id=operator)
 result = gate.await_approval(
     channel=post["channel"],
     message_ts=post["ts"],
-    timeout_s=900,
+    timeout_s=86400,
 )
 if result.approved:
     for item in result.feedback:
