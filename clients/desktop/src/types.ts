@@ -79,6 +79,31 @@ export type PlansResponse = {
   rows: PlanDraft[];
 };
 
+export type FollowupActionResponse = {
+  draft_id?: string;
+  draft_path?: string;
+  archived_path?: string;
+};
+
+export type NativeAction =
+  | "dry_run"
+  | "status"
+  | "agents"
+  | "enabled_agents"
+  | "auth_status"
+  | "brain_doctor"
+  | "redis_status";
+
+export type NativeCommandResult = {
+  command: string[];
+  stdout: string;
+  stderr: string;
+  status: number | null;
+  success: boolean;
+  pid: number | null;
+  message: string | null;
+};
+
 export type Snapshot = {
   loadedAt: Date;
   status: StatusResponse;

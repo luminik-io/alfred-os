@@ -6,9 +6,17 @@ Slack remains Alfred's collaboration surface. This app is for local trust and
 repair: what needs attention, which plans are waiting, which runs failed, which
 memory candidates need review, and which local commands are safe to run next.
 
+The app is the friendly path into Alfred. The CLI remains fully supported for
+automation, debugging, and users who prefer a terminal.
+
+The Setup tab keeps the same dual path: it shows the install/repair command,
+can start the local runtime for you, runs common Alfred checks in-app, and
+still exposes copyable CLI commands as a fallback.
+
 ## Run locally
 
-Start the local API first:
+The desktop app can start the local API from the Setup tab. If you prefer to
+run the runtime yourself, start it first:
 
 ```sh
 alfred serve --no-browser
@@ -48,7 +56,9 @@ read-only Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or
 `http://[::1]`. Links to Slack, GitHub, and `alfred serve` open outside the app
 through Tauri's opener plugin.
 
-State-changing controls are intentionally command previews or external links in
-this first client. Future pause, resume, doctor, and memory-promotion actions
-should return an explicit command preview and affected path before they mutate
-local state.
+State-changing controls use a narrow native allowlist. The app can start the
+local runtime, run fleet/auth/agent checks, run safe agent dry-runs, run memory
+health checks, check Redis memory, and call local follow-up planning endpoints.
+It does not expose arbitrary shell execution. Broader pause, resume,
+lock-clearing, and memory-promotion actions should keep the same contract:
+explicit preview, affected path, result, and rollback hint.

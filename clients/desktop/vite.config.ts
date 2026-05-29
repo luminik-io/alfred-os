@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 const env = process.env;
 const host = env.TAURI_DEV_HOST;
 const alfredProxyTarget = env.ALFRED_DESKTOP_PROXY_TARGET || "http://127.0.0.1:7000";
+const alfredProxyOrigin = new URL(alfredProxyTarget).origin;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -34,6 +35,9 @@ export default defineConfig(async () => ({
       "/alfred-api": {
         target: alfredProxyTarget,
         changeOrigin: true,
+        headers: {
+          origin: alfredProxyOrigin,
+        },
         rewrite: (path) => path.replace(/^\/alfred-api/, ""),
       },
     },

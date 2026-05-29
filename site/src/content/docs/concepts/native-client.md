@@ -7,9 +7,10 @@ The native Alfred client is a local control plane, not a second Alfred.
 Slack remains the primary collaboration UI: plans, replies, approvals, and
 post-PR follow-up belong in Slack threads.
 
-The first Tauri preview lives under `clients/desktop` and wraps the
-`alfred serve` JSON contract: a sticky command center, health signals, plans,
-firings, memory review, and safe next actions.
+The first Tauri preview lives under `clients/desktop` and wraps the local
+Alfred runtime: a sticky command center, health signals, plans, firings,
+memory review, safe next actions, native runtime launch, and local follow-up
+handling.
 
 The client is for trust and operations:
 
@@ -36,7 +37,8 @@ can inspect by hand:
 - the local fleet brain
 
 It should not introduce a hosted gateway, public port, shadow database, or
-separate scheduler.
+separate scheduler. Alfred should still work perfectly from Slack and the CLI
+when the client is not running.
 
 ## Product shape
 
@@ -48,11 +50,11 @@ The core tabs are:
 | Tab | Job |
 |---|---|
 | Now | See the decision queue: repeated failures, blocked plans, follow-ups, memory candidates. |
-| Plans | Review plan state, open Slack thread, inspect affected repos and PR chain. |
+| Plans | Review plan state, open Slack thread, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
 | Runs | Read firing timelines, summaries, engine context, worktree path, issue and PR links. |
-| Agents | Inspect status and copy dry-run commands. |
-| Memory | Review candidates and inspect recalled planning hints. |
-| Setup | Copy start, doctor, fallback-port, and dry-run commands. |
+| Agents | Inspect status and run safe dry-runs. |
+| Memory | Review candidates, inspect recalled planning hints, run memory doctor, and check Redis memory. |
+| Setup | Start the local runtime, run fleet/auth/agent/memory checks in the command console, or copy the matching CLI commands when needed. |
 
 Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail
@@ -68,8 +70,8 @@ does not want to tail logs.
 ## Implementation path
 
 1. Stabilize JSON APIs in `alfred serve`. Done.
-2. Ship a read-only Tauri shell for Mac/Linux. Done.
-3. Add safe write actions with command previews.
+2. Ship a Tauri shell for Mac/Linux with safe local follow-up actions, runtime launch, a curated command console, status/auth/agent checks, memory checks, Redis checks, and dry-run launch. Done.
+3. Add guided install and broader write actions with command previews.
 4. Package signed Mac builds and Linux artifacts.
 
 The direct-host model is inspired by Hermes Desktop's strongest lesson: keep

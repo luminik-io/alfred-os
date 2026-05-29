@@ -1,10 +1,12 @@
 import {
   Activity,
   AlertTriangle,
+  Archive,
   ArrowRight,
   CheckCircle2,
   Clipboard,
   ExternalLink,
+  FilePlus2,
   GitPullRequest,
   ListChecks,
   MemoryStick,
@@ -14,6 +16,7 @@ import {
   RefreshCw,
   Server,
   Settings,
+  TerminalSquare,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -21,15 +24,31 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import "./App.css";
 import {
   FALLBACK_BASE_URL,
+  convertFollowupToDraft,
   initialBaseUrl,
   isDefaultBaseUrl,
   loadSnapshot,
+  markFollowupHandled,
   rememberBaseUrl,
+  runNativeAction,
+  startLocalRuntime,
+  supportsNativeActions,
 } from "./api";
 import { exactTime, friendlyTime, plural, shortId, titleCase } from "./format";
-import type { AgentSummary, FiringRecord, PlanDraft, ReliabilitySignal, Snapshot } from "./types";
+import type {
+  AgentSummary,
+  FiringRecord,
+  NativeAction,
+  NativeCommandResult,
+  PlanDraft,
+  ReliabilitySignal,
+  Snapshot,
+} from "./types";
 
 type TabKey = "now" | "plans" | "runs" | "agents" | "memory" | "setup";
+type FollowupAction = "convert" | "handled";
+type ActionNotice = { tone: "ok" | "error"; message: string } | null;
+type NativeActionRequest = { action: NativeAction; target?: string; refreshAfter?: boolean };
 
 type AttentionItem = {
   id: string;
@@ -58,6 +77,11 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<TabKey>("now");
+  const [busyPlanAction, setBusyPlanAction] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<ActionNotice>(null);
+  const [nativeBusy, setNativeBusy] = useState<string | null>(null);
+  const [nativeResult, setNativeResult] = useState<NativeCommandResult | null>(null);
+  const [nativeError, setNativeError] = useState<string | null>(null);
 
   const refresh = useCallback(async (nextBaseUrl = baseUrl) => {
     const targetBaseUrl = nextBaseUrl.trim();
@@ -93,6 +117,70 @@ function App() {
   useEffect(() => {
     const timer = window.setInterval(() => void refresh(), 60_000);
     return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  const runFollowupAction = useCallback(
+    async (plan: PlanDraft, action: FollowupAction) => {
+      const key = `${plan.plan_id}:${action}`;
+      setBusyPlanAction(key);
+      setActionNotice(null);
+      try {
+        const result =
+          action === "convert"
+            ? await convertFollowupToDraft(baseUrl, plan.plan_id)
+            : await markFollowupHandled(baseUrl, plan.plan_id);
+        const message =
+          action === "convert"
+            ? `Created planning draft ${result.draft_id || "for the next pass"}.`
+            : "Marked the follow-up handled and moved it out of the inbox.";
+        setActionNotice({ tone: "ok", message });
+        await refresh(baseUrl);
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setBusyPlanAction(null);
+      }
+    },
+    [baseUrl, refresh],
+  );
+
+  const runLocalAction = useCallback(
+    async ({ action, target, refreshAfter = false }: NativeActionRequest) => {
+      const key = `${action}:${target || "fleet"}`;
+      setNativeBusy(key);
+      setNativeError(null);
+      setNativeResult(null);
+      try {
+        const result = await runNativeAction(action, target);
+        setNativeResult(result);
+        if (refreshAfter) {
+          await refresh(baseUrl);
+        }
+      } catch (err) {
+        setNativeError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setNativeBusy(null);
+      }
+    },
+    [baseUrl, refresh],
+  );
+
+  const startRuntime = useCallback(async () => {
+    setNativeBusy("runtime:start");
+    setNativeError(null);
+    setNativeResult(null);
+    try {
+      const result = await startLocalRuntime();
+      setNativeResult(result);
+      window.setTimeout(() => void refresh("http://127.0.0.1:7000"), 900);
+    } catch (err) {
+      setNativeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setNativeBusy(null);
+    }
   }, [refresh]);
 
   const attention = useMemo(() => buildAttention(snapshot, baseUrl), [snapshot, baseUrl]);
@@ -176,14 +264,43 @@ function App() {
         ))}
       </section>
 
+      <NativeResultPanel error={nativeError} result={nativeResult} />
+
       {tab === "now" ? (
         <NowView snapshot={snapshot} attention={attention} baseUrl={baseUrl} onSwitch={setTab} />
       ) : null}
-      {tab === "plans" ? <PlansView plans={snapshot?.plans || []} baseUrl={baseUrl} /> : null}
+      {tab === "plans" ? (
+        <PlansView
+          actionNotice={actionNotice}
+          busyPlanAction={busyPlanAction}
+          plans={snapshot?.plans || []}
+          baseUrl={baseUrl}
+          onFollowupAction={runFollowupAction}
+        />
+      ) : null}
       {tab === "runs" ? <RunsView firings={snapshot?.firings || []} baseUrl={baseUrl} /> : null}
-      {tab === "agents" ? <AgentsView agents={snapshot?.status.agents || []} /> : null}
-      {tab === "memory" ? <MemoryView snapshot={snapshot} /> : null}
-      {tab === "setup" ? <SetupView baseUrl={baseUrl} /> : null}
+      {tab === "agents" ? (
+        <AgentsView
+          agents={snapshot?.status.agents || []}
+          nativeBusy={nativeBusy}
+          onRunLocalAction={runLocalAction}
+        />
+      ) : null}
+      {tab === "memory" ? (
+        <MemoryView
+          snapshot={snapshot}
+          nativeBusy={nativeBusy}
+          onRunLocalAction={runLocalAction}
+        />
+      ) : null}
+      {tab === "setup" ? (
+        <SetupView
+          baseUrl={baseUrl}
+          nativeBusy={nativeBusy}
+          onRunLocalAction={runLocalAction}
+          onStartRuntime={startRuntime}
+        />
+      ) : null}
     </main>
   );
 }
@@ -272,14 +389,42 @@ function NowView({
   );
 }
 
-function PlansView({ plans, baseUrl }: { plans: PlanDraft[]; baseUrl: string }) {
+function PlansView({
+  plans,
+  baseUrl,
+  actionNotice,
+  busyPlanAction,
+  onFollowupAction,
+}: {
+  plans: PlanDraft[];
+  baseUrl: string;
+  actionNotice: ActionNotice;
+  busyPlanAction: string | null;
+  onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
+}) {
   return (
     <section className="panel">
       <PanelHeader eyebrow="Planning" title="Saved plans and follow-ups" />
+      {actionNotice ? (
+        <div className={`inline-notice inline-notice--${actionNotice.tone}`}>
+          {actionNotice.tone === "ok" ? (
+            <CheckCircle2 size={18} aria-hidden="true" />
+          ) : (
+            <AlertTriangle size={18} aria-hidden="true" />
+          )}
+          <span>{actionNotice.message}</span>
+        </div>
+      ) : null}
       {plans.length ? (
         <div className="plan-grid">
           {plans.map((plan) => (
-            <PlanCard key={plan.plan_id} plan={plan} baseUrl={baseUrl} />
+            <PlanCard
+              key={plan.plan_id}
+              plan={plan}
+              baseUrl={baseUrl}
+              busyPlanAction={busyPlanAction}
+              onFollowupAction={onFollowupAction}
+            />
           ))}
         </div>
       ) : (
@@ -312,7 +457,16 @@ function RunsView({ firings, baseUrl }: { firings: FiringRecord[]; baseUrl: stri
   );
 }
 
-function AgentsView({ agents }: { agents: AgentSummary[] }) {
+function AgentsView({
+  agents,
+  nativeBusy,
+  onRunLocalAction,
+}: {
+  agents: AgentSummary[];
+  nativeBusy: string | null;
+  onRunLocalAction: (request: NativeActionRequest) => void;
+}) {
+  const canRun = supportsNativeActions();
   return (
     <section className="panel">
       <PanelHeader eyebrow="Fleet" title="Agents" />
@@ -335,11 +489,33 @@ function AgentsView({ agents }: { agents: AgentSummary[] }) {
                 </div>
               </dl>
               <p>{agent.last_summary}</p>
-              <CopyButton
-                label="Copy dry-run"
-                value={`alfred dry-run ${agent.codename}`}
-                icon={<Play size={16} aria-hidden="true" />}
-              />
+              <div className="card-actions card-actions--start">
+                {canRun ? (
+                  <button
+                    className="icon-button"
+                    type="button"
+                    disabled={nativeBusy === `dry_run:${agent.codename}`}
+                    onClick={() =>
+                      onRunLocalAction({
+                        action: "dry_run",
+                        target: agent.codename,
+                        refreshAfter: true,
+                      })
+                    }
+                  >
+                    <Play size={16} aria-hidden="true" />
+                    <span>
+                      {nativeBusy === `dry_run:${agent.codename}` ? "Running" : "Dry-run"}
+                    </span>
+                  </button>
+                ) : (
+                  <CopyButton
+                    label="Copy dry-run"
+                    value={`alfred dry-run ${agent.codename}`}
+                    icon={<Play size={16} aria-hidden="true" />}
+                  />
+                )}
+              </div>
             </article>
           ))}
         </div>
@@ -353,9 +529,18 @@ function AgentsView({ agents }: { agents: AgentSummary[] }) {
   );
 }
 
-function MemoryView({ snapshot }: { snapshot: Snapshot | null }) {
+function MemoryView({
+  snapshot,
+  nativeBusy,
+  onRunLocalAction,
+}: {
+  snapshot: Snapshot | null;
+  nativeBusy: string | null;
+  onRunLocalAction: (request: NativeActionRequest) => void;
+}) {
   const suggestions = snapshot?.actions.promotion_suggestions || [];
   const errors = snapshot?.actions.errors || {};
+  const canRun = supportsNativeActions();
 
   return (
     <section className="dashboard-grid dashboard-grid--memory">
@@ -387,55 +572,205 @@ function MemoryView({ snapshot }: { snapshot: Snapshot | null }) {
           </dl>
         ) : (
           <EmptyState
-            title="No memory errors reported."
-            body="Use the command below for a deeper local memory doctor report."
+          title="No memory errors reported."
+          body="Use the command below for a deeper local memory health report."
           />
         )}
-        <CopyButton label="Copy doctor command" value="alfred brain doctor --json" />
+        <div className="button-stack">
+          {canRun ? (
+            <>
+              <button
+                className="icon-button"
+                type="button"
+                disabled={nativeBusy === "brain_doctor:fleet"}
+                onClick={() => onRunLocalAction({ action: "brain_doctor" })}
+              >
+                <TerminalSquare size={16} aria-hidden="true" />
+                <span>{nativeBusy === "brain_doctor:fleet" ? "Checking" : "Run memory check"}</span>
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={nativeBusy === "redis_status:fleet"}
+                onClick={() => onRunLocalAction({ action: "redis_status" })}
+              >
+                <MemoryStick size={16} aria-hidden="true" />
+                <span>
+                  {nativeBusy === "redis_status:fleet" ? "Checking" : "Check Redis memory"}
+                </span>
+              </button>
+            </>
+          ) : (
+            <>
+              <CopyButton label="Copy memory command" value="alfred brain doctor --json" />
+              <CopyButton label="Copy Redis check" value="alfred brain redis-status --json" />
+            </>
+          )}
+        </div>
       </div>
     </section>
   );
 }
 
-function SetupView({ baseUrl }: { baseUrl: string }) {
+function SetupView({
+  baseUrl,
+  nativeBusy,
+  onRunLocalAction,
+  onStartRuntime,
+}: {
+  baseUrl: string;
+  nativeBusy: string | null;
+  onRunLocalAction: (request: NativeActionRequest) => void;
+  onStartRuntime: () => void;
+}) {
+  const canRun = supportsNativeActions();
   const commands = [
     {
-      title: "Start the local API",
-      detail: "Run this once before opening Alfred Desktop.",
+      title: "Install or repair Alfred",
+      detail: "Use this when the CLI is missing or this machine needs the base setup.",
+      command: "bash install.sh",
+      action: "copy" as const,
+    },
+    {
+      title: "Start local runtime",
+      detail: "Launches Alfred's local API on this machine.",
       command: "alfred serve --no-browser",
+      action: "start" as const,
     },
     {
-      title: "Use the fallback port",
-      detail: "Use this when another local tool already owns port 7000.",
-      command: "alfred serve --port 7010 --no-browser",
+      title: "Check auth",
+      detail: "Verifies the local engine authentication Alfred depends on.",
+      command: "alfred auth status",
+      action: "auth_status" as const,
     },
     {
-      title: "Check fleet health",
-      detail: "Runs the same preflight used by scheduled agents.",
-      command: "bash bin/doctor.sh --dev",
+      title: "Read fleet status",
+      detail: "Checks whether configured agents and recent runs are visible.",
+      command: "alfred status --json",
+      action: "status" as const,
     },
     {
-      title: "Dry-run one agent",
-      detail: "Use the codename shown on the Agents tab.",
+      title: "Check memory health",
+      detail: "Verifies fleet-brain and memory review counters.",
+      command: "alfred brain doctor --json",
+      action: "brain_doctor" as const,
+    },
+    {
+      title: "Dry-run an agent",
+      detail: "Runs a no-side-effect simulation for one codename.",
       command: "alfred dry-run lucius",
+      action: "dry_run" as const,
     },
   ];
+  const [consoleAgent, setConsoleAgent] = useState("lucius");
 
   return (
     <section className="dashboard-grid">
       <div className="panel panel--wide">
-        <PanelHeader eyebrow="Setup" title="Local control center" />
-        <div className="setup-stack">
-          {commands.map((item) => (
-            <div className="command-row" key={item.command}>
-              <div>
-                <strong>{item.title}</strong>
-                <p>{item.detail}</p>
-                <code>{item.command}</code>
-              </div>
-              <CopyButton label="Copy" value={item.command} />
-            </div>
-          ))}
+        <PanelHeader eyebrow="Setup" title="Command console" />
+        <p className="panel-intro">
+          The client is the friendly path. Slack remains the collaboration UI, and the CLI remains
+          the inspectable runtime underneath. These buttons run Alfred actions locally and show the
+          terminal-style result in this app.
+        </p>
+        <div className="console-panel" aria-label="Local Alfred command console">
+          <div className="console-panel__actions">
+            <button
+              className="icon-button"
+              type="button"
+              disabled={!canRun || nativeBusy === "runtime:start"}
+              onClick={onStartRuntime}
+            >
+              <Play size={16} aria-hidden="true" />
+              <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!canRun || nativeBusy === "status:fleet"}
+              onClick={() => onRunLocalAction({ action: "status", refreshAfter: true })}
+            >
+              <TerminalSquare size={16} aria-hidden="true" />
+              <span>Fleet status</span>
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!canRun || nativeBusy === "auth_status:fleet"}
+              onClick={() => onRunLocalAction({ action: "auth_status" })}
+            >
+              <CheckCircle2 size={16} aria-hidden="true" />
+              <span>Auth check</span>
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!canRun || nativeBusy === "agents:fleet"}
+              onClick={() => onRunLocalAction({ action: "agents", refreshAfter: true })}
+            >
+              <Server size={16} aria-hidden="true" />
+              <span>Agents</span>
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!canRun || nativeBusy === "brain_doctor:fleet"}
+              onClick={() => onRunLocalAction({ action: "brain_doctor" })}
+            >
+              <MemoryStick size={16} aria-hidden="true" />
+              <span>Memory</span>
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={!canRun || nativeBusy === "redis_status:fleet"}
+              onClick={() => onRunLocalAction({ action: "redis_status" })}
+            >
+              <Radio size={16} aria-hidden="true" />
+              <span>Redis</span>
+            </button>
+          </div>
+          <div className="console-agent-row">
+            <label htmlFor="dry-run-agent">Dry-run agent</label>
+            <input
+              id="dry-run-agent"
+              value={consoleAgent}
+              onChange={(event) => setConsoleAgent(event.currentTarget.value)}
+              spellCheck={false}
+            />
+            <button
+              className="icon-button"
+              type="button"
+              disabled={!canRun || nativeBusy === `dry_run:${consoleAgent.trim()}`}
+              onClick={() =>
+                onRunLocalAction({
+                  action: "dry_run",
+                  target: consoleAgent.trim(),
+                  refreshAfter: true,
+                })
+              }
+            >
+              <Play size={16} aria-hidden="true" />
+              <span>Run dry-run</span>
+            </button>
+          </div>
+          {!canRun ? (
+            <p className="console-note">
+              Native command execution appears here in the desktop app. Browser preview keeps
+              commands copyable only.
+            </p>
+          ) : null}
+        </div>
+        <div className="cli-fallback">
+          <div>
+            <strong>CLI fallback</strong>
+            <p>The same actions stay available in a terminal when the client is not running.</p>
+          </div>
+          <div className="cli-chip-list">
+            {commands.map((item) => (
+              <CopyButton key={item.command} label={item.title} value={item.command} />
+            ))}
+          </div>
         </div>
       </div>
       <div className="panel">
@@ -455,6 +790,34 @@ function SetupView({ baseUrl }: { baseUrl: string }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function NativeResultPanel({
+  error,
+  result,
+}: {
+  error: string | null;
+  result: NativeCommandResult | null;
+}) {
+  if (!error && !result) return null;
+  return (
+    <div className={`command-result ${error || result?.success === false ? "command-result--error" : ""}`}>
+      <div className="command-result__head">
+        <TerminalSquare size={18} aria-hidden="true" />
+        <strong>{error ? "Action failed" : result?.message || "Action complete"}</strong>
+      </div>
+      {error ? <p>{error}</p> : null}
+      {result ? (
+        <>
+          <code>{result.command.join(" ")}</code>
+          {result.pid ? <p>Process {result.pid} is running in the background.</p> : null}
+          {result.status !== null ? <p>Exit status: {result.status}</p> : null}
+          {result.stdout ? <pre>{result.stdout}</pre> : null}
+          {result.stderr ? <pre>{result.stderr}</pre> : null}
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -491,9 +854,21 @@ function SignalCard({ signal }: { signal: ReliabilitySignal }) {
   );
 }
 
-function PlanCard({ plan, baseUrl }: { plan: PlanDraft; baseUrl: string }) {
+function PlanCard({
+  plan,
+  baseUrl,
+  busyPlanAction,
+  onFollowupAction,
+}: {
+  plan: PlanDraft;
+  baseUrl: string;
+  busyPlanAction: string | null;
+  onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
+}) {
   const slackLink = firstLink(plan.content, /slack\.com/i);
   const parentLink = plan.parent && isSafeExternalUrl(plan.parent) ? plan.parent : null;
+  const isFollowup = plan.source === "followup";
+  const actionBusy = busyPlanAction?.startsWith(`${plan.plan_id}:`) || false;
   return (
     <article className="plan-card">
       <div>
@@ -520,6 +895,28 @@ function PlanCard({ plan, baseUrl }: { plan: PlanDraft; baseUrl: string }) {
         </dl>
       </div>
       <div className="card-actions">
+        {isFollowup ? (
+          <>
+            <button
+              className="icon-button"
+              type="button"
+              disabled={actionBusy}
+              onClick={() => onFollowupAction(plan, "convert")}
+            >
+              <FilePlus2 size={16} aria-hidden="true" />
+              <span>Plan next pass</span>
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy}
+              onClick={() => onFollowupAction(plan, "handled")}
+            >
+              <Archive size={16} aria-hidden="true" />
+              <span>Mark handled</span>
+            </button>
+          </>
+        ) : null}
         <ExternalButton
           label="Local detail"
           href={localUrl(baseUrl, `/plans/${plan.plan_id}`)}
