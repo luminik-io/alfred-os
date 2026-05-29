@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -380,6 +381,55 @@ def test_draft_revision_history_is_capped(tmp_path: Path) -> None:
     )
 
 
+def test_draft_thread_reply_can_resolve_open_questions(tmp_path: Path) -> None:
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+    )
+    created = listener.handle_payload(
+        {
+            "event_id": "EvQuestionDraft",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "<@UALFRED> title: Improve Slack planning\n"
+                    "problem: Operators need a safe way to discuss Alfred work before agents build.\n"
+                    "repo: luminik-io/alfred-os\n"
+                    "desired: Alfred saves a draft and keeps work paused until questions are resolved.\n"
+                    "acceptance: unresolved questions keep the draft in needs-scope state\n"
+                    "test: run listener revision tests\n"
+                    "question: should this include PR follow-up replies too?"
+                ),
+                "ts": "1716480040.000001",
+            },
+        }
+    )
+
+    revised = listener.handle_payload(
+        {
+            "event_id": "EvQuestionDraftReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "user": "U1",
+                "text": "open questions: none",
+                "ts": "1716480041.000001",
+                "thread_ts": "1716480040.000001",
+            },
+        }
+    )
+
+    assert created.readiness_ok is False
+    assert revised.action == "draft_revised"
+    assert revised.readiness_ok is True
+    payload = json.loads(Path(created.draft_path).read_text(encoding="utf-8"))
+    assert payload["draft"]["open_questions"] == "None."
+    assert payload["readiness"]["ok"] is True
+
+
 def test_draft_revision_write_failure_is_acknowledged(tmp_path: Path, monkeypatch) -> None:
     poster = Poster()
     listener = SlackPlanningListener(
@@ -537,3 +587,47 @@ def test_draft_from_slack_text_keeps_repeated_acceptance_lines() -> None:
         "vague requests are held for scope",
         "test plans are required before implementation",
     ]
+
+
+def test_listener_once_uses_env_trusted_users_by_default(
+    tmp_path: Path,
+    capsys,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "U1")
+    monkeypatch.delenv("ALFRED_TRUSTED_SLACK_USER_IDS", raising=False)
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "event_id": "EvCliOnce",
+                "event": {
+                    "type": "app_mention",
+                    "channel": "C1",
+                    "user": "U1",
+                    "text": (
+                        "<@UALFRED> title: Improve Slack planning\n"
+                        "problem: Operators need local listener tests to match the live listener.\n"
+                        "repo: luminik-io/alfred-os\n"
+                        "desired: The once command honors the configured operator by default."
+                    ),
+                    "ts": "1716480099.000001",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    spec = importlib.util.spec_from_file_location(
+        "alfred_slack_listener_cli", REPO / "bin" / "alfred-slack-listener.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    rc = module.main(["once", str(payload_path), "--state-root", str(tmp_path), "--no-post"])
+
+    assert rc == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["handled"] is True
+    assert result["action"] == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
