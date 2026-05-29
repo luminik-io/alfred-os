@@ -319,9 +319,11 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
     client = SocketModeClient(app_token=app_token, web_client=poster)
 
     def _handler(socket_client: Any, req: Any) -> None:
-        if getattr(req, "type", "") == "events_api":
-            active.handle_payload(getattr(req, "payload", {}) or {})
-        socket_client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
+        try:
+            if getattr(req, "type", "") == "events_api":
+                active.handle_payload(getattr(req, "payload", {}) or {})
+        finally:
+            socket_client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
 
     client.socket_mode_request_listeners.append(_handler)
     client.connect()
