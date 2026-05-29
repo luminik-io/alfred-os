@@ -23,7 +23,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -146,16 +146,19 @@ def register_routes(app: FastAPI) -> None:
         )
 
     @app.post("/plans/{plan_id}/convert-followup")
-    async def convert_followup(request: Request, plan_id: str) -> RedirectResponse:
+    async def convert_followup(request: Request, plan_id: str):
+        if not _same_origin_post(request):
+            return HTMLResponse("Forbidden", status_code=403)
         plan = request.app.state.reader.get_plan(plan_id)
         if plan is None or plan.source != "followup":
             return RedirectResponse("/plans", status_code=303)
-        draft_path = _convert_followup_to_planning_draft(request, plan)
-        _archive_followup(plan, action="converted", target_path=draft_path)
+        draft_path, _archived_path = _convert_and_archive_followup(request, plan)
         return RedirectResponse(f"/plans/{draft_path.stem}", status_code=303)
 
     @app.post("/plans/{plan_id}/mark-handled")
-    async def mark_followup_handled(request: Request, plan_id: str) -> RedirectResponse:
+    async def mark_followup_handled(request: Request, plan_id: str):
+        if not _same_origin_post(request):
+            return HTMLResponse("Forbidden", status_code=403)
         plan = request.app.state.reader.get_plan(plan_id)
         if plan is not None and plan.source == "followup":
             _archive_followup(plan, action="handled")
@@ -226,13 +229,14 @@ def register_routes(app: FastAPI) -> None:
 
     @app.post("/api/plans/{plan_id}/convert-followup", response_class=JSONResponse)
     async def api_convert_followup(request: Request, plan_id: str) -> JSONResponse:
+        if not _same_origin_post(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         plan = request.app.state.reader.get_plan(plan_id)
         if plan is None:
             return JSONResponse({"error": "plan not found"}, status_code=404)
         if plan.source != "followup":
             return JSONResponse({"error": "plan is not a follow-up"}, status_code=400)
-        draft_path = _convert_followup_to_planning_draft(request, plan)
-        archived_path = _archive_followup(plan, action="converted", target_path=draft_path)
+        draft_path, archived_path = _convert_and_archive_followup(request, plan)
         return JSONResponse(
             {
                 "draft_id": draft_path.stem,
@@ -243,6 +247,8 @@ def register_routes(app: FastAPI) -> None:
 
     @app.post("/api/plans/{plan_id}/mark-handled", response_class=JSONResponse)
     async def api_mark_followup_handled(request: Request, plan_id: str) -> JSONResponse:
+        if not _same_origin_post(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         plan = request.app.state.reader.get_plan(plan_id)
         if plan is None:
             return JSONResponse({"error": "plan not found"}, status_code=404)
@@ -386,6 +392,16 @@ def _save_issue_draft(request: Request, draft: IssueDraft, body: str) -> Path:
     return _save_planning_text(request, draft, body, directory="planning-drafts", suffix="issue")
 
 
+def _convert_and_archive_followup(request: Request, plan: PlanDraft) -> tuple[Path, Path]:
+    draft_path = _convert_followup_to_planning_draft(request, plan)
+    try:
+        archived_path = _archive_followup(plan, action="converted", target_path=draft_path)
+    except Exception:
+        draft_path.unlink(missing_ok=True)
+        raise
+    return draft_path, archived_path
+
+
 def _convert_followup_to_planning_draft(request: Request, plan: PlanDraft) -> Path:
     draft = _draft_from_followup(plan)
     memory_provider = _planning_memory_provider(request)
@@ -394,8 +410,7 @@ def _convert_followup_to_planning_draft(request: Request, plan: PlanDraft) -> Pa
     spec_body = _with_followup_context(assistant_result.spec_body, plan)
     root = _state_planning_root(request)
     root.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    path = root / f"followup-{stamp}-{_slug(draft.title)}.json"
+    path = root / f"followup-{_slug(plan.plan_id)}-{_slug(draft.title)}.json"
     payload = {
         "source": "planning",
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -495,8 +510,10 @@ def _archive_followup(
     ]
     if target_path is not None:
         metadata.append(f"- Planning draft: {target_path}")
-    path.write_text(content + "\n".join(metadata) + "\n", encoding="utf-8")
-    path.replace(archive_path)
+    tmp = archive_path.with_name(f"{archive_path.name}.tmp")
+    tmp.write_text(content + "\n".join(metadata) + "\n", encoding="utf-8")
+    tmp.replace(archive_path)
+    path.unlink(missing_ok=True)
     return archive_path
 
 
@@ -666,10 +683,23 @@ def _planning_workdir(request: Request) -> Path:
 
 
 def _repo_from_github_url(url: str) -> str:
-    match = re.search(r"github\.com/([^/\s]+/[^/\s]+)/", url)
+    match = re.search(r"github\.com/([^/\s]+/[^/\s#?]+)(?:/|$)", url)
     if not match:
         return ""
     return match.group(1)
+
+
+def _same_origin_post(request: Request) -> bool:
+    """Reject browser form posts from another origin while preserving CLI use."""
+    expected_host = request.headers.get("host", "")
+    for header in ("origin", "referer"):
+        raw_value = request.headers.get(header)
+        if not raw_value:
+            continue
+        parsed = urlparse(raw_value)
+        if parsed.netloc != expected_host:
+            return False
+    return True
 
 
 def _slug(value: str) -> str:

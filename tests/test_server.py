@@ -34,6 +34,7 @@ LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
+import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from server.formatting import friendly_time, short_firing_id  # noqa: E402
@@ -482,7 +483,7 @@ def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) ->
         "# Follow-up for rollout bundle\n\n"
         "- Bundle: `rollout-bundle`\n"
         "- Created: https://github.com/your-org/api/pull/42, "
-        "https://github.com/your-org/web/issues/77\n\n"
+        "https://github.com/your-org/web\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `test`: add a smoke test to both shipped slices\n",
@@ -496,6 +497,67 @@ def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) ->
     draft_path = Path(response.json()["draft_path"])
     payload = json.loads(draft_path.read_text(encoding="utf-8"))
     assert payload["draft"]["repos"] == ["your-org/api", "your-org/web"]
+
+
+def test_followup_actions_reject_cross_origin_posts(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    source = followups / "slack-C1-1716480000.000000.md"
+    source.write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Parent: [your-org/api#120](https://github.com/your-org/api/issues/120)\n\n"
+        "Cross-origin pages should not be able to mutate this inbox.\n",
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    html_response = client.post(
+        "/plans/slack-C1-1716480000.000000/convert-followup",
+        headers={"origin": "https://example.invalid"},
+        follow_redirects=False,
+    )
+    response = client.post(
+        "/api/plans/slack-C1-1716480000.000000/mark-handled",
+        headers={"origin": "https://example.invalid"},
+    )
+
+    assert html_response.status_code == 403
+    assert response.status_code == 403
+    assert source.exists()
+    assert not (state / "planning-drafts").exists()
+    assert not (followups / "handled").exists()
+
+
+def test_followup_conversion_removes_draft_when_archive_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    source = followups / "slack-C1-1716480000.000000.md"
+    source.write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "Archive failure should not leave a draft behind.\n",
+        encoding="utf-8",
+    )
+
+    def fail_archive(*_args: object, **_kwargs: object) -> Path:
+        raise OSError("simulated archive failure")
+
+    monkeypatch.setattr(server_views, "_archive_followup", fail_archive)
+    client = TestClient(
+        create_app(FilesystemReader(state_root=state)),
+        raise_server_exceptions=False,
+    )
+
+    response = client.post("/api/plans/slack-C1-1716480000.000000/convert-followup")
+
+    assert response.status_code == 500
+    assert source.exists()
+    assert list((state / "planning-drafts").glob("followup-*.json")) == []
 
 
 def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
