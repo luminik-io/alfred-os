@@ -351,11 +351,7 @@ def _structured_fields(lines: list[str]) -> dict[str, str]:
 
 def _list_field(fields: dict[str, str], key: str) -> list[str]:
     raw = fields.get(key) or fields.get(f"{key} criteria") or ""
-    return [
-        item.strip().lstrip("-*").strip()
-        for item in re.split(r",|;|\n", raw)
-        if item.strip()
-    ]
+    return [item.strip().lstrip("-*").strip() for item in re.split(r",|;|\n", raw) if item.strip()]
 
 
 def _repos_from_text(text: str) -> list[str]:
