@@ -35,6 +35,10 @@ Reliability and first-run trust polish.
 - Slack planning listener: optional Socket Mode intake for trusted DMs, app
   mentions, and registered Alfred threads. It writes local drafts and feedback
   context without making chat text an approval mechanism.
+- Native local client preview: `clients/desktop` ships a Tauri Mac/Linux shell
+  over the read-only `alfred serve` JSON APIs. It opens to "what needs
+  attention?", shows Plans, Runs, Agents, Memory, and Setup, opens external
+  links outside the app, and keeps Slack as the collaboration surface.
 
 ### v0.4.0: 2026-05-23
 
@@ -69,7 +73,7 @@ Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Local client v2.** Keep Slack as the collaboration surface and `alfred serve` as the local API source of truth, then add a thin Tauri Mac/Linux shell for Command Center, plan inbox, memory review, safe pause/resume, dry-run launch, setup doctor, and recovery. No extra gateway, no local mirror, no second source of truth. IC: core. Effort: M. Issue: TBD.
+- **Local client v2.** Keep Slack as the collaboration surface and build on the preview Tauri shell with signed Mac builds, Linux artifacts, setup checks, credentials, safe pause/resume, dry-run launch, doctor execution, and memory promotion actions. No extra gateway, no local mirror, no second source of truth. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so local clients can read fleet memory. IC: core. Effort: L. Issue: TBD.
 - **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 

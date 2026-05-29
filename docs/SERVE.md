@@ -9,7 +9,7 @@ Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
 cards, human-readable timestamps, responsive table shells, mobile card
 layouts, a sticky header, a saved-plan inbox, a Planning intake page, external
 issue/PR links that open in a separate tab, and action summaries as a
-cross-platform precursor to any future native menu-bar UI.
+cross-platform precursor to the Tauri client under `clients/desktop`.
 
 ## Install
 

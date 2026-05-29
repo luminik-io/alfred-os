@@ -30,7 +30,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
   drafts under `$ALFRED_HOME/state/planning-drafts/`, records feedback under
   `$ALFRED_HOME/state/slack-threads/feedback/`, ignores events when no trusted
   users are configured, and keeps reaction approval as the only execution gate.
-- `docs/NATIVE_CLIENT.md`: Mac/Linux client direction. Slack stays the collaboration surface; a future Tauri shell wraps the local cockpit, setup doctor, memory review, safe actions, and recovery without adding a gateway or shadow database.
+- `clients/desktop`: first Tauri Mac/Linux client. It wraps the local `alfred serve` JSON APIs with a Command Center, Plans, Runs, Agents, Memory, and Setup tabs; uses the Alfred brand fonts and logo; opens Slack/GitHub/local links outside the app; and restricts native API reads to localhost Alfred endpoints.
+- `docs/NATIVE_CLIENT.md`: Mac/Linux client direction. Slack stays the collaboration surface; the Tauri shell wraps the local cockpit, setup doctor, memory review, safe actions, and recovery without adding a gateway or shadow database.
 
 ### Changed
 

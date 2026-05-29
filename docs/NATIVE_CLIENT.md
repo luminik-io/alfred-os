@@ -1,7 +1,7 @@
 # Native local client
 
-Status: design target. The shipped surface is still Slack, CLI, and
-`alfred serve`.
+Status: first native preview shipped under `clients/desktop`. Slack, CLI, and
+`alfred serve` remain the source surfaces.
 
 ## Decision
 
@@ -174,11 +174,38 @@ Interaction rules:
 - The app never hides the local source of truth: every run links to its event
   file or transcript when available.
 
-## API Shape To Stabilize First
+## Current Tauri Preview
 
-Before a native shell, `alfred serve` should expose JSON endpoints.
+The first client lives at `clients/desktop`:
 
-Read-only endpoints are the first contract:
+- Tauri v2 + React + Vite + TypeScript.
+- Brand fonts and logo from the Alfred site system.
+- Read-only local API calls through a Rust command, not browser `fetch`.
+- API calls are restricted to `http://localhost`, `http://127.0.0.1`, or
+  `http://[::1]` and to the `/api/status`, `/api/actions`, `/api/firings`,
+  and `/api/plans` contracts.
+- Links to Slack, GitHub, and local serve detail pages open outside the app.
+- The app opens to "What needs attention?" and has Now, Plans, Runs, Agents,
+  Memory, and Setup tabs.
+- State-changing buttons are command previews in this first pass. Pause,
+  resume, doctor, dry-run, and memory promotion should become write actions
+  only after `alfred serve` returns preview/result payloads.
+
+Run it locally:
+
+```bash
+alfred serve --no-browser
+cd clients/desktop
+npm install
+npm run tauri dev
+```
+
+If port 7000 is taken, run `alfred serve --port 7010 --no-browser`; the app
+also probes that fallback on first load.
+
+## API Shape To Stabilize Next
+
+Read-only endpoints are the shipped first contract:
 
 ```text
 GET  /api/status
@@ -211,16 +238,16 @@ state file they changed.
 
 ## Native Shell Recommendation
 
-Start with Tauri for Mac and Linux once the API contracts above are stable.
-It keeps the app small, lets the UI reuse the existing site design tokens, and
-does not force Alfred into a bundled Node/Electron runtime. Electron remains a
-fallback only if terminal embedding or OS integration becomes the deciding
-constraint.
+Stay on Tauri for Mac and Linux. It keeps the app small, lets the UI reuse the
+existing site design tokens, and does not force Alfred into a bundled
+Node/Electron runtime. Electron remains a fallback only if terminal embedding
+or OS integration becomes the deciding constraint.
 
 Distribution sequence:
 
-1. `alfred serve` API contracts with tests.
-2. Tauri shell with read-only Command Center, Plans, Runs, and Memory.
+1. `alfred serve` read-only API contracts with tests. Done.
+2. Tauri shell with read-only Command Center, Plans, Runs, Agents, Memory, and
+   Setup. Done.
 3. Safe write actions with dry-run previews.
 4. Signed Mac builds and Linux AppImage/deb artifacts.
 
