@@ -123,10 +123,11 @@ Filters:
 
 ### `GET /plans` - Saved Alfred plans
 
-Lists saved Alfred plan drafts from both `$ALFRED_HOME/batman-plans` and
-Slack/local planning JSON under `$ALFRED_HOME/state/planning-drafts`. Each
-card shows source, status, readiness score when present, revision count,
-affected repos, parent issue, update time, and a local detail link.
+Lists saved Alfred plan drafts from `$ALFRED_HOME/batman-plans`,
+Slack/local planning JSON under `$ALFRED_HOME/state/planning-drafts`, and
+Slack follow-up context under `$ALFRED_HOME/state/followups`. Each card shows
+source, status, readiness score when present, revision count, affected repos,
+parent issue, update time, and a local detail link.
 
 ### `GET /plans/{plan_id}` - Single saved plan
 
@@ -156,8 +157,9 @@ question: should approval happen after edits or after a new plan?
 the GitHub issue draft and a spec draft. In Batman Slack approvals, the same
 repo add/remove commands also amend execution scope before implementation.
 Trusted replies after reports or PR links are captured during Batman's
-report-feedback window and written to `$ALFRED_HOME/batman-followups/` as
-context for the next pass, never as merge approval. `Save draft` writes the
+report-feedback window and written to `$ALFRED_HOME/state/followups/` as
+context for the next pass, never as merge approval. Those follow-ups are listed
+in Plans with `needs follow-up` status. `Save draft` writes the
 issue body under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec
 body under `$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
 
@@ -180,7 +182,8 @@ rewrite the draft after the command parser has applied obvious edits. Use
 
 The readiness panel blocks vague or incomplete work from feeling ready. It
 asks concrete follow-up questions when problem, desired behavior, repo scope,
-acceptance criteria, or test plan are missing.
+acceptance criteria, or test plan are missing. Open questions are a hard gate
+until explicitly answered or accepted as risk.
 
 ### `GET /firings/{firing_id}` - Single firing detail
 

@@ -1420,8 +1420,16 @@ def _assess_plan_readiness(
         findings.append(
             PlanReadinessFinding(
                 code="missing_done_when",
-                severity="warning",
-                message="Add a Done when block so the implementer knows what to verify.",
+                severity="error",
+                message="Add a Done when block before Alfred can execute this bundle.",
+            )
+        )
+    elif re.search(r"\b(?:todo|tbd|placeholder)\b", done_when, re.I):
+        findings.append(
+            PlanReadinessFinding(
+                code="vague_done_when",
+                severity="error",
+                message="Done when still contains placeholder text.",
             )
         )
     return findings
@@ -1849,13 +1857,22 @@ class SlackReporter:
         )
         if not block:
             return None
-        root = self._followup_dir or _alfred_runtime_home() / "batman-followups"
+        root = self._followup_dir or _alfred_runtime_home() / "state" / "followups"
         try:
             root.mkdir(parents=True, exist_ok=True)
             path = root / (
                 f"{_safe_filename(self._firing_id)}-{_safe_filename(envelope.bundle_slug)}.md"
             )
-            path.write_text(block, encoding="utf-8")
+            header = [
+                f"# Follow-up for {envelope.parent_title or envelope.bundle_slug}",
+                "",
+                f"- Bundle: `{envelope.bundle_slug}`",
+            ]
+            if envelope.created:
+                header.append(f"- Created: {', '.join(envelope.created)}")
+            if envelope.failed_repos:
+                header.append(f"- Failed repos: {', '.join(envelope.failed_repos)}")
+            path.write_text("\n".join(header).rstrip() + "\n\n" + block, encoding="utf-8")
             return path
         except OSError as exc:
             logger.warning("could not write Batman follow-up feedback: %s", exc)

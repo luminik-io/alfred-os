@@ -81,7 +81,8 @@ Rules:
   remains the audit trail.
 - Batman waits `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` seconds after a report post
   before collecting trusted replies. Captured context is also written to
-  `$ALFRED_HOME/batman-followups/`.
+  `$ALFRED_HOME/state/followups/` and appears in the local Plans inbox as a
+  `needs follow-up` item.
 
 ## DM And App Mention Intake
 

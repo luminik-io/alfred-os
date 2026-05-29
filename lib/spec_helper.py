@@ -240,6 +240,16 @@ def assess_issue_draft(draft: IssueDraft) -> IssueReadinessResult:
         )
         questions.append("What should Alfred test or manually check before opening a PR?")
 
+    if _has_unresolved_open_questions(draft.open_questions):
+        findings.append(
+            _finding(
+                "open_questions_unresolved",
+                "error",
+                "Resolve or explicitly accept open questions before Alfred implements.",
+            )
+        )
+        questions.append("Which open questions are resolved, and which are accepted as risk?")
+
     if not _plain(draft.out_of_scope):
         findings.append(
             _finding(
@@ -369,6 +379,19 @@ def _contains_placeholder(text: str) -> bool:
 def _is_placeholder(value: str) -> bool:
     lowered = _plain(value).lower()
     return not lowered or lowered in {"todo", "tbd", "none", "n/a", "placeholder"}
+
+
+def _has_unresolved_open_questions(value: str) -> bool:
+    cleaned = _plain(value).lower().strip(".")
+    return bool(cleaned) and cleaned not in {
+        "accepted as risk",
+        "accepted risk",
+        "n/a",
+        "no",
+        "no open questions",
+        "none",
+        "not applicable",
+    }
 
 
 def _looks_vague(value: str) -> bool:

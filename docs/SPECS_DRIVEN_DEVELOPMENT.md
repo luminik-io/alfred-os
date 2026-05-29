@@ -22,6 +22,11 @@ stable inputs:
 Without those inputs, autonomous agents tend to either guess or stop. Alfred
 uses specs to reduce both failure modes.
 
+Open questions are intentionally blocking. If a question is unresolved, Alfred
+should ask for a decision instead of treating an approval reaction as permission
+to guess. If the operator wants to proceed anyway, mark the section explicitly
+as `accepted as risk`.
+
 ## Minimal Spec Shape
 
 Keep specs short enough for agents to read and concrete enough for reviewers to
@@ -57,9 +62,17 @@ What should be true after this ships?
 1. <repo A first because...>
 2. <repo B after...>
 
+## Open Questions
+
+- None, or list the decisions that must be answered before implementation.
+
 ## Out Of Scope
 
 - <what the agent must not include>
+
+## Done When
+
+- <observable condition that proves the work is complete>
 
 ## Rollback
 

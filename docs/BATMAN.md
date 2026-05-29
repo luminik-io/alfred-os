@@ -119,7 +119,7 @@ every repo that failed. Same channel as the plan; carries the bundle
 slug so a thread search picks both messages up together.
 
 Trusted replies on report or PR threads are captured during the configured
-report-feedback window and saved under `$ALFRED_HOME/batman-followups/` as
+report-feedback window and saved under `$ALFRED_HOME/state/followups/` as
 follow-up context. `change:`, `fix:`, `test:`, and plain-language notes become
 action items for the next pass. `question:`, `hold:`, `blocker:`, and scope
 changes require a decision before more work starts. These replies never approve,
