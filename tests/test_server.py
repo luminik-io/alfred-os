@@ -14,6 +14,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -340,6 +341,117 @@ def test_plans_view_lists_saved_batman_plans(tmp_path: Path) -> None:
     api_detail = client.get("/api/plans/61-plan")
     assert api_detail.status_code == 200
     assert api_detail.json()["title"] == "Batman Plan for Issue #61"
+
+
+def test_plans_view_lists_slack_planning_drafts(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "slack-20260529-0400-E1.json").write_text(
+        json.dumps(
+            {
+                "source": "slack",
+                "created_at": "2026-05-29T04:00:00Z",
+                "updated_at": "2026-05-29T04:05:00Z",
+                "draft": {
+                    "title": "Add threaded plan revisions",
+                    "problem": "Operators need to revise Alfred plans before implementation.",
+                    "desired_behavior": "Replies update the saved plan draft.",
+                    "repos": ["luminik-io/alfred-os"],
+                    "acceptance_criteria": ["Thread replies update readiness."],
+                },
+                "spec_body": "# Spec\n\nThread replies update readiness.",
+                "readiness": {"ok": True, "score": 92, "questions": []},
+                "revision_count": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    response = client.get("/plans")
+
+    assert response.status_code == 200
+    assert "Add threaded plan revisions" in response.text
+    assert "slack" in response.text
+    assert "ready" in response.text
+    assert "92/100" in response.text
+    assert "2 revisions" in response.text
+    assert "Operators need to revise Alfred plans before implementation." in response.text
+
+    detail = client.get("/plans/slack-20260529-0400-E1")
+    assert detail.status_code == 200
+    assert "# Spec" in detail.text
+    assert "2 revisions" in detail.text
+
+    api_detail = client.get("/api/plans/slack-20260529-0400-E1")
+    assert api_detail.status_code == 200
+    payload = api_detail.json()
+    assert payload["source"] == "slack"
+    assert payload["revision_count"] == 2
+    assert payload["readiness_score"] == 92
+
+
+def test_slack_planning_draft_empty_body_does_not_render_raw_event(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "slack-empty-body.json").write_text(
+        json.dumps(
+            {
+                "source": "slack",
+                "created_at": "2026-05-29T04:00:00Z",
+                "draft": {
+                    "title": "Clarify plan intake",
+                    "problem": "Operators need a clean preview.",
+                    "desired_behavior": "",
+                    "repos": ["luminik-io/alfred-os"],
+                },
+                "issue_body": "",
+                "spec_body": "",
+                "event": {"user": "USECRET", "channel": "CSECRET", "text": "raw slack text"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    detail = client.get("/plans/slack-empty-body")
+
+    assert detail.status_code == 200
+    assert "Operators need a clean preview." in detail.text
+    assert "USECRET" not in detail.text
+    assert "raw slack text" not in detail.text
+
+
+def test_plans_view_skips_invalid_newer_draft_to_fill_limit(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True)
+    valid = drafts / "valid.json"
+    valid.write_text(
+        json.dumps(
+            {
+                "source": "slack",
+                "created_at": "2026-05-29T04:00:00Z",
+                "draft": {"title": "Valid older draft", "problem": "Keep reading."},
+            }
+        ),
+        encoding="utf-8",
+    )
+    invalid = drafts / "invalid.json"
+    invalid.write_text("{not json", encoding="utf-8")
+    now = datetime.now(UTC).timestamp()
+    os.utime(valid, (now - 10, now - 10))
+    os.utime(invalid, (now, now))
+    client = _client(state)
+
+    response = client.get("/api/plans", params={"limit": 1})
+
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Valid older draft"
 
 
 def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:

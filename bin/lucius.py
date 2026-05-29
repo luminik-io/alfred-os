@@ -97,6 +97,25 @@ PREFLIGHT = PreflightSpec(
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_LUCIUS_TURN_CAP", "5000"))
 
 
+def _make_debug_dir(issue_num: int) -> Path | None:
+    path = Path(f"/tmp/{AGENT}-debug-{issue_num}-{int(__import__('time').time())}")
+    try:
+        path.mkdir(exist_ok=True)
+    except OSError as exc:
+        print(f"[{AGENT.upper()}-DEBUG-WARN] debug directory unavailable: {exc}", file=sys.stderr)
+        return None
+    return path
+
+
+def _write_debug_file(debug_dir: Path | None, name: str, text: str) -> None:
+    if debug_dir is None:
+        return
+    try:
+        (debug_dir / name).write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"[{AGENT.upper()}-DEBUG-WARN] skipped {debug_dir / name}: {exc}", file=sys.stderr)
+
+
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
     """Load per-repo pre-push commands from ${HOME}/.alfredrc.d/<codename>.yaml.
 
@@ -715,9 +734,8 @@ def main() -> int:
     events.emit("worktree_created", branch=branch, path=str(wt), reused=reused_worktree)
     prompt = build_prompt(repo, issue, wt, branch, firing_id=events.firing_id)
     # Persist prompt + raw result for debugging
-    debug_dir = Path(f"/tmp/{AGENT}-debug-{issue_num}-{int(__import__('time').time())}")
-    debug_dir.mkdir(exist_ok=True)
-    (debug_dir / "prompt.txt").write_text(prompt)
+    debug_dir = _make_debug_dir(issue_num)
+    _write_debug_file(debug_dir, "prompt.txt", prompt)
 
     # Per-firing turn cap intentionally unset by default. The previous
     # hard ceiling on ``max_turns`` could produce no-output runs on
@@ -758,8 +776,8 @@ def main() -> int:
     )
     import json as _json
 
-    (debug_dir / "result.json").write_text(_json.dumps(result.raw, indent=2)[:200000])
-    (debug_dir / "result-text.txt").write_text(result.result_text or "")
+    _write_debug_file(debug_dir, "result.json", _json.dumps(result.raw, indent=2)[:200000])
+    _write_debug_file(debug_dir, "result-text.txt", result.result_text or "")
 
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
     events.emit(

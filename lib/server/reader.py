@@ -86,6 +86,10 @@ class PlanDraft:
     path: str
     preview: str
     content: str
+    source: str = "batman"
+    readiness_score: int | None = None
+    readiness_ok: bool | None = None
+    revision_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -258,30 +262,48 @@ class FilesystemReader:
             }
 
     def list_plans(self, *, limit: int = 20) -> list[PlanDraft]:
-        """Return saved Batman plan drafts, newest first."""
+        """Return saved plan drafts, newest first.
+
+        Batman's approval plans are saved as Markdown under
+        ``$ALFRED_HOME/batman-plans``. Conversational Slack and local
+        planning drafts are saved as JSON under
+        ``$ALFRED_HOME/state/planning-drafts``. Surface both in one inbox
+        so operators can see the complete planning queue.
+        """
+        candidates: list[Path] = []
         plan_root = self._plan_root()
-        if not plan_root.is_dir():
+        if plan_root.is_dir():
+            candidates.extend(plan_root.glob("*.md"))
+        draft_root = self._planning_draft_root()
+        if draft_root.is_dir():
+            candidates.extend(draft_root.glob("*.json"))
+        if not candidates:
             return []
-        candidates = sorted(
-            plan_root.glob("*.md"),
+        candidates.sort(
             key=lambda path: _safe_stat_mtime(path),
             reverse=True,
         )
         plans: list[PlanDraft] = []
-        for path in candidates[: max(1, int(limit))]:
-            plan = self._read_plan(path)
+        max_items = max(1, int(limit))
+        for path in candidates:
+            plan = self._read_json_plan(path) if path.suffix == ".json" else self._read_plan(path)
             if plan is not None:
                 plans.append(plan)
+            if len(plans) >= max_items:
+                break
         return plans
 
     def get_plan(self, plan_id: str) -> PlanDraft | None:
-        """Read one saved Batman plan by filename stem."""
+        """Read one saved plan by filename stem."""
         if "/" in plan_id or "\\" in plan_id or plan_id.startswith("."):
             return None
         path = self._plan_root() / f"{plan_id}.md"
-        if not path.exists():
-            return None
-        return self._read_plan(path)
+        if path.exists():
+            return self._read_plan(path)
+        json_path = self._planning_draft_root() / f"{plan_id}.json"
+        if json_path.exists():
+            return self._read_json_plan(json_path)
+        return None
 
     # -- internals ----------------------------------------------------------
 
@@ -384,6 +406,10 @@ class FilesystemReader:
         """Resolve the Batman plan directory next to ``state/``."""
         return self.state_root.parent / "batman-plans"
 
+    def _planning_draft_root(self) -> Path:
+        """Resolve the Slack/local planning draft directory."""
+        return self.state_root / "planning-drafts"
+
     def _read_plan(self, path: Path) -> PlanDraft | None:
         try:
             content = path.read_text(encoding="utf-8")
@@ -396,6 +422,22 @@ class FilesystemReader:
             path=str(path),
             updated_at=updated_at,
             content=content,
+        )
+
+    def _read_json_plan(self, path: Path) -> PlanDraft | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.debug("read planning draft %s: %s", path, exc)
+            return None
+        if not isinstance(payload, dict):
+            return None
+        updated_at = _json_time(payload.get("updated_at")) or _json_time(payload.get("created_at"))
+        return _plan_from_json_payload(
+            plan_id=path.stem,
+            path=str(path),
+            updated_at=updated_at or _mtime_iso(path),
+            payload=payload,
         )
 
 
@@ -503,6 +545,47 @@ def _plan_from_markdown(
     )
 
 
+def _plan_from_json_payload(
+    *,
+    plan_id: str,
+    path: str,
+    updated_at: str | None,
+    payload: dict[str, Any],
+) -> PlanDraft:
+    raw_draft = payload.get("draft")
+    draft = raw_draft if isinstance(raw_draft, dict) else {}
+    raw_readiness = payload.get("readiness")
+    readiness = raw_readiness if isinstance(raw_readiness, dict) else {}
+    title = str(draft.get("title") or payload.get("title") or "Alfred planning draft").strip()
+    repos = _string_list(draft.get("repos"))
+    readiness_score = _optional_int(readiness.get("score"))
+    readiness_ok = readiness.get("ok") if isinstance(readiness.get("ok"), bool) else None
+    status = "ready" if readiness_ok else "needs scope"
+    if readiness_ok is None:
+        status = str(payload.get("status") or "draft").strip() or "draft"
+    problem = str(draft.get("problem") or "").strip()
+    desired = str(draft.get("desired_behavior") or "").strip()
+    preview = problem or desired or "Conversation-backed planning draft."
+    content = str(payload.get("spec_body") or payload.get("issue_body") or "").strip()
+    if not content:
+        content = preview or "Conversation-backed planning draft."
+    return PlanDraft(
+        plan_id=plan_id,
+        title=title,
+        status=status,
+        parent=None,
+        affected_repos=", ".join(repos) if repos else None,
+        updated_at=updated_at,
+        path=path,
+        preview=preview,
+        content=content,
+        source=str(payload.get("source") or "planning").strip() or "planning",
+        readiness_score=readiness_score,
+        readiness_ok=readiness_ok,
+        revision_count=_optional_int(payload.get("revision_count")) or 0,
+    )
+
+
 def _strip_markdown_value(line: str) -> str:
     return line.split(":", 1)[-1].strip().strip("*").strip()
 
@@ -512,6 +595,24 @@ def _safe_stat_mtime(path: Path) -> float:
         return path.stat().st_mtime
     except OSError:
         return 0.0
+
+
+def _json_time(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _mtime_iso(path: Path) -> str | None:

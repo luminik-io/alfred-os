@@ -12,7 +12,11 @@
     {% for plan in rows %}
     <article class="plan-card">
       <div>
-        <small class="panel-kicker">{{ plan.status }}</small>
+        <small class="panel-kicker">
+          {{ plan.source }} · {{ plan.status }}
+          {% if plan.readiness_score is not none %} · {{ plan.readiness_score }}/100{% endif %}
+          {% if plan.revision_count %} · {{ plan.revision_count }} revision{{ '' if plan.revision_count == 1 else 's' }}{% endif %}
+        </small>
         <h2><a href="/plans/{{ plan.plan_id }}">{{ plan.title }}</a></h2>
         <p>{{ plan.preview }}</p>
         <dl class="compact-meta">

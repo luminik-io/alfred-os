@@ -123,14 +123,16 @@ Filters:
 
 ### `GET /plans` - Saved Alfred plans
 
-Lists saved Alfred plan drafts from `$ALFRED_HOME/batman-plans`. Each card
-shows status, affected repos, parent issue, update time, and a local detail
-link.
+Lists saved Alfred plan drafts from both `$ALFRED_HOME/batman-plans` and
+Slack/local planning JSON under `$ALFRED_HOME/state/planning-drafts`. Each
+card shows source, status, readiness score when present, revision count,
+affected repos, parent issue, update time, and a local detail link.
 
 ### `GET /plans/{plan_id}` - Single saved plan
 
-Renders the saved markdown exactly as it exists on disk. This keeps the local
-cockpit aligned with the Slack plan that the operator is approving or editing.
+Renders the saved Markdown or generated spec body exactly as it exists on disk.
+This keeps the local cockpit aligned with the Slack plan that the operator is
+approving or editing.
 
 ### `GET/POST /planning` - Issue/spec readiness
 
