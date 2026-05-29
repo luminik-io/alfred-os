@@ -94,6 +94,11 @@ plan, and stops before automatic cross-repo PR execution.
 | `SLACK_BOT_TOKEN` | Block Kit / thread helpers | (none) |
 | `SLACK_BOT_TOKEN_SECRET_ID` | bot token AWS path | `alfred/slack-bot-token` |
 | `SLACK_BOT_TOKEN_SECRET_REGION` | bot token AWS region | `us-east-1` |
+| `SLACK_APP_TOKEN` | Socket Mode token for the optional planning listener | (none) |
+| `ALFRED_SLACK_APP_TOKEN` | Alternate Socket Mode token env var | (none) |
+| `ALFRED_OPERATOR_SLACK_USER_ID` | Operator user id for reactions and trusted listener input | (required for approvals/listener) |
+| `ALFRED_TRUSTED_SLACK_USER_IDS` | Extra users allowed to refine plans and drafts | operator only |
+| `ALFRED_SLACK_BOT_USER_ID` | Bot user id; listener ignores its own messages | (none) |
 | `SLACK_HOME_CHANNEL` | default bot channel | `alfred` |
 | `BATMAN_APPROVAL_CHANNEL` | legacy alias for `SLACK_HOME_CHANNEL` | (none) |
 

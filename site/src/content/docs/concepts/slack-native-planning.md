@@ -43,6 +43,28 @@ Questions block execution. Scope changes are echoed back before approval. Once
 approved, Alfred copies the accepted amendments into child issues so the PR work
 does not drift from the discussion.
 
+## DM or mention Alfred to shape work
+
+With the optional Slack planning listener running, trusted users can DM Alfred
+or mention it in a channel with rough work. Alfred saves a local draft, scores
+readiness, asks concrete missing-scope questions, and registers the thread so
+follow-up replies stay attached to the draft.
+
+```text
+title: improve billing retry copy
+problem: customers cannot tell whether retry is automatic
+desired: invoice page explains retry status and next step
+repo: example/web
+acceptance: retrying, failed, recovered states are visible
+test: component coverage for all three states
+question: should this touch emails too?
+```
+
+Only configured operator/trusted users can create drafts. If none are
+configured, the listener ignores every event. The listener writes local draft
+JSON and feedback files; it never files issues, opens PRs, merges, or approves
+execution.
+
 ## Reply after a PR or report
 
 Threads keep working after implementation starts. Trusted users can reply with:

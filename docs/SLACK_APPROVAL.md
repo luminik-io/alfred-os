@@ -94,6 +94,12 @@ settings:
   socket_mode_enabled: false
 ```
 
+`socket_mode_enabled: false` is fine for approval-only installs because the
+gate polls reactions through the Web API. Set it to `true` only when you also
+run the always-on planning listener from [`SLACK_SETUP.md`](SLACK_SETUP.md).
+The listener captures trusted thread replies and Slack intake drafts; it does
+not make chat text an approval signal.
+
 Install the app to the workspace and copy the **Bot User OAuth Token**
 (begins with `xoxb-`).
 
@@ -212,6 +218,8 @@ else:
 | `ALFRED_OPERATOR_SLACK_USER_ID` | Slack user id whose reactions are the only ones that count | (required) |
 | `ALFRED_TRUSTED_SLACK_USER_IDS` | Comma-separated Slack user ids whose thread replies can amend plans | operator only |
 | `SLACK_BOT_TOKEN` | Bot token; used directly when set | unset |
+| `SLACK_APP_TOKEN` / `ALFRED_SLACK_APP_TOKEN` | App-level Socket Mode token for the optional planning listener | unset |
+| `ALFRED_SLACK_BOT_USER_ID` | Bot user id; listener ignores its own messages | unset |
 | `ALFRED_SECRETS_BACKEND` | Set to `aws` to enable the AWS Secrets Manager resolver | unset (disabled) |
 | `ALFRED_SLACK_BOT_TOKEN_SECRET_ID` | Secret id used by the AWS resolver | `alfred/slack-bot-token` |
 | `ALFRED_SLACK_BOT_TOKEN_SECRET_REGION` | AWS region for the secret | `us-east-1` |
@@ -242,6 +250,9 @@ for how this label fits the rest of the lifecycle.
 
 - A reaction from **anyone other than** `ALFRED_OPERATOR_SLACK_USER_ID`
   is ignored. The gate keeps polling.
+- Slack listener messages from anyone outside `ALFRED_OPERATOR_SLACK_USER_ID`
+  and `ALFRED_TRUSTED_SLACK_USER_IDS` are ignored before any draft or feedback
+  file is written.
 - The check is by Slack user id, not display name; renaming the
   operator's profile does not affect approval.
 - Removing a reaction does **not** rewind a verdict. Once approval (or

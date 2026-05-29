@@ -7,12 +7,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 REQUIRED_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("problem", ("problem", "context")),
-    ("goals", ("goals", "goal")),
+    ("problem", ("problem", "context", "objective")),
+    ("goals", ("goals", "goal", "desired behavior")),
     ("non_goals", ("non-goals", "non goals", "out of scope", "non-goal")),
-    ("repo_scope", ("repositories", "repos", "repo scope", "affected repos")),
+    (
+        "repo_scope",
+        ("repositories", "repos", "repo scope", "repository scope", "affected repos"),
+    ),
     ("acceptance_criteria", ("acceptance criteria", "acceptance")),
-    ("test_plan", ("test plan", "testing")),
+    ("test_plan", ("test plan", "testing", "verification plan")),
     ("rollout", ("rollout", "release plan")),
     ("open_questions", ("open questions", "questions")),
 )

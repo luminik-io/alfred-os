@@ -60,6 +60,8 @@ Subcommands today:
                               `forget`, `export`).
   alfred serve                Open the read-only localhost dashboard over
                               fleet state and reliability-governor actions.
+  alfred slack-listener       Run the Slack-native planning listener, or
+                              process one event with `once`.
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
 
@@ -845,6 +847,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
 def cmd_spec(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-spec.py"
     forwarded = args.spec_args or ["--help"]
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
+def cmd_slack_listener(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-slack-listener.py"
+    forwarded = args.listener_args or ["run"]
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
@@ -1739,6 +1747,14 @@ def main(argv: list[str] | None = None) -> int:
     p_spec = sub.add_parser("spec", help="create and lint specs for agent work")
     p_spec.add_argument("spec_args", nargs=argparse.REMAINDER)
     p_spec.set_defaults(func=cmd_spec)
+
+    p_slack_listener = sub.add_parser(
+        "slack-listener",
+        aliases=["slack"],
+        help="run or test the Slack planning listener",
+    )
+    p_slack_listener.add_argument("listener_args", nargs=argparse.REMAINDER)
+    p_slack_listener.set_defaults(func=cmd_slack_listener)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
     p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")

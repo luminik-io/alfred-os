@@ -84,6 +84,14 @@ Planning drafts are written to:
 
 ```
 $ALFRED_HOME/planning-drafts/*.md
+$ALFRED_HOME/state/planning-drafts/*.json   # Slack listener intake
+```
+
+Registered Slack plan/report/draft threads are stored under:
+
+```
+$ALFRED_HOME/state/slack-threads/*.json
+$ALFRED_HOME/state/slack-threads/feedback/*.jsonl
 ```
 
 ## Views
@@ -150,6 +158,11 @@ report-feedback window and written to `$ALFRED_HOME/batman-followups/` as
 context for the next pass, never as merge approval. `Save draft` writes the
 issue body under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec
 body under `$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
+
+Slack-created drafts are saved as JSON under
+`$ALFRED_HOME/state/planning-drafts/`. The dashboard treats that path as the
+native-client draft inbox contract, so the local UI and Slack listener can
+converge without inventing a second planning store.
 
 When fleet-brain is available, the Planning page recalls a small number of
 promoted lessons for the selected repos and shows them as planning memory.

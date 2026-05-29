@@ -45,6 +45,7 @@ The first screen is a decision queue:
 - stale workers
 - repeated failures
 - memory candidates ready for review
+- Slack listener health and newly saved planning drafts
 - safe actions: run doctor, pause one codename, open Slack thread, open PR
 
 The top row should feel like an operations status strip, not a dashboard full
@@ -59,6 +60,7 @@ Plan cards show:
 - affected repos and rollout order
 - open questions
 - latest revision summary
+- source: local form, Slack DM, app mention, or registered thread
 - approve/reject status
 - PR chain after execution starts
 
@@ -185,6 +187,8 @@ GET  /api/firings
 GET  /api/firings/{firing_id}
 GET  /api/plans
 GET  /api/plans/{plan_id}
+GET  /api/planning-drafts
+GET  /api/slack/threads
 ```
 
 Write endpoints should come next, behind command previews:

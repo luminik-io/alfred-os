@@ -83,6 +83,34 @@ Rules:
   before collecting trusted replies. Captured context is also written to
   `$ALFRED_HOME/batman-followups/`.
 
+## DM And App Mention Intake
+
+When the Slack planning listener is running, trusted users can DM Alfred or
+mention it in a channel with rough work. Alfred saves a local planning draft,
+runs readiness checks, replies with the missing scope questions, and registers
+the thread for future refinement.
+
+Useful fields:
+
+```text
+title: improve billing retry copy
+problem: customers cannot tell whether retry is automatic
+desired: invoice page explains retry status and next step
+repo: example/web
+acceptance: retrying, failed, recovered states are visible
+test: component coverage for all three states
+question: should this touch emails too?
+```
+
+Rules:
+
+- Only configured operator/trusted users can create drafts or amend threads.
+- If trusted users are not configured, Alfred ignores every event.
+- Intake creates local draft JSON under `$ALFRED_HOME/state/planning-drafts/`.
+- Chat intake never files issues, opens PRs, merges, or approves execution.
+- A draft can graduate into a GitHub issue only through an explicit operator
+  action outside the listener.
+
 ## Tone
 
 Alfred should sound like a calm engineering lead:
