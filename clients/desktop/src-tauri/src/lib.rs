@@ -162,10 +162,15 @@ fn validate_api_path<'a>(
         return Err("invalid API path characters".to_string());
     }
 
+    let (path_part, query) = trimmed
+        .split_once('?')
+        .map_or((trimmed, None), |(path_part, query)| {
+            (path_part, Some(query))
+        });
     let allowed = if method == Method::GET {
-        is_allowed_read_path(trimmed)
+        is_allowed_read_path(path_part)
     } else if method == Method::POST {
-        is_allowed_followup_action(trimmed)
+        is_allowed_followup_action(path_part)
     } else {
         false
     };
@@ -173,11 +178,6 @@ fn validate_api_path<'a>(
         return Err("API path is not part of the desktop contract".to_string());
     }
 
-    let (path_part, query) = trimmed
-        .split_once('?')
-        .map_or((trimmed, None), |(path_part, query)| {
-            (path_part, Some(query))
-        });
     Ok((path_part.to_string(), query))
 }
 
@@ -310,4 +310,30 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn post_allowlist_uses_path_without_query() {
+        let err = validate_api_path(
+            "/api/plans/followup?next=/convert-followup",
+            &Method::POST,
+        )
+        .expect_err("query string must not satisfy the POST allowlist");
+        assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
+    fn post_allowlist_accepts_followup_action_path() {
+        let (path, query) = validate_api_path(
+            "/api/plans/followup-123/convert-followup?dry=1",
+            &Method::POST,
+        )
+        .expect("valid follow-up action should be accepted");
+        assert_eq!(path, "/api/plans/followup-123/convert-followup");
+        assert_eq!(query, Some("dry=1"));
+    }
 }
