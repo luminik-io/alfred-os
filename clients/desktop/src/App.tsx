@@ -53,22 +53,27 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
 
 function App() {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
+  const [serverInput, setServerInput] = useState(initialBaseUrl);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<TabKey>("now");
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (nextBaseUrl = baseUrl) => {
+    const targetBaseUrl = nextBaseUrl.trim();
     setLoading(true);
     setError(null);
     try {
-      rememberBaseUrl(baseUrl);
       try {
-        setSnapshot(await loadSnapshot(baseUrl));
+        setSnapshot(await loadSnapshot(targetBaseUrl));
+        setBaseUrl(targetBaseUrl);
+        setServerInput(targetBaseUrl);
+        rememberBaseUrl(targetBaseUrl);
       } catch (firstErr) {
-        if (isDefaultBaseUrl(baseUrl)) {
+        if (isDefaultBaseUrl(targetBaseUrl)) {
           setSnapshot(await loadSnapshot(FALLBACK_BASE_URL));
           setBaseUrl(FALLBACK_BASE_URL);
+          setServerInput(FALLBACK_BASE_URL);
           rememberBaseUrl(FALLBACK_BASE_URL);
         } else {
           throw firstErr;
@@ -132,12 +137,22 @@ function App() {
           <div className="server-row">
             <input
               id="base-url"
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.currentTarget.value)}
-              onBlur={() => rememberBaseUrl(baseUrl)}
+              value={serverInput}
+              onChange={(event) => setServerInput(event.currentTarget.value)}
+              onBlur={() => setServerInput(serverInput.trim())}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void refresh(serverInput);
+                }
+              }}
               spellCheck={false}
             />
-            <button className="icon-button" type="button" onClick={refresh} disabled={loading}>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => void refresh(serverInput)}
+              disabled={loading}
+            >
               <RefreshCw size={18} aria-hidden="true" />
               <span>{loading ? "Checking" : "Refresh"}</span>
             </button>
@@ -478,6 +493,7 @@ function SignalCard({ signal }: { signal: ReliabilitySignal }) {
 
 function PlanCard({ plan, baseUrl }: { plan: PlanDraft; baseUrl: string }) {
   const slackLink = firstLink(plan.content, /slack\.com/i);
+  const parentLink = plan.parent && isSafeExternalUrl(plan.parent) ? plan.parent : null;
   return (
     <article className="plan-card">
       <div>
@@ -509,8 +525,8 @@ function PlanCard({ plan, baseUrl }: { plan: PlanDraft; baseUrl: string }) {
           href={localUrl(baseUrl, `/plans/${plan.plan_id}`)}
           icon={<ExternalLink size={16} />}
         />
-        {plan.parent ? (
-          <ExternalButton label="Issue" href={plan.parent} icon={<GitPullRequest size={16} />} />
+        {parentLink ? (
+          <ExternalButton label="Issue" href={parentLink} icon={<GitPullRequest size={16} />} />
         ) : null}
         {slackLink ? (
           <ExternalButton label="Slack" href={slackLink} icon={<MessageSquare size={16} />} />
@@ -784,11 +800,23 @@ function firstLink(text: string, matcher: RegExp): string | null {
 }
 
 async function openExternal(href: string): Promise<void> {
+  if (!isSafeExternalUrl(href)) {
+    return;
+  }
   if (window.__TAURI_INTERNALS__) {
     await openUrl(href);
     return;
   }
   window.open(href, "_blank", "noopener,noreferrer");
+}
+
+function isSafeExternalUrl(href: string): boolean {
+  try {
+    const url = new URL(href);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export default App;

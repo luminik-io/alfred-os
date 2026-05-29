@@ -840,7 +840,15 @@ def cmd_mcp(args: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-serve.py"
-    forwarded = args.serve_args or []
+    forwarded: list[str] = []
+    if args.host:
+        forwarded.extend(["--host", args.host])
+    if args.port is not None:
+        forwarded.extend(["--port", str(args.port)])
+    if args.no_browser:
+        forwarded.append("--no-browser")
+    if args.log_level:
+        forwarded.extend(["--log-level", args.log_level])
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
@@ -1741,7 +1749,16 @@ def main(argv: list[str] | None = None) -> int:
     p_mcp.set_defaults(func=cmd_mcp)
 
     p_serve = sub.add_parser("serve", help="open the read-only localhost dashboard")
-    p_serve.add_argument("serve_args", nargs=argparse.REMAINDER)
+    p_serve.add_argument("--host", help="bind address passed to alfred-serve")
+    p_serve.add_argument("--port", type=int, help="bind port passed to alfred-serve")
+    p_serve.add_argument(
+        "--no-browser", action="store_true", help="do not auto-open a browser tab"
+    )
+    p_serve.add_argument(
+        "--log-level",
+        choices=["debug", "info", "warning", "error"],
+        help="uvicorn log level passed to alfred-serve",
+    )
     p_serve.set_defaults(func=cmd_serve)
 
     p_spec = sub.add_parser("spec", help="create and lint specs for agent work")
