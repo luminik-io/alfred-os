@@ -1172,6 +1172,7 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
                     "codename": "?",
                     "firing_id": "?",
                     "age_hours": float("inf"),
+                    "max_age_hours": max_age_hours,
                     "label_drift": False,
                     "missing_claim": True,
                 }
@@ -1190,6 +1191,7 @@ def find_stale_claims(repo_slug: str, *, max_age_hours: int = 4) -> list[dict]:
                     "codename": key[0] or "?",
                     "firing_id": key[1] or "?",
                     "age_hours": (datetime.now(UTC).timestamp() - ts) / 3600,
+                    "max_age_hours": max_age_hours,
                     "label_drift": "agent:in-flight" not in labels,
                 }
             )
@@ -1204,6 +1206,7 @@ def force_release_stale_claim(
     released_codename: str | None = None,
     released_firing_id: str | None = None,
     label_drift: bool = False,
+    max_age_hours: int | None = None,
 ) -> bool:
     """Forcibly release a stale claim and restore ``agent:implement``.
 
@@ -1246,6 +1249,7 @@ def force_release_stale_claim(
     keep_in_flight = _has_fresh_unreleased_claim(
         state.get("comments", []),
         released_key=(codename, firing_id) if has_claim_identity else ("", ""),
+        max_age_hours=max_age_hours,
     )
     if keep_in_flight:
         return True

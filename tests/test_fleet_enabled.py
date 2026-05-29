@@ -12,6 +12,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -352,6 +353,13 @@ def test_cli_status_reports_local_snapshot(tmp_path):
     (wait_dir / "firing.json").write_text(
         '{"firing_id":"abc","pid":0,"created_at":"2026-05-12T10:00:00Z","issues":[{"number":504}]}'
     )
+    day = datetime.now(UTC).strftime("%Y-%m-%d")
+    events_dir = alfred / "state" / "batman" / "events"
+    events_dir.mkdir(parents=True)
+    (events_dir / f"{day.replace('-', '')}-101500-abcd.jsonl").write_text(
+        f'{{"ts":"{day}T10:15:00Z","agent":"batman","firing_id":"abc","event":"firing_started"}}\n'
+        f'{{"ts":"{day}T10:15:05Z","agent":"batman","firing_id":"abc","event":"firing_complete","outcome":"silent_no_work"}}\n'
+    )
     env = {
         "ALFRED_HOME": str(alfred),
         "WORKSPACE_ROOT": str(tmp_path / "workspace"),
@@ -362,6 +370,8 @@ def test_cli_status_reports_local_snapshot(tmp_path):
     assert res.returncode == 0, res.stderr
     assert "alfred-status @" in res.stdout
     assert "approval wait dead #504" in res.stdout
+    batman_row = next(line for line in res.stdout.splitlines() if line.startswith("batman"))
+    assert " 1     0   0" in batman_row
 
 
 def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):

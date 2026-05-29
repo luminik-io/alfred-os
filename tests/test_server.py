@@ -392,6 +392,43 @@ def test_plans_view_lists_slack_planning_drafts(tmp_path: Path) -> None:
     assert payload["readiness_score"] == 92
 
 
+def test_plans_view_lists_slack_followups(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    (followups / "slack-C1-1716480000.000000.md").write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Captured: 2026-05-29T06:45:00Z\n"
+        "- Thread: C1 / 1716480000.000000\n"
+        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "## Slack Follow-up Feedback\n\n"
+        "### Items\n\n"
+        "- `change`: add a manual docs smoke test\n",
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    response = client.get("/plans")
+
+    assert response.status_code == 200
+    assert "Follow-up for Improve planning loop" in response.text
+    assert "needs follow-up" in response.text
+    assert "add a manual docs smoke test" in response.text
+
+    detail = client.get("/plans/slack-C1-1716480000.000000")
+    assert detail.status_code == 200
+    assert "Slack Follow-up Feedback" in detail.text
+
+    api_detail = client.get("/api/plans/slack-C1-1716480000.000000")
+    assert api_detail.status_code == 200
+    payload = api_detail.json()
+    assert payload["source"] == "followup"
+    assert payload["title"] == "Follow-up for Improve planning loop"
+    assert payload["status"] == "needs follow-up"
+    assert payload["parent"] == "https://github.com/luminik-io/alfred-os/issues/120"
+    assert "manual docs smoke test" in payload["preview"]
+
+
 def test_slack_planning_draft_empty_body_does_not_render_raw_event(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"

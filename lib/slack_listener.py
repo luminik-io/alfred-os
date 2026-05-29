@@ -30,6 +30,7 @@ from planning_assistant import (
     refine_issue_draft,
     render_operator_feedback_ack,
     render_post_pr_feedback_ack,
+    render_post_pr_followup_block,
 )
 from slack_approval import (
     ThreadFeedback,
@@ -167,8 +168,35 @@ class SlackPlanningListener:
         if record.kind == "draft":
             return self._handle_draft_revision(event, record, feedback)
         if record.kind in {"report", "pr", "followup"}:
-            ack = render_post_pr_feedback_ack([feedback.text])
+            followup_path = self._write_followup_context(record, feedback)
+            pr_urls = _string_list(record.metadata.get("created") or record.metadata.get("pr_urls"))
+            ack = render_post_pr_feedback_ack(
+                [feedback.text],
+                pr_urls=pr_urls,
+                issue_url=_issue_url_from_record(record),
+            )
             action = "captured_followup"
+            if followup_path is not None:
+                metadata = dict(record.metadata)
+                metadata["followup_path"] = str(followup_path)
+                metadata["last_followup_at"] = _utc_now()
+                self.registry.register(
+                    SlackThreadRecord(
+                        kind=record.kind,
+                        channel=record.channel,
+                        thread_ts=record.thread_ts,
+                        codename=record.codename,
+                        firing_id=record.firing_id,
+                        title=record.title,
+                        status="followup_waiting",
+                        parent_repo=record.parent_repo,
+                        parent_issue=record.parent_issue,
+                        plan_path=record.plan_path,
+                        draft_path=record.draft_path,
+                        created_at=record.created_at,
+                        metadata=metadata,
+                    )
+                )
         else:
             ack = render_operator_feedback_ack([feedback.text])
             action = "captured_plan_feedback"
@@ -183,14 +211,34 @@ class SlackPlanningListener:
             refiner=self.refiner,
             memory_provider=self.memory_provider,
         )
-        draft_path = self._save_draft(
-            event,
-            refined.draft,
-            refined.issue_body,
-            refined.spec_body,
-            readiness=refined.readiness,
-            memory=refined.memory,
-        )
+        try:
+            draft_path = self._save_draft(
+                event,
+                refined.draft,
+                refined.issue_body,
+                refined.spec_body,
+                readiness=refined.readiness,
+                memory=refined.memory,
+            )
+        except OSError as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] could not save planning draft for "
+                f"{event.channel}/{event.root_ts}: {exc}",
+                file=sys.stderr,
+            )
+            self._post_thread_ack(
+                event.channel,
+                event.root_ts,
+                "*Planning draft could not be saved*\n\n"
+                "Please check local disk space and permissions, then send the request again.",
+            )
+            return ListenerResult(
+                True,
+                "draft_save_failed",
+                detail=str(exc),
+                readiness_ok=refined.readiness.ok,
+                readiness_score=refined.readiness.score,
+            )
         registered_thread_ts = event.ts if event.is_thread_reply else event.root_ts
         record = self.registry.register(
             SlackThreadRecord(
@@ -276,6 +324,55 @@ class SlackPlanningListener:
             readiness_ok=refined.readiness.ok,
             readiness_score=refined.readiness.score,
         )
+
+    def _write_followup_context(
+        self,
+        record: SlackThreadRecord,
+        feedback: ThreadFeedback,
+    ) -> Path | None:
+        pr_urls = _string_list(record.metadata.get("created") or record.metadata.get("pr_urls"))
+        block = render_post_pr_followup_block(
+            [feedback.text],
+            pr_urls=pr_urls,
+            issue_url=_issue_url_from_record(record),
+        )
+        if not block:
+            return None
+        followup_dir = self.state_root / "followups"
+        try:
+            followup_dir.mkdir(parents=True, exist_ok=True)
+            path = (
+                followup_dir / f"slack-{_safe_event_id(record.channel + '-' + record.thread_ts)}.md"
+            )
+            header = [
+                f"# Follow-up for {record.title or record.codename or record.kind}",
+                "",
+                f"- Captured: {_utc_now()}",
+                f"- Thread: `{record.channel}` / `{record.thread_ts}`",
+            ]
+            if record.firing_id:
+                header.append(f"- Firing: `{record.firing_id}`")
+            if record.parent_repo and record.parent_issue:
+                header.append(
+                    f"- Parent: [{record.parent_repo}#{record.parent_issue}]"
+                    f"(https://github.com/{record.parent_repo}/issues/{record.parent_issue})"
+                )
+            body = "\n".join(header).rstrip() + "\n\n" + block
+            if path.exists():
+                try:
+                    existing = path.read_text(encoding="utf-8").rstrip()
+                except OSError:
+                    existing = ""
+                body = f"{existing}\n\n---\n\n{body}" if existing else body
+            path.write_text(body, encoding="utf-8")
+            return path
+        except OSError as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] could not write follow-up context for "
+                f"{record.channel}/{record.thread_ts}: {exc}",
+                file=sys.stderr,
+            )
+            return None
 
     def _ack_unavailable_draft(
         self,
@@ -673,6 +770,31 @@ def _default_memory_provider() -> Any | None:
     except Exception as exc:
         print(f"[SLACK-LISTENER-WARN] memory provider failed to load: {exc}", file=sys.stderr)
         return None
+
+
+def _string_list(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value.strip(),) if value.strip() else ()
+    if isinstance(value, Iterable):
+        out: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text:
+                out.append(text)
+        return tuple(out)
+    text = str(value).strip()
+    return (text,) if text else ()
+
+
+def _issue_url_from_record(record: SlackThreadRecord) -> str | None:
+    explicit = str(record.metadata.get("issue_url") or "").strip()
+    if explicit:
+        return explicit
+    if record.parent_repo and record.parent_issue:
+        return f"https://github.com/{record.parent_repo}/issues/{record.parent_issue}"
+    return None
 
 
 def _safe_event_id(event_id: str) -> str:

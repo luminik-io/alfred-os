@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1129,6 +1130,51 @@ def test_force_release_stale_claim_keeps_fresh_in_flight(monkeypatch):
     assert comments and "codename=lucius" in comments[0][2]
 
 
+def test_force_release_stale_claim_uses_sweep_age_window(monkeypatch):
+    import agent_runner as ar
+
+    edits = []
+    comments = []
+    staleish_ts = (datetime.now(UTC) - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a: comments.append(a) or True)
+    monkeypatch.setenv("ALFRED_CLAIM_MAX_AGE_HOURS", "4")
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "comments": [
+                {
+                    "createdAt": "2026-05-09T13:34:44Z",
+                    "body": "<!-- agent-claim:codename=lucius firing_id=old-fid ts=2026-05-09T13:34:43Z -->",
+                },
+                {
+                    "createdAt": staleish_ts,
+                    "body": f"<!-- agent-claim:codename=batman firing_id=staleish-fid ts={staleish_ts} -->",
+                },
+            ],
+            "labels": [{"name": "agent:in-flight"}],
+            "state": "OPEN",
+        },
+    )
+
+    assert ar.force_release_stale_claim(
+        "myrepo",
+        42,
+        sweep_id="sweep-1",
+        released_codename="lucius",
+        released_firing_id="old-fid",
+        max_age_hours=1,
+    )
+    assert edits == [
+        (
+            ("myrepo", 42),
+            {"add_labels": ["agent:implement"], "remove_labels": ["agent:in-flight"]},
+        )
+    ]
+    assert comments and "codename=lucius" in comments[0][2]
+
+
 def test_force_release_stale_claim_does_not_keep_malformed_timestamp(monkeypatch):
     import agent_runner as ar
 
@@ -1316,6 +1362,7 @@ def test_find_stale_claims_catches_label_drift(monkeypatch):
     assert stale[0]["title"] == "stale drift"
     assert stale[0]["codename"] == "lucius"
     assert stale[0]["firing_id"] == "old-fid"
+    assert stale[0]["max_age_hours"] == 4
     assert stale[0]["label_drift"] is True
 
 

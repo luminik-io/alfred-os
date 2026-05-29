@@ -591,6 +591,9 @@ Children:
 - repo-c: scope c
 - repo-d: scope d
 - repo-e: scope e
+
+Done when:
+- Child issues are created for every listed repo.
 """
 
     gh = FakeGitHubClient(fail_repos={"your-org/repo-b", "your-org/repo-d"})
@@ -670,9 +673,45 @@ def test_slack_reporter_captures_trusted_report_followup(tmp_path):
     saved = list((tmp_path / "followups").glob("*.md"))
     assert len(saved) == 1
     body = saved[0].read_text()
+    assert "# Follow-up for Improve planning loop" in body
     assert "Slack Follow-up Feedback" in body
     assert "`change`: Change: keep the onboarding copy warmer" in body
     assert "`question` needs decision" in body
+
+
+def test_slack_reporter_default_followups_are_visible_to_plans(tmp_path, monkeypatch):
+    from batman import ReportEnvelope, SlackReporter
+
+    home = tmp_path / "alfred"
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+
+    def fake_root(**_kwargs):
+        return FakeThreadHandle(channel="C0REPORT", ts="1700000000.000200")
+
+    reporter = SlackReporter(
+        firing_id="20260528-120000-test",
+        thread_root=fake_root,
+        report_feedback_timeout_s=0,
+        feedback_reader=lambda _channel, _ts: ("change: add a docs smoke test",),
+        feedback_reply=lambda *_args, **_kwargs: True,
+    )
+
+    assert reporter.post_report(
+        ReportEnvelope(
+            bundle_slug="planning-loop",
+            parent_title="Improve planning loop",
+            created=("https://github.com/your-org/your-product/issues/123",),
+            failed_repos=(),
+            reason="ok",
+        ),
+        channel="alfred",
+    )
+
+    followups = list((home / "state" / "followups").glob("*.md"))
+    assert len(followups) == 1
+    body = followups[0].read_text()
+    assert "# Follow-up for Improve planning loop" in body
+    assert "add a docs smoke test" in body
 
 
 def test_slack_reporter_registers_plan_thread(tmp_path, monkeypatch):

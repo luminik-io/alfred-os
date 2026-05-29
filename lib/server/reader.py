@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -140,6 +141,7 @@ _RESERVED_STATE_SUBDIRS: frozenset[str] = frozenset(
         "codenames",
         "firings",
         "events",
+        "followups",
         "_paused",
     }
 )
@@ -277,6 +279,9 @@ class FilesystemReader:
         draft_root = self._planning_draft_root()
         if draft_root.is_dir():
             candidates.extend(draft_root.glob("*.json"))
+        followup_root = self._followup_root()
+        if followup_root.is_dir():
+            candidates.extend(followup_root.glob("*.md"))
         if not candidates:
             return []
         candidates.sort(
@@ -300,6 +305,9 @@ class FilesystemReader:
         path = self._plan_root() / f"{plan_id}.md"
         if path.exists():
             return self._read_plan(path)
+        followup_path = self._followup_root() / f"{plan_id}.md"
+        if followup_path.exists():
+            return self._read_plan(followup_path)
         json_path = self._planning_draft_root() / f"{plan_id}.json"
         if json_path.exists():
             return self._read_json_plan(json_path)
@@ -410,6 +418,10 @@ class FilesystemReader:
         """Resolve the Slack/local planning draft directory."""
         return self.state_root / "planning-drafts"
 
+    def _followup_root(self) -> Path:
+        """Resolve the Slack follow-up context directory."""
+        return self.state_root / "followups"
+
     def _read_plan(self, path: Path) -> PlanDraft | None:
         try:
             content = path.read_text(encoding="utf-8")
@@ -417,11 +429,13 @@ class FilesystemReader:
             logger.debug("read plan %s: %s", path, exc)
             return None
         updated_at = _mtime_iso(path)
+        source = "followup" if path.parent == self._followup_root() else "batman"
         return _plan_from_markdown(
             plan_id=path.stem,
             path=str(path),
             updated_at=updated_at,
             content=content,
+            source=source,
         )
 
     def _read_json_plan(self, path: Path) -> PlanDraft | None:
@@ -506,9 +520,10 @@ def _plan_from_markdown(
     path: str,
     updated_at: str | None,
     content: str,
+    source: str = "batman",
 ) -> PlanDraft:
-    title = "Batman plan"
-    status = "draft"
+    title = "Slack follow-up" if source == "followup" else "Batman plan"
+    status = "needs follow-up" if source == "followup" else "draft"
     parent = None
     affected_repos = None
     preview = ""
@@ -516,7 +531,9 @@ def _plan_from_markdown(
         line = raw_line.strip()
         if not line:
             continue
-        if line.startswith("#") and title == "Batman plan":
+        if line.startswith("#") and (
+            title == "Batman plan" or (source == "followup" and title == "Slack follow-up")
+        ):
             title = line.lstrip("#").strip() or title
             continue
         if line.lower().startswith("**status:**"):
@@ -525,13 +542,29 @@ def _plan_from_markdown(
         if line.lower().startswith("**issue url:**"):
             parent = _strip_markdown_value(line)
             continue
+        if source == "followup" and line.lower().startswith("- parent:"):
+            parent = _extract_markdown_link_url(_strip_markdown_value(line))
+            continue
+        if source == "followup" and line.lower().startswith(
+            (
+                "- captured:",
+                "- thread:",
+                "- firing:",
+                "- bundle:",
+                "- created:",
+                "- failed repos:",
+            )
+        ):
+            continue
         if line.lower().startswith("**affected repos:**"):
             affected_repos = _strip_markdown_value(line)
             continue
         if not preview and not line.startswith("#") and not line.startswith("**"):
             preview = line
     if not preview:
-        preview = "Awaiting review."
+        preview = (
+            "Follow-up context captured from Slack." if source == "followup" else "Awaiting review."
+        )
     return PlanDraft(
         plan_id=plan_id,
         title=title,
@@ -542,6 +575,7 @@ def _plan_from_markdown(
         path=path,
         preview=preview,
         content=content,
+        source=source,
     )
 
 
@@ -588,6 +622,13 @@ def _plan_from_json_payload(
 
 def _strip_markdown_value(line: str) -> str:
     return line.split(":", 1)[-1].strip().strip("*").strip()
+
+
+def _extract_markdown_link_url(value: str) -> str:
+    match = re.search(r"\]\((https?://[^)]+)\)", value)
+    if match:
+        return match.group(1)
+    return value
 
 
 def _safe_stat_mtime(path: Path) -> float:

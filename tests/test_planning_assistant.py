@@ -64,12 +64,23 @@ def test_refine_issue_draft_applies_structured_chat_commands() -> None:
     assert "Replies with unresolved questions" in result.draft.acceptance_criteria[-1]
     assert "Slack thread feedback parsing" in result.draft.test_plan
     assert "Should the operator approve" in result.draft.open_questions
-    assert result.readiness.ok is True
+    assert result.readiness.ok is False
+    assert any(finding.code == "open_questions_unresolved" for finding in result.readiness.findings)
     assert "Add acceptance criterion" in result.amendments[0]
     assert any(
         "Resolve or explicitly accept the open questions" in item for item in result.questions
     )
     assert "## Implementation Guardrails" in result.spec_body
+
+
+def test_refine_issue_draft_accepts_explicitly_accepted_open_questions() -> None:
+    result = refine_issue_draft(_draft(), ["question: accepted as risk"])
+
+    assert result.draft.open_questions == "accepted as risk"
+    assert result.readiness.ok is True
+    assert not any(
+        finding.code == "open_questions_unresolved" for finding in result.readiness.findings
+    )
 
 
 def test_refine_issue_draft_preserves_mixed_freeform_notes() -> None:

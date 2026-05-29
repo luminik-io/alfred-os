@@ -60,6 +60,85 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     assert "current plan scope" in feedback_files[0].read_text(encoding="utf-8")
 
 
+def test_report_thread_reply_writes_followup_context(tmp_path: Path) -> None:
+    poster = Poster()
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="pr",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            codename="batman",
+            firing_id="firing-1",
+            title="Improve planning loop",
+            parent_repo="luminik-io/alfred-os",
+            parent_issue=120,
+            metadata={"created": ["https://github.com/luminik-io/alfred-os/pull/12"]},
+        )
+    )
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_thread_reply("change: add a manual docs smoke test"))
+
+    assert result.handled is True
+    assert result.action == "captured_followup"
+    assert "Follow-up feedback captured" in poster.messages[0]["text"]
+    followups = list((tmp_path / "followups").glob("*.md"))
+    assert len(followups) == 1
+    text = followups[0].read_text(encoding="utf-8")
+    assert "Slack Follow-up Feedback" in text
+    assert "https://github.com/luminik-io/alfred-os/pull/12" in text
+    assert "manual docs smoke test" in text
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.status == "followup_waiting"
+    assert record.metadata["followup_path"] == str(followups[0])
+
+
+def test_report_thread_followup_write_failure_is_acknowledged(tmp_path: Path, monkeypatch) -> None:
+    poster = Poster()
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="pr",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            codename="batman",
+            firing_id="firing-1",
+            title="Improve planning loop",
+            parent_repo="luminik-io/alfred-os",
+            parent_issue=120,
+            metadata={"created": ["https://github.com/luminik-io/alfred-os/pull/12"]},
+        )
+    )
+    original_write_text = Path.write_text
+
+    def fail_followup_write(self: Path, *args, **kwargs):
+        if self.parent.name == "followups" and self.suffix == ".md":
+            raise OSError("disk full")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_followup_write)
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_thread_reply("change: add a manual docs smoke test"))
+
+    assert result.handled is True
+    assert result.action == "captured_followup"
+    assert "Follow-up feedback captured" in poster.messages[0]["text"]
+    assert not list((tmp_path / "followups").glob("*.md"))
+
+
 def test_duplicate_events_are_ignored(tmp_path: Path) -> None:
     registry = SlackThreadRegistry(tmp_path / "threads")
     registry.register(SlackThreadRecord(kind="plan", channel="C1", thread_ts="1716480000.000000"))
@@ -140,6 +219,50 @@ def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
     assert draft["draft"]["title"] == "Improve Slack planning"
     assert draft["draft"]["repos"] == ["luminik-io/alfred-os"]
     assert "Planning draft saved" in poster.messages[0]["text"]
+
+
+def test_app_mention_save_failure_is_acknowledged(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    original_write_text = Path.write_text
+
+    def fail_tmp_write(self, *args, **kwargs):
+        if self.name.endswith(".tmp"):
+            raise OSError("disk full")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_tmp_write)
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvDraftWriteFail",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "<@UALFRED> title: Improve Slack planning\n"
+                    "problem: Users need a safer way to describe work before agents build.\n"
+                    "repo: luminik-io/alfred-os\n"
+                    "desired: Alfred saves a draft and asks for missing acceptance criteria."
+                ),
+                "ts": "1716480010.000001",
+            },
+        }
+    )
+
+    assert result.handled is True
+    assert result.action == "draft_save_failed"
+    assert not result.draft_path
+    assert "could not be saved" in poster.messages[0]["text"]
+    assert not list((tmp_path / "planning-drafts").glob("*.json"))
 
 
 def test_draft_thread_reply_revises_saved_draft(tmp_path: Path) -> None:

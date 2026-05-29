@@ -156,6 +156,27 @@ def _today_str() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
+def _event_firings_for_day(events_dir: Path, day: str) -> int:
+    if not events_dir.is_dir():
+        return 0
+    day_prefix = day.replace("-", "")
+    total = 0
+    for path in events_dir.glob(f"{day_prefix}-*.jsonl"):
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("event") == "firing_started":
+                total += 1
+                break
+    return total
+
+
 def _codename_from_label(label: str) -> str:
     return label.rsplit(".", 1)[-1] if "." in label else label
 
@@ -410,6 +431,9 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
             last_event = _iso(events[0].stat().st_mtime)
 
     spend = _read_json(STATE_ROOT / record.codename / f"spend-{_today_str()}.json")
+    today_firings = int(spend.get("firings_today") or 0)
+    if today_firings == 0:
+        today_firings = _event_firings_for_day(events_dir, _today_str())
     approval_wait = _approval_wait_status(record.codename)
 
     last_stderr_tail = None
@@ -440,7 +464,7 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
         paused_since=paused_since,
         last_fired=last_fired,
         last_event=last_event,
-        today_firings=spend.get("firings_today", 0),
+        today_firings=today_firings,
         today_successes=spend.get("successes_today", 0),
         today_failures=spend.get("failures_today", 0),
         today_consecutive_failures=spend.get("consecutive_failures", 0),
