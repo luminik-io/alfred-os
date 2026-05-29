@@ -616,6 +616,11 @@ code {
   color: var(--muted);
 }
 
+.fallback-note {
+  margin: 0;
+  color: var(--muted);
+}
+
 .cli-fallback {
   display: grid;
   gap: 12px;
@@ -665,6 +670,10 @@ code {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.cli-chip-list code {
+  overflow-wrap: anywhere;
 }
 
 .plan-grid {

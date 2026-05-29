@@ -4,7 +4,6 @@ import {
   Archive,
   ArrowRight,
   CheckCircle2,
-  Clipboard,
   ExternalLink,
   FilePlus2,
   GitPullRequest,
@@ -350,7 +349,9 @@ function ConnectionBanner({
           <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
         </button>
       ) : (
-        <CopyButton label="CLI fallback" value="alfred serve --no-browser" />
+        <p className="fallback-note">
+          Open Alfred as a desktop app to start the local runtime from here.
+        </p>
       )}
     </section>
   );
@@ -516,8 +517,8 @@ function AgentsView({
                 </div>
               </dl>
               <p>{agent.last_summary}</p>
-              <div className="card-actions card-actions--start">
-                {canRun ? (
+              {canRun ? (
+                <div className="card-actions card-actions--start">
                   <button
                     className="icon-button"
                     type="button"
@@ -535,14 +536,8 @@ function AgentsView({
                       {nativeBusy === `dry_run:${agent.codename}` ? "Running" : "Dry-run"}
                     </span>
                   </button>
-                ) : (
-                  <CopyButton
-                    label="CLI fallback"
-                    value={`alfred dry-run ${agent.codename}`}
-                    icon={<Play size={16} aria-hidden="true" />}
-                  />
-                )}
-              </div>
+                </div>
+              ) : null}
             </article>
           ))}
         </div>
@@ -628,10 +623,9 @@ function MemoryView({
               </button>
             </>
           ) : (
-            <>
-              <CopyButton label="CLI memory check" value="alfred brain doctor --json" />
-              <CopyButton label="CLI Redis check" value="alfred brain redis-status --json" />
-            </>
+            <p className="console-note">
+              Memory actions run inside the desktop app. Browser preview stays read-only.
+            </p>
           )}
         </div>
       </div>
@@ -651,50 +645,12 @@ function SetupView({
   onStartRuntime: () => void;
 }) {
   const canRun = supportsNativeActions();
-  const commands = [
-    {
-      title: "Install or repair Alfred",
-      detail: "Use this when the CLI is missing or this machine needs the base setup.",
-      command: "bash install.sh",
-      action: "copy" as const,
-    },
-    {
-      title: "Start local runtime",
-      detail: "Launches Alfred's local API on this machine.",
-      command: "alfred serve --no-browser",
-      action: "start" as const,
-    },
-    {
-      title: "Check auth",
-      detail: "Verifies the local engine authentication Alfred depends on.",
-      command: "alfred auth status",
-      action: "auth_status" as const,
-    },
-    {
-      title: "Read fleet status",
-      detail: "Checks whether configured agents and recent runs are visible.",
-      command: "alfred status --json",
-      action: "status" as const,
-    },
-    {
-      title: "Check memory health",
-      detail: "Verifies fleet-brain and memory review counters.",
-      command: "alfred brain doctor --json",
-      action: "brain_doctor" as const,
-    },
-    {
-      title: "Dry-run an agent",
-      detail: "Runs a no-side-effect simulation for one codename.",
-      command: "alfred dry-run lucius",
-      action: "dry_run" as const,
-    },
-  ];
   const [consoleAgent, setConsoleAgent] = useState("lucius");
 
   return (
     <section className="dashboard-grid">
       <div className="panel panel--wide">
-        <PanelHeader eyebrow="Setup" title="Command console" />
+        <PanelHeader eyebrow="Setup" title="Action console" />
         <p className="panel-intro">
           The client is the friendly path. Slack remains the collaboration UI, and the CLI remains
           the inspectable runtime underneath. These buttons run Alfred actions locally and show the
@@ -783,21 +739,27 @@ function SetupView({
           </div>
           {!canRun ? (
             <p className="console-note">
-              Native command execution appears here in the desktop app. Browser preview keeps
-              commands copyable only.
+              Native actions appear here in the desktop app. Browser preview stays read-only.
             </p>
           ) : null}
         </div>
         <details className="cli-fallback">
           <summary>
-            <strong>CLI fallback</strong>
-            <span>The same actions stay available in a terminal.</span>
+            <strong>What runs underneath</strong>
+            <span>Transparent previews for the curated local actions.</span>
           </summary>
-          <p>The client runs safe Alfred actions directly. Use these only when the client is not running or you want to inspect the underlying CLI.</p>
+          <p>
+            Alfred does not expose an arbitrary shell here. Each button maps to a narrow local
+            action, then the result panel shows the command, exit status, stdout, and stderr.
+          </p>
           <div className="cli-chip-list">
-            {commands.map((item) => (
-              <CopyButton key={item.command} label={item.title} value={item.command} />
-            ))}
+            <code>alfred serve --port 7000 --no-browser</code>
+            <code>alfred status --json</code>
+            <code>alfred auth status</code>
+            <code>alfred agents</code>
+            <code>alfred brain doctor --json</code>
+            <code>alfred brain redis-status --json</code>
+            <code>alfred dry-run &lt;codename&gt;</code>
           </div>
         </details>
       </div>
@@ -833,7 +795,7 @@ function NativeResultPanel({
     <div className={`command-result ${error || result?.success === false ? "command-result--error" : ""}`}>
       <div className="command-result__head">
         <TerminalSquare size={18} aria-hidden="true" />
-        <strong>{error ? "Action failed" : result?.message || "Action complete"}</strong>
+        <strong>{error ? "Action failed" : result?.message || "Local action output"}</strong>
       </div>
       {error ? <p>{error}</p> : null}
       {result ? (
@@ -862,7 +824,6 @@ function AttentionCard({ item }: { item: AttentionItem }) {
       </div>
       <div className="card-actions">
         {item.href ? <ExternalButton label="Open" href={item.href} icon={<ExternalLink size={16} />} /> : null}
-        {item.command ? <CopyButton label="CLI fallback" value={item.command} /> : null}
       </div>
     </article>
   );
@@ -876,8 +837,8 @@ function SignalCard({ signal }: { signal: ReliabilitySignal }) {
         <span>{signal.severity || "memory"}</span>
         <strong>{signal.title || signal.action || signal.codename || "Memory candidate"}</strong>
         <p>{signal.message || signal.summary || signal.reason || "Review evidence before promotion."}</p>
+        {signal.command ? <code>{signal.command}</code> : null}
       </div>
-      {signal.command ? <CopyButton label="CLI fallback" value={signal.command} /> : null}
     </article>
   );
 }
@@ -1078,32 +1039,6 @@ function ExternalButton({ label, href, icon }: { label: string; href: string; ic
     <button className="secondary-button" type="button" onClick={() => void openExternal(href)}>
       {icon}
       <span>{label}</span>
-    </button>
-  );
-}
-
-function CopyButton({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon?: React.ReactNode;
-}) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      className="secondary-button"
-      type="button"
-      onClick={async () => {
-        await navigator.clipboard.writeText(value);
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
-      }}
-    >
-      {icon || <Clipboard size={16} aria-hidden="true" />}
-      <span>{copied ? "Copied" : label}</span>
     </button>
   );
 }

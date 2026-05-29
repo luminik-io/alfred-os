@@ -29,8 +29,9 @@ Alfred with or without the client.
   should have a Slack thread link where discussion happened.
 - Actionable, not chatty: the home screen answers "what needs me right now?"
   before showing logs or historical data.
-- Explain before acting: write actions show the exact command, target, and
-  rollback path before running.
+- Explain before acting: write actions show the target, expected effect, and
+  rollback path before running. The underlying command is audit detail, not the
+  primary interface.
 - Accessible to technical and non-technical operators: use product language
   first, shell commands second. The app can reveal details without making them
   the default.
@@ -170,7 +171,8 @@ Interaction rules:
 
 - Every card has one primary action and at most one secondary action.
 - Links to GitHub and Slack open outside the app.
-- State-changing actions show a command preview, affected path, and rollback.
+- State-changing actions show an affected path, rollback, and command audit
+  detail after or before the action.
 - Tables collapse into cards before they become horizontally cramped.
 - Timestamps render as "5m ago", "yesterday 12:24", or "May 27, 12:24" with
   exact UTC in the tooltip.
@@ -197,9 +199,10 @@ The first client lives at `clients/desktop`:
 - The Setup tab can start the local runtime, run `alfred status --json`, run
   auth checks, list agents, run the memory doctor, check Redis memory, and
   dry-run an agent through a narrow native allowlist.
-- Setup includes a local command console. It is intentionally not an arbitrary
+- Setup includes a local action console. It is intentionally not an arbitrary
   shell: it runs curated Alfred actions and shows terminal-style output inside
-  the client.
+  the client. Browser preview is read-only instead of presenting copy-command
+  fallbacks.
 - Pause, resume, lock clearing, and memory promotion should become write
   actions only after they return preview/result payloads.
 
