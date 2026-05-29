@@ -142,6 +142,227 @@ def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
     assert "Planning draft saved" in poster.messages[0]["text"]
 
 
+def test_draft_thread_reply_revises_saved_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    created = listener.handle_payload(
+        {
+            "event_id": "EvDraft",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "<@UALFRED> title: Improve Slack planning\n"
+                    "problem: Users need a safer way to describe work before agents build.\n"
+                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/mobile\n"
+                    "desired: Alfred saves a draft and asks for missing acceptance criteria."
+                ),
+                "ts": "1716480010.000001",
+            },
+        }
+    )
+
+    revised = listener.handle_payload(
+        {
+            "event_id": "EvDraftReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "remove repo: mobile\n"
+                    "acceptance: follow-up replies update the saved draft\n"
+                    "test: run listener revision tests"
+                ),
+                "ts": "1716480012.000001",
+                "thread_ts": "1716480010.000001",
+            },
+        }
+    )
+
+    assert created.action == "draft_created"
+    assert revised.handled is True
+    assert revised.action == "draft_revised"
+    assert revised.draft_path == created.draft_path
+    payload = json.loads(Path(created.draft_path).read_text(encoding="utf-8"))
+    assert payload["revision_count"] == 1
+    assert payload["draft"]["repos"] == ["luminik-io/alfred-os"]
+    assert payload["draft"]["acceptance_criteria"] == ["follow-up replies update the saved draft"]
+    assert "listener revision tests" in payload["draft"]["test_plan"]
+    assert payload["readiness"]["score"] == revised.readiness_score
+    assert "Planning draft revised" in poster.messages[-1]["text"]
+    record = SlackThreadRegistry(tmp_path / "slack-threads").lookup("C1", "1716480010.000001")
+    assert record is not None
+    assert record.metadata["revision_count"] == 1
+    assert record.metadata["readiness_score"] == revised.readiness_score
+
+
+def test_draft_revision_history_is_capped(tmp_path: Path) -> None:
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+    )
+    created = listener.handle_payload(
+        {
+            "event_id": "EvDraftCap",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "<@UALFRED> title: Improve Slack planning\n"
+                    "problem: Users need a safer way to describe work before agents build.\n"
+                    "repo: luminik-io/alfred-os\n"
+                    "desired: Alfred saves a draft and asks for missing acceptance criteria."
+                ),
+                "ts": "1716480020.000001",
+            },
+        }
+    )
+    path = Path(created.draft_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["revision_count"] = 55
+    payload["revisions"] = [{"text": f"old revision {idx}"} for idx in range(55)]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    revised = listener.handle_payload(
+        {
+            "event_id": "EvDraftCapReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "user": "U1",
+                "text": "acceptance: capped revisions still preserve the latest change",
+                "ts": "1716480021.000001",
+                "thread_ts": "1716480020.000001",
+            },
+        }
+    )
+
+    assert revised.action == "draft_revised"
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["revision_count"] == 56
+    assert len(saved["revisions"]) == 50
+    assert saved["revisions"][0]["text"] == "old revision 6"
+    assert (
+        saved["revisions"][-1]["text"]
+        == "acceptance: capped revisions still preserve the latest change"
+    )
+
+
+def test_draft_revision_write_failure_is_acknowledged(tmp_path: Path, monkeypatch) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    created = listener.handle_payload(
+        {
+            "event_id": "EvDraftWriteFail",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "<@UALFRED> title: Improve Slack planning\n"
+                    "problem: Users need a safer way to describe work before agents build.\n"
+                    "repo: luminik-io/alfred-os\n"
+                    "desired: Alfred saves a draft and asks for missing acceptance criteria."
+                ),
+                "ts": "1716480030.000001",
+            },
+        }
+    )
+    path = Path(created.draft_path)
+    before = path.read_text(encoding="utf-8")
+    original_write_text = Path.write_text
+
+    def fail_tmp_write(self, *args, **kwargs):
+        if self.name.endswith(".tmp"):
+            raise OSError("disk full")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_tmp_write)
+
+    revised = listener.handle_payload(
+        {
+            "event_id": "EvDraftWriteFailReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "user": "U1",
+                "text": "acceptance: write failures are acknowledged",
+                "ts": "1716480031.000001",
+                "thread_ts": "1716480030.000001",
+            },
+        }
+    )
+
+    assert revised.handled is True
+    assert revised.action == "captured_draft_feedback"
+    assert "could not save the revised draft" in poster.messages[-1]["text"]
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_draft_thread_reply_uses_memory_provider(tmp_path: Path) -> None:
+    class Provider:
+        name = "test"
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            assert repo == "luminik-io/alfred-os"
+            return [{"repo": repo, "body": "Keep Slack planning replies concise."}]
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+        memory_provider=Provider(),
+    )
+    created = listener.handle_payload(
+        {
+            "event_id": "EvMemoryDraft",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "<@UALFRED> title: Improve Slack planning\n"
+                    "problem: Users need a safer way to describe work before agents build.\n"
+                    "repo: luminik-io/alfred-os\n"
+                    "desired: Alfred saves a draft and asks for missing acceptance criteria."
+                ),
+                "ts": "1716480013.000001",
+            },
+        }
+    )
+
+    listener.handle_payload(
+        {
+            "event_id": "EvMemoryDraftReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "user": "U1",
+                "text": "acceptance: replies preserve planning memory hints",
+                "ts": "1716480014.000001",
+                "thread_ts": "1716480013.000001",
+            },
+        }
+    )
+
+    payload = json.loads(Path(created.draft_path).read_text(encoding="utf-8"))
+    assert payload["memory"][0]["body"] == "Keep Slack planning replies concise."
+    assert "Planning Memory" in payload["spec_body"]
+
+
 def test_threaded_app_mention_does_not_register_parent_thread(tmp_path: Path) -> None:
     listener = SlackPlanningListener(
         state_root=tmp_path,

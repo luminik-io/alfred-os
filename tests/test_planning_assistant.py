@@ -103,6 +103,20 @@ def test_refine_issue_draft_handles_plural_repo_commands() -> None:
     assert "s: example-org" not in " ".join(result.draft.repos)
 
 
+def test_refine_issue_draft_removes_repo_by_shorthand() -> None:
+    result = refine_issue_draft(
+        IssueDraft(
+            title="Update local planning",
+            problem="Operators need planning scope to stay truthful.",
+            repos=["luminik-io/alfred-os", "luminik-io/mobile"],
+        ),
+        ["remove repo: mobile"],
+    )
+
+    assert result.draft.repos == ["luminik-io/alfred-os"]
+    assert any("Remove repository scope: mobile" in item for item in result.amendments)
+
+
 def test_repository_scope_feedback_updates_execution_repos() -> None:
     repos = apply_repository_scope_feedback(
         ["example-org/api", "example-org/web"],

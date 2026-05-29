@@ -107,6 +107,10 @@ Rules:
 - Only configured operator/trusted users can create drafts or amend threads.
 - If trusted users are not configured, Alfred ignores every event.
 - Intake creates local draft JSON under `$ALFRED_HOME/state/planning-drafts/`.
+- Replies in the intake thread revise the same saved draft, regenerate the issue
+  body and spec body, rerun readiness checks, and append a revision entry.
+- Planning memory may appear as advisory hints when memory is enabled, but the
+  current Slack thread and readiness findings still win.
 - Chat intake never files issues, opens PRs, merges, or approves execution.
 - A draft can graduate into a GitHub issue only through an explicit operator
   action outside the listener.

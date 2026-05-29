@@ -721,8 +721,15 @@ def _parse_line(line: str) -> tuple[str, str] | None:
 def _apply_action(draft: IssueDraft, action: tuple[str, str]) -> IssueDraft:
     key, value = action
     if key == "remove_repo":
-        remove = {item.lower() for item in _split_items(value)}
-        return replace(draft, repos=[repo for repo in draft.repos if repo.lower() not in remove])
+        removals = _split_items(value)
+        return replace(
+            draft,
+            repos=[
+                repo
+                for repo in draft.repos
+                if not any(_repo_scope_matches(repo, item) for item in removals)
+            ],
+        )
     if key == "repos":
         return replace(draft, repos=_dedupe([*draft.repos, *_split_items(value)]))
     if key == "acceptance_criteria":

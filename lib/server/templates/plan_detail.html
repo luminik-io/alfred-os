@@ -8,6 +8,13 @@
       <h1>{{ plan.title }}</h1>
       <p>
         <span class="status-pill">{{ plan.status }}</span>
+        <span class="status-pill">{{ plan.source }}</span>
+        {% if plan.readiness_score is not none %}
+        <span class="status-pill">{{ plan.readiness_score }}/100</span>
+        {% endif %}
+        {% if plan.revision_count %}
+        <span class="status-pill">{{ plan.revision_count }} revision{{ '' if plan.revision_count == 1 else 's' }}</span>
+        {% endif %}
         {% if plan.updated_at %}
         <time datetime="{{ plan.updated_at }}" title="{{ plan.updated_at|timestamp_title }}">{{ plan.updated_at|friendly_time }}</time>
         {% endif %}

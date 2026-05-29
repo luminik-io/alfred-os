@@ -223,8 +223,13 @@ Safety model:
   message in `$ALFRED_HOME/state/slack-threads/`.
 - Direct Slack intake writes local draft JSON under
   `$ALFRED_HOME/state/planning-drafts/`; it does not file GitHub issues.
+- Replies in the draft thread revise that same JSON draft, issue body, spec
+  body, readiness score, and revision history.
 - Thread feedback is stored under
   `$ALFRED_HOME/state/slack-threads/feedback/` for the next plan or PR pass.
+- When memory is enabled, draft creation and revisions recall advisory planning
+  memory using `ALFRED_MEMORY_PROVIDERS`; memory never overrides the current
+  Slack thread or readiness gates.
 
 ## Rotating a webhook
 
