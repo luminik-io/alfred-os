@@ -3,9 +3,9 @@
 The operator tunes runtime memory via two env vars:
 
 * ``ALFRED_MEMORY_PROVIDERS`` -- comma-separated provider names, in
-  consult order. Example: ``fleet,gbrain``. Unset (or empty) means
-  "fleet-brain only" -- the OSS default. Explicitly set it to
-  ``null`` or an empty string to disable runtime memory.
+  consult order. Example: ``fleet,gbrain``. Unset means
+  "fleet-brain only"; set it to ``null`` or an empty string to
+  disable runtime memory.
 * Per-provider env (e.g. ``ALFRED_GBRAIN_BIN``) -- see the provider's
   docstring.
 

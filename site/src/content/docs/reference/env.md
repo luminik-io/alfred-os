@@ -69,7 +69,7 @@ engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 | `BATMAN_AUTO_EXECUTE` | `lib/batman.py` plan execution mode | `0` |
 | `BATMAN_PICKER` | `lib/batman.py` parent issue selection | `oldest` |
 | `BATMAN_BUNDLE_SLUG_PREFIX` | `lib/batman.py` bundle slug rendering | (blank) |
-| `BATMAN_APPROVAL_TIMEOUT_S` | `lib/batman.py` Slack approval wait | `900` |
+| `BATMAN_APPROVAL_TIMEOUT_S` | `lib/batman.py` Slack approval wait | `86400` |
 | `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `lib/batman.py` post-report Slack follow-up capture | `60` |
 | `BATMAN_SLACK_CHANNEL` | `lib/batman.py` plan and report channel | (blank, falls back to Slack home channel) |
 

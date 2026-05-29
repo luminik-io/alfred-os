@@ -129,7 +129,7 @@ class FakeGate:
         channel,
         message_ts,
         *,
-        timeout_s=900,
+        timeout_s=86400,
         poll_interval_s=30,
         feedback_callback=None,
     ):

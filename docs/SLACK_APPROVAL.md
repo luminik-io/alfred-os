@@ -199,7 +199,7 @@ gate = SlackApproval(client, operator_user_id=operator)
 result = gate.await_approval(
     channel=post["channel"],
     message_ts=post["ts"],
-    timeout_s=900,
+    timeout_s=86400,
 )
 if result.approved:
     for item in result.feedback:
@@ -261,7 +261,7 @@ for how this label fits the rest of the lifecycle.
 
 ## Timeout and transport-down semantics
 
-- `timeout_s` (default 900s = 15 min) bounds the wall-clock wait.
+- `timeout_s` (default 86400s = 24h) bounds the wall-clock wait.
   `APPROVAL_TIMEOUT` is returned if the operator does not react within
   the window.
 - After five consecutive `reactions.get` failures, the gate returns

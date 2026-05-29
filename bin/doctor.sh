@@ -348,6 +348,11 @@ while IFS=$'\t' read -r label script_name; do
     # Disabled agents don't run, so a missing preflight is by design.
     printf "⚪ disabled\n"
     pass=$((pass + 1))
+  elif echo "$output" | grep -qE "\[[A-Za-z0-9_-]+-PAUSED\]"; then
+    # Operator-paused agents are intentionally quiet. Count them as healthy so
+    # doctor can be used on machines where noisy jobs are deliberately paused.
+    printf "⏸ paused\n"
+    pass=$((pass + 1))
   elif echo "$output" | grep -q "PREFLIGHT-FAILED"; then
     # The agent's code ran and its preflight() deliberately reported missing
     # host configuration (GH auth, repo checkouts, scoped secrets). In --dev
