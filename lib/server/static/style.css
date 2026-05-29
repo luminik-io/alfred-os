@@ -855,6 +855,17 @@ pre code {
   color: var(--ops-muted);
 }
 
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.detail-actions form {
+  margin: 0;
+}
+
 .markdown-panel {
   border: 1px solid var(--ops-line);
   border-radius: 8px;
@@ -1288,6 +1299,11 @@ pre code {
   .section-heading,
   .detail-heading {
     align-items: start;
+  }
+
+  .detail-actions {
+    justify-content: flex-start;
+    margin-top: 1rem;
   }
 
   .readiness-panel {

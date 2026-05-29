@@ -20,9 +20,19 @@
         {% endif %}
       </p>
     </div>
-    {% if plan.parent %}
-    <a href="{{ plan.parent }}" role="button" class="secondary" target="_blank" rel="noopener noreferrer">Open issue</a>
-    {% endif %}
+    <div class="detail-actions">
+      {% if plan.source == "followup" %}
+      <form method="post" action="/plans/{{ plan.plan_id }}/convert-followup">
+        <button type="submit">Plan next pass</button>
+      </form>
+      <form method="post" action="/plans/{{ plan.plan_id }}/mark-handled">
+        <button type="submit" class="secondary">Mark handled</button>
+      </form>
+      {% endif %}
+      {% if plan.parent %}
+      <a href="{{ plan.parent }}" role="button" class="secondary" target="_blank" rel="noopener noreferrer">Open issue</a>
+      {% endif %}
+    </div>
   </div>
 
   <article class="markdown-panel">

@@ -228,7 +228,7 @@ batman, plan drafted for billing-v2 (4 child issue(s), 3 repo(s))
 *Work:* Bundle: billing-v2 rollout
 *Readiness:* ready for approval
 *Next step:* reply in this thread to steer the plan, or approve only if it is right.
-*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`
+*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`, `open questions: none`
 *Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.
 
 *Scope if approved now:* 3 repos, 4 child issues

@@ -135,6 +135,12 @@ Renders the saved Markdown or generated spec body exactly as it exists on disk.
 This keeps the local cockpit aligned with the Slack plan that the operator is
 approving or editing.
 
+For Slack follow-up items, the detail page also exposes two local actions:
+`Plan next pass` converts the captured feedback into a scoped planning draft
+under `$ALFRED_HOME/state/planning-drafts`, and `Mark handled` archives the
+follow-up under `$ALFRED_HOME/state/followups/handled`. Neither action creates
+a GitHub issue, opens a PR, approves work, or merges anything.
+
 ### `GET/POST /planning` - Issue/spec readiness
 
 A local intake form for shaping work before Alfred files issues or opens PRs.
@@ -159,9 +165,12 @@ repo add/remove commands also amend execution scope before implementation.
 Trusted replies after reports or PR links are captured during Batman's
 report-feedback window and written to `$ALFRED_HOME/state/followups/` as
 context for the next pass, never as merge approval. Those follow-ups are listed
-in Plans with `needs follow-up` status. `Save draft` writes the
+in Plans with `needs follow-up` status. From the follow-up detail page, `Plan
+next pass` turns that feedback into a local planning draft and archives the
+original follow-up; `Mark handled` only archives it. `Save draft` writes the
 issue body under `$ALFRED_HOME/planning-drafts`; `Save spec` writes the spec
-body under `$ALFRED_HOME/spec-drafts`. Neither button creates a GitHub issue.
+body under `$ALFRED_HOME/spec-drafts`. None of these buttons create a GitHub
+issue.
 
 Slack-created drafts are saved as JSON under
 `$ALFRED_HOME/state/planning-drafts/`. The dashboard treats that path as the
@@ -208,10 +217,14 @@ GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
 GET /api/plans?limit=50
 GET /api/plans/{plan_id}
+POST /api/plans/{plan_id}/convert-followup
+POST /api/plans/{plan_id}/mark-handled
 ```
 
-These endpoints are read-only. They intentionally mirror the HTML pages before
-adding any write-action surface for a native client.
+Read endpoints intentionally mirror the HTML pages. The follow-up action
+endpoints are local-file actions only: they convert captured feedback into a
+planning draft JSON or archive it as handled. They do not call GitHub, Slack,
+or an engine, and they do not approve execution.
 
 ## Architecture
 
@@ -235,8 +248,10 @@ The reader is injected into the FastAPI app via `create_app(reader)`. Tests pass
 
 Default bind is `127.0.0.1`. Runtime-state routes are read-only. The Planning
 page accepts a local `POST` only to write markdown drafts under
-`$ALFRED_HOME/planning-drafts` and `$ALFRED_HOME/spec-drafts`; it does not call
-GitHub or Slack. It only calls a model provider when
+`$ALFRED_HOME/planning-drafts` and `$ALFRED_HOME/spec-drafts`. Follow-up actions
+only move captured follow-up files into `handled/` or create local planning
+draft JSON. They do not call GitHub or Slack. The planning assistant only calls
+a model provider when
 `ALFRED_PLANNING_ASSISTANT_ENGINE` is explicitly set. The reader's path-traversal guard rejects firing ids containing
 `/`, `\\`, or a leading `.` before any filesystem read.
 

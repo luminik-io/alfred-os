@@ -37,11 +37,13 @@ test: add a regression test for unresolved questions
 add repo: luminik-io/alfred-os-site
 remove repo: mobile
 question: should this include the docs site?
+open questions: none
 ```
 
-Questions block execution. Scope changes are echoed back before approval. Once
-approved, Alfred copies the accepted amendments into child issues so the PR work
-does not drift from the discussion.
+Questions block execution until they are answered or explicitly cleared with
+`open questions: none` / `open questions: accepted as risk`. Scope changes are
+echoed back before approval. Once approved, Alfred copies the accepted
+amendments into child issues so the PR work does not drift from the discussion.
 
 ## DM or mention Alfred to shape work
 
@@ -58,6 +60,7 @@ repo: example/web
 acceptance: retrying, failed, recovered states are visible
 test: component coverage for all three states
 question: should this touch emails too?
+open questions: none
 ```
 
 Only configured operator/trusted users can create drafts. If none are

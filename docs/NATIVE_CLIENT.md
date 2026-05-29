@@ -292,5 +292,10 @@ Two Hermes Desktop projects are useful reference points:
   the host as source of truth and avoids a gateway, mirror, or extra sync layer.
 - `fathah/hermes-desktop`: the strongest lesson is guided setup. A local client
   can make install, providers, memory, tools, schedules, and logs approachable.
+- `Ivy-Interactive/Ivy-Tendril`: the strongest lesson is plan lifecycle
+  legibility. Borrow the durable plan states, per-project verification
+  profiles, plan health doctor, repair/prune workflow, and recommendations
+  inbox. Do not borrow a second scheduler, hosted gateway, or heavyweight
+  database as the source of truth.
 
-Alfred should borrow both ideas while staying Slack-native.
+Alfred should borrow these ideas while staying Slack-native.
