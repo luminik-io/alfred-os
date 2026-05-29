@@ -473,6 +473,31 @@ def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
     assert "manual docs smoke test" in detail.text
 
 
+def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    source = followups / "20260529-bundle.md"
+    source.write_text(
+        "# Follow-up for rollout bundle\n\n"
+        "- Bundle: `rollout-bundle`\n"
+        "- Created: https://github.com/your-org/api/pull/42, "
+        "https://github.com/your-org/web/issues/77\n\n"
+        "## Slack Follow-up Feedback\n\n"
+        "### Items\n\n"
+        "- `test`: add a smoke test to both shipped slices\n",
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    response = client.post("/api/plans/20260529-bundle/convert-followup")
+
+    assert response.status_code == 200
+    draft_path = Path(response.json()["draft_path"])
+    payload = json.loads(draft_path.read_text(encoding="utf-8"))
+    assert payload["draft"]["repos"] == ["your-org/api", "your-org/web"]
+
+
 def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
     state = tmp_path / "state"
     followups = state / "followups"

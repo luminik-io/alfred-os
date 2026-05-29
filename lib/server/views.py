@@ -422,7 +422,7 @@ def _convert_followup_to_planning_draft(request: Request, plan: PlanDraft) -> Pa
 def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
     clean_title = re.sub(r"^follow-up for\s+", "", plan.title, flags=re.IGNORECASE).strip()
     title = f"Follow up: {clean_title or 'captured Slack feedback'}"
-    repo = _repo_from_github_url(plan.parent or "")
+    repos = _repos_from_followup(plan)
     return IssueDraft(
         title=title,
         problem=(
@@ -435,7 +435,7 @@ def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
             "Decide whether the follow-up needs code, docs, tests, a scoped issue, "
             "or an explicit no-change response."
         ),
-        repos=[repo] if repo else [],
+        repos=repos,
         acceptance_criteria=[
             "The captured follow-up is addressed or explicitly declined.",
             "Any resulting work links back to the original issue, PR, or Slack thread.",
@@ -444,6 +444,17 @@ def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
         out_of_scope="No automatic merge, deployment, or broad scope expansion from captured feedback.",
         open_questions="Confirm the intended response before implementation if the follow-up changes scope.",
     )
+
+
+def _repos_from_followup(plan: PlanDraft) -> list[str]:
+    repos: list[str] = []
+    urls = [plan.parent or ""]
+    urls.extend(re.findall(r"https://github\.com/[^\s),>`]+", plan.content))
+    for url in urls:
+        repo = _repo_from_github_url(url)
+        if repo and repo not in repos:
+            repos.append(repo)
+    return repos
 
 
 def _with_followup_context(body: str, plan: PlanDraft) -> str:
