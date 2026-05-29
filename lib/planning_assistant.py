@@ -711,6 +711,13 @@ def _parse_line(line: str) -> tuple[str, str] | None:
         "questions": "open_questions",
         "open question": "open_questions",
         "open questions": "open_questions",
+        "resolve question": "open_questions",
+        "resolve questions": "open_questions",
+        "resolved question": "open_questions",
+        "resolved questions": "open_questions",
+        "clear question": "open_questions",
+        "clear questions": "open_questions",
+        "clear open questions": "open_questions",
     }
     target = mapping.get(field)
     if target is None:
@@ -738,6 +745,8 @@ def _apply_action(draft: IssueDraft, action: tuple[str, str]) -> IssueDraft:
             acceptance_criteria=_dedupe([*draft.acceptance_criteria, *_split_items(value)]),
         )
     if key == "open_questions":
+        if _questions_resolved_value(value):
+            return replace(draft, open_questions=_normalized_resolved_questions(value))
         return replace(
             draft, open_questions=_append_paragraphs(draft.open_questions, _split_items(value))
         )
@@ -963,6 +972,27 @@ def _planning_questions(
     if draft.open_questions and draft.open_questions.strip().lower() not in {"none", "none."}:
         questions.append("Resolve or explicitly accept the open questions before implementation.")
     return tuple(_dedupe(questions))
+
+
+def _questions_resolved_value(value: str) -> bool:
+    cleaned = _clean_text(value).lower().strip(".")
+    return cleaned in {
+        "accepted as risk",
+        "accepted risk",
+        "n/a",
+        "no",
+        "no open questions",
+        "none",
+        "not applicable",
+        "resolved",
+    }
+
+
+def _normalized_resolved_questions(value: str) -> str:
+    cleaned = _clean_text(value).lower().strip(".")
+    if cleaned in {"accepted as risk", "accepted risk"}:
+        return "accepted as risk"
+    return "None."
 
 
 def _summary_for(readiness: IssueReadinessResult, amendments: tuple[str, ...]) -> str:

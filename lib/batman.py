@@ -1323,7 +1323,7 @@ def _render_plan_markdown(
         "*Next step:* reply in this thread to steer the plan, or approve only if it is right."
     )
     lines.append(
-        "*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`"
+        "*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`, `open questions: none`"
     )
     lines.append("*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.")
     lines.append("")

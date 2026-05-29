@@ -31,7 +31,7 @@ def cmd_once(args: argparse.Namespace) -> int:
     listener = SlackPlanningListener(
         state_root=state_root,
         poster=None if args.no_post else _NullPoster(),
-        trusted_user_ids=tuple(args.trusted_user or ()),
+        trusted_user_ids=tuple(args.trusted_user) if args.trusted_user is not None else None,
     )
     result = listener.handle_payload(payload)
     print(json.dumps(result.__dict__, indent=2, sort_keys=True))
@@ -53,7 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_once = sub.add_parser("once", help="process one Slack event JSON payload")
     p_once.add_argument("path", help="payload JSON path, or '-' for stdin")
     p_once.add_argument("--state-root", help="override Alfred state root")
-    p_once.add_argument("--trusted-user", action="append", help="trusted Slack user id")
+    p_once.add_argument(
+        "--trusted-user",
+        action="append",
+        help="trusted Slack user id; repeat to override env-based trust",
+    )
     p_once.add_argument("--no-post", action="store_true", help="do not post acknowledgement")
     p_once.add_argument("--allow-ignored", action="store_true", help="exit 0 for ignored events")
     p_once.set_defaults(func=cmd_once)

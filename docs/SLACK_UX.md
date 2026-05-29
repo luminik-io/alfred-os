@@ -47,11 +47,13 @@ test: add a regression test for unresolved questions
 add repo: luminik-io/alfred-os-site
 remove repo: mobile
 question: should this include the docs site?
+open questions: none
 ```
 
 Rules:
 
-- Questions block execution until answered.
+- Questions block execution until answered or explicitly cleared with
+  `open questions: none` / `open questions: accepted as risk`.
 - Scope changes are echoed back before approval.
 - Approved amendments are copied into child issues.
 - Alfred should never file child issues from a vague parent plan just because a
@@ -104,6 +106,7 @@ repo: example/web
 acceptance: retrying, failed, recovered states are visible
 test: component coverage for all three states
 question: should this touch emails too?
+open questions: none
 ```
 
 Rules:
@@ -113,6 +116,8 @@ Rules:
 - Intake creates local draft JSON under `$ALFRED_HOME/state/planning-drafts/`.
 - Replies in the intake thread revise the same saved draft, regenerate the issue
   body and spec body, rerun readiness checks, and append a revision entry.
+- `open questions: none` clears previously captured questions after the thread
+  has resolved them.
 - Planning memory may appear as advisory hints when memory is enabled, but the
   current Slack thread and readiness findings still win.
 - Chat intake never files issues, opens PRs, merges, or approves execution.
@@ -139,7 +144,7 @@ Alfred should sound like a calm engineering lead:
 *Work:* Add invoice payment retries
 *Readiness:* ready for approval
 *Next step:* reply in this thread to steer the plan, or approve only if it is right.
-*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`
+*Replies Alfred understands:* `change:`, `acceptance:`, `test:`, `add repo:`, `remove repo:`, `question:`, `open questions: none`
 *Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.
 
 *Scope if approved now:* 2 repos, 2 child issues

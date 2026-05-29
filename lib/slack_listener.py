@@ -543,7 +543,8 @@ def render_draft_ack(result: Any) -> str:
         [
             "",
             "*How to steer this:* reply with lines like `repo: owner/repo`, "
-            "`desired: ...`, `acceptance: ...`, `test: ...`, or `question: ...`.",
+            "`desired: ...`, `acceptance: ...`, `test: ...`, `question: ...`, "
+            "or `open questions: none`.",
             "*Safety:* chat edits the draft only. Implementation still needs the normal approval gate.",
         ]
     )

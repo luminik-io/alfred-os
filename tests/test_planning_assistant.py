@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -77,6 +78,19 @@ def test_refine_issue_draft_accepts_explicitly_accepted_open_questions() -> None
     result = refine_issue_draft(_draft(), ["question: accepted as risk"])
 
     assert result.draft.open_questions == "accepted as risk"
+    assert result.readiness.ok is True
+    assert not any(
+        finding.code == "open_questions_unresolved" for finding in result.readiness.findings
+    )
+
+
+def test_refine_issue_draft_can_clear_existing_open_questions() -> None:
+    result = refine_issue_draft(
+        replace(_draft(), open_questions="Should this include the docs site?"),
+        ["open questions: none"],
+    )
+
+    assert result.draft.open_questions == "None."
     assert result.readiness.ok is True
     assert not any(
         finding.code == "open_questions_unresolved" for finding in result.readiness.findings
