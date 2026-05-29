@@ -778,9 +778,7 @@ class BatmanLifecycleConfig:
             )
             raw_auto = AUTO_EXECUTE_OFF
         try:
-            timeout = int(
-                (e.get(ENV_APPROVAL_TIMEOUT_S) or "86400").strip() or "86400"
-            )
+            timeout = int((e.get(ENV_APPROVAL_TIMEOUT_S) or "86400").strip() or "86400")
         except ValueError:
             timeout = 86400
         return cls(
