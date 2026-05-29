@@ -762,7 +762,7 @@ class BatmanLifecycleConfig:
     parent_repo: str = ""
     picker: str = "oldest"
     bundle_slug_prefix: str = ""
-    approval_timeout_s: int = 900
+    approval_timeout_s: int = 86400
     slack_channel: str = ""
 
     @classmethod
@@ -778,9 +778,11 @@ class BatmanLifecycleConfig:
             )
             raw_auto = AUTO_EXECUTE_OFF
         try:
-            timeout = int((e.get(ENV_APPROVAL_TIMEOUT_S) or "900").strip() or "900")
+            timeout = int(
+                (e.get(ENV_APPROVAL_TIMEOUT_S) or "86400").strip() or "86400"
+            )
         except ValueError:
-            timeout = 900
+            timeout = 86400
         return cls(
             auto_execute=raw_auto,
             parent_repo=(e.get(ENV_PARENT_REPO) or "").strip(),

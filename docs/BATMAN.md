@@ -250,7 +250,7 @@ each linked back to `your-org/your-product#42`. Lucius picks them up
 across the three repos on its next firings; no further Batman action is
 needed until the operator wants to start a new bundle.
 
-If the operator reacts with `:x:` instead, or if the 15-minute timeout
+If the operator reacts with `:x:` instead, or if the approval timeout
 expires with no reaction, Batman halts and posts a report explaining
 which path was taken. No child issues are filed.
 
@@ -282,7 +282,7 @@ alfred setup-batman --check-only
 | `BATMAN_PARENT_REPO` | (unset) | `owner/repo` Batman reads parent issues from. When unset, the legacy cross-repo bundle scan path runs instead. |
 | `BATMAN_PICKER` | `oldest` | `oldest` (FIFO by `createdAt`) or `newest`. |
 | `BATMAN_BUNDLE_SLUG_PREFIX` | empty | Optional prefix prepended to the derived slug. Useful when several teams share a Slack channel and want their bundles distinguishable. |
-| `BATMAN_APPROVAL_TIMEOUT_S` | `900` | Wall-clock seconds the gate will wait for a reaction. |
+| `BATMAN_APPROVAL_TIMEOUT_S` | `86400` | Wall-clock seconds the gate will wait for a reaction. |
 | `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `60` | Seconds Batman waits after posting a report so trusted Slack replies can be captured as follow-up context. Set `0` to skip the wait. |
 | `BATMAN_SLACK_CHANNEL` | empty | Channel to post the plan and report to. When empty, falls back to the framework's default channel (`slack_format._home_channel`). |
 
