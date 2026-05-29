@@ -429,6 +429,77 @@ def test_plans_view_lists_slack_followups(tmp_path: Path) -> None:
     assert "manual docs smoke test" in payload["preview"]
 
 
+def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    source = followups / "slack-C1-1716480000.000000.md"
+    source.write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Captured: 2026-05-29T06:45:00Z\n"
+        "- Thread: C1 / 1716480000.000000\n"
+        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "## Slack Follow-up Feedback\n\n"
+        "### Items\n\n"
+        "- `change`: add a manual docs smoke test\n",
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    response = client.post(
+        "/plans/slack-C1-1716480000.000000/convert-followup",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/plans/followup-")
+    drafts = list((state / "planning-drafts").glob("followup-*.json"))
+    assert len(drafts) == 1
+    payload = json.loads(drafts[0].read_text(encoding="utf-8"))
+    assert payload["source"] == "planning"
+    assert payload["converted_from"]["plan_id"] == "slack-C1-1716480000.000000"
+    assert payload["draft"]["title"] == "Follow up: Improve planning loop"
+    assert payload["draft"]["repos"] == ["luminik-io/alfred-os"]
+    assert "Captured Follow-up Context" in payload["spec_body"]
+    assert "manual docs smoke test" in payload["spec_body"]
+    assert not source.exists()
+    archived = list((followups / "handled").glob("slack-C1-1716480000.000000.md"))
+    assert len(archived) == 1
+    assert "Follow-up action: converted" in archived[0].read_text(encoding="utf-8")
+
+    detail = client.get(response.headers["location"])
+    assert detail.status_code == 200
+    assert "Plan next pass" not in detail.text
+    assert "manual docs smoke test" in detail.text
+
+
+def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    source = followups / "slack-C1-1716480000.000000.md"
+    source.write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "Already answered in the PR thread.\n",
+        encoding="utf-8",
+    )
+    client = _client(state)
+
+    response = client.post(
+        "/api/plans/slack-C1-1716480000.000000/mark-handled",
+    )
+
+    assert response.status_code == 200
+    assert not source.exists()
+    archived_path = Path(response.json()["archived_path"])
+    assert archived_path.exists()
+    assert archived_path.parent.name == "handled"
+    assert "Follow-up action: handled" in archived_path.read_text(encoding="utf-8")
+    plans = client.get("/api/plans").json()["rows"]
+    assert plans == []
+
+
 def test_slack_planning_draft_empty_body_does_not_render_raw_event(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"

@@ -26,13 +26,15 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from planning_assistant import (
     PlanningAssistantResult,
     engine_refiner_from_env,
     refine_issue_draft,
 )
 from spec_helper import IssueDraft
+
+from server.reader import PlanDraft
 
 
 def register_routes(app: FastAPI) -> None:
@@ -143,6 +145,22 @@ def register_routes(app: FastAPI) -> None:
             {"plan": plan},
         )
 
+    @app.post("/plans/{plan_id}/convert-followup")
+    async def convert_followup(request: Request, plan_id: str) -> RedirectResponse:
+        plan = request.app.state.reader.get_plan(plan_id)
+        if plan is None or plan.source != "followup":
+            return RedirectResponse("/plans", status_code=303)
+        draft_path = _convert_followup_to_planning_draft(request, plan)
+        _archive_followup(plan, action="converted", target_path=draft_path)
+        return RedirectResponse(f"/plans/{draft_path.stem}", status_code=303)
+
+    @app.post("/plans/{plan_id}/mark-handled")
+    async def mark_followup_handled(request: Request, plan_id: str) -> RedirectResponse:
+        plan = request.app.state.reader.get_plan(plan_id)
+        if plan is not None and plan.source == "followup":
+            _archive_followup(plan, action="handled")
+        return RedirectResponse("/plans", status_code=303)
+
     @app.get("/api/status", response_class=JSONResponse)
     async def api_status(request: Request) -> JSONResponse:
         reader = request.app.state.reader
@@ -205,6 +223,33 @@ def register_routes(app: FastAPI) -> None:
         if plan is None:
             return JSONResponse({"error": "plan not found"}, status_code=404)
         return JSONResponse(_jsonable(plan))
+
+    @app.post("/api/plans/{plan_id}/convert-followup", response_class=JSONResponse)
+    async def api_convert_followup(request: Request, plan_id: str) -> JSONResponse:
+        plan = request.app.state.reader.get_plan(plan_id)
+        if plan is None:
+            return JSONResponse({"error": "plan not found"}, status_code=404)
+        if plan.source != "followup":
+            return JSONResponse({"error": "plan is not a follow-up"}, status_code=400)
+        draft_path = _convert_followup_to_planning_draft(request, plan)
+        archived_path = _archive_followup(plan, action="converted", target_path=draft_path)
+        return JSONResponse(
+            {
+                "draft_id": draft_path.stem,
+                "draft_path": str(draft_path),
+                "archived_path": str(archived_path),
+            }
+        )
+
+    @app.post("/api/plans/{plan_id}/mark-handled", response_class=JSONResponse)
+    async def api_mark_followup_handled(request: Request, plan_id: str) -> JSONResponse:
+        plan = request.app.state.reader.get_plan(plan_id)
+        if plan is None:
+            return JSONResponse({"error": "plan not found"}, status_code=404)
+        if plan.source != "followup":
+            return JSONResponse({"error": "plan is not a follow-up"}, status_code=400)
+        archived_path = _archive_followup(plan, action="handled")
+        return JSONResponse({"archived_path": str(archived_path)})
 
     @app.get("/planning", response_class=HTMLResponse)
     async def planning(request: Request) -> HTMLResponse:
@@ -339,6 +384,118 @@ def _lines(value: str) -> list[str]:
 
 def _save_issue_draft(request: Request, draft: IssueDraft, body: str) -> Path:
     return _save_planning_text(request, draft, body, directory="planning-drafts", suffix="issue")
+
+
+def _convert_followup_to_planning_draft(request: Request, plan: PlanDraft) -> Path:
+    draft = _draft_from_followup(plan)
+    memory_provider = _planning_memory_provider(request)
+    assistant_result = refine_issue_draft(draft, [], memory_provider=memory_provider)
+    issue_body = _with_followup_context(assistant_result.issue_body, plan)
+    spec_body = _with_followup_context(assistant_result.spec_body, plan)
+    root = _state_planning_root(request)
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    path = root / f"followup-{stamp}-{_slug(draft.title)}.json"
+    payload = {
+        "source": "planning",
+        "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "converted_from": {
+            "plan_id": plan.plan_id,
+            "path": plan.path,
+            "parent": plan.parent,
+            "title": plan.title,
+        },
+        "draft": asdict(assistant_result.draft),
+        "issue_body": issue_body,
+        "spec_body": spec_body,
+        "readiness": asdict(assistant_result.readiness),
+        "memory": [asdict(item) for item in assistant_result.memory],
+        "revision_count": 0,
+        "revisions": [],
+    }
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    return path
+
+
+def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
+    clean_title = re.sub(r"^follow-up for\s+", "", plan.title, flags=re.IGNORECASE).strip()
+    title = f"Follow up: {clean_title or 'captured Slack feedback'}"
+    repo = _repo_from_github_url(plan.parent or "")
+    return IssueDraft(
+        title=title,
+        problem=(
+            "A trusted Slack follow-up was captured after Alfred posted a report or PR link. "
+            "It needs an explicit planning pass before any code or docs change."
+        ),
+        user="Repo owner, teammate, or operator following up on shipped work",
+        current_behavior=plan.preview or "Follow-up context is captured in the local Plans inbox.",
+        desired_behavior=(
+            "Decide whether the follow-up needs code, docs, tests, a scoped issue, "
+            "or an explicit no-change response."
+        ),
+        repos=[repo] if repo else [],
+        acceptance_criteria=[
+            "The captured follow-up is addressed or explicitly declined.",
+            "Any resulting work links back to the original issue, PR, or Slack thread.",
+        ],
+        test_plan="Run the smallest relevant tests for the affected area and verify the follow-up is covered.",
+        out_of_scope="No automatic merge, deployment, or broad scope expansion from captured feedback.",
+        open_questions="Confirm the intended response before implementation if the follow-up changes scope.",
+    )
+
+
+def _with_followup_context(body: str, plan: PlanDraft) -> str:
+    return (
+        body.rstrip()
+        + "\n\n## Captured Follow-up Context\n\n"
+        + f"- Source: `{plan.plan_id}`\n"
+        + (f"- Parent: {plan.parent}\n" if plan.parent else "")
+        + "\n"
+        + plan.content.strip()
+        + "\n"
+    )
+
+
+def _archive_followup(
+    plan: PlanDraft,
+    *,
+    action: str,
+    target_path: Path | None = None,
+) -> Path:
+    path = Path(plan.path)
+    handled_dir = path.parent / "handled"
+    handled_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    archive_path = handled_dir / path.name
+    if archive_path.exists():
+        archive_path = handled_dir / f"{path.stem}-{stamp}{path.suffix}"
+    try:
+        content = path.read_text(encoding="utf-8").rstrip()
+    except OSError:
+        content = ""
+    metadata = [
+        "",
+        "---",
+        "",
+        f"- Follow-up action: {action}",
+        f"- Follow-up action at: {datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+    ]
+    if target_path is not None:
+        metadata.append(f"- Planning draft: {target_path}")
+    path.write_text(content + "\n".join(metadata) + "\n", encoding="utf-8")
+    path.replace(archive_path)
+    return archive_path
+
+
+def _state_planning_root(request: Request) -> Path:
+    reader = request.app.state.reader
+    state_root = getattr(reader, "state_root", None)
+    if isinstance(state_root, Path):
+        return state_root / "planning-drafts"
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    return Path(base) / "state" / "planning-drafts"
 
 
 def _save_planning_text(
@@ -495,6 +652,13 @@ def _planning_workdir(request: Request) -> Path:
         return state_root.parent
     base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base)
+
+
+def _repo_from_github_url(url: str) -> str:
+    match = re.search(r"github\.com/([^/\s]+/[^/\s]+)/", url)
+    if not match:
+        return ""
+    return match.group(1)
 
 
 def _slug(value: str) -> str:

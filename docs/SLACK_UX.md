@@ -83,6 +83,9 @@ Rules:
   before collecting trusted replies. Captured context is also written to
   `$ALFRED_HOME/state/followups/` and appears in the local Plans inbox as a
   `needs follow-up` item.
+- From the local Plans detail page, an operator can convert a captured
+  follow-up into a scoped planning draft for the next pass, or mark it handled.
+  Both actions archive the original follow-up and remain local-only.
 
 ## DM And App Mention Intake
 
