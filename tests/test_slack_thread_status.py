@@ -94,9 +94,7 @@ def test_register_rejects_bad_repo_or_issue(tmp_path: Path) -> None:
         is None
     )
     assert (
-        tracker.register_issue_thread(
-            channel="", thread_ts=THREAD, repo=REPO_SLUG, issue_number=42
-        )
+        tracker.register_issue_thread(channel="", thread_ts=THREAD, repo=REPO_SLUG, issue_number=42)
         is None
     )
 
