@@ -193,7 +193,7 @@ def _plain_plan_line(draft: IssueDraft) -> str:
         return desired
     problem = _first_sentence(draft.problem)
     if problem and not _has_jargon(problem):
-        return f"Sort out {problem[0].lower()}{problem[1:]}"
+        return f"Fix: {problem[0].lower()}{problem[1:]}"
     title = draft.title.strip()
     if title and not _has_jargon(title):
         return title
