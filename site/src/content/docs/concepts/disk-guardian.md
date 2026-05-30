@@ -63,4 +63,3 @@ Two properties keep the guardian from becoming noise or a new failure mode:
 
 - [Architecture](/concepts/architecture/): the runtime boundary and preflight.
 - [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/ARCHITECTURE.md): the full diagram companion, including this back-off.
-</content>

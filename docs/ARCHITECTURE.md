@@ -245,5 +245,3 @@ The seam matters: the desktop client and any future surface read and write the s
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename engine selection and the precedence chain.
 - [`SLACK_UX.md`](SLACK_UX.md) and [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md): the Slack message contract and the reaction approval gate.
 - [`INSTALL_TIERS.md`](INSTALL_TIERS.md): the three install tiers and what each one needs.
-</content>
-</invoke>

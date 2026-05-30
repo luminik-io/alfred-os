@@ -88,4 +88,3 @@ Leave `ALFRED_BRIDGE_ENABLED` unset to keep approvals as refine-only no-ops. For
 - **Mac operator who wants a cockpit:** `core` + `client`. Install the `serve` extra, run `alfred serve`, and drive the fleet from the desktop app.
 - **Team that plans in Slack:** `core` + `slack`. Run the listener, keep the bridge off until you trust the flow, then arm it with an allowlist.
 - **Everything:** all three. The client and Slack surfaces both sit on top of the same `core` and never bypass its gates.
-</content>

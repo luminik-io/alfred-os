@@ -90,4 +90,3 @@ The optional Slack tier is the planning listener plus the issue bridge:
 | Everything | all three |
 
 The client and Slack surfaces both sit on top of the same core and never bypass its claim, spend, review, and merge gates. Full tier walkthrough: [`docs/INSTALL_TIERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/INSTALL_TIERS.md).
-</content>

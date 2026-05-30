@@ -38,7 +38,11 @@ def _capture_claude_argv(monkeypatch) -> list[str]:
         captured["cmd"] = list(cmd)
         return SimpleNamespace(returncode=0, stdout=_OK_STDOUT, stderr="")
 
-    with mock.patch.object(agent_runner, "run", fake_run):
+    # Patch ``run`` directly in the namespace ``claude_invoke`` resolves it from
+    # — its own module globals. Robust to test-ordering / double-import quirks in
+    # the full suite (patching the package or submodule by string name can miss
+    # when another test imported agent_runner under a different sys.path entry).
+    with mock.patch.dict(agent_runner.claude_invoke.__globals__, {"run": fake_run}):
         agent_runner.claude_invoke(
             prompt="hi",
             workdir=Path("/tmp"),
