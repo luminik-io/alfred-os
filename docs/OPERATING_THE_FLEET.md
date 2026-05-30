@@ -156,6 +156,13 @@ tail -n 200 /tmp/my.fleet.<codename>.stderr
 
 A plist that fails to load on `launchctl bootstrap` writes the reason to the unit's stderr. Most common cause: a typo in `agents.conf` after a manual edit, or a `PATH` entry that no longer exists. Re-run `bash launchd/render.sh && bash deploy.sh`.
 
+### 7. Desktop notifications from headless firings
+
+There are two distinct notification sources, and only one is code-controllable:
+
+- **Claude Code notifications** (the assistant pinging you when a session needs attention or finishes). The fleet suppresses these by default: every headless `claude -p` invocation is launched with `--settings '{"agentPushNotifEnabled":false,"preferredNotifChannel":"none"}'`. That flag *adds* a settings source on top of the config-dir settings — it does not touch auth (credentials come from the config dir, not `settings.json`), so suppression never logs an agent out. To re-enable notifications (e.g. while debugging a single firing interactively), set `ALFRED_AGENT_NOTIFICATIONS=1` in the agent's environment.
+- **macOS "Background Items Added" / login-item banners** for the launchd jobs themselves. These come from macOS, not from Alfred, and there is no code path that can silence them. Turn them off in **System Settings → Notifications → Background Items Added** (and review **General → Login Items & Extensions**). This is a per-host System Settings toggle, not something `deploy.sh` or any agent can change.
+
 ## Weekly hygiene
 
 Block thirty minutes once a week. The fleet does most of its own housekeeping via `agent-cleanup` (daily 03:00), but a human pass catches drift the daily cleanup will not.

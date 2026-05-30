@@ -84,7 +84,13 @@ if [ -f "$EXTRA_PATTERNS_FILE" ]; then
   while IFS= read -r extra_line || [ -n "$extra_line" ]; do
     extra_line="${extra_line%$'\r'}"
     [ -z "$extra_line" ] && continue
-    case "$extra_line" in \#*) continue ;; esac
+    # A line is a comment iff it is exactly "#" or starts with "# "
+    # (hash + space). A line like "#my-channel" (hash + non-space) is a
+    # legitimate pattern — e.g. a private Slack channel name — and must
+    # be kept, not silently dropped as a comment.
+    case "$extra_line" in
+      '#' | '# '*) continue ;;
+    esac
     patterns+=("$extra_line")
   done < "$EXTRA_PATTERNS_FILE"
 fi
