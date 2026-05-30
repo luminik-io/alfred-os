@@ -90,9 +90,7 @@ _CLAUDE_UNLIMITED_TURNS: int = 999
 # of which live in a settings.json, so suppressing notifications here can
 # never log the agent out. Opt back in (e.g. for interactive debugging)
 # with ``ALFRED_AGENT_NOTIFICATIONS=1``.
-_AGENT_NOTIF_SUPPRESS_SETTINGS = (
-    '{"agentPushNotifEnabled":false,"preferredNotifChannel":"none"}'
-)
+_AGENT_NOTIF_SUPPRESS_SETTINGS = '{"agentPushNotifEnabled":false,"preferredNotifChannel":"none"}'
 
 
 def _agent_notifications_enabled() -> bool:
