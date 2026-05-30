@@ -41,6 +41,12 @@ state machine that keeps multiple agents from stepping on each other.
   thread with scope changes, questions, and acceptance criteria while the
   operator keeps approval authority. Follow-up replies after PR links are
   captured as context for the next pass, not as implicit merge approval.
+- Run the fleet conversationally from Slack: trusted control commands
+  (`status`, `pause`, `resume`, `runs`) drive agents from chat with no shell,
+  an approved draft can cross the off-by-default bridge into a labeled issue,
+  and in-thread progress posts (claimed, PR opened, CI, merged) report back as
+  the fleet works it. A plain-language intake profile lets a non-technical user
+  approve outcomes instead of code.
 - Route engines by role. Run implementation on Claude Code and review on
   Codex, or keep Claude as primary with Codex fallback for selected agents.
 - Bring your own subscription. Alfred shells out to your local `claude` and
@@ -242,7 +248,9 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with Slack and GitHub links opening outside the app. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) via `bundle.targets: all`. |
+| [`lib/slack_control.py`](lib/slack_control.py) | Trusted Slack control/query commands (`status`/`pause`/`resume`/`runs`/`help`), codename-validated, no shell. |
+| [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
 ## Documentation
 
@@ -259,9 +267,11 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Fleet brain](docs/FLEET_BRAIN.md): local memory, reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
 - [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, and local API shape.
+- [Desktop client](docs/DESKTOP_CLIENT.md): the desktop control surface tab by tab, the `alfred serve` seam, and building native installers.
+- [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
 - [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
-- [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
+- [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token, planning listener, trusted control commands, the off-by-default issue bridge, and in-thread fleet-progress thread-sync.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
 - [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
