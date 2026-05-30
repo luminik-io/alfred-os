@@ -231,6 +231,73 @@ Safety model:
   memory using `ALFRED_MEMORY_PROVIDERS`; memory never overrides the current
   Slack thread or readiness gates.
 
+## Optional: Slack issue bridge
+
+The bridge is the wire that turns an *approved* planning draft into a labeled
+GitHub issue the autonomous fleet (Lucius / Batman) picks up. It is **off by
+default**. When enabled, a trusted user can approve a draft directly in its
+thread, and Alfred files one issue carrying the pickup label.
+
+**What it does and does not do.** The bridge only runs `gh issue create` with
+the configured pickup label. It never runs code, opens worktrees, pushes
+branches, or spawns an agent. The created issue then enters the normal queue
+and is claimed through every existing gate (claim-lock, spend caps, review,
+Batman's multi-repo approval). The bridge reuses that safety machinery instead
+of bypassing it.
+
+**Two conditions are both required** before an issue is created:
+
+1. A **trusted** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID` /
+   `ALFRED_TRUSTED_SLACK_USER_IDS`). A non-trusted user can never trigger it.
+2. An **explicit approval token** in a registered draft thread: a configured
+   phrase (default `ship it` / `create issue` / `go` / `/ship`) or an approval
+   reaction (`:white_check_mark:` / `:rocket:`) on the draft. Ambiguous prose
+   is never treated as approval -- it just refines the draft as before.
+
+Enable it by setting these env vars on the listener process:
+
+```sh
+ALFRED_BRIDGE_ENABLED=1
+# Allowlist of owner/repo slugs the bridge may file against. A draft repo
+# outside this list is refused. Required: an empty allowlist files nowhere.
+ALFRED_BRIDGE_REPOS=acme-org/api,acme-org/web
+# Pickup label the fleet watches for (must match pick_issue()). Default:
+ALFRED_BRIDGE_LABEL=agent:implement
+# Optional override of the approval phrase list (comma/semicolon separated):
+ALFRED_BRIDGE_APPROVAL_PHRASES=ship it, create issue, go, /ship
+```
+
+To let approval reactions work, also subscribe the Slack app to the
+`reaction_added` bot event (under **Event Subscriptions → Subscribe to bot
+events**) and add the `reactions:read` OAuth scope.
+
+Safety model:
+
+- Disabled by default: with `ALFRED_BRIDGE_ENABLED` unset, an explicit approval
+  is acknowledged but creates nothing.
+- An empty `ALFRED_BRIDGE_REPOS` refuses to file anywhere.
+- A draft whose repo is not in the allowlist is refused; nothing is created.
+- Idempotent: a draft can only be converted once. A second approval reports the
+  existing issue instead of creating a duplicate.
+- The bridge only creates an issue; it never executes code. The fleet still
+  claims the issue through every existing gate before any change ships.
+
+### Running the listener as a service
+
+The bridge runs inside the existing planning listener process, so the bridge
+env vars belong in the same launchd plist that runs `alfred slack-listener
+run`. The framework's `launchd/_template.plist` renders one job per agent from
+`launchd/agents.conf`; add the bridge variables to that job's
+`EnvironmentVariables` block (alongside `SLACK_APP_TOKEN`,
+`ALFRED_OPERATOR_SLACK_USER_ID`, etc.), since launchd does not interpolate env
+vars inside a plist. For a quick local run:
+
+```sh
+ALFRED_BRIDGE_ENABLED=1 \
+ALFRED_BRIDGE_REPOS=acme-org/api \
+alfred slack-listener run
+```
+
 ## Rotating a webhook
 
 Do this when you accidentally paste the URL somewhere it shouldn't be (chat, screenshot, public PR description).
