@@ -4,6 +4,11 @@
 # bin/scrub-check.sh itself; pre-commit git-secrets needs an allowlist
 # entry so it doesn't double-flag pattern literals as actual secrets.
 bin/scrub-check\.sh
+# .gitleaks.toml DEFINES allowlist regexes that reference fake placeholder
+# token prefixes (the ant-token setup-token examples); like scrub-check.sh
+# it must be exempt so pre-commit git-secrets does not double-flag those
+# pattern literals as real secrets.
+\.gitleaks\.toml
 \.github/workflows/.*\.yml
 # Documentation prose and SQL schema files. The pre-commit git-secrets
 # scan flagged short config-format examples and standard SQL constraints
