@@ -84,6 +84,16 @@ from .config import (
 )
 
 # --------------------------------------------------------------------------
+# Disk-pressure probe (ENOSPC guard)
+# --------------------------------------------------------------------------
+from .disk import (
+    DEFAULT_MIN_FREE_DISK_GB,
+    DEFAULT_MIN_FREE_DISK_PCT,
+    DiskPressure,
+    disk_pressure_status,
+)
+
+# --------------------------------------------------------------------------
 # GitHub (labels, PRs, issues, claim/release, worktrees, paused repos)
 # --------------------------------------------------------------------------
 from .github import (
@@ -174,9 +184,11 @@ from .orchestrator import (
     TIER_TO_MODEL,
     PreflightFailed,
     PreflightSpec,
+    _disk_preflight_gate,
     _FiringContext,
     _ollama_health_ok,
     _ollama_invoke,
+    _run_emergency_cleanup,
     _shared_agent_available,
     assemble_shared_context,
     best_of_n,
@@ -448,6 +460,11 @@ __all__ = [
     "reflect",
     "route_llm",
     "start_ollama_if_needed",
+    # disk
+    "DEFAULT_MIN_FREE_DISK_GB",
+    "DEFAULT_MIN_FREE_DISK_PCT",
+    "DiskPressure",
+    "disk_pressure_status",
 ]
 
 
@@ -486,6 +503,9 @@ from . import (
     config as _sub_config,
 )
 from . import (
+    disk as _sub_disk,
+)
+from . import (
     github as _sub_github,
 )
 from . import (
@@ -519,6 +539,7 @@ from . import (
 _SUBMODULE_OBJS: tuple[_ModuleType, ...] = (
     _sub_paths,
     _sub_config,
+    _sub_disk,
     _sub_process,
     _sub_result,
     _sub_transcripts,

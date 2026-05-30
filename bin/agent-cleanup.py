@@ -52,9 +52,12 @@ from agent_runner import (  # noqa: E402
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "cleanup")
-PREFLIGHT = PreflightSpec(agent=AGENT, bins=["git"])
+# check_disk=False: the janitor must run *because* the disk is low, not
+# skip when it is. Every other agent inherits the disk-pressure gate; the
+# cleanup agent is the one that reclaims space, so it opts out.
+PREFLIGHT = PreflightSpec(agent=AGENT, bins=["git"], check_disk=False)
 
-USAGE = """usage: agent-cleanup.py
+USAGE = """usage: agent-cleanup.py [--emergency]
 
 Sweep stale Alfred runtime files:
   - old agent temp files
@@ -63,6 +66,15 @@ Sweep stale Alfred runtime files:
   - stale /tmp agent locks
   - stale GitHub in-flight claims when configured
 
+Options:
+  --emergency   Aggressive reclamation for disk-pressure recovery. Lowers
+                the abandoned-worktree age threshold, auto-discovers and
+                sweeps every .worktrees pool under WORKSPACE, shortens
+                transcript/event retention to an emergency floor, and
+                clears Alfred's own /tmp debug dirs regardless of the
+                1-day age gate. Still 100% Alfred-owned with the same
+                dirty-skip + recovery-ref safety as a normal sweep.
+
 Configuration is via ALFRED_* environment variables.
 """
 
@@ -70,6 +82,20 @@ Configuration is via ALFRED_* environment variables.
 if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
     print(USAGE.rstrip())
     sys.exit(0)
+
+# --emergency: aggressive (but still Alfred-owned, dirty-skip-preserving)
+# reclamation, fired by the disk-pressure preflight gate when free space
+# is critical. Lowers age gates and retention floors so a full disk can
+# recover before the next firing crash-loops on ENOSPC.
+EMERGENCY = "--emergency" in sys.argv[1:]
+# Reject unknown flags only when run as the actual CLI. When the test
+# suite imports this script as a module, sys.argv belongs to pytest and
+# must not trip the parser (the procedural body would exit(2) before its
+# helper functions are defined).
+if __name__ == "__main__":
+    for _unknown in (a for a in sys.argv[1:] if a not in {"--emergency"}):
+        print(f"agent-cleanup.py: unknown argument: {_unknown} (see --help)", file=sys.stderr)
+        sys.exit(2)
 
 # Transcripts dir is optional in the framework; default to STATE_ROOT/transcripts.
 try:
@@ -131,6 +157,11 @@ def configured_tmp_prefixes() -> list[str]:
     return sorted(prefixes)
 
 
+# In emergency mode the 1-day age gate on Alfred's own /tmp debug dirs is
+# dropped: those dirs are 100% Alfred-owned scratch space, so clearing
+# them regardless of age is safe and reclaims space immediately.
+TMP_MIN_AGE_DAYS = 0.0 if EMERGENCY else 1.0
+
 removed = 0
 freed_mb = 0.0
 for prefix in configured_tmp_prefixes():
@@ -141,7 +172,7 @@ for prefix in configured_tmp_prefixes():
         for p in Path("/tmp").glob(pattern):
             try:
                 age_days = (NOW - p.stat().st_mtime) / ONE_DAY
-                if age_days < 1:
+                if age_days < TMP_MIN_AGE_DAYS:
                     continue
                 size_mb = (
                     sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
@@ -174,8 +205,11 @@ def dirty_worktree_reason(wt: Path) -> str | None:
     return worktree_risk_reason(wt)
 
 
-# Sweep abandoned clean worktrees (>2h old). Dirty or unknown directories are
-# kept so cleanup never destroys in-progress agent work.
+# Sweep abandoned clean worktrees (>2h old, or >15min in emergency mode).
+# Dirty or unknown directories are kept so cleanup never destroys
+# in-progress agent work — the dirty-skip + recovery-ref path is identical
+# in both modes; emergency only lowers the *age* gate.
+FLEET_WT_MIN_AGE_SECONDS = 900 if EMERGENCY else 7200  # 15min vs 2h
 wt_root = WORKTREE_ROOT
 wt_removed = 0
 wt_skipped = 0
@@ -184,7 +218,7 @@ if wt_root.exists():
     for wt in wt_root.iterdir():
         try:
             age = NOW - wt.stat().st_mtime
-            if age < 7200:  # < 2h, leave alone
+            if age < FLEET_WT_MIN_AGE_SECONDS:  # too fresh, leave alone
                 continue
             dirty_reason = dirty_worktree_reason(wt)
             if dirty_reason:
@@ -302,15 +336,87 @@ def sweep_extra_paths(
     return {"removed": removed, "skipped": skipped, "freed_mb": freed_mb}
 
 
+def discover_worktree_pools(
+    *,
+    root: Path,
+    max_depth: int = 3,
+) -> list[str]:
+    """Find ``.worktrees`` pool directories under ``root`` (bounded depth).
+
+    Returns the directories as a colon-separated-ready list of absolute
+    path strings. Any directory literally named ``.worktrees`` found at
+    depth ``<= max_depth`` below ``root`` is treated as an extra worktree
+    pool and swept with the same dirty-skip + recovery-ref rules as the
+    fleet pool.
+
+    This closes the real incident class: operators run manual Claude Code
+    sessions that leave per-project ``product/<repo>/.worktrees/`` pools
+    full of ``node_modules`` (tens of GB) that ``ALFRED_CLEANUP_EXTRA_PATHS``
+    only swept if set by hand. Auto-discovery makes the janitor find them.
+
+    Opt out with ``ALFRED_CLEANUP_AUTODISCOVER=0``.
+    """
+    if not root.is_dir():
+        return []
+    found: list[str] = []
+    # BFS with an explicit depth bound so a deep tree can't make this
+    # walk unbounded. We do not descend into a discovered ``.worktrees``
+    # pool (its children are worktrees, not more pools).
+    frontier: list[tuple[Path, int]] = [(root, 0)]
+    while frontier:
+        current, depth = frontier.pop()
+        if depth > max_depth:
+            continue
+        try:
+            children = [c for c in current.iterdir() if c.is_dir()]
+        except OSError:
+            continue
+        for child in children:
+            if child.name == ".worktrees":
+                found.append(str(child))
+                continue  # do not recurse into a pool
+            # Skip the fleet pool (handled separately) and noisy package
+            # dirs we should never walk into looking for pools.
+            if child.name in {"node_modules", ".git"}:
+                continue
+            if depth + 1 <= max_depth:
+                frontier.append((child, depth + 1))
+    return sorted(set(found))
+
+
 # Operator-managed extra worktree pools (outside ALFRED_HOME).
 # ``ALFRED_CLEANUP_EXTRA_PATHS`` is a colon-separated list; each entry
 # is swept using the same dirty-skip rules as the fleet pool but with a
 # configurable age threshold via ``ALFRED_CLEANUP_MAX_AGE_HOURS``
-# (default 48h).
+# (default 48h). In emergency mode the age threshold drops to the
+# emergency floor so freshly-abandoned (but clean) pools are reclaimed.
 extra_paths_raw = os.environ.get("ALFRED_CLEANUP_EXTRA_PATHS", "").strip()
 extra_max_age_hours = int(os.environ.get("ALFRED_CLEANUP_MAX_AGE_HOURS", "48"))
+EMERGENCY_MAX_AGE_HOURS = int(os.environ.get("ALFRED_CLEANUP_EMERGENCY_MAX_AGE_HOURS", "1"))
+if EMERGENCY:
+    extra_max_age_hours = min(extra_max_age_hours, EMERGENCY_MAX_AGE_HOURS)
+
+# Auto-discover ``.worktrees`` pools under WORKSPACE (opt-out via
+# ALFRED_CLEANUP_AUTODISCOVER=0). Merge them with the operator-configured
+# extra paths so both are swept under the same dirty-skip rules.
+autodiscover = os.environ.get("ALFRED_CLEANUP_AUTODISCOVER", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+discovered_pools: list[str] = []
+if autodiscover:
+    discovered_pools = discover_worktree_pools(root=WORKSPACE)
+
+all_extra_paths = [p for p in extra_paths_raw.split(":") if p.strip()]
+for pool in discovered_pools:
+    if pool not in all_extra_paths:
+        all_extra_paths.append(pool)
+combined_extra_paths = ":".join(all_extra_paths)
+
 extra_stats = sweep_extra_paths(
-    paths=extra_paths_raw,
+    paths=combined_extra_paths,
     max_age_hours=extra_max_age_hours,
     now=NOW,
 )
@@ -318,6 +424,21 @@ extra_stats = sweep_extra_paths(
 SPEND_RETENTION_DAYS = int(os.environ.get("ALFRED_SPEND_RETENTION_DAYS", "90"))
 TRANSCRIPT_RETENTION_DAYS = int(os.environ.get("ALFRED_TRANSCRIPT_RETENTION_DAYS", "30"))
 EVENTS_RETENTION_DAYS = int(os.environ.get("ALFRED_EVENTS_RETENTION_DAYS", "30"))
+
+# Emergency retention floors: shorten transcript/event retention so a
+# disk-pressure pass reclaims their bulk. Spend ledgers are deliberately
+# NOT shortened — metrics needs the 90-day history and they are tiny. The
+# floors clamp the configured retention DOWN, never up, so an operator who
+# already runs tighter retention keeps it.
+if EMERGENCY:
+    EMERGENCY_TRANSCRIPT_RETENTION_DAYS = int(
+        os.environ.get("ALFRED_EMERGENCY_TRANSCRIPT_RETENTION_DAYS", "3")
+    )
+    EMERGENCY_EVENTS_RETENTION_DAYS = int(
+        os.environ.get("ALFRED_EMERGENCY_EVENTS_RETENTION_DAYS", "3")
+    )
+    TRANSCRIPT_RETENTION_DAYS = min(TRANSCRIPT_RETENTION_DAYS, EMERGENCY_TRANSCRIPT_RETENTION_DAYS)
+    EVENTS_RETENTION_DAYS = min(EVENTS_RETENTION_DAYS, EMERGENCY_EVENTS_RETENTION_DAYS)
 
 state_root = STATE_ROOT
 spend_removed = 0
@@ -414,9 +535,13 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
     shutil.rmtree(lock_dir, ignore_errors=True)
     locks_unlocked += 1
 
+if EMERGENCY:
+    print("[cleanup] EMERGENCY mode: aggressive thresholds (disk-pressure recovery)")
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
 print(f"[cleanup] worktrees: {wt_removed} abandoned removed, {wt_skipped} dirty/unknown skipped")
-if extra_paths_raw:
+if discovered_pools:
+    print(f"[cleanup] auto-discovered {len(discovered_pools)} .worktrees pool(s) under WORKSPACE")
+if combined_extra_paths:
     print(
         f"[cleanup] extra worktrees: {extra_stats['removed']} removed "
         f"({extra_stats['freed_mb']:.1f} MB freed, >{extra_max_age_hours}h), "
@@ -428,6 +553,8 @@ print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
+total_freed_mb = freed_mb + extra_stats["freed_mb"] + transcript_freed_mb
+print(f"[cleanup] total reclaimed: {total_freed_mb:.1f} MB")
 if wt_skipped:
     recovery_note = ""
     if wt_recovery_refs:

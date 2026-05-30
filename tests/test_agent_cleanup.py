@@ -200,3 +200,171 @@ def test_sweep_extra_paths_handles_missing_directory(cleanup, tmp_path):
 def test_sweep_extra_paths_empty_input_is_noop(cleanup):
     stats = cleanup.sweep_extra_paths(paths="", max_age_hours=48)
     assert stats == {"removed": 0, "skipped": 0, "freed_mb": 0.0}
+
+
+# ---------------------------------------------------------------------------
+# Auto-discovery of .worktrees pools under WORKSPACE (the incident fix).
+# ---------------------------------------------------------------------------
+
+
+def test_discover_worktree_pools_finds_dot_worktrees(cleanup, tmp_path):
+    workspace = tmp_path / "ws"
+    # A per-project pool nested two levels under WORKSPACE.
+    pool = workspace / "product" / "backend" / ".worktrees"
+    pool.mkdir(parents=True)
+    (pool / "feat-x").mkdir()
+    # A noise directory that must NOT be reported.
+    (workspace / "product" / "frontend" / "node_modules").mkdir(parents=True)
+
+    found = cleanup.discover_worktree_pools(root=workspace)
+    assert found == [str(pool)]
+
+
+def test_discover_worktree_pools_respects_depth_bound(cleanup, tmp_path):
+    workspace = tmp_path / "ws"
+    # Pool buried deeper than the default max_depth=3 must be skipped.
+    deep = workspace / "a" / "b" / "c" / "d" / ".worktrees"
+    deep.mkdir(parents=True)
+    found = cleanup.discover_worktree_pools(root=workspace, max_depth=3)
+    assert found == []
+
+
+def test_discover_worktree_pools_missing_root_is_empty(cleanup, tmp_path):
+    found = cleanup.discover_worktree_pools(root=tmp_path / "nope")
+    assert found == []
+
+
+def test_discover_does_not_descend_into_node_modules(cleanup, tmp_path):
+    workspace = tmp_path / "ws"
+    # A .worktrees that only exists *inside* a node_modules tree must not
+    # be discovered — we never walk into node_modules.
+    buried = workspace / "repo" / "node_modules" / "pkg" / ".worktrees"
+    buried.mkdir(parents=True)
+    found = cleanup.discover_worktree_pools(root=workspace)
+    assert found == []
+
+
+# ---------------------------------------------------------------------------
+# Hard safety rule: never touch non-Alfred paths; always skip dirty.
+# ---------------------------------------------------------------------------
+
+
+def test_emergency_sweep_never_touches_user_files(cleanup, tmp_path, monkeypatch):
+    """A clean, old worktree in a discovered pool is removed; a sibling
+    user file/dir that is NOT a worktree child is left completely alone."""
+    pool = tmp_path / "ws" / "proj" / ".worktrees"
+    pool.mkdir(parents=True)
+    old_wt = pool / "old-feat"
+    old_wt.mkdir()
+    (old_wt / ".git").write_text("placeholder")
+
+    # A user file sitting OUTSIDE the pool, e.g. real source the operator
+    # cares about. Nothing in the sweep should ever reach it.
+    user_src = tmp_path / "ws" / "proj" / "important.txt"
+    user_src.write_text("do not delete me")
+    user_cache = tmp_path / "home" / ".npm"
+    user_cache.mkdir(parents=True)
+    (user_cache / "cache.bin").write_text("package cache")
+
+    empty_workspace = tmp_path / "empty-workspace"
+    empty_workspace.mkdir()
+    monkeypatch.setattr(cleanup, "WORKSPACE", empty_workspace)
+    monkeypatch.setattr(cleanup, "dirty_worktree_reason", lambda wt: None)
+
+    aged = time.time() - 100 * 3600
+    os.utime(old_wt, (aged, aged))
+
+    stats = cleanup.sweep_extra_paths(paths=str(pool), max_age_hours=1, now=time.time())
+
+    assert stats["removed"] == 1
+    assert not old_wt.exists()  # the worktree child WAS reclaimed
+    assert user_src.exists() and user_src.read_text() == "do not delete me"
+    assert user_cache.exists() and (user_cache / "cache.bin").exists()
+
+
+def test_emergency_sweep_still_skips_dirty_in_discovered_pool(cleanup, tmp_path, monkeypatch):
+    """Even at the aggressive 1h emergency age threshold, a dirty worktree
+    in an auto-discovered pool is preserved with a recovery ref."""
+    pool = tmp_path / "ws" / "proj" / ".worktrees"
+    pool.mkdir(parents=True)
+    dirty = pool / "wip-feat"
+    dirty.mkdir()
+    (dirty / ".git").write_text("placeholder")
+
+    empty_workspace = tmp_path / "empty-workspace"
+    empty_workspace.mkdir()
+    recovery_calls: list = []
+    monkeypatch.setattr(cleanup, "WORKSPACE", empty_workspace)
+    monkeypatch.setattr(cleanup, "dirty_worktree_reason", lambda wt: "dirty")
+    monkeypatch.setattr(
+        cleanup,
+        "create_recovery_ref",
+        lambda wt: recovery_calls.append(wt) or "recovery/wip",
+    )
+
+    aged = time.time() - 100 * 3600
+    os.utime(dirty, (aged, aged))
+
+    stats = cleanup.sweep_extra_paths(paths=str(pool), max_age_hours=1, now=time.time())
+
+    assert stats["removed"] == 0
+    assert stats["skipped"] == 1
+    assert dirty.exists()  # dirty work preserved despite emergency thresholds
+    assert recovery_calls == [dirty]
+
+
+# ---------------------------------------------------------------------------
+# Emergency-mode end-to-end: aggressive thresholds via the procedural body.
+# ---------------------------------------------------------------------------
+
+
+def test_emergency_run_uses_aggressive_thresholds(tmp_path, monkeypatch):
+    """Loading the procedural body with --emergency must clear an Alfred
+    /tmp debug dir that is NEWER than the 1-day gate a normal run honours."""
+    import importlib.util
+
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    (workspace / "product").mkdir(parents=True)
+    (alfred / "state").mkdir(parents=True)
+    (alfred / "worktrees").mkdir(parents=True)
+
+    monkeypatch.setenv("ALFRED_HOME", str(alfred))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("ALFRED_CLAIM_SWEEP_REPOS", "")
+    monkeypatch.delenv("ALFRED_CLEANUP_EXTRA_PATHS", raising=False)
+    # Disable autodiscovery so this test only exercises the /tmp age gate.
+    monkeypatch.setenv("ALFRED_CLEANUP_AUTODISCOVER", "0")
+
+    # A fresh Alfred-owned /tmp debug dir (mtime = now). A normal run would
+    # skip it (under the 1-day gate); emergency must clear it. The prefix
+    # must match a real bin/*.py stem so configured_tmp_prefixes() sweeps
+    # it — ``lucius`` (bin/lucius.py) is one such Alfred-owned agent.
+    fresh_debug = Path("/tmp") / "lucius-debug-emergencytest-xyz"
+    fresh_debug.mkdir(exist_ok=True)
+    (fresh_debug / "scratch").write_text("x")
+    try:
+        for mod in list(sys.modules):
+            if mod.startswith("agent_runner") or mod == "agent_cleanup":
+                del sys.modules[mod]
+        sys.path.insert(0, str(REPO / "lib"))
+        monkeypatch.setattr(sys, "argv", ["agent-cleanup.py", "--emergency"])
+
+        spec = importlib.util.spec_from_file_location("agent_cleanup", CLEANUP)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["agent_cleanup"] = mod
+        with contextlib.suppress(SystemExit):
+            spec.loader.exec_module(mod)
+
+        assert mod.EMERGENCY is True
+        # Emergency dropped the /tmp age gate to 0 and shortened retention.
+        assert mod.TMP_MIN_AGE_DAYS == 0.0
+        assert mod.TRANSCRIPT_RETENTION_DAYS <= 3
+        assert mod.EVENTS_RETENTION_DAYS <= 3
+        # The fresh debug dir was cleared despite being well under 1 day old.
+        assert not fresh_debug.exists()
+    finally:
+        if fresh_debug.exists():
+            import shutil as _shutil
+
+            _shutil.rmtree(fresh_debug, ignore_errors=True)

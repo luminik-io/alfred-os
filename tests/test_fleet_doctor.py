@@ -354,3 +354,38 @@ def test_engine_auth_streak_window_excludes_old_files(tmp_path, monkeypatch):
         os.utime(path, (old, old))
     finding = fd.check_engine_auth_streak(now=now)
     assert finding.severity == "green"
+
+
+def test_check_disk_pressure_green_when_healthy(monkeypatch):
+    fd = _load_doctor()
+    monkeypatch.setattr(
+        fd,
+        "disk_pressure_status",
+        lambda *a, **k: {"free_gb": 50.0, "free_pct": 40.0, "critical": False, "low": False},
+    )
+    finding = fd.check_disk_pressure()
+    assert finding.severity == "green"
+    assert "healthy" in finding.message
+
+
+def test_check_disk_pressure_yellow_when_low(monkeypatch):
+    fd = _load_doctor()
+    monkeypatch.setattr(
+        fd,
+        "disk_pressure_status",
+        lambda *a, **k: {"free_gb": 4.0, "free_pct": 6.0, "critical": False, "low": True},
+    )
+    finding = fd.check_disk_pressure()
+    assert finding.severity == "yellow"
+
+
+def test_check_disk_pressure_alert_when_critical(monkeypatch):
+    fd = _load_doctor()
+    monkeypatch.setattr(
+        fd,
+        "disk_pressure_status",
+        lambda *a, **k: {"free_gb": 0.5, "free_pct": 1.0, "critical": True, "low": False},
+    )
+    finding = fd.check_disk_pressure()
+    assert finding.severity == "alert"
+    assert "--emergency" in finding.message
