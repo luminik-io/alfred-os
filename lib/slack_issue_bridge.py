@@ -338,7 +338,8 @@ def build_issue_body(draft_payload: dict, *, thread_link: str = "") -> str:
     if issue_body:
         parts.append(issue_body)
     spec_body = str(draft_payload.get("spec_body") or "").strip()
-    if spec_body and spec_body not in parts:
+    already_present = "\n\n".join(parts)
+    if spec_body and spec_body not in already_present:
         parts.append("## Development Spec\n\n" + spec_body)
     parts.append(_origin_footer(thread_link))
     return "\n\n".join(part for part in parts if part).rstrip() + "\n"

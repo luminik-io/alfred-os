@@ -647,7 +647,8 @@ def _parse_reaction_event(payload: dict[str, Any], event: dict[str, Any]) -> Sla
     so the event resolves to the registered draft thread root. Reaction events
     carry no message text; approval is decided purely on the reaction name.
     """
-    item = event.get("item") if isinstance(event.get("item"), dict) else {}
+    raw_item = event.get("item")
+    item = raw_item if isinstance(raw_item, dict) else {}
     channel = str(item.get("channel") or "")
     ts = str(item.get("ts") or "")
     user = str(event.get("user") or "")
