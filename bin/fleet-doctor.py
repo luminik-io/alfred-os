@@ -50,6 +50,7 @@ from agent_runner import (  # noqa: E402
     STATE_ROOT,
     WORKTREE_ROOT,
     PreflightSpec,
+    disk_pressure_status,
     doctor_mode,
     is_globally_blocked,
     list_enabled_agents,
@@ -126,6 +127,33 @@ def check_stale_worktrees() -> Finding:
         f"{len(stale)} stale worktree(s) (>{STALE_WORKTREE_SECONDS // 3600}h): {sample}"
         + ("…" if len(stale) > 3 else ""),
     )
+
+
+def check_disk_pressure() -> Finding:
+    """Free space on the filesystem holding ALFRED_HOME.
+
+    Green when healthy, yellow on a ``low`` early-warning reading, red
+    (alert) when ``critical`` — the same thresholds the preflight gate
+    uses to skip firings, so ``alfred doctor`` shows the operator exactly
+    why agents are backing off before the channel fills with skip
+    warnings.
+    """
+    status = disk_pressure_status()
+    detail = f"{status['free_gb']:.1f}GB free ({status['free_pct']:.1f}%)"
+    if status["critical"]:
+        return Finding(
+            "disk-pressure",
+            "alert",
+            f"🔴 disk critically low: {detail}. Agents skip firings to avoid "
+            "ENOSPC. Run `agent-cleanup.py --emergency` or free space.",
+        )
+    if status["low"]:
+        return Finding(
+            "disk-pressure",
+            "yellow",
+            f"disk getting low: {detail} (approaching the back-off threshold).",
+        )
+    return Finding("disk-pressure", "green", f"disk healthy: {detail}")
 
 
 def check_enabled_agents() -> Finding:
@@ -329,6 +357,7 @@ def check_engine_auth_streak(
 
 
 CHECKS = [
+    check_disk_pressure,
     check_paused_repos,
     check_global_block,
     check_stale_worktrees,
