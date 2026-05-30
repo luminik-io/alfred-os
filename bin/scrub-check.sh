@@ -46,9 +46,11 @@ patterns=(
   "[A-Za-z0-9._%+-]+@luminik\\.io"
   "[A-Za-z0-9._%+-]+@dataravel\\.com"
 
-  # Luminik staging / production hostnames and AWS account ID.
+  # Luminik staging / production hostnames.
   "app-staging\\.luminik\\.io"
-  "(^|[^A-Za-z0-9])241533131716([^A-Za-z0-9]|$)"
+  # NOTE: operator-specific exact values (e.g. an AWS account ID) load from the
+  # gitignored bin/.scrub-extra-patterns at runtime (see loader below), so this
+  # public script never hardcodes the very identifiers it is meant to scan for.
 
   # Operator-private Slack channel and codename prefixes.
   "#alfred-fleet"
@@ -72,6 +74,20 @@ patterns=(
   "slack/(staging|prod|production)/"
   "e2e/(staging|prod|production)/"
 )
+
+# Operator-specific exact patterns (AWS account IDs, private hostnames, etc.)
+# live in a gitignored local file so this PUBLIC script never embeds them.
+# Format: one extended-regex per line; blank lines and '#' comments ignored.
+# Override the path with ALFRED_SCRUB_EXTRA_PATTERNS.
+EXTRA_PATTERNS_FILE="${ALFRED_SCRUB_EXTRA_PATTERNS:-$ROOT_DIR/bin/.scrub-extra-patterns}"
+if [ -f "$EXTRA_PATTERNS_FILE" ]; then
+  while IFS= read -r extra_line || [ -n "$extra_line" ]; do
+    extra_line="${extra_line%$'\r'}"
+    [ -z "$extra_line" ] && continue
+    case "$extra_line" in \#*) continue ;; esac
+    patterns+=("$extra_line")
+  done < "$EXTRA_PATTERNS_FILE"
+fi
 
 secret_patterns=(
   # Slack tokens / webhooks.
@@ -158,6 +174,22 @@ scan_patterns() {
 fail=0
 scan_patterns "private path or identifier" "$PATH_ALLOWLIST_RE" "$PER_LINE_ALLOW_RE" "${patterns[@]}" || fail=1
 scan_patterns "secret" "$SECRET_ALLOWLIST_RE" "" "${secret_patterns[@]}" || fail=1
+
+# Optional full git-history scan (slow). The working-tree scrub above only sees
+# the current checkout; this catches secrets/paths committed in the PAST. Run
+# before a public push or on a schedule:  bin/scrub-check.sh --history
+for arg in "$@"; do
+  [ "$arg" = "--history" ] || continue
+  echo "scrub-check: scanning git history (slow)..." >&2
+  for pat in "${secret_patterns[@]}" "${patterns[@]}"; do
+    hist=$(git log --all --oneline --pickaxe-regex -S"$pat" 2>/dev/null || true)
+    if [ -n "$hist" ]; then
+      printf '%s\n' "$hist" | head -20
+      echo "::error::Found pattern in git HISTORY: $pat" >&2
+      fail=1
+    fi
+  done
+done
 
 if [ "$fail" -ne 0 ]; then
   echo "scrub-check: failed" >&2

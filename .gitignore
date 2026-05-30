@@ -216,6 +216,11 @@ tempCodeRunnerFile.py
 launchd/agents.conf
 launchd/_generated/
 
+# Operator-specific scrub patterns (exact private values like AWS account IDs).
+# Loaded by bin/scrub-check.sh at runtime so this PUBLIC script never embeds the
+# very identifiers it scans for. Copy bin/.scrub-extra-patterns.example to start.
+bin/.scrub-extra-patterns
+
 # PyPI configuration file
 .pypirc
 
