@@ -690,7 +690,7 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if cmd[:3] == ["gh", "repo", "list"]:
             return subprocess.CompletedProcess(
-                cmd, 0, stdout='[{"nameWithOwner":"acme/niyora"}]', stderr=""
+                cmd, 0, stdout='[{"nameWithOwner":"acme/palette"}]', stderr=""
             )
         if cmd[:3] == ["gh", "label", "create"]:
             label_repos.append(cmd[cmd.index("-R") + 1])
@@ -710,7 +710,7 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
             "--agents",
             "starter",
             "--repos",
-            "acme/niyora",
+            "acme/palette",
             "--slack-webhook",
             "skip",
         ]
@@ -718,10 +718,10 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
 
     assert rc == 0
     generated_rc = alfredrc.read_text()
-    assert "ALFRED_LUCIUS_REPOS=niyora\n" in generated_rc
-    assert "ALFRED_DRAKE_REPOS=niyora\n" in generated_rc
-    assert "ALFRED_RASALGHUL_REPOS=niyora\n" in generated_rc
-    assert "acme/niyora" in set(label_repos)
+    assert "ALFRED_LUCIUS_REPOS=palette\n" in generated_rc
+    assert "ALFRED_DRAKE_REPOS=palette\n" in generated_rc
+    assert "ALFRED_RASALGHUL_REPOS=palette\n" in generated_rc
+    assert "acme/palette" in set(label_repos)
     assert (alfred_home / "prompts" / "lucius.md").exists()
     assert (alfred_home / "prompts" / "drake.md").exists()
     assert (alfred_home / "prompts" / "rasalghul.md").exists()

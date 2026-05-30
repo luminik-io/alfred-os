@@ -116,21 +116,21 @@ A real Batman parent issue from a 3-repo product fleet. Posted, parsed, approved
 Bundle: tier-colour-sync
 
 Repos:
-- neha-prasad-ux/niyora
-- neha-prasad-ux/niyora-web
-- neha-prasad-ux/niyora-companion
+- acme/palette
+- acme/palette-web
+- acme/palette-companion
 
 Children:
-- niyora: Confirm src/tiers.ts as canonical source-of-truth for the 5 tier
+- palette: Confirm src/tiers.ts as canonical source-of-truth for the 5 tier
   HSL triples. Add header comment naming the contract.
-- niyora-web: Sync src/components/OrbStage.astro to the canonical values.
-- niyora-companion: Sync NiyoraCompanion/Techniques.swift to the canonical
+- palette-web: Sync src/components/OrbStage.astro to the canonical values.
+- palette-companion: Sync PaletteCompanion/Techniques.swift to the canonical
   values.
 
 Rollout order:
-- neha-prasad-ux/niyora
-- neha-prasad-ux/niyora-web
-- neha-prasad-ux/niyora-companion
+- acme/palette
+- acme/palette-web
+- acme/palette-companion
 
 Done when:
 - All 3 child PRs merged AND the 5 tier HSL triples are byte-identical
