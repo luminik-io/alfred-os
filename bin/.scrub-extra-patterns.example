@@ -1,0 +1,14 @@
+# bin/.scrub-extra-patterns.example
+#
+# Copy to bin/.scrub-extra-patterns (gitignored) and list operator-specific
+# EXACT values you never want to appear in this PUBLIC repo. scrub-check.sh
+# loads these at runtime and scans for them alongside the built-in patterns, so
+# the public script itself never has to hardcode the sensitive values.
+#
+# Format: one POSIX extended-regex per line. Blank lines and '#' comments ignored.
+# Override the file location with the ALFRED_SCRUB_EXTRA_PATTERNS env var.
+#
+# Examples (uncomment + replace with your real values):
+# (^|[^0-9])123456789012([^0-9]|$)      # your AWS account ID (an identifier, not a secret, but keep it private)
+# myco-internal\.example\.com            # a private hostname
+# #your-private-slack-channel            # a private Slack channel name
