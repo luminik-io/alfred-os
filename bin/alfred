@@ -62,6 +62,10 @@ Subcommands today:
                               fleet state and reliability-governor actions.
   alfred slack-listener       Run the Slack-native planning listener, or
                               process one event with `once`.
+  alfred slack-thread-sync    Post fleet progress (issue claimed, PR opened,
+                              CI pass/fail, merged) back to the Slack thread
+                              that filed each issue. Read-only on GitHub;
+                              posts only the delta since the last sweep.
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
 
@@ -862,6 +866,18 @@ def cmd_slack_listener(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-slack-listener.py"
     forwarded = args.listener_args or ["run"]
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
+def cmd_slack_thread_sync(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-slack-thread-sync.py"
+    cmd = [sys.executable, str(script)]
+    if args.json:
+        cmd.append("--json")
+    if args.dry_run:
+        cmd.append("--dry-run")
+    if args.state_root:
+        cmd.extend(["--state-root", args.state_root])
+    return subprocess.run(cmd, check=False).returncode
 
 
 def cmd_shipped(args: argparse.Namespace) -> int:
@@ -1772,6 +1788,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_slack_listener.add_argument("listener_args", nargs=argparse.REMAINDER)
     p_slack_listener.set_defaults(func=cmd_slack_listener)
+
+    p_slack_thread_sync = sub.add_parser(
+        "slack-thread-sync",
+        help="post fleet progress (claimed/PR/CI/merged) to issue-filing Slack threads",
+    )
+    p_slack_thread_sync.add_argument("--json", action="store_true", help="emit a JSON summary")
+    p_slack_thread_sync.add_argument(
+        "--dry-run", action="store_true", help="compute deltas without posting to Slack"
+    )
+    p_slack_thread_sync.add_argument(
+        "--state-root", help="override the thread-status state directory"
+    )
+    p_slack_thread_sync.set_defaults(func=cmd_slack_thread_sync)
 
     p_shipped = sub.add_parser("shipped", help="summarize shipped GitHub activity")
     p_shipped.add_argument("--period", choices=["daily", "weekly"], default="daily")

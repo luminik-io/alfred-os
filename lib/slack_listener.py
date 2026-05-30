@@ -41,6 +41,7 @@ from slack_approval import (
 )
 from slack_issue_bridge import SlackIssueBridge
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
+from slack_thread_status import SlackThreadStatusTracker
 from spec_helper import IssueDraft
 
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
@@ -126,12 +127,21 @@ class SlackPlanningListener:
         refiner: Refiner | None = None,
         memory_provider: Any | None = None,
         bridge: SlackIssueBridge | None = None,
+        status_tracker: SlackThreadStatusTracker | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self.state_root = state_root or _default_state_root()
         self.registry = registry or SlackThreadRegistry(self.state_root / "slack-threads")
         self.poster = poster
         self.bridge = bridge if bridge is not None else SlackIssueBridge()
+        self.status_tracker = (
+            status_tracker
+            if status_tracker is not None
+            else SlackThreadStatusTracker(
+                root=self.state_root / "slack-thread-status",
+                poster=poster,
+            )
+        )
         operator = operator_user_id_from_env()
         self.trusted_user_ids = set(
             trusted_user_ids
@@ -463,6 +473,35 @@ class SlackPlanningListener:
                 metadata=metadata,
             )
         )
+        self._register_status_thread(record, outcome)
+
+    def _register_status_thread(self, record: SlackThreadRecord, outcome: Any) -> None:
+        """Link the originating thread to the filed issue for progress posts.
+
+        Best-effort: the status tracker is read-only on GitHub and only posts
+        back into the thread the bridge already owns, so a failure here never
+        blocks issue creation. The thread root is ``record.thread_ts`` (the
+        registered draft thread), which is where the bridge posted its
+        acknowledgement.
+        """
+        issue_number = _issue_number_from_url(getattr(outcome, "issue_url", ""))
+        if issue_number is None:
+            return
+        try:
+            self.status_tracker.register_issue_thread(
+                channel=record.channel,
+                thread_ts=record.thread_ts,
+                repo=str(getattr(outcome, "repo", "") or ""),
+                issue_number=issue_number,
+                issue_url=str(getattr(outcome, "issue_url", "") or ""),
+                title=record.title,
+            )
+        except Exception as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] could not register status thread for "
+                f"{record.channel}/{record.thread_ts}: {exc}",
+                file=sys.stderr,
+            )
 
     def _write_followup_context(
         self,
@@ -598,6 +637,17 @@ class SlackPlanningListener:
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         tmp.replace(path)
         return path
+
+    def sync_thread_status(self, *, fetcher: Any | None = None) -> list[dict[str, Any]]:
+        """Sweep tracked issue threads and post fleet progress deltas.
+
+        Read-only on GitHub. Used by the ``alfred slack-thread-sync`` CLI and
+        the listener's optional idle-loop hook. ``fetcher`` defaults to the
+        read-only ``gh``-backed fetcher.
+        """
+        from slack_thread_status import default_issue_state_fetcher
+
+        return self.status_tracker.sweep(fetcher=fetcher or default_issue_state_fetcher)
 
     def _post_thread_ack(self, channel: str, thread_ts: str, text: str) -> None:
         if self.poster is None or not text.strip():
@@ -813,8 +863,29 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
 
     client.socket_mode_request_listeners.append(_handler)
     client.connect()
+    interval = _thread_sync_interval_s()
     while True:
-        time.sleep(60)
+        time.sleep(interval if interval > 0 else 60)
+        if interval > 0:
+            try:
+                active.sync_thread_status()
+            except Exception as exc:
+                print(f"[SLACK-LISTENER-WARN] thread-status sync failed: {exc}", file=sys.stderr)
+
+
+def _thread_sync_interval_s() -> int:
+    """Idle-loop sweep cadence in seconds (0 disables the in-listener hook).
+
+    Defaults to 5 minutes. The standalone ``alfred slack-thread-sync`` entry
+    point can run on the operator's own schedule regardless of this setting.
+    """
+    raw = (os.environ.get("ALFRED_SLACK_THREAD_SYNC_INTERVAL_S") or "").strip()
+    if not raw:
+        return 300
+    try:
+        return max(int(raw), 0)
+    except ValueError:
+        return 300
 
 
 def _structured_fields(lines: list[str]) -> dict[str, str]:
@@ -1040,6 +1111,17 @@ def _issue_url_from_record(record: SlackThreadRecord) -> str | None:
     if record.parent_repo and record.parent_issue:
         return f"https://github.com/{record.parent_repo}/issues/{record.parent_issue}"
     return None
+
+
+def _issue_number_from_url(url: str) -> int | None:
+    """Extract the trailing issue number from a GitHub issue URL."""
+    match = re.search(r"/issues/(\d+)\b", str(url or ""))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
 
 
 def _safe_event_id(event_id: str) -> str:

@@ -263,6 +263,24 @@ def test_trusted_explicit_approval_creates_issue(tmp_path: Path) -> None:
     assert record.metadata["bridge_issue_url"] == "https://github.com/acme-org/api/issues/42"
 
 
+def test_conversion_registers_status_thread(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(tmp_path, creator=creator)
+    _seed_draft(listener, tmp_path)
+
+    result = listener.handle_payload(_reply("ship it", event_id="000002b"))
+    assert result.action == "issue_created"
+
+    status_record = listener.status_tracker._load(
+        listener.status_tracker._path("C1", "1716480010.000001")
+    )
+    assert status_record is not None
+    assert status_record.repo == ALLOWED_REPO
+    assert status_record.issue_number == 42
+    assert status_record.issue_url == "https://github.com/acme-org/api/issues/42"
+    assert status_record.last_state == "filed"
+
+
 def test_trusted_reaction_approval_creates_issue(tmp_path: Path) -> None:
     creator = RecordingCreator()
     listener, _poster, _registry = _make_listener(tmp_path, creator=creator)
