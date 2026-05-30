@@ -188,6 +188,61 @@ def test_listener_requires_trusted_users(tmp_path: Path) -> None:
     assert "trusted" in result.detail
 
 
+def _dm(text: str, *, event_id: str = "EvCtl", user: str = "U1") -> dict:
+    return {
+        "event_id": event_id,
+        "event": {
+            "type": "message",
+            "channel": "D1",
+            "channel_type": "im",
+            "user": user,
+            "text": text,
+            "ts": "1716480020.000001",
+        },
+    }
+
+
+def test_trusted_control_command_routes_to_control_not_draft(tmp_path: Path) -> None:
+    from slack_control import RunResult, SlackControlHandler
+
+    calls: list[list[str]] = []
+
+    def runner(argv: list[str]) -> RunResult:
+        calls.append(argv)
+        return RunResult(returncode=0, stdout="  paused lucius")
+
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SlackControlHandler(alfred_bin="/fake/alfred", runner=runner),
+    )
+
+    result = listener.handle_payload(_dm("pause lucius"))
+
+    assert result.handled is True
+    assert result.action == "control_pause"
+    assert calls[-1] == ["/fake/alfred", "pause", "lucius"]
+    assert "Paused" in poster.messages[-1]["text"]
+    # No planning draft should have been created for a control command.
+    assert not list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_prose_dm_still_creates_planning_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    result = listener.handle_payload(
+        _dm("title: Build a CSV export\nrepo: acme-org/api\ndesired: users can export rows")
+    )
+    assert result.action == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
 def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
     poster = Poster()
     listener = SlackPlanningListener(

@@ -39,6 +39,7 @@ from slack_approval import (
     resolve_bot_token,
     trusted_feedback_user_ids_from_env,
 )
+from slack_control import SlackControlHandler, is_control_message
 from slack_issue_bridge import SlackIssueBridge
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
 from slack_thread_status import SlackThreadStatusTracker
@@ -128,6 +129,7 @@ class SlackPlanningListener:
         memory_provider: Any | None = None,
         bridge: SlackIssueBridge | None = None,
         status_tracker: SlackThreadStatusTracker | None = None,
+        control_handler: SlackControlHandler | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self.state_root = state_root or _default_state_root()
@@ -141,6 +143,9 @@ class SlackPlanningListener:
                 root=self.state_root / "slack-thread-status",
                 poster=poster,
             )
+        )
+        self.control_handler = (
+            control_handler if control_handler is not None else SlackControlHandler()
         )
         operator = operator_user_id_from_env()
         self.trusted_user_ids = set(
@@ -243,6 +248,20 @@ class SlackPlanningListener:
         return ListenerResult(True, action, thread_kind=record.kind)
 
     def _handle_direct_intake(self, event: SlackInputEvent) -> ListenerResult:
+        # A trusted direct message/mention that LEADS with a control verb acts
+        # on the fleet instead of opening a planning draft. The user is already
+        # trust-gated in ``handle_payload``; the handler re-checks. Free-form
+        # prose (no leading verb) falls straight through to planning intake.
+        if is_control_message(event.text):
+            control = self.control_handler.handle(event.text, trusted=True)
+            if control.handled:
+                self._post_thread_ack(event.channel, event.root_ts, control.text)
+                return ListenerResult(
+                    True,
+                    f"control_{control.action}",
+                    detail=control.detail,
+                )
+
         draft = draft_from_slack_text(event.text)
         refined = refine_issue_draft(
             draft,
