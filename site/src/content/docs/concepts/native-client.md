@@ -76,3 +76,5 @@ does not want to tail logs.
 
 The direct-host model is inspired by Hermes Desktop's strongest lesson: keep
 the host as the source of truth and avoid a second sync layer.
+
+The client is the optional `client` tier of the [layered install](/concepts/layered-install/). The core fleet and CLI run fully standalone without it.

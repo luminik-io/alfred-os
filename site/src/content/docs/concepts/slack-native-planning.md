@@ -88,3 +88,5 @@ The native client and `alfred serve` should make the fleet easier to trust:
 health, plans, runs, memory review, setup checks, and safe repairs. They should
 not become a second chat app. Every plan should link back to the Slack thread
 where collaboration happened.
+
+The listener and bridge are the optional `slack` tier of the [layered install](/concepts/layered-install/). The core fleet runs without them; a fresh install keeps the issue bridge off until the operator arms it.

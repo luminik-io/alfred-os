@@ -487,6 +487,8 @@ export default defineConfig({
             { label: "Fleet brain", slug: "concepts/fleet-brain" },
             { label: "Slack-native planning", slug: "concepts/slack-native-planning" },
             { label: "Native local client", slug: "concepts/native-client" },
+            { label: "Layered install", slug: "concepts/layered-install" },
+            { label: "Disk guardian", slug: "concepts/disk-guardian" },
             { label: "Engine routing", slug: "concepts/engine-routing" },
             { label: "Severity routing", slug: "concepts/severity-routing" },
           ],

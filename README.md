@@ -247,6 +247,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 ## Documentation
 
 - [Install](INSTALL.md): fresh-machine walkthrough.
+- [Install tiers](docs/INSTALL_TIERS.md): `core` (standalone, headless), optional `client` (desktop), optional `slack`.
 - [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
 - [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
@@ -254,6 +255,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
 - [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
 - [Architecture](ARCHITECTURE.md): design rationale.
+- [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Fleet brain](docs/FLEET_BRAIN.md): local memory, reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
 - [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, and local API shape.
