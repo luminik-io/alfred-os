@@ -389,8 +389,12 @@ def _run_emergency_cleanup(agent: str) -> None:
     Best-effort and bounded: a missing script, a crash, or a timeout must
     never turn a disk-pressure skip into a hard failure — the firing is
     going to skip cleanly regardless. The ``_DISK_EMERGENCY_GUARD_ENV``
-    flag is set in the child env (and our own) so neither the cleanup
-    agent's own preflight nor a re-probe can recurse into a second pass.
+    flag is set in the child env so the cleanup agent's own preflight
+    cannot trigger a second emergency pass. We deliberately do not set it
+    in our own ``os.environ``: the caller's post-cleanup re-probe is a
+    plain ``disk_pressure_status()`` read, not a nested preflight, so it
+    can't recurse — and leaving our process env untouched avoids leaking
+    the guard into the rest of this firing.
     """
     from .paths import ALFRED_HOME
 

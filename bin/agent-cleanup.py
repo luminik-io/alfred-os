@@ -18,6 +18,7 @@ and force-releases them via the framework's force_release_stale_claim().
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import os
 import shutil
@@ -213,6 +214,7 @@ FLEET_WT_MIN_AGE_SECONDS = 900 if EMERGENCY else 7200  # 15min vs 2h
 wt_root = WORKTREE_ROOT
 wt_removed = 0
 wt_skipped = 0
+wt_freed_mb = 0.0
 wt_recovery_refs: list[str] = []
 if wt_root.exists():
     for wt in wt_root.iterdir():
@@ -234,6 +236,14 @@ if wt_root.exists():
                 else:
                     print(f"[cleanup] worktree skipped: {wt} ({dirty_reason})", file=sys.stderr)
                 continue
+            # Measure before removal so the reported total reflects the
+            # fleet-pool reclamation too (mirrors sweep_extra_paths).
+            try:
+                size_mb = sum(f.stat().st_size for f in wt.rglob("*") if f.is_file()) / (
+                    1024 * 1024
+                )
+            except OSError:
+                size_mb = 0.0
             for repo_dir in WORKSPACE.iterdir():
                 if not (repo_dir / ".git").exists():
                     continue
@@ -245,6 +255,7 @@ if wt_root.exists():
                 )
             shutil.rmtree(wt, ignore_errors=True)
             wt_removed += 1
+            wt_freed_mb += size_mb
         except OSError:
             pass
 
@@ -359,19 +370,25 @@ def discover_worktree_pools(
     if not root.is_dir():
         return []
     found: list[str] = []
-    # BFS with an explicit depth bound so a deep tree can't make this
-    # walk unbounded. We do not descend into a discovered ``.worktrees``
-    # pool (its children are worktrees, not more pools).
-    frontier: list[tuple[Path, int]] = [(root, 0)]
+    # BFS with an explicit depth bound so a deep tree can't make this walk
+    # unbounded. ``deque.popleft`` makes this a genuine FIFO breadth-first
+    # walk (a plain ``list.pop`` would be LIFO/DFS). We do not descend into
+    # a discovered ``.worktrees`` pool (its children are worktrees, not
+    # more pools). ``root`` itself is depth 0, so a child is depth 1; a
+    # ``.worktrees`` directory counts as discovered only when its own depth
+    # is ``<= max_depth`` (matching the docstring).
+    frontier: collections.deque[tuple[Path, int]] = collections.deque([(root, 0)])
     while frontier:
-        current, depth = frontier.pop()
-        if depth > max_depth:
+        current, depth = frontier.popleft()
+        # No node beyond max_depth is ever enqueued, but guard defensively.
+        if depth >= max_depth:
             continue
         try:
             children = [c for c in current.iterdir() if c.is_dir()]
         except OSError:
             continue
         for child in children:
+            child_depth = depth + 1
             if child.name == ".worktrees":
                 found.append(str(child))
                 continue  # do not recurse into a pool
@@ -379,8 +396,8 @@ def discover_worktree_pools(
             # dirs we should never walk into looking for pools.
             if child.name in {"node_modules", ".git"}:
                 continue
-            if depth + 1 <= max_depth:
-                frontier.append((child, depth + 1))
+            if child_depth < max_depth:
+                frontier.append((child, child_depth))
     return sorted(set(found))
 
 
@@ -538,7 +555,10 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
 if EMERGENCY:
     print("[cleanup] EMERGENCY mode: aggressive thresholds (disk-pressure recovery)")
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
-print(f"[cleanup] worktrees: {wt_removed} abandoned removed, {wt_skipped} dirty/unknown skipped")
+print(
+    f"[cleanup] worktrees: {wt_removed} abandoned removed "
+    f"({wt_freed_mb:.1f} MB freed), {wt_skipped} dirty/unknown skipped"
+)
 if discovered_pools:
     print(f"[cleanup] auto-discovered {len(discovered_pools)} .worktrees pool(s) under WORKSPACE")
 if combined_extra_paths:
@@ -553,7 +573,7 @@ print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
-total_freed_mb = freed_mb + extra_stats["freed_mb"] + transcript_freed_mb
+total_freed_mb = freed_mb + wt_freed_mb + extra_stats["freed_mb"] + transcript_freed_mb
 print(f"[cleanup] total reclaimed: {total_freed_mb:.1f} MB")
 if wt_skipped:
     recovery_note = ""

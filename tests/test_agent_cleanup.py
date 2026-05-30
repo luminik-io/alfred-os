@@ -229,6 +229,25 @@ def test_discover_worktree_pools_respects_depth_bound(cleanup, tmp_path):
     assert found == []
 
 
+def test_discover_worktree_pools_depth_bound_is_inclusive(cleanup, tmp_path):
+    """The bound is ``<= max_depth`` (matching the docstring): a pool at
+    exactly ``max_depth`` is discovered; one level deeper is not.
+
+    root is depth 0, so ``a/b/.worktrees`` puts ``.worktrees`` at depth 3,
+    which must be found with ``max_depth=3``; ``a/b/c/.worktrees`` (depth 4)
+    must not.
+    """
+    at_bound = tmp_path / "ws_ok"
+    (at_bound / "a" / "b" / ".worktrees").mkdir(parents=True)
+    assert cleanup.discover_worktree_pools(root=at_bound, max_depth=3) == [
+        str(at_bound / "a" / "b" / ".worktrees")
+    ]
+
+    one_too_deep = tmp_path / "ws_deep"
+    (one_too_deep / "a" / "b" / "c" / ".worktrees").mkdir(parents=True)
+    assert cleanup.discover_worktree_pools(root=one_too_deep, max_depth=3) == []
+
+
 def test_discover_worktree_pools_missing_root_is_empty(cleanup, tmp_path):
     found = cleanup.discover_worktree_pools(root=tmp_path / "nope")
     assert found == []
@@ -368,3 +387,63 @@ def test_emergency_run_uses_aggressive_thresholds(tmp_path, monkeypatch):
             import shutil as _shutil
 
             _shutil.rmtree(fresh_debug, ignore_errors=True)
+
+
+def test_fleet_worktree_reclamation_is_counted_in_total(tmp_path, monkeypatch):
+    """The fleet-pool sweep rmtrees abandoned worktrees; the bytes it
+    reclaims must be reflected in both the per-line worktree report and
+    the grand ``total reclaimed`` figure (previously the fleet sweep
+    freed space silently, so the total under-reported).
+    """
+    import importlib.util
+
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    (workspace / "product").mkdir(parents=True)
+    (alfred / "state").mkdir(parents=True)
+    fleet_pool = alfred / "worktrees"
+    fleet_pool.mkdir(parents=True)
+
+    # An abandoned-but-clean fleet worktree with a known, non-trivial size.
+    old_wt = fleet_pool / "old-feat"
+    old_wt.mkdir()
+    (old_wt / ".git").write_text("placeholder")
+    (old_wt / "blob.bin").write_bytes(b"x" * (3 * 1024 * 1024))  # 3 MB
+    aged = time.time() - 10 * 3600  # older than the 2h fleet gate
+    os.utime(old_wt, (aged, aged))
+
+    monkeypatch.setenv("ALFRED_HOME", str(alfred))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("ALFRED_CLAIM_SWEEP_REPOS", "")
+    monkeypatch.delenv("ALFRED_CLEANUP_EXTRA_PATHS", raising=False)
+    monkeypatch.setenv("ALFRED_CLEANUP_AUTODISCOVER", "0")
+    monkeypatch.setenv("ALFRED_SLACK_WEBHOOK_URL", "")
+
+    for mod_name in list(sys.modules):
+        if mod_name.startswith("agent_runner") or mod_name == "agent_cleanup":
+            del sys.modules[mod_name]
+    sys.path.insert(0, str(REPO / "lib"))
+
+    # Import agent_runner first and force this clean worktree to look safe:
+    # the cleanup body does ``from agent_runner import worktree_risk_reason``
+    # at load, so patching it here means the body binds our stub. A real
+    # clean worktree would need an origin/main ref to pass the ahead-check.
+    import agent_runner
+
+    monkeypatch.setattr(agent_runner, "worktree_risk_reason", lambda wt, **kw: None)
+
+    monkeypatch.setattr(sys, "argv", ["agent-cleanup.py"])
+    spec = importlib.util.spec_from_file_location("agent_cleanup", CLEANUP)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["agent_cleanup"] = mod
+    with contextlib.suppress(SystemExit):
+        spec.loader.exec_module(mod)
+
+    assert mod.wt_removed == 1
+    assert not old_wt.exists()
+    # The 3 MB worktree was measured and counted (allow slack for dir
+    # overhead / fs rounding).
+    assert mod.wt_freed_mb >= 2.9, f"wt_freed_mb={mod.wt_freed_mb}"
+    # And the grand total includes the fleet reclamation.
+    assert mod.total_freed_mb >= mod.wt_freed_mb
+    assert mod.total_freed_mb >= 2.9
