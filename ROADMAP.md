@@ -40,6 +40,7 @@ Reliability and first-run trust polish.
   can start the local runtime, run safe dry-runs and memory checks, and can
   convert trusted follow-ups into planning drafts or mark them handled without
   bypassing Slack approval.
+- Plain intake mode: `ALFRED_INTAKE_PROFILE=plain` turns the planning assistant into a non-technical front door. A designer can describe work in plain language; the assistant asks at most one or two plain questions, hides specs, scope, readiness scores, and PRs, and renders a "Here's what I'll do … OK to go ahead?" plan framed around reviewing a preview. The same structured draft is built invisibly, so the downstream bridge and fleet are unchanged. Default (unset) stays technical. See `docs/PLAIN_MODE.md`.
 
 ### v0.4.0: 2026-05-23
 
