@@ -298,6 +298,73 @@ ALFRED_BRIDGE_REPOS=acme-org/api \
 alfred slack-listener run
 ```
 
+## Optional: trusted control commands
+
+When the planning listener is running, a trusted user can also drive the fleet
+from chat by **leading a message with a known verb**. These are handled by
+`lib/slack_control.py`, separately from planning intake:
+
+| Command | What it does |
+|---|---|
+| `status` | Fleet health from `alfred status --json` (loaded agents, pauses, locks). |
+| `runs` | Recent firings per agent (last-fired plus today's counts). |
+| `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
+| `resume <codename>` | Reverse a pause. |
+| `help` | List these commands. |
+
+DM Alfred or @-mention it, e.g. `pause lucius` or `status`. Nothing extra to
+configure beyond the planning listener; the same trusted-user gate applies.
+
+Safety model:
+
+- **Explicit leading verb only.** A message is a control command only when its
+  first whitespace-delimited token is a known verb. Free-form prose ("can you
+  pause everything later?") never triggers an action; it falls through to
+  planning intake. This is the main guard against an accidental control action.
+- **Trusted user only.** The listener gates trust before dispatching, and the
+  handler refuses any untrusted control attempt as defense in depth.
+- **No shell, ever.** `pause`/`resume` run the `alfred` CLI through an explicit
+  argv with `shell=False`. The codename is validated against a strict charset
+  (`[A-Za-z0-9._-]`, never leading `-`) before it reaches the argv, so it can
+  never be read as a flag or inject a second command.
+- **Queries are read-only.** `status` and `runs` only read `alfred status
+  --json`; they never change fleet state.
+
+## Optional: in-thread fleet progress (thread-sync)
+
+When the issue bridge converts an approved draft into a GitHub issue, the
+originating Slack thread would normally go quiet while the fleet works. The
+thread-sync sweep (`lib/slack_thread_status.py`, `bin/alfred-slack-thread-sync.py`)
+closes that loop: for each thread that filed an issue, it reads the issue and
+its linked PR read-only and posts **only the new lifecycle states** back into
+the thread: claimed, PR opened, CI pass/fail, merged, closed.
+
+It runs two ways, both calling the same tracker:
+
+- **In the listener's idle loop**, on a cadence set by
+  `ALFRED_SLACK_THREAD_SYNC_INTERVAL_S` (seconds; default 300; `0` disables the
+  in-listener hook).
+- **As a standalone sweep** you can run from cron or launchd:
+
+  ```sh
+  alfred slack-thread-sync            # post deltas to Slack
+  alfred slack-thread-sync --json     # machine-readable summary
+  alfred slack-thread-sync --dry-run  # compute deltas, post nothing
+  ```
+
+Safety model:
+
+- **Read-only on GitHub.** The only `gh` calls are `issue view` and
+  `pr list`/`pr view`. It never edits a label, claims an issue, comments on
+  GitHub, or runs code. It is write-only into the thread it already owns.
+- **Trust-scoped.** A tracker record is only ever created from the bridge's own
+  conversion path, which is already gated on a trusted user.
+- **Idempotent.** Each thread advances through an ordered lifecycle and each
+  state posts at most once. A sweep with no GitHub change posts nothing.
+
+State lives under `$ALFRED_HOME/state/slack-thread-status/` (one small JSON
+record per tracked thread). Override the directory with `--state-root`.
+
 ## Rotating a webhook
 
 Do this when you accidentally paste the URL somewhere it shouldn't be (chat, screenshot, public PR description).

@@ -9,9 +9,10 @@ If a diagram and the code ever disagree, the code wins. File references are inli
 - [Agent lifecycle](#agent-lifecycle): issue to merged PR.
 - [Model dispatch and tiers](#model-dispatch-and-tiers): which engine runs a prompt.
 - [Distributed locking](#distributed-locking): GitHub labels plus a local mkdir lock plus the global poison pill.
-- [Slack-native flow](#slack-native-flow): DM to labeled issue, with the bridge off by default.
+- [Slack conversational flow](#slack-conversational-flow): control commands, DM to labeled issue, and in-thread fleet progress.
+- [Desktop control plane](#desktop-control-plane): the client to `alfred serve` to fleet seam.
 - [Disk guardian](#disk-guardian): the ENOSPC back-off.
-- [Layered install and surfaces](#layered-install-and-surfaces): core, client, and slack tiers.
+- [Layered install and distribution](#layered-install-and-distribution): tiers, desktop bundles, and the release workflow.
 
 ## Agent lifecycle
 
@@ -127,46 +128,97 @@ flowchart TB
 
 The spend ledger (`state.py:SpendState`) is the per-agent per-day file the cap checks read: `turns_today`, `cost_usd_today`, `consecutive_failures`, and friends, auto-resetting at midnight via the per-day filename. The global block defaults to a one-hour window (`maybe_set_global_block_for_result`) and only trips for the `claude` engine, since Codex provider limits are handled as silent hybrid fallbacks instead.
 
-## Slack-native flow
+## Slack conversational flow
 
-Slack is an intake and refinement surface, not an approval mechanism for code execution. A trusted user DMs or mentions Alfred; the listener refines the request into a saved draft and asks for missing scope; only an explicit, trusted approval crosses the bridge into a labeled GitHub issue. The fleet then picks that issue up through every existing gate.
+Slack is a conversational surface for the fleet, not an approval mechanism for arbitrary code execution. A trusted user can do three things from chat, and the listener routes each one differently:
 
-Code: `lib/slack_listener.py` (`SlackPlanningListener`), `lib/slack_issue_bridge.py` (`SlackIssueBridge`).
+1. **Run a control or query command.** A message that *leads with a known verb* (`status`, `runs`, `pause <codename>`, `resume <codename>`, `help`) is handled by `slack_control.SlackControlHandler`. Read commands shell out to `alfred status --json`; mutating commands run the `alfred` CLI through an explicit argv with `shell=False` after the codename passes a strict charset check. Free-form prose never triggers an action.
+2. **Plan and ship work.** A message *without* a leading verb is refined into a saved draft and scored for readiness. Only an explicit, trusted approval crosses the (off-by-default) bridge into a labeled GitHub issue, which the fleet picks up through every existing gate.
+3. **Watch progress without leaving the thread.** Once the bridge files an issue, the originating thread is registered. The `alfred slack-thread-sync` sweep (or the listener's idle loop) reads the issue and its linked PR read-only and posts only the new lifecycle states back into that thread.
+
+Code: `lib/slack_listener.py` (`SlackPlanningListener`), `lib/slack_control.py` (`SlackControlHandler`), `lib/slack_issue_bridge.py` (`SlackIssueBridge`), `lib/slack_thread_status.py` (`SlackThreadStatusTracker`), `bin/alfred-slack-thread-sync.py`.
 
 ```mermaid
 sequenceDiagram
     actor op as Trusted operator
     participant slack as Slack
     participant listener as slack_listener
+    participant ctrl as slack_control
     participant pa as planning-assistant
-    participant draft as planning-drafts JSON
     participant bridge as slack_issue_bridge
     participant gh as GitHub
     participant fleet as autonomous fleet
+    participant sync as slack-thread-sync
 
     op->>slack: DM or @mention Alfred
-    slack->>listener: events_api (Socket Mode)
+    slack->>listener: event (Socket Mode)
     listener->>listener: trust gate (trusted user?)
-    listener->>pa: refine_issue_draft()
-    Note over pa: LLM refine when ALFRED_PLANNING_ASSISTANT_ENGINE set, else heuristic
-    pa-->>listener: refined draft + readiness
-    listener->>draft: save draft JSON
-    listener->>slack: ack (status, questions, scope)
-    op->>slack: explicit approval (ship it / reaction)
-    slack->>listener: approval event
-    listener->>bridge: convert(trusted=true)
-    Note over bridge: gates trusted + enabled + approval token + repo allowlist + idempotent. Never runs code.
-    bridge->>gh: gh issue create (label agent:implement)
-    gh-->>fleet: issue enters queue
-    fleet->>gh: claim through every existing gate
+    alt leads with a control verb
+        listener->>ctrl: handle(text, trusted=true)
+        Note over ctrl: status / runs / pause / resume / help<br/>codename charset-validated, no shell
+        ctrl-->>slack: fleet status / runs / ack
+    else planning request
+        listener->>pa: refine_issue_draft()
+        pa-->>listener: refined draft + readiness
+        listener->>slack: ack (questions, scope, plan)
+        op->>slack: explicit approval (ship it / reaction)
+        slack->>listener: approval event
+        listener->>bridge: convert(trusted=true)
+        Note over bridge: gates: trusted + enabled +<br/>approval token + repo allowlist +<br/>idempotent. Never runs code.
+        bridge->>gh: gh issue create (label agent:implement)
+        listener->>sync: register_issue_thread()
+        gh-->>fleet: issue enters queue
+        fleet->>gh: claim / PR / CI / merge (every gate)
+        loop every ALFRED_SLACK_THREAD_SYNC_INTERVAL_S
+            sync->>gh: read-only issue + PR + CI state
+            sync->>slack: post only the new delta in-thread
+        end
+    end
 ```
 
-Two safety properties are worth stating plainly because the code enforces them:
+Three safety properties are worth stating plainly because the code enforces them:
 
+- **Control commands need an explicit leading verb and a trusted user.** `slack_control` only acts when the first token is a known verb; everything else falls through to planning intake. `pause`/`resume` accept exactly one codename, validated against `[A-Za-z0-9._-]` (never leading `-`) before it reaches the argv, so a chat message can never inject a flag or a second command. Queries are read-only. Trust is gated by the listener and re-checked in the handler.
 - **The bridge is off by default.** `ALFRED_BRIDGE_ENABLED` is unset on a fresh install, so every approval is a no-op refine until the operator explicitly enables it and sets an `ALFRED_BRIDGE_REPOS` allowlist. An empty allowlist refuses to file anywhere.
 - **The bridge never executes code.** `SlackIssueBridge.convert` only calls `gh issue create`. It opens no worktree, pushes no branch, spawns no agent. The worst a bug in the bridge can do is file an unwanted issue, which still cannot ship without passing the same claim, spend, review, and merge gates as any other issue. Four gates must all pass before an issue is created: trusted user, feature enabled, explicit approval token (`ship it` / `create issue` / `go` / `/ship`, or a `white_check_mark` / `rocket` reaction), and every target repo on the allowlist. The conversion is idempotent: a converted draft is stamped so it can never double-create.
 
-The planning-assistant refinement is LLM-backed only when `ALFRED_PLANNING_ASSISTANT_ENGINE` is set (via `engine_refiner_from_env`); otherwise it falls back to a deterministic heuristic refiner. Either way the output is a scored draft with concrete missing-scope questions, never an executed action.
+The in-thread progress sweep is strictly read-only on GitHub (`gh issue view`, `gh pr list`/`pr view`) and write-only into the thread it already owns. It advances each thread through an ordered lifecycle (`filed`, `claimed`, `pr_open`, `ci_pass`/`ci_fail`, `merged`/`closed`) and posts each state at most once, so re-running a sweep with no GitHub change posts nothing. The idle-loop cadence is `ALFRED_SLACK_THREAD_SYNC_INTERVAL_S` (default 300 s; `0` disables the in-listener hook and leaves the standalone `alfred slack-thread-sync` entry point to run on its own schedule).
+
+The planning-assistant refinement is LLM-backed only when `ALFRED_PLANNING_ASSISTANT_ENGINE` is set (via `engine_refiner_from_env`); otherwise it falls back to a deterministic heuristic refiner. Either way the output is a scored draft with concrete missing-scope questions, never an executed action. When `ALFRED_INTAKE_PROFILE=plain` is set, the same structured draft is produced but the conversational surface drops all jargon (see [`PLAIN_MODE.md`](PLAIN_MODE.md)).
+
+## Desktop control plane
+
+The desktop client (`clients/desktop`) is a Tauri app and the optional `client` tier. It is a thin local control plane, not a second runtime: it reads the fleet's own state over the `alfred serve` JSON seam and runs a narrow set of safe local actions through a native command allowlist. There is no hosted gateway, no public port, and no shadow database.
+
+Code: `clients/desktop/src/` (React UI, `api.ts`, `types.ts`), `clients/desktop/src-tauri/` (Tauri shell + native command allowlist), `lib/server/` (`alfred serve`).
+
+```mermaid
+flowchart TB
+    subgraph client["desktop client (clients/desktop, Tauri)"]
+        ui["React UI tabs:<br/>Now / Plans / Runs /<br/>Agents / Memory / Setup"]
+        native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, brain doctor, redis,<br/>safe dry-run"]
+    end
+
+    subgraph core["core fleet (headless)"]
+        serve["alfred serve<br/>localhost JSON API"]
+        state[("$ALFRED_HOME/state<br/>firings / plans / memory")]
+        cli["operator CLI: bin/alfred"]
+        fleet["lib/agent_runner + bin/*.py"]
+    end
+
+    gh["GitHub issue / PR links"]
+    slackthread["Slack plan threads"]
+
+    ui -->|read-only JSON over 127.0.0.1| serve
+    native -->|narrow allowlist, no arbitrary shell| cli
+    serve --> state
+    cli --> fleet
+    fleet --> state
+    ui -.->|open outside the app| gh
+    ui -.->|open outside the app| slackthread
+```
+
+The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows read-only Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; links to Slack, GitHub, and `alfred serve` open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, local follow-up planning) and surface an explicit preview, affected path, result, and rollback hint. There is no arbitrary shell execution. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the full client and API contracts, and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the tab-by-tab control surface and how to build native installers.
 
 ## Disk guardian
 
@@ -197,7 +249,7 @@ flowchart TD
 
 The probe is `critical` when free space is below either the absolute floor (`ALFRED_MIN_FREE_DISK_GB`, default 3.0 GB) or the relative floor (`ALFRED_MIN_FREE_DISK_PCT`, default 5%). On a critical reading the gate runs `agent-cleanup.py --emergency` exactly once, guarded by the `ALFRED_DISK_EMERGENCY_IN_PROGRESS` env flag so the cleanup agent's own preflight cannot recurse into a second pass. After cleanup it re-probes: if space recovered, the firing proceeds; if not, it raises `PreflightFailed`, which every runner already catches and turns into `sys.exit(0)`. The Slack warning is throttled to once per `ALFRED_DISK_SLACK_MIN_HOURS` (default 6h). The probe fails open: any `OSError` reading the filesystem reports a healthy status, so a transient stat hiccup can never wedge the fleet into a permanent skip.
 
-## Layered install and surfaces
+## Layered install and distribution
 
 Alfred installs in tiers. `core` is the standalone base and runs headless; `client` and `slack` are optional surfaces that talk to core through seams the operator can inspect by hand.
 
@@ -238,10 +290,52 @@ flowchart TB
 
 The seam matters: the desktop client and any future surface read and write the same `$ALFRED_HOME` state, GitHub, and Slack threads the operator can inspect directly. There is no hosted gateway, no public port, and no shadow database. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
 
+Distribution follows the same shape. The fleet and CLI install from source; the desktop client builds native installers; tagged releases are published from CI; and a secret scan gates every push.
+
+```mermaid
+flowchart TD
+    subgraph tiers["install tiers (install.sh)"]
+        core["core: fleet + CLI + scheduler<br/>(required, headless)"]
+        clientTier["client: desktop app<br/>(optional)"]
+        slackTier["slack: listener + bridge<br/>(optional, bridge off by default)"]
+    end
+
+    subgraph build["desktop bundles (clients/desktop)"]
+        tauri["tauri build<br/>bundle targets: all"]
+        macbun[".app / .dmg (macOS)"]
+        linbun[".AppImage / .deb (Linux)"]
+    end
+
+    subgraph release["release workflow (.github/workflows/release.yml)"]
+        tag["git tag v*.*.*<br/>or workflow_dispatch"]
+        verify["verify VERSION matches tag"]
+        notes["extract CHANGELOG section"]
+        ghrel["gh release create / edit"]
+        brew["compute source sha256<br/>for Formula/alfred-os.rb"]
+    end
+
+    ci["gitleaks CI<br/>(.github/workflows/gitleaks.yml)<br/>push + PR to main"]
+
+    core --> clientTier
+    core --> slackTier
+    clientTier --> tauri
+    tauri --> macbun
+    tauri --> linbun
+    tag --> verify --> notes --> ghrel --> brew
+    ci -.->|secret scan gate| ghrel
+```
+
+- **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` sets `bundle.targets: "all"`, so `npm run tauri -- build` produces the native installer for the host platform: `.app` and `.dmg` on macOS, `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging; signed Mac builds and published Linux artifacts are on the roadmap (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
+- **Tag-triggered release.** `.github/workflows/release.yml` runs on a `v*.*.*` tag (or `workflow_dispatch`). It verifies the tag matches the `VERSION` file, extracts the matching `CHANGELOG.md` section as release notes, creates or edits the GitHub Release, and prints the source-tarball `sha256` for the Homebrew formula (`Formula/alfred-os.rb`).
+- **Secret-scan gate.** `.github/workflows/gitleaks.yml` runs the free gitleaks binary (no org license needed) on every push and PR to `main`, scanning full history with `.gitleaks.toml`. The same scan runs on the internal repo, so nothing with a leaked secret reaches a release.
+
 ## Where to go next
 
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md): the design rationale behind every diagram here.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): the claim/release state machine in full, including stale-claim recovery.
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename engine selection and the precedence chain.
 - [`SLACK_UX.md`](SLACK_UX.md) and [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md): the Slack message contract and the reaction approval gate.
+- [`SLACK_SETUP.md`](SLACK_SETUP.md): control commands, thread-sync, and the issue bridge setup.
+- [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): the desktop control surface and how to build native installers.
+- [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile.
 - [`INSTALL_TIERS.md`](INSTALL_TIERS.md): the three install tiers and what each one needs.

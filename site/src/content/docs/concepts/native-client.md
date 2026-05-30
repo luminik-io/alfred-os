@@ -74,6 +74,8 @@ does not want to tail logs.
 3. Add guided install and broader write actions with command previews.
 4. Package signed Mac builds and Linux artifacts.
 
+The client already builds native installers locally: `tauri.conf.json` sets `bundle.targets: "all"`, so `npm run tauri -- build` produces `.app`/`.dmg` on macOS and `.AppImage`/`.deb` on Linux. CI builds with `--no-bundle` to prove the binary compiles without code signing. See the [desktop client](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
+
 The direct-host model is inspired by Hermes Desktop's strongest lesson: keep
 the host as the source of truth and avoid a second sync layer.
 
