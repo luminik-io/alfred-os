@@ -1035,7 +1035,7 @@ def _parse_repo_lines(block: str) -> list[str]:
             out.append(token)
             continue
         # Bare repo name. Qualify with GH_ORG when available so the
-        # operator's natural shorthand (`niyora`, `niyora-web`) works
+        # operator's natural shorthand (`palette`, `palette-web`) works
         # in a single-org fleet without forcing them to spell out
         # `owner/` on every line.
         if GH_ORG:
