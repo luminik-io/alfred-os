@@ -509,7 +509,7 @@ def _readiness_refusal(draft_payload: dict[str, Any], *, min_score: int) -> Brid
         )
     ok = bool(readiness.get("ok"))
     raw_score = readiness.get("score")
-    if isinstance(raw_score, bool) or not isinstance(raw_score, int | str):
+    if isinstance(raw_score, bool) or not isinstance(raw_score, int | float | str):
         return BridgeOutcome(
             False,
             "refused_readiness_missing",

@@ -229,6 +229,18 @@ def test_convert_creates_issue_with_repo_and_label() -> None:
     assert "slack://thread?x" in call["body"]
 
 
+def test_convert_accepts_numeric_readiness_score() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    payload = _ready_payload()
+    payload["readiness"]["score"] = 94.0
+
+    outcome = bridge.convert(payload, trusted=True)
+
+    assert outcome.created is True
+    assert len(creator.calls) == 1
+
+
 def test_convert_refuses_under_scoped_draft_even_with_approval() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
