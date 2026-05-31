@@ -70,7 +70,7 @@ import re
 import subprocess
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 ENV_ENABLED = "ALFRED_BRIDGE_ENABLED"
 ENV_REPOS = "ALFRED_BRIDGE_REPOS"
@@ -499,7 +499,7 @@ def _parse_min_readiness_score(raw: str | None) -> int:
     return max(0, min(100, score))
 
 
-def _readiness_refusal(draft_payload: dict, *, min_score: int) -> BridgeOutcome | None:
+def _readiness_refusal(draft_payload: dict[str, Any], *, min_score: int) -> BridgeOutcome | None:
     readiness = draft_payload.get("readiness")
     if not isinstance(readiness, dict):
         return BridgeOutcome(
@@ -509,9 +509,15 @@ def _readiness_refusal(draft_payload: dict, *, min_score: int) -> BridgeOutcome 
         )
     ok = bool(readiness.get("ok"))
     raw_score = readiness.get("score")
+    if isinstance(raw_score, bool) or not isinstance(raw_score, int | str):
+        return BridgeOutcome(
+            False,
+            "refused_readiness_missing",
+            "draft readiness score is missing or invalid; revise it before filing",
+        )
     try:
         score = int(raw_score)
-    except (TypeError, ValueError):
+    except ValueError:
         return BridgeOutcome(
             False,
             "refused_readiness_missing",

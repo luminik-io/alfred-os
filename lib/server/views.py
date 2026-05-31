@@ -27,14 +27,14 @@ from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-
 from planning_assistant import (
     PlanningAssistantResult,
     engine_refiner_from_env,
     refine_issue_draft,
 )
-from server.reader import PlanDraft
 from spec_helper import IssueDraft
+
+from server.reader import PlanDraft
 
 
 def register_routes(app: FastAPI) -> None:
@@ -189,9 +189,7 @@ def register_routes(app: FastAPI) -> None:
                     "actions": reliability.get("actions", []),
                     "failure_patterns": reliability.get("failure_patterns", []),
                     "stale_workers": reliability.get("stale_workers", []),
-                    "promotion_suggestions": reliability.get(
-                        "promotion_suggestions", []
-                    ),
+                    "promotion_suggestions": reliability.get("promotion_suggestions", []),
                     "error": reliability.get("error"),
                     "errors": reliability.get("errors", {}),
                 }
@@ -273,13 +271,11 @@ def register_routes(app: FastAPI) -> None:
         except (json.JSONDecodeError, UnicodeDecodeError):
             return JSONResponse({"error": "request body must be JSON"}, status_code=400)
         if not isinstance(body, dict):
-            return JSONResponse(
-                {"error": "request body must be a JSON object"}, status_code=400
-            )
+            return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
 
         text = str(body.get("text") or "").strip()
         draft_id = _safe_compose_draft_id(body.get("draft_id"))
-        prior_payload = _read_compose_draft_payload(request, draft_id)
+        prior_payload, prior_path = _read_compose_draft_payload(request, draft_id)
         base_draft = _compose_base_draft(body, prior_payload)
 
         if not text and prior_payload is None and not _draft_has_signal(base_draft):
@@ -294,9 +290,7 @@ def register_routes(app: FastAPI) -> None:
             base_draft,
             messages,
             refiner=(
-                engine_refiner_from_env(workdir=_planning_workdir(request))
-                if messages
-                else None
+                engine_refiner_from_env(workdir=_planning_workdir(request)) if messages else None
             ),
             memory_provider=memory_provider,
         )
@@ -310,6 +304,7 @@ def register_routes(app: FastAPI) -> None:
             draft=draft,
             assistant_result=assistant_result,
             draft_id=draft_id,
+            draft_path=prior_path,
             prior_payload=prior_payload,
             revisions=revisions,
         )
@@ -375,9 +370,7 @@ def register_routes(app: FastAPI) -> None:
         action = _first(form, "action")
         chat_message = _first(form, "chat_message")
         memory_provider = _planning_memory_provider(request)
-        should_refine = action == "refine" or (
-            action in {"save", "save_spec"} and chat_message
-        )
+        should_refine = action == "refine" or (action in {"save", "save_spec"} and chat_message)
         assistant_result: PlanningAssistantResult = refine_issue_draft(
             draft,
             [chat_message] if should_refine else [],
@@ -475,15 +468,11 @@ def _first(form: dict[str, list[str]], key: str) -> str:
 
 
 def _lines(value: str) -> list[str]:
-    return [
-        line.strip().lstrip("- ").strip() for line in value.splitlines() if line.strip()
-    ]
+    return [line.strip().lstrip("- ").strip() for line in value.splitlines() if line.strip()]
 
 
 def _save_issue_draft(request: Request, draft: IssueDraft, body: str) -> Path:
-    return _save_planning_text(
-        request, draft, body, directory="planning-drafts", suffix="issue"
-    )
+    return _save_planning_text(request, draft, body, directory="planning-drafts", suffix="issue")
 
 
 _COMPOSE_PREFIX = "compose-"
@@ -505,9 +494,7 @@ def _safe_compose_draft_id(raw: Any) -> str | None:
     return candidate
 
 
-def _compose_base_draft(
-    body: dict[str, Any], prior_payload: dict[str, Any] | None
-) -> IssueDraft:
+def _compose_base_draft(body: dict[str, Any], prior_payload: dict[str, Any] | None) -> IssueDraft:
     """Build the starting draft from an explicit ``draft`` block or the prior save."""
     raw_draft = body.get("draft")
     if isinstance(raw_draft, dict):
@@ -564,17 +551,27 @@ def _existing_revisions(prior_payload: dict[str, Any] | None) -> tuple[str, ...]
 
 def _read_compose_draft_payload(
     request: Request, draft_id: str | None
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, Path | None]:
     if not draft_id:
-        return None
-    path = _state_planning_root(request) / f"{draft_id}.json"
-    if not path.exists():
-        return None
+        return None, None
+    root = _state_planning_root(request)
+    if not root.is_dir():
+        return None, None
+    path = next(
+        (
+            candidate
+            for candidate in root.glob(f"{_COMPOSE_PREFIX}*.json")
+            if candidate.stem == draft_id
+        ),
+        None,
+    )
+    if path is None:
+        return None, None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
+        return None, None
+    return (payload, path) if isinstance(payload, dict) else (None, None)
 
 
 def _save_compose_draft(
@@ -583,14 +580,18 @@ def _save_compose_draft(
     draft: IssueDraft,
     assistant_result: PlanningAssistantResult,
     draft_id: str | None,
+    draft_path: Path | None,
     prior_payload: dict[str, Any] | None,
     revisions: list[str],
 ) -> tuple[Path, str]:
     root = _state_planning_root(request)
     root.mkdir(parents=True, exist_ok=True)
-    if draft_id is None:
+    if draft_path is None:
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         draft_id = f"{_COMPOSE_PREFIX}{stamp}-{_slug(draft.title)}"
+        draft_path = root / f"{draft_id}.json"
+    elif draft_id is None:
+        draft_id = draft_path.stem
     created_at = (
         str(prior_payload.get("created_at"))
         if prior_payload and prior_payload.get("created_at")
@@ -598,6 +599,7 @@ def _save_compose_draft(
     )
     payload = {
         "source": "compose",
+        "draft_id": draft_id,
         "created_at": created_at,
         "updated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "draft": asdict(draft),
@@ -609,13 +611,10 @@ def _save_compose_draft(
         "revision_count": len(revisions),
         "revisions": revisions,
     }
-    path = root / f"{draft_id}.json"
-    tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    tmp.replace(path)
-    return path, draft_id
+    tmp = draft_path.with_name(f"{draft_path.name}.tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(draft_path)
+    return draft_path, draft_id
 
 
 def _list_compose_drafts(request: Request) -> list[dict[str, Any]]:
@@ -649,8 +648,7 @@ def _list_compose_drafts(request: Request) -> list[dict[str, Any]]:
                         "score": readiness.get("score"),
                     },
                     "revision_count": payload.get("revision_count") or 0,
-                    "updated_at": payload.get("updated_at")
-                    or payload.get("created_at"),
+                    "updated_at": payload.get("updated_at") or payload.get("created_at"),
                 },
             )
         )
@@ -658,14 +656,10 @@ def _list_compose_drafts(request: Request) -> list[dict[str, Any]]:
     return [row for _mtime, row in drafts]
 
 
-def _convert_and_archive_followup(
-    request: Request, plan: PlanDraft
-) -> tuple[Path, Path]:
+def _convert_and_archive_followup(request: Request, plan: PlanDraft) -> tuple[Path, Path]:
     draft_path = _convert_followup_to_planning_draft(request, plan)
     try:
-        archived_path = _archive_followup(
-            plan, action="converted", target_path=draft_path
-        )
+        archived_path = _archive_followup(plan, action="converted", target_path=draft_path)
     except Exception:
         draft_path.unlink(missing_ok=True)
         raise
@@ -699,17 +693,13 @@ def _convert_followup_to_planning_draft(request: Request, plan: PlanDraft) -> Pa
         "revisions": [],
     }
     tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(path)
     return path
 
 
 def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
-    clean_title = re.sub(
-        r"^follow-up for\s+", "", plan.title, flags=re.IGNORECASE
-    ).strip()
+    clean_title = re.sub(r"^follow-up for\s+", "", plan.title, flags=re.IGNORECASE).strip()
     title = f"Follow up: {clean_title or 'captured Slack feedback'}"
     repos = _repos_from_followup(plan)
     return IssueDraft(
@@ -720,8 +710,7 @@ def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
             "docs change."
         ),
         user="Repo owner, teammate, or operator following up on shipped work",
-        current_behavior=plan.preview
-        or "Follow-up context is captured in the local Plans inbox.",
+        current_behavior=plan.preview or "Follow-up context is captured in the local Plans inbox.",
         desired_behavior=(
             "Decide whether the follow-up needs code, docs, tests, a scoped "
             "issue, or an explicit no-change response."
@@ -736,12 +725,10 @@ def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
             "the follow-up is covered."
         ),
         out_of_scope=(
-            "No automatic merge, deployment, or broad scope expansion from "
-            "captured feedback."
+            "No automatic merge, deployment, or broad scope expansion from captured feedback."
         ),
         open_questions=(
-            "Confirm the intended response before implementation if the follow-up "
-            "changes scope."
+            "Confirm the intended response before implementation if the follow-up changes scope."
         ),
     )
 

@@ -1074,6 +1074,24 @@ def test_compose_draft_rejects_foreign_draft_id(tmp_path: Path) -> None:
     assert response.json()["draft_id"].startswith("compose-")
 
 
+def test_compose_draft_ignores_unknown_compose_draft_id(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+    unknown = "compose-20260531-9999-never-seen"
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"draft_id": unknown, "text": "title: Safe new draft"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"].startswith("compose-")
+    assert payload["draft_id"] != unknown
+    assert not (state / "planning-drafts" / f"{unknown}.json").exists()
+
+
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
