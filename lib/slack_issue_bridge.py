@@ -275,7 +275,7 @@ class SlackIssueBridge:
         if not isinstance(draft, dict):
             return BridgeOutcome(False, "refused_no_draft", "saved draft is missing or malformed")
 
-        # SAFETY GATE 3: saved readiness must be good enough to file.
+        # SAFETY GATE 4: saved readiness must be good enough to file.
         readiness_refusal = _readiness_refusal(
             draft_payload,
             min_score=self.config.min_readiness_score,
@@ -283,7 +283,7 @@ class SlackIssueBridge:
         if readiness_refusal is not None:
             return readiness_refusal
 
-        # SAFETY GATE 4: every target repo must be in the configured allowlist.
+        # SAFETY GATE 5: every target repo must be in the configured allowlist.
         repos = _draft_repos(draft)
         if not repos:
             return BridgeOutcome(

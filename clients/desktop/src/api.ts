@@ -48,7 +48,10 @@ export function errorDetail(err: unknown): string | null {
 
 // Map an HTTP error status to plain-language guidance. Returns the operator-
 // facing message; the raw status line + body stay available on ApiError.detail.
-function humanizeFetchError(status: number): string {
+function humanizeFetchError(status: number, serverMessage?: string | null): string {
+  if (serverMessage && status >= 400 && status < 500) {
+    return serverMessage;
+  }
   if (status === 401 || status === 403) {
     return "Alfred serve is running but rejected this client (auth token mismatch). Restart the runtime or check your token.";
   }
@@ -62,6 +65,27 @@ function humanizeFetchError(status: number): string {
     return "Alfred serve hit an internal error handling this request. Check the runtime logs.";
   }
   return `Alfred serve returned an unexpected ${status} response. See details below.`;
+}
+
+function serverErrorMessage(text: string): string | null {
+  if (!text.trim()) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(text) as unknown;
+    if (payload && typeof payload === "object") {
+      const record = payload as Record<string, unknown>;
+      for (const key of ["error", "message", "detail"]) {
+        const value = record[key];
+        if (typeof value === "string" && value.trim()) {
+          return value.trim();
+        }
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 // Map a transport-level failure (no HTTP response at all) to plain language.
@@ -261,7 +285,7 @@ async function browserFetch(
   const text = await response.text();
   if (!response.ok) {
     const raw = `alfred serve returned ${response.status}${text ? `: ${text}` : ""}`;
-    throw new ApiError(humanizeFetchError(response.status), raw);
+    throw new ApiError(humanizeFetchError(response.status, serverErrorMessage(text)), raw);
   }
   return text;
 }

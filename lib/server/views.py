@@ -557,21 +557,17 @@ def _read_compose_draft_payload(
     root = _state_planning_root(request)
     if not root.is_dir():
         return None, None
-    path = next(
-        (
-            candidate
-            for candidate in root.glob(f"{_COMPOSE_PREFIX}*.json")
-            if candidate.stem == draft_id
-        ),
-        None,
-    )
-    if path is None:
-        return None, None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None, None
-    return (payload, path) if isinstance(payload, dict) else (None, None)
+    for path in root.glob(f"{_COMPOSE_PREFIX}*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        saved_id = str(payload.get("draft_id") or path.stem).strip()
+        if saved_id == draft_id:
+            return payload, path
+    return None, None
 
 
 def _save_compose_draft(
@@ -844,9 +840,9 @@ def _planning_memory_provider(request: Request):
     ):
         return None
     try:
-        from fleet_brain import FleetBrain
+        from memory.config import load_provider
 
-        return FleetBrain.from_env()
+        return load_provider()
     except Exception:
         return None
 
@@ -855,7 +851,24 @@ def _planning_memory_writer(request: Request, *, provider=None):
     configured = getattr(request.app.state, "planning_memory_writer", None)
     if configured is not None:
         return configured
-    return provider or _planning_memory_provider(request)
+    return _memory_candidate_writer(provider or _planning_memory_provider(request))
+
+
+def _memory_candidate_writer(provider):
+    if provider is None:
+        return None
+    if hasattr(provider, "propose_memory"):
+        return provider
+    brain = getattr(provider, "brain", None)
+    if brain is not None and hasattr(brain, "propose_memory"):
+        return brain
+    providers = getattr(provider, "providers", None)
+    if isinstance(providers, list):
+        for child in providers:
+            writer = _memory_candidate_writer(child)
+            if writer is not None:
+                return writer
+    return None
 
 
 def _propose_planning_memory_candidate(
@@ -881,27 +894,27 @@ def _propose_planning_memory_candidate(
     ids: list[str] = []
     for repo in draft.repos or ["planning"]:
         try:
-            candidate_id = writer.propose_memory(
-                agent="planning",
+            candidate = writer.propose_memory(
+                codename="planning",
                 repo=repo,
-                topic="planning-spec",
                 body=body,
-                evidence=[evidence],
+                tags=["planning", "spec"],
+                severity="info",
                 source="planning-ui",
+                evidence=json.dumps(evidence, sort_keys=True),
+                confidence=0.72,
             )
+            candidate_id = getattr(candidate, "id", candidate)
         except TypeError:
             try:
-                candidate = writer.propose_memory(
-                    codename="planning",
+                candidate_id = writer.propose_memory(
+                    agent="planning",
                     repo=repo,
+                    topic="planning-spec",
                     body=body,
-                    tags=["planning", "spec"],
-                    severity="info",
                     source="planning-ui",
-                    evidence=str(spec_path),
-                    confidence=0.72,
+                    evidence=[evidence],
                 )
-                candidate_id = getattr(candidate, "id", candidate)
             except Exception:
                 continue
         except Exception:

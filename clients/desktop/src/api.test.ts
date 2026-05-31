@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, errorDetail, loadSnapshot } from "./api";
+import { ApiError, composeDraft, errorDetail, loadSnapshot } from "./api";
 
 // In jsdom (no __TAURI_INTERNALS__) the api layer goes through global fetch, so
 // we can drive every endpoint's outcome by stubbing fetch per URL.
@@ -108,6 +108,28 @@ describe("error humanization", () => {
       expect(err).toBeInstanceOf(ApiError);
       expect((err as ApiError).message).toMatch(/could not reach alfred serve/i);
       expect(errorDetail(err)).toMatch(/failed to fetch/i);
+    }
+  });
+
+  it("uses server-provided 400 guidance as the visible message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({ error: "describe the work in the text field before drafting" }),
+          { status: 400 },
+        );
+      }),
+    );
+    try {
+      await composeDraft("http://127.0.0.1:7000", { text: "" });
+      throw new Error("expected composeDraft to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).message).toBe(
+        "describe the work in the text field before drafting",
+      );
+      expect(errorDetail(err)).toMatch(/400/);
     }
   });
 });
