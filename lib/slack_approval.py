@@ -352,7 +352,13 @@ def trusted_feedback_user_ids_from_env(
     """Read trusted Slack users whose thread replies can amend a plan."""
     try:
         from slack_trust import trusted_user_ids
-    except Exception:
+
+        return trusted_user_ids(operator_user_id=operator_user_id, state_root=state_root)
+    except Exception as exc:
+        logger.warning(
+            "Slack trusted user store unavailable; falling back to env trusted users: %s",
+            exc,
+        )
         raw = (os.environ.get(ENV_TRUSTED_FEEDBACK_USER_IDS) or "").strip()
         ids = [operator_user_id.strip()] if operator_user_id and operator_user_id.strip() else []
         for item in re.split(r"[,;\s]+", raw):
@@ -360,7 +366,6 @@ def trusted_feedback_user_ids_from_env(
             if cleaned:
                 ids.append(cleaned)
         return tuple(_dedupe_user_ids(ids))
-    return trusted_user_ids(operator_user_id=operator_user_id, state_root=state_root)
 
 
 class SlackApproval:
