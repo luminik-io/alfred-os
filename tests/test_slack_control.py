@@ -357,7 +357,7 @@ def test_plan_detail_distinguishes_unknown_readiness() -> None:
 
     text = render_plan_detail(plan)
 
-    assert "not checked (7/10)" in text
+    assert "not checked (7/100)" in text
     assert "needs scope" not in text
 
 

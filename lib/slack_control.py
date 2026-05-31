@@ -783,7 +783,7 @@ def _readiness_label(plan: PlanDraft) -> str:
         state = "needs scope"
     else:
         state = "not checked"
-    return f"{state} ({score}/10)"
+    return f"{state} ({score}/100)"
 
 
 def _truthy(value: Any) -> bool:
