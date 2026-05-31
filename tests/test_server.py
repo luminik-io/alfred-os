@@ -485,7 +485,7 @@ def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) ->
         "# Follow-up for rollout bundle\n\n"
         "- Bundle: `rollout-bundle`\n"
         "- Created: https://github.com/your-org/api/pull/42, "
-        "https://github.com/your-org/web\n\n"
+        "https://github.com/your-org/web/issues/77\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `test`: add a smoke test to both shipped slices\n",
