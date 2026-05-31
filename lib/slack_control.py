@@ -1149,7 +1149,8 @@ def _parse_remember_payload(raw: str) -> tuple[str, str] | None:
     else:
         first, _, tail = text.partition(" ")
         first_clean = first.rstrip(":")
-        if _is_memory_repo_token(first_clean) and tail.strip():
+        explicit_scope = first.endswith(":") or "/" in first_clean
+        if explicit_scope and _is_memory_repo_token(first_clean) and tail.strip():
             repo = first_clean
             body = tail.strip()
         else:

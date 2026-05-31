@@ -545,6 +545,21 @@ def test_remember_without_repo_uses_global_scope() -> None:
     assert runner.calls[-1][-3] == "global"
 
 
+def test_remember_global_word_without_colon_stays_in_body() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle(
+        "remember global search copy should stay explicit.",
+        trusted=True,
+    )
+
+    assert result.action == "remember"
+    assert runner.calls[-1][-3:] == [
+        "global",
+        "--",
+        "global search copy should stay explicit.",
+    ]
+
+
 def test_remember_rejects_pathlike_repo_scope() -> None:
     runner = FakeRunner()
     handler = _handler(runner)
