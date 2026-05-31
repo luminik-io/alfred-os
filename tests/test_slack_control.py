@@ -319,6 +319,20 @@ def test_bad_plan_id_returns_usage_not_fallthrough() -> None:
     assert runner.calls == []
 
 
+def test_natural_plan_and_draft_phrases_fall_through_to_intake() -> None:
+    runner = FakeRunner()
+    handler = _handler(runner)
+
+    plan_result = handler.handle("plan the billing migration", trusted=True)
+    draft_result = handler.handle("draft a spec for memory review", trusted=True)
+
+    assert plan_result.handled is False
+    assert plan_result.action == "not_a_command"
+    assert draft_result.handled is False
+    assert draft_result.action == "not_a_command"
+    assert runner.calls == []
+
+
 def test_pause_invokes_cli_with_exact_argv() -> None:
     runner = FakeRunner()
     result = _handler(runner).handle("pause lucius", trusted=True)

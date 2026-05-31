@@ -569,6 +569,11 @@ def _usage_for_malformed(text: str) -> str | None:
             "Only the configured operator can change trusted collaborators."
         )
     if first in {"plan", "draft", "handled"}:
+        # Natural-language intake often starts with "plan ..." or "draft ...".
+        # Only short malformed control attempts get usage; multi-word prose
+        # falls back to the planning listener.
+        if len(cleaned.split()) > 2:
+            return None
         return f"*Usage:* `{first} <plan-id>`\n\nUse `plans` to find the exact local inbox id."
     return render_help()
 
