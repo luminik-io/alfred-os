@@ -102,6 +102,7 @@ Slack can drive the same review loop:
 
 ```text
 memory
+memories
 remember your-org/api: Use request fixtures for API tests.
 memory promote <candidate-id>
 memory reject <candidate-id> too vague

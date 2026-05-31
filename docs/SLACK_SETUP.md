@@ -332,7 +332,7 @@ from chat by **leading a message with a known verb**. These are handled by
 | `plan <id>` | Inspect one local plan or follow-up. Use `plans` to find the id. |
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
 | `handled <id>` | Operator-only. Archive a captured follow-up without creating a draft. |
-| `memory` | Show pending memory candidates and suggested promotions. |
+| `memory` / `memories` | Show pending memory candidates and suggested promotions. |
 | `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
 | `memory promote <id>` | Operator-only. Promote a candidate into future recall. |
 | `memory reject <id>` | Operator-only. Reject a noisy candidate. |

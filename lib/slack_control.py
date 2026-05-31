@@ -485,9 +485,6 @@ class SlackControlHandler:
         attempts = [
             [
                 "propose",
-                "operator",
-                repo,
-                body,
                 "--tag",
                 "slack",
                 "--source",
@@ -497,6 +494,10 @@ class SlackControlHandler:
                 "--confidence",
                 "0.70",
                 "--json",
+                "operator",
+                repo,
+                "--",
+                body,
             ],
             [
                 "propose",
@@ -848,7 +849,7 @@ def render_help() -> str:
             "- `plan <id>`: inspect a draft or captured follow-up.",
             "- `draft <id>`: convert a captured follow-up to a local draft.",
             "- `handled <id>`: operator-only: archive a follow-up without drafting.",
-            "- `memory`: review memory candidates and promotion suggestions.",
+            "- `memory` / `memories`: review memory candidates and promotion suggestions.",
             "- `remember [repo:] <lesson>`: stage a reviewable memory candidate.",
             "- `memory promote <id>` / `memory reject <id>`: operator-only memory review.",
             "- `memory redis`: check optional Redis Agent Memory Server.",
@@ -1076,7 +1077,7 @@ def render_memory_usage() -> str:
         [
             "*Memory commands*",
             "",
-            "- `memory`: pending candidates and suggested promotions.",
+            "- `memory` / `memories`: pending candidates and suggested promotions.",
             "- `memory promotions`: high-confidence candidates with evidence.",
             "- `remember [owner/repo:] <lesson>`: queue a reviewable candidate.",
             "- `memory promote <id>`: operator-only: trust a candidate for future recall.",

@@ -43,7 +43,7 @@ state machine that keeps multiple agents from stepping on each other.
   captured as context for the next pass, not as implicit merge approval.
 - Run the fleet conversationally from Slack: trusted control commands
   (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
-  `memory`, `remember ...`, `memory promote <id>`, `memory redis`, `pause`,
+  `memory` / `memories`, `remember ...`, `memory promote <id>`, `memory redis`, `pause`,
   `resume`) inspect and steer local state from chat with no shell. An approved
   draft can cross the off-by-default bridge into a labeled issue, and in-thread
   progress posts (claimed, PR opened, CI, merged) report back as the fleet

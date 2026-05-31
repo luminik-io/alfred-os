@@ -131,14 +131,24 @@ class FakeRunner:
             )
         if argv[0] == "propose":
             if "--agent" in argv:
-                return RunResult(returncode=2, stderr="unsupported internal-style args")
+                repo = argv[argv.index("--repo") + 1]
+                body = argv[argv.index("--body") + 1]
+            elif "--" in argv:
+                separator = argv.index("--")
+                repo = argv[separator - 1]
+                body = argv[separator + 1]
+            else:
+                repo = argv[2]
+                body = argv[3]
+                if body.startswith("--"):
+                    return RunResult(returncode=2, stderr="unrecognized arguments")
             return RunResult(
                 returncode=0,
                 stdout=json.dumps(
                     {
                         "id": "cand-new",
-                        "repo": argv[2],
-                        "body": argv[3],
+                        "repo": repo,
+                        "body": body,
                         "status": "candidate",
                     }
                 ),
@@ -503,13 +513,25 @@ def test_remember_queues_reviewable_memory_candidate() -> None:
     assert result.action == "remember"
     assert "Memory candidate queued" in result.text
     assert "cand-new" in result.text
-    assert runner.calls[-1][:5] == [
-        "/fake/alfred",
-        "brain",
-        "propose",
+    assert runner.calls[-1][-4:] == [
         "operator",
         "luminik-io/alfred-os",
+        "--",
+        "Slack memory stays reviewable.",
     ]
+
+
+def test_remember_body_starting_with_dash_is_queued() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle(
+        "remember global: --dry-run all integration tests before promotion.",
+        trusted=True,
+        actor_user_id="UTEAM",
+    )
+
+    assert result.action == "remember"
+    assert "cand-new" in result.text
+    assert runner.calls[-1][-2:] == ["--", "--dry-run all integration tests before promotion."]
 
 
 def test_remember_without_repo_uses_global_scope() -> None:
@@ -520,7 +542,23 @@ def test_remember_without_repo_uses_global_scope() -> None:
     )
 
     assert result.action == "remember"
-    assert runner.calls[-1][4] == "global"
+    assert runner.calls[-1][-3] == "global"
+
+
+def test_untrusted_memory_commands_are_ignored() -> None:
+    runner = FakeRunner()
+    handler = _handler(runner)
+
+    memory = handler.handle("memory promote cand-1", trusted=False, actor_user_id="UTEAM")
+    remember = handler.handle(
+        "remember global: this should not be staged",
+        trusted=False,
+        actor_user_id="UTEAM",
+    )
+
+    assert memory.handled is False
+    assert remember.handled is False
+    assert runner.calls == []
 
 
 def test_memory_promote_requires_operator() -> None:
