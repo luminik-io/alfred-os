@@ -16,6 +16,7 @@ function emptySnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
     },
     firings: [],
     plans: [],
+    trustedSlack: null,
     ...overrides,
   };
 }

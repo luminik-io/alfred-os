@@ -34,6 +34,10 @@ Reliability and first-run trust polish.
 - Slack planning listener: optional Socket Mode listener for trusted DMs, app
   mentions, and registered plan/report threads. It writes local planning drafts
   and feedback context without making chat text an approval mechanism.
+- Slack trusted collaborators: operators can add or remove local Slack users
+  with `trust <@user>` / `untrust <@user>` or the desktop Setup tab. Trusted
+  collaborators can discuss plans and create drafts, while execution approval
+  remains operator-only.
 - Native local client preview: `clients/desktop` ships a Tauri Mac/Linux shell
   over the local Alfred runtime. It opens to "what needs attention?", shows
   Plans, Runs, Agents, Memory, and Setup, opens external links outside the app,

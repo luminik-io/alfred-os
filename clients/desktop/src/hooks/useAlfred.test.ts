@@ -72,6 +72,7 @@ function snapshot(agents: AgentSummary[]): Snapshot {
     },
     firings: [],
     plans: [],
+    trustedSlack: null,
   };
 }
 

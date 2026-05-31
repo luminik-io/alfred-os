@@ -87,6 +87,22 @@ export type PlansResponse = {
   rows: PlanDraft[];
 };
 
+export type TrustedSlackUser = {
+  user_id: string;
+  sources: string[];
+  added_at: string | null;
+  added_by: string | null;
+  can_remove: boolean;
+};
+
+export type TrustedSlackUsersResponse = {
+  operator_user_id: string | null;
+  users: TrustedSlackUser[];
+  state_path: string;
+  added?: boolean;
+  removed?: boolean;
+};
+
 export type FollowupActionResponse = {
   draft_id?: string;
   draft_path?: string;
@@ -177,6 +193,7 @@ export type Snapshot = {
   actions: ActionsResponse;
   firings: FiringRecord[];
   plans: PlanDraft[];
+  trustedSlack: TrustedSlackUsersResponse | null;
   // Per-section failures from the settled snapshot load. /api/status is the
   // spine and never lands here (its failure rejects the whole load); the other
   // three endpoints degrade independently so one outage cannot blank the view.
@@ -184,5 +201,6 @@ export type Snapshot = {
     actions?: string;
     firings?: string;
     plans?: string;
+    trustedSlack?: string;
   };
 };

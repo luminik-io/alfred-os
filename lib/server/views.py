@@ -32,6 +32,12 @@ from planning_assistant import (
     engine_refiner_from_env,
     refine_issue_draft,
 )
+from slack_trust import (
+    SlackTrustStore,
+    env_trusted_user_ids,
+    normalize_slack_user_id,
+    operator_user_id_from_env,
+)
 from spec_helper import IssueDraft
 
 from server.reader import PlanDraft
@@ -195,6 +201,54 @@ def register_routes(app: FastAPI) -> None:
                 }
             )
         )
+
+    @app.get("/api/slack/trusted-users", response_class=JSONResponse)
+    async def api_slack_trusted_users(request: Request) -> JSONResponse:
+        store = SlackTrustStore.from_state_root(_state_root(request))
+        return JSONResponse(
+            store.snapshot(
+                operator_user_id=operator_user_id_from_env(),
+                env_trusted_user_ids=env_trusted_user_ids(),
+            ).to_dict()
+        )
+
+    @app.post("/api/slack/trusted-users", response_class=JSONResponse)
+    async def api_slack_trust_user(request: Request) -> JSONResponse:
+        if not _same_origin_post(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = json.loads((await request.body()).decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"error": "request body must be JSON"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+        user_id = normalize_slack_user_id(body.get("user_id"))
+        if user_id is None:
+            return JSONResponse({"error": "user_id must be a Slack user id"}, status_code=400)
+        store = SlackTrustStore.from_state_root(_state_root(request))
+        added, _user = store.add(user_id, added_by="local-client")
+        snapshot = store.snapshot(
+            operator_user_id=operator_user_id_from_env(),
+            env_trusted_user_ids=env_trusted_user_ids(),
+        ).to_dict()
+        snapshot["added"] = added
+        return JSONResponse(snapshot)
+
+    @app.post("/api/slack/trusted-users/{user_id}/remove", response_class=JSONResponse)
+    async def api_slack_untrust_user(request: Request, user_id: str) -> JSONResponse:
+        if not _same_origin_post(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        normalized = normalize_slack_user_id(user_id)
+        if normalized is None:
+            return JSONResponse({"error": "user_id must be a Slack user id"}, status_code=400)
+        store = SlackTrustStore.from_state_root(_state_root(request))
+        removed = store.remove(normalized)
+        snapshot = store.snapshot(
+            operator_user_id=operator_user_id_from_env(),
+            env_trusted_user_ids=env_trusted_user_ids(),
+        ).to_dict()
+        snapshot["removed"] = removed
+        return JSONResponse(snapshot)
 
     @app.get("/api/firings", response_class=JSONResponse)
     async def api_firings(
@@ -786,16 +840,20 @@ def _archive_followup(
 
 
 def _state_planning_root(request: Request) -> Path:
+    return _state_root(request) / "planning-drafts"
+
+
+def _state_root(request: Request) -> Path:
     reader = request.app.state.reader
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
-        return state_root / "planning-drafts"
+        return state_root
     base = (
         os.environ.get("ALFRED_HOME")
         or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
-    return Path(base) / "state" / "planning-drafts"
+    return Path(base) / "state"
 
 
 def _save_planning_text(

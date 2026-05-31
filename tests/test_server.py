@@ -251,6 +251,58 @@ def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
     assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}
 
 
+def test_api_slack_trusted_users_adds_and_removes_local_collaborator(
+    empty_state: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UENV1")
+    client = _client(empty_state)
+
+    before = client.get("/api/slack/trusted-users")
+    assert before.status_code == 200
+    before_rows = {row["user_id"]: row for row in before.json()["users"]}
+    assert before_rows["UOPERATOR"]["sources"] == ["operator"]
+    assert before_rows["UENV1"]["sources"] == ["env"]
+
+    added = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "<@UTEAM1>"},
+        headers={"Origin": "http://testserver"},
+    )
+    assert added.status_code == 200
+    rows = {row["user_id"]: row for row in added.json()["users"]}
+    assert added.json()["added"] is True
+    assert rows["UTEAM1"]["sources"] == ["local"]
+    assert rows["UTEAM1"]["can_remove"] is True
+
+    removed = client.post(
+        "/api/slack/trusted-users/UTEAM1/remove",
+        headers={"Origin": "http://testserver"},
+    )
+    assert removed.status_code == 200
+    assert removed.json()["removed"] is True
+    assert "UTEAM1" not in {row["user_id"] for row in removed.json()["users"]}
+
+
+def test_api_slack_trusted_users_rejects_bad_origin_and_bad_ids(empty_state: Path) -> None:
+    client = _client(empty_state)
+
+    forbidden = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "UTEAM1"},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert forbidden.status_code == 403
+
+    bad_id = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "not a user"},
+        headers={"Origin": "http://testserver"},
+    )
+    assert bad_id.status_code == 400
+
+
 def test_firing_complete_marks_record_finished(tmp_path: Path) -> None:
     state = tmp_path / "state"
     (state / "lucius" / "events").mkdir(parents=True)

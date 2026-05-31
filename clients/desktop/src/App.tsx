@@ -53,6 +53,7 @@ function App() {
     errorRaw,
     loading,
     busyPlanAction,
+    busyTrustedUser,
     actionNotice,
     nativeBusy,
     nativeResult,
@@ -68,6 +69,8 @@ function App() {
     refresh,
     refreshFleetService,
     runFollowupAction,
+    addTrustedUser,
+    removeTrustedUser,
     runLocalAction,
     startRuntime,
   } = useAlfred();
@@ -193,7 +196,12 @@ function App() {
       {tab === "setup" ? (
         <SetupView
           baseUrl={baseUrl}
+          actionNotice={actionNotice}
+          trustedSlack={snapshot?.trustedSlack || null}
+          busyTrustedUser={busyTrustedUser}
           nativeBusy={nativeBusy}
+          onAddTrustedUser={addTrustedUser}
+          onRemoveTrustedUser={removeTrustedUser}
           onRunLocalAction={runLocalAction}
           onStartRuntime={startRuntime}
         />

@@ -218,7 +218,9 @@ fn validate_api_path<'a>(
     let allowed = if method == Method::GET {
         is_allowed_read_path(path_part)
     } else if method == Method::POST {
-        is_allowed_compose_draft(path_part) || is_allowed_followup_action(path_part)
+        is_allowed_compose_draft(path_part)
+            || is_allowed_followup_action(path_part)
+            || is_allowed_slack_trust_action(path_part)
     } else {
         false
     };
@@ -230,7 +232,13 @@ fn validate_api_path<'a>(
 }
 
 fn is_allowed_read_path(path: &str) -> bool {
-    let allowed = ["/api/status", "/api/actions", "/api/firings", "/api/plans"];
+    let allowed = [
+        "/api/status",
+        "/api/actions",
+        "/api/firings",
+        "/api/plans",
+        "/api/slack/trusted-users",
+    ];
     allowed
         .iter()
         .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
@@ -250,6 +258,17 @@ fn is_allowed_followup_action(path: &str) -> bool {
         return false;
     }
     matches!(parts[1], "convert-followup" | "mark-handled")
+}
+
+fn is_allowed_slack_trust_action(path: &str) -> bool {
+    if path == "/api/slack/trusted-users" {
+        return true;
+    }
+    let Some(rest) = path.strip_prefix("/api/slack/trusted-users/") else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('/').collect();
+    parts.len() == 2 && !parts[0].is_empty() && parts[1] == "remove"
 }
 
 fn build_alfred_action(
@@ -479,6 +498,19 @@ mod tests {
             .expect("compose draft path should be accepted for POST");
         assert_eq!(path, "/api/plans/draft");
         assert_eq!(query, None);
+    }
+
+    #[test]
+    fn post_allowlist_accepts_slack_trust_paths() {
+        let (path, query) = validate_api_path("/api/slack/trusted-users", &Method::POST)
+            .expect("trust add path should be accepted for POST");
+        assert_eq!(path, "/api/slack/trusted-users");
+        assert_eq!(query, None);
+
+        let (path, _query) =
+            validate_api_path("/api/slack/trusted-users/U123ABC/remove", &Method::POST)
+                .expect("trust remove path should be accepted for POST");
+        assert_eq!(path, "/api/slack/trusted-users/U123ABC/remove");
     }
 
     #[test]

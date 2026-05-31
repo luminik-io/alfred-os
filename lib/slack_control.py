@@ -7,6 +7,9 @@ command verb** to act on the fleet without leaving Slack:
 * ``pause <codename>``     -> stop scheduled firings for one agent
 * ``resume <codename>``    -> reverse a pause
 * ``runs``                 -> recent firings (last-fired + today counts)
+* ``trusted``              -> list Slack users who can collaborate on plans
+* ``trust <@user>``        -> operator-only: add a trusted collaborator
+* ``untrust <@user>``      -> operator-only: remove a local collaborator
 * ``help``                 -> list these commands
 
 CRITICAL SAFETY MODEL
@@ -46,6 +49,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from slack_trust import (
+    SlackTrustStore,
+    default_state_root,
+    normalize_slack_user_id,
+    operator_user_id_from_env,
+    trusted_users_snapshot,
+)
+
 # A codename is a short identifier. This is deliberately strict: only word
 # characters, dot, underscore and hyphen, never starting with a hyphen (which
 # could otherwise be parsed as a CLI flag). ``all`` is allowed because the
@@ -54,7 +65,9 @@ _CODENAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,64}$")
 
 # Known leading verbs. A message only becomes a control command when its first
 # token (lowercased) is one of these.
-_COMMANDS: frozenset[str] = frozenset({"status", "pause", "resume", "runs", "help"})
+_COMMANDS: frozenset[str] = frozenset(
+    {"status", "pause", "resume", "runs", "trusted", "trust", "untrust", "help"}
+)
 
 CommandRunner = Callable[[list[str]], "RunResult"]
 
@@ -113,8 +126,16 @@ def parse_control_command(text: str) -> ControlCommand | None:
             return None
         return ControlCommand(verb=verb, arg=args[0])
 
-    # status / runs / help take no required argument; ignore any trailing
-    # words so "status please" still reads as a status request.
+    if verb in {"trust", "untrust"}:
+        if len(args) != 1:
+            return None
+        user_id = normalize_slack_user_id(args[0])
+        if user_id is None:
+            return None
+        return ControlCommand(verb=verb, arg=user_id)
+
+    # status / runs / trusted / help take no required argument; ignore any
+    # trailing words so "status please" still reads as a status request.
     return ControlCommand(verb=verb)
 
 
@@ -141,13 +162,25 @@ class SlackControlHandler:
         *,
         alfred_bin: Path | str | None = None,
         runner: CommandRunner | None = None,
+        trust_store: SlackTrustStore | None = None,
+        operator_user_id: str | None = None,
         timeout: int = 30,
     ) -> None:
         self.alfred_bin = str(alfred_bin) if alfred_bin else _default_alfred_bin()
         self._runner = runner or self._default_runner
+        self.trust_store = trust_store
+        self.operator_user_id = (
+            normalize_slack_user_id(operator_user_id) or operator_user_id_from_env()
+        )
         self.timeout = timeout
 
-    def handle(self, text: str, *, trusted: bool) -> ControlResult:
+    def handle(
+        self,
+        text: str,
+        *,
+        trusted: bool,
+        actor_user_id: str | None = None,
+    ) -> ControlResult:
         """Handle a candidate control message.
 
         Returns ``ControlResult(handled=False, ...)`` when the message is not
@@ -173,6 +206,10 @@ class SlackControlHandler:
             return self._run_status()
         if command.verb == "runs":
             return self._run_runs()
+        if command.verb == "trusted":
+            return self._run_trusted()
+        if command.verb in {"trust", "untrust"}:
+            return self._run_trust_mutation(command.verb, command.arg, actor_user_id)
         if command.verb in {"pause", "resume"}:
             return self._run_pause_resume(command.verb, command.arg)
         return ControlResult(False, "not_a_command", detail=f"unhandled verb {command.verb}")
@@ -209,7 +246,91 @@ class SlackControlHandler:
             )
         return ControlResult(True, "runs", text=render_recent_runs(data))
 
+    def _run_trusted(self) -> ControlResult:
+        snapshot = (
+            self.trust_store.snapshot(operator_user_id=self.operator_user_id)
+            if self.trust_store is not None
+            else trusted_users_snapshot(operator_user_id=self.operator_user_id)
+        )
+        lines = ["*Trusted Slack collaborators*", ""]
+        if not snapshot.users:
+            lines.append("_No trusted Slack users configured._")
+        else:
+            for user in snapshot.users:
+                source = ", ".join(user.sources)
+                removable = " · local" if user.can_remove else ""
+                lines.append(f"- `<@{user.user_id}>` — {source}{removable}")
+        lines.extend(
+            [
+                "",
+                "The operator can add someone with `trust @person` and remove local entries with `untrust @person`.",
+            ]
+        )
+        return ControlResult(True, "trusted", text="\n".join(lines))
+
     # -- mutating commands (validated, shell-free) ------------------------
+
+    def _run_trust_mutation(
+        self,
+        verb: str,
+        target_user_id: str,
+        actor_user_id: str | None,
+    ) -> ControlResult:
+        actor = normalize_slack_user_id(actor_user_id)
+        if not self.operator_user_id:
+            return ControlResult(
+                True,
+                f"{verb}_rejected",
+                text=(
+                    "*Trusted collaborator changes need an operator*\n\n"
+                    "Set `ALFRED_OPERATOR_SLACK_USER_ID` first. Nothing changed."
+                ),
+                detail="operator user id is not configured",
+            )
+        if actor != self.operator_user_id:
+            return ControlResult(
+                True,
+                f"{verb}_rejected",
+                text="*Only the operator can change trusted Slack collaborators.*\n\nNothing changed.",
+                detail="actor is not the operator",
+            )
+        store = self.trust_store or SlackTrustStore.from_state_root(default_state_root())
+        try:
+            if verb == "trust":
+                added, _user = store.add(target_user_id, added_by=actor or self.operator_user_id)
+                action = "added" if added else "already trusted"
+                return ControlResult(
+                    True,
+                    "trust",
+                    text=(
+                        f"*Trusted collaborator {action}:* `<@{target_user_id}>`.\n\n"
+                        "They can now revise planning threads and send planning requests. "
+                        "Only the operator can approve execution."
+                    ),
+                )
+            removed = store.remove(target_user_id)
+        except ValueError as exc:
+            return ControlResult(
+                True,
+                f"{verb}_rejected",
+                text=f"*Rejected:* `{_short(target_user_id)}` is not a Slack user id.",
+                detail=str(exc),
+            )
+        if removed:
+            return ControlResult(
+                True,
+                "untrust",
+                text=f"*Removed local trusted collaborator:* `<@{target_user_id}>`.",
+            )
+        return ControlResult(
+            True,
+            "untrust",
+            text=(
+                f"*No local collaborator entry for* `<@{target_user_id}>`.\n\n"
+                "If they are still trusted through environment config, remove them from "
+                "`ALFRED_TRUSTED_SLACK_USER_IDS` and restart the listener."
+            ),
+        )
 
     def _run_pause_resume(self, verb: str, codename: str) -> ControlResult:
         # Re-validate at the boundary even though the parser already did:
@@ -281,6 +402,11 @@ def _usage_for_malformed(text: str) -> str | None:
             f"*Usage:* `{first} <codename>`\n\n"
             f"Give exactly one agent codename (or `all`), e.g. `{first} lucius`."
         )
+    if first in {"trust", "untrust"}:
+        return (
+            f"*Usage:* `{first} <@user>`\n\n"
+            "Only the configured operator can change trusted collaborators."
+        )
     return render_help()
 
 
@@ -292,6 +418,9 @@ def render_help() -> str:
             "Lead a message with one of these verbs (DM me or @-mention me):",
             "- `status` — fleet health (loaded agents, pauses, locks).",
             "- `runs` — recent firings per agent.",
+            "- `trusted` — list Slack users who can revise plans.",
+            "- `trust <@user>` — operator-only: add a planning collaborator.",
+            "- `untrust <@user>` — operator-only: remove a local collaborator.",
             "- `pause <codename>` — stop scheduled firings for one agent (or `all`).",
             "- `resume <codename>` — reverse a pause.",
             "- `help` — show this list.",
@@ -397,7 +526,9 @@ def _truthy(value: Any) -> bool:
 
 
 def _strip_mentions(text: str) -> str:
-    return re.sub(r"<@[^>]+>", "", str(text or "")).strip()
+    # Remove bot mentions used to address Alfred at the beginning of the
+    # message, but keep later mentions because `trust <@user>` needs the target.
+    return re.sub(r"^(?:<@[^>]+>\s*)+", "", str(text or "")).strip()
 
 
 def _short(text: str, n: int = 80) -> str:

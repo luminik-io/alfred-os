@@ -251,6 +251,48 @@ def test_trusted_control_command_routes_to_control_not_draft(tmp_path: Path) -> 
     assert not list((tmp_path / "planning-drafts").glob("*.json"))
 
 
+def test_operator_can_trust_collaborator_without_listener_restart(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+    )
+
+    trust_result = listener.handle_payload(
+        _dm("trust <@UTEAM1>", event_id="EvTrust", user="UOPERATOR")
+    )
+    assert trust_result.handled is True
+    assert trust_result.action == "control_trust"
+
+    draft_result = listener.handle_payload(
+        _dm("Build a cleaner onboarding checklist", event_id="EvTeam", user="UTEAM1")
+    )
+
+    assert draft_result.handled is True
+    assert draft_result.action == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_trusted_collaborator_cannot_trust_another_user(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+    )
+    listener.handle_payload(_dm("trust <@UTEAM1>", event_id="EvTrust", user="UOPERATOR"))
+
+    result = listener.handle_payload(_dm("trust <@UTEAM2>", event_id="EvTrust2", user="UTEAM1"))
+
+    assert result.handled is True
+    assert result.action == "control_trust_rejected"
+    assert "Only the operator" in poster.messages[-1]["text"]
+
+
 def test_prose_dm_still_creates_planning_draft(tmp_path: Path) -> None:
     poster = Poster()
     listener = SlackPlanningListener(

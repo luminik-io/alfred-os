@@ -36,6 +36,7 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
     },
     firings: [],
     plans: [],
+    trustedSlack: null,
     ...overrides,
   };
 }

@@ -20,7 +20,7 @@ The app is a Tauri shell around a React UI. It opens on a Command Center and has
 | **Agents** | Per-agent status and last summary. | Run a safe agent dry-run. |
 | **Fleet** | Service state and per-agent controls. | Pause, resume, or run a codename through the native allowlist. |
 | **Memory** | Review candidates, recalled planning hints, memory-doctor and Redis checks. | Run the memory doctor and check Redis memory. |
-| **Setup** | A command console for fleet, auth, agent, and memory checks. | Start the local runtime and run curated checks in-app. |
+| **Setup** | A command console for fleet, auth, agent, memory, and Slack collaborator checks. | Start the local runtime, run curated checks in-app, and add or remove local trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -28,8 +28,8 @@ Plans carry their origin so the Slack collaboration trail stays visible while th
 
 The client reads the fleet's own state over the `alfred serve` JSON seam and runs a small set of safe local actions through a native command allowlist. It introduces no public port, no relay, and no shadow database; `$ALFRED_HOME` remains the single source of truth.
 
-- **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/firings`, and `/api/plans` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows read-only Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
-- **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, Redis status, and safe agent dry-runs, plus local follow-up planning endpoints (`convert-followup`, `mark-handled`). There is no arbitrary shell execution. Each action surfaces an explicit preview, the affected path, the result, and a rollback hint.
+- **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
+- **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, Redis status, and safe agent dry-runs, plus local follow-up planning endpoints (`convert-followup`, `mark-handled`) and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces an explicit preview, the affected path, the result, and a rollback hint.
 - **Outside links.** Links to Slack, GitHub, and `alfred serve` open outside the app through Tauri's opener plugin rather than inside a webview.
 
 When run in a plain browser (development preview), the app stays read-only: native actions are unavailable and only the JSON read path works.

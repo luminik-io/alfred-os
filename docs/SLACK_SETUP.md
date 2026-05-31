@@ -202,6 +202,14 @@ ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
 ALFRED_SLACK_BOT_USER_ID=U0BOTUSERID
 ```
 
+`ALFRED_OPERATOR_SLACK_USER_ID` is the only user who can approve execution or
+change the trusted collaborator list. `ALFRED_TRUSTED_SLACK_USER_IDS` is a
+static comma-separated allowlist for collaborators who can discuss plans, revise
+drafts, and create planning requests. You can also add local collaborators from
+Slack with `trust <@user>` or from the desktop client's Setup tab; those live in
+`$ALFRED_HOME/state/slack-trust/trusted-users.json` and are picked up without
+restarting the listener.
+
 Run it:
 
 ```sh
@@ -218,6 +226,9 @@ Safety model:
 
 - Only `ALFRED_OPERATOR_SLACK_USER_ID` and `ALFRED_TRUSTED_SLACK_USER_IDS`
   are allowed to create drafts or amend registered threads.
+- Local users added through `trust <@user>` or the desktop client have the same
+  planning rights as env-trusted users, but cannot approve execution unless
+  they are also the operator.
 - If no trusted users are configured, the listener ignores every event.
 - Alfred only treats a thread as actionable after it registered the root
   message in `$ALFRED_HOME/state/slack-threads/`.
@@ -319,6 +330,9 @@ from chat by **leading a message with a known verb**. These are handled by
 | `runs` | Recent firings per agent (last-fired plus today's counts). |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
+| `trusted` | Show the operator and trusted Slack users Alfred currently accepts. |
+| `trust <@user>` | Operator-only. Add a local Slack collaborator without a listener restart. |
+| `untrust <@user>` | Operator-only. Remove a locally trusted Slack collaborator. |
 | `help` | List these commands. |
 
 DM Alfred or @-mention it, e.g. `pause lucius` or `status`. Nothing extra to
@@ -331,13 +345,16 @@ Safety model:
   pause everything later?") never triggers an action; it falls through to
   planning intake. This is the main guard against an accidental control action.
 - **Trusted user only.** The listener gates trust before dispatching, and the
-  handler refuses any untrusted control attempt as defense in depth.
+  handler refuses any untrusted control attempt as defense in depth. Trust-list
+  mutations are stricter: only `ALFRED_OPERATOR_SLACK_USER_ID` can run
+  `trust`/`untrust`.
 - **No shell, ever.** `pause`/`resume` run the `alfred` CLI through an explicit
   argv with `shell=False`. The codename is validated against a strict charset
   (`[A-Za-z0-9._-]`, never leading `-`) before it reaches the argv, so it can
   never be read as a flag or inject a second command.
-- **Queries are read-only.** `status` and `runs` only read `alfred status
-  --json`; they never change fleet state.
+- **Queries are read-only.** `status`, `runs`, and `trusted` only read fleet
+  state. `trust` and `untrust` only update the local trust JSON file and never
+  run code, call GitHub, or approve a plan.
 
 ## Optional: in-thread fleet progress (thread-sync)
 

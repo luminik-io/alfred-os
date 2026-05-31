@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   FALLBACK_BASE_URL,
+  addTrustedSlackUser,
   convertFollowupToDraft,
   errorDetail,
   initialBaseUrl,
@@ -9,6 +10,7 @@ import {
   loadSnapshot,
   markFollowupHandled,
   rememberBaseUrl,
+  removeTrustedSlackUser,
   runNativeAction,
   setTrayStatus,
   startLocalRuntime,
@@ -44,6 +46,7 @@ export function useAlfred() {
   const [errorRaw, setErrorRaw] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyPlanAction, setBusyPlanAction] = useState<string | null>(null);
+  const [busyTrustedUser, setBusyTrustedUser] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<ActionNotice>(null);
   const [nativeBusy, setNativeBusy] = useState<string | null>(null);
   const [nativeResult, setNativeResult] = useState<NativeCommandResult | null>(null);
@@ -132,6 +135,58 @@ export function useAlfred() {
         });
       } finally {
         setBusyPlanAction(null);
+      }
+    },
+    [baseUrl, refresh],
+  );
+
+  const addTrustedUser = useCallback(
+    async (userId: string) => {
+      const clean = userId.trim();
+      if (!clean) return;
+      setBusyTrustedUser(`add:${clean}`);
+      setActionNotice(null);
+      try {
+        const result = await addTrustedSlackUser(baseUrl, clean);
+        setActionNotice({
+          tone: "ok",
+          message: result.added
+            ? `Trusted Slack collaborator ${clean}.`
+            : `${clean} was already trusted locally.`,
+        });
+        await refresh(baseUrl);
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setBusyTrustedUser(null);
+      }
+    },
+    [baseUrl, refresh],
+  );
+
+  const removeTrustedUser = useCallback(
+    async (userId: string) => {
+      setBusyTrustedUser(`remove:${userId}`);
+      setActionNotice(null);
+      try {
+        const result = await removeTrustedSlackUser(baseUrl, userId);
+        setActionNotice({
+          tone: result.removed ? "ok" : "error",
+          message: result.removed
+            ? `Removed local trusted collaborator ${userId}.`
+            : `${userId} is not a removable local collaborator.`,
+        });
+        await refresh(baseUrl);
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setBusyTrustedUser(null);
       }
     },
     [baseUrl, refresh],
@@ -258,6 +313,7 @@ export function useAlfred() {
     errorRaw,
     loading,
     busyPlanAction,
+    busyTrustedUser,
     actionNotice,
     nativeBusy,
     nativeResult,
@@ -275,6 +331,8 @@ export function useAlfred() {
     refresh,
     refreshFleetService,
     runFollowupAction,
+    addTrustedUser,
+    removeTrustedUser,
     runLocalAction,
     startRuntime,
   };

@@ -8,27 +8,44 @@ import {
   Radio,
   Server,
   TerminalSquare,
+  UserPlus,
+  Users,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 
 import { supportsNativeActions } from "../api";
 import { localUrl } from "../lib/links";
-import type { NativeActionRequest } from "../lib/uiTypes";
+import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
+import type { TrustedSlackUsersResponse } from "../types";
 import { ExternalButton, PanelHeader } from "./atoms";
 
 export function SetupView({
   baseUrl,
+  actionNotice,
+  trustedSlack,
+  busyTrustedUser,
   nativeBusy,
+  onAddTrustedUser,
+  onRemoveTrustedUser,
   onRunLocalAction,
   onStartRuntime,
 }: {
   baseUrl: string;
+  actionNotice: ActionNotice;
+  trustedSlack: TrustedSlackUsersResponse | null;
+  busyTrustedUser: string | null;
   nativeBusy: string | null;
+  onAddTrustedUser: (userId: string) => void;
+  onRemoveTrustedUser: (userId: string) => void;
   onRunLocalAction: (request: NativeActionRequest) => void;
   onStartRuntime: () => void;
 }) {
   const canRun = supportsNativeActions();
   const [consoleAgent, setConsoleAgent] = useState("lucius");
+  const [trustedUserId, setTrustedUserId] = useState("");
+  const trustedUsers = trustedSlack?.users || [];
+  const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
 
   return (
     <section className="dashboard-grid">
@@ -148,6 +165,68 @@ export function SetupView({
             <code>alfred run &lt;codename&gt;</code>
           </div>
         </details>
+      </div>
+      <div className="panel">
+        <PanelHeader eyebrow="Slack" title="Collaborators" />
+        <p className="panel-intro">
+          Add people who can discuss plans and request drafts in Slack. Approval still belongs to
+          the operator.
+        </p>
+        {actionNotice ? (
+          <p className={`inline-notice inline-notice--${actionNotice.tone}`}>
+            {actionNotice.message}
+          </p>
+        ) : null}
+        <form
+          className="trusted-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canAddTrusted) return;
+            onAddTrustedUser(trustedUserId.trim());
+            setTrustedUserId("");
+          }}
+        >
+          <label htmlFor="trusted-user-id">Slack user ID</label>
+          <div className="trusted-form__row">
+            <input
+              id="trusted-user-id"
+              value={trustedUserId}
+              onChange={(event) => setTrustedUserId(event.currentTarget.value)}
+              placeholder="U0123ABCDEF"
+              spellCheck={false}
+            />
+            <button className="icon-button" type="submit" disabled={!canAddTrusted}>
+              <UserPlus size={16} aria-hidden="true" />
+              <span>{busyTrustedUser?.startsWith("add:") ? "Adding" : "Trust"}</span>
+            </button>
+          </div>
+        </form>
+        <div className="trusted-list" aria-label="Trusted Slack collaborators">
+          {trustedUsers.length ? (
+            trustedUsers.map((user) => (
+              <div className="trusted-user" key={user.user_id}>
+                <Users size={16} aria-hidden="true" />
+                <div>
+                  <strong>{user.user_id}</strong>
+                  <span>{user.sources.join(", ")}</span>
+                </div>
+                {user.can_remove ? (
+                  <button
+                    className="ghost-icon"
+                    type="button"
+                    aria-label={`Remove ${user.user_id}`}
+                    disabled={busyTrustedUser === `remove:${user.user_id}`}
+                    onClick={() => onRemoveTrustedUser(user.user_id)}
+                  >
+                    <X size={15} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <p className="console-note">No trusted Slack collaborators found yet.</p>
+          )}
+        </div>
       </div>
       <div className="panel">
         <PanelHeader eyebrow="Links" title="Open locally" />

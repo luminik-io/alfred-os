@@ -43,6 +43,7 @@ from slack_control import SlackControlHandler, is_control_message
 from slack_issue_bridge import SlackIssueBridge
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
 from slack_thread_status import SlackThreadStatusTracker
+from slack_trust import SlackTrustStore
 from spec_helper import IssueDraft
 
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
@@ -144,14 +145,18 @@ class SlackPlanningListener:
                 poster=poster,
             )
         )
-        self.control_handler = (
-            control_handler if control_handler is not None else SlackControlHandler()
-        )
         operator = operator_user_id_from_env()
-        self.trusted_user_ids = set(
-            trusted_user_ids
-            if trusted_user_ids is not None
-            else trusted_feedback_user_ids_from_env(operator)
+        self._operator_user_id = operator
+        self._static_trusted_user_ids = (
+            set(trusted_user_ids) if trusted_user_ids is not None else None
+        )
+        self.control_handler = (
+            control_handler
+            if control_handler is not None
+            else SlackControlHandler(
+                operator_user_id=operator,
+                trust_store=SlackTrustStore.from_state_root(self.state_root),
+            )
         )
         self.bot_user_id = bot_user_id or (os.environ.get(ENV_BOT_USER_ID) or "").strip()
         self.seen = seen_store or SeenEventStore(self.state_root / "slack-listener" / "seen")
@@ -167,9 +172,10 @@ class SlackPlanningListener:
             return ListenerResult(False, "duplicate", "event already processed")
         if self.bot_user_id and event.user == self.bot_user_id:
             return ListenerResult(False, "ignored", "bot self-message")
-        if not self.trusted_user_ids:
+        trusted_user_ids = self._trusted_user_ids()
+        if not trusted_user_ids:
             return ListenerResult(False, "ignored", "no trusted Slack users configured")
-        if event.user not in self.trusted_user_ids:
+        if event.user not in trusted_user_ids:
             return ListenerResult(False, "ignored", "untrusted Slack user")
 
         record = self.registry.lookup(event.channel, event.root_ts)
@@ -253,7 +259,11 @@ class SlackPlanningListener:
         # trust-gated in ``handle_payload``; the handler re-checks. Free-form
         # prose (no leading verb) falls straight through to planning intake.
         if is_control_message(event.text):
-            control = self.control_handler.handle(event.text, trusted=True)
+            control = self.control_handler.handle(
+                event.text,
+                trusted=True,
+                actor_user_id=event.user,
+            )
             if control.handled:
                 self._post_thread_ack(event.channel, event.root_ts, control.text)
                 return ListenerResult(
@@ -419,7 +429,7 @@ class SlackPlanningListener:
             already_converted = _draft_already_converted(payload) or record.status == "converted"
             outcome = self.bridge.convert(
                 payload,
-                trusted=event.user in self.trusted_user_ids,
+                trusted=event.user in self._trusted_user_ids(),
                 thread_link=_thread_link(record),
                 already_converted=already_converted,
             )
@@ -667,6 +677,16 @@ class SlackPlanningListener:
         from slack_thread_status import default_issue_state_fetcher
 
         return self.status_tracker.sweep(fetcher=fetcher or default_issue_state_fetcher)
+
+    def _trusted_user_ids(self) -> set[str]:
+        if self._static_trusted_user_ids is not None:
+            return set(self._static_trusted_user_ids)
+        return set(
+            trusted_feedback_user_ids_from_env(
+                self._operator_user_id,
+                state_root=self.state_root,
+            )
+        )
 
     def _post_thread_ack(self, channel: str, thread_ts: str, text: str) -> None:
         if self.poster is None or not text.strip():

@@ -347,16 +347,20 @@ def operator_user_id_from_env() -> str | None:
 
 def trusted_feedback_user_ids_from_env(
     operator_user_id: str | None = None,
+    state_root: Path | None = None,
 ) -> tuple[str, ...]:
     """Read trusted Slack users whose thread replies can amend a plan."""
-
-    raw = (os.environ.get(ENV_TRUSTED_FEEDBACK_USER_IDS) or "").strip()
-    ids = [operator_user_id.strip()] if operator_user_id and operator_user_id.strip() else []
-    for item in re.split(r"[,;\s]+", raw):
-        cleaned = item.strip()
-        if cleaned:
-            ids.append(cleaned)
-    return tuple(_dedupe_user_ids(ids))
+    try:
+        from slack_trust import trusted_user_ids
+    except Exception:
+        raw = (os.environ.get(ENV_TRUSTED_FEEDBACK_USER_IDS) or "").strip()
+        ids = [operator_user_id.strip()] if operator_user_id and operator_user_id.strip() else []
+        for item in re.split(r"[,;\s]+", raw):
+            cleaned = item.strip()
+            if cleaned:
+                ids.append(cleaned)
+        return tuple(_dedupe_user_ids(ids))
+    return trusted_user_ids(operator_user_id=operator_user_id, state_root=state_root)
 
 
 class SlackApproval:

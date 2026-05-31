@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, composeDraft, errorDetail, loadSnapshot } from "./api";
+import { ApiError, addTrustedSlackUser, composeDraft, errorDetail, loadSnapshot } from "./api";
 
 // In jsdom (no __TAURI_INTERNALS__) the api layer goes through global fetch, so
 // we can drive every endpoint's outcome by stubbing fetch per URL.
@@ -10,6 +10,7 @@ const ENDPOINTS = {
   actions: "/api/actions",
   firings: "/api/firings",
   plans: "/api/plans",
+  trustedSlack: "/api/slack/trusted-users",
 } as const;
 
 type EndpointKey = keyof typeof ENDPOINTS;
@@ -29,6 +30,13 @@ function jsonFor(path: string): unknown {
   }
   if (path.includes(ENDPOINTS.firings)) {
     return { rows: [{ firing_id: "f1", codename: "lucius" }] };
+  }
+  if (path.includes(ENDPOINTS.trustedSlack)) {
+    return {
+      operator_user_id: "UOPERATOR",
+      users: [{ user_id: "UOPERATOR", sources: ["operator"], can_remove: false }],
+      state_path: "/tmp/state/slack-trust/trusted-users.json",
+    };
   }
   return { rows: [{ plan_id: "p1", title: "Plan" }] };
 }
@@ -60,6 +68,7 @@ describe("loadSnapshot degradation", () => {
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.firings).toHaveLength(1);
     expect(snap.plans).toHaveLength(1);
+    expect(snap.trustedSlack?.users[0].user_id).toBe("UOPERATOR");
     expect(snap.degraded).toBeUndefined();
   });
 
@@ -70,13 +79,45 @@ describe("loadSnapshot degradation", () => {
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.firings).toHaveLength(1);
     expect(snap.plans).toEqual([]);
+    expect(snap.trustedSlack?.users).toHaveLength(1);
     expect(snap.degraded?.plans).toBeTruthy();
     expect(snap.degraded?.firings).toBeUndefined();
+  });
+
+  it("keeps the dashboard when trusted Slack state is unavailable", async () => {
+    vi.stubGlobal("fetch", stubFetch({ trustedSlack: 500 }));
+    const snap = await loadSnapshot("http://127.0.0.1:7000");
+    expect(snap.status.agents).toHaveLength(1);
+    expect(snap.trustedSlack).toBeNull();
+    expect(snap.degraded?.trustedSlack).toBeTruthy();
   });
 
   it("throws when the spine /api/status fails", async () => {
     vi.stubGlobal("fetch", stubFetch({ status: 403 }));
     await expect(loadSnapshot("http://127.0.0.1:7000")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("posts Slack collaborator changes through the local API", async () => {
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      expect(String(input)).toContain("/api/slack/trusted-users");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(JSON.stringify({ user_id: "UTEAM1" }));
+      return new Response(
+        JSON.stringify({
+          operator_user_id: "UOPERATOR",
+          users: [{ user_id: "UTEAM1", sources: ["local"], can_remove: true }],
+          state_path: "/tmp/state/slack-trust/trusted-users.json",
+          added: true,
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await addTrustedSlackUser("http://127.0.0.1:7000", "UTEAM1");
+
+    expect(result.added).toBe(true);
+    expect(result.users[0].user_id).toBe("UTEAM1");
   });
 });
 

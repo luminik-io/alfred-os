@@ -249,7 +249,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
 | [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
-| [`lib/slack_control.py`](lib/slack_control.py) | Trusted Slack control/query commands (`status`/`pause`/`resume`/`runs`/`help`), codename-validated, no shell. |
+| [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`pause`/`resume`/`runs`/`trusted`/`trust`/`untrust`/`help`), codename-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
 ## Documentation
@@ -311,8 +311,8 @@ content, sales, and ops departments are the next larger surface area:
 
 **Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, a mobile-friendly local cockpit with saved Alfred plans, and the first Tauri Mac/Linux client. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
-Additional unreleased work adds explicit Redis AMS memory sync, trusted Slack
-plan collaborators, revision previews in approval threads, Planning intake in
+Additional unreleased work adds explicit Redis AMS memory sync, operator-managed
+trusted Slack plan collaborators, revision previews in approval threads, Planning intake in
 the local cockpit, and a thin native client for setup, health, logs, command
 previews, and recovery. Slack remains the primary collaboration UI.
 

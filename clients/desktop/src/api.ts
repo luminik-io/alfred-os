@@ -11,6 +11,7 @@ import type {
   PlansResponse,
   Snapshot,
   StatusResponse,
+  TrustedSlackUsersResponse,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:7000";
@@ -130,11 +131,12 @@ export function isDefaultBaseUrl(value: string): boolean {
 // snapshot is genuinely unusable, so that one rejection still surfaces as the
 // connection error the banner shows.
 export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
-  const [status, actions, firings, plans] = await Promise.allSettled([
+  const [status, actions, firings, plans, trustedSlack] = await Promise.allSettled([
     readAlfredJson<StatusResponse>(baseUrl, "/api/status"),
     readAlfredJson<ActionsResponse>(baseUrl, "/api/actions"),
     readAlfredJson<FiringsResponse>(baseUrl, "/api/firings?limit=14"),
     readAlfredJson<PlansResponse>(baseUrl, "/api/plans?limit=14"),
+    readAlfredJson<TrustedSlackUsersResponse>(baseUrl, "/api/slack/trusted-users"),
   ]);
 
   if (status.status === "rejected") {
@@ -145,6 +147,7 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
   if (actions.status === "rejected") degraded.actions = settledError(actions.reason);
   if (firings.status === "rejected") degraded.firings = settledError(firings.reason);
   if (plans.status === "rejected") degraded.plans = settledError(plans.reason);
+  if (trustedSlack.status === "rejected") degraded.trustedSlack = settledError(trustedSlack.reason);
 
   return {
     loadedAt: new Date(),
@@ -161,6 +164,7 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
           },
     firings: firings.status === "fulfilled" ? firings.value.rows || [] : [],
     plans: plans.status === "fulfilled" ? plans.value.rows || [] : [],
+    trustedSlack: trustedSlack.status === "fulfilled" ? trustedSlack.value : null,
     degraded: Object.keys(degraded).length ? degraded : undefined,
   };
 }
@@ -188,6 +192,23 @@ export async function composeDraft(
   request: ComposeDraftRequest,
 ): Promise<ComposeDraftResponse> {
   return writeAlfredJson(baseUrl, "/api/plans/draft", request);
+}
+
+export async function addTrustedSlackUser(
+  baseUrl: string,
+  userId: string,
+): Promise<TrustedSlackUsersResponse> {
+  return writeAlfredJson(baseUrl, "/api/slack/trusted-users", { user_id: userId });
+}
+
+export async function removeTrustedSlackUser(
+  baseUrl: string,
+  userId: string,
+): Promise<TrustedSlackUsersResponse> {
+  return writeAlfredJson(
+    baseUrl,
+    `/api/slack/trusted-users/${encodeURIComponent(userId)}/remove`,
+  );
 }
 
 export function supportsNativeActions(): boolean {

@@ -16,6 +16,7 @@ from slack_control import (  # noqa: E402
     is_valid_codename,
     parse_control_command,
 )
+from slack_trust import SlackTrustStore  # noqa: E402
 
 STATUS_JSON = json.dumps(
     {
@@ -104,6 +105,10 @@ def test_leading_verb_parses() -> None:
     assert cmd is not None and cmd.verb == "pause" and cmd.arg == "lucius"
     cmd = parse_control_command("/resume bane")
     assert cmd is not None and cmd.verb == "resume" and cmd.arg == "bane"
+    cmd = parse_control_command("trust <@U2DEF>")
+    assert cmd is not None and cmd.verb == "trust" and cmd.arg == "U2DEF"
+    cmd = parse_control_command("<@UALFRED> untrust <@U2DEF|neha>")
+    assert cmd is not None and cmd.verb == "untrust" and cmd.arg == "U2DEF"
 
 
 def test_mentions_are_stripped_before_parse() -> None:
@@ -135,6 +140,8 @@ def test_is_control_message_detects_leading_verb() -> None:
     assert is_control_message("status")
     assert is_control_message("<@U1> pause lucius")
     assert is_control_message("pause")  # bare verb still detected (-> usage)
+    assert is_control_message("trusted")
+    assert is_control_message("trust <@U2DEF>")
     assert not is_control_message("ship the docs")
     assert not is_control_message("")
 
@@ -203,6 +210,7 @@ def test_help_lists_commands_without_running_anything() -> None:
     result = _handler(runner).handle("help", trusted=True)
     assert result.action == "help"
     assert "control commands" in result.text.lower()
+    assert "trust <@user>" in result.text
     assert runner.calls == []
 
 
@@ -231,3 +239,50 @@ def test_status_unavailable_when_cli_fails() -> None:
     result = handler.handle("status", trusted=True)
     assert result.action == "status_unavailable"
     assert "unavailable" in result.text.lower()
+
+
+def test_operator_can_add_and_remove_trusted_collaborator(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    store = SlackTrustStore.from_state_root(tmp_path)
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=runner,
+        trust_store=store,
+        operator_user_id="UOPERATOR",
+    )
+
+    added = handler.handle("trust <@U2DEF>", trusted=True, actor_user_id="UOPERATOR")
+    assert added.action == "trust"
+    assert "Trusted collaborator added" in added.text
+    assert [user.user_id for user in store.list_local()] == ["U2DEF"]
+    assert runner.calls == []
+
+    listed = handler.handle("trusted", trusted=True, actor_user_id="UOPERATOR")
+    assert listed.action == "trusted"
+    assert "U2DEF" in listed.text
+
+    removed = handler.handle("untrust U2DEF", trusted=True, actor_user_id="UOPERATOR")
+    assert removed.action == "untrust"
+    assert store.list_local() == ()
+
+
+def test_non_operator_cannot_change_trusted_collaborators(tmp_path: Path) -> None:
+    store = SlackTrustStore.from_state_root(tmp_path)
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=FakeRunner(),
+        trust_store=store,
+        operator_user_id="UOPERATOR",
+    )
+
+    result = handler.handle("trust <@U2DEF>", trusted=True, actor_user_id="UTEAM1")
+
+    assert result.action == "trust_rejected"
+    assert "Only the operator" in result.text
+    assert store.list_local() == ()
+
+
+def test_trust_usage_for_bad_target() -> None:
+    result = _handler(FakeRunner()).handle("trust not-a-user", trusted=True)
+    assert result.action == "usage"
+    assert "trust <@user>" in result.text
