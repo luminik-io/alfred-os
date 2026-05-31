@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 LIB = REPO / "lib"
 if str(LIB) not in sys.path:
@@ -55,6 +57,20 @@ def test_store_add_remove_and_snapshot(tmp_path: Path) -> None:
 
     assert store.remove("U2DEF") is True
     assert store.list_local() == ()
+
+
+def test_store_mutations_refuse_malformed_payload(tmp_path: Path) -> None:
+    store = SlackTrustStore.from_state_root(tmp_path)
+    path = tmp_path / "slack-trust" / "trusted-users.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{broken", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        store.add("U2DEF", added_by="UOPERATOR")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        store.remove("U2DEF")
+
+    assert path.read_text(encoding="utf-8") == "{broken"
 
 
 def test_trusted_user_ids_combines_operator_env_and_local(tmp_path: Path) -> None:

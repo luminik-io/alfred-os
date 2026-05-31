@@ -13,9 +13,12 @@ so a running listener can pick up collaborator changes without restart.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,13 +73,17 @@ class SlackTrustStore:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.path = root / "trusted-users.json"
+        self.lock_path = root / "trusted-users.lock"
 
     @classmethod
     def from_state_root(cls, state_root: Path) -> SlackTrustStore:
         return cls(state_root / "slack-trust")
 
     def list_local(self) -> tuple[LocalTrustedUser, ...]:
-        payload = self._read_payload()
+        return self._list_local(strict=False)
+
+    def _list_local(self, *, strict: bool) -> tuple[LocalTrustedUser, ...]:
+        payload = self._read_payload(strict=strict)
         raw_users = payload.get("users")
         if not isinstance(raw_users, list):
             return ()
@@ -103,28 +110,30 @@ class SlackTrustStore:
         if normalized is None:
             raise ValueError("not a Slack user id")
         actor = normalize_slack_user_id(added_by) or str(added_by or "").strip()
-        existing = {user.user_id: user for user in self.list_local()}
-        if normalized in existing:
-            return False, existing[normalized]
-        user = LocalTrustedUser(
-            user_id=normalized,
-            added_at=_utc_now(),
-            added_by=actor,
-        )
-        existing[normalized] = user
-        self._write_users(existing.values())
-        return True, user
+        with self._locked():
+            existing = {user.user_id: user for user in self._list_local(strict=True)}
+            if normalized in existing:
+                return False, existing[normalized]
+            user = LocalTrustedUser(
+                user_id=normalized,
+                added_at=_utc_now(),
+                added_by=actor,
+            )
+            existing[normalized] = user
+            self._write_users(existing.values())
+            return True, user
 
     def remove(self, user_id: str) -> bool:
         normalized = normalize_slack_user_id(user_id)
         if normalized is None:
             raise ValueError("not a Slack user id")
-        before = self.list_local()
-        users = [user for user in before if user.user_id != normalized]
-        changed = len(users) != len(before)
-        if changed:
-            self._write_users(users)
-        return changed
+        with self._locked():
+            before = self._list_local(strict=True)
+            users = [user for user in before if user.user_id != normalized]
+            changed = len(users) != len(before)
+            if changed:
+                self._write_users(users)
+            return changed
 
     def snapshot(
         self,
@@ -164,10 +173,30 @@ class SlackTrustStore:
             state_path=str(self.path),
         )
 
-    def _read_payload(self) -> dict[str, Any]:
+    @contextmanager
+    def _locked(
+        self,
+    ) -> Iterator[None]:
+        self.root.mkdir(parents=True, exist_ok=True)
+        with self.lock_path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+    def _read_payload(self, *, strict: bool = False) -> dict[str, Any]:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except FileNotFoundError:
+            return {}
+        except OSError as exc:
+            if strict:
+                raise ValueError(f"could not read Slack trust store: {exc}") from exc
+            return {}
+        except json.JSONDecodeError as exc:
+            if strict:
+                raise ValueError("Slack trust store is not valid JSON") from exc
             return {}
         return payload if isinstance(payload, dict) else {}
 
