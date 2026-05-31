@@ -266,6 +266,25 @@ def test_operator_can_add_and_remove_trusted_collaborator(tmp_path: Path) -> Non
     assert store.list_local() == ()
 
 
+def test_trusted_listing_includes_env_users_with_injected_store(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UENV1")
+    store = SlackTrustStore.from_state_root(tmp_path)
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=FakeRunner(),
+        trust_store=store,
+        operator_user_id="UOPERATOR",
+    )
+
+    listed = handler.handle("trusted", trusted=True, actor_user_id="UOPERATOR")
+
+    assert listed.action == "trusted"
+    assert "UOPERATOR" in listed.text
+    assert "UENV1" in listed.text
+
+
 def test_non_operator_cannot_change_trusted_collaborators(tmp_path: Path) -> None:
     store = SlackTrustStore.from_state_root(tmp_path)
     handler = SlackControlHandler(

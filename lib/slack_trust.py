@@ -119,8 +119,9 @@ class SlackTrustStore:
         normalized = normalize_slack_user_id(user_id)
         if normalized is None:
             raise ValueError("not a Slack user id")
-        users = [user for user in self.list_local() if user.user_id != normalized]
-        changed = len(users) != len(self.list_local())
+        before = self.list_local()
+        users = [user for user in before if user.user_id != normalized]
+        changed = len(users) != len(before)
         if changed:
             self._write_users(users)
         return changed

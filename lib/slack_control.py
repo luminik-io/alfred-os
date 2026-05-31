@@ -52,6 +52,7 @@ from typing import Any
 from slack_trust import (
     SlackTrustStore,
     default_state_root,
+    env_trusted_user_ids,
     normalize_slack_user_id,
     operator_user_id_from_env,
     trusted_users_snapshot,
@@ -248,7 +249,10 @@ class SlackControlHandler:
 
     def _run_trusted(self) -> ControlResult:
         snapshot = (
-            self.trust_store.snapshot(operator_user_id=self.operator_user_id)
+            self.trust_store.snapshot(
+                operator_user_id=self.operator_user_id,
+                env_trusted_user_ids=env_trusted_user_ids(),
+            )
             if self.trust_store is not None
             else trusted_users_snapshot(operator_user_id=self.operator_user_id)
         )
