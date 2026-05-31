@@ -92,6 +92,10 @@ intake:
 |---|---|
 | `status` | Fleet health: loaded agents, pauses, locks. |
 | `runs` | Recent firings per agent. |
+| `plans` | Local planning inbox: saved plans, Slack drafts, and captured follow-ups. |
+| `plan <id>` | Inspect one local plan or follow-up. |
+| `draft <id>` | Convert a captured follow-up into a local planning draft. |
+| `handled <id>` | Operator-only: archive a captured follow-up without drafting. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `help` | List these commands. |
@@ -101,7 +105,9 @@ prose like "can you pause everything later?" never controls the fleet; it falls
 through to planning intake. `pause`/`resume` run the `alfred` CLI through an
 explicit argv with no shell, and the codename is charset-validated before it
 reaches the command, so chat can never inject a flag. `status` and `runs` are
-read-only.
+read-only. `draft <id>` and `handled <id>` only touch local follow-up files and
+planning drafts; they never approve execution, file GitHub issues, start agents,
+or merge PRs.
 
 ## Watch progress in the thread
 

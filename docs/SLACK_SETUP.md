@@ -328,6 +328,10 @@ from chat by **leading a message with a known verb**. These are handled by
 |---|---|
 | `status` | Fleet health from `alfred status --json` (loaded agents, pauses, locks). |
 | `runs` | Recent firings per agent (last-fired plus today's counts). |
+| `plans` | Local planning inbox: Batman plans, Slack planning drafts, and captured follow-ups. |
+| `plan <id>` | Inspect one local plan or follow-up. Use `plans` to find the id. |
+| `draft <id>` | Convert a captured follow-up into a local planning draft. |
+| `handled <id>` | Operator-only. Archive a captured follow-up without creating a draft. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `trusted` | Show the operator and trusted Slack users Alfred currently accepts. |
@@ -352,6 +356,10 @@ Safety model:
   argv with `shell=False`. The codename is validated against a strict charset
   (`[A-Za-z0-9._-]`, never leading `-`) before it reaches the argv, so it can
   never be read as a flag or inject a second command.
+- **Planning actions stay local.** `plans` and `plan <id>` only read local
+  state. `draft <id>` writes a local planning draft and archives the captured
+  follow-up. `handled <id>` archives the follow-up. None of these commands
+  files GitHub issues, starts agents, approves execution, or merges PRs.
 - **Queries are read-only.** `status`, `runs`, and `trusted` only read fleet
   state. `trust` and `untrust` only update the local trust JSON file and never
   run code, call GitHub, or approve a plan.

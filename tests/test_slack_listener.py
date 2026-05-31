@@ -251,6 +251,43 @@ def test_trusted_control_command_routes_to_control_not_draft(tmp_path: Path) -> 
     assert not list((tmp_path / "planning-drafts").glob("*.json"))
 
 
+def test_default_control_handler_reads_local_planning_inbox(tmp_path: Path) -> None:
+    followups = tmp_path / "followups"
+    followups.mkdir(parents=True)
+    (followups / "slack-C1-1716480000.md").write_text(
+        "# Follow-up for PR feedback\n\nPlease add the missing docs check.\n",
+        encoding="utf-8",
+    )
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_dm("plans"))
+
+    assert result.handled is True
+    assert result.action == "control_plans"
+    assert "Planning inbox" in poster.messages[-1]["text"]
+    assert "slack-C1-1716480000" in poster.messages[-1]["text"]
+
+
+def test_plan_prefixed_prose_still_creates_planning_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_dm("plan the billing migration with clearer retry copy"))
+
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
 def test_operator_can_trust_collaborator_without_listener_restart(
     tmp_path: Path,
     monkeypatch,

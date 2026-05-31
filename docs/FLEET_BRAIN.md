@@ -312,6 +312,12 @@ Saving a spec queues a reviewable memory candidate, so useful spec-to-issue
 lessons can be promoted explicitly instead of silently becoming future prompt
 context.
 
+Slack uses the same rule. A trusted Slack follow-up is first captured as local
+planning context, not as memory. When someone runs `draft <id>`, Alfred turns
+that follow-up into a local planning draft, recalls reviewed planning memory,
+runs readiness checks, and only then queues any new memory candidate. This keeps
+Slack convenient without letting raw chat become long-term truth.
+
 ## What to build next
 
 The v1 brain is intentionally small: local lessons, file touches, failure

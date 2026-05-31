@@ -156,6 +156,8 @@ class SlackPlanningListener:
             else SlackControlHandler(
                 operator_user_id=operator,
                 trust_store=SlackTrustStore.from_state_root(self.state_root),
+                state_root=self.state_root,
+                memory_provider=memory_provider,
             )
         )
         self.bot_user_id = bot_user_id or (os.environ.get(ENV_BOT_USER_ID) or "").strip()

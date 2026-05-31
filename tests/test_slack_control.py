@@ -4,17 +4,22 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
+from planning_actions import mark_followup_handled  # noqa: E402
+from server.reader import FilesystemReader, PlanDraft  # noqa: E402
 from slack_control import (  # noqa: E402
     RunResult,
     SlackControlHandler,
     is_control_message,
     is_valid_codename,
     parse_control_command,
+    render_plan_detail,
 )
 from slack_trust import SlackTrustStore  # noqa: E402
 
@@ -101,10 +106,17 @@ def test_leading_verb_parses() -> None:
     assert parse_control_command("status").verb == "status"
     assert parse_control_command("help").verb == "help"
     assert parse_control_command("runs").verb == "runs"
+    assert parse_control_command("plans").verb == "plans"
     cmd = parse_control_command("pause lucius")
     assert cmd is not None and cmd.verb == "pause" and cmd.arg == "lucius"
     cmd = parse_control_command("/resume bane")
     assert cmd is not None and cmd.verb == "resume" and cmd.arg == "bane"
+    cmd = parse_control_command("plan followup-1")
+    assert cmd is not None and cmd.verb == "plan" and cmd.arg == "followup-1"
+    cmd = parse_control_command("draft followup-1")
+    assert cmd is not None and cmd.verb == "draft" and cmd.arg == "followup-1"
+    cmd = parse_control_command("handled followup-1")
+    assert cmd is not None and cmd.verb == "handled" and cmd.arg == "followup-1"
     cmd = parse_control_command("trust <@U2DEF>")
     assert cmd is not None and cmd.verb == "trust" and cmd.arg == "U2DEF"
     cmd = parse_control_command("<@UALFRED> untrust <@U2DEF|neha>")
@@ -136,10 +148,19 @@ def test_pause_requires_single_valid_codename() -> None:
     assert parse_control_command("pause name/with/slash") is None
 
 
+def test_plan_commands_require_single_safe_id() -> None:
+    assert parse_control_command("plan") is None
+    assert parse_control_command("plan ../secret") is None
+    assert parse_control_command("draft .hidden") is None
+    assert parse_control_command("handled followup-1 extra") is None
+
+
 def test_is_control_message_detects_leading_verb() -> None:
     assert is_control_message("status")
     assert is_control_message("<@U1> pause lucius")
     assert is_control_message("pause")  # bare verb still detected (-> usage)
+    assert is_control_message("plans")
+    assert is_control_message("plan followup-1")
     assert is_control_message("trusted")
     assert is_control_message("trust <@U2DEF>")
     assert not is_control_message("ship the docs")
@@ -153,6 +174,27 @@ def test_is_control_message_detects_leading_verb() -> None:
 
 def _handler(runner: FakeRunner) -> SlackControlHandler:
     return SlackControlHandler(alfred_bin="/fake/alfred", runner=runner)
+
+
+def _write_followup(state_root: Path, name: str = "slack-C1-1716480000") -> Path:
+    followups = state_root / "followups"
+    followups.mkdir(parents=True, exist_ok=True)
+    path = followups / f"{name}.md"
+    path.write_text(
+        "\n".join(
+            [
+                "# Follow-up for PR feedback",
+                "",
+                "- Parent: https://github.com/luminik-io/alfred-os/pull/123",
+                "- Thread: C1 / 1716480000.000000",
+                "",
+                "Please tighten the docs and add a smoke test before we call this done.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_untrusted_user_never_acts() -> None:
@@ -180,6 +222,165 @@ def test_runs_command_lists_recent_firings() -> None:
     assert "Recent firings" in result.text
     assert "lucius" in result.text
     assert "last fired 2026-05-30T11:00:00Z" in result.text
+
+
+def test_plans_command_lists_local_planning_inbox(tmp_path: Path) -> None:
+    followup = _write_followup(tmp_path)
+    runner = FakeRunner()
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=runner,
+        state_root=tmp_path,
+    )
+
+    result = handler.handle("plans", trusted=True)
+
+    assert result.action == "plans"
+    assert followup.stem in result.text
+    assert "Planning inbox" in result.text
+    assert runner.calls == []
+
+
+def test_plan_command_shows_followup_detail(tmp_path: Path) -> None:
+    followup = _write_followup(tmp_path)
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=FakeRunner(),
+        state_root=tmp_path,
+    )
+
+    result = handler.handle(f"plan {followup.stem}", trusted=True)
+
+    assert result.action == "plan"
+    assert "captured follow-up" in result.text
+    assert f"draft {followup.stem}" in result.text
+    assert "https://github.com/luminik-io/alfred-os/pull/123" in result.text
+
+
+def test_trusted_user_can_convert_followup_to_local_draft(tmp_path: Path) -> None:
+    followup = _write_followup(tmp_path)
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=FakeRunner(),
+        state_root=tmp_path,
+        operator_user_id="UOPERATOR",
+    )
+
+    result = handler.handle(f"draft {followup.stem}", trusted=True, actor_user_id="UTEAM")
+
+    assert result.action == "draft"
+    assert "Planning draft created" in result.text
+    drafts = list((tmp_path / "planning-drafts").glob("followup-*.json"))
+    assert len(drafts) == 1
+    payload = json.loads(drafts[0].read_text(encoding="utf-8"))
+    assert payload["converted_from"]["plan_id"] == followup.stem
+    archived = list((tmp_path / "followups" / "handled").glob(f"{followup.name}"))
+    assert len(archived) == 1
+    assert not followup.exists()
+
+
+def test_non_operator_cannot_mark_followup_handled(tmp_path: Path) -> None:
+    followup = _write_followup(tmp_path)
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=FakeRunner(),
+        state_root=tmp_path,
+        operator_user_id="UOPERATOR",
+    )
+
+    result = handler.handle(f"handled {followup.stem}", trusted=True, actor_user_id="UTEAM")
+
+    assert result.action == "handled_rejected"
+    assert "Only the operator" in result.text
+    assert followup.exists()
+
+
+def test_operator_can_mark_followup_handled(tmp_path: Path) -> None:
+    followup = _write_followup(tmp_path)
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=FakeRunner(),
+        state_root=tmp_path,
+        operator_user_id="UOPERATOR",
+    )
+
+    result = handler.handle(
+        f"handled {followup.stem}",
+        trusted=True,
+        actor_user_id="UOPERATOR",
+    )
+
+    assert result.action == "handled"
+    archived = tmp_path / "followups" / "handled" / followup.name
+    assert archived.exists()
+    assert not followup.exists()
+
+
+def test_followup_archive_read_failure_preserves_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    followup = _write_followup(tmp_path)
+    plan = FilesystemReader(tmp_path).get_plan(followup.stem)
+    assert plan is not None
+    real_read_text = Path.read_text
+
+    def fail_followup_read(self: Path, *args, **kwargs):
+        if self == followup:
+            raise OSError("permission denied")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_followup_read)
+
+    with pytest.raises(OSError):
+        mark_followup_handled(plan)
+
+    assert followup.exists()
+    assert not (tmp_path / "followups" / "handled").exists()
+
+
+def test_plan_detail_distinguishes_unknown_readiness() -> None:
+    plan = PlanDraft(
+        plan_id="draft-1",
+        title="Draft with score only",
+        status="draft",
+        parent=None,
+        affected_repos=None,
+        updated_at=None,
+        path="/tmp/draft-1.json",
+        preview="Awaiting review.",
+        content="Awaiting review.",
+        source="planning",
+        readiness_score=7,
+        readiness_ok=None,
+    )
+
+    text = render_plan_detail(plan)
+
+    assert "not checked (7/100)" in text
+    assert "needs scope" not in text
+
+
+def test_bad_plan_id_returns_usage_not_fallthrough() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle("plan ../secrets", trusted=True)
+    assert result.action == "usage"
+    assert "plan <plan-id>" in result.text
+    assert runner.calls == []
+
+
+def test_natural_plan_and_draft_phrases_fall_through_to_intake() -> None:
+    runner = FakeRunner()
+    handler = _handler(runner)
+
+    plan_result = handler.handle("plan the billing migration", trusted=True)
+    draft_result = handler.handle("draft a spec for memory review", trusted=True)
+
+    assert plan_result.handled is False
+    assert plan_result.action == "not_a_command"
+    assert draft_result.handled is False
+    assert draft_result.action == "not_a_command"
+    assert runner.calls == []
 
 
 def test_pause_invokes_cli_with_exact_argv() -> None:

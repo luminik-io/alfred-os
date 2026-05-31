@@ -7,6 +7,10 @@ command verb** to act on the fleet without leaving Slack:
 * ``pause <codename>``     -> stop scheduled firings for one agent
 * ``resume <codename>``    -> reverse a pause
 * ``runs``                 -> recent firings (last-fired + today counts)
+* ``plans``                -> local planning inbox
+* ``plan <id>``            -> planning draft or follow-up detail
+* ``draft <id>``           -> convert a captured follow-up to a local draft
+* ``handled <id>``         -> operator-only: archive a captured follow-up
 * ``trusted``              -> list Slack users who can collaborate on plans
 * ``trust <@user>``        -> operator-only: add a trusted collaborator
 * ``untrust <@user>``      -> operator-only: remove a local collaborator
@@ -49,13 +53,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from planning_actions import convert_followup_to_draft, mark_followup_handled
+from server.reader import (
+    FilesystemReader,
+    PlanDraft,
+)
+from server.reader import (
+    default_state_root as default_reader_state_root,
+)
 from slack_trust import (
     SlackTrustStore,
-    default_state_root,
     env_trusted_user_ids,
     normalize_slack_user_id,
     operator_user_id_from_env,
     trusted_users_snapshot,
+)
+from slack_trust import (
+    default_state_root as default_trust_state_root,
 )
 
 # A codename is a short identifier. This is deliberately strict: only word
@@ -67,8 +81,23 @@ _CODENAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,64}$")
 # Known leading verbs. A message only becomes a control command when its first
 # token (lowercased) is one of these.
 _COMMANDS: frozenset[str] = frozenset(
-    {"status", "pause", "resume", "runs", "trusted", "trust", "untrust", "help"}
+    {
+        "status",
+        "pause",
+        "resume",
+        "runs",
+        "plans",
+        "plan",
+        "draft",
+        "handled",
+        "trusted",
+        "trust",
+        "untrust",
+        "help",
+    }
 )
+
+_PLAN_ID_RE = re.compile(r"^(?!\.)[A-Za-z0-9._-]{1,180}$")
 
 CommandRunner = Callable[[list[str]], "RunResult"]
 
@@ -135,6 +164,11 @@ def parse_control_command(text: str) -> ControlCommand | None:
             return None
         return ControlCommand(verb=verb, arg=user_id)
 
+    if verb in {"plan", "draft", "handled"}:
+        if len(args) != 1 or not is_valid_plan_id(args[0]):
+            return None
+        return ControlCommand(verb=verb, arg=args[0])
+
     # status / runs / trusted / help take no required argument; ignore any
     # trailing words so "status please" still reads as a status request.
     return ControlCommand(verb=verb)
@@ -147,6 +181,11 @@ def is_valid_codename(value: str) -> bool:
     This is the injection guard for ``pause``/``resume``.
     """
     return bool(_CODENAME_RE.match(value or ""))
+
+
+def is_valid_plan_id(value: str) -> bool:
+    """True iff ``value`` is a safe local planning inbox id."""
+    return bool(_PLAN_ID_RE.match(value or ""))
 
 
 class SlackControlHandler:
@@ -165,6 +204,9 @@ class SlackControlHandler:
         runner: CommandRunner | None = None,
         trust_store: SlackTrustStore | None = None,
         operator_user_id: str | None = None,
+        state_root: Path | str | None = None,
+        plan_reader: Any | None = None,
+        memory_provider: Any | None = None,
         timeout: int = 30,
     ) -> None:
         self.alfred_bin = str(alfred_bin) if alfred_bin else _default_alfred_bin()
@@ -173,6 +215,11 @@ class SlackControlHandler:
         self.operator_user_id = (
             normalize_slack_user_id(operator_user_id) or operator_user_id_from_env()
         )
+        self.state_root = (
+            Path(state_root) if state_root is not None else default_reader_state_root()
+        )
+        self.plan_reader = plan_reader
+        self.memory_provider = memory_provider
         self.timeout = timeout
 
     def handle(
@@ -207,6 +254,14 @@ class SlackControlHandler:
             return self._run_status()
         if command.verb == "runs":
             return self._run_runs()
+        if command.verb == "plans":
+            return self._run_plans()
+        if command.verb == "plan":
+            return self._run_plan_detail(command.arg)
+        if command.verb == "draft":
+            return self._run_followup_draft(command.arg)
+        if command.verb == "handled":
+            return self._run_followup_handled(command.arg, actor_user_id)
         if command.verb == "trusted":
             return self._run_trusted()
         if command.verb in {"trust", "untrust"}:
@@ -246,6 +301,108 @@ class SlackControlHandler:
                 text="*Recent runs unavailable*\n\nCould not read `alfred status --json`.",
             )
         return ControlResult(True, "runs", text=render_recent_runs(data))
+
+    def _reader(self) -> Any:
+        return self.plan_reader or FilesystemReader(self.state_root)
+
+    def _run_plans(self) -> ControlResult:
+        try:
+            rows = self._reader().list_plans(limit=10)
+        except Exception as exc:
+            return ControlResult(
+                True,
+                "plans_unavailable",
+                text="*Planning inbox unavailable*\n\nCould not read local planning state.",
+                detail=str(exc),
+            )
+        return ControlResult(True, "plans", text=render_plans(rows))
+
+    def _run_plan_detail(self, plan_id: str) -> ControlResult:
+        plan = self._get_plan(plan_id)
+        if plan is None:
+            return ControlResult(True, "plan_not_found", text=f"*Plan not found:* `{plan_id}`.")
+        return ControlResult(True, "plan", text=render_plan_detail(plan))
+
+    def _run_followup_draft(self, plan_id: str) -> ControlResult:
+        plan = self._get_plan(plan_id)
+        if plan is None:
+            return ControlResult(
+                True, "draft_not_found", text=f"*Follow-up not found:* `{plan_id}`."
+            )
+        if plan.source != "followup":
+            return ControlResult(
+                True,
+                "draft_rejected",
+                text=f"*Cannot draft `{plan_id}`:* only captured follow-ups can be converted.",
+            )
+        try:
+            conversion = convert_followup_to_draft(
+                plan,
+                state_root=self.state_root,
+                memory_provider=self.memory_provider,
+            )
+        except Exception as exc:
+            return ControlResult(
+                True,
+                "draft_failed",
+                text=f"*Could not create a planning draft from* `{plan_id}`.\n\nNothing ran.",
+                detail=str(exc),
+            )
+        return ControlResult(
+            True,
+            "draft",
+            text=(
+                "*Planning draft created from follow-up*\n\n"
+                f"- Draft: `{conversion.draft_id}`\n"
+                f"- Source archived: `{conversion.archived_path.name}`\n\n"
+                f"Use `plan {conversion.draft_id}` to inspect it. It stays local until an explicit approval."
+            ),
+        )
+
+    def _run_followup_handled(
+        self,
+        plan_id: str,
+        actor_user_id: str | None,
+    ) -> ControlResult:
+        actor = normalize_slack_user_id(actor_user_id)
+        if not self.operator_user_id or actor != self.operator_user_id:
+            return ControlResult(
+                True,
+                "handled_rejected",
+                text="*Only the operator can mark follow-ups handled.*\n\nNothing changed.",
+                detail="actor is not the operator",
+            )
+        plan = self._get_plan(plan_id)
+        if plan is None:
+            return ControlResult(
+                True, "handled_not_found", text=f"*Follow-up not found:* `{plan_id}`."
+            )
+        if plan.source != "followup":
+            return ControlResult(
+                True,
+                "handled_rejected",
+                text=f"*Cannot mark `{plan_id}` handled:* only captured follow-ups can be archived.",
+            )
+        try:
+            archived = mark_followup_handled(plan)
+        except Exception as exc:
+            return ControlResult(
+                True,
+                "handled_failed",
+                text=f"*Could not mark follow-up handled:* `{plan_id}`.",
+                detail=str(exc),
+            )
+        return ControlResult(
+            True,
+            "handled",
+            text=f"*Marked follow-up handled:* `{plan_id}`.\n\nArchived as `{archived.name}`.",
+        )
+
+    def _get_plan(self, plan_id: str) -> PlanDraft | None:
+        try:
+            return self._reader().get_plan(plan_id)
+        except Exception:
+            return None
 
     def _run_trusted(self) -> ControlResult:
         snapshot = (
@@ -298,7 +455,7 @@ class SlackControlHandler:
                 text="*Only the operator can change trusted Slack collaborators.*\n\nNothing changed.",
                 detail="actor is not the operator",
             )
-        store = self.trust_store or SlackTrustStore.from_state_root(default_state_root())
+        store = self.trust_store or SlackTrustStore.from_state_root(default_trust_state_root())
         try:
             if verb == "trust":
                 added, _user = store.add(target_user_id, added_by=actor or self.operator_user_id)
@@ -411,6 +568,13 @@ def _usage_for_malformed(text: str) -> str | None:
             f"*Usage:* `{first} <@user>`\n\n"
             "Only the configured operator can change trusted collaborators."
         )
+    if first in {"plan", "draft", "handled"}:
+        # Natural-language intake often starts with "plan ..." or "draft ...".
+        # Only short malformed control attempts get usage; multi-word prose
+        # falls back to the planning listener.
+        if len(cleaned.split()) > 2:
+            return None
+        return f"*Usage:* `{first} <plan-id>`\n\nUse `plans` to find the exact local inbox id."
     return render_help()
 
 
@@ -422,6 +586,10 @@ def render_help() -> str:
             "Lead a message with one of these verbs (DM me or @-mention me):",
             "- `status` — fleet health (loaded agents, pauses, locks).",
             "- `runs` — recent firings per agent.",
+            "- `plans` — local planning inbox.",
+            "- `plan <id>` — inspect a draft or captured follow-up.",
+            "- `draft <id>` — convert a captured follow-up to a local draft.",
+            "- `handled <id>` — operator-only: archive a follow-up without drafting.",
             "- `trusted` — list Slack users who can revise plans.",
             "- `trust <@user>` — operator-only: add a planning collaborator.",
             "- `untrust <@user>` — operator-only: remove a local collaborator.",
@@ -486,6 +654,78 @@ def render_recent_runs(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_plans(rows: list[PlanDraft]) -> str:
+    lines = ["*Planning inbox*", ""]
+    if not rows:
+        lines.append("_No saved plans, drafts, or follow-ups._")
+        lines.extend(
+            [
+                "",
+                "Send Alfred a planning request in DM or mention Alfred in a channel to start one.",
+            ]
+        )
+        return "\n".join(lines)
+
+    for plan in rows[:10]:
+        title = _short(plan.title or plan.plan_id, 90)
+        meta = [
+            _source_label(plan),
+            plan.status or "unknown",
+            _plan_updated_label(plan),
+        ]
+        readiness = _readiness_label(plan)
+        if readiness:
+            meta.append(readiness)
+        lines.append(f"- `{plan.plan_id}`: *{title}* ({', '.join(meta)})")
+
+    lines.extend(
+        [
+            "",
+            "Use `plan <id>` to inspect one. Captured follow-ups can become drafts with `draft <id>`.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_plan_detail(plan: PlanDraft) -> str:
+    lines = [
+        f"*{_short(plan.title or plan.plan_id, 120)}*",
+        "",
+        f"- Id: `{plan.plan_id}`",
+        f"- Source: {_source_label(plan)}",
+        f"- Status: `{plan.status or 'unknown'}`",
+    ]
+    updated = _plan_updated_label(plan)
+    if updated:
+        lines.append(f"- Updated: {updated}")
+    if plan.parent:
+        lines.append(f"- Parent: {plan.parent}")
+    if plan.affected_repos:
+        lines.append(f"- Repos: {plan.affected_repos}")
+    readiness = _readiness_label(plan)
+    if readiness:
+        lines.append(f"- Readiness: {readiness}")
+    if plan.revision_count:
+        lines.append(f"- Revisions: {plan.revision_count}")
+
+    preview = _short(plan.preview or plan.content, 700)
+    if preview:
+        lines.extend(["", "*Preview*", preview])
+
+    lines.extend(["", "*Next actions*"])
+    if plan.source == "followup":
+        lines.append(
+            f"- `draft {plan.plan_id}` to turn this follow-up into a local planning draft."
+        )
+        lines.append(f"- `handled {plan.plan_id}` to archive it without drafting.")
+    else:
+        lines.append(
+            "- Reply in the Slack planning thread to revise scope, or continue from the local client."
+        )
+        lines.append("- Approval still uses Alfred's existing human gate.")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Rendering helpers
 # ---------------------------------------------------------------------------
@@ -519,6 +759,31 @@ def _run_counts_label(today: Any, ok: Any, fail: Any) -> str:
     if isinstance(fail, int) and fail:
         parts.append(f"{fail} fail")
     return f" ({', '.join(parts)})" if parts else ""
+
+
+def _source_label(plan: PlanDraft) -> str:
+    if plan.source == "followup":
+        return "captured follow-up"
+    if plan.source == "planning":
+        return "planning draft"
+    return str(plan.source or "plan")
+
+
+def _plan_updated_label(plan: PlanDraft) -> str:
+    return str(plan.updated_at or "unknown time")
+
+
+def _readiness_label(plan: PlanDraft) -> str:
+    if plan.readiness_score is None and plan.readiness_ok is None:
+        return ""
+    score = "?" if plan.readiness_score is None else str(plan.readiness_score)
+    if plan.readiness_ok is True:
+        state = "ready"
+    elif plan.readiness_ok is False:
+        state = "needs scope"
+    else:
+        state = "not checked"
+    return f"{state} ({score}/100)"
 
 
 def _truthy(value: Any) -> bool:
@@ -570,8 +835,11 @@ __all__ = [
     "SlackControlHandler",
     "is_control_message",
     "is_valid_codename",
+    "is_valid_plan_id",
     "parse_control_command",
     "render_fleet_status",
     "render_help",
+    "render_plan_detail",
+    "render_plans",
     "render_recent_runs",
 ]

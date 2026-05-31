@@ -89,6 +89,21 @@ Rules:
   follow-up into a scoped planning draft for the next pass, or mark it handled.
   Both actions archive the original follow-up and remain local-only.
 
+## Slack Planning Inbox Commands
+
+Trusted users can inspect the same local planning queue from Slack:
+
+| Command | What it does |
+|---|---|
+| `plans` | Shows the newest saved plans, Slack drafts, and captured follow-ups. |
+| `plan <id>` | Shows source, status, parent link, repos, readiness, preview, and next actions. |
+| `draft <id>` | Converts a captured follow-up into a local planning draft with memory recall and readiness checks. |
+| `handled <id>` | Operator-only. Archives a captured follow-up without creating a draft. |
+
+These commands do not start work, approve execution, file GitHub issues, or
+merge PRs. They are the Slack-native bridge between "someone replied with useful
+context" and "Alfred has a scoped draft for the next pass."
+
 ## DM And App Mention Intake
 
 When the Slack planning listener is running, trusted users can DM Alfred or
