@@ -863,7 +863,7 @@ def _memory_candidate_writer(provider):
     if brain is not None and hasattr(brain, "propose_memory"):
         return brain
     providers = getattr(provider, "providers", None)
-    if isinstance(providers, list):
+    if isinstance(providers, (list, tuple)):
         for child in providers:
             writer = _memory_candidate_writer(child)
             if writer is not None:
@@ -907,7 +907,7 @@ def _propose_planning_memory_candidate(
             candidate_id = getattr(candidate, "id", candidate)
         except TypeError:
             try:
-                candidate_id = writer.propose_memory(
+                candidate = writer.propose_memory(
                     agent="planning",
                     repo=repo,
                     topic="planning-spec",
@@ -915,6 +915,7 @@ def _propose_planning_memory_candidate(
                     source="planning-ui",
                     evidence=[evidence],
                 )
+                candidate_id = getattr(candidate, "id", candidate)
             except Exception:
                 continue
         except Exception:

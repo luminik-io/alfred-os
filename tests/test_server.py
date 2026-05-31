@@ -18,6 +18,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +39,7 @@ import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from server.formatting import friendly_time, short_firing_id  # noqa: E402
+from spec_helper import IssueDraft  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -923,7 +925,7 @@ def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path:
 
         def __init__(self) -> None:
             self.writable = Writable()
-            self.providers = [ReadOnly(), self.writable]
+            self.providers = (ReadOnly(), self.writable)
 
         def recall(self, *, repo=None, query=None, limit=3):
             return []
@@ -960,6 +962,39 @@ def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path:
     assert response.status_code == 200
     assert chain.writable.candidates
     assert chain.writable.candidates[0]["repo"] == "luminik-io/alfred-os"
+
+
+def test_planning_memory_candidate_old_api_object_id_is_extracted(
+    tmp_path: Path,
+) -> None:
+    class Candidate:
+        id = "candidate-object-1"
+
+    class LegacyWriter:
+        def propose_memory(self, **kwargs):
+            if "codename" in kwargs:
+                raise TypeError("legacy api")
+            return Candidate()
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    draft = IssueDraft(
+        title="Add Slack plan revision flow",
+        problem="Operators need to discuss a plan before implementation.",
+        desired_behavior="Alfred saves the refined plan.",
+        repos=["luminik-io/alfred-os"],
+        acceptance_criteria=["Saved spec queues a memory candidate."],
+        test_plan="Unit test the fallback.",
+    )
+
+    ids = server_views._propose_planning_memory_candidate(
+        request,
+        draft,
+        spec_path=tmp_path / "spec.md",
+        spec_body="spec",
+        memory_provider=LegacyWriter(),
+    )
+
+    assert ids == ("candidate-object-1",)
 
 
 def test_compose_draft_returns_readiness_and_saves(tmp_path: Path) -> None:
