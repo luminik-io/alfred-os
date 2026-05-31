@@ -99,10 +99,17 @@ Trusted users can inspect the same local planning queue from Slack:
 | `plan <id>` | Shows source, status, parent link, repos, readiness, preview, and next actions. |
 | `draft <id>` | Converts a captured follow-up into a local planning draft with memory recall and readiness checks. |
 | `handled <id>` | Operator-only. Archives a captured follow-up without creating a draft. |
+| `memory` | Shows pending memory candidates and suggested promotions. |
+| `remember [repo:] <lesson>` | Queues a reviewable memory candidate from Slack. |
+| `memory promote <id>` | Operator-only. Promotes a candidate into future recall. |
+| `memory reject <id>` | Operator-only. Rejects a noisy candidate. |
+| `memory redis` | Checks the optional Redis Agent Memory Server bridge. |
 
 These commands do not start work, approve execution, file GitHub issues, or
 merge PRs. They are the Slack-native bridge between "someone replied with useful
-context" and "Alfred has a scoped draft for the next pass."
+context" and "Alfred has a scoped draft for the next pass." `remember ...`
+stages a candidate only; it never becomes prompt context until the operator
+runs `memory promote <id>`.
 
 ## DM And App Mention Intake
 

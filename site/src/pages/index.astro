@@ -171,7 +171,7 @@ const why = [
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">01</span>
             <h3 class="m-h3">Lessons need evidence.</h3>
-            <p>Agents can propose durable lessons, but they do not become prompt context until you promote them. That keeps memory useful without turning model guesses into truth.</p>
+            <p>Agents and trusted Slack users can propose durable lessons, but they do not become prompt context until you promote them. That keeps memory useful without turning model guesses into truth.</p>
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">02</span>
@@ -206,6 +206,10 @@ const why = [
             "",
             "$ alfred brain redis-sync --dry-run",
             "would sync 18 reviewed lessons",
+            "",
+            "slack> memory",
+            "slack> remember your-api: keep retry copy testable",
+            "slack> memory promote 12",
           ]}
         />
       </div>

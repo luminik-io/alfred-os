@@ -332,6 +332,11 @@ from chat by **leading a message with a known verb**. These are handled by
 | `plan <id>` | Inspect one local plan or follow-up. Use `plans` to find the id. |
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
 | `handled <id>` | Operator-only. Archive a captured follow-up without creating a draft. |
+| `memory` | Show pending memory candidates and suggested promotions. |
+| `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
+| `memory promote <id>` | Operator-only. Promote a candidate into future recall. |
+| `memory reject <id>` | Operator-only. Reject a noisy candidate. |
+| `memory redis` | Check the optional Redis Agent Memory Server bridge. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `trusted` | Show the operator and trusted Slack users Alfred currently accepts. |
@@ -360,6 +365,9 @@ Safety model:
   state. `draft <id>` writes a local planning draft and archives the captured
   follow-up. `handled <id>` archives the follow-up. None of these commands
   files GitHub issues, starts agents, approves execution, or merges PRs.
+- **Memory is reviewable.** `remember ...` queues a candidate only. It does not
+  enter future prompt context until the operator runs `memory promote <id>`.
+  `memory redis` is read-only, and `memory sync` defaults to a dry-run preview.
 - **Queries are read-only.** `status`, `runs`, and `trusted` only read fleet
   state. `trust` and `untrust` only update the local trust JSON file and never
   run code, call GitHub, or approve a plan.

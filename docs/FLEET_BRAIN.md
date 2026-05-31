@@ -318,6 +318,22 @@ that follow-up into a local planning draft, recalls reviewed planning memory,
 runs readiness checks, and only then queues any new memory candidate. This keeps
 Slack convenient without letting raw chat become long-term truth.
 
+Slack can also drive the review loop directly:
+
+```text
+memory
+remember luminik-io/alfred-os: Slack memory candidates must stay reviewable.
+memory promote <candidate-id>
+memory reject <candidate-id> too vague for future recall
+memory redis
+memory sync
+```
+
+`remember ...` stages a candidate; it does not become prompt context. Promotion
+and rejection stay operator-only. `memory redis` checks the optional Redis Agent
+Memory Server bridge, and `memory sync` previews a one-way sync of reviewed local
+lessons. `memory sync now` is the explicit write path.
+
 ## What to build next
 
 The v1 brain is intentionally small: local lessons, file touches, failure

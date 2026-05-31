@@ -43,11 +43,12 @@ state machine that keeps multiple agents from stepping on each other.
   captured as context for the next pass, not as implicit merge approval.
 - Run the fleet conversationally from Slack: trusted control commands
   (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
-  `pause`, `resume`) inspect and steer local state from chat with no shell. An
-  approved draft can cross the off-by-default bridge into a labeled issue, and
-  in-thread progress posts (claimed, PR opened, CI, merged) report back as the
-  fleet works it. A plain-language intake profile lets a non-technical user
-  approve outcomes instead of code.
+  `memory`, `remember ...`, `memory promote <id>`, `memory redis`, `pause`,
+  `resume`) inspect and steer local state from chat with no shell. An approved
+  draft can cross the off-by-default bridge into a labeled issue, and in-thread
+  progress posts (claimed, PR opened, CI, merged) report back as the fleet
+  works it. A plain-language intake profile lets a non-technical user approve
+  outcomes instead of code.
 - Route engines by role. Run implementation on Claude Code and review on
   Codex, or keep Claude as primary with Codex fallback for selected agents.
 - Bring your own subscription. Alfred shells out to your local `claude` and
@@ -266,7 +267,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Architecture](ARCHITECTURE.md): design rationale.
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
-- [Fleet brain](docs/FLEET_BRAIN.md): local memory, reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
+- [Fleet brain](docs/FLEET_BRAIN.md): local memory, Slack-driven reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
 - [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, and local API shape.
 - [Desktop client](docs/DESKTOP_CLIENT.md): the desktop control surface tab by tab, the `alfred serve` seam, and building native installers.
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
@@ -312,10 +313,11 @@ content, sales, and ops departments are the next larger surface area:
 
 **Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, a mobile-friendly local cockpit with saved Alfred plans, and the first Tauri Mac/Linux client. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
-Additional unreleased work adds explicit Redis AMS memory sync, operator-managed
-trusted Slack plan collaborators, revision previews in approval threads, Planning intake in
-the local cockpit, and a thin native client for setup, health, logs, command
-previews, and recovery. Slack remains the primary collaboration UI.
+Additional unreleased work adds Slack-driven memory curation, explicit Redis AMS
+memory sync, operator-managed trusted Slack plan collaborators, revision previews
+in approval threads, Planning intake in the local cockpit, and a thin native
+client for setup, health, logs, command previews, and recovery. Slack remains
+the primary collaboration UI.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 

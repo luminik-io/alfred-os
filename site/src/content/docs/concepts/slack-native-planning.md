@@ -96,6 +96,11 @@ intake:
 | `plan <id>` | Inspect one local plan or follow-up. |
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
 | `handled <id>` | Operator-only: archive a captured follow-up without drafting. |
+| `memory` | Show pending memory candidates and promotion suggestions. |
+| `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
+| `memory promote <id>` | Operator-only: promote a candidate into future recall. |
+| `memory reject <id>` | Operator-only: reject a noisy candidate. |
+| `memory redis` | Check the optional Redis Agent Memory Server bridge. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `help` | List these commands. |
@@ -107,7 +112,8 @@ explicit argv with no shell, and the codename is charset-validated before it
 reaches the command, so chat can never inject a flag. `status` and `runs` are
 read-only. `draft <id>` and `handled <id>` only touch local follow-up files and
 planning drafts; they never approve execution, file GitHub issues, start agents,
-or merge PRs.
+or merge PRs. `remember ...` only stages a memory candidate; it does not enter
+future prompt context until the operator promotes it.
 
 ## Watch progress in the thread
 
