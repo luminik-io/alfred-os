@@ -8,16 +8,19 @@ For the design rationale and the Slack boundary, see [`NATIVE_CLIENT.md`](NATIVE
 
 ## The control surface
 
-The app is a Tauri shell around a React UI. It opens on a Command Center and has six tabs:
+The app is a Tauri shell around a React UI. It opens on a Command Center and has nine tabs:
 
 | Tab | What it shows | What it can do |
 |---|---|---|
 | **Now** | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates. | Jump straight to the surface that needs attention. |
+| **Activity** | Notifications from fleet state, follow-ups, and memory. | Mark activity seen and jump to the relevant surface. |
+| **Compose** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan and save it to the local Plans inbox. |
 | **Plans** | Plan state, source (local form, Slack DM, app mention, or registered thread), affected repos, and the PR chain. | Convert a follow-up into a planning draft, or mark it handled. |
 | **Runs** | Firing timelines, summaries, engine context, worktree path, issue and PR links. | Open the linked issue or PR outside the app. |
 | **Agents** | Per-agent status and last summary. | Run a safe agent dry-run. |
+| **Fleet** | Service state and per-agent controls. | Pause, resume, or run a codename through the native allowlist. |
 | **Memory** | Review candidates, recalled planning hints, memory-doctor and Redis checks. | Run the memory doctor and check Redis memory. |
-| **Setup** | A command console for fleet, auth, agent, and memory checks. | Start the local runtime, run checks, or copy the matching CLI command. |
+| **Setup** | A command console for fleet, auth, agent, and memory checks. | Start the local runtime and run curated checks in-app. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -57,7 +60,7 @@ The client defaults to `http://127.0.0.1:7000` and falls back to `7010`.
 
 ## Build native installers
 
-`clients/desktop/src-tauri/tauri.conf.json` sets `bundle.targets: "all"`, so a full build produces the native installer for the host platform:
+`clients/desktop/src-tauri/tauri.conf.json` builds the native installer for the host platform:
 
 ```sh
 cd clients/desktop

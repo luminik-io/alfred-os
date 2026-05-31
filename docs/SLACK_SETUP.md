@@ -245,14 +245,18 @@ and is claimed through every existing gate (claim-lock, spend caps, review,
 Batman's multi-repo approval). The bridge reuses that safety machinery instead
 of bypassing it.
 
-**Two conditions are both required** before an issue is created:
+**Five gates are all required** before an issue is created:
 
-1. A **trusted** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID` /
+1. The bridge is explicitly enabled with `ALFRED_BRIDGE_ENABLED=1`.
+2. A **trusted** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID` /
    `ALFRED_TRUSTED_SLACK_USER_IDS`). A non-trusted user can never trigger it.
-2. An **explicit approval token** in a registered draft thread: a configured
-   phrase (default `ship it` / `create issue` / `go` / `/ship`) or an approval
-   reaction (`:white_check_mark:` / `:rocket:`) on the draft. Ambiguous prose
-   is never treated as approval -- it just refines the draft as before.
+3. An **explicit approval token** in a registered draft thread: a configured
+   phrase (default `ship it` / `create issue` / `file issue` / `/ship`) or a
+   `:white_check_mark:` reaction on the draft. Ambiguous prose is never treated
+   as approval -- it just refines the draft as before.
+4. A **ready draft**: the saved readiness report has no blocking findings and
+   meets `ALFRED_BRIDGE_MIN_READINESS_SCORE` (default `80`).
+5. Every target repo is present in the `ALFRED_BRIDGE_REPOS` allowlist.
 
 Enable it by setting these env vars on the listener process:
 
@@ -263,8 +267,11 @@ ALFRED_BRIDGE_ENABLED=1
 ALFRED_BRIDGE_REPOS=acme-org/api,acme-org/web
 # Pickup label the fleet watches for (must match pick_issue()). Default:
 ALFRED_BRIDGE_LABEL=agent:implement
-# Optional override of the approval phrase list (comma/semicolon separated):
-ALFRED_BRIDGE_APPROVAL_PHRASES=ship it, create issue, go, /ship
+# Optional override of the approval phrase list (comma/semicolon separated).
+# Keep these action-oriented; avoid casual words like "go".
+ALFRED_BRIDGE_APPROVAL_PHRASES=ship it, create issue, file issue, /ship
+# Optional minimum saved readiness score before filing. Default: 80.
+ALFRED_BRIDGE_MIN_READINESS_SCORE=80
 ```
 
 To let approval reactions work, also subscribe the Slack app to the
@@ -277,6 +284,8 @@ Safety model:
   is acknowledged but creates nothing.
 - An empty `ALFRED_BRIDGE_REPOS` refuses to file anywhere.
 - A draft whose repo is not in the allowlist is refused; nothing is created.
+- A draft below the readiness threshold is refused with the questions to answer
+  next; nothing is created.
 - Idempotent: a draft can only be converted once. A second approval reports the
   existing issue instead of creating a duplicate.
 - The bridge only creates an issue; it never executes code. The fleet still

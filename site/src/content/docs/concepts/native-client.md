@@ -54,7 +54,7 @@ The core tabs are:
 | Runs | Read firing timelines, summaries, engine context, worktree path, issue and PR links. |
 | Agents | Inspect status and run safe dry-runs. |
 | Memory | Review candidates, inspect recalled planning hints, run memory doctor, and check Redis memory. |
-| Setup | Start the local runtime, run fleet/auth/agent/memory checks in the command console, or copy the matching CLI commands when needed. |
+| Setup | Start the local runtime and run fleet/auth/agent/memory checks in the command console. |
 
 Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail
@@ -74,7 +74,7 @@ does not want to tail logs.
 3. Add guided install and broader write actions with command previews.
 4. Package signed Mac builds and Linux artifacts.
 
-The client already builds native installers locally: `tauri.conf.json` sets `bundle.targets: "all"`, so `npm run tauri -- build` produces `.app`/`.dmg` on macOS and `.AppImage`/`.deb` on Linux. CI builds with `--no-bundle` to prove the binary compiles without code signing. See the [desktop client](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
+The client already builds native installers locally: `npm run tauri -- build` produces `.app`/`.dmg` on macOS and `.AppImage`/`.deb` on Linux from the Tauri bundle config. CI builds with `--no-bundle` to prove the binary compiles without code signing. See the [desktop client](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
 
 The direct-host model is inspired by Hermes Desktop's strongest lesson: keep
 the host as the source of truth and avoid a second sync layer.

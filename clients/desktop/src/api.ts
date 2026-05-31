@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   ActionsResponse,
+  ComposeDraftRequest,
+  ComposeDraftResponse,
   FiringsResponse,
   FollowupActionResponse,
   NativeAction,
@@ -21,6 +23,66 @@ declare global {
   }
 }
 
+// An error that carries a plain-language `message` for the UI plus the raw
+// `detail` string (status line, stderr, stack) so panels can hide the technical
+// text behind a "Details" disclosure instead of leading with it.
+export class ApiError extends Error {
+  readonly detail: string | null;
+  constructor(message: string, detail: string | null = null) {
+    super(message);
+    this.name = "ApiError";
+    this.detail = detail;
+  }
+}
+
+// Pull the raw technical text out of any thrown value for the Details panel.
+export function errorDetail(err: unknown): string | null {
+  if (err instanceof ApiError) {
+    return err.detail;
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return null;
+}
+
+// Map an HTTP error status to plain-language guidance. Returns the operator-
+// facing message; the raw status line + body stay available on ApiError.detail.
+function humanizeFetchError(status: number): string {
+  if (status === 401 || status === 403) {
+    return "Alfred serve is running but rejected this client (auth token mismatch). Restart the runtime or check your token.";
+  }
+  if (status === 404) {
+    return "Alfred serve answered, but this endpoint is missing. The runtime may be an older build than this client expects.";
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return "Alfred serve is reachable but not ready yet. Give the runtime a moment, then refresh.";
+  }
+  if (status >= 500) {
+    return "Alfred serve hit an internal error handling this request. Check the runtime logs.";
+  }
+  return `Alfred serve returned an unexpected ${status} response. See details below.`;
+}
+
+// Map a transport-level failure (no HTTP response at all) to plain language.
+function humanizeTransportError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("connection refused") ||
+    lower.includes("econnrefused") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("load failed") ||
+    lower.includes("networkerror")
+  ) {
+    return "Could not reach Alfred serve. Start the runtime, or point this client at the URL where alfred serve is listening.";
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return "Alfred serve did not respond in time. The runtime may be busy or stuck; check it, then refresh.";
+  }
+  return raw;
+}
+
 export function initialBaseUrl(): string {
   return window.localStorage.getItem(BASE_URL_KEY) || DEFAULT_BASE_URL;
 }
@@ -37,21 +99,50 @@ export function isDefaultBaseUrl(value: string): boolean {
   }
 }
 
+// The dashboard reads four independent endpoints. A failure on any one of them
+// should not blank the whole view, so we settle each request and render what
+// resolved, marking the missing sections as degraded. /api/status is the spine
+// (it carries fleet liveness and the reliability rollup): if it fails the whole
+// snapshot is genuinely unusable, so that one rejection still surfaces as the
+// connection error the banner shows.
 export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
-  const [status, actions, firings, plans] = await Promise.all([
+  const [status, actions, firings, plans] = await Promise.allSettled([
     readAlfredJson<StatusResponse>(baseUrl, "/api/status"),
     readAlfredJson<ActionsResponse>(baseUrl, "/api/actions"),
     readAlfredJson<FiringsResponse>(baseUrl, "/api/firings?limit=14"),
     readAlfredJson<PlansResponse>(baseUrl, "/api/plans?limit=14"),
   ]);
 
+  if (status.status === "rejected") {
+    throw status.reason instanceof Error ? status.reason : new Error(String(status.reason));
+  }
+
+  const degraded: NonNullable<Snapshot["degraded"]> = {};
+  if (actions.status === "rejected") degraded.actions = settledError(actions.reason);
+  if (firings.status === "rejected") degraded.firings = settledError(firings.reason);
+  if (plans.status === "rejected") degraded.plans = settledError(plans.reason);
+
   return {
     loadedAt: new Date(),
-    status,
-    actions,
-    firings: firings.rows || [],
-    plans: plans.rows || [],
+    status: status.value,
+    actions:
+      actions.status === "fulfilled"
+        ? actions.value
+        : {
+            status: "degraded",
+            actions: [],
+            failure_patterns: [],
+            stale_workers: [],
+            promotion_suggestions: [],
+          },
+    firings: firings.status === "fulfilled" ? firings.value.rows || [] : [],
+    plans: plans.status === "fulfilled" ? plans.value.rows || [] : [],
+    degraded: Object.keys(degraded).length ? degraded : undefined,
   };
+}
+
+function settledError(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
 }
 
 export async function convertFollowupToDraft(
@@ -66,6 +157,13 @@ export async function markFollowupHandled(
   planId: string,
 ): Promise<FollowupActionResponse> {
   return writeAlfredJson(baseUrl, `/api/plans/${planPathSegment(planId)}/mark-handled`);
+}
+
+export async function composeDraft(
+  baseUrl: string,
+  request: ComposeDraftRequest,
+): Promise<ComposeDraftResponse> {
+  return writeAlfredJson(baseUrl, "/api/plans/draft", request);
 }
 
 export function supportsNativeActions(): boolean {
@@ -89,27 +187,81 @@ export async function startLocalRuntime(port = 7000): Promise<NativeCommandResul
   return invoke<NativeCommandResult>("start_alfred_runtime", { port });
 }
 
+export async function setTrayStatus(
+  level: "ok" | "warn" | "error" | "unknown",
+  summary?: string,
+): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
+  try {
+    await invoke("set_tray_status", { level, summary });
+  } catch {
+    // The tray is best-effort; never let a tray hiccup break the UI.
+  }
+}
+
 async function readAlfredJson<T>(baseUrl: string, path: string): Promise<T> {
   const text = isTauri()
-    ? await invoke<string>("fetch_alfred_json", { baseUrl, path })
+    ? await invokeAlfredJson("fetch_alfred_json", { baseUrl, path })
     : await browserFetch(baseUrl, path, "GET");
   return JSON.parse(text) as T;
 }
 
-async function writeAlfredJson<T>(baseUrl: string, path: string): Promise<T> {
+async function writeAlfredJson<T>(
+  baseUrl: string,
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const payload = body === undefined ? undefined : JSON.stringify(body);
   const text = isTauri()
-    ? await invoke<string>("post_alfred_json", { baseUrl, path })
-    : await browserFetch(baseUrl, path, "POST");
+    ? await invokeAlfredJson("post_alfred_json", { baseUrl, path, body: payload })
+    : await browserFetch(baseUrl, path, "POST", payload);
   return JSON.parse(text) as T;
 }
 
-async function browserFetch(baseUrl: string, path: string, method: "GET" | "POST"): Promise<string> {
+// The native fetch command surfaces the same auth/transport failures the browser
+// path does, just as a Tauri invoke rejection. Humanize those too so the desktop
+// build does not leak a raw Rust error string into the connection banner.
+async function invokeAlfredJson(
+  command: "fetch_alfred_json" | "post_alfred_json",
+  args: Record<string, unknown>,
+): Promise<string> {
+  try {
+    return await invoke<string>(command, args);
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    const statusMatch = raw.match(/\b(40[13]|404|5\d\d)\b/);
+    if (statusMatch) {
+      throw new ApiError(humanizeFetchError(Number(statusMatch[1])), raw);
+    }
+    throw new ApiError(humanizeTransportError(err), raw);
+  }
+}
+
+async function browserFetch(
+  baseUrl: string,
+  path: string,
+  method: "GET" | "POST",
+  body?: string,
+): Promise<string> {
   const url = new URL(path, normalizedBaseUrl(baseUrl));
   const devProxyPath = shouldUseDevProxy(url) ? `/alfred-api${path}` : url.toString();
-  const response = await fetch(devProxyPath, { method });
+  let response: Response;
+  try {
+    response = await fetch(devProxyPath, {
+      method,
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body,
+    });
+  } catch (err) {
+    // No HTTP response at all: connection refused, DNS, timeout, CORS, etc.
+    throw new ApiError(humanizeTransportError(err), err instanceof Error ? err.message : String(err));
+  }
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`alfred serve returned ${response.status}${text ? `: ${text}` : ""}`);
+    const raw = `alfred serve returned ${response.status}${text ? `: ${text}` : ""}`;
+    throw new ApiError(humanizeFetchError(response.status), raw);
   }
   return text;
 }

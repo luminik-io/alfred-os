@@ -5,6 +5,14 @@ export type AgentSummary = {
   status: "live" | "idle" | "error" | string;
   last_summary: string;
   firings_today: number;
+  // Paused/running service state now comes from the polled /api/status feed
+  // instead of shelling `alfred status --json`. The server reads the same
+  // pause marker the CLI writes; `loaded` is the inverse of `paused` because
+  // `alfred pause` unloads the scheduler unit and `alfred resume` reloads it.
+  // Older servers omit these, so they are optional and default to "running".
+  paused?: boolean;
+  paused_since?: string | null;
+  loaded?: boolean;
 };
 
 export type FiringRecord = {
@@ -85,13 +93,73 @@ export type FollowupActionResponse = {
   archived_path?: string;
 };
 
+export type ComposeDraftFields = {
+  title: string;
+  problem: string;
+  user: string;
+  current_behavior: string;
+  desired_behavior: string;
+  repos: string[];
+  acceptance_criteria: string[];
+  test_plan: string;
+  out_of_scope: string;
+  rollout: string;
+  open_questions: string;
+};
+
+export type ComposeFinding = {
+  code: string;
+  severity: "error" | "warning" | string;
+  message: string;
+};
+
+export type ComposeDraftResponse = {
+  draft_id: string;
+  saved_path: string;
+  title: string;
+  readiness: { ok: boolean; score: number };
+  questions: string[];
+  findings: ComposeFinding[];
+  summary: string;
+  spec_body: string;
+  revision_count: number;
+  draft: ComposeDraftFields;
+};
+
+export type ComposeDraftRequest = {
+  text: string;
+  draft_id?: string;
+  draft?: Partial<ComposeDraftFields>;
+};
+
 export type NativeAction =
   | "dry_run"
+  | "run"
+  | "pause"
+  | "resume"
   | "status"
   | "agents"
   | "auth_status"
   | "brain_doctor"
   | "redis_status";
+
+// Shape of a single agent entry in `alfred status --json`. The CLI exposes the
+// paused/running state that the read-only /api/status endpoint does not, so the
+// Fleet Control panel parses this snapshot to reflect live service state.
+export type AlfredStatusAgent = {
+  agent: string;
+  loaded: boolean;
+  paused: boolean;
+  paused_since: string | null;
+  today_consecutive_failures?: number;
+  blocked_until?: string | null;
+};
+
+export type AlfredStatusJson = {
+  ts?: string;
+  global?: unknown;
+  agents: AlfredStatusAgent[];
+};
 
 export type NativeCommandResult = {
   command: string[];
@@ -109,4 +177,12 @@ export type Snapshot = {
   actions: ActionsResponse;
   firings: FiringRecord[];
   plans: PlanDraft[];
+  // Per-section failures from the settled snapshot load. /api/status is the
+  // spine and never lands here (its failure rejects the whole load); the other
+  // three endpoints degrade independently so one outage cannot blank the view.
+  degraded?: {
+    actions?: string;
+    firings?: string;
+    plans?: string;
+  };
 };

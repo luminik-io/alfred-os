@@ -189,10 +189,10 @@ The first client lives at `clients/desktop`:
 - Local API calls through Rust commands, not browser `fetch`.
 - API calls are restricted to `http://localhost`, `http://127.0.0.1`, or
   `http://[::1]` and to the `/api/status`, `/api/actions`, `/api/firings`,
-  `/api/plans`, and follow-up action contracts.
+  `/api/plans`, compose-draft, and follow-up action contracts.
 - Links to Slack, GitHub, and local serve detail pages open outside the app.
-- The app opens to "What needs attention?" and has Now, Plans, Runs, Agents,
-  Memory, and Setup tabs.
+- The app opens to "What needs attention?" and has Now, Activity, Compose,
+  Plans, Runs, Agents, Fleet, Memory, and Setup tabs.
 - Follow-up plan cards can call the local `Plan next pass` and `Mark handled`
   endpoints. These actions only move local follow-up files or create local
   planning drafts.

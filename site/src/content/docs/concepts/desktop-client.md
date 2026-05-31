@@ -52,7 +52,7 @@ flowchart TB
 | Runs | Firing timelines, summaries, engine context, worktree path, issue and PR links. |
 | Agents | Per-agent status and safe dry-runs. |
 | Memory | Review candidates, recalled planning hints, memory doctor, Redis check. |
-| Setup | Start the local runtime, run fleet/auth/agent/memory checks, or copy the matching CLI command. |
+| Setup | Start the local runtime and run fleet/auth/agent/memory checks in-app. |
 
 ## Boundary
 
@@ -80,8 +80,7 @@ npm run tauri dev
 
 ## Native installers
 
-`tauri.conf.json` sets `bundle.targets: "all"`, so a full build produces the
-native installer for the host platform:
+`tauri.conf.json` builds the native installer for the host platform:
 
 ```sh
 cd clients/desktop

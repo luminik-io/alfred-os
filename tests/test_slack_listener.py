@@ -4,13 +4,18 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[1]
 LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack_listener import SlackPlanningListener, draft_from_slack_text  # noqa: E402
+from slack_listener import (  # noqa: E402
+    SlackPlanningListener,
+    draft_from_slack_text,
+    render_bridge_outcome_ack,
+)
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry  # noqa: E402
 
 
@@ -21,6 +26,23 @@ class Poster:
     def chat_postMessage(self, **kwargs):
         self.messages.append(kwargs)
         return {"ok": True}
+
+
+def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
+    text = render_bridge_outcome_ack(
+        SimpleNamespace(
+            created=False,
+            status="refused_not_ready",
+            detail="draft readiness is 42/100; required 80/100. Answer first: What should ship?",
+            issue_url=None,
+            repo=None,
+        )
+    )
+
+    assert "Draft still needs scope" in text
+    assert "42/100" in text
+    assert "acceptance criteria" in text
+    assert "Nothing was created" in text
 
 
 def _thread_reply(text: str, *, event_id: str = "Ev1", user: str = "U1") -> dict:

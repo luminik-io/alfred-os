@@ -4,10 +4,10 @@ description: A non-technical front door that lets anyone direct the fleet in pla
 ---
 
 Plain mode lets someone who does not write code direct the Alfred fleet in plain
-language. A designer can describe a change the way they would say it out loud,
-"make the signup button on the welcome screen green", and the planning assistant
-turns that into the same structured, spec-driven work item the fleet always runs
-on. The person never sees a spec, a repository name, a readiness score, or a pull
+language. A teammate can describe a change the way they would say it out loud,
+for example "make the signup button on the welcome screen green", and the
+planning assistant turns that into the same structured work item the fleet
+always runs on. The person never sees a spec, a repository name, a readiness score, or a pull
 request. They describe an outcome, answer at most a question or two, and approve
 a preview.
 
@@ -65,7 +65,7 @@ path.
 
 Plain mode is the friendly entrance; the existing pieces do the rest.
 
-- **[Slack listener](/concepts/slack-native-planning/).** A designer DMs Alfred
+- **[Slack listener](/concepts/slack-native-planning/).** A teammate DMs Alfred
   describing what they want. With plain mode on, Alfred replies with plain
   questions and a plain plan instead of operator commands and readiness scores.
 - **[Desktop client](/concepts/desktop-client/).** The Compose box becomes a

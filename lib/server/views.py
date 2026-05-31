@@ -27,14 +27,14 @@ from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+
 from planning_assistant import (
     PlanningAssistantResult,
     engine_refiner_from_env,
     refine_issue_draft,
 )
-from spec_helper import IssueDraft
-
 from server.reader import PlanDraft
+from spec_helper import IssueDraft
 
 
 def register_routes(app: FastAPI) -> None:
@@ -189,7 +189,9 @@ def register_routes(app: FastAPI) -> None:
                     "actions": reliability.get("actions", []),
                     "failure_patterns": reliability.get("failure_patterns", []),
                     "stale_workers": reliability.get("stale_workers", []),
-                    "promotion_suggestions": reliability.get("promotion_suggestions", []),
+                    "promotion_suggestions": reliability.get(
+                        "promotion_suggestions", []
+                    ),
                     "error": reliability.get("error"),
                     "errors": reliability.get("errors", {}),
                 }
@@ -219,6 +221,11 @@ def register_routes(app: FastAPI) -> None:
     async def api_plans(request: Request, limit: int = 50) -> JSONResponse:
         rows = request.app.state.reader.list_plans(limit=min(max(1, limit), 200))
         return JSONResponse(_jsonable({"rows": rows}))
+
+    @app.get("/api/plans/drafts", response_class=JSONResponse)
+    async def api_list_compose_drafts(request: Request) -> JSONResponse:
+        rows = _list_compose_drafts(request)
+        return JSONResponse({"rows": rows})
 
     @app.get("/api/plans/{plan_id}", response_class=JSONResponse)
     async def api_plan_detail(request: Request, plan_id: str) -> JSONResponse:
@@ -257,6 +264,92 @@ def register_routes(app: FastAPI) -> None:
         archived_path = _archive_followup(plan, action="handled")
         return JSONResponse({"archived_path": str(archived_path)})
 
+    @app.post("/api/plans/draft", response_class=JSONResponse)
+    async def api_compose_draft(request: Request) -> JSONResponse:
+        if not _same_origin_post(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = json.loads((await request.body()).decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"error": "request body must be JSON"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {"error": "request body must be a JSON object"}, status_code=400
+            )
+
+        text = str(body.get("text") or "").strip()
+        draft_id = _safe_compose_draft_id(body.get("draft_id"))
+        prior_payload = _read_compose_draft_payload(request, draft_id)
+        base_draft = _compose_base_draft(body, prior_payload)
+
+        if not text and prior_payload is None and not _draft_has_signal(base_draft):
+            return JSONResponse(
+                {"error": "describe the work in the text field before drafting"},
+                status_code=400,
+            )
+
+        messages = [text] if text else []
+        memory_provider = _planning_memory_provider(request)
+        assistant_result: PlanningAssistantResult = refine_issue_draft(
+            base_draft,
+            messages,
+            refiner=(
+                engine_refiner_from_env(workdir=_planning_workdir(request))
+                if messages
+                else None
+            ),
+            memory_provider=memory_provider,
+        )
+        draft = assistant_result.draft
+        readiness = assistant_result.readiness
+        revisions = list(_existing_revisions(prior_payload))
+        if text:
+            revisions.append(text)
+        saved_path, draft_id = _save_compose_draft(
+            request,
+            draft=draft,
+            assistant_result=assistant_result,
+            draft_id=draft_id,
+            prior_payload=prior_payload,
+            revisions=revisions,
+        )
+        return JSONResponse(
+            {
+                "draft_id": draft_id,
+                "saved_path": str(saved_path),
+                "title": draft.title,
+                "readiness": {
+                    "ok": readiness.ok,
+                    "score": readiness.score,
+                },
+                "questions": list(assistant_result.questions),
+                "findings": [
+                    {
+                        "code": finding.code,
+                        "severity": finding.severity,
+                        "message": finding.message,
+                    }
+                    for finding in readiness.findings
+                ],
+                "summary": assistant_result.summary,
+                "spec_body": assistant_result.spec_body,
+                "revision_count": len(revisions),
+                "draft": {
+                    "title": draft.title,
+                    "problem": draft.problem,
+                    "user": draft.user,
+                    "current_behavior": draft.current_behavior,
+                    "desired_behavior": draft.desired_behavior,
+                    "repos": list(draft.repos),
+                    "acceptance_criteria": list(draft.acceptance_criteria),
+                    "test_plan": draft.test_plan,
+                    "out_of_scope": draft.out_of_scope,
+                    "rollout": draft.rollout,
+                    "open_questions": draft.open_questions,
+                },
+            }
+        )
+
     @app.get("/planning", response_class=HTMLResponse)
     async def planning(request: Request) -> HTMLResponse:
         templates = request.app.state.templates
@@ -264,7 +357,7 @@ def register_routes(app: FastAPI) -> None:
             request,
             "planning.html",
             {
-                "draft": _empty_draft(),
+                "draft": IssueDraft(title=""),
                 "result": None,
                 "assistant_result": None,
                 "chat_message": "",
@@ -282,7 +375,9 @@ def register_routes(app: FastAPI) -> None:
         action = _first(form, "action")
         chat_message = _first(form, "chat_message")
         memory_provider = _planning_memory_provider(request)
-        should_refine = action == "refine" or (action in {"save", "save_spec"} and chat_message)
+        should_refine = action == "refine" or (
+            action in {"save", "save_spec"} and chat_message
+        )
         assistant_result: PlanningAssistantResult = refine_issue_draft(
             draft,
             [chat_message] if should_refine else [],
@@ -336,10 +431,6 @@ def register_routes(app: FastAPI) -> None:
         return HTMLResponse("ok")
 
 
-def _empty_draft() -> IssueDraft:
-    return IssueDraft(title="")
-
-
 def _jsonable(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
         return _jsonable(asdict(value))
@@ -380,22 +471,201 @@ def _draft_from_form(form: dict[str, list[str]]) -> IssueDraft:
 
 
 def _first(form: dict[str, list[str]], key: str) -> str:
-    values = form.get(key) or [""]
-    return values[0].strip()
+    return (form.get(key) or [""])[0].strip()
 
 
 def _lines(value: str) -> list[str]:
-    return [line.strip().lstrip("- ").strip() for line in value.splitlines() if line.strip()]
+    return [
+        line.strip().lstrip("- ").strip() for line in value.splitlines() if line.strip()
+    ]
 
 
 def _save_issue_draft(request: Request, draft: IssueDraft, body: str) -> Path:
-    return _save_planning_text(request, draft, body, directory="planning-drafts", suffix="issue")
+    return _save_planning_text(
+        request, draft, body, directory="planning-drafts", suffix="issue"
+    )
 
 
-def _convert_and_archive_followup(request: Request, plan: PlanDraft) -> tuple[Path, Path]:
+_COMPOSE_PREFIX = "compose-"
+
+
+def _safe_compose_draft_id(raw: Any) -> str | None:
+    """Validate a caller-supplied compose draft id, or return ``None``."""
+    if raw is None:
+        return None
+    candidate = str(raw).strip()
+    if not candidate:
+        return None
+    if not candidate.startswith(_COMPOSE_PREFIX):
+        return None
+    if "/" in candidate or "\\" in candidate or candidate.startswith("."):
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", candidate):
+        return None
+    return candidate
+
+
+def _compose_base_draft(
+    body: dict[str, Any], prior_payload: dict[str, Any] | None
+) -> IssueDraft:
+    """Build the starting draft from an explicit ``draft`` block or the prior save."""
+    raw_draft = body.get("draft")
+    if isinstance(raw_draft, dict):
+        return _draft_from_payload(raw_draft)
+    if prior_payload is not None:
+        prior_draft = prior_payload.get("draft")
+        if isinstance(prior_draft, dict):
+            return _draft_from_payload(prior_draft)
+    return IssueDraft(title=str(body.get("title") or "").strip())
+
+
+def _draft_from_payload(payload: dict[str, Any]) -> IssueDraft:
+    return IssueDraft(
+        title=str(payload.get("title") or "").strip(),
+        problem=str(payload.get("problem") or "").strip(),
+        user=str(payload.get("user") or "").strip(),
+        current_behavior=str(payload.get("current_behavior") or "").strip(),
+        desired_behavior=str(payload.get("desired_behavior") or "").strip(),
+        repos=_payload_list(payload.get("repos")),
+        acceptance_criteria=_payload_list(payload.get("acceptance_criteria")),
+        test_plan=str(payload.get("test_plan") or "").strip(),
+        out_of_scope=str(payload.get("out_of_scope") or "").strip(),
+        rollout=str(payload.get("rollout") or "").strip(),
+        open_questions=str(payload.get("open_questions") or "").strip(),
+    )
+
+
+def _payload_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return _lines(value)
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _draft_has_signal(draft: IssueDraft) -> bool:
+    return bool(
+        draft.title
+        or draft.problem
+        or draft.desired_behavior
+        or draft.repos
+        or draft.acceptance_criteria
+    )
+
+
+def _existing_revisions(prior_payload: dict[str, Any] | None) -> tuple[str, ...]:
+    if not prior_payload:
+        return ()
+    raw = prior_payload.get("revisions")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(item).strip() for item in raw if str(item).strip())
+
+
+def _read_compose_draft_payload(
+    request: Request, draft_id: str | None
+) -> dict[str, Any] | None:
+    if not draft_id:
+        return None
+    path = _state_planning_root(request) / f"{draft_id}.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _save_compose_draft(
+    request: Request,
+    *,
+    draft: IssueDraft,
+    assistant_result: PlanningAssistantResult,
+    draft_id: str | None,
+    prior_payload: dict[str, Any] | None,
+    revisions: list[str],
+) -> tuple[Path, str]:
+    root = _state_planning_root(request)
+    root.mkdir(parents=True, exist_ok=True)
+    if draft_id is None:
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        draft_id = f"{_COMPOSE_PREFIX}{stamp}-{_slug(draft.title)}"
+    created_at = (
+        str(prior_payload.get("created_at"))
+        if prior_payload and prior_payload.get("created_at")
+        else datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    payload = {
+        "source": "compose",
+        "created_at": created_at,
+        "updated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "draft": asdict(draft),
+        "issue_body": assistant_result.issue_body,
+        "spec_body": assistant_result.spec_body,
+        "readiness": asdict(assistant_result.readiness),
+        "questions": list(assistant_result.questions),
+        "memory": [asdict(item) for item in assistant_result.memory],
+        "revision_count": len(revisions),
+        "revisions": revisions,
+    }
+    path = root / f"{draft_id}.json"
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    tmp.replace(path)
+    return path, draft_id
+
+
+def _list_compose_drafts(request: Request) -> list[dict[str, Any]]:
+    root = _state_planning_root(request)
+    if not root.is_dir():
+        return []
+    drafts: list[tuple[float, dict[str, Any]]] = []
+    for path in root.glob(f"{_COMPOSE_PREFIX}*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        raw_draft = payload.get("draft")
+        draft = raw_draft if isinstance(raw_draft, dict) else {}
+        raw_readiness = payload.get("readiness")
+        readiness = raw_readiness if isinstance(raw_readiness, dict) else {}
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        drafts.append(
+            (
+                mtime,
+                {
+                    "draft_id": path.stem,
+                    "title": str(draft.get("title") or "Compose draft"),
+                    "readiness": {
+                        "ok": bool(readiness.get("ok")),
+                        "score": readiness.get("score"),
+                    },
+                    "revision_count": payload.get("revision_count") or 0,
+                    "updated_at": payload.get("updated_at")
+                    or payload.get("created_at"),
+                },
+            )
+        )
+    drafts.sort(key=lambda item: item[0], reverse=True)
+    return [row for _mtime, row in drafts]
+
+
+def _convert_and_archive_followup(
+    request: Request, plan: PlanDraft
+) -> tuple[Path, Path]:
     draft_path = _convert_followup_to_planning_draft(request, plan)
     try:
-        archived_path = _archive_followup(plan, action="converted", target_path=draft_path)
+        archived_path = _archive_followup(
+            plan, action="converted", target_path=draft_path
+        )
     except Exception:
         draft_path.unlink(missing_ok=True)
         raise
@@ -429,35 +699,50 @@ def _convert_followup_to_planning_draft(request: Request, plan: PlanDraft) -> Pa
         "revisions": [],
     }
     tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     tmp.replace(path)
     return path
 
 
 def _draft_from_followup(plan: PlanDraft) -> IssueDraft:
-    clean_title = re.sub(r"^follow-up for\s+", "", plan.title, flags=re.IGNORECASE).strip()
+    clean_title = re.sub(
+        r"^follow-up for\s+", "", plan.title, flags=re.IGNORECASE
+    ).strip()
     title = f"Follow up: {clean_title or 'captured Slack feedback'}"
     repos = _repos_from_followup(plan)
     return IssueDraft(
         title=title,
         problem=(
-            "A trusted Slack follow-up was captured after Alfred posted a report or PR link. "
-            "It needs an explicit planning pass before any code or docs change."
+            "A trusted Slack follow-up was captured after Alfred posted a report "
+            "or PR link. It needs an explicit planning pass before any code or "
+            "docs change."
         ),
         user="Repo owner, teammate, or operator following up on shipped work",
-        current_behavior=plan.preview or "Follow-up context is captured in the local Plans inbox.",
+        current_behavior=plan.preview
+        or "Follow-up context is captured in the local Plans inbox.",
         desired_behavior=(
-            "Decide whether the follow-up needs code, docs, tests, a scoped issue, "
-            "or an explicit no-change response."
+            "Decide whether the follow-up needs code, docs, tests, a scoped "
+            "issue, or an explicit no-change response."
         ),
         repos=repos,
         acceptance_criteria=[
             "The captured follow-up is addressed or explicitly declined.",
             "Any resulting work links back to the original issue, PR, or Slack thread.",
         ],
-        test_plan="Run the smallest relevant tests for the affected area and verify the follow-up is covered.",
-        out_of_scope="No automatic merge, deployment, or broad scope expansion from captured feedback.",
-        open_questions="Confirm the intended response before implementation if the follow-up changes scope.",
+        test_plan=(
+            "Run the smallest relevant tests for the affected area and verify "
+            "the follow-up is covered."
+        ),
+        out_of_scope=(
+            "No automatic merge, deployment, or broad scope expansion from "
+            "captured feedback."
+        ),
+        open_questions=(
+            "Confirm the intended response before implementation if the follow-up "
+            "changes scope."
+        ),
     )
 
 
@@ -522,7 +807,11 @@ def _state_planning_root(request: Request) -> Path:
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
         return state_root / "planning-drafts"
-    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    base = (
+        os.environ.get("ALFRED_HOME")
+        or os.environ.get("HERMES_HOME")
+        or os.path.expanduser("~/.alfred")
+    )
     return Path(base) / "state" / "planning-drafts"
 
 
@@ -547,7 +836,11 @@ def _planning_root(request: Request, *, directory: str = "planning-drafts") -> P
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
         return state_root.parent / directory
-    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    base = (
+        os.environ.get("ALFRED_HOME")
+        or os.environ.get("HERMES_HOME")
+        or os.path.expanduser("~/.alfred")
+    )
     return Path(base) / directory
 
 
@@ -559,14 +852,14 @@ def _planning_memory_provider(request: Request):
         return None
     if not (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("ALFRED_FLEET_BRAIN_DB")
-        or _reader_uses_default_state_root(request)
+        or os.environ.get("HERMES_HOME")
+        or os.environ.get("FLEET_BRAIN_HOST")
     ):
         return None
     try:
-        from memory.config import load_provider
+        from fleet_brain import FleetBrain
 
-        return load_provider()
+        return FleetBrain.from_env()
     except Exception:
         return None
 
@@ -575,35 +868,7 @@ def _planning_memory_writer(request: Request, *, provider=None):
     configured = getattr(request.app.state, "planning_memory_writer", None)
     if configured is not None:
         return configured
-    provider = provider or _planning_memory_provider(request)
-    return _memory_candidate_writer(provider)
-
-
-def _reader_uses_default_state_root(request: Request) -> bool:
-    reader = request.app.state.reader
-    state_root = getattr(reader, "state_root", None)
-    if not isinstance(state_root, Path):
-        return True
-    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-    try:
-        return state_root.expanduser().resolve() == (Path(base) / "state").expanduser().resolve()
-    except OSError:
-        return False
-
-
-def _memory_candidate_writer(provider):
-    if provider is None:
-        return None
-    brain = getattr(provider, "brain", None)
-    if brain is not None and hasattr(brain, "propose_memory"):
-        return brain
-    if hasattr(provider, "propose_memory"):
-        return provider
-    for child in getattr(provider, "providers", ()) or ():
-        writer = _memory_candidate_writer(child)
-        if writer is not None:
-            return writer
-    return None
+    return provider or _planning_memory_provider(request)
 
 
 def _propose_planning_memory_candidate(
@@ -626,35 +891,34 @@ def _propose_planning_memory_candidate(
         "title": draft.title,
         "readiness_chars": len(spec_body),
     }
-    evidence_json = json.dumps(evidence, sort_keys=True)
     ids: list[str] = []
     for repo in draft.repos or ["planning"]:
         try:
-            candidate = writer.propose_memory(
-                codename="planning",
+            candidate_id = writer.propose_memory(
+                agent="planning",
                 repo=repo,
+                topic="planning-spec",
                 body=body,
-                tags=["planning", "spec"],
-                severity="info",
+                evidence=[evidence],
                 source="planning-ui",
-                evidence=evidence_json,
-                confidence=0.72,
             )
         except TypeError:
             try:
                 candidate = writer.propose_memory(
-                    agent="planning",
+                    codename="planning",
                     repo=repo,
-                    topic="planning-spec",
                     body=body,
-                    evidence=[evidence],
+                    tags=["planning", "spec"],
+                    severity="info",
                     source="planning-ui",
+                    evidence=str(spec_path),
+                    confidence=0.72,
                 )
+                candidate_id = getattr(candidate, "id", candidate)
             except Exception:
                 continue
         except Exception:
             continue
-        candidate_id = getattr(candidate, "id", candidate)
         if candidate_id is not None:
             ids.append(str(candidate_id))
     return tuple(ids)
@@ -678,7 +942,11 @@ def _planning_workdir(request: Request) -> Path:
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
         return state_root.parent
-    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    base = (
+        os.environ.get("ALFRED_HOME")
+        or os.environ.get("HERMES_HOME")
+        or os.path.expanduser("~/.alfred")
+    )
     return Path(base)
 
 

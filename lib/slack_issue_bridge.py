@@ -26,16 +26,23 @@ fleet's safety machinery instead of bypassing it. A bug in this module can, at
 worst, file an unwanted issue -- which still cannot ship without passing every
 downstream gate.
 
-Two independent conditions are *both* required before an issue is created:
+Five independent gates are *all* required before an issue is created:
 
-1. **Trusted user.** The approval must come from a configured trusted Slack
+1. **Bridge enabled.** The operator must explicitly enable the bridge.
+2. **Trusted user.** The approval must come from a configured trusted Slack
    user (the listener gates this in ``handle_payload``; the bridge re-checks).
-2. **Explicit approval token.** The reply must contain an explicit approval
-   phrase (default: ``ship it`` / ``create issue`` / ``go`` / ``/ship``) or be
-   an approval reaction (``white_check_mark`` / ``rocket``). Ambiguous prose is
-   never treated as approval -- it falls through to the normal refine path.
+3. **Explicit approval token.** The reply must contain an explicit approval
+   phrase (default: ``ship it`` / ``create issue`` / ``file issue`` /
+   ``/ship``) or be an approval reaction (``white_check_mark``). Ambiguous
+   prose is never treated as approval -- it falls through to the normal refine
+   path.
+4. **Ready draft.** The saved draft must carry a readiness report with no
+   blocking findings and a score at or above
+   ``ALFRED_BRIDGE_MIN_READINESS_SCORE``.
+5. **Allowed repo.** Every target repo must be present in
+   ``ALFRED_BRIDGE_REPOS``.
 
-Neither condition alone suffices, and a non-trusted user can never trigger
+No single gate alone suffices, and a non-trusted user can never trigger
 creation regardless of text.
 
 Configuration (all env-driven, 12-factor):
@@ -48,6 +55,8 @@ Configuration (all env-driven, 12-factor):
   Default ``agent:implement``.
 * ``ALFRED_BRIDGE_APPROVAL_PHRASES`` -- optional comma/semicolon separated
   override of the approval phrase list.
+* ``ALFRED_BRIDGE_MIN_READINESS_SCORE`` -- minimum saved readiness score before
+  filing. Default ``80``.
 
 The actual ``gh issue create`` call is injected (``issue_creator``) so tests
 exercise the full path without the network. The default creator shells out to
@@ -67,24 +76,26 @@ ENV_ENABLED = "ALFRED_BRIDGE_ENABLED"
 ENV_REPOS = "ALFRED_BRIDGE_REPOS"
 ENV_LABEL = "ALFRED_BRIDGE_LABEL"
 ENV_APPROVAL_PHRASES = "ALFRED_BRIDGE_APPROVAL_PHRASES"
+ENV_MIN_READINESS_SCORE = "ALFRED_BRIDGE_MIN_READINESS_SCORE"
 
 DEFAULT_LABEL = "agent:implement"
+DEFAULT_MIN_READINESS_SCORE = 80
 
 # Default explicit approval phrases. These are matched as whole, normalized
 # tokens against the whole reply (see ``contains_approval_token``); they are
-# deliberately short and unambiguous so ordinary refinement prose like
-# "let's go with two repos" or "ship the docs separately" does NOT approve.
+# deliberately action-oriented so ordinary refinement prose like "let's go with
+# two repos" or "ship the docs separately" does NOT approve.
 DEFAULT_APPROVAL_PHRASES: tuple[str, ...] = (
     "ship it",
     "create issue",
-    "go",
+    "file issue",
     "/ship",
 )
 
-# Reactions that count as an explicit approval. Bare names only; skin-tone
-# variants (e.g. ``+1::skin-tone-2``) are matched on their bare name by the
-# caller before this set is consulted.
-DEFAULT_APPROVAL_REACTIONS: frozenset[str] = frozenset({"white_check_mark", "rocket"})
+# Reactions that count as an explicit approval. Keep this intentionally narrow:
+# a check mark is a deliberate approval marker in Alfred threads, while more
+# expressive reactions are too easy to use as casual acknowledgement.
+DEFAULT_APPROVAL_REACTIONS: frozenset[str] = frozenset({"white_check_mark"})
 
 _MAX_TITLE = 256
 
@@ -110,6 +121,7 @@ class BridgeConfig:
     repos: frozenset[str]
     label: str
     approval_phrases: tuple[str, ...]
+    min_readiness_score: int = DEFAULT_MIN_READINESS_SCORE
     approval_reactions: frozenset[str] = DEFAULT_APPROVAL_REACTIONS
 
     @classmethod
@@ -119,6 +131,7 @@ class BridgeConfig:
             repos=frozenset(_parse_repo_allowlist(os.environ.get(ENV_REPOS))),
             label=(os.environ.get(ENV_LABEL) or "").strip() or DEFAULT_LABEL,
             approval_phrases=_parse_approval_phrases(os.environ.get(ENV_APPROVAL_PHRASES)),
+            min_readiness_score=_parse_min_readiness_score(os.environ.get(ENV_MIN_READINESS_SCORE)),
         )
 
 
@@ -261,6 +274,14 @@ class SlackIssueBridge:
         draft = draft_payload.get("draft")
         if not isinstance(draft, dict):
             return BridgeOutcome(False, "refused_no_draft", "saved draft is missing or malformed")
+
+        # SAFETY GATE 3: saved readiness must be good enough to file.
+        readiness_refusal = _readiness_refusal(
+            draft_payload,
+            min_score=self.config.min_readiness_score,
+        )
+        if readiness_refusal is not None:
+            return readiness_refusal
 
         # SAFETY GATE 4: every target repo must be in the configured allowlist.
         repos = _draft_repos(draft)
@@ -468,6 +489,47 @@ def _parse_approval_phrases(raw: str | None) -> tuple[str, ...]:
     return tuple(out) or DEFAULT_APPROVAL_PHRASES
 
 
+def _parse_min_readiness_score(raw: str | None) -> int:
+    if raw is None or not str(raw).strip():
+        return DEFAULT_MIN_READINESS_SCORE
+    try:
+        score = int(str(raw).strip())
+    except ValueError:
+        return DEFAULT_MIN_READINESS_SCORE
+    return max(0, min(100, score))
+
+
+def _readiness_refusal(draft_payload: dict, *, min_score: int) -> BridgeOutcome | None:
+    readiness = draft_payload.get("readiness")
+    if not isinstance(readiness, dict):
+        return BridgeOutcome(
+            False,
+            "refused_readiness_missing",
+            "draft has no readiness report; revise it in Slack or Compose before filing",
+        )
+    ok = bool(readiness.get("ok"))
+    raw_score = readiness.get("score")
+    try:
+        score = int(raw_score)
+    except (TypeError, ValueError):
+        return BridgeOutcome(
+            False,
+            "refused_readiness_missing",
+            "draft readiness score is missing or invalid; revise it before filing",
+        )
+    if ok and score >= min_score:
+        return None
+    questions = draft_payload.get("questions")
+    detail = f"draft readiness is {score}/100; required {min_score}/100"
+    if isinstance(questions, list):
+        clean_questions = [str(item).strip() for item in questions if str(item).strip()]
+        if clean_questions:
+            detail += ". Answer first: " + "; ".join(clean_questions[:3])
+    if not ok:
+        detail += ". Readiness still has blocking findings."
+    return BridgeOutcome(False, "refused_not_ready", detail)
+
+
 def _normalize_phrase(value: str) -> str:
     text = str(value or "").lower()
     # Keep leading slash for slash-style tokens like /ship, drop other punct.
@@ -488,9 +550,11 @@ __all__ = [
     "DEFAULT_APPROVAL_PHRASES",
     "DEFAULT_APPROVAL_REACTIONS",
     "DEFAULT_LABEL",
+    "DEFAULT_MIN_READINESS_SCORE",
     "ENV_APPROVAL_PHRASES",
     "ENV_ENABLED",
     "ENV_LABEL",
+    "ENV_MIN_READINESS_SCORE",
     "ENV_REPOS",
     "BridgeConfig",
     "BridgeOutcome",

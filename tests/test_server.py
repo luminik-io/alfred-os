@@ -962,6 +962,118 @@ def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path:
     assert chain.writable.candidates[0]["repo"] == "luminik-io/alfred-os"
 
 
+def test_compose_draft_returns_readiness_and_saves(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"text": "title: Add a desktop compose panel"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"].startswith("compose-")
+    assert isinstance(payload["readiness"]["score"], int)
+    assert payload["readiness"]["ok"] is False
+    assert payload["questions"]
+    assert any(finding["severity"] == "error" for finding in payload["findings"])
+    assert payload["draft"]["title"] == "Add a desktop compose panel"
+
+    saved = Path(payload["saved_path"])
+    assert saved.exists()
+    assert saved.parent == state / "planning-drafts"
+    on_disk = json.loads(saved.read_text(encoding="utf-8"))
+    assert on_disk["source"] == "compose"
+    assert on_disk["revision_count"] == 1
+
+    plans = client.get("/api/plans").json()["rows"]
+    assert any(row["plan_id"] == payload["draft_id"] for row in plans)
+
+
+def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    first = client.post(
+        "/api/plans/draft",
+        json={
+            "text": (
+                "title: Ship the compose panel\n"
+                "problem: Operators cannot author specs inside the desktop client today."
+            )
+        },
+    ).json()
+    draft_id = first["draft_id"]
+    assert first["readiness"]["ok"] is False
+
+    second = client.post(
+        "/api/plans/draft",
+        json={
+            "draft_id": draft_id,
+            "text": (
+                "desired: The desktop client lets users describe work and shows "
+                "the readiness score plus clarifying questions.\n"
+                "repo: luminik-io/alfred-os\n"
+                "acceptance: Submitting intent renders the readiness score.\n"
+                "test: Vitest covers the compose submit path with a mocked api."
+            ),
+        },
+    ).json()
+
+    assert second["draft_id"] == draft_id
+    assert second["revision_count"] == 2
+    assert second["readiness"]["score"] > first["readiness"]["score"]
+    assert "luminik-io/alfred-os" in second["draft"]["repos"]
+
+    drafts = client.get("/api/plans/drafts").json()["rows"]
+    matching = [row for row in drafts if row["draft_id"] == draft_id]
+    assert len(matching) == 1
+    assert matching[0]["revision_count"] == 2
+
+
+def test_compose_draft_requires_intent(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post("/api/plans/draft", json={"text": "   "})
+
+    assert response.status_code == 400
+    assert not (state / "planning-drafts").exists()
+
+
+def test_compose_draft_rejects_cross_origin(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"text": "title: Cross-origin attempt"},
+        headers={"origin": "https://example.invalid"},
+    )
+
+    assert response.status_code == 403
+    assert not (state / "planning-drafts").exists()
+
+
+def test_compose_draft_rejects_foreign_draft_id(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"draft_id": "slack-20260529-0400-E1", "text": "title: Sneaky"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["draft_id"].startswith("compose-")
+
+
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()

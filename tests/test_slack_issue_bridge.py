@@ -49,10 +49,19 @@ def _config(**overrides) -> BridgeConfig:
         "enabled": True,
         "repos": frozenset({ALLOWED_REPO}),
         "label": "agent:implement",
-        "approval_phrases": ("ship it", "create issue", "go", "/ship"),
+        "approval_phrases": ("ship it", "create issue", "file issue", "/ship"),
     }
     base.update(overrides)
     return BridgeConfig(**base)  # type: ignore[arg-type]
+
+
+def _ready_payload(*, repo: str = ALLOWED_REPO, title: str = "Wire the bridge") -> dict:
+    return {
+        "draft": {"title": title, "repos": [repo]},
+        "issue_body": "## Problem\n\nNeed the bridge.",
+        "readiness": {"ok": True, "score": 94},
+        "questions": [],
+    }
 
 
 def _make_listener(
@@ -140,16 +149,16 @@ def _reaction(name: str, *, event_id: str, user: str = "U1") -> dict:
 
 
 def test_explicit_phrases_are_recognized() -> None:
-    phrases = ("ship it", "create issue", "go", "/ship")
+    phrases = ("ship it", "create issue", "file issue", "/ship")
     assert contains_approval_token("ship it", phrases)
     assert contains_approval_token("Ship it!", phrases)
     assert contains_approval_token("create issue", phrases)
+    assert contains_approval_token("file issue", phrases)
     assert contains_approval_token("/ship", phrases)
-    assert contains_approval_token("go", phrases)
 
 
 def test_ambiguous_text_is_not_approval() -> None:
-    phrases = ("ship it", "create issue", "go", "/ship")
+    phrases = ("ship it", "create issue", "file issue", "/ship")
     # These carry real instructions or prose and must NOT approve.
     assert not contains_approval_token("let's go with two repos", phrases)
     assert not contains_approval_token("go ahead and add repo: acme-org/web", phrases)
@@ -166,7 +175,7 @@ def test_ambiguous_text_is_not_approval() -> None:
 def test_convert_refuses_untrusted_user() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
-    payload = {"draft": {"title": "X", "repos": [ALLOWED_REPO]}, "issue_body": "body"}
+    payload = _ready_payload()
     outcome = bridge.convert(payload, trusted=False)
     assert outcome.created is False
     assert outcome.status == "refused_untrusted"
@@ -176,7 +185,7 @@ def test_convert_refuses_untrusted_user() -> None:
 def test_convert_disabled_creates_nothing() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(enabled=False), issue_creator=creator)
-    payload = {"draft": {"title": "X", "repos": [ALLOWED_REPO]}, "issue_body": "body"}
+    payload = _ready_payload()
     outcome = bridge.convert(payload, trusted=True)
     assert outcome.created is False
     assert outcome.status == "disabled"
@@ -186,7 +195,7 @@ def test_convert_disabled_creates_nothing() -> None:
 def test_convert_refuses_repo_not_in_allowlist() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
-    payload = {"draft": {"title": "X", "repos": [OTHER_REPO]}, "issue_body": "body"}
+    payload = _ready_payload(repo=OTHER_REPO)
     outcome = bridge.convert(payload, trusted=True)
     assert outcome.created is False
     assert outcome.status == "refused_repo_not_allowed"
@@ -197,7 +206,7 @@ def test_convert_refuses_repo_not_in_allowlist() -> None:
 def test_convert_refuses_when_allowlist_empty() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(repos=frozenset()), issue_creator=creator)
-    payload = {"draft": {"title": "X", "repos": [ALLOWED_REPO]}, "issue_body": "body"}
+    payload = _ready_payload()
     outcome = bridge.convert(payload, trusted=True)
     assert outcome.created is False
     assert outcome.status == "refused_allowlist_empty"
@@ -207,10 +216,7 @@ def test_convert_refuses_when_allowlist_empty() -> None:
 def test_convert_creates_issue_with_repo_and_label() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
-    payload = {
-        "draft": {"title": "Wire the bridge", "repos": [ALLOWED_REPO]},
-        "issue_body": "## Problem\n\nNeed the bridge.",
-    }
+    payload = _ready_payload()
     outcome = bridge.convert(payload, trusted=True, thread_link="slack://thread?x")
     assert outcome.created is True
     assert outcome.issue_url == "https://github.com/acme-org/api/issues/42"
@@ -223,13 +229,38 @@ def test_convert_creates_issue_with_repo_and_label() -> None:
     assert "slack://thread?x" in call["body"]
 
 
-def test_convert_idempotent_when_already_converted() -> None:
+def test_convert_refuses_under_scoped_draft_even_with_approval() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
     payload = {
-        "draft": {"title": "X", "repos": [ALLOWED_REPO]},
-        "issue_body": "body",
-        "bridge": {"converted": True, "issue_url": "https://github.com/acme-org/api/issues/7"},
+        "draft": {"title": "Make things better", "repos": [ALLOWED_REPO]},
+        "issue_body": "## Problem\n\nTODO",
+        "readiness": {"ok": False, "score": 34},
+        "questions": ["What should be different when this ships?"],
+    }
+    outcome = bridge.convert(payload, trusted=True)
+    assert outcome.created is False
+    assert outcome.status == "refused_not_ready"
+    assert "34/100" in outcome.detail
+    assert "What should be different" in outcome.detail
+    assert creator.calls == []
+
+
+def test_convert_refuses_draft_without_readiness_report() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    payload = {"draft": {"title": "Wire the bridge", "repos": [ALLOWED_REPO]}}
+    outcome = bridge.convert(payload, trusted=True)
+    assert outcome.created is False
+    assert outcome.status == "refused_readiness_missing"
+    assert creator.calls == []
+
+
+def test_convert_idempotent_when_already_converted() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    payload = _ready_payload(title="X") | {
+        "bridge": {"converted": True, "issue_url": "https://github.com/acme-org/api/issues/7"}
     }
     outcome = bridge.convert(payload, trusted=True, already_converted=True)
     assert outcome.created is False
@@ -425,12 +456,14 @@ def test_config_from_env(monkeypatch) -> None:
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme-org/api, acme-org/web")
     monkeypatch.setenv("ALFRED_BRIDGE_LABEL", "agent:implement")
     monkeypatch.setenv("ALFRED_BRIDGE_APPROVAL_PHRASES", "ship it; launch")
+    monkeypatch.setenv("ALFRED_BRIDGE_MIN_READINESS_SCORE", "90")
     cfg = BridgeConfig.from_env()
     assert cfg.enabled is True
     assert cfg.repos == frozenset({"acme-org/api", "acme-org/web"})
     assert cfg.label == "agent:implement"
     assert "launch" in cfg.approval_phrases
     assert "ship it" in cfg.approval_phrases
+    assert cfg.min_readiness_score == 90
 
 
 def test_config_disabled_by_default(monkeypatch) -> None:

@@ -1,9 +1,9 @@
 # Plain Mode — the non-technical front door
 
 Plain mode lets someone who does not write code direct the Alfred fleet in
-plain language. A designer can describe a change the way they would say it
-out loud — "make the signup button on the welcome screen green" — and the
-planning assistant turns that into the same structured, spec-driven work item
+plain language. A teammate can describe a change the way they would say it
+out loud, for example "make the signup button on the welcome screen green",
+and the planning assistant turns that into the same structured work item
 the fleet always runs on. The person never sees a spec, a repository name, a
 readiness score, or a pull request. They describe an outcome, answer at most a
 question or two, and approve a preview.
@@ -60,7 +60,7 @@ seam (`lib/intake_profiles.py`), not a separate code path.
 
 Plain mode is the friendly entrance; the existing pieces do the rest.
 
-- **Slack listener** — a designer sends a direct message describing what they
+- **Slack listener** — a teammate sends a direct message describing what they
   want. With `ALFRED_INTAKE_PROFILE=plain`, the assistant replies with plain
   questions and a plain plan instead of operator commands and readiness
   scores.

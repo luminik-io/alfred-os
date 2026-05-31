@@ -248,7 +248,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) via `bundle.targets: all`. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
 | [`lib/slack_control.py`](lib/slack_control.py) | Trusted Slack control/query commands (`status`/`pause`/`resume`/`runs`/`help`), codename-validated, no shell. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Alfred",
-  "version": "0.1.0",
+  "version": "../package.json",
   "identifier": "io.luminik.alfred",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -26,13 +26,27 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["dmg", "app", "appimage", "deb"],
+    "category": "DeveloperTool",
+    "shortDescription": "Local control center for Alfred",
+    "longDescription": "Alfred Desktop is the optional native control plane for a local Alfred install. It surfaces what needs attention, which plans are waiting, which runs failed, and the fleet/auth/agent actions that are safe to run next, over a locally running `alfred serve`.",
+    "copyright": "Copyright (c) DataRavel Inc.",
+    "publisher": "DataRavel Inc.",
+    "homepage": "https://github.com/luminik-io/alfred-os",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      }
+    }
   }
 }

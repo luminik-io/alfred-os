@@ -845,6 +845,14 @@ def render_bridge_outcome_ack(outcome: Any) -> str:
             "Set `ALFRED_BRIDGE_ENABLED=1` and `ALFRED_BRIDGE_REPOS` to let "
             "explicit approvals file issues. Nothing was created."
         )
+    if outcome.status in {"refused_not_ready", "refused_readiness_missing"}:
+        return (
+            "*Draft still needs scope*\n\n"
+            f"{outcome.detail or 'The draft needs a complete readiness check before filing.'}\n\n"
+            "Reply in this thread with the missing acceptance criteria, repo scope, "
+            "test plan, or `open questions: none` once the risk is accepted. Nothing "
+            "was created and no code was run."
+        )
     return (
         "*Could not create the issue*\n\n"
         f"{outcome.detail or 'The draft was not eligible to file.'}\n\n"

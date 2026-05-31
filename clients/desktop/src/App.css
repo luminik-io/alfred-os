@@ -23,9 +23,15 @@
   --blue: #5789ff;
   --radius: 8px;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  /* Typography tokens. --font-mono was referenced (cli-fallback summary) but
+     never defined; --font-display centralizes the Space Grotesk display face
+     that was inlined across the sheet. */
+  --font-body: "Quicksand", system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--text);
   background: var(--black);
-  font-family: "Quicksand", system-ui, sans-serif;
+  font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.55;
   font-synthesis: none;
@@ -68,8 +74,19 @@ button:disabled {
   opacity: 0.72;
 }
 
+/* Keyboard focus must be visible. There was no :focus-visible anywhere before,
+   so tabbing through the app was invisible. Mouse clicks keep no ring. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
 code {
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.83rem;
   color: var(--bright);
   background: rgba(255, 255, 255, 0.05);
@@ -105,9 +122,12 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  padding: 4px 4px 4px 0;
   color: var(--bright);
+  background: transparent;
+  border: none;
   text-decoration: none;
-  font-family: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
+  font-family: var(--font-display);
   font-size: 1.45rem;
   font-weight: 700;
 }
@@ -131,6 +151,7 @@ code {
 }
 
 .nav-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -143,15 +164,181 @@ code {
   font-weight: 700;
 }
 
-.nav-button:hover,
-.nav-button--active {
+/* Hover is a subtle surface lift. The active tab is visually distinct: accent
+   text + an accent underline bar, so the current section reads at a glance and
+   is not confused with whatever the pointer is hovering. */
+.nav-button:hover {
   color: var(--bright);
   background: var(--surface-2);
   border-color: var(--border-strong);
 }
 
+.nav-button--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+}
+
+.nav-button--active::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
 .nav-button--active svg {
   color: var(--accent);
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 2px;
+  color: var(--black);
+  background: var(--accent);
+  border-radius: 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Slim top-header status group: a connection pill + a compact connect/refresh
+   affordance that lives on every tab (the full connection panel is Now-only). */
+.topbar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.connect-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 31px;
+  padding: 0 11px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.connect-chip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.connect-chip svg {
+  color: var(--accent);
+}
+
+/* Fleet Control confirmation bar for state-changing verbs. */
+.confirm-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border));
+  border-radius: var(--radius);
+}
+
+.confirm-bar strong {
+  color: var(--bright);
+}
+
+.confirm-bar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* In-app notification center feed. */
+.feed-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feed-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.feed-item--new {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent) 6%, rgba(255, 255, 255, 0.025));
+}
+
+.feed-item svg {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.feed-item--ok svg {
+  color: var(--accent);
+}
+
+.feed-item--warn svg {
+  color: var(--warn);
+}
+
+.feed-item--error svg {
+  color: var(--error);
+}
+
+.feed-item__body {
+  min-width: 0;
+}
+
+.feed-item__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feed-item__head strong {
+  color: var(--bright);
+}
+
+.feed-item__pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.feed-item p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.feed-item__time {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .hero-strip {
@@ -164,9 +351,9 @@ code {
 
 .hero-strip h1 {
   max-width: 760px;
-  margin: 14px 0 12px;
+  margin: 0 0 12px;
   color: var(--bright);
-  font-family: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(2.5rem, 6vw, 4.7rem);
   line-height: 1;
   letter-spacing: 0;
@@ -202,7 +389,7 @@ code {
 .compact-list span,
 .dot-label,
 .status-pill {
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .connection-panel label {
@@ -244,7 +431,9 @@ code {
 
 .icon-button,
 .secondary-button,
-.text-button {
+.text-button,
+.danger-button,
+.warn-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -267,6 +456,39 @@ code {
 
 .icon-button:hover {
   background: #5bf5df;
+}
+
+/* Destructive affirmative (Yes, pause / Yes, run): never the benign teal. It
+   carries the amber confirm-bar tint so a state-changing confirm is visually
+   distinct from a Refresh/Draft-it primary. */
+.danger-button {
+  padding: 0 14px;
+  color: var(--black);
+  background: var(--warn);
+  border: 1px solid transparent;
+}
+
+.danger-button:hover {
+  background: color-mix(in srgb, var(--warn) 86%, #fff);
+}
+
+/* Service re-activation (Resume): an amber-outlined action, distinct from both
+   the benign teal primary and the plain secondary. */
+.warn-button {
+  padding: 0 12px;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 46%, var(--border-strong));
+}
+
+.warn-button:hover {
+  color: var(--black);
+  background: var(--warn);
+  border-color: var(--warn);
+}
+
+.warn-button svg {
+  color: currentColor;
 }
 
 .secondary-button {
@@ -334,6 +556,40 @@ code {
   background: var(--blue);
 }
 
+/* "running" is in-progress, not a fault: blue + a soft pulse, distinct from the
+   amber "warn" tone that signals a problem. */
+.status-pill--running span,
+.dot-label--running span {
+  color: var(--blue);
+  background: var(--blue);
+  animation: status-pulse 1.6s ease-in-out infinite;
+}
+
+.status-pill--running,
+.dot-label--running {
+  color: var(--blue);
+}
+
+/* Live/ok dots get a gentle pulse too so a healthy fleet reads as alive. The
+   existing teal glow stays as the resting shadow; the pulse rides on top. */
+.status-pill--ok span,
+.dot-label--ok span {
+  color: var(--accent);
+  animation: status-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px 0 currentColor;
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 12px 3px currentColor;
+    opacity: 0.7;
+  }
+}
+
 .notice-panel {
   display: flex;
   align-items: center;
@@ -357,6 +613,60 @@ code {
 
 .notice-panel--warn svg {
   color: var(--warn);
+}
+
+/* Connection failure is an error, not a soft warning: give it the red tone so a
+   403 / connection-refused does not read as a benign amber notice. */
+.notice-panel--error {
+  border-color: color-mix(in srgb, var(--error) 50%, var(--border-strong));
+  background: color-mix(in srgb, var(--error) 6%, var(--surface));
+}
+
+.notice-panel--error svg {
+  color: var(--error);
+}
+
+.notice-panel__body {
+  min-width: 0;
+}
+
+/* "Details" disclosure keeps the raw status line / stderr out of the way: the
+   plain-language guidance leads, the technical text is one click away. */
+.notice-details {
+  margin-top: 8px;
+}
+
+.notice-details summary {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.notice-details summary:hover {
+  color: var(--text);
+}
+
+.notice-details pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 200px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--black);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .inline-notice {
@@ -410,7 +720,7 @@ code {
   display: block;
   margin-top: 8px;
   color: var(--bright);
-  font-family: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
+  font-family: var(--font-display);
   font-size: 2.25rem;
   line-height: 1;
 }
@@ -420,6 +730,23 @@ code {
   margin-top: 9px;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+/* Metric cards that route to a tab are real buttons: left-aligned, full bleed,
+   with a hover affordance so it reads as clickable. */
+.metric-card--link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.metric-card--link:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+  transform: translateY(-2px);
 }
 
 .dashboard-grid {
@@ -460,7 +787,7 @@ code {
 .panel-header h2 {
   margin: 4px 0 0;
   color: var(--bright);
-  font-family: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
+  font-family: var(--font-display);
   font-size: 1.55rem;
   line-height: 1.2;
   letter-spacing: 0;
@@ -590,7 +917,7 @@ code {
 
 .console-agent-row label {
   color: var(--muted);
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -877,7 +1204,7 @@ dd {
   background: var(--black);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.82rem;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -890,17 +1217,34 @@ dd {
 
 .empty-state {
   display: grid;
-  justify-items: start;
+  justify-items: center;
+  text-align: center;
   gap: 8px;
-  padding: 20px;
+  padding: 28px 20px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.02);
   border: 1px dashed var(--border);
   border-radius: var(--radius);
 }
 
-.empty-state svg {
+/* Tone drives the icon color. Neutral (default) is a muted "nothing yet" — NOT
+   the teal success check that previously fronted every empty state, including
+   failures. "ok" is genuinely-good. "error" is failure-shaped emptiness. */
+.empty-state--neutral svg {
+  color: var(--muted);
+}
+
+.empty-state--ok svg {
   color: var(--accent);
+}
+
+.empty-state--error {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+}
+
+.empty-state--error svg {
+  color: var(--error);
 }
 
 .empty-state strong {
@@ -909,10 +1253,11 @@ dd {
 
 .empty-state p {
   margin: 0;
+  max-width: 46ch;
 }
 
 .empty-state--compact {
-  padding: 14px;
+  padding: 18px 14px;
 }
 
 @media (max-width: 1040px) {
@@ -1008,5 +1353,223 @@ dd {
   .icon-button,
   .text-button {
     width: 100%;
+  }
+}
+
+/* Compose / spec-authoring panel */
+.compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.compose-form label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.compose-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  padding: 14px 16px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.compose-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.compose-form__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.compose-hint {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.compose-questions {
+  margin-top: 8px;
+}
+
+.compose-question-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compose-question-list li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: start;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.compose-question-list li span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.compose-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.compose-score strong {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  line-height: 1;
+  color: var(--bright);
+}
+
+.compose-score span {
+  color: var(--muted);
+}
+
+.compose-score small {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  background: var(--surface-3);
+}
+
+.compose-score--ok strong {
+  color: var(--accent);
+}
+
+.compose-score--ok small {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.compose-score--warn strong,
+.compose-score--warn small {
+  color: var(--warn);
+}
+
+.compose-score--error strong,
+.compose-score--error small {
+  color: var(--error);
+}
+
+.compose-summary {
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.compose-findings {
+  margin-top: 14px;
+}
+
+.compose-findings ul {
+  list-style: none;
+  margin: 8px 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compose-finding {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+
+.compose-finding--error svg {
+  color: var(--error);
+}
+
+.compose-finding--warning svg {
+  color: var(--warn);
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. Subtle by design. Everything here is wrapped by the reduced-motion
+   media query at the bottom, which disables it entirely for users who ask.
+   --------------------------------------------------------------------------- */
+
+/* Spinning refresh icon while a fetch is in flight. */
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Gentle fade + rise on mount for the active view and its panels, so tab
+   switches and first paint feel composed instead of snapping in. */
+.animate-rise,
+.panel,
+.metric-card,
+.command-result {
+  animation: rise-in 220ms ease-out both;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spin,
+  .status-pill--ok span,
+  .dot-label--ok span,
+  .status-pill--running span,
+  .dot-label--running span {
+    animation: none !important;
+  }
+
+  .metric-card--link:hover {
+    transform: none;
   }
 }
