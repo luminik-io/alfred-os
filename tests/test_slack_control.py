@@ -602,6 +602,24 @@ def test_operator_can_promote_memory_candidate() -> None:
     ]
 
 
+def test_operator_reject_memory_note_starting_with_dash_is_literal() -> None:
+    runner = FakeRunner()
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=runner,
+        operator_user_id="UOPERATOR",
+    )
+
+    result = handler.handle(
+        "memory reject cand-1 --too vague for future recall",
+        trusted=True,
+        actor_user_id="UOPERATOR",
+    )
+
+    assert result.action == "memory_reject"
+    assert "--note=--too vague for future recall" in runner.calls[-1]
+
+
 def test_memory_redis_status_is_slack_readable() -> None:
     runner = FakeRunner()
     result = _handler(runner).handle("memory redis", trusted=True)

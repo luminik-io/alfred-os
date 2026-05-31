@@ -559,7 +559,7 @@ class SlackControlHandler:
             )
         argv = [action, candidate_id, "--reviewer", actor or "operator", "--json"]
         if note:
-            argv.extend(["--note", note])
+            argv.append(f"--note={note}")
         result = self._run_brain(argv)
         if result.returncode != 0:
             err = (result.stderr or result.stdout or "unknown error").strip()
@@ -850,9 +850,11 @@ def render_help() -> str:
             "- `draft <id>`: convert a captured follow-up to a local draft.",
             "- `handled <id>`: operator-only: archive a follow-up without drafting.",
             "- `memory` / `memories`: review memory candidates and promotion suggestions.",
+            "- `memory promotions`: show high-confidence memory candidates.",
             "- `remember [repo:] <lesson>`: stage a reviewable memory candidate.",
             "- `memory promote <id>` / `memory reject <id>`: operator-only memory review.",
             "- `memory redis`: check optional Redis Agent Memory Server.",
+            "- `memory sync`: preview Redis sync; `memory sync now` writes reviewed lessons.",
             "- `trusted`: list Slack users who can revise plans.",
             "- `trust <@user>`: operator-only: add a planning collaborator.",
             "- `untrust <@user>`: operator-only: remove a local collaborator.",
