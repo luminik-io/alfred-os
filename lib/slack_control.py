@@ -1154,8 +1154,11 @@ def _parse_remember_payload(raw: str) -> tuple[str, str] | None:
             body = tail.strip()
         else:
             before, sep, after = text.partition(":")
-            if sep and _is_memory_repo_token(before.strip()):
-                repo = before.strip()
+            if sep and (before.strip() == "global" or "/" in before):
+                repo_candidate = before.strip()
+                if not _is_memory_repo_token(repo_candidate):
+                    return None
+                repo = repo_candidate
                 body = after.strip()
     if not _is_memory_repo_token(repo) or not body:
         return None
@@ -1163,7 +1166,24 @@ def _parse_remember_payload(raw: str) -> tuple[str, str] | None:
 
 
 def _is_memory_repo_token(value: str) -> bool:
-    return value == "global" or bool(_REPO_TOKEN_RE.match(value))
+    if value == "global":
+        return True
+    if not _REPO_TOKEN_RE.match(value):
+        return False
+    owner, repo = value.split("/", 1)
+    if "." in owner:
+        return False
+    return _is_safe_repo_segment(owner) and _is_safe_repo_segment(repo)
+
+
+def _is_safe_repo_segment(value: str) -> bool:
+    return not (
+        not value
+        or value in {".", ".."}
+        or value.startswith(".")
+        or value.endswith(".")
+        or ".." in value
+    )
 
 
 def _json_or_none(raw: str) -> Any | None:

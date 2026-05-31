@@ -545,6 +545,24 @@ def test_remember_without_repo_uses_global_scope() -> None:
     assert runner.calls[-1][-3] == "global"
 
 
+def test_remember_rejects_pathlike_repo_scope() -> None:
+    runner = FakeRunner()
+    handler = _handler(runner)
+
+    colon = handler.handle(
+        "remember ../etc: keep this out of argv",
+        trusted=True,
+    )
+    equals = handler.handle(
+        "remember repo=../etc keep this out of argv",
+        trusted=True,
+    )
+
+    assert colon.action == "usage"
+    assert equals.action == "usage"
+    assert runner.calls == []
+
+
 def test_untrusted_memory_commands_are_ignored() -> None:
     runner = FakeRunner()
     handler = _handler(runner)
