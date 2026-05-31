@@ -1002,13 +1002,6 @@ def _normalized_resolved_questions(value: str) -> str:
     return "None."
 
 
-def _summary_for(readiness: IssueReadinessResult, amendments: tuple[str, ...]) -> str:
-    state = "ready for implementation" if readiness.ok else "needs scope before implementation"
-    if amendments:
-        return f"{len(amendments)} amendment(s) applied; draft {state}."
-    return f"No structured amendments found; draft {state}."
-
-
 def _message_lines(message: str) -> list[str]:
     return [line.strip() for line in message.splitlines() if line.strip()]
 
