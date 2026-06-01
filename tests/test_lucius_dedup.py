@@ -236,6 +236,8 @@ def test_worktree_risk_reason_detects_ahead_branch(monkeypatch, tmp_path):
             )
         if cmd[:4] == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n", stderr="")
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if cmd[:3] == ["git", "rev-list", "--count"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="1\n", stderr="")
         raise AssertionError(f"unexpected command: {cmd}")
@@ -261,6 +263,8 @@ def test_worktree_risk_reason_uses_remote_head_when_upstream_missing(monkeypatch
             return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="no upstream")
         if cmd[:3] == ["git", "symbolic-ref", "--quiet"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="origin/master\n", stderr="")
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if cmd[:3] == ["git", "rev-list", "--count"]:
             rev_list_refs.append(cmd[3])
             return subprocess.CompletedProcess(cmd, 0, stdout="0\n", stderr="")
@@ -270,6 +274,43 @@ def test_worktree_risk_reason_uses_remote_head_when_upstream_missing(monkeypatch
 
     assert ar.worktree_risk_reason(wt) is None
     assert rev_list_refs == ["origin/master..HEAD"]
+
+
+def test_worktree_risk_reason_uses_remote_head_when_upstream_ref_is_gone(monkeypatch, tmp_path):
+    import agent_runner as ar
+    import agent_runner.github as gh
+
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".git").write_text("gitdir: somewhere")
+    rev_list_refs: list[str] = []
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="## branch...origin/deleted [gone]\n", stderr=""
+            )
+        if cmd[:4] == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/deleted\n", stderr="")
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"]:
+            ref = cmd[4]
+            return subprocess.CompletedProcess(
+                cmd,
+                0 if ref == "origin/main" else 128,
+                stdout="",
+                stderr="" if ref == "origin/main" else "missing",
+            )
+        if cmd[:3] == ["git", "symbolic-ref", "--quiet"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n", stderr="")
+        if cmd[:3] == ["git", "rev-list", "--count"]:
+            rev_list_refs.append(cmd[3])
+            return subprocess.CompletedProcess(cmd, 0, stdout="0\n", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(gh, "run", fake_run)
+
+    assert ar.worktree_risk_reason(wt) is None
+    assert rev_list_refs == ["origin/main..HEAD"]
 
 
 def test_create_recovery_ref_sanitizes_branch_and_updates_ref(monkeypatch, tmp_path):
@@ -283,6 +324,8 @@ def test_create_recovery_ref_sanitizes_branch_and_updates_ref(monkeypatch, tmp_p
     def fake_run(cmd, **kwargs):
         if cmd[:4] == ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n", stderr="")
+        if cmd[:4] == ["git", "rev-parse", "--verify", "--quiet"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if cmd[:3] == ["git", "rev-list", "--count"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="2\n", stderr="")
         if cmd[:3] == ["git", "rev-parse", "--short"]:

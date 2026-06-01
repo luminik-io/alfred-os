@@ -397,13 +397,22 @@ def push_current_branch(
 
 def _worktree_comparison_base(wt: Path, fallback: str | None) -> str | None:
     """Return the best ref to compare ``HEAD`` against for safety checks."""
+
+    def ref_exists(ref: str) -> bool:
+        verify = run(
+            ["git", "rev-parse", "--verify", "--quiet", ref],
+            cwd=str(wt),
+            timeout=10,
+        )
+        return verify.returncode == 0
+
     upstream = run(
         ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
         cwd=str(wt),
         timeout=10,
     )
     upstream_ref = (upstream.stdout or "").strip()
-    if upstream.returncode == 0 and upstream_ref:
+    if upstream.returncode == 0 and upstream_ref and ref_exists(upstream_ref):
         return upstream_ref
 
     remote_head = run(
@@ -412,13 +421,11 @@ def _worktree_comparison_base(wt: Path, fallback: str | None) -> str | None:
         timeout=10,
     )
     remote_head_ref = (remote_head.stdout or "").strip()
-    if remote_head.returncode == 0 and remote_head_ref:
+    if remote_head.returncode == 0 and remote_head_ref and ref_exists(remote_head_ref):
         return remote_head_ref
 
-    if fallback:
-        verify = run(["git", "rev-parse", "--verify", fallback], cwd=str(wt), timeout=10)
-        if verify.returncode == 0:
-            return fallback
+    if fallback and ref_exists(fallback):
+        return fallback
     return None
 
 
