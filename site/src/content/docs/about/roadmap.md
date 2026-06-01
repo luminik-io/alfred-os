@@ -27,6 +27,11 @@ Reliability and first-run trust polish.
 - Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
 - Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions.
 - Optional Redis AMS provider and sync: `ALFRED_MEMORY_PROVIDERS=fleet,redis` lets advanced operators test external semantic memory without changing the default local install; `alfred brain redis-status` and `alfred brain redis-sync` make the bridge inspectable and explicit.
+- Slack memory curation: `memory` reviews pending candidates and promotion
+  suggestions, `remember [repo:] <lesson>` queues a candidate from
+  conversation, and operator-only `memory promote <id>` / `memory reject <id>`
+  decide what enters future recall. `memory redis` and `memory sync` keep Redis
+  AMS explicit.
 - Planning memory loop: the Planning tab recalls promoted repo lessons while drafting, embeds prompt-safe hints into saved specs, and proposes reviewable spec-to-issue memory candidates when a spec is saved.
 - `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.

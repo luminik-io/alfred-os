@@ -11,6 +11,11 @@ command verb** to act on the fleet without leaving Slack:
 * ``plan <id>``            -> planning draft or follow-up detail
 * ``draft <id>``           -> convert a captured follow-up to a local draft
 * ``handled <id>``         -> operator-only: archive a captured follow-up
+* ``memory``               -> reviewable memory queue + promotion suggestions
+* ``remember ...``         -> stage a reviewable memory candidate from Slack
+* ``memory promote <id>``  -> operator-only: promote a memory candidate
+* ``memory reject <id>``   -> operator-only: reject a memory candidate
+* ``memory redis``         -> check optional Redis Agent Memory Server
 * ``trusted``              -> list Slack users who can collaborate on plans
 * ``trust <@user>``        -> operator-only: add a trusted collaborator
 * ``untrust <@user>``      -> operator-only: remove a local collaborator
@@ -90,6 +95,9 @@ _COMMANDS: frozenset[str] = frozenset(
         "plan",
         "draft",
         "handled",
+        "memory",
+        "memories",
+        "remember",
         "trusted",
         "trust",
         "untrust",
@@ -98,6 +106,8 @@ _COMMANDS: frozenset[str] = frozenset(
 )
 
 _PLAN_ID_RE = re.compile(r"^(?!\.)[A-Za-z0-9._-]{1,180}$")
+_MEMORY_ID_RE = re.compile(r"^(?!-)[A-Za-z0-9:_-]{1,96}$")
+_REPO_TOKEN_RE = re.compile(r"^(?!-)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 CommandRunner = Callable[[list[str]], "RunResult"]
 
@@ -144,10 +154,12 @@ def parse_control_command(text: str) -> ControlCommand | None:
     tokens = cleaned.split()
     if not tokens:
         return None
-    verb = tokens[0].lstrip("/!").lower()
+    first_token = tokens[0]
+    verb = first_token.lstrip("/!").lower()
     if verb not in _COMMANDS:
         return None
     args = tokens[1:]
+    rest = cleaned[len(first_token) :].strip()
 
     if verb in {"pause", "resume"}:
         # Exactly one argument, and it must be a valid codename. Extra words
@@ -169,6 +181,14 @@ def parse_control_command(text: str) -> ControlCommand | None:
             return None
         return ControlCommand(verb=verb, arg=args[0])
 
+    if verb in {"memory", "memories"}:
+        return ControlCommand(verb="memory", arg=rest)
+
+    if verb == "remember":
+        if not rest:
+            return None
+        return ControlCommand(verb=verb, arg=rest)
+
     # status / runs / trusted / help take no required argument; ignore any
     # trailing words so "status please" still reads as a status request.
     return ControlCommand(verb=verb)
@@ -186,6 +206,11 @@ def is_valid_codename(value: str) -> bool:
 def is_valid_plan_id(value: str) -> bool:
     """True iff ``value`` is a safe local planning inbox id."""
     return bool(_PLAN_ID_RE.match(value or ""))
+
+
+def is_valid_memory_id(value: str) -> bool:
+    """True iff ``value`` is a safe memory candidate id for CLI argv."""
+    return bool(_MEMORY_ID_RE.match(value or ""))
 
 
 class SlackControlHandler:
@@ -262,6 +287,10 @@ class SlackControlHandler:
             return self._run_followup_draft(command.arg)
         if command.verb == "handled":
             return self._run_followup_handled(command.arg, actor_user_id)
+        if command.verb == "memory":
+            return self._run_memory(command.arg, actor_user_id)
+        if command.verb == "remember":
+            return self._run_remember(command.arg, actor_user_id)
         if command.verb == "trusted":
             return self._run_trusted()
         if command.verb in {"trust", "untrust"}:
@@ -397,6 +426,234 @@ class SlackControlHandler:
             "handled",
             text=f"*Marked follow-up handled:* `{plan_id}`.\n\nArchived as `{archived.name}`.",
         )
+
+    def _run_memory(self, raw_args: str, actor_user_id: str | None) -> ControlResult:
+        args = raw_args.split()
+        subcommand = args[0].lower() if args else "review"
+        rest = args[1:]
+
+        if subcommand in {"review", "queue", "candidates", "candidate"}:
+            candidates, error = self._memory_candidates(limit=5)
+            if candidates is None:
+                return _memory_unavailable(error)
+            promotions, _promotion_error = self._memory_promotions(limit=5)
+            return ControlResult(
+                True,
+                "memory",
+                text=render_memory_review(candidates, promotions or []),
+            )
+
+        if subcommand in {"promotions", "promotable"}:
+            promotions, error = self._memory_promotions(limit=10)
+            if promotions is None:
+                return _memory_unavailable(error)
+            return ControlResult(
+                True,
+                "memory_promotions",
+                text=render_memory_promotions(promotions),
+            )
+
+        if subcommand == "redis":
+            if rest and rest[0].lower() == "sync":
+                return self._run_memory_sync(rest[1:], actor_user_id)
+            health, error = self._memory_redis_status()
+            if health is None:
+                return _memory_unavailable(error)
+            return ControlResult(True, "memory_redis", text=render_redis_status(health))
+
+        if subcommand == "sync":
+            return self._run_memory_sync(rest, actor_user_id)
+
+        if subcommand in {"promote", "approve"}:
+            if len(rest) != 1 or not is_valid_memory_id(rest[0]):
+                return ControlResult(True, "usage", text=render_memory_usage())
+            return self._run_memory_review_action("promote", rest[0], "", actor_user_id)
+
+        if subcommand == "reject":
+            if not rest or not is_valid_memory_id(rest[0]):
+                return ControlResult(True, "usage", text=render_memory_usage())
+            note = " ".join(rest[1:]).strip()
+            return self._run_memory_review_action("reject", rest[0], note, actor_user_id)
+
+        return ControlResult(True, "usage", text=render_memory_usage())
+
+    def _run_remember(self, raw_args: str, actor_user_id: str | None) -> ControlResult:
+        parsed = _parse_remember_payload(raw_args)
+        if parsed is None:
+            return ControlResult(True, "usage", text=render_remember_usage())
+        repo, body = parsed
+        attempts = [
+            [
+                "propose",
+                "--tag",
+                "slack",
+                "--source",
+                "slack",
+                "--evidence",
+                f"Slack memory note from <@{normalize_slack_user_id(actor_user_id) or 'trusted-user'}>",
+                "--confidence",
+                "0.70",
+                "--json",
+                "operator",
+                repo,
+                "--",
+                body,
+            ],
+            [
+                "propose",
+                "--agent",
+                "operator",
+                "--repo",
+                repo,
+                "--topic",
+                "slack",
+                "--body",
+                body,
+                "--evidence",
+                json.dumps(
+                    {
+                        "source": "slack",
+                        "actor": normalize_slack_user_id(actor_user_id) or "trusted-user",
+                    }
+                ),
+                "--json",
+            ],
+        ]
+        result = self._run_brain_first_success(attempts)
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "unknown error").strip()
+            return ControlResult(
+                True,
+                "remember_failed",
+                text=f"*Could not queue memory candidate.*\n\n```{_short(err, 700)}```",
+                detail=err,
+            )
+        candidate_id = _extract_candidate_id(result.stdout)
+        id_line = f"\n- Candidate: `{candidate_id}`" if candidate_id else ""
+        return ControlResult(
+            True,
+            "remember",
+            text=(
+                "*Memory candidate queued for review*\n\n"
+                f"- Repo: `{repo}`{id_line}\n"
+                f"- Note: {_short(body, 240)}\n\n"
+                "It is not prompt context yet. The operator can promote it with "
+                f"`memory promote {candidate_id or '<id>'}` after review."
+            ),
+        )
+
+    def _run_memory_review_action(
+        self,
+        action: str,
+        candidate_id: str,
+        note: str,
+        actor_user_id: str | None,
+    ) -> ControlResult:
+        actor = normalize_slack_user_id(actor_user_id)
+        if not self.operator_user_id or actor != self.operator_user_id:
+            return ControlResult(
+                True,
+                f"memory_{action}_rejected",
+                text="*Only the operator can promote or reject memory candidates.*\n\nNothing changed.",
+                detail="actor is not the operator",
+            )
+        argv = [action, candidate_id, "--reviewer", actor or "operator", "--json"]
+        if note:
+            argv.append(f"--note={note}")
+        result = self._run_brain(argv)
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "unknown error").strip()
+            return ControlResult(
+                True,
+                f"memory_{action}_failed",
+                text=f"*Could not {action} memory candidate* `{candidate_id}`.\n\n```{_short(err, 700)}```",
+                detail=err,
+            )
+        past = "promoted" if action == "promote" else "rejected"
+        return ControlResult(
+            True,
+            f"memory_{action}",
+            text=f"*Memory candidate {past}:* `{candidate_id}`.",
+        )
+
+    def _run_memory_sync(
+        self,
+        args: list[str],
+        actor_user_id: str | None,
+    ) -> ControlResult:
+        actual = bool(args and args[0].lower() in {"now", "run", "write"})
+        actor = normalize_slack_user_id(actor_user_id)
+        if actual and (not self.operator_user_id or actor != self.operator_user_id):
+            return ControlResult(
+                True,
+                "memory_sync_rejected",
+                text="*Only the operator can sync memory to Redis AMS.*\n\nNothing changed.",
+                detail="actor is not the operator",
+            )
+        argv = ["redis-sync", "--json"]
+        if not actual:
+            argv.append("--dry-run")
+        result = self._run_brain(argv)
+        payload = _json_or_none(result.stdout)
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "unknown error").strip()
+            return ControlResult(
+                True,
+                "memory_sync_failed",
+                text=f"*Redis memory sync failed.*\n\n```{_short(err, 700)}```",
+                detail=err,
+            )
+        if not isinstance(payload, dict):
+            return ControlResult(True, "memory_sync", text=_short(result.stdout, 900))
+        return ControlResult(True, "memory_sync", text=render_redis_sync(payload))
+
+    def _memory_candidates(self, *, limit: int) -> tuple[list[dict[str, Any]] | None, str]:
+        data, error = self._run_brain_json_first(
+            [
+                ["candidates", "--status", "candidate", "--limit", str(limit), "--json"],
+                ["candidates", "--status", "pending", "--limit", str(limit), "--json"],
+            ]
+        )
+        if data is None:
+            return None, error
+        return _ensure_dict_list(data), ""
+
+    def _memory_promotions(self, *, limit: int) -> tuple[list[dict[str, Any]] | None, str]:
+        data, error = self._run_brain_json_first([["promotions", "--limit", str(limit), "--json"]])
+        if data is None:
+            return None, error
+        return _ensure_dict_list(data), ""
+
+    def _memory_redis_status(self) -> tuple[dict[str, Any] | None, str]:
+        result = self._run_brain(["redis-status", "--json"])
+        payload = _json_or_none(result.stdout)
+        if isinstance(payload, dict):
+            return payload, ""
+        return None, (result.stderr or result.stdout or "Redis status unavailable").strip()
+
+    def _run_brain_json_first(
+        self,
+        attempts: list[list[str]],
+    ) -> tuple[Any | None, str]:
+        errors: list[str] = []
+        for argv in attempts:
+            result = self._run_brain(argv)
+            payload = _json_or_none(result.stdout)
+            if result.returncode == 0 and payload is not None:
+                return payload, ""
+            errors.append((result.stderr or result.stdout or "").strip())
+        return None, "\n".join(e for e in errors if e) or "alfred brain returned no JSON"
+
+    def _run_brain_first_success(self, attempts: list[list[str]]) -> RunResult:
+        last = RunResult(returncode=1, stderr="no attempts")
+        for argv in attempts:
+            last = self._run_brain(argv)
+            if last.returncode == 0:
+                return last
+        return last
+
+    def _run_brain(self, argv: list[str]) -> RunResult:
+        return self._runner([self.alfred_bin, "brain", *argv])
 
     def _get_plan(self, plan_id: str) -> PlanDraft | None:
         try:
@@ -575,6 +832,8 @@ def _usage_for_malformed(text: str) -> str | None:
         if len(cleaned.split()) > 2:
             return None
         return f"*Usage:* `{first} <plan-id>`\n\nUse `plans` to find the exact local inbox id."
+    if first == "remember":
+        return render_remember_usage()
     return render_help()
 
 
@@ -584,18 +843,24 @@ def render_help() -> str:
             "*Alfred control commands*",
             "",
             "Lead a message with one of these verbs (DM me or @-mention me):",
-            "- `status` — fleet health (loaded agents, pauses, locks).",
-            "- `runs` — recent firings per agent.",
-            "- `plans` — local planning inbox.",
-            "- `plan <id>` — inspect a draft or captured follow-up.",
-            "- `draft <id>` — convert a captured follow-up to a local draft.",
-            "- `handled <id>` — operator-only: archive a follow-up without drafting.",
-            "- `trusted` — list Slack users who can revise plans.",
-            "- `trust <@user>` — operator-only: add a planning collaborator.",
-            "- `untrust <@user>` — operator-only: remove a local collaborator.",
-            "- `pause <codename>` — stop scheduled firings for one agent (or `all`).",
-            "- `resume <codename>` — reverse a pause.",
-            "- `help` — show this list.",
+            "- `status`: fleet health (loaded agents, pauses, locks).",
+            "- `runs`: recent firings per agent.",
+            "- `plans`: local planning inbox.",
+            "- `plan <id>`: inspect a draft or captured follow-up.",
+            "- `draft <id>`: convert a captured follow-up to a local draft.",
+            "- `handled <id>`: operator-only: archive a follow-up without drafting.",
+            "- `memory` / `memories`: review memory candidates and promotion suggestions.",
+            "- `memory promotions`: show high-confidence memory candidates.",
+            "- `remember [repo:] <lesson>`: stage a reviewable memory candidate.",
+            "- `memory promote <id>` / `memory reject <id>`: operator-only memory review.",
+            "- `memory redis`: check optional Redis Agent Memory Server.",
+            "- `memory sync`: preview Redis sync; `memory sync now` writes reviewed lessons.",
+            "- `trusted`: list Slack users who can revise plans.",
+            "- `trust <@user>`: operator-only: add a planning collaborator.",
+            "- `untrust <@user>`: operator-only: remove a local collaborator.",
+            "- `pause <codename>`: stop scheduled firings for one agent (or `all`).",
+            "- `resume <codename>`: reverse a pause.",
+            "- `help`: show this list.",
             "",
             "Anything without a leading command verb is treated as a planning "
             "request, not a control action.",
@@ -726,9 +991,222 @@ def render_plan_detail(plan: PlanDraft) -> str:
     return "\n".join(lines)
 
 
+def render_memory_review(
+    candidates: list[dict[str, Any]],
+    promotions: list[dict[str, Any]],
+) -> str:
+    lines = ["*Memory review*", ""]
+    if not candidates and not promotions:
+        lines.append("_No pending memory candidates or promotion suggestions._")
+    if candidates:
+        lines.append("*Pending candidates*")
+        for item in candidates[:5]:
+            lines.append(_render_memory_row(item))
+    if promotions:
+        if candidates:
+            lines.append("")
+        lines.append("*Suggested promotions*")
+        for item in promotions[:5]:
+            lines.append(_render_memory_row(item))
+    lines.extend(
+        [
+            "",
+            "Use `remember owner/repo: lesson` to queue a candidate.",
+            "The operator can run `memory promote <id>` or `memory reject <id>`. Redis is checked with `memory redis`.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_memory_promotions(items: list[dict[str, Any]]) -> str:
+    lines = ["*Memory promotion suggestions*", ""]
+    if not items:
+        lines.append("_No high-confidence promotion suggestions right now._")
+    else:
+        for item in items[:10]:
+            lines.append(_render_memory_row(item))
+    lines.extend(["", "Use `memory promote <id>` after reviewing the evidence."])
+    return "\n".join(lines)
+
+
+def render_redis_status(health: dict[str, Any]) -> str:
+    ok = bool(health.get("ok"))
+    lines = [
+        "*Redis Agent Memory Server*",
+        "",
+        f"- Status: {'ok' if ok else 'unavailable'}",
+        f"- URL: `{health.get('base_url') or 'unknown'}`",
+        f"- Namespace: `{health.get('namespace') or 'alfred'}`",
+    ]
+    response = health.get("response")
+    if isinstance(response, dict):
+        detail = response.get("status") or response.get("version") or response.get("service")
+        if detail:
+            lines.append(f"- Server: `{detail}`")
+    if not ok and health.get("error"):
+        lines.append(f"- Error: `{_short(str(health['error']), 180)}`")
+    lines.extend(
+        [
+            "",
+            "Redis AMS is optional. Alfred still uses local fleet-brain unless you explicitly configure and sync Redis memory.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_redis_sync(payload: dict[str, Any]) -> str:
+    dry_run = bool(payload.get("dry_run"))
+    matched = payload.get("matched", 0)
+    synced = payload.get("synced", 0)
+    failed = payload.get("failed") if isinstance(payload.get("failed"), list) else []
+    title = "Redis memory sync preview" if dry_run else "Redis memory sync complete"
+    lines = [
+        f"*{title}*",
+        "",
+        f"- Reviewed lessons matched: `{matched}`",
+        f"- {'Would sync' if dry_run else 'Synced'}: `{synced}`",
+    ]
+    if failed:
+        lines.append(f"- Failed: {', '.join(f'`{_short(str(x), 40)}`' for x in failed[:10])}")
+    if dry_run:
+        lines.append("")
+        lines.append("Run `memory sync now` to mirror reviewed lessons to Redis AMS.")
+    return "\n".join(lines)
+
+
+def render_memory_usage() -> str:
+    return "\n".join(
+        [
+            "*Memory commands*",
+            "",
+            "- `memory` / `memories`: pending candidates and suggested promotions.",
+            "- `memory promotions`: high-confidence candidates with evidence.",
+            "- `remember [owner/repo:] <lesson>`: queue a reviewable candidate.",
+            "- `memory promote <id>`: operator-only: trust a candidate for future recall.",
+            "- `memory reject <id> [note]`: operator-only: reject a noisy candidate.",
+            "- `memory redis`: check optional Redis AMS.",
+            "- `memory sync`: preview Redis sync; `memory sync now` writes reviewed lessons.",
+        ]
+    )
+
+
+def render_remember_usage() -> str:
+    return "\n".join(
+        [
+            "*Usage:* `remember [owner/repo:] <lesson>`",
+            "",
+            "Examples:",
+            "- `remember luminik-io/alfred-os: Slack planning replies must stay reviewable.`",
+            "- `remember Keep memory candidates out of prompt context until promoted.`",
+        ]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Rendering helpers
 # ---------------------------------------------------------------------------
+
+
+def _render_memory_row(item: dict[str, Any]) -> str:
+    candidate_id = _memory_row_id(item)
+    actor = item.get("codename") or item.get("agent") or item.get("source") or "operator"
+    repo = item.get("repo") or "global"
+    confidence = item.get("confidence")
+    score = item.get("score")
+    metric = ""
+    if isinstance(confidence, (int, float)):
+        metric = f" confidence={confidence:.2f}"
+    elif isinstance(score, (int, float)):
+        metric = f" score={score:.2f}"
+    body = _short(str(item.get("body") or item.get("summary") or item.get("topic") or ""), 180)
+    return f"- `{candidate_id}` — `{actor}/{repo}`{metric}: {body}"
+
+
+def _memory_row_id(item: dict[str, Any]) -> str:
+    return str(item.get("candidate_id") or item.get("id") or "?")
+
+
+def _memory_unavailable(error: str) -> ControlResult:
+    return ControlResult(
+        True,
+        "memory_unavailable",
+        text=f"*Memory unavailable*\n\n```{_short(error or 'No output', 700)}```",
+        detail=error,
+    )
+
+
+def _parse_remember_payload(raw: str) -> tuple[str, str] | None:
+    text = raw.strip()
+    if not text:
+        return None
+    repo = "global"
+    body = text
+    lower = text.lower()
+    if lower.startswith("repo="):
+        first, _, tail = text.partition(" ")
+        repo = first.split("=", 1)[1].rstrip(":").strip()
+        body = tail.strip()
+    else:
+        first, _, tail = text.partition(" ")
+        first_clean = first.rstrip(":")
+        explicit_scope = first.endswith(":") or "/" in first_clean
+        if explicit_scope and _is_memory_repo_token(first_clean) and tail.strip():
+            repo = first_clean
+            body = tail.strip()
+        else:
+            before, sep, after = text.partition(":")
+            if sep and (before.strip() == "global" or "/" in before):
+                repo_candidate = before.strip()
+                if not _is_memory_repo_token(repo_candidate):
+                    return None
+                repo = repo_candidate
+                body = after.strip()
+    if not _is_memory_repo_token(repo) or not body:
+        return None
+    return repo, body
+
+
+def _is_memory_repo_token(value: str) -> bool:
+    if value == "global":
+        return True
+    if not _REPO_TOKEN_RE.match(value):
+        return False
+    owner, repo = value.split("/", 1)
+    if "." in owner:
+        return False
+    return _is_safe_repo_segment(owner) and _is_safe_repo_segment(repo)
+
+
+def _is_safe_repo_segment(value: str) -> bool:
+    return not (
+        not value
+        or value in {".", ".."}
+        or value.startswith(".")
+        or value.endswith(".")
+        or ".." in value
+    )
+
+
+def _json_or_none(raw: str) -> Any | None:
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
+def _ensure_dict_list(data: Any) -> list[dict[str, Any]]:
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
+def _extract_candidate_id(raw: str) -> str | None:
+    payload = _json_or_none(raw)
+    if isinstance(payload, dict):
+        candidate_id = payload.get("id") or payload.get("candidate_id")
+        return str(candidate_id) if candidate_id else None
+    match = re.search(r"(?:memory_candidate id=|proposed candidate\s+)([A-Za-z0-9:_-]+)", raw)
+    return match.group(1) if match else None
 
 
 def _agent_state_label(agent: dict[str, Any]) -> str:
@@ -835,6 +1313,7 @@ __all__ = [
     "SlackControlHandler",
     "is_control_message",
     "is_valid_codename",
+    "is_valid_memory_id",
     "is_valid_plan_id",
     "parse_control_command",
     "render_fleet_status",
