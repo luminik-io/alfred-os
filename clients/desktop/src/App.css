@@ -407,6 +407,12 @@ code {
   gap: 10px;
 }
 
+.home-side {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
 .compose-stack,
 .logs-stack {
   display: grid;
@@ -426,6 +432,12 @@ code {
 
 .connection-panel {
   padding: 18px;
+}
+
+.connection-panel--compact {
+  width: min(100%, 420px);
+  padding: 14px;
+  box-shadow: none;
 }
 
 .connection-panel label,
@@ -1461,6 +1473,10 @@ dd {
   .agent-grid,
   .plan-grid {
     grid-template-columns: 1fr;
+  }
+
+  .home-side {
+    justify-items: stretch;
   }
 
   .server-row,

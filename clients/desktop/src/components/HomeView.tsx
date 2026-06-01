@@ -2,7 +2,7 @@ import { Brain, ListChecks, Pause, Play, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { supportsNativeActions } from "../api";
-import type { AttentionItem, NativeActionRequest, TabKey } from "../lib/uiTypes";
+import type { AttentionItem, NativeActionRequest, StatCard, TabKey } from "../lib/uiTypes";
 import type { Snapshot } from "../types";
 import {
   AttentionCard,
@@ -12,13 +12,11 @@ import {
   PanelHeader,
   SignalCard,
 } from "./atoms";
-import type { StatCard } from "./NowView";
 
-const METRIC_TAB: Record<string, TabKey> = {
+const METRIC_TAB: Partial<Record<string, TabKey>> = {
   Agents: "fleet",
   "Runs today": "logs",
   Planning: "compose",
-  Memory: "home",
 };
 
 export function HomeView({
@@ -26,6 +24,8 @@ export function HomeView({
   attention,
   baseUrl,
   stats,
+  serverInput,
+  setServerInput,
   nativeBusy,
   loading,
   onRunLocalAction,
@@ -36,10 +36,12 @@ export function HomeView({
   attention: AttentionItem[];
   baseUrl: string;
   stats: StatCard[];
+  serverInput: string;
+  setServerInput: (value: string) => void;
   nativeBusy: string | null;
   loading: boolean;
   onRunLocalAction: (request: NativeActionRequest) => void;
-  onRefresh: () => void;
+  onRefresh: (value?: string) => void;
   onSwitch: (tab: TabKey) => void;
 }) {
   const [pendingAll, setPendingAll] = useState<"pause" | "resume" | null>(null);
@@ -47,6 +49,8 @@ export function HomeView({
   const plans = snapshot?.plans.slice(0, 4) || [];
   const firings = snapshot?.firings.slice(0, 5) || [];
   const suggestions = snapshot?.actions.promotion_suggestions || [];
+  const memoryErrors = snapshot?.actions.errors || {};
+  const memoryErrorEntries = Object.entries(memoryErrors);
   const errorCount = useMemo(
     () => snapshot?.status.agents.filter((agent) => agent.status === "error").length || 0,
     [snapshot],
@@ -69,42 +73,69 @@ export function HomeView({
             memory review, and repair actions visible on this machine.
           </p>
         </div>
-        <div className="home-actions" aria-label="Primary actions">
-          <button className="icon-button" type="button" onClick={() => onSwitch("compose")}>
-            <ListChecks size={17} aria-hidden="true" />
-            <span>Draft work</span>
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={loading}
-            onClick={onRefresh}
-          >
-            <RefreshCw size={17} aria-hidden="true" className={loading ? "spin" : undefined} />
-            <span>{loading ? "Refreshing" : "Refresh"}</span>
-          </button>
-          {canRun ? (
-            <>
+        <div className="home-side">
+          <div className="home-actions" aria-label="Primary actions">
+            <button className="icon-button" type="button" onClick={() => onSwitch("compose")}>
+              <ListChecks size={17} aria-hidden="true" />
+              <span>Draft work</span>
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={loading}
+              onClick={() => onRefresh(serverInput)}
+            >
+              <RefreshCw size={17} aria-hidden="true" className={loading ? "spin" : undefined} />
+              <span>{loading ? "Refreshing" : "Refresh"}</span>
+            </button>
+            {canRun ? (
+              <>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={nativeBusy === "pause:all"}
+                  onClick={() => setPendingAll("pause")}
+                >
+                  <Pause size={17} aria-hidden="true" />
+                  <span>{nativeBusy === "pause:all" ? "Pausing" : "Pause all"}</span>
+                </button>
+                <button
+                  className="warn-button"
+                  type="button"
+                  disabled={nativeBusy === "resume:all"}
+                  onClick={() => setPendingAll("resume")}
+                >
+                  <Play size={17} aria-hidden="true" />
+                  <span>{nativeBusy === "resume:all" ? "Resuming" : "Resume all"}</span>
+                </button>
+              </>
+            ) : null}
+          </div>
+          <div className="connection-panel connection-panel--compact">
+            <label htmlFor="home-base-url">Local server</label>
+            <div className="server-row">
+              <input
+                id="home-base-url"
+                value={serverInput}
+                onChange={(event) => setServerInput(event.currentTarget.value)}
+                onBlur={() => setServerInput(serverInput.trim())}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    onRefresh(serverInput);
+                  }
+                }}
+                spellCheck={false}
+              />
               <button
                 className="secondary-button"
                 type="button"
-                disabled={nativeBusy === "pause:all"}
-                onClick={() => setPendingAll("pause")}
+                disabled={loading}
+                onClick={() => onRefresh(serverInput)}
               >
-                <Pause size={17} aria-hidden="true" />
-                <span>{nativeBusy === "pause:all" ? "Pausing" : "Pause all"}</span>
+                <span>Use</span>
               </button>
-              <button
-                className="warn-button"
-                type="button"
-                disabled={nativeBusy === "resume:all"}
-                onClick={() => setPendingAll("resume")}
-              >
-                <Play size={17} aria-hidden="true" />
-                <span>{nativeBusy === "resume:all" ? "Resuming" : "Resume all"}</span>
-              </button>
-            </>
-          ) : null}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -128,13 +159,22 @@ export function HomeView({
       <section className="metric-grid" aria-label="Summary metrics">
         {stats.map((stat) => {
           const target = METRIC_TAB[stat.label];
+          if (!target) {
+            return (
+              <div className="metric-card" key={stat.label}>
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
+                <small>{stat.detail}</small>
+              </div>
+            );
+          }
           return (
             <button
               className="metric-card metric-card--link"
               type="button"
               key={stat.label}
               onClick={() => onSwitch(target)}
-              aria-label={`${stat.label}: ${stat.value}. Open ${target}.`}
+              aria-label={`${stat.label}: ${stat.value}. Open ${stat.label}.`}
             >
               <span>{stat.label}</span>
               <strong>{stat.value}</strong>
@@ -190,7 +230,7 @@ export function HomeView({
         <div className="panel">
           <PanelHeader
             eyebrow="Memory"
-            title="Review candidates"
+            title={memoryErrorEntries.length ? "Memory needs repair" : "Review candidates"}
             actionLabel="Check"
             onAction={
               canRun
@@ -198,7 +238,16 @@ export function HomeView({
                 : undefined
             }
           />
-          {suggestions.length ? (
+          {memoryErrorEntries.length ? (
+            <dl className="health-list">
+              {memoryErrorEntries.map(([key, value]) => (
+                <div key={key}>
+                  <dt>{key}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : suggestions.length ? (
             <div className="attention-list">
               {suggestions.slice(0, 3).map((signal, index) => (
                 <SignalCard

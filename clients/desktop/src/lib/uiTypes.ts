@@ -2,6 +2,8 @@ import type { NativeAction } from "../types";
 
 export type TabKey = "home" | "compose" | "fleet" | "logs" | "setup";
 
+export type StatCard = { label: string; value: string; detail: string };
+
 export type FollowupAction = "convert" | "handled";
 
 export type ActionNotice = { tone: "ok" | "error"; message: string } | null;

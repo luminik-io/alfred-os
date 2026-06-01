@@ -35,6 +35,7 @@ function App() {
   const {
     baseUrl,
     serverInput,
+    setServerInput,
     snapshot,
     error,
     errorRaw,
@@ -142,10 +143,12 @@ function App() {
           attention={attention}
           baseUrl={baseUrl}
           stats={stats}
+          serverInput={serverInput}
+          setServerInput={setServerInput}
           nativeBusy={nativeBusy}
           loading={loading}
           onRunLocalAction={runLocalAction}
-          onRefresh={() => void refresh(serverInput)}
+          onRefresh={(value) => void refresh(value ?? serverInput)}
           onSwitch={setTab}
         />
       ) : null}
