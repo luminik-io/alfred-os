@@ -39,6 +39,7 @@ import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from server.formatting import friendly_time, short_firing_id  # noqa: E402
+from server.reader import default_state_root  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,16 @@ def empty_state(tmp_path: Path) -> Path:
     state = tmp_path / "state"
     state.mkdir()
     return state
+
+
+def test_default_state_root_accepts_legacy_hermes_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "legacy"))
+
+    assert default_state_root() == tmp_path / "legacy" / "state"
 
 
 @pytest.fixture()
