@@ -1125,6 +1125,8 @@ def render_memory_harvest(payload: dict[str, Any]) -> str:
                 f"- `{status}`{candidate_text} — `{item.get('codename')}/{item.get('repo')}`: "
                 f"{_short(str(item.get('body') or ''), 180)}"
             )
+        if len(proposals) > 8:
+            lines.append(f"- _{len(proposals) - 8} more candidate(s) not shown._")
     lines.append("")
     if not proposals:
         lines.append("Nothing was queued.")

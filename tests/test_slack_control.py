@@ -752,6 +752,38 @@ def test_empty_memory_harvest_apply_has_clear_empty_state() -> None:
     assert "Review queued candidates" not in result.text
 
 
+def test_memory_harvest_renderer_reports_overflow() -> None:
+    class ManyHarvestRunner(FakeRunner):
+        def _brain(self, argv: list[str]) -> RunResult:
+            if argv[0] == "harvest":
+                return RunResult(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "applied": False,
+                            "queued": 0,
+                            "duplicates": 0,
+                            "proposals": [
+                                {
+                                    "status": "preview",
+                                    "candidate_id": None,
+                                    "codename": "huntress",
+                                    "repo": "luminik-io/alfred-os",
+                                    "body": f"Repeated failure pattern {idx}",
+                                }
+                                for idx in range(10)
+                            ],
+                        }
+                    ),
+                )
+            return super()._brain(argv)
+
+    result = _handler(ManyHarvestRunner()).handle("memory harvest", trusted=True)
+
+    assert result.action == "memory_harvest"
+    assert "2 more candidate(s) not shown" in result.text
+
+
 def test_memory_harvest_apply_requires_operator() -> None:
     runner = FakeRunner()
     result = _handler(runner, operator_user_id="UOP").handle(

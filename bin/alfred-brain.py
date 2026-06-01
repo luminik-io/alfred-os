@@ -70,6 +70,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -786,8 +787,10 @@ def _harvest_candidate_id(pattern_key: str) -> str:
 
 
 def _looks_like_duplicate_candidate(exc: Exception) -> bool:
+    if not isinstance(exc, sqlite3.IntegrityError):
+        return False
     text = str(exc).lower()
-    return "unique" in text or "constraint" in text or "duplicate" in text
+    return "memory_candidates" in text and ("unique" in text or "constraint" in text)
 
 
 def _pattern_keys_from_tags(tags: object) -> set[str]:

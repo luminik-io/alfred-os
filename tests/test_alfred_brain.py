@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sqlite3
 import sys
 from datetime import UTC
 from pathlib import Path
@@ -418,6 +419,17 @@ def test_cli_harvest_previews_and_applies_failure_memories(
     duplicate = json.loads(capsys.readouterr().out)
     assert duplicate["duplicates"] == 1
     assert duplicate["proposals"][0]["status"] == "duplicate"
+
+
+def test_harvest_duplicate_detection_only_handles_sqlite_unique_errors(
+    cli_mod: ModuleType,
+) -> None:
+    assert cli_mod._looks_like_duplicate_candidate(
+        sqlite3.IntegrityError("UNIQUE constraint failed: memory_candidates.id")
+    )
+    assert not cli_mod._looks_like_duplicate_candidate(
+        RuntimeError("duplicate network response")
+    )
 
 
 def test_cli_workers_github_bundles_and_promotions(
