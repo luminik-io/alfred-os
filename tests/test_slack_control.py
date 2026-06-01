@@ -784,6 +784,43 @@ def test_memory_harvest_renderer_reports_overflow() -> None:
     assert "2 more candidate(s) not shown" in result.text
 
 
+def test_memory_harvest_apply_with_only_duplicates_is_not_labeled_queued() -> None:
+    class DuplicateHarvestRunner(FakeRunner):
+        def _brain(self, argv: list[str]) -> RunResult:
+            if argv[0] == "harvest":
+                return RunResult(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "applied": "--apply" in argv,
+                            "queued": 0,
+                            "duplicates": 1,
+                            "proposals": [
+                                {
+                                    "status": "duplicate",
+                                    "candidate_id": None,
+                                    "codename": "huntress",
+                                    "repo": "luminik-io/alfred-os",
+                                    "body": "Repeated failure pattern already queued.",
+                                }
+                            ],
+                        }
+                    ),
+                )
+            return super()._brain(argv)
+
+    result = _handler(DuplicateHarvestRunner(), operator_user_id="UOP").handle(
+        "memory harvest now",
+        trusted=True,
+        actor_user_id="UOP",
+    )
+
+    assert result.action == "memory_harvest"
+    assert "Memory harvest finished" in result.text
+    assert "No new candidates were queued" in result.text
+    assert "Memory harvest queued" not in result.text
+
+
 def test_memory_harvest_apply_requires_operator() -> None:
     runner = FakeRunner()
     result = _handler(runner, operator_user_id="UOP").handle(

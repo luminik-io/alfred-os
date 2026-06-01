@@ -761,6 +761,8 @@ def _existing_memory_keys(brain: FleetBrain) -> set[str]:
     for lesson in brain.list_lessons(limit=10_000):
         keys.update(_pattern_keys_from_tags(getattr(lesson, "tags", []) or []))
     for candidate in brain.list_memory_candidates(status=None, limit=10_000):
+        if str(getattr(candidate, "status", "") or "").lower() in {"rejected", "retired"}:
+            continue
         keys.update(_pattern_keys_from_tags(getattr(candidate, "tags", []) or []))
         key = _pattern_key_from_evidence(getattr(candidate, "evidence", "") or "")
         if key:
@@ -827,7 +829,7 @@ def _failure_pattern_memory_body(pattern: dict[str, Any]) -> str:
     body = (
         f"When {codename} repeatedly hits {subtype} on {repo}, treat it as "
         f"{classification.replace('_', ' ')} and {action.replace('_', ' ')} before rerunning. "
-        f"Seen {count} times."
+        f"Seen at least {count} times as of harvest time."
     )
     if latest:
         body = f"{body} Latest evidence: {_short(latest, 180)}"

@@ -690,48 +690,49 @@ class SlackPlanningListener:
         }
         ids: list[str] = []
         proposed_keys: list[str] = []
-        existing_keys = _draft_memory_candidate_keys(draft_path)
         propose_memory = writer.propose_memory
         use_modern_signature = _propose_memory_supports_modern_signature(propose_memory)
-        for repo in draft.repos or ["planning"]:
-            candidate_key = _slack_memory_candidate_key(repo)
-            if candidate_key in existing_keys:
-                continue
-            repo_evidence = {**evidence, "repo": repo, "candidate_key": candidate_key}
-            if use_modern_signature:
-                kwargs = {
-                    "codename": "planning",
-                    "repo": repo,
-                    "body": body,
-                    "tags": ["slack", "planning"],
-                    "severity": "info",
-                    "source": source,
-                    "evidence": json.dumps(repo_evidence, sort_keys=True),
-                    "confidence": 0.68,
-                }
-            else:
-                kwargs = {
-                    "agent": "planning",
-                    "repo": repo,
-                    "topic": "slack-planning",
-                    "body": body,
-                    "source": source,
-                    "evidence": [repo_evidence],
-                }
-            try:
-                candidate = propose_memory(**kwargs)
-            except Exception as exc:
-                print(
-                    f"[SLACK-LISTENER-WARN] could not queue {source} memory "
-                    f"candidate for {repo}: {exc}",
-                    file=sys.stderr,
-                )
-                continue
-            candidate_id = getattr(candidate, "id", candidate)
-            ids.append(str(candidate_id))
-            proposed_keys.append(candidate_key)
-        if proposed_keys:
-            _append_memory_candidate_keys(draft_path, proposed_keys)
+        with _draft_revision_lock(draft_path):
+            existing_keys = _draft_memory_candidate_keys(draft_path)
+            for repo in draft.repos or ["planning"]:
+                candidate_key = _slack_memory_candidate_key(repo)
+                if candidate_key in existing_keys:
+                    continue
+                repo_evidence = {**evidence, "repo": repo, "candidate_key": candidate_key}
+                if use_modern_signature:
+                    kwargs = {
+                        "codename": "planning",
+                        "repo": repo,
+                        "body": body,
+                        "tags": ["slack", "planning"],
+                        "severity": "info",
+                        "source": source,
+                        "evidence": json.dumps(repo_evidence, sort_keys=True),
+                        "confidence": 0.68,
+                    }
+                else:
+                    kwargs = {
+                        "agent": "planning",
+                        "repo": repo,
+                        "topic": "slack-planning",
+                        "body": body,
+                        "source": source,
+                        "evidence": [repo_evidence],
+                    }
+                try:
+                    candidate = propose_memory(**kwargs)
+                except Exception as exc:
+                    print(
+                        f"[SLACK-LISTENER-WARN] could not queue {source} memory "
+                        f"candidate for {repo}: {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
+                candidate_id = getattr(candidate, "id", candidate)
+                ids.append(str(candidate_id))
+                proposed_keys.append(candidate_key)
+            if proposed_keys:
+                _append_memory_candidate_keys(draft_path, proposed_keys)
         return tuple(ids)
 
     def _save_draft(

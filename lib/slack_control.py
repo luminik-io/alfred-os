@@ -1111,8 +1111,12 @@ def render_redis_sync(payload: dict[str, Any]) -> str:
 
 def render_memory_harvest(payload: dict[str, Any]) -> str:
     applied = bool(payload.get("applied"))
+    queued = int(payload.get("queued") or 0)
     proposals = _ensure_dict_list(payload.get("proposals"))
-    title = "Memory harvest queued" if applied else "Memory harvest preview"
+    if applied:
+        title = "Memory harvest queued" if queued > 0 else "Memory harvest finished"
+    else:
+        title = "Memory harvest preview"
     lines = [f"*{title}*", ""]
     if not proposals:
         lines.append("_No repeated failure patterns are ready to harvest._")
@@ -1130,8 +1134,10 @@ def render_memory_harvest(payload: dict[str, Any]) -> str:
     lines.append("")
     if not proposals:
         lines.append("Nothing was queued.")
-    elif applied:
+    elif applied and queued > 0:
         lines.append("Review queued candidates with `memory`, then promote only the useful ones.")
+    elif applied:
+        lines.append("No new candidates were queued.")
     else:
         lines.append("Run `memory harvest now` to queue these as reviewable candidates.")
     return "\n".join(lines)

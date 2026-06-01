@@ -427,9 +427,7 @@ def test_harvest_duplicate_detection_only_handles_sqlite_unique_errors(
     assert cli_mod._looks_like_duplicate_candidate(
         sqlite3.IntegrityError("UNIQUE constraint failed: memory_candidates.id")
     )
-    assert not cli_mod._looks_like_duplicate_candidate(
-        RuntimeError("duplicate network response")
-    )
+    assert not cli_mod._looks_like_duplicate_candidate(RuntimeError("duplicate network response"))
 
 
 def test_cli_workers_github_bundles_and_promotions(
