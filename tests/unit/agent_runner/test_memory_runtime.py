@@ -41,12 +41,17 @@ def test_invoke_agent_engine_prepends_memory_and_records_reflection(monkeypatch)
         def __init__(self) -> None:
             self.firings = []
             self.failures = []
+            self.candidates = []
 
         def firing_log(self, **kwargs):
             self.firings.append(kwargs)
 
         def record_failure(self, **kwargs):
             self.failures.append(kwargs)
+
+        def propose_memory(self, **kwargs):
+            self.candidates.append(kwargs)
+            return object()
 
     class Provider:
         name = "fleet"
@@ -101,12 +106,13 @@ def test_invoke_agent_engine_prepends_memory_and_records_reflection(monkeypatch)
     assert "Local Alfred memory" in captured["prompt"]
     assert "GraphQL schema" in captured["prompt"]
     assert "ALFRED_MEMORY_REFLECTIONS_JSON" in captured["prompt"]
-    assert provider.reflections[0]["body"] == "Use the API fixture factory."
-    assert provider.reflections[0]["repo"] == "org/api"
+    assert provider.brain.candidates[0]["body"] == "Use the API fixture factory."
+    assert provider.brain.candidates[0]["repo"] == "org/api"
+    assert provider.brain.candidates[0]["source"] == "engine-reflection"
     assert provider.brain.firings[0]["firing_id"] == "fid-1"
 
 
-def test_record_reflections_can_stage_candidates(monkeypatch) -> None:
+def test_record_reflections_defaults_to_candidates(monkeypatch) -> None:
     from agent_runner import memory_runtime as runtime
 
     class Brain:
@@ -123,7 +129,7 @@ def test_record_reflections_can_stage_candidates(monkeypatch) -> None:
             self.brain = Brain()
 
     provider = Provider()
-    monkeypatch.setenv("ALFRED_MEMORY_REFLECTION_MODE", "candidate")
+    monkeypatch.delenv("ALFRED_MEMORY_REFLECTION_MODE", raising=False)
     written = runtime.record_reflections(
         provider,
         [runtime.MemoryReflection(body="Use fixture factory.", tags=("tests",))],
@@ -134,6 +140,31 @@ def test_record_reflections_can_stage_candidates(monkeypatch) -> None:
     assert written == 1
     assert provider.brain.candidates[0]["source"] == "engine-reflection"
     assert provider.brain.candidates[0]["source_firing_id"] == "fid-1"
+
+
+def test_record_reflections_can_write_direct_lessons(monkeypatch) -> None:
+    from agent_runner import memory_runtime as runtime
+
+    class Provider:
+        name = "fleet"
+
+        def __init__(self) -> None:
+            self.reflections = []
+
+        def reflect(self, **kwargs):
+            self.reflections.append(kwargs)
+
+    provider = Provider()
+    monkeypatch.setenv("ALFRED_MEMORY_REFLECTION_MODE", "direct")
+    written = runtime.record_reflections(
+        provider,
+        [runtime.MemoryReflection(body="Use fixture factory.", tags=("tests",))],
+        codename="lucius",
+        repo="org/api",
+        firing_id="fid-1",
+    )
+    assert written == 1
+    assert provider.reflections[0]["body"] == "Use fixture factory."
 
 
 def test_record_firing_records_failure_memory() -> None:

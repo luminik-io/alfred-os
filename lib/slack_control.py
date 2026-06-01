@@ -453,6 +453,9 @@ class SlackControlHandler:
                 text=render_memory_promotions(promotions),
             )
 
+        if subcommand == "harvest":
+            return self._run_memory_harvest(rest, actor_user_id)
+
         if subcommand == "redis":
             if rest and rest[0].lower() == "sync":
                 return self._run_memory_sync(rest[1:], actor_user_id)
@@ -606,6 +609,37 @@ class SlackControlHandler:
         if not isinstance(payload, dict):
             return ControlResult(True, "memory_sync", text=_short(result.stdout, 900))
         return ControlResult(True, "memory_sync", text=render_redis_sync(payload))
+
+    def _run_memory_harvest(
+        self,
+        args: list[str],
+        actor_user_id: str | None,
+    ) -> ControlResult:
+        actual = bool(args and args[0].lower() == "now")
+        actor = normalize_slack_user_id(actor_user_id)
+        if actual and (not self.operator_user_id or actor != self.operator_user_id):
+            return ControlResult(
+                True,
+                "memory_harvest_rejected",
+                text="*Only the operator can queue harvested memory candidates.*\n\nNothing changed.",
+                detail="actor is not the operator",
+            )
+        argv = ["harvest", "--json"]
+        if actual:
+            argv.append("--apply")
+        result = self._run_brain(argv)
+        payload = _json_or_none(result.stdout)
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "unknown error").strip()
+            return ControlResult(
+                True,
+                "memory_harvest_failed",
+                text=f"*Memory harvest failed.*\n\n```{_short(err, 700)}```",
+                detail=err,
+            )
+        if not isinstance(payload, dict):
+            return ControlResult(True, "memory_harvest", text=_short(result.stdout, 900))
+        return ControlResult(True, "memory_harvest", text=render_memory_harvest(payload))
 
     def _memory_candidates(self, *, limit: int) -> tuple[list[dict[str, Any]] | None, str]:
         data, error = self._run_brain_json_first(
@@ -851,6 +885,7 @@ def render_help() -> str:
             "- `handled <id>`: operator-only: archive a follow-up without drafting.",
             "- `memory` / `memories`: review memory candidates and promotion suggestions.",
             "- `memory promotions`: show high-confidence memory candidates.",
+            "- `memory harvest`: preview repeated-failure lessons; `memory harvest now` queues them.",
             "- `remember [repo:] <lesson>`: stage a reviewable memory candidate.",
             "- `memory promote <id>` / `memory reject <id>`: operator-only memory review.",
             "- `memory redis`: check optional Redis Agent Memory Server.",
@@ -1074,6 +1109,40 @@ def render_redis_sync(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_memory_harvest(payload: dict[str, Any]) -> str:
+    applied = bool(payload.get("applied"))
+    queued = int(payload.get("queued") or 0)
+    proposals = _ensure_dict_list(payload.get("proposals"))
+    if applied:
+        title = "Memory harvest queued" if queued > 0 else "Memory harvest finished"
+    else:
+        title = "Memory harvest preview"
+    lines = [f"*{title}*", ""]
+    if not proposals:
+        lines.append("_No repeated failure patterns are ready to harvest._")
+    else:
+        for item in proposals[:8]:
+            status = str(item.get("status") or "preview")
+            candidate = item.get("candidate_id")
+            candidate_text = f" `{candidate}`" if candidate else ""
+            lines.append(
+                f"- `{status}`{candidate_text} — `{item.get('codename')}/{item.get('repo')}`: "
+                f"{_short(str(item.get('body') or ''), 180)}"
+            )
+        if len(proposals) > 8:
+            lines.append(f"- _{len(proposals) - 8} more candidate(s) not shown._")
+    lines.append("")
+    if not proposals:
+        lines.append("Nothing was queued.")
+    elif applied and queued > 0:
+        lines.append("Review queued candidates with `memory`, then promote only the useful ones.")
+    elif applied:
+        lines.append("No new candidates were queued.")
+    else:
+        lines.append("Run `memory harvest now` to queue these as reviewable candidates.")
+    return "\n".join(lines)
+
+
 def render_memory_usage() -> str:
     return "\n".join(
         [
@@ -1081,6 +1150,7 @@ def render_memory_usage() -> str:
             "",
             "- `memory` / `memories`: pending candidates and suggested promotions.",
             "- `memory promotions`: high-confidence candidates with evidence.",
+            "- `memory harvest`: preview failure-pattern candidates; `memory harvest now` queues them.",
             "- `remember [owner/repo:] <lesson>`: queue a reviewable candidate.",
             "- `memory promote <id>`: operator-only: trust a candidate for future recall.",
             "- `memory reject <id> [note]`: operator-only: reject a noisy candidate.",

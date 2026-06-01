@@ -689,40 +689,50 @@ class SlackPlanningListener:
             "amendments": list(getattr(result, "amendments", ()) or ()),
         }
         ids: list[str] = []
+        proposed_keys: list[str] = []
         propose_memory = writer.propose_memory
         use_modern_signature = _propose_memory_supports_modern_signature(propose_memory)
-        for repo in draft.repos or ["planning"]:
-            if use_modern_signature:
-                kwargs = {
-                    "codename": "planning",
-                    "repo": repo,
-                    "body": body,
-                    "tags": ["slack", "planning"],
-                    "severity": "info",
-                    "source": source,
-                    "evidence": json.dumps(evidence, sort_keys=True),
-                    "confidence": 0.68,
-                }
-            else:
-                kwargs = {
-                    "agent": "planning",
-                    "repo": repo,
-                    "topic": "slack-planning",
-                    "body": body,
-                    "source": source,
-                    "evidence": [evidence],
-                }
-            try:
-                candidate = propose_memory(**kwargs)
-            except Exception as exc:
-                print(
-                    f"[SLACK-LISTENER-WARN] could not queue {source} memory "
-                    f"candidate for {repo}: {exc}",
-                    file=sys.stderr,
-                )
-                continue
-            candidate_id = getattr(candidate, "id", candidate)
-            ids.append(str(candidate_id))
+        with _draft_revision_lock(draft_path):
+            existing_keys = _draft_memory_candidate_keys(draft_path)
+            for repo in draft.repos or ["planning"]:
+                candidate_key = _slack_memory_candidate_key(repo)
+                if candidate_key in existing_keys:
+                    continue
+                repo_evidence = {**evidence, "repo": repo, "candidate_key": candidate_key}
+                if use_modern_signature:
+                    kwargs = {
+                        "codename": "planning",
+                        "repo": repo,
+                        "body": body,
+                        "tags": ["slack", "planning"],
+                        "severity": "info",
+                        "source": source,
+                        "evidence": json.dumps(repo_evidence, sort_keys=True),
+                        "confidence": 0.68,
+                    }
+                else:
+                    kwargs = {
+                        "agent": "planning",
+                        "repo": repo,
+                        "topic": "slack-planning",
+                        "body": body,
+                        "source": source,
+                        "evidence": [repo_evidence],
+                    }
+                try:
+                    candidate = propose_memory(**kwargs)
+                except Exception as exc:
+                    print(
+                        f"[SLACK-LISTENER-WARN] could not queue {source} memory "
+                        f"candidate for {repo}: {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
+                candidate_id = getattr(candidate, "id", candidate)
+                ids.append(str(candidate_id))
+                proposed_keys.append(candidate_key)
+            if proposed_keys:
+                _append_memory_candidate_keys(draft_path, proposed_keys)
         return tuple(ids)
 
     def _save_draft(
@@ -825,8 +835,29 @@ def _propose_memory_supports_modern_signature(method: Any) -> bool:
 
 
 def _append_memory_candidate_ids(path: Path, candidate_ids: Iterable[str]) -> None:
-    ids = [str(candidate_id) for candidate_id in candidate_ids if str(candidate_id)]
-    if not ids:
+    _append_draft_list_values(path, "memory_candidate_ids", candidate_ids)
+
+
+def _append_memory_candidate_keys(path: Path, candidate_keys: Iterable[str]) -> None:
+    _append_draft_list_values(path, "memory_candidate_keys", candidate_keys)
+
+
+def _draft_memory_candidate_keys(path: Path) -> set[str]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if not isinstance(payload, dict):
+        return set()
+    existing = payload.get("memory_candidate_keys")
+    if isinstance(existing, list):
+        return {str(item) for item in existing if str(item)}
+    return set()
+
+
+def _append_draft_list_values(path: Path, field: str, values: Iterable[str]) -> None:
+    clean_values = [str(value) for value in values if str(value)]
+    if not clean_values:
         return
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -834,18 +865,22 @@ def _append_memory_candidate_ids(path: Path, candidate_ids: Iterable[str]) -> No
         return
     if not isinstance(payload, dict):
         return
-    existing = payload.get("memory_candidate_ids")
+    existing = payload.get(field)
     merged = [str(item) for item in existing] if isinstance(existing, list) else []
-    for candidate_id in ids:
-        if candidate_id not in merged:
-            merged.append(candidate_id)
-    payload["memory_candidate_ids"] = merged
+    for value in clean_values:
+        if value not in merged:
+            merged.append(value)
+    payload[field] = merged
     tmp = path.with_name(f"{path.name}.tmp")
     try:
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         tmp.replace(path)
     except OSError:
         return
+
+
+def _slack_memory_candidate_key(repo: str) -> str:
+    return f"slack-planning:{repo.strip() or 'planning'}"
 
 
 def _slack_memory_candidate_body(draft: IssueDraft) -> str:

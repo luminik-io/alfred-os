@@ -356,6 +356,63 @@ def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) ->
     assert provider.calls[0]["tags"] == ["slack", "planning"]
     draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
     assert draft["memory_candidate_ids"] == ["cand-1"]
+    assert draft["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred-os"]
+
+
+def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -> None:
+    provider = MemoryProvider()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+        memory_provider=provider,
+    )
+    created = listener.handle_payload(
+        {
+            "event_id": "EvMemoryDraft",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "<@UALFRED> title: Queue Slack planning memories\n"
+                    "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
+                    "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
+                    "repo: luminik-io/alfred-os\n"
+                    "acceptance: the local draft records the memory candidate id for review\n"
+                    "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
+                    "out of scope: automatic promotion\n"
+                    "question: none"
+                ),
+                "ts": "1716480100.000001",
+            },
+        }
+    )
+
+    revised = listener.handle_payload(
+        {
+            "event_id": "EvMemoryDraftReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "user": "U1",
+                "text": (
+                    "acceptance: repeated ready revisions do not queue duplicate memory candidates\n"
+                    "test: run listener memory tests\n"
+                    "question: none"
+                ),
+                "ts": "1716480102.000001",
+                "thread_ts": "1716480100.000001",
+            },
+        }
+    )
+
+    assert created.action == "draft_created"
+    assert revised.action == "draft_revised"
+    assert len(provider.calls) == 1
+    payload = json.loads(Path(created.draft_path).read_text(encoding="utf-8"))
+    assert payload["memory_candidate_ids"] == ["cand-1"]
+    assert payload["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred-os"]
 
 
 def test_slack_memory_candidate_queue_requires_ready_draft(tmp_path: Path) -> None:
