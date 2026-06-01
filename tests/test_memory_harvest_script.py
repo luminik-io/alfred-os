@@ -4,8 +4,12 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime, timedelta
+from importlib import util
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LIB = REPO_ROOT / "lib"
@@ -13,6 +17,17 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 from fleet_brain import FleetBrain  # noqa: E402
+
+
+def _load_script_module():
+    spec = util.spec_from_file_location(
+        "memory_harvest_script", REPO_ROOT / "bin" / "memory-harvest.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _run_harvest(tmp_path: Path, db: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -78,3 +93,62 @@ def test_memory_harvest_preview_does_not_queue(tmp_path: Path) -> None:
     assert payload["queued"] == 0
     assert len(payload["proposals"]) == 1
     assert brain.list_memory_candidates(status="candidate") == []
+
+
+def test_memory_harvest_timeout_kills_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = _load_script_module()
+    pid_file = tmp_path / "slow-brain.pid"
+    slow_brain = tmp_path / "slow-brain.py"
+    slow_brain.write_text(
+        "\n".join(
+            [
+                "import os",
+                "import time",
+                "from pathlib import Path",
+                "Path(os.environ['MEMORY_HARVEST_PID_FILE']).write_text(str(os.getpid()))",
+                "time.sleep(30)",
+            ]
+        )
+    )
+    monkeypatch.setenv("MEMORY_HARVEST_PID_FILE", str(pid_file))
+    monkeypatch.setattr(script, "_brain_script", lambda: slow_brain)
+
+    args = script.build_parser().parse_args(["--timeout", "1", "--no-slack"])
+    with pytest.raises(RuntimeError, match="timed out"):
+        script._run_harvest(args)
+
+    pid = int(pid_file.read_text())
+    for _ in range(20):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("timed-out memory harvest child was not reaped")
+
+
+def test_slack_trigger_uses_rendered_queued_candidates(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = _load_script_module()
+    payload = {
+        "applied": True,
+        "queued": 3,
+        "duplicates": 0,
+        "proposals": [{"status": "duplicate", "candidate_id": "mem_existing"}],
+    }
+    posts: list[str] = []
+
+    monkeypatch.setattr(script, "_run_harvest", lambda _args: payload)
+    monkeypatch.setattr(
+        script,
+        "_post_slack",
+        lambda message, *, severity="info": posts.append(message) or True,
+    )
+
+    assert script.main([]) == 0
+    assert posts == []
+    assert "queued=0" in capsys.readouterr().out

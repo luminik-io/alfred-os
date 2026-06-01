@@ -43,27 +43,43 @@ def _run_harvest(args: argparse.Namespace) -> dict[str, Any]:
     if not args.preview:
         cmd.append("--apply")
 
-    result = subprocess.run(
+    proc = subprocess.Popen(
         cmd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         env=os.environ.copy(),
-        timeout=args.timeout,
     )
-    if result.returncode != 0:
-        stderr = (result.stderr or result.stdout or "memory harvest failed").strip()
+    try:
+        stdout, stderr = proc.communicate(timeout=args.timeout)
+    except subprocess.TimeoutExpired as exc:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        detail = _short((stderr or stdout or "").strip(), 500)
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"memory harvest timed out after {args.timeout}s{suffix}") from exc
+
+    if proc.returncode != 0:
+        stderr = (stderr or stdout or "memory harvest failed").strip()
         raise RuntimeError(stderr)
     try:
-        payload = json.loads(result.stdout or "{}")
+        payload = json.loads(stdout or "{}")
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"memory harvest returned invalid JSON: {exc}") from exc
     return payload if isinstance(payload, dict) else {"raw": payload}
 
 
-def _render_slack(payload: dict[str, Any]) -> str:
+def _proposals(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return [p for p in payload.get("proposals", []) if isinstance(p, dict)]
+
+
+def _queued_proposals(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return [p for p in _proposals(payload) if p.get("status") == "queued"]
+
+
+def _render_slack(payload: dict[str, Any], queued: list[dict[str, Any]] | None = None) -> str:
     applied = bool(payload.get("applied"))
-    proposals = [p for p in payload.get("proposals", []) if isinstance(p, dict)]
-    queued = [p for p in proposals if p.get("status") == "queued"]
+    queued = queued if queued is not None else _queued_proposals(payload)
     duplicates = int(payload.get("duplicates") or 0)
     title = "Alfred memory harvest"
     lines = [f"*{title}*", ""]
@@ -149,9 +165,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"memory-harvest: {exc}", file=sys.stderr)
         return 1
 
-    queued = int(payload.get("queued") or 0)
-    if args.slack and (queued > 0 or args.slack_all):
-        _post_slack(_render_slack(payload), severity="info")
+    queued = _queued_proposals(payload)
+    queued_count = len(queued)
+    if args.slack and (queued_count > 0 or args.slack_all):
+        _post_slack(_render_slack(payload, queued), severity="info")
 
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -160,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
             "memory-harvest: "
             f"applied={bool(payload.get('applied'))} "
             f"proposals={len(payload.get('proposals') or [])} "
-            f"queued={queued} "
+            f"queued={queued_count} "
             f"duplicates={int(payload.get('duplicates') or 0)}"
         )
     return 0
