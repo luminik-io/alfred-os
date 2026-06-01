@@ -43,8 +43,9 @@ state machine that keeps multiple agents from stepping on each other.
   captured as context for the next pass, not as implicit merge approval.
 - Run the fleet conversationally from Slack: trusted control commands
   (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
-  `memory` / `memories`, `memory harvest`, `remember ...`, `memory promote <id>`,
-  `memory redis`, `pause`, `resume`) inspect and steer local state from chat with no shell. Scoped Slack
+  `memory` / `memories`, `memory remember ...`, `memory harvest`, `remember ...`,
+  `memory promote <id>`, `memory reject <id>`, `memory redis`, `memory sync`,
+  `pause`, `resume`) inspect and steer local state from chat with no shell. Scoped Slack
   drafts and scheduled failure harvests can queue reviewable memory candidates
   without promoting them. An approved draft can cross the off-by-default bridge into a labeled issue, and in-thread
   progress posts (claimed, PR opened, CI, merged) report back as the fleet
@@ -252,8 +253,8 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
-| [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename- and plan-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with first-class Plans and Memory review tabs plus Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
+| [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`memory`/`remember`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename-, plan-id-, and memory-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
 ## Documentation
@@ -319,8 +320,8 @@ Additional unreleased work adds Slack-driven memory curation, automatic
 reviewable memory candidates from ready Slack drafts and repeated-failure
 harvests, explicit Redis AMS memory sync, operator-managed trusted Slack plan
 collaborators, revision previews in approval threads, Planning intake in the
-local cockpit, and a native client with
-Home, Compose, Fleet, Logs, and Setup gear surfaces for local trust and repair.
+local cockpit, and a native client with Home, Compose, Plans, Memory, Fleet,
+Logs, and Setup gear surfaces for local trust and repair.
 Slack remains the primary collaboration UI.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.

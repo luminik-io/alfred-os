@@ -28,10 +28,10 @@ Reliability and first-run trust polish.
 - Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions.
 - Optional Redis AMS provider and sync: `ALFRED_MEMORY_PROVIDERS=fleet,redis` lets advanced operators test external semantic memory without changing the default local install; `alfred brain redis-status` and `alfred brain redis-sync` make the bridge inspectable and explicit.
 - Slack memory curation: `memory` reviews pending candidates and promotion
-  suggestions, `remember [repo:] <lesson>` queues a candidate from
-  conversation, and operator-only `memory promote <id>` / `memory reject <id>`
-  decide what enters future recall. `memory redis` and `memory sync` keep Redis
-  AMS explicit.
+  suggestions, `remember [repo:] <lesson>` and `memory remember ...` queue
+  candidates from conversation, and operator-only `memory promote <id>` /
+  `memory reject <id>` decide what enters future recall. `memory redis` and
+  `memory sync` keep Redis AMS explicit.
 - Scheduled memory harvest: optional `memory-harvest.py` can run from
   launchd/systemd, queue repeated-failure candidates automatically, and notify
   Slack only when the operator has something to review.

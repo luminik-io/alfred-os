@@ -205,7 +205,7 @@ fn validate_api_path<'a>(
         return Err("invalid API path".to_string());
     }
     if !trimmed.chars().all(|ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, '/' | '?' | '&' | '=' | '.' | '_' | '-')
+        ch.is_ascii_alphanumeric() || matches!(ch, '/' | '?' | '&' | '=' | '.' | '_' | '-' | ':')
     }) {
         return Err("invalid API path characters".to_string());
     }
@@ -220,6 +220,7 @@ fn validate_api_path<'a>(
     } else if method == Method::POST {
         is_allowed_compose_draft(path_part)
             || is_allowed_followup_action(path_part)
+            || is_allowed_memory_action(path_part)
             || is_allowed_slack_trust_action(path_part)
     } else {
         false
@@ -237,6 +238,7 @@ fn is_allowed_read_path(path: &str) -> bool {
         "/api/actions",
         "/api/firings",
         "/api/plans",
+        "/api/memory/candidates",
         "/api/slack/trusted-users",
     ];
     allowed
@@ -258,6 +260,17 @@ fn is_allowed_followup_action(path: &str) -> bool {
         return false;
     }
     matches!(parts[1], "convert-followup" | "mark-handled")
+}
+
+fn is_allowed_memory_action(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/memory/candidates/") else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('/').collect();
+    if parts.len() != 2 || parts[0].is_empty() {
+        return false;
+    }
+    matches!(parts[1], "promote" | "reject")
 }
 
 fn is_allowed_slack_trust_action(path: &str) -> bool {
@@ -319,6 +332,24 @@ fn build_alfred_action(
             vec![
                 "brain".to_string(),
                 "redis-status".to_string(),
+                "--json".to_string(),
+            ],
+        )),
+        "redis_sync_preview" => Ok((
+            "alfred".to_string(),
+            vec![
+                "brain".to_string(),
+                "redis-sync".to_string(),
+                "--dry-run".to_string(),
+                "--json".to_string(),
+            ],
+        )),
+        "memory_harvest" => Ok((
+            "alfred".to_string(),
+            vec![
+                "brain".to_string(),
+                "harvest".to_string(),
+                "--apply".to_string(),
                 "--json".to_string(),
             ],
         )),
@@ -514,6 +545,25 @@ mod tests {
     }
 
     #[test]
+    fn memory_candidate_api_paths_are_allowlisted() {
+        let (path, query) = validate_api_path("/api/memory/candidates?limit=20", &Method::GET)
+            .expect("memory candidates list should be accepted for GET");
+        assert_eq!(path, "/api/memory/candidates");
+        assert_eq!(query, Some("limit=20"));
+
+        let (path, _query) = validate_api_path(
+            "/api/memory/candidates/mem:candidate_123/promote",
+            &Method::POST,
+        )
+        .expect("memory promote path should be accepted for POST");
+        assert_eq!(path, "/api/memory/candidates/mem:candidate_123/promote");
+
+        let err = validate_api_path("/api/memory/candidates/candidate_123/delete", &Method::POST)
+            .expect_err("unlisted memory actions must stay blocked");
+        assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
     fn get_allowlist_accepts_compose_drafts_list_path() {
         let (path, query) = validate_api_path("/api/plans/drafts", &Method::GET)
             .expect("compose drafts list path should be accepted for GET");
@@ -610,6 +660,33 @@ mod tests {
         let err = build_alfred_action("destroy", Some("lucius"))
             .expect_err("unlisted verbs must not pass the allowlist");
         assert!(err.contains("unknown native Alfred action"));
+    }
+
+    #[test]
+    fn memory_native_actions_build_fixed_commands() {
+        let (_, redis_args) =
+            build_alfred_action("redis_sync_preview", None).expect("redis preview has no target");
+        assert_eq!(
+            redis_args,
+            vec![
+                "brain".to_string(),
+                "redis-sync".to_string(),
+                "--dry-run".to_string(),
+                "--json".to_string(),
+            ]
+        );
+
+        let (_, harvest_args) =
+            build_alfred_action("memory_harvest", None).expect("memory harvest has no target");
+        assert_eq!(
+            harvest_args,
+            vec![
+                "brain".to_string(),
+                "harvest".to_string(),
+                "--apply".to_string(),
+                "--json".to_string(),
+            ]
+        );
     }
 
     #[test]

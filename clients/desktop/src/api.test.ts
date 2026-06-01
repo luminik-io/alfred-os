@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, addTrustedSlackUser, composeDraft, errorDetail, loadSnapshot } from "./api";
+import {
+  ApiError,
+  addTrustedSlackUser,
+  composeDraft,
+  errorDetail,
+  loadSnapshot,
+  promoteMemoryCandidate,
+} from "./api";
 
 // In jsdom (no __TAURI_INTERNALS__) the api layer goes through global fetch, so
 // we can drive every endpoint's outcome by stubbing fetch per URL.
@@ -8,6 +15,7 @@ import { ApiError, addTrustedSlackUser, composeDraft, errorDetail, loadSnapshot 
 const ENDPOINTS = {
   status: "/api/status",
   actions: "/api/actions",
+  memoryCandidates: "/api/memory/candidates",
   firings: "/api/firings",
   plans: "/api/plans",
   trustedSlack: "/api/slack/trusted-users",
@@ -30,6 +38,26 @@ function jsonFor(path: string): unknown {
   }
   if (path.includes(ENDPOINTS.firings)) {
     return { rows: [{ firing_id: "f1", codename: "lucius" }] };
+  }
+  if (path.includes(ENDPOINTS.memoryCandidates)) {
+    return {
+      rows: [
+        {
+          id: "mem:1",
+          codename: "lucius",
+          repo: "your-org/api",
+          body: "Use request fixtures.",
+          tags: ["tests"],
+          severity: "info",
+          source: "slack",
+          source_firing_id: null,
+          evidence: "",
+          confidence: 0.8,
+          status: "candidate",
+          created_at: "2026-05-30T12:00:00Z",
+        },
+      ],
+    };
   }
   if (path.includes(ENDPOINTS.trustedSlack)) {
     return {
@@ -68,6 +96,7 @@ describe("loadSnapshot degradation", () => {
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.firings).toHaveLength(1);
     expect(snap.plans).toHaveLength(1);
+    expect(snap.memoryCandidates.rows).toHaveLength(1);
     expect(snap.trustedSlack?.users[0].user_id).toBe("UOPERATOR");
     expect(snap.degraded).toBeUndefined();
   });
@@ -79,6 +108,7 @@ describe("loadSnapshot degradation", () => {
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.firings).toHaveLength(1);
     expect(snap.plans).toEqual([]);
+    expect(snap.memoryCandidates.rows).toHaveLength(1);
     expect(snap.trustedSlack?.users).toHaveLength(1);
     expect(snap.degraded?.plans).toBeTruthy();
     expect(snap.degraded?.firings).toBeUndefined();
@@ -90,6 +120,14 @@ describe("loadSnapshot degradation", () => {
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.trustedSlack).toBeNull();
     expect(snap.degraded?.trustedSlack).toBeTruthy();
+  });
+
+  it("keeps the dashboard when memory candidates are unavailable", async () => {
+    vi.stubGlobal("fetch", stubFetch({ memoryCandidates: 404 }));
+    const snap = await loadSnapshot("http://127.0.0.1:7000");
+    expect(snap.status.agents).toHaveLength(1);
+    expect(snap.memoryCandidates.rows).toEqual([]);
+    expect(snap.degraded?.memoryCandidates).toBeTruthy();
   });
 
   it("throws when the spine /api/status fails", async () => {
@@ -118,6 +156,26 @@ describe("loadSnapshot degradation", () => {
 
     expect(result.added).toBe(true);
     expect(result.users[0].user_id).toBe("UTEAM1");
+  });
+
+  it("posts memory candidate promotion through the local API", async () => {
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      expect(String(input)).toContain("/api/memory/candidates/mem:1/promote");
+      expect(init?.method).toBe("POST");
+      return new Response(
+        JSON.stringify({
+          candidate_id: "mem:1",
+          lesson_id: "lesson-1",
+          status: "validated",
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await promoteMemoryCandidate("http://127.0.0.1:7000", "mem:1");
+
+    expect(result.lesson_id).toBe("lesson-1");
   });
 });
 

@@ -549,6 +549,26 @@ def test_remember_queues_reviewable_memory_candidate() -> None:
     ]
 
 
+def test_memory_remember_alias_queues_reviewable_memory_candidate() -> None:
+    runner = FakeRunner()
+    handler = _handler(runner)
+
+    result = handler.handle(
+        "memory remember luminik-io/alfred-os: Keep Slack memory reviewable.",
+        trusted=True,
+        actor_user_id="UTEAM",
+    )
+
+    assert result.action == "remember"
+    assert "Memory candidate queued" in result.text
+    assert runner.calls[-1][-4:] == [
+        "operator",
+        "luminik-io/alfred-os",
+        "--",
+        "Keep Slack memory reviewable.",
+    ]
+
+
 def test_remember_body_starting_with_dash_is_queued() -> None:
     runner = FakeRunner()
     result = _handler(runner).handle(

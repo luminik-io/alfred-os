@@ -26,7 +26,7 @@ export function buildStats(snapshot: Snapshot | null) {
     },
     {
       label: "Memory",
-      value: String(reliability?.promotion_suggestions?.length || 0),
+      value: String(snapshot?.memoryCandidates.rows.length || reliability?.promotion_suggestions?.length || 0),
       detail: "review candidates",
     },
   ];
@@ -67,6 +67,17 @@ export function buildAttention(snapshot: Snapshot | null, baseUrl: string): Atte
       href: localUrl(baseUrl, `/plans/${plan.plan_id}`),
       icon: "plan",
     });
+  }
+  for (const [index, candidate] of (snapshot.memoryCandidates.rows || []).entries()) {
+    items.push({
+      id: `memory-${candidate.id}`,
+      label: titleCase(candidate.severity || "Memory"),
+      title: candidate.body,
+      detail: `${candidate.codename}/${candidate.repo} from ${candidate.source}`,
+      tone: candidate.severity === "blocker" ? "error" : "info",
+      icon: "memory",
+    });
+    if (index >= 3) break;
   }
   for (const [index, signal] of (snapshot.actions.promotion_suggestions || []).entries()) {
     items.push(signalToAttention(signal, `memory-${index}`, "memory"));

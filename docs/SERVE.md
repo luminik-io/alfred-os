@@ -219,6 +219,9 @@ GET /api/plans?limit=50
 GET /api/plans/{plan_id}
 POST /api/plans/{plan_id}/convert-followup
 POST /api/plans/{plan_id}/mark-handled
+GET /api/memory/candidates?status=candidate&limit=50
+POST /api/memory/candidates/{candidate_id}/promote
+POST /api/memory/candidates/{candidate_id}/reject
 GET /api/slack/trusted-users
 POST /api/slack/trusted-users
 POST /api/slack/trusted-users/{user_id}/remove
@@ -227,9 +230,12 @@ POST /api/slack/trusted-users/{user_id}/remove
 Read endpoints intentionally mirror the HTML pages. The follow-up action
 endpoints are local-file actions only: they convert captured feedback into a
 planning draft JSON or archive it as handled. They do not call GitHub, Slack,
-or an engine, and they do not approve execution. Slack trusted-user endpoints
-only read or update `$ALFRED_HOME/state/slack-trust/trusted-users.json`; they
-do not grant approval rights, call Slack, call GitHub, or run an agent.
+or an engine, and they do not approve execution. Memory candidate endpoints
+only read or review rows in the local fleet-brain database. `promote` turns a
+candidate into a recalled lesson, and `reject` keeps it out of future prompts.
+Slack trusted-user endpoints only read or update
+`$ALFRED_HOME/state/slack-trust/trusted-users.json`; they do not grant approval
+rights, call Slack, call GitHub, or run an agent.
 
 ## Architecture
 
@@ -255,7 +261,8 @@ Default bind is `127.0.0.1`. Runtime-state routes are read-only. The Planning
 page accepts a local `POST` only to write markdown drafts under
 `$ALFRED_HOME/planning-drafts` and `$ALFRED_HOME/spec-drafts`. Follow-up actions
 only move captured follow-up files into `handled/` or create local planning
-draft JSON. Slack collaborator actions only mutate the local trust JSON file.
+draft JSON. Memory candidate actions only mutate the local fleet-brain
+database. Slack collaborator actions only mutate the local trust JSON file.
 They do not call GitHub or Slack. The planning assistant only calls a model provider when
 `ALFRED_PLANNING_ASSISTANT_ENGINE` is explicitly set. The reader's path-traversal guard rejects firing ids containing
 `/`, `\\`, or a leading `.` before any filesystem read.

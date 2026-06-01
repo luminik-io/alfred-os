@@ -20,8 +20,8 @@ Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/lumi
 ```mermaid
 flowchart TB
     subgraph client["desktop client (clients/desktop, Tauri)"]
-        ui["React UI tabs:<br/>Home / Compose / Fleet / Logs<br/>Setup gear"]
-        native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, brain doctor, redis,<br/>safe dry-run"]
+        ui["React UI tabs:<br/>Home / Compose / Plans / Memory / Fleet / Logs<br/>Setup gear"]
+        native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, memory, redis,<br/>safe dry-run"]
     end
 
     subgraph core["core fleet (headless)"]
@@ -48,7 +48,9 @@ flowchart TB
 | Tab | Job |
 |---|---|
 | Home | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent plans, recent runs, and fleet-wide pause/resume actions. |
-| Compose | Plain-language planning intake plus plan state and origin: local form, Slack DM, app mention, registered thread, affected repos, PR chain, follow-up conversion, and handled state. |
+| Compose | Plain-language planning intake backed by the same readiness engine as Slack. |
+| Plans | Saved Batman plans, Slack drafts, local compose drafts, and captured follow-ups. |
+| Memory | Reviewable memory candidates, promotion suggestions, memory errors, Redis status, Redis sync preview, and failure-pattern harvest. |
 | Fleet | Per-agent service state, safe dry-runs, pause, resume, and run-once actions. |
 | Logs | Notifications and firing timelines, including engine context, worktree path, issue links, and PR links. |
 | Setup gear | Start the local runtime and run fleet/auth/agent/memory/Redis checks in-app. |

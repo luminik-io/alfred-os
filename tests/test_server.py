@@ -251,6 +251,114 @@ def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
     assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}
 
 
+def test_api_memory_candidates_promote_and_reject(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fleet_brain import FleetBrain
+
+    state = tmp_path / "state"
+    state.mkdir()
+    db_path = tmp_path / "brain.db"
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
+    brain = FleetBrain(db_path=db_path)
+    promote = brain.propose_memory(
+        codename="lucius",
+        repo="your-org/api",
+        body="Use request fixtures for attendee imports.",
+        tags=["tests"],
+        source="slack",
+        evidence='{"thread_ts":"1716480000.000000"}',
+        confidence=0.82,
+    )
+    reject = brain.propose_memory(
+        codename="huntress",
+        repo="your-org/web",
+        body="Install browser binaries before staging checks.",
+        source="harvest",
+        confidence=0.74,
+    )
+    client = _client(state)
+
+    listed = client.get("/api/memory/candidates")
+    assert listed.status_code == 200
+    rows = listed.json()["rows"]
+    assert {row["id"] for row in rows} == {promote.id, reject.id}
+    assert rows[0]["created_at"].endswith("+00:00")
+
+    promoted = client.post(f"/api/memory/candidates/{promote.id}/promote")
+    rejected = client.post(f"/api/memory/candidates/{reject.id}/reject")
+
+    assert promoted.status_code == 200
+    assert promoted.json()["status"] == "validated"
+    assert promoted.json()["repo"] == "your-org/api"
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+    assert client.get("/api/memory/candidates").json()["rows"] == []
+
+
+def test_api_memory_candidates_reject_cross_origin_posts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fleet_brain import FleetBrain
+
+    state = tmp_path / "state"
+    state.mkdir()
+    db_path = tmp_path / "brain.db"
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
+    brain = FleetBrain(db_path=db_path)
+    candidate = brain.propose_memory(
+        codename="lucius",
+        repo="your-org/api",
+        body="Use request fixtures.",
+    )
+    client = _client(state)
+
+    response = client.post(
+        f"/api/memory/candidates/{candidate.id}/promote",
+        headers={"origin": "https://example.invalid"},
+    )
+
+    assert response.status_code == 403
+    assert brain.list_memory_candidates()[0].status == "candidate"
+
+
+def test_api_memory_candidates_missing_db_hides_local_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    db_path = tmp_path / "missing" / "brain.db"
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
+    client = _client(state)
+
+    response = client.get("/api/memory/candidates")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {"rows": [], "error": "fleet brain database not initialized"}
+    assert str(db_path) not in json.dumps(payload)
+
+
+def test_api_memory_candidate_action_does_not_create_missing_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    db_path = tmp_path / "missing" / "brain.db"
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
+    client = _client(state)
+
+    response = client.post("/api/memory/candidates/mem:1/promote")
+
+    assert response.status_code == 500
+    assert response.json()["error"] == "fleet brain database not initialized"
+    assert not db_path.exists()
+
+
 def test_api_slack_trusted_users_adds_and_removes_local_collaborator(
     empty_state: Path,
     monkeypatch: pytest.MonkeyPatch,

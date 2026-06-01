@@ -100,7 +100,7 @@ Trusted users can inspect the same local planning queue from Slack:
 | `draft <id>` | Converts a captured follow-up into a local planning draft with memory recall and readiness checks. |
 | `handled <id>` | Operator-only. Archives a captured follow-up without creating a draft. |
 | `memory` / `memories` | Shows pending memory candidates and suggested promotions. |
-| `remember [repo:] <lesson>` | Queues a reviewable memory candidate from Slack. |
+| `remember [repo:] <lesson>` / `memory remember ...` | Queues a reviewable memory candidate from Slack. |
 | `memory promote <id>` | Operator-only. Promotes a candidate into future recall. |
 | `memory reject <id>` | Operator-only. Rejects a noisy candidate. |
 | `memory harvest` | Previews repeated-failure lessons from the reliability governor. |
@@ -111,10 +111,11 @@ Trusted users can inspect the same local planning queue from Slack:
 
 These commands do not start work, approve execution, file GitHub issues, or
 merge PRs. They are the Slack-native bridge between "someone replied with useful
-context" and "Alfred has a scoped draft for the next pass." `remember ...`
-stages a candidate only; it never becomes prompt context until the operator
-runs `memory promote <id>`. Scheduled `memory-harvest.py` runs follow the same
-rule: they only stage repeated-failure candidates for review.
+context" and "Alfred has a scoped draft for the next pass." `remember ...` and
+`memory remember ...` stage candidates only; they never become prompt context
+until the operator runs `memory promote <id>`. Scheduled `memory-harvest.py`
+runs follow the same rule: they only stage repeated-failure candidates for
+review.
 
 When a Slack-created draft is already scoped enough to be implementation-ready,
 Alfred also queues a reviewable `slack-planning` memory candidate automatically.

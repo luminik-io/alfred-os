@@ -114,6 +114,7 @@ Slack can drive the same review loop:
 memory
 memories
 remember your-org/api: Use request fixtures for API tests.
+memory remember your-org/api: Keep candidate review explicit.
 memory promote <candidate-id>
 memory reject <candidate-id> too vague
 memory harvest
@@ -122,10 +123,12 @@ memory redis
 memory sync
 ```
 
-`remember ...` stages a candidate only. Promotion and rejection stay
-operator-only. `memory harvest` previews repeated-failure lessons and `memory
-harvest now` queues them as candidates. Redis Agent Memory Server stays optional
-and explicit: check it with `memory redis`, preview reviewed-lesson sync with
+`remember ...` and `memory remember ...` stage candidates only. Promotion and
+rejection stay operator-only. The desktop client uses the same local candidate
+queue through `alfred serve`, so Slack, CLI, and client review the same rows.
+`memory harvest` previews repeated-failure lessons and `memory harvest now`
+queues them as candidates. Redis Agent Memory Server stays optional and
+explicit: check it with `memory redis`, preview reviewed-lesson sync with
 `memory sync`, and write only with `memory sync now`.
 
 For unattended fleets, schedule `memory-harvest.py` from launchd or systemd. It
