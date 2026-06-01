@@ -38,9 +38,9 @@ Alfred with or without the client.
 
 ## Information Architecture
 
-### Command Center
+### Home
 
-The first screen is a decision queue:
+The first screen is a decision queue and local command center:
 
 - fleet health
 - pending approvals
@@ -49,14 +49,15 @@ The first screen is a decision queue:
 - repeated failures
 - memory candidates ready for review
 - Slack listener health and newly saved planning drafts
-- safe actions: run doctor, pause one codename, open Slack thread, open PR
+- safe actions: refresh, pause all, resume all, open Slack thread, open PR,
+  and run the memory doctor
 
 The top row should feel like an operations status strip, not a dashboard full
 of vanity metrics.
 
-### Plans
+### Compose
 
-Plan cards show:
+Compose owns plain-language intake and the planning inbox. Plan cards show:
 
 - parent issue and Slack thread
 - readiness verdict
@@ -71,21 +72,26 @@ The app can help draft or refine a spec, but the final collaboration loop stays
 in Slack. Any "send to Alfred" action should post to or link back to the
 approval thread.
 
-### Memory
+### Fleet
 
-Memory is reviewable:
+Fleet controls are the operational surface:
 
-- recalled planning hints shown beside the draft
-- new spec-to-issue lessons proposed as candidates
-- evidence links before promotion
-- promote, reject, retire, or open source evidence
-- optional Redis AMS status and explicit sync for reviewed lessons
+- enabled/paused state
+- schedule
+- last run
+- last failure
+- dry-run
+- pause/resume
+- run once
+- clear stale lock with proof
+- open prompt/config files
 
-The app must visibly separate promoted lessons from candidates and raw logs.
+Every destructive or state-changing action should have a dry-run preview where
+the CLI supports one.
 
-### Runs
+### Logs
 
-Runs are for forensics:
+Logs combine notifications and firings for forensics:
 
 - timeline by firing
 - engine used
@@ -97,20 +103,17 @@ Runs are for forensics:
 
 Logs should be readable without horizontal scrolling on narrow screens.
 
-### Agents
+### Memory
 
-Agent controls:
+Memory is reviewable and appears where the operator is already working:
 
-- enabled/paused state
-- schedule
-- last run
-- last failure
-- dry-run
-- pause/resume
-- clear stale lock with proof
-- open prompt/config files
+- Home surfaces memory candidates ready for review
+- Compose recalls promoted planning hints beside drafts
+- Setup exposes memory doctor, Redis status, and explicit Redis sync checks
+- Slack exposes `memory`, `remember`, `memory promote`, `memory reject`,
+  `memory redis`, and `memory sync`
 
-Every destructive or state-changing action should have a dry-run preview.
+The app must visibly separate promoted lessons from candidates and raw logs.
 
 ### Setup
 
@@ -154,17 +157,17 @@ candidates, and stale workers. Each item should lead to a concrete repair or
 review action. Historical metrics are useful, but they should never outrank work
 that needs a human decision.
 
-Suggested first viewport:
+Current first viewport:
 
 ```text
 Alfred
 Local fleet healthy · 15 agents · 4 approvals waiting
 
-[Needs decision] Batman plan #42      Open Slack thread  Review scope
-[Needs repair]   Huntress browser     Install browsers   Pause Huntress
-[Memory]         3 candidates         Review evidence    Promote selected
+[Needs decision] Batman plan #42      Open Slack thread
+[Needs repair]   Huntress browser     Pause Huntress
+[Memory]         3 candidates         Run memory check
 
-Tabs: Command Center · Plans · Runs · Agents · Memory · Setup
+Tabs: Home · Compose · Fleet · Logs · Setup gear
 ```
 
 Interaction rules:
@@ -191,12 +194,17 @@ The first client lives at `clients/desktop`:
   `http://[::1]` and to the `/api/status`, `/api/actions`, `/api/firings`,
   `/api/plans`, compose-draft, and follow-up action contracts.
 - Links to Slack, GitHub, and local serve detail pages open outside the app.
-- The app opens to "What needs attention?" and has Now, Activity, Compose,
-  Plans, Runs, Agents, Fleet, Memory, and Setup tabs.
+- The app opens to Home and has Home, Compose, Fleet, and Logs tabs, with Setup
+  behind the gear.
+- Home shows the decision queue, recent plans, recent runs, memory candidates,
+  and fleet-wide pause/resume actions.
+- Compose combines plain-language planning intake with saved plans and
+  follow-ups.
+- Logs combines in-app notifications and firing timelines.
 - Follow-up plan cards can call the local `Plan next pass` and `Mark handled`
   endpoints. These actions only move local follow-up files or create local
   planning drafts.
-- The Setup tab can start the local runtime, run `alfred status --json`, run
+- The Setup gear can start the local runtime, run `alfred status --json`, run
   auth checks, list agents, run the memory doctor, check Redis memory, and
   dry-run an agent through a narrow native allowlist.
 - Setup includes a local action console. It is intentionally not an arbitrary
@@ -214,7 +222,7 @@ npm install
 npm run tauri dev
 ```
 
-The Setup tab can start `alfred serve --no-browser` for you. If port 7000 is
+The Setup gear can start `alfred serve --no-browser` for you. If port 7000 is
 taken, run `alfred serve --port 7010 --no-browser`; the app also probes that
 fallback on first load.
 
@@ -278,9 +286,9 @@ Distribution sequence:
 
 1. `alfred serve` read APIs plus local follow-up action contracts with tests.
    Done.
-2. Tauri shell with Command Center, Plans, Runs, Agents, Memory, Setup, safe
-   local follow-up actions, runtime launch, status, memory checks, Redis check,
-   and dry-run launch. Done.
+2. Tauri shell with Home, Compose, Fleet, Logs, Setup, safe local follow-up
+   actions, runtime launch, status, pause/resume/run controls, memory checks,
+   Redis check, and dry-run launch. Done.
 3. Guided install and broader safe write actions with dry-run previews.
 4. Signed Mac builds and Linux AppImage/deb artifacts.
 

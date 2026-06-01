@@ -3,8 +3,9 @@ import { useCallback, useState } from "react";
 
 import { composeDraft } from "../api";
 import { localUrl } from "../lib/links";
-import type { ComposeDraftResponse } from "../types";
-import { EmptyState, ExternalButton, PanelHeader } from "./atoms";
+import type { ActionNotice, FollowupAction } from "../lib/uiTypes";
+import type { ComposeDraftResponse, PlanDraft } from "../types";
+import { EmptyState, ExternalButton, PanelHeader, PlanCard } from "./atoms";
 
 const PLACEHOLDER = `Describe the work in plain language. For example:
 
@@ -15,7 +16,19 @@ repo: your-org/frontend
 acceptance: Clicking export downloads a CSV of the visible rows.
 test: Vitest covers the export helper; manually verify the download in the app.`;
 
-export function ComposeView({ baseUrl }: { baseUrl: string }) {
+export function ComposeView({
+  baseUrl,
+  plans,
+  actionNotice,
+  busyPlanAction,
+  onFollowupAction,
+}: {
+  baseUrl: string;
+  plans: PlanDraft[];
+  actionNotice: ActionNotice;
+  busyPlanAction: string | null;
+  onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
+}) {
   const [intent, setIntent] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,16 +67,16 @@ export function ComposeView({ baseUrl }: { baseUrl: string }) {
     score === null ? "info" : result?.readiness.ok ? "ok" : score >= 60 ? "warn" : "error";
 
   return (
-    <section className="dashboard-grid dashboard-grid--memory">
-      <div className="panel panel--wide">
+    <section className="compose-stack">
+      <div className="dashboard-grid dashboard-grid--memory">
+        <div className="panel panel--wide">
         <PanelHeader
           eyebrow="Compose"
           title={iterating ? "Refine this draft" : "Describe the work"}
         />
         <p className="panel-intro">
-          Write what you want in plain language. Alfred&apos;s planning assistant scores how ready
-          the work is to run, asks the clarifying questions that are still open, and saves a draft
-          you can keep refining. Each submission refines the same draft.
+          Write what you want in plain language. Alfred scores readiness, asks the questions still
+          blocking a good run, and saves a draft you can keep refining from Slack or this client.
         </p>
         <div className="compose-form">
           <label htmlFor="compose-intent">
@@ -99,7 +112,6 @@ export function ComposeView({ baseUrl }: { baseUrl: string }) {
                 <span>Start new draft</span>
               </button>
             ) : null}
-            <small className="compose-hint">Cmd/Ctrl + Enter to submit</small>
           </div>
         </div>
 
@@ -131,9 +143,9 @@ export function ComposeView({ baseUrl }: { baseUrl: string }) {
             )}
           </div>
         ) : null}
-      </div>
+        </div>
 
-      <div className="panel">
+        <div className="panel">
         <PanelHeader eyebrow="Readiness" title="Draft status" />
         {result ? (
           <>
@@ -188,6 +200,39 @@ export function ComposeView({ baseUrl }: { baseUrl: string }) {
           <EmptyState
             title="No draft yet."
             body="Describe the work on the left and Alfred scores how ready it is, then saves it to your Plans inbox."
+          />
+        )}
+        </div>
+      </div>
+
+      <div className="panel">
+        <PanelHeader eyebrow="Planning inbox" title="Saved plans and follow-ups" />
+        {actionNotice ? (
+          <div className={`inline-notice inline-notice--${actionNotice.tone}`}>
+            {actionNotice.tone === "ok" ? (
+              <CheckCircle2 size={18} aria-hidden="true" />
+            ) : (
+              <AlertTriangle size={18} aria-hidden="true" />
+            )}
+            <span>{actionNotice.message}</span>
+          </div>
+        ) : null}
+        {plans.length ? (
+          <div className="plan-grid">
+            {plans.map((plan) => (
+              <PlanCard
+                key={plan.plan_id}
+                plan={plan}
+                baseUrl={baseUrl}
+                busyPlanAction={busyPlanAction}
+                onFollowupAction={onFollowupAction}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No plans saved yet."
+            body="Batman plans, Slack planning drafts, and trusted follow-ups appear here once the listener or planning page writes them."
           />
         )}
       </div>

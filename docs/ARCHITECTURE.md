@@ -195,7 +195,7 @@ Code: `clients/desktop/src/` (React UI, `api.ts`, `types.ts`), `clients/desktop/
 ```mermaid
 flowchart TB
     subgraph client["desktop client (clients/desktop, Tauri)"]
-        ui["React UI tabs:<br/>Now / Plans / Runs /<br/>Agents / Memory / Setup"]
+        ui["React UI tabs:<br/>Home / Compose / Fleet / Logs<br/>Setup gear"]
         native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, brain doctor, redis,<br/>safe dry-run"]
     end
 
@@ -209,7 +209,7 @@ flowchart TB
     gh["GitHub issue / PR links"]
     slackthread["Slack plan threads"]
 
-    ui -->|read-only JSON over 127.0.0.1| serve
+    ui -->|local JSON over 127.0.0.1| serve
     native -->|narrow allowlist, no arbitrary shell| cli
     serve --> state
     cli --> fleet
@@ -218,7 +218,7 @@ flowchart TB
     ui -.->|open outside the app| slackthread
 ```
 
-The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows read-only Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; links to Slack, GitHub, and `alfred serve` open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, local follow-up planning) and surface an explicit preview, affected path, result, and rollback hint. There is no arbitrary shell execution. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the full client and API contracts, and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the tab-by-tab control surface and how to build native installers.
+The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; links to Slack, GitHub, and `alfred serve` open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, pause/resume/run, and local follow-up planning) and surface command audit detail with the result. There is no arbitrary shell execution. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the full client and API contracts, and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the tab-by-tab control surface and how to build native installers.
 
 ## Disk guardian
 

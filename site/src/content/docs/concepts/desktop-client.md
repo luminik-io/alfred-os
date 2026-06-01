@@ -20,7 +20,7 @@ Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/lumi
 ```mermaid
 flowchart TB
     subgraph client["desktop client (clients/desktop, Tauri)"]
-        ui["React UI tabs:<br/>Now / Plans / Runs /<br/>Agents / Memory / Setup"]
+        ui["React UI tabs:<br/>Home / Compose / Fleet / Logs<br/>Setup gear"]
         native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, brain doctor, redis,<br/>safe dry-run"]
     end
 
@@ -34,7 +34,7 @@ flowchart TB
     gh["GitHub issue / PR links"]
     slackthread["Slack plan threads"]
 
-    ui -->|read-only JSON over 127.0.0.1| serve
+    ui -->|local JSON over 127.0.0.1| serve
     native -->|narrow allowlist, no arbitrary shell| cli
     serve --> state
     cli --> fleet
@@ -47,12 +47,11 @@ flowchart TB
 
 | Tab | Job |
 |---|---|
-| Now | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates. |
-| Plans | Plan state and origin (local form, Slack DM, app mention, registered thread), affected repos, PR chain; convert a follow-up to a draft or mark it handled. |
-| Runs | Firing timelines, summaries, engine context, worktree path, issue and PR links. |
-| Agents | Per-agent status and safe dry-runs. |
-| Memory | Review candidates, recalled planning hints, memory doctor, Redis check. |
-| Setup | Start the local runtime and run fleet/auth/agent/memory checks in-app. |
+| Home | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent plans, recent runs, and fleet-wide pause/resume actions. |
+| Compose | Plain-language planning intake plus plan state and origin: local form, Slack DM, app mention, registered thread, affected repos, PR chain, follow-up conversion, and handled state. |
+| Fleet | Per-agent service state, safe dry-runs, pause, resume, and run-once actions. |
+| Logs | Notifications and firing timelines, including engine context, worktree path, issue links, and PR links. |
+| Setup gear | Start the local runtime and run fleet/auth/agent/memory/Redis checks in-app. |
 
 ## Boundary
 
@@ -62,12 +61,12 @@ links, Slack plan threads, and the local fleet brain. It introduces no hosted
 gateway, public port, shadow database, or separate scheduler.
 
 The boundary is enforced in the Tauri layer. The fetch command only allows
-read-only Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or
+Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or
 `http://[::1]`. Links to Slack, GitHub, and `alfred serve` open outside the app.
 State-changing controls use a narrow native allowlist (start runtime, run
-checks, safe dry-runs, local follow-up planning) and surface an explicit
-preview, affected path, result, and rollback hint. There is no arbitrary shell
-execution. In a plain browser preview, the app stays read-only.
+checks, safe dry-runs, pause, resume, run once, and local follow-up planning)
+and surface command audit detail with the result. There is no arbitrary shell
+execution. In a plain browser preview, native actions are unavailable.
 
 ## Run it locally
 

@@ -8,9 +8,9 @@ Slack remains the primary collaboration UI: plans, replies, approvals, and
 post-PR follow-up belong in Slack threads.
 
 The first Tauri preview lives under `clients/desktop` and wraps the local
-Alfred runtime: a sticky command center, health signals, plans, firings,
-memory review, safe next actions, native runtime launch, and local follow-up
-handling.
+Alfred runtime: Home, Compose, Fleet, Logs, Setup, health signals, plans,
+firings, memory review, safe next actions, native runtime launch, and local
+follow-up handling.
 
 The client is for trust and operations:
 
@@ -49,12 +49,11 @@ The core tabs are:
 
 | Tab | Job |
 |---|---|
-| Now | See the decision queue: repeated failures, blocked plans, follow-ups, memory candidates. |
-| Plans | Review plan state, open Slack thread, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
-| Runs | Read firing timelines, summaries, engine context, worktree path, issue and PR links. |
-| Agents | Inspect status and run safe dry-runs. |
-| Memory | Review candidates, inspect recalled planning hints, run memory doctor, and check Redis memory. |
-| Setup | Start the local runtime and run fleet/auth/agent/memory checks in the command console. |
+| Home | See the decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent runs, and fleet-wide pause/resume actions. |
+| Compose | Draft or refine work, open Slack thread context, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
+| Fleet | Inspect status, run safe dry-runs, pause, resume, and run agents once. |
+| Logs | Read notifications and firing timelines, including summaries, engine context, worktree path, issue links, and PR links. |
+| Setup gear | Start the local runtime and run fleet/auth/agent/memory/Redis checks in the command console. |
 
 Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail

@@ -41,9 +41,9 @@ Reliability and first-run trust polish.
   mentions, and registered Alfred threads. It writes local drafts and feedback
   context without making chat text an approval mechanism.
 - Native local client preview: `clients/desktop` ships a Tauri Mac/Linux shell
-  over the read-only `alfred serve` JSON APIs. It opens to "what needs
-  attention?", shows Plans, Runs, Agents, Memory, and Setup, opens external
-  links outside the app, and keeps Slack as the collaboration surface.
+  over `alfred serve` JSON APIs. It opens to "what needs attention?", shows
+  Home, Compose, Fleet, Logs, and Setup gear surfaces, opens external links
+  outside the app, and keeps Slack as the collaboration surface.
 
 ### v0.4.0: 2026-05-23
 

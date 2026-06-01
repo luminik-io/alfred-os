@@ -23,8 +23,8 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
   and feedback context while keeping reaction approval as the only execution
   gate.
 - **Native local client preview**: `clients/desktop` ships the first Tauri
-  Mac/Linux shell over `alfred serve` JSON APIs, with Now, Plans, Runs, Agents,
-  Memory, and Setup tabs plus external Slack/GitHub/local links.
+  Mac/Linux shell over `alfred serve` JSON APIs, with Home, Compose, Fleet,
+  Logs, and Setup gear surfaces plus external Slack/GitHub/local links.
 - **`alfred spec`**: template, lint, and readiness helpers for specs-driven development, including acceptance criteria, rollout checks, and GitHub-ready issue drafts.
 - **Removed**: `lib/claude_proxy/`, `bin/claude-proxy.py`, the four proxy tests, `docs/CLAUDE_PROXY.md`, `docs/MACOS_KEYCHAIN.md`, `bin/alfred-grant-keychain.sh`, and `examples/launchd/luminik.claude-proxy.plist.example`. The proxy daemon shipped in v0.4.0 worked around a macOS Keychain ACL issue that `CLAUDE_CODE_OAUTH_TOKEN` resolves natively. Operators who installed the proxy should `launchctl bootout` it and unset `ALFRED_CLAUDE_PROXY_SOCKET`. No agent-script changes needed.
 

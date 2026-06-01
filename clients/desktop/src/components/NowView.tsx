@@ -13,10 +13,10 @@ import {
 // Each metric card routes to the tab that owns its detail. Labels come from
 // buildStats() in lib/derive.ts; keep these keys in sync with that source.
 const METRIC_TAB: Record<string, TabKey> = {
-  Agents: "agents",
-  "Runs today": "runs",
-  Planning: "plans",
-  Memory: "memory",
+  Agents: "fleet",
+  "Runs today": "logs",
+  Planning: "compose",
+  Memory: "home",
 };
 
 export type StatCard = { label: string; value: string; detail: string };
@@ -125,7 +125,7 @@ export function NowView({
             eyebrow="Decision queue"
             title="Needs attention"
             actionLabel="Planning"
-            onAction={() => onSwitch("plans")}
+            onAction={() => onSwitch("compose")}
           />
           {attention.length ? (
             <div className="attention-list">
@@ -147,7 +147,7 @@ export function NowView({
             eyebrow="Planning"
             title="Recent plans"
             actionLabel="All plans"
-            onAction={() => onSwitch("plans")}
+            onAction={() => onSwitch("compose")}
           />
           <CompactPlanList plans={plans} baseUrl={baseUrl} />
         </div>
@@ -157,7 +157,7 @@ export function NowView({
             eyebrow="Runtime"
             title="Recent runs"
             actionLabel="All runs"
-            onAction={() => onSwitch("runs")}
+            onAction={() => onSwitch("logs")}
           />
           <CompactRunList firings={firings} baseUrl={baseUrl} />
         </div>

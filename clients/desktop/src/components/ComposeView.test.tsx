@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ComposeView } from "./ComposeView";
 import { composeDraft } from "../api";
-import type { ComposeDraftResponse } from "../types";
+import type { ComposeDraftResponse, PlanDraft } from "../types";
 
 vi.mock("../api", () => ({
   composeDraft: vi.fn(),
@@ -14,6 +14,18 @@ vi.mock("../api", () => ({
 }));
 
 const composeDraftMock = vi.mocked(composeDraft);
+
+function renderComposeView(plans: PlanDraft[] = []) {
+  return render(
+    <ComposeView
+      baseUrl="http://127.0.0.1:7000"
+      plans={plans}
+      actionNotice={null}
+      busyPlanAction={null}
+      onFollowupAction={vi.fn()}
+    />,
+  );
+}
 
 function draftResponse(overrides: Partial<ComposeDraftResponse> = {}): ComposeDraftResponse {
   return {
@@ -57,7 +69,7 @@ describe("ComposeView", () => {
   it("submits intent and renders readiness score, questions, and findings", async () => {
     composeDraftMock.mockResolvedValue(draftResponse());
     const user = userEvent.setup();
-    render(<ComposeView baseUrl="http://127.0.0.1:7000" />);
+    renderComposeView();
 
     const textarea = screen.getByLabelText(/what should alfred build/i);
     await user.type(textarea, "title: Add CSV export to the attendees table");
@@ -98,7 +110,7 @@ describe("ComposeView", () => {
       }),
     );
     const user = userEvent.setup();
-    render(<ComposeView baseUrl="http://127.0.0.1:7000" />);
+    renderComposeView();
 
     await user.type(
       screen.getByLabelText(/what should alfred build/i),
@@ -126,11 +138,34 @@ describe("ComposeView", () => {
   it("surfaces an error when the draft request fails", async () => {
     composeDraftMock.mockRejectedValue(new Error("alfred serve returned 400"));
     const user = userEvent.setup();
-    render(<ComposeView baseUrl="http://127.0.0.1:7000" />);
+    renderComposeView();
 
     await user.type(screen.getByLabelText(/what should alfred build/i), "vague idea");
     await user.click(screen.getByRole("button", { name: /draft it/i }));
 
     expect(await screen.findByText(/alfred serve returned 400/i)).toBeInTheDocument();
+  });
+
+  it("renders saved planning drafts under the composer", () => {
+    renderComposeView([
+      {
+        plan_id: "slack-C1-123",
+        title: "Improve planning loop",
+        status: "needs follow-up",
+        parent: "https://github.com/your-org/repo/issues/120",
+        affected_repos: "your-org/repo",
+        updated_at: "2026-05-29T06:45:00Z",
+        path: "/state/followups/slack-C1-123.md",
+        preview: "Add a manual docs smoke test.",
+        content: "Add a manual docs smoke test.",
+        source: "followup",
+        readiness_score: null,
+        readiness_ok: null,
+        revision_count: 0,
+      },
+    ]);
+
+    expect(screen.getByRole("heading", { name: /improve planning loop/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /saved plans and follow-ups/i })).toBeInTheDocument();
   });
 });

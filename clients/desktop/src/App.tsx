@@ -1,12 +1,8 @@
 import {
   Activity,
-  Bell,
-  ListChecks,
-  MemoryStick,
   PenLine,
   Radio,
   RefreshCw,
-  Server,
   Settings,
   SlidersHorizontal,
 } from "lucide-react";
@@ -18,36 +14,27 @@ import {
   NativeResultPanel,
   StatusPill,
 } from "./components/atoms";
-import { AgentsView } from "./components/AgentsView";
 import { ComposeView } from "./components/ComposeView";
 import { FleetControlView } from "./components/FleetControlView";
-import { MemoryView } from "./components/MemoryView";
+import { HomeView } from "./components/HomeView";
 import { NotificationsView } from "./components/NotificationsView";
-import { NowView } from "./components/NowView";
-import { PlansView } from "./components/PlansView";
 import { RunsView } from "./components/RunsView";
 import { SetupView } from "./components/SetupView";
 import { useAlfred } from "./hooks/useAlfred";
 import type { TabKey } from "./lib/uiTypes";
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
-  { key: "now", label: "Now", icon: Activity },
-  { key: "activity", label: "Activity", icon: Bell },
+  { key: "home", label: "Home", icon: Activity },
   { key: "compose", label: "Compose", icon: PenLine },
-  { key: "plans", label: "Plans", icon: ListChecks },
-  { key: "runs", label: "Runs", icon: Radio },
-  { key: "agents", label: "Agents", icon: Server },
   { key: "fleet", label: "Fleet", icon: SlidersHorizontal },
-  { key: "memory", label: "Memory", icon: MemoryStick },
-  { key: "setup", label: "Setup", icon: Settings },
+  { key: "logs", label: "Logs", icon: Radio },
 ];
 
 function App() {
-  const [tab, setTab] = useState<TabKey>("now");
+  const [tab, setTab] = useState<TabKey>("home");
   const {
     baseUrl,
     serverInput,
-    setServerInput,
     snapshot,
     error,
     errorRaw,
@@ -82,7 +69,7 @@ function App() {
           className="brand"
           type="button"
           aria-label="Alfred home"
-          onClick={() => setTab("now")}
+          onClick={() => setTab("home")}
         >
           <img src="/brand/alfred-logo-transparent.png" alt="" />
           <span>Alfred</span>
@@ -91,7 +78,7 @@ function App() {
           {tabs.map((item) => {
             const Icon = item.icon;
             const active = tab === item.key;
-            const badge = item.key === "activity" && unseenCount > 0 ? unseenCount : null;
+            const badge = item.key === "logs" && unseenCount > 0 ? unseenCount : null;
             return (
               <button
                 key={item.key}
@@ -124,6 +111,17 @@ function App() {
             <RefreshCw size={15} aria-hidden="true" className={loading ? "spin" : undefined} />
             <span>{loading ? "Checking" : error ? "Connect" : "Refresh"}</span>
           </button>
+          <button
+            className={
+              tab === "setup" ? "settings-button settings-button--active" : "settings-button"
+            }
+            type="button"
+            aria-label="Open setup"
+            aria-current={tab === "setup" ? "page" : undefined}
+            onClick={() => setTab("setup")}
+          >
+            <Settings size={17} aria-hidden="true" />
+          </button>
         </div>
       </header>
 
@@ -138,44 +136,26 @@ function App() {
 
       <NativeResultPanel error={nativeError} errorRaw={nativeErrorRaw} result={nativeResult} />
 
-      {tab === "now" ? (
-        <NowView
+      {tab === "home" ? (
+        <HomeView
           snapshot={snapshot}
           attention={attention}
           baseUrl={baseUrl}
           stats={stats}
-          serverInput={serverInput}
-          setServerInput={setServerInput}
+          nativeBusy={nativeBusy}
           loading={loading}
-          onRefresh={(value) => void refresh(value ?? serverInput)}
+          onRunLocalAction={runLocalAction}
+          onRefresh={() => void refresh(serverInput)}
           onSwitch={setTab}
         />
       ) : null}
-      {tab === "compose" ? <ComposeView baseUrl={baseUrl} /> : null}
-      {tab === "plans" ? (
-        <PlansView
+      {tab === "compose" ? (
+        <ComposeView
+          baseUrl={baseUrl}
+          plans={snapshot?.plans || []}
           actionNotice={actionNotice}
           busyPlanAction={busyPlanAction}
-          plans={snapshot?.plans || []}
-          baseUrl={baseUrl}
           onFollowupAction={runFollowupAction}
-          onSwitch={setTab}
-        />
-      ) : null}
-      {tab === "runs" ? <RunsView firings={snapshot?.firings || []} baseUrl={baseUrl} /> : null}
-      {tab === "activity" ? (
-        <NotificationsView
-          feed={feed}
-          unseen={unseenCount}
-          seen={seenIds}
-          onMarkAllSeen={markActivitySeen}
-        />
-      ) : null}
-      {tab === "agents" ? (
-        <AgentsView
-          agents={snapshot?.status.agents || []}
-          nativeBusy={nativeBusy}
-          onRunLocalAction={runLocalAction}
         />
       ) : null}
       {tab === "fleet" ? (
@@ -190,8 +170,16 @@ function App() {
           onRefreshService={refreshFleetService}
         />
       ) : null}
-      {tab === "memory" ? (
-        <MemoryView snapshot={snapshot} nativeBusy={nativeBusy} onRunLocalAction={runLocalAction} />
+      {tab === "logs" ? (
+        <section className="logs-stack">
+          <NotificationsView
+            feed={feed}
+            unseen={unseenCount}
+            seen={seenIds}
+            onMarkAllSeen={markActivitySeen}
+          />
+          <RunsView firings={snapshot?.firings || []} baseUrl={baseUrl} />
+        </section>
       ) : null}
       {tab === "setup" ? (
         <SetupView
