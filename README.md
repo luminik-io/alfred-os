@@ -45,8 +45,8 @@ state machine that keeps multiple agents from stepping on each other.
   (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
   `memory` / `memories`, `memory harvest`, `remember ...`, `memory promote <id>`,
   `memory redis`, `pause`, `resume`) inspect and steer local state from chat with no shell. Scoped Slack
-  drafts can queue reviewable memory candidates without promoting them. An approved
-  draft can cross the off-by-default bridge into a labeled issue, and in-thread
+  drafts and scheduled failure harvests can queue reviewable memory candidates
+  without promoting them. An approved draft can cross the off-by-default bridge into a labeled issue, and in-thread
   progress posts (claimed, PR opened, CI, merged) report back as the fleet
   works it. A plain-language intake profile lets a non-technical user approve
   outcomes instead of code.
@@ -240,6 +240,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
+| [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
 | [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
 | [`systemd/`](systemd/) | `_template.service` + `_template.timer` + `render.sh` (TSV → `systemd --user` units) for the Linux path. |
@@ -315,9 +316,10 @@ content, sales, and ops departments are the next larger surface area:
 **Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, a mobile-friendly local cockpit with saved Alfred plans, and the first Tauri Mac/Linux client. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
 Additional unreleased work adds Slack-driven memory curation, automatic
-reviewable memory candidates from ready Slack drafts, explicit Redis AMS memory
-sync, operator-managed trusted Slack plan collaborators, revision previews in
-approval threads, Planning intake in the local cockpit, and a native client with
+reviewable memory candidates from ready Slack drafts and repeated-failure
+harvests, explicit Redis AMS memory sync, operator-managed trusted Slack plan
+collaborators, revision previews in approval threads, Planning intake in the
+local cockpit, and a native client with
 Home, Compose, Fleet, Logs, and Setup gear surfaces for local trust and repair.
 Slack remains the primary collaboration UI.
 

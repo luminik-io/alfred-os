@@ -32,6 +32,9 @@ Reliability and first-run trust polish.
   conversation, and operator-only `memory promote <id>` / `memory reject <id>`
   decide what enters future recall. `memory redis` and `memory sync` keep Redis
   AMS explicit.
+- Scheduled memory harvest: optional `memory-harvest.py` can run from
+  launchd/systemd, queue repeated-failure candidates automatically, and notify
+  Slack only when the operator has something to review.
 - Planning memory loop: the Planning tab recalls promoted repo lessons while drafting, embeds prompt-safe hints into saved specs, and proposes reviewable spec-to-issue memory candidates when a spec is saved.
 - `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.

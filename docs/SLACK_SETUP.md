@@ -372,8 +372,10 @@ Safety model:
 - **Memory is reviewable.** `remember ...` queues a candidate only. It does not
   enter future prompt context until the operator runs `memory promote <id>`.
   `memory harvest` previews repeated-failure lessons before `memory harvest now`
-  queues them. `memory redis` is read-only, and `memory sync` defaults to a
-  dry-run preview.
+  queues them. A scheduled `memory-harvest.py` job can queue the same
+  reviewable candidates automatically and notify Slack only when there is
+  something to review. `memory redis` is read-only, and `memory sync` defaults
+  to a dry-run preview.
 - **Queries are read-only.** `status`, `runs`, and `trusted` only read fleet
   state. `trust` and `untrust` only update the local trust JSON file and never
   run code, call GitHub, or approve a plan.

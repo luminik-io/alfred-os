@@ -45,3 +45,8 @@
 # DAMIAN_SCAN_REPOS and DAMIAN_SPEC_DIR, then `alfred enable damian`.
 # Fires once a day; matches the daily-bundle cap baked into the runner.
 #   my.fleet.damian	damian.py	cron:9:00	no		Spec-bundle planner
+#
+# Opt-in: scheduled memory harvest. Queues reviewable candidates from repeated
+# failure patterns, posts only when there is something to review, and never
+# promotes lessons by itself.
+#   my.fleet.memory-harvest	memory-harvest.py	cron:8:05	no		Memory candidate harvester

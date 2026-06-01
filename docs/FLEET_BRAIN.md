@@ -271,6 +271,12 @@ previews candidate lessons by default and only writes when run with `--apply`.
 The generated rows stay in the memory-candidate queue until the operator
 promotes or rejects them.
 
+`bin/memory-harvest.py` is the scheduler wrapper for that same loop. It runs
+`alfred brain harvest --apply --json`, posts to Slack only when new candidates
+are queued or the run fails, and leaves all promotion or rejection to the
+operator. Add it to `launchd/agents.conf` or `systemd` when you want Alfred to
+build the review queue automatically without expanding prompt recall silently.
+
 ## Read-only MCP bridge
 
 `alfred mcp serve` exposes a small JSON-RPC stdio surface for local MCP clients
@@ -342,6 +348,10 @@ lessons from the reliability governor; `memory harvest now` queues those lessons
 as reviewable candidates. `memory redis` checks the optional Redis Agent Memory
 Server bridge, and `memory sync` previews a one-way sync of reviewed local
 lessons. `memory sync now` is the explicit Redis write path.
+
+If `memory-harvest.py` is scheduled, it simply performs the `memory harvest now`
+write step for repeated failures. It still only creates candidates, so the Slack
+review loop is unchanged.
 
 ## What to build next
 

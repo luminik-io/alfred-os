@@ -128,6 +128,10 @@ harvest now` queues them as candidates. Redis Agent Memory Server stays optional
 and explicit: check it with `memory redis`, preview reviewed-lesson sync with
 `memory sync`, and write only with `memory sync now`.
 
+For unattended fleets, schedule `memory-harvest.py` from launchd or systemd. It
+queues the same reviewable repeated-failure candidates and nudges Slack only
+when there is something to review. It does not promote lessons or sync Redis.
+
 ## MCP access
 
 `alfred mcp serve` exposes a small read-only JSON-RPC stdio surface for local

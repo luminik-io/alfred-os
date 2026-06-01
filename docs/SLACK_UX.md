@@ -113,7 +113,8 @@ These commands do not start work, approve execution, file GitHub issues, or
 merge PRs. They are the Slack-native bridge between "someone replied with useful
 context" and "Alfred has a scoped draft for the next pass." `remember ...`
 stages a candidate only; it never becomes prompt context until the operator
-runs `memory promote <id>`.
+runs `memory promote <id>`. Scheduled `memory-harvest.py` runs follow the same
+rule: they only stage repeated-failure candidates for review.
 
 When a Slack-created draft is already scoped enough to be implementation-ready,
 Alfred also queues a reviewable `slack-planning` memory candidate automatically.

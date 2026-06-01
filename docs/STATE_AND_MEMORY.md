@@ -2,7 +2,7 @@
 
 What Alfred remembers between firings, what it forgets, and where every byte of that memory lives on disk.
 
-Alfred is built on the premise that the host filesystem is a fine state store for a single-operator fleet. Every firing reads its inputs from scratch, writes its outputs to plain JSON or JSONL files under `$ALFRED_HOME/state/`, and exits. There is no daemon holding state in RAM, no Redis, no Postgres, no shared cluster. If you delete `$ALFRED_HOME/state/`, the next firing rebuilds whatever it still needs.
+Alfred is built on the premise that the host filesystem is a fine state store for a single-operator fleet. Every firing reads its inputs from scratch, writes its outputs to plain JSON or JSONL files under `$ALFRED_HOME/state/`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete `$ALFRED_HOME/state/`, the next firing rebuilds whatever it still needs.
 
 This page is the map of that directory and the contract each file carries.
 
@@ -97,7 +97,17 @@ summarized with `alfred brain governor`. The governor classifies local setup
 problems, provider limits, auth failures, timeouts, and agent-quality loops,
 then returns a read-only action list for the operator and dashboard.
 
-The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, or `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider. See [Fleet brain](./FLEET_BRAIN.md) for the full design, schema, and CLI.
+The brain ships on by default through the local `fleet` provider. Set
+`ALFRED_MEMORY_PROVIDERS=null` to disable it,
+`ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider, or
+`ALFRED_MEMORY_PROVIDERS=fleet,redis` to consult an already-running Redis Agent
+Memory Server. See [Fleet brain](./FLEET_BRAIN.md) for the full design, schema,
+and CLI.
+
+The optional `memory-harvest.py` scheduled wrapper runs the same safe loop as
+`memory harvest now`: repeated failure patterns become reviewable candidates,
+not trusted lessons. Slack remains the review surface for `memory`,
+`memory promote <id>`, and `memory reject <id>`.
 
 Use `alfred brain doctor` for a read-only health check, `alfred brain governor`
 for the current action queue, and `alfred mcp serve` when a local MCP client
