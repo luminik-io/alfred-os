@@ -187,7 +187,13 @@ export function HomeView({
           {attention.length ? (
             <div className="attention-list">
               {attention.map((item) => (
-                <AttentionCard key={item.id} item={item} />
+                <AttentionCard
+                  key={item.id}
+                  item={item}
+                  onNavigate={(target) => {
+                    if (target) onSwitch(target);
+                  }}
+                />
               ))}
             </div>
           ) : (
@@ -206,7 +212,7 @@ export function HomeView({
             actionLabel="Plans"
             onAction={() => onSwitch("plans")}
           />
-          <CompactPlanList plans={plans} baseUrl={baseUrl} />
+          <CompactPlanList plans={plans} onOpen={() => onSwitch("plans")} />
         </div>
 
         <div className="panel">
@@ -216,7 +222,7 @@ export function HomeView({
             actionLabel="Logs"
             onAction={() => onSwitch("logs")}
           />
-          <CompactRunList firings={firings} baseUrl={baseUrl} />
+          <CompactRunList firings={firings} onOpen={() => onSwitch("logs")} />
         </div>
 
         <div className="panel">

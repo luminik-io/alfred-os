@@ -2,10 +2,9 @@ import { AlertTriangle, CheckCircle2, ListChecks, Send, Sparkles } from "lucide-
 import { useCallback, useState } from "react";
 
 import { composeDraft } from "../api";
-import { localUrl } from "../lib/links";
-import type { ActionNotice, FollowupAction } from "../lib/uiTypes";
+import type { ActionNotice, FollowupAction, TabKey } from "../lib/uiTypes";
 import type { ComposeDraftResponse, PlanDraft } from "../types";
-import { EmptyState, ExternalButton, PanelHeader, PlanCard } from "./atoms";
+import { EmptyState, PanelHeader, PlanCard } from "./atoms";
 
 const PLACEHOLDER = `Describe the work in plain language. For example:
 
@@ -22,12 +21,14 @@ export function ComposeView({
   actionNotice,
   busyPlanAction,
   onFollowupAction,
+  onSwitch,
 }: {
   baseUrl: string;
   plans: PlanDraft[];
   actionNotice: ActionNotice;
   busyPlanAction: string | null;
   onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
+  onSwitch: (tab: TabKey) => void;
 }) {
   const [intent, setIntent] = useState("");
   const [busy, setBusy] = useState(false);
@@ -193,11 +194,10 @@ export function ComposeView({
                 </div>
               ) : null}
               <div className="link-stack">
-                <ExternalButton
-                  label="Open saved draft"
-                  href={localUrl(baseUrl, `/plans/${result.draft_id}`)}
-                  icon={<ListChecks size={16} />}
-                />
+                <button className="secondary-button" type="button" onClick={() => onSwitch("plans")}>
+                  <ListChecks size={16} aria-hidden="true" />
+                  <span>Review in Plans</span>
+                </button>
               </div>
             </>
           ) : (
@@ -227,7 +227,6 @@ export function ComposeView({
               <PlanCard
                 key={plan.plan_id}
                 plan={plan}
-                baseUrl={baseUrl}
                 busyPlanAction={busyPlanAction}
                 onFollowupAction={onFollowupAction}
               />

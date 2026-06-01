@@ -253,7 +253,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with first-class Plans and Memory review tabs plus Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with in-app Plans, Memory, Fleet, and Logs inspectors plus explicit Slack and GitHub external links. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
 | [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`memory`/`remember`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename-, plan-id-, and memory-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
@@ -273,6 +273,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Fleet brain](docs/FLEET_BRAIN.md): local memory, Slack-driven reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
 - [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, and local API shape.
 - [Desktop client](docs/DESKTOP_CLIENT.md): the desktop control surface tab by tab, the `alfred serve` seam, and building native installers.
+- [Goals](docs/GOALS.md): durable goal contract across Slack, CLI, client, planning readiness, evaluator, and memory.
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
 - [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
@@ -304,6 +305,7 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 - **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. It does not run a hosted inference service and does not require provider API keys.
+- **Explicit goals, not runaway autonomy.** Larger work should have an operator-owned contract: outcome, verification, constraints, human gates, and blocked condition.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 

@@ -23,9 +23,7 @@
   --blue: #5789ff;
   --radius: 8px;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
-  /* Typography tokens. --font-mono was referenced (cli-fallback summary) but
-     never defined; --font-display centralizes the Space Grotesk display face
-     that was inlined across the sheet. */
+  /* Shared typography tokens. */
   --font-body: "Quicksand", system-ui, sans-serif;
   --font-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -74,8 +72,7 @@ button:disabled {
   opacity: 0.72;
 }
 
-/* Keyboard focus must be visible. There was no :focus-visible anywhere before,
-   so tabbing through the app was invisible. Mouse clicks keep no ring. */
+/* Keyboard focus ring. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -176,9 +173,7 @@ code {
   font-weight: 700;
 }
 
-/* Hover is a subtle surface lift. The active tab is visually distinct: accent
-   text + an accent underline bar, so the current section reads at a glance and
-   is not confused with whatever the pointer is hovering. */
+/* Top navigation states. */
 .nav-button:hover {
   color: var(--bright);
   background: var(--surface-2);
@@ -222,8 +217,7 @@ code {
   line-height: 1;
 }
 
-/* Slim top-header status group: a connection pill + a compact connect/refresh
-   affordance that lives on every tab (the full connection panel is Now-only). */
+/* Compact status group in the sticky header. */
 .topbar__status {
   display: inline-flex;
   align-items: center;
@@ -574,9 +568,7 @@ code {
   background: #5bf5df;
 }
 
-/* Destructive affirmative (Yes, pause / Yes, run): never the benign teal. It
-   carries the amber confirm-bar tint so a state-changing confirm is visually
-   distinct from a Refresh/Draft-it primary. */
+/* Destructive affirmative actions. */
 .danger-button {
   padding: 0 14px;
   color: var(--black);
@@ -588,8 +580,7 @@ code {
   background: color-mix(in srgb, var(--warn) 86%, #fff);
 }
 
-/* Service re-activation (Resume): an amber-outlined action, distinct from both
-   the benign teal primary and the plain secondary. */
+/* Service re-activation action. */
 .warn-button {
   padding: 0 12px;
   color: var(--warn);
@@ -875,6 +866,17 @@ code {
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.55fr);
 }
 
+.inspect-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 0.6fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.plan-grid--compact {
+  align-content: start;
+}
+
 .panel {
   min-width: 0;
   padding: 22px;
@@ -960,6 +962,12 @@ code {
   color: var(--error);
 }
 
+.plan-card--selected,
+.run-card--selected {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
 .attention-card span {
   display: block;
   color: var(--muted);
@@ -1001,6 +1009,50 @@ code {
 
 .card-actions--start {
   justify-content: flex-start;
+}
+
+.detail-panel {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.detail-panel__head span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.detail-panel__head h3 {
+  margin: 0;
+  color: var(--bright);
+  font-family: var(--font-display);
+  font-size: 1.18rem;
+  line-height: 1.25;
+}
+
+.detail-pre {
+  max-height: min(58vh, 720px);
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 .button-stack {
@@ -1519,9 +1571,14 @@ dd {
 
 @media (max-width: 1040px) {
   .hero-strip,
+  .inspect-layout,
   .dashboard-grid,
   .dashboard-grid--memory {
     grid-template-columns: 1fr;
+  }
+
+  .detail-panel {
+    position: static;
   }
 
   .metric-grid,

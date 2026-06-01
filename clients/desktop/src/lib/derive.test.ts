@@ -24,7 +24,7 @@ function emptySnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 
 describe("derive helpers (extracted from App.tsx)", () => {
   it("returns a connect prompt when there is no snapshot", () => {
-    const items = buildAttention(null, "http://127.0.0.1:7000");
+    const items = buildAttention(null);
     expect(items).toHaveLength(1);
     expect(items[0].id).toBe("connect");
   });
@@ -100,8 +100,8 @@ describe("derive helpers (extracted from App.tsx)", () => {
 
     const stats = buildStats(snap);
     expect(stats.find((stat) => stat.label === "Memory")?.value).toBe("1");
-    expect(buildAttention(snap, "http://127.0.0.1:7000")[0].id).toBe("memory-mem:1");
-    expect(buildAttention(snap, "http://127.0.0.1:7000")[0].title).toBe("your-org/api");
+    expect(buildAttention(snap)[0].id).toBe("memory-review");
+    expect(buildAttention(snap)[0].title).toBe("1 memory candidate ready");
   });
 
   it("groups repeated failure patterns by agent", () => {

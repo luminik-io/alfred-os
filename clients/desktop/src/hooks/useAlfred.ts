@@ -289,7 +289,7 @@ export function useAlfred() {
     }
   }, [refresh]);
 
-  const attention = useMemo(() => buildAttention(snapshot, baseUrl), [snapshot, baseUrl]);
+  const attention = useMemo(() => buildAttention(snapshot), [snapshot]);
   const stats = useMemo(() => buildStats(snapshot), [snapshot]);
 
   const feed = useMemo(() => buildFeed(snapshot), [snapshot]);

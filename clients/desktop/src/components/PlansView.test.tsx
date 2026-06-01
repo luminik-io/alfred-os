@@ -39,7 +39,6 @@ describe("PlansView (post-refactor)", () => {
     render(
       <PlansView
         plans={[plan()]}
-        baseUrl="http://127.0.0.1:7000"
         actionNotice={null}
         busyPlanAction={null}
         onFollowupAction={onFollowupAction}
@@ -47,7 +46,10 @@ describe("PlansView (post-refactor)", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: /improve planning loop/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: /improve planning loop/i })).toHaveLength(2);
+    expect(screen.getByLabelText(/selected plan details/i)).toHaveTextContent(
+      /add a manual docs smoke test\./i,
+    );
 
     await user.click(screen.getByRole("button", { name: /plan next pass/i }));
     expect(onFollowupAction).toHaveBeenCalledWith(expect.objectContaining({ plan_id: "slack-C1-123" }), "convert");
@@ -64,7 +66,6 @@ describe("PlansView (post-refactor)", () => {
     render(
       <PlansView
         plans={[]}
-        baseUrl="http://127.0.0.1:7000"
         actionNotice={null}
         busyPlanAction={null}
         onFollowupAction={vi.fn()}
@@ -79,7 +80,6 @@ describe("PlansView (post-refactor)", () => {
     render(
       <PlansView
         plans={[]}
-        baseUrl="http://127.0.0.1:7000"
         actionNotice={{ tone: "ok", message: "Marked the follow-up handled." }}
         busyPlanAction={null}
         onFollowupAction={vi.fn()}

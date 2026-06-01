@@ -1,6 +1,5 @@
 import {
   CheckCircle2,
-  ExternalLink,
   GitPullRequest,
   ListChecks,
   MemoryStick,
@@ -15,13 +14,11 @@ import {
 import { useState } from "react";
 
 import { supportsNativeActions } from "../api";
-import { localUrl } from "../lib/links";
-import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
+import type { ActionNotice, NativeActionRequest, TabKey } from "../lib/uiTypes";
 import type { TrustedSlackUsersResponse } from "../types";
 import { ExternalButton, PanelHeader } from "./atoms";
 
 export function SetupView({
-  baseUrl,
   actionNotice,
   trustedSlack,
   busyTrustedUser,
@@ -30,8 +27,8 @@ export function SetupView({
   onRemoveTrustedUser,
   onRunLocalAction,
   onStartRuntime,
+  onSwitch,
 }: {
-  baseUrl: string;
   actionNotice: ActionNotice;
   trustedSlack: TrustedSlackUsersResponse | null;
   busyTrustedUser: string | null;
@@ -40,6 +37,7 @@ export function SetupView({
   onRemoveTrustedUser: (userId: string) => void;
   onRunLocalAction: (request: NativeActionRequest) => void;
   onStartRuntime: () => void;
+  onSwitch: (tab: TabKey) => void;
 }) {
   const canRun = supportsNativeActions();
   const [consoleAgent, setConsoleAgent] = useState("lucius");
@@ -229,14 +227,16 @@ export function SetupView({
         </div>
       </div>
       <div className="panel">
-        <PanelHeader eyebrow="Links" title="Open locally" />
+        <PanelHeader eyebrow="Shortcuts" title="Stay in Alfred" />
         <div className="link-stack">
-          <ExternalButton label="Open serve" href={baseUrl} icon={<ExternalLink size={16} />} />
-          <ExternalButton
-            label="Open plans"
-            href={localUrl(baseUrl, "/plans")}
-            icon={<ListChecks size={16} />}
-          />
+          <button className="secondary-button" type="button" onClick={() => onSwitch("plans")}>
+            <ListChecks size={16} aria-hidden="true" />
+            <span>Planning inbox</span>
+          </button>
+          <button className="secondary-button" type="button" onClick={() => onSwitch("memory")}>
+            <MemoryStick size={16} aria-hidden="true" />
+            <span>Memory review</span>
+          </button>
           <ExternalButton
             label="Open GitHub"
             href="https://github.com/luminik-io/alfred-os"

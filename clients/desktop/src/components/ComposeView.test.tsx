@@ -23,6 +23,7 @@ function renderComposeView(plans: PlanDraft[] = []) {
       actionNotice={null}
       busyPlanAction={null}
       onFollowupAction={vi.fn()}
+      onSwitch={vi.fn()}
     />,
   );
 }

@@ -19,7 +19,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { exactTime, friendlyTime, shortId, titleCase } from "../format";
-import { firstLink, isSafeExternalUrl, localUrl, openExternal } from "../lib/links";
+import { firstLink, isSafeExternalUrl, openExternal } from "../lib/links";
 import type { AttentionItem, FollowupAction } from "../lib/uiTypes";
 import { supportsNativeActions } from "../api";
 import type {
@@ -142,7 +142,13 @@ export function NativeResultPanel({
   );
 }
 
-export function AttentionCard({ item }: { item: AttentionItem }) {
+export function AttentionCard({
+  item,
+  onNavigate,
+}: {
+  item: AttentionItem;
+  onNavigate?: (tab: AttentionItem["targetTab"]) => void;
+}) {
   const Icon =
     item.icon === "memory"
       ? MemoryStick
@@ -161,7 +167,17 @@ export function AttentionCard({ item }: { item: AttentionItem }) {
         {item.command ? <code>{item.command}</code> : null}
       </div>
       <div className="card-actions">
-        {item.href ? <ExternalButton label="Open" href={item.href} icon={<ExternalLink size={16} />} /> : null}
+        {item.targetTab ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => onNavigate?.(item.targetTab)}
+          >
+            <ArrowRight size={16} aria-hidden="true" />
+            <span>Review</span>
+          </button>
+        ) : null}
+        {item.href ? <ExternalButton label="Open external" href={item.href} icon={<ExternalLink size={16} />} /> : null}
       </div>
     </article>
   );
@@ -183,21 +199,23 @@ export function SignalCard({ signal }: { signal: ReliabilitySignal }) {
 
 export function PlanCard({
   plan,
-  baseUrl,
   busyPlanAction,
   onFollowupAction,
+  selected = false,
+  onSelect,
 }: {
   plan: PlanDraft;
-  baseUrl: string;
   busyPlanAction: string | null;
   onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
+  selected?: boolean;
+  onSelect?: (plan: PlanDraft) => void;
 }) {
   const slackLink = firstLink(plan.content, /slack\.com/i);
   const parentLink = plan.parent && isSafeExternalUrl(plan.parent) ? plan.parent : null;
   const isFollowup = plan.source === "followup";
   const actionBusy = busyPlanAction?.startsWith(`${plan.plan_id}:`) || false;
   return (
-    <article className="plan-card">
+    <article className={selected ? "plan-card plan-card--selected" : "plan-card"}>
       <div>
         <div className="plan-card__meta">
           <span>{plan.source}</span>
@@ -244,25 +262,34 @@ export function PlanCard({
             </button>
           </>
         ) : null}
-        <ExternalButton
-          label="Local detail"
-          href={localUrl(baseUrl, `/plans/${plan.plan_id}`)}
-          icon={<ExternalLink size={16} />}
-        />
+        {onSelect ? (
+          <button className="secondary-button" type="button" onClick={() => onSelect(plan)}>
+            <ListChecks size={16} aria-hidden="true" />
+            <span>{selected ? "Selected" : "Inspect"}</span>
+          </button>
+        ) : null}
         {parentLink ? (
-          <ExternalButton label="Issue" href={parentLink} icon={<GitPullRequest size={16} />} />
+          <ExternalButton label="Open issue" href={parentLink} icon={<GitPullRequest size={16} />} />
         ) : null}
         {slackLink ? (
-          <ExternalButton label="Slack" href={slackLink} icon={<MessageSquare size={16} />} />
+          <ExternalButton label="Open Slack" href={slackLink} icon={<MessageSquare size={16} />} />
         ) : null}
       </div>
     </article>
   );
 }
 
-export function RunCard({ firing, baseUrl }: { firing: FiringRecord; baseUrl: string }) {
+export function RunCard({
+  firing,
+  selected = false,
+  onSelect,
+}: {
+  firing: FiringRecord;
+  selected?: boolean;
+  onSelect?: (firing: FiringRecord) => void;
+}) {
   return (
-    <article className="run-card">
+    <article className={selected ? "run-card run-card--selected" : "run-card"}>
       <div className="run-card__status">
         <StatusDot status={firing.status} />
       </div>
@@ -274,16 +301,23 @@ export function RunCard({ firing, baseUrl }: { firing: FiringRecord; baseUrl: st
         </div>
         <p>{firing.summary}</p>
       </div>
-      <ExternalButton
-        label="Trace"
-        href={localUrl(baseUrl, `/firings/${firing.firing_id}`)}
-        icon={<ExternalLink size={16} />}
-      />
+      {onSelect ? (
+        <button className="secondary-button" type="button" onClick={() => onSelect(firing)}>
+          <Radio size={16} aria-hidden="true" />
+          <span>{selected ? "Selected" : "Inspect"}</span>
+        </button>
+      ) : null}
     </article>
   );
 }
 
-export function CompactPlanList({ plans, baseUrl }: { plans: PlanDraft[]; baseUrl: string }) {
+export function CompactPlanList({
+  plans,
+  onOpen,
+}: {
+  plans: PlanDraft[];
+  onOpen?: (plan: PlanDraft) => void;
+}) {
   if (!plans.length) {
     return <EmptyState title="No plans yet." body="Planning drafts will appear here." compact />;
   }
@@ -293,7 +327,7 @@ export function CompactPlanList({ plans, baseUrl }: { plans: PlanDraft[]; baseUr
         <button
           key={plan.plan_id}
           type="button"
-          onClick={() => void openExternal(localUrl(baseUrl, `/plans/${plan.plan_id}`))}
+          onClick={() => onOpen?.(plan)}
         >
           <span>{plan.status}</span>
           <strong>{plan.title}</strong>
@@ -304,7 +338,13 @@ export function CompactPlanList({ plans, baseUrl }: { plans: PlanDraft[]; baseUr
   );
 }
 
-export function CompactRunList({ firings, baseUrl }: { firings: FiringRecord[]; baseUrl: string }) {
+export function CompactRunList({
+  firings,
+  onOpen,
+}: {
+  firings: FiringRecord[];
+  onOpen?: (firing: FiringRecord) => void;
+}) {
   if (!firings.length) {
     return <EmptyState title="No runs yet." body="Recent firing traces will appear here." compact />;
   }
@@ -314,7 +354,7 @@ export function CompactRunList({ firings, baseUrl }: { firings: FiringRecord[]; 
         <button
           key={firing.firing_id}
           type="button"
-          onClick={() => void openExternal(localUrl(baseUrl, `/firings/${firing.firing_id}`))}
+          onClick={() => onOpen?.(firing)}
         >
           <span>{firing.codename}</span>
           <strong>{firing.summary}</strong>

@@ -1,6 +1,5 @@
 import { friendlyTime, plural, titleCase } from "../format";
 import type { PlanDraft, ReliabilitySignal, Snapshot } from "../types";
-import { localUrl } from "./links";
 import type { AttentionItem } from "./uiTypes";
 
 export function buildStats(snapshot: Snapshot | null) {
@@ -32,7 +31,7 @@ export function buildStats(snapshot: Snapshot | null) {
   ];
 }
 
-export function buildAttention(snapshot: Snapshot | null, baseUrl: string): AttentionItem[] {
+export function buildAttention(snapshot: Snapshot | null): AttentionItem[] {
   if (!snapshot) {
     return [
       {
@@ -50,39 +49,70 @@ export function buildAttention(snapshot: Snapshot | null, baseUrl: string): Atte
   const items: AttentionItem[] = [];
   for (const [index, signal] of (snapshot.actions.actions || []).entries()) {
     if (signal.kind === "failure_pattern") continue;
+    if (signal.kind === "memory_promotion") continue;
     items.push(signalToAttention(signal, `action-${index}`));
   }
   for (const [index, signal] of (snapshot.actions.stale_workers || []).entries()) {
     items.push(signalToAttention(signal, `stale-${index}`, "run"));
   }
   items.push(...failurePatternsToAttention(snapshot.actions.failure_patterns || []));
-  for (const plan of snapshot.plans.filter((plan) => planNeedsAttention(plan)).slice(0, 4)) {
+  const waitingPlans = snapshot.plans.filter((plan) => planNeedsAttention(plan));
+  if (waitingPlans.length === 1) {
+    const plan = waitingPlans[0];
     items.push({
       id: `plan-${plan.plan_id}`,
       label: titleCase(plan.status || "plan"),
       title: plan.title,
       detail: plan.preview || plan.affected_repos || "Review plan context before Alfred implements it.",
       tone: plan.status.includes("question") ? "warn" : "info",
-      href: localUrl(baseUrl, `/plans/${plan.plan_id}`),
+      targetTab: "plans",
+      icon: "plan",
+    });
+  } else if (waitingPlans.length > 1) {
+    items.push({
+      id: "plans-review",
+      label: "Planning queue",
+      title: `${plural(waitingPlans.length, "plan")} waiting`,
+      detail: waitingPlans
+        .slice(0, 3)
+        .map((plan) => plan.title)
+        .join("; "),
+      tone: waitingPlans.some((plan) => plan.status.toLowerCase().includes("question"))
+        ? "warn"
+        : "info",
+      targetTab: "plans",
       icon: "plan",
     });
   }
-  for (const [index, candidate] of (snapshot.memoryCandidates.rows || []).entries()) {
+  const candidates = snapshot.memoryCandidates.rows || [];
+  if (candidates.length) {
+    const repos = Array.from(new Set(candidates.map((candidate) => candidate.repo).filter(Boolean)));
     items.push({
-      id: `memory-${candidate.id}`,
-      label: titleCase(candidate.severity || "Memory"),
-      title: candidate.repo || "Review memory candidate",
-      detail: candidate.body || `${candidate.codename}/${candidate.repo} from ${candidate.source}`,
-      tone: candidate.severity === "blocker" ? "error" : "info",
+      id: "memory-review",
+      label: "Review queue",
+      title: `${plural(candidates.length, "memory candidate")} ready`,
+      detail: repos.length
+        ? `Review before promotion: ${repos.slice(0, 3).join(", ")}${repos.length > 3 ? ", ..." : ""}.`
+        : "Review candidates before they enter recall.",
+      tone: candidates.some((candidate) => candidate.severity === "blocker") ? "error" : "info",
+      targetTab: "memory",
       icon: "memory",
     });
-    if (index >= 3) break;
   }
-  for (const [index, signal] of (snapshot.actions.promotion_suggestions || []).entries()) {
-    items.push(signalToAttention(signal, `memory-${index}`, "memory"));
+  const suggestions = snapshot.actions.promotion_suggestions || [];
+  if (!candidates.length && suggestions.length) {
+    items.push({
+      id: "memory-suggestions",
+      label: "Review queue",
+      title: `${plural(suggestions.length, "memory suggestion")} ready`,
+      detail: "Review fleet-brain suggestions before promotion.",
+      tone: "info",
+      targetTab: "memory",
+      icon: "memory",
+    });
   }
 
-  return items.slice(0, 8);
+  return items.slice(0, 6);
 }
 
 export function failurePatternsToAttention(signals: ReliabilitySignal[]): AttentionItem[] {

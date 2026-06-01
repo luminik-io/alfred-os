@@ -164,12 +164,12 @@ function App() {
           actionNotice={actionNotice}
           busyPlanAction={busyPlanAction}
           onFollowupAction={runFollowupAction}
+          onSwitch={setTab}
         />
       ) : null}
       {tab === "plans" ? (
         <PlansView
           plans={snapshot?.plans || []}
-          baseUrl={baseUrl}
           actionNotice={actionNotice}
           busyPlanAction={busyPlanAction}
           onFollowupAction={runFollowupAction}
@@ -206,12 +206,11 @@ function App() {
             seen={seenIds}
             onMarkAllSeen={markActivitySeen}
           />
-          <RunsView firings={snapshot?.firings || []} baseUrl={baseUrl} />
+          <RunsView firings={snapshot?.firings || []} />
         </section>
       ) : null}
       {tab === "setup" ? (
         <SetupView
-          baseUrl={baseUrl}
           actionNotice={actionNotice}
           trustedSlack={snapshot?.trustedSlack || null}
           busyTrustedUser={busyTrustedUser}
@@ -220,6 +219,7 @@ function App() {
           onRemoveTrustedUser={removeTrustedUser}
           onRunLocalAction={runLocalAction}
           onStartRuntime={startRuntime}
+          onSwitch={setTab}
         />
       ) : null}
     </main>

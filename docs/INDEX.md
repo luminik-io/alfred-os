@@ -29,6 +29,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
 - [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): the desktop control surface tab by tab, the `alfred serve` seam and native allowlist, and building native installers.
+- [`GOALS.md`](GOALS.md): durable goal contract for Slack, CLI, client, planning readiness, evaluator, and memory integration.
 - [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, or hybrid routing; precedence chain; default matrix; multi-engine roadmap.
 - [`OPERATING_THE_FLEET.md`](OPERATING_THE_FLEET.md): week-two runbook. Daily Slack rhythm, CLI recipes, sentinels, logs, "fleet went quiet" troubleshooting.

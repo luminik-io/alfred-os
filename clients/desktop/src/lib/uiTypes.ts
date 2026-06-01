@@ -22,5 +22,6 @@ export type AttentionItem = {
   tone: "ok" | "warn" | "error" | "info";
   command?: string;
   href?: string;
+  targetTab?: TabKey;
   icon: "plan" | "run" | "memory" | "setup";
 };
