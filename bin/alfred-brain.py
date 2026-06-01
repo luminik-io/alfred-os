@@ -697,11 +697,11 @@ def _harvest_failure_pattern_memories(
     ):
         codename = str(pattern.get("codename") or "operator").strip() or "operator"
         repo = str(pattern.get("repo") or "global").strip() or "global"
+        pattern_key = _harvest_pattern_key(pattern)
         body = _failure_pattern_memory_body(pattern)
-        key = (codename, repo, _canonical_text(body))
         status = "preview"
         candidate_id: str | None = None
-        if key in existing:
+        if pattern_key in existing:
             status = "duplicate"
         elif apply:
             candidate = brain.propose_memory(
@@ -712,13 +712,14 @@ def _harvest_failure_pattern_memories(
                     "auto-harvest",
                     "failure-pattern",
                     f"class:{pattern.get('classification') or 'unknown'}",
+                    f"pattern:{pattern_key}",
                 ],
                 severity=pattern.get("severity", "warning"),
                 source="memory-harvest",
                 evidence=json.dumps(
                     {
                         "kind": "failure_pattern",
-                        "pattern_key": pattern.get("key"),
+                        "pattern_key": pattern_key,
                         "count": pattern.get("count"),
                         "first_seen": pattern.get("first_seen"),
                         "last_seen": pattern.get("last_seen"),
@@ -730,7 +731,7 @@ def _harvest_failure_pattern_memories(
                 confidence=0.72,
             )
             candidate_id = str(getattr(candidate, "id", candidate))
-            existing.add(key)
+            existing.add(pattern_key)
             status = "queued"
         proposals.append(
             {
@@ -745,25 +746,52 @@ def _harvest_failure_pattern_memories(
     return proposals
 
 
-def _existing_memory_keys(brain: FleetBrain) -> set[tuple[str, str, str]]:
-    keys: set[tuple[str, str, str]] = set()
+def _existing_memory_keys(brain: FleetBrain) -> set[str]:
+    keys: set[str] = set()
     for lesson in brain.list_lessons(limit=1000):
-        keys.add(
-            (
-                str(getattr(lesson, "codename", "") or "operator"),
-                str(getattr(lesson, "repo", "") or "global"),
-                _canonical_text(str(getattr(lesson, "body", "") or "")),
-            )
-        )
+        keys.update(_pattern_keys_from_tags(getattr(lesson, "tags", []) or []))
     for candidate in brain.list_memory_candidates(status=None, limit=1000):
-        keys.add(
-            (
-                str(getattr(candidate, "codename", "") or "operator"),
-                str(getattr(candidate, "repo", "") or "global"),
-                _canonical_text(str(getattr(candidate, "body", "") or "")),
-            )
-        )
+        keys.update(_pattern_keys_from_tags(getattr(candidate, "tags", []) or []))
+        key = _pattern_key_from_evidence(getattr(candidate, "evidence", "") or "")
+        if key:
+            keys.add(key)
     return keys
+
+
+def _harvest_pattern_key(pattern: dict[str, Any]) -> str:
+    raw = str(pattern.get("key") or "").strip()
+    if raw:
+        return raw
+    parts = [
+        str(pattern.get("codename") or "operator").strip() or "operator",
+        str(pattern.get("repo") or "-").strip() or "-",
+        str(pattern.get("subtype") or "unknown").strip() or "unknown",
+        str(pattern.get("engine") or "-").strip() or "-",
+    ]
+    return "|".join(parts)
+
+
+def _pattern_keys_from_tags(tags: object) -> set[str]:
+    keys: set[str] = set()
+    if not isinstance(tags, list):
+        return keys
+    for tag in tags:
+        text = str(tag).strip()
+        if text.startswith("pattern:") and text.removeprefix("pattern:").strip():
+            keys.add(text.removeprefix("pattern:").strip())
+    return keys
+
+
+def _pattern_key_from_evidence(evidence: object) -> str | None:
+    if isinstance(evidence, str):
+        try:
+            evidence = json.loads(evidence)
+        except json.JSONDecodeError:
+            return None
+    if isinstance(evidence, dict):
+        key = evidence.get("pattern_key")
+        return str(key).strip() if key else None
+    return None
 
 
 def _failure_pattern_memory_body(pattern: dict[str, Any]) -> str:
@@ -782,10 +810,6 @@ def _failure_pattern_memory_body(pattern: dict[str, Any]) -> str:
     if latest:
         body = f"{body} Latest evidence: {_short(latest, 180)}"
     return body
-
-
-def _canonical_text(value: str) -> str:
-    return re.sub(r"\s+", " ", value.strip().lower())
 
 
 def _short(value: str, limit: int) -> str:

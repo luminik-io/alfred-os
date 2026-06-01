@@ -404,6 +404,15 @@ def test_cli_harvest_previews_and_applies_failure_memories(
     assert candidate.source == "memory-harvest"
     assert "failure-pattern" in candidate.tags
 
+    brain.record_failure(
+        codename="huntress",
+        repo="org/web",
+        firing_id="fid-harvest-later",
+        subtype="error_timeout",
+        summary="browserType.launch: Executable doesn't exist at chromium_headless_shell",
+        engine="claude",
+    )
+
     rc = cli_mod.main(["harvest", "--apply", "--json"])
     assert rc == 0
     duplicate = json.loads(capsys.readouterr().out)
