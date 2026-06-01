@@ -12,6 +12,7 @@ Execution remains gated by the existing reaction approval flow.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -379,13 +380,6 @@ class SlackPlanningListener:
                 revision_count = _write_revised_draft_payload(
                     payload_path, payload, event, feedback, refined
                 )
-                memory_candidate_ids = self._propose_planning_memory_candidates(
-                    event,
-                    refined,
-                    payload_path,
-                    source="slack-revision",
-                )
-                _append_memory_candidate_ids(payload_path, memory_candidate_ids)
             except OSError as exc:
                 self._post_thread_ack(
                     event.channel,
@@ -405,6 +399,15 @@ class SlackPlanningListener:
                 payload_path,
                 revision_count=revision_count,
             )
+        memory_candidate_ids = self._propose_planning_memory_candidates(
+            event,
+            refined,
+            payload_path,
+            source="slack-revision",
+        )
+        if memory_candidate_ids:
+            with _draft_revision_lock(payload_path):
+                _append_memory_candidate_ids(payload_path, memory_candidate_ids)
         self._post_thread_ack(event.channel, event.root_ts, render_draft_revision_ack(refined))
         return ListenerResult(
             True,
@@ -664,7 +667,7 @@ class SlackPlanningListener:
         if _env_disabled("ALFRED_SLACK_MEMORY_CANDIDATES"):
             return ()
         readiness = getattr(result, "readiness", None)
-        if readiness is not None and not getattr(readiness, "ok", False):
+        if readiness is None or not getattr(readiness, "ok", False):
             return ()
         writer = _memory_candidate_writer(self.memory_provider)
         if writer is None or not hasattr(writer, "propose_memory"):
@@ -686,34 +689,39 @@ class SlackPlanningListener:
             "amendments": list(getattr(result, "amendments", ()) or ()),
         }
         ids: list[str] = []
+        propose_memory = writer.propose_memory
+        use_modern_signature = _propose_memory_supports_modern_signature(propose_memory)
         for repo in draft.repos or ["planning"]:
+            if use_modern_signature:
+                kwargs = {
+                    "codename": "planning",
+                    "repo": repo,
+                    "body": body,
+                    "tags": ["slack", "planning"],
+                    "severity": "info",
+                    "source": source,
+                    "evidence": json.dumps(evidence, sort_keys=True),
+                    "confidence": 0.68,
+                }
+            else:
+                kwargs = {
+                    "agent": "planning",
+                    "repo": repo,
+                    "topic": "slack-planning",
+                    "body": body,
+                    "source": source,
+                    "evidence": [evidence],
+                }
             try:
-                candidate = writer.propose_memory(
-                    codename="planning",
-                    repo=repo,
-                    body=body,
-                    tags=["slack", "planning"],
-                    severity="info",
-                    source=source,
-                    evidence=json.dumps(evidence, sort_keys=True),
-                    confidence=0.68,
+                candidate = propose_memory(**kwargs)
+            except Exception as exc:
+                print(
+                    f"[SLACK-LISTENER-WARN] could not queue {source} memory "
+                    f"candidate for {repo}: {exc}",
+                    file=sys.stderr,
                 )
-                candidate_id = getattr(candidate, "id", candidate)
-            except TypeError:
-                try:
-                    candidate = writer.propose_memory(
-                        agent="planning",
-                        repo=repo,
-                        topic="slack-planning",
-                        body=body,
-                        source=source,
-                        evidence=[evidence],
-                    )
-                    candidate_id = getattr(candidate, "id", candidate)
-                except Exception:
-                    continue
-            except Exception:
                 continue
+            candidate_id = getattr(candidate, "id", candidate)
             ids.append(str(candidate_id))
         return tuple(ids)
 
@@ -803,6 +811,17 @@ def _env_disabled(name: str) -> bool:
         "off",
         "disabled",
     }
+
+
+def _propose_memory_supports_modern_signature(method: Any) -> bool:
+    try:
+        signature = inspect.signature(method)
+    except (TypeError, ValueError):
+        return True
+    parameters = signature.parameters.values()
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters):
+        return True
+    return {"codename", "tags", "severity", "confidence"}.issubset(signature.parameters)
 
 
 def _append_memory_candidate_ids(path: Path, candidate_ids: Iterable[str]) -> None:

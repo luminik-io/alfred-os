@@ -37,6 +37,33 @@ class MemoryProvider:
         return SimpleNamespace(id=f"cand-{len(self.calls)}")
 
 
+class LegacyMemoryProvider:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def propose_memory(
+        self,
+        *,
+        agent: str | None,
+        topic: str,
+        body: str,
+        repo: str | None = None,
+        evidence: list[dict] | None = None,
+        source: str = "agent",
+    ):
+        self.calls.append(
+            {
+                "agent": agent,
+                "topic": topic,
+                "body": body,
+                "repo": repo,
+                "evidence": evidence,
+                "source": source,
+            }
+        )
+        return len(self.calls)
+
+
 def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
     text = render_bridge_outcome_ack(
         SimpleNamespace(
@@ -329,6 +356,88 @@ def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) ->
     assert provider.calls[0]["tags"] == ["slack", "planning"]
     draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
     assert draft["memory_candidate_ids"] == ["cand-1"]
+
+
+def test_slack_memory_candidate_queue_requires_ready_draft(tmp_path: Path) -> None:
+    provider = MemoryProvider()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+        memory_provider=provider,
+    )
+
+    result = listener.handle_payload(_dm("build something useful", event_id="EvVague"))
+
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert result.readiness_ok is False
+    assert provider.calls == []
+
+
+def test_slack_memory_candidate_queue_can_be_disabled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_SLACK_MEMORY_CANDIDATES", "0")
+    provider = MemoryProvider()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+        memory_provider=provider,
+    )
+
+    result = listener.handle_payload(
+        _dm(
+            "title: Queue Slack planning memories\n"
+            "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
+            "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
+            "repo: luminik-io/alfred-os\n"
+            "acceptance: the local draft records the memory candidate id for review\n"
+            "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
+            "out of scope: automatic promotion\n"
+            "question: none",
+            event_id="EvMemoryOff",
+        )
+    )
+
+    assert result.handled is True
+    assert result.readiness_ok is True
+    assert provider.calls == []
+    draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
+    assert "memory_candidate_ids" not in draft
+
+
+def test_slack_memory_candidate_queue_supports_legacy_writer(tmp_path: Path) -> None:
+    provider = LegacyMemoryProvider()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=Poster(),
+        trusted_user_ids=("U1",),
+        memory_provider=provider,
+    )
+
+    result = listener.handle_payload(
+        _dm(
+            "title: Queue Slack planning memories\n"
+            "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
+            "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
+            "repo: luminik-io/alfred-os\n"
+            "acceptance: the local draft records the memory candidate id for review\n"
+            "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
+            "out of scope: automatic promotion\n"
+            "question: none",
+            event_id="EvLegacyMemory",
+        )
+    )
+
+    assert result.handled is True
+    assert provider.calls
+    assert provider.calls[0]["agent"] == "planning"
+    assert provider.calls[0]["topic"] == "slack-planning"
+    draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
+    assert draft["memory_candidate_ids"] == ["1"]
 
 
 def test_operator_can_trust_collaborator_without_listener_restart(
