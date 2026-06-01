@@ -5,6 +5,8 @@ import {
   RefreshCw,
   Settings,
   SlidersHorizontal,
+  ListChecks,
+  MemoryStick,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -17,7 +19,9 @@ import {
 import { ComposeView } from "./components/ComposeView";
 import { FleetControlView } from "./components/FleetControlView";
 import { HomeView } from "./components/HomeView";
+import { MemoryView } from "./components/MemoryView";
 import { NotificationsView } from "./components/NotificationsView";
+import { PlansView } from "./components/PlansView";
 import { RunsView } from "./components/RunsView";
 import { SetupView } from "./components/SetupView";
 import { useAlfred } from "./hooks/useAlfred";
@@ -26,6 +30,8 @@ import type { TabKey } from "./lib/uiTypes";
 const tabs: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "home", label: "Home", icon: Activity },
   { key: "compose", label: "Compose", icon: PenLine },
+  { key: "plans", label: "Plans", icon: ListChecks },
+  { key: "memory", label: "Memory", icon: MemoryStick },
   { key: "fleet", label: "Fleet", icon: SlidersHorizontal },
   { key: "logs", label: "Logs", icon: Radio },
 ];
@@ -41,6 +47,7 @@ function App() {
     errorRaw,
     loading,
     busyPlanAction,
+    busyMemoryAction,
     busyTrustedUser,
     actionNotice,
     nativeBusy,
@@ -57,6 +64,7 @@ function App() {
     refresh,
     refreshFleetService,
     runFollowupAction,
+    runMemoryCandidateAction,
     addTrustedUser,
     removeTrustedUser,
     runLocalAction,
@@ -159,6 +167,26 @@ function App() {
           actionNotice={actionNotice}
           busyPlanAction={busyPlanAction}
           onFollowupAction={runFollowupAction}
+        />
+      ) : null}
+      {tab === "plans" ? (
+        <PlansView
+          plans={snapshot?.plans || []}
+          baseUrl={baseUrl}
+          actionNotice={actionNotice}
+          busyPlanAction={busyPlanAction}
+          onFollowupAction={runFollowupAction}
+          onSwitch={setTab}
+        />
+      ) : null}
+      {tab === "memory" ? (
+        <MemoryView
+          snapshot={snapshot}
+          actionNotice={actionNotice}
+          busyMemoryAction={busyMemoryAction}
+          nativeBusy={nativeBusy}
+          onMemoryCandidateAction={runMemoryCandidateAction}
+          onRunLocalAction={runLocalAction}
         />
       ) : null}
       {tab === "fleet" ? (

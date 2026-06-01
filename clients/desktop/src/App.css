@@ -870,6 +870,7 @@ code {
 
 .attention-card,
 .plan-card,
+.memory-candidate,
 .run-card,
 .agent-card,
 .command-row {
@@ -1151,6 +1152,64 @@ code {
 
 .plan-card {
   align-content: space-between;
+}
+
+.memory-candidate-list {
+  display: grid;
+  gap: 14px;
+}
+
+.memory-candidate {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.memory-candidate__body {
+  min-width: 0;
+}
+
+.memory-candidate h2 {
+  margin: 10px 0 6px;
+  color: var(--bright);
+  font-family: var(--font-display);
+  font-size: 1.12rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.tag-row span {
+  padding: 3px 7px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.memory-evidence {
+  margin-top: 12px;
+}
+
+.memory-evidence summary {
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.memory-evidence pre {
+  max-height: 220px;
+  margin: 10px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .plan-card__meta,
@@ -1481,6 +1540,7 @@ dd {
 
   .server-row,
   .attention-card,
+  .memory-candidate,
   .run-card,
   .command-row,
   .console-agent-row,

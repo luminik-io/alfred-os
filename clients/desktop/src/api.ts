@@ -6,6 +6,8 @@ import type {
   ComposeDraftResponse,
   FiringsResponse,
   FollowupActionResponse,
+  MemoryCandidateActionResponse,
+  MemoryCandidatesResponse,
   NativeAction,
   NativeCommandResult,
   PlansResponse,
@@ -124,16 +126,18 @@ export function isDefaultBaseUrl(value: string): boolean {
   }
 }
 
-// The dashboard reads four independent endpoints. A failure on any one of them
+// The dashboard reads several independent endpoints. A failure on any one of them
 // should not blank the whole view, so we settle each request and render what
 // resolved, marking the missing sections as degraded. /api/status is the spine
 // (it carries fleet liveness and the reliability rollup): if it fails the whole
 // snapshot is genuinely unusable, so that one rejection still surfaces as the
 // connection error the banner shows.
 export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
-  const [status, actions, firings, plans, trustedSlack] = await Promise.allSettled([
+  const [status, actions, memoryCandidates, firings, plans, trustedSlack] =
+    await Promise.allSettled([
     readAlfredJson<StatusResponse>(baseUrl, "/api/status"),
     readAlfredJson<ActionsResponse>(baseUrl, "/api/actions"),
+    readAlfredJson<MemoryCandidatesResponse>(baseUrl, "/api/memory/candidates?limit=20"),
     readAlfredJson<FiringsResponse>(baseUrl, "/api/firings?limit=14"),
     readAlfredJson<PlansResponse>(baseUrl, "/api/plans?limit=14"),
     readAlfredJson<TrustedSlackUsersResponse>(baseUrl, "/api/slack/trusted-users"),
@@ -145,6 +149,9 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
 
   const degraded: NonNullable<Snapshot["degraded"]> = {};
   if (actions.status === "rejected") degraded.actions = settledError(actions.reason);
+  if (memoryCandidates.status === "rejected") {
+    degraded.memoryCandidates = settledError(memoryCandidates.reason);
+  }
   if (firings.status === "rejected") degraded.firings = settledError(firings.reason);
   if (plans.status === "rejected") degraded.plans = settledError(plans.reason);
   if (trustedSlack.status === "rejected") degraded.trustedSlack = settledError(trustedSlack.reason);
@@ -162,6 +169,10 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
             stale_workers: [],
             promotion_suggestions: [],
           },
+    memoryCandidates:
+      memoryCandidates.status === "fulfilled"
+        ? { rows: memoryCandidates.value.rows || [], error: memoryCandidates.value.error }
+        : { rows: [] },
     firings: firings.status === "fulfilled" ? firings.value.rows || [] : [],
     plans: plans.status === "fulfilled" ? plans.value.rows || [] : [],
     trustedSlack: trustedSlack.status === "fulfilled" ? trustedSlack.value : null,
@@ -192,6 +203,28 @@ export async function composeDraft(
   request: ComposeDraftRequest,
 ): Promise<ComposeDraftResponse> {
   return writeAlfredJson(baseUrl, "/api/plans/draft", request);
+}
+
+export async function promoteMemoryCandidate(
+  baseUrl: string,
+  candidateId: string,
+): Promise<MemoryCandidateActionResponse> {
+  return writeAlfredJson(
+    baseUrl,
+    `/api/memory/candidates/${memoryPathSegment(candidateId)}/promote`,
+    {},
+  );
+}
+
+export async function rejectMemoryCandidate(
+  baseUrl: string,
+  candidateId: string,
+): Promise<MemoryCandidateActionResponse> {
+  return writeAlfredJson(
+    baseUrl,
+    `/api/memory/candidates/${memoryPathSegment(candidateId)}/reject`,
+    {},
+  );
 }
 
 export async function addTrustedSlackUser(
@@ -335,6 +368,14 @@ function planPathSegment(planId: string): string {
   const clean = planId.trim();
   if (!/^[A-Za-z0-9_.-]+$/.test(clean)) {
     throw new Error("Plan id is not safe to send to Alfred serve.");
+  }
+  return clean;
+}
+
+function memoryPathSegment(candidateId: string): string {
+  const clean = candidateId.trim();
+  if (!/^[A-Za-z0-9:_-]+$/.test(clean)) {
+    throw new Error("Memory candidate id is not safe to send to Alfred serve.");
   }
   return clean;
 }

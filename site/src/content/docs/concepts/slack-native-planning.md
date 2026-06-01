@@ -97,7 +97,7 @@ intake:
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
 | `handled <id>` | Operator-only: archive a captured follow-up without drafting. |
 | `memory` / `memories` | Show pending memory candidates and promotion suggestions. |
-| `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
+| `remember [repo:] <lesson>` / `memory remember ...` | Queue a reviewable memory candidate from Slack. |
 | `memory promote <id>` | Operator-only: promote a candidate into future recall. |
 | `memory reject <id>` | Operator-only: reject a noisy candidate. |
 | `memory harvest` | Preview repeated-failure lessons from the reliability governor. |

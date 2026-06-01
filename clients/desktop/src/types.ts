@@ -103,6 +103,39 @@ export type TrustedSlackUsersResponse = {
   removed?: boolean;
 };
 
+export type MemoryCandidate = {
+  id: string;
+  codename: string;
+  repo: string;
+  body: string;
+  tags: string[];
+  severity: "info" | "warning" | "blocker" | string;
+  source: string;
+  source_firing_id: string | null;
+  evidence: string;
+  confidence: number;
+  status: "candidate" | "validated" | "rejected" | "retired" | string;
+  created_at: string;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  review_note?: string | null;
+  promoted_lesson_id?: string | null;
+};
+
+export type MemoryCandidatesResponse = {
+  rows: MemoryCandidate[];
+  error?: string;
+};
+
+export type MemoryCandidateActionResponse = {
+  candidate_id?: string;
+  lesson_id?: string;
+  status?: string;
+  codename?: string;
+  repo?: string;
+  id?: string;
+};
+
 export type FollowupActionResponse = {
   draft_id?: string;
   draft_path?: string;
@@ -157,7 +190,9 @@ export type NativeAction =
   | "agents"
   | "auth_status"
   | "brain_doctor"
-  | "redis_status";
+  | "redis_status"
+  | "redis_sync_preview"
+  | "memory_harvest";
 
 // Shape of a single agent entry in `alfred status --json`. The CLI exposes the
 // paused/running state that the read-only /api/status endpoint does not, so the
@@ -191,6 +226,7 @@ export type Snapshot = {
   loadedAt: Date;
   status: StatusResponse;
   actions: ActionsResponse;
+  memoryCandidates: MemoryCandidatesResponse;
   firings: FiringRecord[];
   plans: PlanDraft[];
   trustedSlack: TrustedSlackUsersResponse | null;
@@ -201,6 +237,7 @@ export type Snapshot = {
     actions?: string;
     firings?: string;
     plans?: string;
+    memoryCandidates?: string;
     trustedSlack?: string;
   };
 };

@@ -54,11 +54,13 @@ Reliability and first-run trust polish.
   remains operator-only.
 - Native local client preview: `clients/desktop` ships a Tauri Mac/Linux shell
   over the local Alfred runtime. It opens to "what needs attention?", shows
-  Home, Compose, Fleet, Logs, and Setup gear surfaces, opens external links
-  outside the app, can start the local runtime, run safe dry-runs and memory
-  checks, pause/resume/run agents through the native allowlist, and can convert
-  trusted follow-ups into planning drafts or mark them handled without bypassing
-  Slack approval.
+  Home, Compose, Plans, Memory, Fleet, Logs, and Setup gear surfaces, opens
+  external links outside the app, can start the local runtime, run safe dry-runs
+  and memory checks, pause/resume/run agents through the native allowlist,
+  promote or reject local memory candidates through `alfred serve`, preview
+  Redis AMS sync, queue failure-pattern memories, and can convert trusted
+  follow-ups into planning drafts or mark them handled without bypassing Slack
+  approval.
 - Plain intake mode: `ALFRED_INTAKE_PROFILE=plain` turns the planning assistant into a non-technical front door. A teammate can describe work in plain language; the assistant asks at most one or two plain questions, hides specs, scope, readiness scores, and PRs, and renders a "Here's what I'll do … OK to go ahead?" plan framed around reviewing a preview. The same structured draft is built invisibly, so the downstream bridge and fleet are unchanged. Default (unset) stays technical. See `docs/PLAIN_MODE.md`.
 
 ### v0.4.0: 2026-05-23

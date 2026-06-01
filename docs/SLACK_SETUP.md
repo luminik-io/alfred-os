@@ -333,7 +333,7 @@ from chat by **leading a message with a known verb**. These are handled by
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
 | `handled <id>` | Operator-only. Archive a captured follow-up without creating a draft. |
 | `memory` / `memories` | Show pending memory candidates and suggested promotions. |
-| `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
+| `remember [repo:] <lesson>` / `memory remember ...` | Queue a reviewable memory candidate from Slack. |
 | `memory promote <id>` | Operator-only. Promote a candidate into future recall. |
 | `memory reject <id>` | Operator-only. Reject a noisy candidate. |
 | `memory harvest` | Preview repeated-failure lessons from the reliability governor. |
@@ -369,8 +369,9 @@ Safety model:
   state. `draft <id>` writes a local planning draft and archives the captured
   follow-up. `handled <id>` archives the follow-up. None of these commands
   files GitHub issues, starts agents, approves execution, or merges PRs.
-- **Memory is reviewable.** `remember ...` queues a candidate only. It does not
-  enter future prompt context until the operator runs `memory promote <id>`.
+- **Memory is reviewable.** `remember ...` and `memory remember ...` queue
+  candidates only. They do not enter future prompt context until the operator
+  runs `memory promote <id>`.
   `memory harvest` previews repeated-failure lessons before `memory harvest now`
   queues them. A scheduled `memory-harvest.py` job can queue the same
   reviewable candidates automatically and notify Slack only when there is

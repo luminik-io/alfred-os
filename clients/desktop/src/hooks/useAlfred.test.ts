@@ -70,6 +70,7 @@ function snapshot(agents: AgentSummary[]): Snapshot {
       stale_workers: [],
       promotion_suggestions: [],
     },
+    memoryCandidates: { rows: [] },
     firings: [],
     plans: [],
     trustedSlack: null,

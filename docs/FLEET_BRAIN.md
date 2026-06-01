@@ -334,6 +334,7 @@ Slack can also drive the review loop directly:
 memory
 memories
 remember luminik-io/alfred-os: Slack memory candidates must stay reviewable.
+memory remember luminik-io/alfred-os: keep the namespace discoverable.
 memory promote <candidate-id>
 memory reject <candidate-id> too vague for future recall
 memory harvest
@@ -342,10 +343,12 @@ memory redis
 memory sync
 ```
 
-`remember ...` stages a candidate; it does not become prompt context. Promotion
-and rejection stay operator-only. `memory harvest` previews repeated-failure
-lessons from the reliability governor; `memory harvest now` queues those lessons
-as reviewable candidates. `memory redis` checks the optional Redis Agent Memory
+`remember ...` and `memory remember ...` stage candidates; they do not become
+prompt context. Promotion and rejection stay operator-only. The desktop client
+uses the same local candidate queue through `alfred serve`, so Slack, CLI, and
+client review the same rows. `memory harvest` previews repeated-failure lessons
+from the reliability governor; `memory harvest now` queues those lessons as
+reviewable candidates. `memory redis` checks the optional Redis Agent Memory
 Server bridge, and `memory sync` previews a one-way sync of reviewed local
 lessons. `memory sync now` is the explicit Redis write path.
 

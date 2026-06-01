@@ -1,6 +1,6 @@
 import type { NativeAction } from "../types";
 
-export type TabKey = "home" | "compose" | "fleet" | "logs" | "setup";
+export type TabKey = "home" | "compose" | "plans" | "memory" | "fleet" | "logs" | "setup";
 
 export type StatCard = { label: string; value: string; detail: string };
 

@@ -109,9 +109,11 @@ Memory is reviewable and appears where the operator is already working:
 
 - Home surfaces memory candidates ready for review
 - Compose recalls promoted planning hints beside drafts
-- Setup exposes memory doctor, Redis status, and explicit Redis sync checks
-- Slack exposes `memory`, `remember`, `memory promote`, `memory reject`,
-  `memory redis`, and `memory sync`
+- Memory exposes candidate promote/reject, memory doctor, Redis status, Redis
+  sync preview, and repeated-failure harvest
+- Setup keeps memory and Redis checks available as repair actions
+- Slack exposes `memory`, `remember`, `memory remember`, `memory promote`,
+  `memory reject`, `memory redis`, and `memory sync`
 
 The app must visibly separate promoted lessons from candidates and raw logs.
 
@@ -239,6 +241,9 @@ GET  /api/plans
 GET  /api/plans/{plan_id}
 POST /api/plans/{plan_id}/convert-followup
 POST /api/plans/{plan_id}/mark-handled
+GET  /api/memory/candidates
+POST /api/memory/candidates/{id}/promote
+POST /api/memory/candidates/{id}/reject
 GET  /api/planning-drafts
 GET  /api/slack/threads
 ```
@@ -255,6 +260,8 @@ alfred dry-run <codename>
 alfred brain doctor --json
 alfred brain status --json
 alfred brain redis-status --json
+alfred brain redis-sync --dry-run --json
+alfred brain harvest --apply --json
 ```
 
 Broader write endpoints should come next, behind command previews:
@@ -265,9 +272,6 @@ GET  /api/agents/{codename}
 POST /api/agents/{codename}/dry-run
 POST /api/agents/{codename}/pause
 POST /api/agents/{codename}/resume
-GET  /api/memory/candidates
-POST /api/memory/candidates/{id}/promote
-POST /api/memory/candidates/{id}/reject
 GET  /api/doctor
 POST /api/doctor/run
 ```
@@ -286,10 +290,12 @@ Distribution sequence:
 
 1. `alfred serve` read APIs plus local follow-up action contracts with tests.
    Done.
-2. Tauri shell with Home, Compose, Fleet, Logs, Setup, safe local follow-up
-   actions, runtime launch, status, pause/resume/run controls, memory checks,
-   Redis check, and dry-run launch. Done.
-3. Guided install and broader safe write actions with dry-run previews.
+2. Tauri shell with Home, Compose, Plans, Memory, Fleet, Logs, Setup, safe
+   local follow-up actions, runtime launch, status, pause/resume/run controls,
+   memory checks, candidate promote/reject, Redis status, Redis sync preview,
+   failure-pattern harvest, and dry-run launch. Done.
+3. Guided install, signed update flow, and broader safe write actions with
+   dry-run previews.
 4. Signed Mac builds and Linux AppImage/deb artifacts.
 
 ## Inspiration

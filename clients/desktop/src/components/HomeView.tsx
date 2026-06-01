@@ -16,7 +16,8 @@ import {
 const METRIC_TAB: Partial<Record<string, TabKey>> = {
   Agents: "fleet",
   "Runs today": "logs",
-  Planning: "compose",
+  Planning: "plans",
+  Memory: "memory",
 };
 
 export function HomeView({
@@ -48,8 +49,12 @@ export function HomeView({
   const canRun = supportsNativeActions();
   const plans = snapshot?.plans.slice(0, 4) || [];
   const firings = snapshot?.firings.slice(0, 5) || [];
+  const memoryCandidates = snapshot?.memoryCandidates.rows || [];
   const suggestions = snapshot?.actions.promotion_suggestions || [];
-  const memoryErrors = snapshot?.actions.errors || {};
+  const memoryErrors = {
+    ...(snapshot?.actions.errors || {}),
+    ...(snapshot?.memoryCandidates.error ? { candidates: snapshot.memoryCandidates.error } : {}),
+  };
   const memoryErrorEntries = Object.entries(memoryErrors);
   const errorCount = useMemo(
     () => snapshot?.status.agents.filter((agent) => agent.status === "error").length || 0,
@@ -211,8 +216,8 @@ export function HomeView({
           <PanelHeader
             eyebrow="Planning"
             title="Recent plans"
-            actionLabel="Compose"
-            onAction={() => onSwitch("compose")}
+            actionLabel="Plans"
+            onAction={() => onSwitch("plans")}
           />
           <CompactPlanList plans={plans} baseUrl={baseUrl} />
         </div>
@@ -231,12 +236,8 @@ export function HomeView({
           <PanelHeader
             eyebrow="Memory"
             title={memoryErrorEntries.length ? "Memory needs repair" : "Review candidates"}
-            actionLabel="Check"
-            onAction={
-              canRun
-                ? () => onRunLocalAction({ action: "brain_doctor", refreshAfter: true })
-                : undefined
-            }
+            actionLabel="Memory"
+            onAction={() => onSwitch("memory")}
           />
           {memoryErrorEntries.length ? (
             <dl className="health-list">
@@ -247,6 +248,16 @@ export function HomeView({
                 </div>
               ))}
             </dl>
+          ) : memoryCandidates.length ? (
+            <div className="compact-list">
+              {memoryCandidates.slice(0, 3).map((candidate) => (
+                <button key={candidate.id} type="button" onClick={() => onSwitch("memory")}>
+                  <span>{candidate.repo}</span>
+                  <strong>{candidate.body}</strong>
+                  <small>{candidate.source}</small>
+                </button>
+              ))}
+            </div>
           ) : suggestions.length ? (
             <div className="attention-list">
               {suggestions.slice(0, 3).map((signal, index) => (

@@ -14,6 +14,7 @@ function emptySnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
       stale_workers: [],
       promotion_suggestions: [],
     },
+    memoryCandidates: { rows: [] },
     firings: [],
     plans: [],
     trustedSlack: null,
@@ -66,5 +67,39 @@ describe("derive helpers (extracted from App.tsx)", () => {
     expect(agentsStat?.value).toBe("1/2");
     const runsStat = stats.find((stat) => stat.label === "Runs today");
     expect(runsStat?.value).toBe("3");
+  });
+
+  it("prefers concrete memory candidates over promotion suggestion counts", () => {
+    const snap = emptySnapshot({
+      memoryCandidates: {
+        rows: [
+          {
+            id: "mem:1",
+            codename: "lucius",
+            repo: "your-org/api",
+            body: "Use request fixtures.",
+            tags: ["tests"],
+            severity: "info",
+            source: "slack",
+            source_firing_id: null,
+            evidence: "",
+            confidence: 0.8,
+            status: "candidate",
+            created_at: "2026-05-30T12:00:00Z",
+          },
+        ],
+      },
+      actions: {
+        status: "ok",
+        actions: [],
+        failure_patterns: [],
+        stale_workers: [],
+        promotion_suggestions: [{ title: "Fallback" }],
+      },
+    });
+
+    const stats = buildStats(snap);
+    expect(stats.find((stat) => stat.label === "Memory")?.value).toBe("1");
+    expect(buildAttention(snap, "http://127.0.0.1:7000")[0].id).toBe("memory-mem:1");
   });
 });

@@ -13,6 +13,7 @@ command verb** to act on the fleet without leaving Slack:
 * ``handled <id>``         -> operator-only: archive a captured follow-up
 * ``memory``               -> reviewable memory queue + promotion suggestions
 * ``remember ...``         -> stage a reviewable memory candidate from Slack
+* ``memory remember ...``  -> same candidate path inside the memory namespace
 * ``memory promote <id>``  -> operator-only: promote a memory candidate
 * ``memory reject <id>``   -> operator-only: reject a memory candidate
 * ``memory redis``         -> check optional Redis Agent Memory Server
@@ -453,6 +454,9 @@ class SlackControlHandler:
                 text=render_memory_promotions(promotions),
             )
 
+        if subcommand == "remember":
+            return self._run_remember(" ".join(rest), actor_user_id)
+
         if subcommand == "harvest":
             return self._run_memory_harvest(rest, actor_user_id)
 
@@ -886,7 +890,7 @@ def render_help() -> str:
             "- `memory` / `memories`: review memory candidates and promotion suggestions.",
             "- `memory promotions`: show high-confidence memory candidates.",
             "- `memory harvest`: preview repeated-failure lessons; `memory harvest now` queues them.",
-            "- `remember [repo:] <lesson>`: stage a reviewable memory candidate.",
+            "- `remember [repo:] <lesson>` or `memory remember ...`: stage a reviewable memory candidate.",
             "- `memory promote <id>` / `memory reject <id>`: operator-only memory review.",
             "- `memory redis`: check optional Redis Agent Memory Server.",
             "- `memory sync`: preview Redis sync; `memory sync now` writes reviewed lessons.",
@@ -1151,7 +1155,7 @@ def render_memory_usage() -> str:
             "- `memory` / `memories`: pending candidates and suggested promotions.",
             "- `memory promotions`: high-confidence candidates with evidence.",
             "- `memory harvest`: preview failure-pattern candidates; `memory harvest now` queues them.",
-            "- `remember [owner/repo:] <lesson>`: queue a reviewable candidate.",
+            "- `remember [owner/repo:] <lesson>` or `memory remember ...`: queue a reviewable candidate.",
             "- `memory promote <id>`: operator-only: trust a candidate for future recall.",
             "- `memory reject <id> [note]`: operator-only: reject a noisy candidate.",
             "- `memory redis`: check optional Redis AMS.",

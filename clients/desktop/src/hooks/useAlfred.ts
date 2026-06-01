@@ -9,8 +9,10 @@ import {
   isDefaultBaseUrl,
   loadSnapshot,
   markFollowupHandled,
+  promoteMemoryCandidate,
   rememberBaseUrl,
   removeTrustedSlackUser,
+  rejectMemoryCandidate,
   runNativeAction,
   setTrayStatus,
   startLocalRuntime,
@@ -46,6 +48,7 @@ export function useAlfred() {
   const [errorRaw, setErrorRaw] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyPlanAction, setBusyPlanAction] = useState<string | null>(null);
+  const [busyMemoryAction, setBusyMemoryAction] = useState<string | null>(null);
   const [busyTrustedUser, setBusyTrustedUser] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<ActionNotice>(null);
   const [nativeBusy, setNativeBusy] = useState<string | null>(null);
@@ -162,6 +165,35 @@ export function useAlfred() {
         });
       } finally {
         setBusyTrustedUser(null);
+      }
+    },
+    [baseUrl, refresh],
+  );
+
+  const runMemoryCandidateAction = useCallback(
+    async (candidateId: string, action: "promote" | "reject") => {
+      const key = `${candidateId}:${action}`;
+      setBusyMemoryAction(key);
+      setActionNotice(null);
+      try {
+        await (action === "promote"
+          ? promoteMemoryCandidate(baseUrl, candidateId)
+          : rejectMemoryCandidate(baseUrl, candidateId));
+        setActionNotice({
+          tone: "ok",
+          message:
+            action === "promote"
+              ? `Promoted memory candidate ${candidateId}.`
+              : `Rejected memory candidate ${candidateId}.`,
+        });
+        await refresh(baseUrl);
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setBusyMemoryAction(null);
       }
     },
     [baseUrl, refresh],
@@ -313,6 +345,7 @@ export function useAlfred() {
     errorRaw,
     loading,
     busyPlanAction,
+    busyMemoryAction,
     busyTrustedUser,
     actionNotice,
     nativeBusy,
@@ -331,6 +364,7 @@ export function useAlfred() {
     refresh,
     refreshFleetService,
     runFollowupAction,
+    runMemoryCandidateAction,
     addTrustedUser,
     removeTrustedUser,
     runLocalAction,

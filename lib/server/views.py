@@ -42,6 +42,10 @@ from spec_helper import IssueDraft
 
 from server.reader import PlanDraft
 
+_MEMORY_ID_RE = re.compile(r"^(?!-)[A-Za-z0-9:_-]{1,96}$")
+_MEMORY_BRAIN_NOT_INITIALIZED = "fleet brain database not initialized"
+_MEMORY_BRAIN_UNAVAILABLE = "fleet brain unavailable"
+
 
 def register_routes(app: FastAPI) -> None:
     """Bind the three GET routes to ``app``."""
@@ -249,6 +253,31 @@ def register_routes(app: FastAPI) -> None:
         ).to_dict()
         snapshot["removed"] = removed
         return JSONResponse(snapshot)
+
+    @app.get("/api/memory/candidates", response_class=JSONResponse)
+    async def api_memory_candidates(
+        request: Request,
+        status: str = "candidate",
+        limit: int = 50,
+    ) -> JSONResponse:
+        if status not in {"candidate", "validated", "rejected", "retired", "all"}:
+            return JSONResponse({"error": "unknown memory candidate status"}, status_code=400)
+        brain, error = _memory_brain(request, require_existing=True)
+        if brain is None:
+            return JSONResponse({"rows": [], "error": error or _MEMORY_BRAIN_UNAVAILABLE})
+        rows = brain.list_memory_candidates(
+            status=None if status == "all" else status,
+            limit=min(max(1, limit), 200),
+        )
+        return JSONResponse({"rows": [_candidate_to_api(row) for row in rows]})
+
+    @app.post("/api/memory/candidates/{candidate_id}/promote", response_class=JSONResponse)
+    async def api_promote_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
+        return await _api_memory_candidate_action(request, candidate_id, action="promote")
+
+    @app.post("/api/memory/candidates/{candidate_id}/reject", response_class=JSONResponse)
+    async def api_reject_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
+        return await _api_memory_candidate_action(request, candidate_id, action="reject")
 
     @app.get("/api/firings", response_class=JSONResponse)
     async def api_firings(
@@ -481,6 +510,8 @@ def register_routes(app: FastAPI) -> None:
 def _jsonable(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
         return _jsonable(asdict(value))
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat()
     if isinstance(value, dict):
         return {str(k): _jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
@@ -488,6 +519,88 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
     return value
+
+
+def _candidate_to_api(candidate: Any) -> dict[str, Any]:
+    payload = _jsonable(asdict(candidate) if is_dataclass(candidate) else candidate)
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _memory_brain(
+    _request: Request,
+    *,
+    require_existing: bool,
+) -> tuple[Any | None, str | None]:
+    try:
+        from fleet_brain import FleetBrain, default_db_path
+
+        db_path = Path(os.environ.get("ALFRED_FLEET_BRAIN_DB") or default_db_path()).expanduser()
+        if require_existing and not db_path.exists():
+            return None, _MEMORY_BRAIN_NOT_INITIALIZED
+        return FleetBrain(db_path=db_path), None
+    except Exception:  # pragma: no cover - defensive local API path
+        return None, _MEMORY_BRAIN_UNAVAILABLE
+
+
+async def _api_memory_candidate_action(
+    request: Request,
+    candidate_id: str,
+    *,
+    action: str,
+) -> JSONResponse:
+    if not _same_origin_post(request):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    if not _MEMORY_ID_RE.fullmatch(candidate_id):
+        return JSONResponse({"error": "memory candidate id is invalid"}, status_code=400)
+    body, error_response = await _read_json_body(request)
+    if error_response is not None:
+        return error_response
+    note = str(body.get("note") or "").strip()
+    reviewer = str(body.get("reviewer") or "local-client").strip() or "local-client"
+    brain, error = _memory_brain(request, require_existing=True)
+    if brain is None:
+        return JSONResponse({"error": error or _MEMORY_BRAIN_UNAVAILABLE}, status_code=500)
+    try:
+        if action == "promote":
+            lesson = brain.promote_memory_candidate(
+                candidate_id,
+                reviewer=reviewer,
+                review_note=note,
+            )
+            return JSONResponse(
+                {
+                    "candidate_id": candidate_id,
+                    "lesson_id": lesson.id,
+                    "status": "validated",
+                    "codename": lesson.codename,
+                    "repo": lesson.repo,
+                }
+            )
+        if action == "reject":
+            candidate = brain.reject_memory_candidate(
+                candidate_id,
+                reviewer=reviewer,
+                review_note=note,
+            )
+            return JSONResponse(_candidate_to_api(candidate))
+    except ValueError:
+        return JSONResponse({"error": "memory candidate not found"}, status_code=404)
+    return JSONResponse({"error": "unknown memory action"}, status_code=400)
+
+
+async def _read_json_body(request: Request) -> tuple[dict[str, Any], JSONResponse | None]:
+    raw = await request.body()
+    if not raw:
+        return {}, None
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}, JSONResponse({"error": "request body must be JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return {}, JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+    return body, None
 
 
 def _fleet_counts(agents: list[Any], recent_firings: list[Any]) -> dict[str, int]:
