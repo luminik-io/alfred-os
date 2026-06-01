@@ -39,6 +39,7 @@ import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from server.formatting import friendly_time, short_firing_id  # noqa: E402
+from server.reader import default_state_root  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,16 @@ def empty_state(tmp_path: Path) -> Path:
     state = tmp_path / "state"
     state.mkdir()
     return state
+
+
+def test_default_state_root_accepts_legacy_hermes_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "legacy"))
+
+    assert default_state_root() == tmp_path / "legacy" / "state"
 
 
 @pytest.fixture()
@@ -998,6 +1009,43 @@ def test_planning_refine_engine_uses_existing_workspace_root(
     assert captured["workdir"] == tmp_path
     assert not (tmp_path / "planning-drafts").exists()
     assert "Engine refined Slack plan" in response.text
+
+
+def test_planning_memory_provider_ignores_runtime_env_for_temp_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "runtime"))
+    monkeypatch.setenv("FLEET_BRAIN_HOST", "127.0.0.1")
+
+    def fail_loader():
+        raise AssertionError("temporary state must not load the real memory provider")
+
+    monkeypatch.setattr(server_views, "_load_planning_memory_provider_from_env", fail_loader)
+    app = create_app(FilesystemReader(state_root=tmp_path / "state"))
+    request = SimpleNamespace(app=app)
+
+    assert server_views._planning_memory_provider(request) is None
+
+
+def test_planning_memory_provider_loads_for_runtime_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime_state = runtime / "state"
+    runtime_state.mkdir(parents=True)
+    sentinel = object()
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setattr(
+        server_views,
+        "_load_planning_memory_provider_from_env",
+        lambda: sentinel,
+    )
+    app = create_app(FilesystemReader(state_root=runtime_state))
+    request = SimpleNamespace(app=app)
+
+    assert server_views._planning_memory_provider(request) is sentinel
 
 
 def test_planning_page_surfaces_memory_and_queues_spec_candidate(tmp_path: Path) -> None:

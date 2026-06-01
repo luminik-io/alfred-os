@@ -122,9 +122,12 @@ class FleetReader(Protocol):
 
 
 def default_state_root() -> Path:
-    """Resolve ``$ALFRED_HOME/state`` with the documented fallback to
-    ``~/.alfred/state``. The path is not required to exist."""
-    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    """Resolve the runtime state path. The path is not required to exist."""
+    base = (
+        os.environ.get("ALFRED_HOME")
+        or os.environ.get("HERMES_HOME")
+        or os.path.expanduser("~/.alfred")
+    )
     return Path(base) / "state"
 
 

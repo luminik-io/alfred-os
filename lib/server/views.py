@@ -1004,6 +1004,12 @@ def _planning_memory_provider(request: Request):
         return configured
     if _env_disabled("ALFRED_PLANNING_MEMORY"):
         return None
+    if not _planning_uses_runtime_state(request):
+        return None
+    return _load_planning_memory_provider_from_env()
+
+
+def _load_planning_memory_provider_from_env():
     if not (
         os.environ.get("ALFRED_HOME")
         or os.environ.get("HERMES_HOME")
@@ -1016,6 +1022,24 @@ def _planning_memory_provider(request: Request):
         return load_provider()
     except Exception:
         return None
+
+
+def _planning_uses_runtime_state(request: Request) -> bool:
+    reader = getattr(request.app.state, "reader", None)
+    state_root = getattr(reader, "state_root", None)
+    if not isinstance(state_root, Path):
+        return False
+    base = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME")
+    if base is None and os.environ.get("FLEET_BRAIN_HOST"):
+        base = os.path.expanduser("~/.alfred")
+    if not base:
+        return False
+    try:
+        runtime_state = (Path(base).expanduser() / "state").resolve()
+        return state_root.expanduser().resolve() == runtime_state
+    except OSError:
+        runtime_state = (Path(base).expanduser() / "state").absolute()
+        return state_root.expanduser().absolute() == runtime_state
 
 
 def _planning_memory_writer(request: Request, *, provider=None):
