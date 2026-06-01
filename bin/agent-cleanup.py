@@ -56,7 +56,12 @@ AGENT = os.environ.get("AGENT_CODENAME", "cleanup")
 # check_disk=False: the janitor must run *because* the disk is low, not
 # skip when it is. Every other agent inherits the disk-pressure gate; the
 # cleanup agent is the one that reclaims space, so it opts out.
-PREFLIGHT = PreflightSpec(agent=AGENT, bins=["git"], check_disk=False)
+PREFLIGHT = PreflightSpec(
+    agent=AGENT,
+    env_vars=[],
+    bins=["git"],
+    check_disk=False,
+)
 
 USAGE = """usage: agent-cleanup.py [--emergency]
 

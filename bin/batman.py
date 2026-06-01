@@ -55,6 +55,7 @@ from agent_runner import (  # noqa: E402
     PreflightSpec,
     agent_engine,
     doctor_mode,
+    gh_issue_comment,
     gh_issue_edit,
     gh_json,
     is_agent_enabled,
@@ -155,7 +156,12 @@ def _list_large_features() -> list[dict]:
     if not isinstance(rows, list):
         return []
     allowed_prefixes = tuple(f"https://github.com/{repo}/" for repo in repo_args)
-    skip_labels = {"agent:in-flight", "agent:pr-open", "do-not-pickup"}
+    skip_labels = {
+        "agent:in-flight",
+        "agent:pr-open",
+        "do-not-pickup",
+        "needs:human-scope",
+    }
     eligible: list[dict] = []
     for r in rows:
         url = r.get("url") or ""
@@ -200,6 +206,40 @@ def _firing_id() -> str:
     return f"{stamp}-{secrets.token_hex(2)}"
 
 
+def _repo_slug_from_issue_url(url: str) -> str | None:
+    parts = (url or "").split("/")
+    if len(parts) < 5 or parts[2] != "github.com":
+        return None
+    return f"{parts[3]}/{parts[4]}"
+
+
+def _block_legacy_plan_for_scope_resolution(issue: dict, plan) -> None:
+    """Stop the legacy plan-only path before it posts a guessed rollout."""
+    repo = _repo_slug_from_issue_url(issue.get("url") or "")
+    number = int(issue.get("number") or 0)
+    notes = "\n".join(f"- {note}" for note in plan.parse_notes) or (
+        "- The issue body is missing enough structure for Batman to plan safely."
+    )
+    body = (
+        "Batman could not safely draft this as an execution plan yet.\n\n"
+        f"{notes}\n\n"
+        "Please update the issue with:\n"
+        "- `Affected Repos: repo-a, repo-b` or a `## Affected Repos` section\n"
+        "- `## Acceptance Criteria` with `### <repo>` subsections for each repo\n"
+        "- any rollout ordering constraints if one repo must land before another\n\n"
+        "I moved this to `needs:human-scope` so it will not be picked up again "
+        "until the scope is explicit."
+    )
+    if repo and number:
+        gh_issue_comment(repo, number, body)
+        gh_issue_edit(repo, number, add_labels=["needs:human-scope"])
+    slack_post(
+        f"[BATMAN-NEEDS-SCOPE] issue #{number}: affected repos / acceptance "
+        "criteria are missing, so no plan was posted. Moved to needs:human-scope.",
+        severity="warn",
+    )
+
+
 def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
     """Return open ``agent:large-feature`` issues in ``parent_repo``.
 
@@ -229,7 +269,12 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
     )
     if not isinstance(rows, list):
         return []
-    skip_labels = {"agent:in-flight", "agent:pr-open", "do-not-pickup"}
+    skip_labels = {
+        "agent:in-flight",
+        "agent:pr-open",
+        "do-not-pickup",
+        "needs:human-scope",
+    }
     eligible: list[dict] = []
     for r in rows:
         labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
@@ -604,6 +649,14 @@ def main() -> int:
 
     firing_id = _firing_id()
     primary = bundle.primary_issue
+    if plan.needs_scope_resolution:
+        _block_legacy_plan_for_scope_resolution(primary, plan)
+        print(
+            f"[BATMAN-NEEDS-SCOPE] firing_id={firing_id} bundle={bundle.slug}; "
+            "plan scope is not explicit"
+        )
+        return 0
+
     summary = (
         f"plan drafted for {bundle.slug} "
         f"({len(bundle.issues)} issue(s), {len(plan.affected_repos)} repo(s))"

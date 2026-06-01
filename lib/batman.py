@@ -1267,18 +1267,20 @@ def parse_parent_issue(
             )
         )
 
-    readiness_findings = _assess_plan_readiness(
-        affected_repos=repos,
-        children=children,
-        done_when=done_when,
-    )
-    for note in loose_scope_notes:
-        readiness_findings.append(
+    if loose_scope_notes:
+        readiness_findings = [
             PlanReadinessFinding(
                 code="guessed_default_rollout",
                 severity="error",
                 message=note,
             )
+            for note in loose_scope_notes
+        ]
+    else:
+        readiness_findings = _assess_plan_readiness(
+            affected_repos=repos,
+            children=children,
+            done_when=done_when,
         )
 
     plan_md = _render_plan_markdown(

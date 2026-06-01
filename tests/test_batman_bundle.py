@@ -449,6 +449,11 @@ def test_list_large_features_skip_labels_still_apply(monkeypatch):
             "url": "https://github.com/myorg/backend/issues/3",
             "labels": [{"name": "agent:large-feature"}, {"name": "agent:in-flight"}],
         },
+        {
+            "number": 4,
+            "url": "https://github.com/myorg/backend/issues/4",
+            "labels": [{"name": "agent:large-feature"}, {"name": "needs:human-scope"}],
+        },
     ]
     monkeypatch.setattr(runner, "gh_json", lambda *_a, **_k: fake_rows)
     out = runner._list_large_features()
@@ -553,10 +558,9 @@ We want something better.
         plan = _parse_parent(body)
     assert plan.children == ()
     assert plan.affected_repos == ()
-    assert any(
-        finding.code == "guessed_default_rollout" and finding.severity == "error"
-        for finding in plan.readiness_findings
-    )
+    assert [(finding.code, finding.severity) for finding in plan.readiness_findings] == [
+        ("guessed_default_rollout", "error")
+    ]
     assert any("default rollout guess" in r.getMessage() for r in caplog.records), [
         r.getMessage() for r in caplog.records
     ]
