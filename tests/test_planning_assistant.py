@@ -329,6 +329,21 @@ def test_render_plan_revision_ack_shows_scope_and_blocks_questions() -> None:
             "open questions: none",
         ]
     )
+    assert plan_feedback_requires_resolution(
+        [
+            "question: Should we include docs?",
+            "question: Should we use Redis?",
+            "resolved question: use Redis",
+        ]
+    )
+    assert not plan_feedback_requires_resolution(
+        [
+            "question: Should we include docs?",
+            "question: Should we use Redis?",
+            "resolved question: use Redis",
+            "resolved question: include docs",
+        ]
+    )
 
 
 def test_post_pr_followup_feedback_is_classified_and_acknowledged() -> None:

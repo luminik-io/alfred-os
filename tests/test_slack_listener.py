@@ -112,6 +112,7 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
             metadata={
                 "affected_repos": ["your-org/runtime", "your-org/site"],
                 "child_count": 2,
+                "children_by_repo": {"your-org/runtime": 1, "your-org/site": 1},
             },
         )
     )
@@ -134,7 +135,9 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     assert result.action == "plan_revised"
     assert poster.messages[0]["thread_ts"] == "1716480000.000000"
     assert "Plan revised" in poster.messages[0]["text"]
-    assert "Execution scope if approved now" in poster.messages[0]["text"]
+    assert (
+        "Execution scope if approved now (1 repo, 1 child issue(s))" in poster.messages[0]["text"]
+    )
     assert "`your-org/runtime`" in poster.messages[0]["text"]
     assert "Alfred will not execute" in poster.messages[0]["text"]
     feedback_files = list((tmp_path / "threads" / "feedback").glob("*.jsonl"))

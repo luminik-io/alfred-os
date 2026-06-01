@@ -280,7 +280,7 @@ class SlackPlanningListener:
             all_feedback,
             default_org=default_org,
         )
-        child_count = _metadata_int(record.metadata.get("child_count"))
+        child_count = _revised_child_count(record.metadata, base_repos, revised_repos)
         requires_resolution = plan_feedback_requires_resolution(all_feedback)
         revision_path, revision_count = self._write_plan_revision_context(
             record,
@@ -1544,6 +1544,32 @@ def _metadata_int(value: Any) -> int | None:
         return int(str(value))
     except (TypeError, ValueError):
         return None
+
+
+def _revised_child_count(
+    metadata: dict[str, Any],
+    base_repos: Iterable[str],
+    revised_repos: Iterable[str],
+) -> int | None:
+    children_by_repo = metadata.get("children_by_repo")
+    revised = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
+    if isinstance(children_by_repo, dict) and revised:
+        total = 0
+        matched = False
+        for repo in revised:
+            count = _metadata_int(children_by_repo.get(repo))
+            if count is not None:
+                total += count
+                matched = True
+        if matched:
+            return total
+    child_count = _metadata_int(metadata.get("child_count"))
+    base = tuple(str(repo).strip() for repo in base_repos if str(repo).strip())
+    if child_count is not None and revised == base:
+        return child_count
+    if revised:
+        return len(revised)
+    return child_count
 
 
 def _issue_url_from_record(record: SlackThreadRecord) -> str | None:

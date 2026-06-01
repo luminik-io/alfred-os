@@ -1545,6 +1545,13 @@ def _apply_operator_feedback_to_plan(
     )
 
 
+def _children_by_repo(plan: BundlePlan) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for child in plan.children:
+        counts[child.repo] = counts.get(child.repo, 0) + 1
+    return counts
+
+
 # ---------------------------------------------------------------------------
 # Default reporter (Slack-backed). Tests inject a FakeReporter instead.
 # ---------------------------------------------------------------------------
@@ -1728,6 +1735,7 @@ class SlackReporter:
                         "bundle_slug": plan.bundle_slug,
                         "affected_repos": list(plan.affected_repos),
                         "child_count": len(plan.children),
+                        "children_by_repo": _children_by_repo(plan),
                     },
                 )
             )
