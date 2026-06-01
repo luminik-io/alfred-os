@@ -129,6 +129,26 @@ class FakeRunner:
                     {"dry_run": "--dry-run" in argv, "matched": 3, "synced": 3, "failed": []}
                 ),
             )
+        if argv[0] == "harvest":
+            return RunResult(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "applied": "--apply" in argv,
+                        "queued": 1 if "--apply" in argv else 0,
+                        "duplicates": 0,
+                        "proposals": [
+                            {
+                                "status": "queued" if "--apply" in argv else "preview",
+                                "candidate_id": "cand-harvest" if "--apply" in argv else None,
+                                "codename": "huntress",
+                                "repo": "luminik-io/alfred-os",
+                                "body": "When huntress repeatedly hits error_timeout, check local setup.",
+                            }
+                        ],
+                    }
+                ),
+            )
         if argv[0] == "propose":
             if "--agent" in argv:
                 repo = argv[argv.index("--repo") + 1]
@@ -275,8 +295,16 @@ def test_is_control_message_detects_leading_verb() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _handler(runner: FakeRunner) -> SlackControlHandler:
-    return SlackControlHandler(alfred_bin="/fake/alfred", runner=runner)
+def _handler(
+    runner: FakeRunner,
+    *,
+    operator_user_id: str | None = None,
+) -> SlackControlHandler:
+    return SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=runner,
+        operator_user_id=operator_user_id,
+    )
 
 
 def _write_followup(state_root: Path, name: str = "slack-C1-1716480000") -> Path:
@@ -669,6 +697,42 @@ def test_memory_sync_defaults_to_dry_run() -> None:
     assert result.action == "memory_sync"
     assert "preview" in result.text
     assert runner.calls[-1] == ["/fake/alfred", "brain", "redis-sync", "--json", "--dry-run"]
+
+
+def test_memory_harvest_previews_by_default() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle("memory harvest", trusted=True)
+
+    assert result.action == "memory_harvest"
+    assert "Memory harvest preview" in result.text
+    assert "memory harvest now" in result.text
+    assert runner.calls[-1] == ["/fake/alfred", "brain", "harvest", "--json"]
+
+
+def test_operator_can_apply_memory_harvest() -> None:
+    runner = FakeRunner()
+    result = _handler(runner, operator_user_id="UOP").handle(
+        "memory harvest now",
+        trusted=True,
+        actor_user_id="UOP",
+    )
+
+    assert result.action == "memory_harvest"
+    assert "Memory harvest queued" in result.text
+    assert "cand-harvest" in result.text
+    assert runner.calls[-1] == ["/fake/alfred", "brain", "harvest", "--json", "--apply"]
+
+
+def test_memory_harvest_apply_requires_operator() -> None:
+    runner = FakeRunner()
+    result = _handler(runner, operator_user_id="UOP").handle(
+        "memory harvest now",
+        trusted=True,
+        actor_user_id="UTEAM",
+    )
+
+    assert result.action == "memory_harvest_rejected"
+    assert runner.calls == []
 
 
 def test_memory_sync_json_failure_is_reported() -> None:

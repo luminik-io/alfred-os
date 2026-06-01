@@ -100,6 +100,8 @@ intake:
 | `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
 | `memory promote <id>` | Operator-only: promote a candidate into future recall. |
 | `memory reject <id>` | Operator-only: reject a noisy candidate. |
+| `memory harvest` | Preview repeated-failure lessons from the reliability governor. |
+| `memory harvest now` | Operator-only: queue harvested lessons as reviewable candidates. |
 | `memory redis` | Check the optional Redis Agent Memory Server bridge. |
 | `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
 | `memory sync now` | Operator-only: write reviewed lessons to Redis AMS. |

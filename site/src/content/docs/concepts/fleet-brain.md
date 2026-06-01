@@ -60,14 +60,16 @@ Runtime memory is on by default through the local `fleet` provider. Turn it off:
 export ALFRED_MEMORY_PROVIDERS=null
 ```
 
-Run in review-first mode:
+Engine-written reflections are reviewable by default. Keep the default for
+most fleets:
 
 ```sh
 export ALFRED_MEMORY_REFLECTION_MODE=candidate
 ```
 
 Then use `alfred brain candidates` to promote useful lessons and reject noisy
-ones.
+ones. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only for trusted operator-only
+runs where direct lesson writes are intentional.
 
 If you already run Redis Agent Memory Server, keep it optional and explicit:
 
@@ -85,6 +87,8 @@ store. The doctor command uses that cache to report poll freshness, open bundle
 shape, stale worker heartbeats, repeated failures, and high-confidence memory
 candidates that are ready for review. The governor command turns those signals
 into a read-only action list for the operator and the local dashboard.
+`alfred brain harvest` previews candidate lessons from repeated failure
+patterns; `alfred brain harvest --apply` queues those lessons for review.
 
 The Planning tab also uses the brain. When promoted lessons exist for the repos
 in a draft, Alfred recalls a small prompt-safe set as advisory planning memory.
@@ -112,14 +116,17 @@ memories
 remember your-org/api: Use request fixtures for API tests.
 memory promote <candidate-id>
 memory reject <candidate-id> too vague
+memory harvest
+memory harvest now
 memory redis
 memory sync
 ```
 
 `remember ...` stages a candidate only. Promotion and rejection stay
-operator-only. Redis Agent Memory Server stays optional and explicit: check it
-with `memory redis`, preview reviewed-lesson sync with `memory sync`, and write
-only with `memory sync now`.
+operator-only. `memory harvest` previews repeated-failure lessons and `memory
+harvest now` queues them as candidates. Redis Agent Memory Server stays optional
+and explicit: check it with `memory redis`, preview reviewed-lesson sync with
+`memory sync`, and write only with `memory sync now`.
 
 ## MCP access
 

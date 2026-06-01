@@ -123,7 +123,7 @@ alfred-brain: db = ~/.alfred/fleet-brain.db
 | `ALFRED_FLEET_BRAIN_DB`    | `$ALFRED_HOME/fleet-brain.db`        |
 | `ALFRED_HOME`              | `~/.alfred`                          |
 | `ALFRED_BRAIN_LOG_LEVEL`   | `WARNING` (CLI), `INFO` (ingest)     |
-| `ALFRED_MEMORY_REFLECTION_MODE` | `direct` (`candidate` or `off` are also accepted) |
+| `ALFRED_MEMORY_REFLECTION_MODE` | `candidate` (`direct` or `off` are also accepted) |
 
 Setting `ALFRED_FLEET_BRAIN_DB` explicitly is the cleanest way to keep the brain on a separate disk, encrypt it, or pin it to a portable drive.
 
@@ -133,8 +133,8 @@ When an engine-aware runner knows the repository it is working on, it asks the
 configured memory provider for up to three lessons before invoking the engine.
 Those lessons are prepended as hints. The prompt also includes an optional
 machine-readable reflection block; if the engine returns durable lessons,
-Alfred strips that block from the user-facing result and writes the lessons to
-the fleet-brain.
+Alfred strips that block from the user-facing result and queues reviewable
+memory candidates in the fleet-brain.
 
 Memory is on by default through the in-tree `fleet` provider. To disable it:
 
@@ -166,16 +166,15 @@ Use `alfred brain redis-status` to check Redis AMS health. Use
 reviewed local lessons into Redis. Sync is explicit by design: unreviewed
 memory candidates and raw event logs stay local.
 
-By default, engine-returned reflection blocks are trusted and written as
-lessons. If you want a review queue first, set:
+By default, engine-returned reflection blocks go to the review queue. If you
+want trusted operator-only runs to write lessons directly, set:
 
 ```sh
-export ALFRED_MEMORY_REFLECTION_MODE=candidate
+export ALFRED_MEMORY_REFLECTION_MODE=direct
 ```
 
-Then review with `alfred brain candidates`, promote durable lessons, and reject
-anything speculative. This is useful when you are first turning memory on for a
-large fleet and want to see what agents try to remember.
+Most operators should keep the default. Review with `alfred brain candidates`,
+promote durable lessons, and reject anything speculative.
 
 ## The outbox + ingest loop
 
@@ -267,6 +266,11 @@ read-only: it does not pause a codename, create an issue, or mutate memory. It
 gives the operator and the local dashboard a single place to see what needs
 attention next.
 
+`alfred brain harvest` is the write-side companion for repeated failures. It
+previews candidate lessons by default and only writes when run with `--apply`.
+The generated rows stay in the memory-candidate queue until the operator
+promotes or rejects them.
+
 ## Read-only MCP bridge
 
 `alfred mcp serve` exposes a small JSON-RPC stdio surface for local MCP clients
@@ -326,14 +330,18 @@ memories
 remember luminik-io/alfred-os: Slack memory candidates must stay reviewable.
 memory promote <candidate-id>
 memory reject <candidate-id> too vague for future recall
+memory harvest
+memory harvest now
 memory redis
 memory sync
 ```
 
 `remember ...` stages a candidate; it does not become prompt context. Promotion
-and rejection stay operator-only. `memory redis` checks the optional Redis Agent
-Memory Server bridge, and `memory sync` previews a one-way sync of reviewed local
-lessons. `memory sync now` is the explicit write path.
+and rejection stay operator-only. `memory harvest` previews repeated-failure
+lessons from the reliability governor; `memory harvest now` queues those lessons
+as reviewable candidates. `memory redis` checks the optional Redis Agent Memory
+Server bridge, and `memory sync` previews a one-way sync of reviewed local
+lessons. `memory sync now` is the explicit Redis write path.
 
 ## What to build next
 

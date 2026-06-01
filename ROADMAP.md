@@ -24,13 +24,14 @@ Reliability and first-run trust polish.
 - Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.
 - Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
 - Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
-- Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions.
+- Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions; `alfred brain harvest` turns those patterns into reviewable lesson candidates when the operator applies it.
 - Optional Redis AMS provider and sync: `ALFRED_MEMORY_PROVIDERS=fleet,redis` lets advanced operators test external semantic memory without changing the default local install; `alfred brain redis-status` and `alfred brain redis-sync` make the bridge inspectable and explicit.
 - Slack memory curation: trusted users can run `memory` from Slack to review
   pending candidates and promotion suggestions, `remember [repo:] <lesson>` to
   stage a reviewable candidate from conversation, and operator-only
   `memory promote <id>` / `memory reject <id>` to decide what enters recall.
-  `memory redis` and `memory sync` keep Redis AMS explicit rather than ambient.
+  `memory harvest` / `memory harvest now` handle repeated-failure candidates,
+  while `memory redis` and `memory sync` keep Redis AMS explicit rather than ambient.
 - Planning memory loop: the Planning tab recalls promoted repo lessons while drafting, embeds prompt-safe hints into saved specs, and proposes reviewable spec-to-issue memory candidates when a spec is saved.
 - `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.

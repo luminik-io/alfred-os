@@ -168,9 +168,9 @@ def record_reflections(
     """Persist parsed lessons. Returns the count written."""
     if provider is None:
         return 0
-    mode = os.environ.get("ALFRED_MEMORY_REFLECTION_MODE", "direct").strip().lower()
+    mode = os.environ.get("ALFRED_MEMORY_REFLECTION_MODE", "candidate").strip().lower()
     if mode not in _REFLECTION_MODES:
-        mode = "direct"
+        mode = "candidate"
     if mode == "off":
         return 0
     written = 0

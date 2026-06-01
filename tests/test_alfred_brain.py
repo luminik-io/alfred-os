@@ -369,6 +369,48 @@ def test_cli_failure_patterns_and_governor(
     assert report["actions"][0]["kind"] == "failure_pattern"
 
 
+def test_cli_harvest_previews_and_applies_failure_memories(
+    cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    from fleet_brain import FleetBrain
+
+    brain = FleetBrain(db_path=brain_db)
+    for idx in range(2):
+        brain.record_failure(
+            codename="huntress",
+            repo="org/web",
+            firing_id=f"fid-harvest-{idx}",
+            subtype="error_timeout",
+            summary="browserType.launch: Executable doesn't exist at chromium_headless_shell",
+            engine="claude",
+        )
+    capsys.readouterr()
+
+    rc = cli_mod.main(["harvest", "--json"])
+    assert rc == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["applied"] is False
+    assert preview["proposals"][0]["status"] == "preview"
+    assert "local setup" in preview["proposals"][0]["body"]
+    assert brain.list_memory_candidates() == []
+
+    rc = cli_mod.main(["harvest", "--apply", "--json"])
+    assert rc == 0
+    applied = json.loads(capsys.readouterr().out)
+    assert applied["queued"] == 1
+    assert applied["proposals"][0]["status"] == "queued"
+    candidate = brain.list_memory_candidates()[0]
+    assert candidate.source == "memory-harvest"
+    assert "failure-pattern" in candidate.tags
+
+    rc = cli_mod.main(["harvest", "--apply", "--json"])
+    assert rc == 0
+    duplicate = json.loads(capsys.readouterr().out)
+    assert duplicate["duplicates"] == 1
+    assert duplicate["proposals"][0]["status"] == "duplicate"
+
+
 def test_cli_workers_github_bundles_and_promotions(
     cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

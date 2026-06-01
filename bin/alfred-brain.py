@@ -33,6 +33,9 @@ Subcommands:
     alfred-brain.py doctor
         Read-only health summary for the memory layer.
 
+    alfred-brain.py harvest [--apply]
+        Propose reviewable memory candidates from repeated failure patterns.
+
     alfred-brain.py redis-status
         Check an optional Redis Agent Memory Server endpoint.
 
@@ -69,6 +72,7 @@ import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 # Resolve lib/ relative to this script regardless of how it was invoked.
 _HERE = Path(__file__).resolve().parent
@@ -526,6 +530,38 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 1 if report["status"] == "fail" else 0
 
 
+def cmd_harvest(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    proposals = _harvest_failure_pattern_memories(
+        brain,
+        window_days=args.window_days,
+        min_count=args.min_count,
+        limit=args.limit,
+        apply=bool(args.apply),
+    )
+    payload = {
+        "applied": bool(args.apply),
+        "proposals": proposals,
+        "queued": sum(1 for item in proposals if item["status"] == "queued"),
+        "duplicates": sum(1 for item in proposals if item["status"] == "duplicate"),
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+    title = "harvest queued" if args.apply else "harvest preview"
+    print(
+        f"alfred-brain: {title} {len(proposals)} failure-pattern candidate(s) "
+        f"({payload['duplicates']} duplicate)"
+    )
+    for item in proposals:
+        candidate = f" id={item['candidate_id']}" if item.get("candidate_id") else ""
+        print(f"  {item['status']}{candidate} {item['codename']}/{item['repo']}")
+        print(f"    {item['body']}")
+    if not args.apply:
+        print("  run with --apply to queue reviewable memory candidates")
+    return 0
+
+
 def _build_redis_provider() -> RedisAgentMemoryProvider:
     return RedisAgentMemoryProvider.from_env()
 
@@ -642,6 +678,119 @@ def _parse_duration_days(value: str) -> int | None:
         # make sense for a memory layer.
         return max(0, n // 24)
     return None
+
+
+def _harvest_failure_pattern_memories(
+    brain: FleetBrain,
+    *,
+    window_days: int,
+    min_count: int,
+    limit: int,
+    apply: bool,
+) -> list[dict[str, Any]]:
+    existing = _existing_memory_keys(brain)
+    proposals: list[dict[str, Any]] = []
+    for pattern in brain.list_failure_patterns(
+        window_days=window_days,
+        min_count=min_count,
+        limit=limit,
+    ):
+        codename = str(pattern.get("codename") or "operator").strip() or "operator"
+        repo = str(pattern.get("repo") or "global").strip() or "global"
+        body = _failure_pattern_memory_body(pattern)
+        key = (codename, repo, _canonical_text(body))
+        status = "preview"
+        candidate_id: str | None = None
+        if key in existing:
+            status = "duplicate"
+        elif apply:
+            candidate = brain.propose_memory(
+                codename=codename,
+                repo=repo,
+                body=body,
+                tags=[
+                    "auto-harvest",
+                    "failure-pattern",
+                    f"class:{pattern.get('classification') or 'unknown'}",
+                ],
+                severity=pattern.get("severity", "warning"),
+                source="memory-harvest",
+                evidence=json.dumps(
+                    {
+                        "kind": "failure_pattern",
+                        "pattern_key": pattern.get("key"),
+                        "count": pattern.get("count"),
+                        "first_seen": pattern.get("first_seen"),
+                        "last_seen": pattern.get("last_seen"),
+                        "latest_summary": pattern.get("latest_summary"),
+                        "suggested_action": pattern.get("suggested_action"),
+                    },
+                    sort_keys=True,
+                ),
+                confidence=0.72,
+            )
+            candidate_id = str(getattr(candidate, "id", candidate))
+            existing.add(key)
+            status = "queued"
+        proposals.append(
+            {
+                "status": status,
+                "candidate_id": candidate_id,
+                "codename": codename,
+                "repo": repo,
+                "body": body,
+                "pattern": pattern,
+            }
+        )
+    return proposals
+
+
+def _existing_memory_keys(brain: FleetBrain) -> set[tuple[str, str, str]]:
+    keys: set[tuple[str, str, str]] = set()
+    for lesson in brain.list_lessons(limit=1000):
+        keys.add(
+            (
+                str(getattr(lesson, "codename", "") or "operator"),
+                str(getattr(lesson, "repo", "") or "global"),
+                _canonical_text(str(getattr(lesson, "body", "") or "")),
+            )
+        )
+    for candidate in brain.list_memory_candidates(status=None, limit=1000):
+        keys.add(
+            (
+                str(getattr(candidate, "codename", "") or "operator"),
+                str(getattr(candidate, "repo", "") or "global"),
+                _canonical_text(str(getattr(candidate, "body", "") or "")),
+            )
+        )
+    return keys
+
+
+def _failure_pattern_memory_body(pattern: dict[str, Any]) -> str:
+    codename = str(pattern.get("codename") or "operator").strip() or "operator"
+    repo = str(pattern.get("repo") or "global").strip() or "global"
+    subtype = str(pattern.get("subtype") or "unknown").strip() or "unknown"
+    action = str(pattern.get("suggested_action") or "inspect_before_rerun").strip()
+    classification = str(pattern.get("classification") or "unknown").strip()
+    latest = str(pattern.get("latest_summary") or "").strip()
+    count = pattern.get("count") or "multiple"
+    body = (
+        f"When {codename} repeatedly hits {subtype} on {repo}, treat it as "
+        f"{classification.replace('_', ' ')} and {action.replace('_', ' ')} before rerunning. "
+        f"Seen {count} times."
+    )
+    if latest:
+        body = f"{body} Latest evidence: {_short(latest, 180)}"
+    return body
+
+
+def _canonical_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().lower())
+
+
+def _short(value: str, limit: int) -> str:
+    text = re.sub(r"\s+", " ", value.strip())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "..."
 
 
 def _candidate_to_dict(candidate) -> dict[str, object]:  # type: ignore[no-untyped-def]
@@ -899,6 +1048,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor = sub.add_parser("doctor", help="memory-layer health checks")
     p_doctor.add_argument("--json", action="store_true")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    p_harvest = sub.add_parser(
+        "harvest",
+        help="propose reviewable memories from repeated failure patterns",
+    )
+    p_harvest.add_argument("--window-days", type=int, default=7)
+    p_harvest.add_argument("--min-count", type=int, default=2)
+    p_harvest.add_argument("--limit", type=int, default=20)
+    p_harvest.add_argument("--apply", action="store_true")
+    p_harvest.add_argument("--json", action="store_true")
+    p_harvest.set_defaults(func=cmd_harvest)
 
     p_redis_status = sub.add_parser("redis-status", help="check Redis Agent Memory Server")
     p_redis_status.add_argument("--json", action="store_true")

@@ -232,9 +232,10 @@ alfred mcp serve
 ```
 
 Runtime memory is on by default through the local `fleet` provider. Set
-`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection. Set
-`ALFRED_MEMORY_REFLECTION_MODE=candidate` when you want engine-written lessons
-to enter the review queue before future recall.
+`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection. Engine
+written lessons enter the review queue by default; set
+`ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are
+intentional.
 
 ## `alfred serve`
 

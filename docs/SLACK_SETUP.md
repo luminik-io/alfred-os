@@ -336,6 +336,8 @@ from chat by **leading a message with a known verb**. These are handled by
 | `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
 | `memory promote <id>` | Operator-only. Promote a candidate into future recall. |
 | `memory reject <id>` | Operator-only. Reject a noisy candidate. |
+| `memory harvest` | Preview repeated-failure lessons from the reliability governor. |
+| `memory harvest now` | Operator-only. Queue harvested lessons as reviewable candidates. |
 | `memory redis` | Check the optional Redis Agent Memory Server bridge. |
 | `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
 | `memory sync now` | Operator-only. Write reviewed lessons to Redis AMS. |
@@ -369,7 +371,9 @@ Safety model:
   files GitHub issues, starts agents, approves execution, or merges PRs.
 - **Memory is reviewable.** `remember ...` queues a candidate only. It does not
   enter future prompt context until the operator runs `memory promote <id>`.
-  `memory redis` is read-only, and `memory sync` defaults to a dry-run preview.
+  `memory harvest` previews repeated-failure lessons before `memory harvest now`
+  queues them. `memory redis` is read-only, and `memory sync` defaults to a
+  dry-run preview.
 - **Queries are read-only.** `status`, `runs`, and `trusted` only read fleet
   state. `trust` and `untrust` only update the local trust JSON file and never
   run code, call GitHub, or approve a plan.
