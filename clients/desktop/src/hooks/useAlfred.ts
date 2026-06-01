@@ -42,7 +42,6 @@ export type UseAlfred = ReturnType<typeof useAlfred>;
 
 export function useAlfred() {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
-  const [serverInput, setServerInput] = useState(initialBaseUrl);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorRaw, setErrorRaw] = useState<string | null>(null);
@@ -77,7 +76,6 @@ export function useAlfred() {
           if (id !== reqRef.current) return;
           setSnapshot(next);
           setBaseUrl(targetBaseUrl);
-          setServerInput(targetBaseUrl);
           rememberBaseUrl(targetBaseUrl);
         } catch (firstErr) {
           if (isDefaultBaseUrl(targetBaseUrl)) {
@@ -85,7 +83,6 @@ export function useAlfred() {
             if (id !== reqRef.current) return;
             setSnapshot(next);
             setBaseUrl(FALLBACK_BASE_URL);
-            setServerInput(FALLBACK_BASE_URL);
             rememberBaseUrl(FALLBACK_BASE_URL);
           } else {
             throw firstErr;
@@ -338,8 +335,6 @@ export function useAlfred() {
 
   return {
     baseUrl,
-    serverInput,
-    setServerInput,
     snapshot,
     error,
     errorRaw,

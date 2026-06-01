@@ -40,7 +40,6 @@ function App() {
   const [tab, setTab] = useState<TabKey>("home");
   const {
     baseUrl,
-    serverInput,
     snapshot,
     error,
     errorRaw,
@@ -111,7 +110,7 @@ function App() {
           <button
             className="connect-chip"
             type="button"
-            onClick={() => void refresh(serverInput)}
+            onClick={() => void refresh()}
             disabled={loading}
             aria-label={error ? "Reconnect to Alfred serve" : "Refresh fleet state"}
             title={baseUrl}
@@ -153,7 +152,7 @@ function App() {
           nativeBusy={nativeBusy}
           loading={loading}
           onRunLocalAction={runLocalAction}
-          onRefresh={(value) => void refresh(value ?? serverInput)}
+          onRefresh={() => void refresh()}
           onSwitch={setTab}
         />
       ) : null}

@@ -38,7 +38,7 @@ export function HomeView({
   nativeBusy: string | null;
   loading: boolean;
   onRunLocalAction: (request: NativeActionRequest) => void;
-  onRefresh: (value?: string) => void;
+  onRefresh: () => void;
   onSwitch: (tab: TabKey) => void;
 }) {
   const [pendingAll, setPendingAll] = useState<"pause" | "resume" | null>(null);
@@ -70,7 +70,7 @@ export function HomeView({
 
   return (
     <div className="home-view animate-rise">
-      <section className="hero-strip hero-strip--home" aria-label="Alfred command center">
+      <section className="hero-strip" aria-label="Alfred command center">
         <div className="home-brief">
           <span className="section-kicker">Local command center</span>
           <h1 className="visually-hidden">Alfred command center</h1>
