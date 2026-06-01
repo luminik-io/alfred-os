@@ -84,6 +84,12 @@ def cleanup(tmp_path, monkeypatch):
     return mod
 
 
+def test_cleanup_preflight_has_no_runtime_env_requirement(cleanup):
+    assert cleanup.PREFLIGHT.env_vars == []
+    assert cleanup.PREFLIGHT.bins == ["git"]
+    assert cleanup.PREFLIGHT.check_disk is False
+
+
 def test_sweep_extra_paths_removes_old_clean_worktrees(cleanup, tmp_path, monkeypatch):
     extra_root = tmp_path / "extra-worktrees"
     extra_root.mkdir()

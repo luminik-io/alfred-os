@@ -173,6 +173,8 @@ def test_parse_plan_falls_back_to_default_rollout_on_empty_body():
     plan = bm.parse_plan_from_issue("")
     # Empty body → first three from default rollout order.
     assert plan.affected_repos == bm.DEFAULT_ROLLOUT_ORDER[:3]
+    assert plan.needs_scope_resolution is True
+    assert plan.parse_notes
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +449,11 @@ def test_list_large_features_skip_labels_still_apply(monkeypatch):
             "url": "https://github.com/myorg/backend/issues/3",
             "labels": [{"name": "agent:large-feature"}, {"name": "agent:in-flight"}],
         },
+        {
+            "number": 4,
+            "url": "https://github.com/myorg/backend/issues/4",
+            "labels": [{"name": "agent:large-feature"}, {"name": "needs:human-scope"}],
+        },
     ]
     monkeypatch.setattr(runner, "gh_json", lambda *_a, **_k: fake_rows)
     out = runner._list_large_features()
@@ -530,6 +537,31 @@ We want a billing-v2 rollout.
     for local in ("backend", "frontend", "mobile"):
         assert any(local in r for r in child_repos), child_repos
     assert any("auto-fell-back" in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]
+
+
+def test_parse_parent_issue_blocks_loose_shape_that_would_guess_default_rollout(
+    caplog,
+):
+    """A loose marker without actual repos must not synthesize default children."""
+    import logging
+
+    body = """
+We want something better.
+
+## Acceptance Criteria
+
+- Improve the overall experience.
+"""
+    with caplog.at_level(logging.WARNING, logger="alfred.batman.lifecycle"):
+        plan = _parse_parent(body)
+    assert plan.children == ()
+    assert plan.affected_repos == ()
+    assert [(finding.code, finding.severity) for finding in plan.readiness_findings] == [
+        ("guessed_default_rollout", "error")
+    ]
+    assert any("default rollout guess" in r.getMessage() for r in caplog.records), [
         r.getMessage() for r in caplog.records
     ]
 

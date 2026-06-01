@@ -264,6 +264,19 @@ class PlanShape:
 
     affected_repos: list[str]  # local repo names, in dependency order
     repo_criteria: dict[str, str]  # local_repo -> acceptance-criteria text
+    guessed_default_rollout: bool = False
+    parse_notes: tuple[str, ...] = ()
+
+    @property
+    def needs_scope_resolution(self) -> bool:
+        return self.guessed_default_rollout
+
+
+DEFAULT_ROLLOUT_WARNING = (
+    "No affected repositories or per-repo acceptance criteria were parsed. "
+    "Batman would have to guess the first repos in the configured rollout "
+    "order, so the plan needs manual scope before execution."
+)
 
 
 def _normalize_repo_token(token: str) -> str | None:
@@ -330,8 +343,9 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     explicit list wins, a typo in the criteria section must NOT
     silently expand the PR set.
 
-    Returns ``PlanShape`` with a sensible default rollout when nothing
-    parseable is found. Never fails the firing on a malformed body.
+    Returns ``PlanShape`` with a diagnostic default rollout when nothing
+    parseable is found. Callers must treat ``needs_scope_resolution`` as a
+    blocker before posting or executing a plan.
     """
     body = body or ""
     affected: list[str] = []
@@ -444,6 +458,12 @@ def parse_plan_from_issue(body: str) -> PlanShape:
         ordered += [r for r in affected if r not in ordered]
     else:
         ordered = list(rollout_order[:3])
+        return PlanShape(
+            affected_repos=ordered,
+            repo_criteria=criteria_by_repo,
+            guessed_default_rollout=True,
+            parse_notes=(DEFAULT_ROLLOUT_WARNING,),
+        )
 
     return PlanShape(affected_repos=ordered, repo_criteria=criteria_by_repo)
 
@@ -1164,9 +1184,16 @@ def parse_parent_issue(
             flags=re.IGNORECASE | re.MULTILINE,
         )
     )
+    loose_scope_notes: list[str] = []
     if not repos and not children_pairs and _has_loose_markers:
         loose = parse_plan_from_issue(body)
-        if loose.affected_repos:
+        if loose.needs_scope_resolution:
+            loose_scope_notes.extend(loose.parse_notes)
+            logger.warning(
+                "parse_parent_issue: loose-shape fallback would require a default "
+                "rollout guess; blocking until the parent issue names affected repos."
+            )
+        elif loose.affected_repos:
             # Map local repo names from the loose parser back to
             # `owner/repo` slugs using GH_REPO_TO_LOCAL.
             local_to_gh = {v: k for k, v in GH_REPO_TO_LOCAL.items()}
@@ -1240,11 +1267,21 @@ def parse_parent_issue(
             )
         )
 
-    readiness_findings = _assess_plan_readiness(
-        affected_repos=repos,
-        children=children,
-        done_when=done_when,
-    )
+    if loose_scope_notes:
+        readiness_findings = [
+            PlanReadinessFinding(
+                code="guessed_default_rollout",
+                severity="error",
+                message=note,
+            )
+            for note in loose_scope_notes
+        ]
+    else:
+        readiness_findings = _assess_plan_readiness(
+            affected_repos=repos,
+            children=children,
+            done_when=done_when,
+        )
 
     plan_md = _render_plan_markdown(
         slug=slug,
