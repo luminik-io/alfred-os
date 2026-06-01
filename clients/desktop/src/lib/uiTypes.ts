@@ -1,15 +1,8 @@
 import type { NativeAction } from "../types";
 
-export type TabKey =
-  | "now"
-  | "compose"
-  | "plans"
-  | "runs"
-  | "agents"
-  | "fleet"
-  | "activity"
-  | "memory"
-  | "setup";
+export type TabKey = "home" | "compose" | "fleet" | "logs" | "setup";
+
+export type StatCard = { label: string; value: string; detail: string };
 
 export type FollowupAction = "convert" | "handled";
 

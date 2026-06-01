@@ -243,6 +243,25 @@ code {
   color: var(--accent);
 }
 
+.settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.settings-button:hover,
+.settings-button--active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 /* Fleet Control confirmation bar for state-changing verbs. */
 .confirm-bar {
   display: flex;
@@ -366,6 +385,41 @@ code {
   font-size: 1.08rem;
 }
 
+.hero-strip--home {
+  align-items: center;
+}
+
+.section-kicker {
+  display: inline-flex;
+  margin-bottom: 12px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.home-side {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.compose-stack,
+.logs-stack {
+  display: grid;
+  gap: 18px;
+  padding-top: 34px;
+}
+
 .connection-panel,
 .panel,
 .metric-card,
@@ -378,6 +432,12 @@ code {
 
 .connection-panel {
   padding: 18px;
+}
+
+.connection-panel--compact {
+  width: min(100%, 420px);
+  padding: 14px;
+  box-shadow: none;
 }
 
 .connection-panel label,
@@ -1379,11 +1439,21 @@ dd {
   }
 
   .topnav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
+    overflow: visible;
   }
 
   .nav-button {
-    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    padding: 0 10px;
+  }
+
+  .topbar__status {
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .hero-strip {
@@ -1394,18 +1464,33 @@ dd {
     font-size: clamp(2.25rem, 14vw, 3.5rem);
   }
 
+  .notice-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .metric-grid,
   .agent-grid,
   .plan-grid {
     grid-template-columns: 1fr;
   }
 
+  .home-side {
+    justify-items: stretch;
+  }
+
   .server-row,
   .attention-card,
   .run-card,
   .command-row,
-  .console-agent-row {
+  .console-agent-row,
+  .home-actions {
     grid-template-columns: 1fr;
+  }
+
+  .home-actions {
+    display: grid;
+    justify-content: stretch;
   }
 
   .card-actions {
@@ -1433,8 +1518,14 @@ dd {
 
   .secondary-button,
   .icon-button,
-  .text-button {
+  .text-button,
+  .connect-chip {
     width: 100%;
+  }
+
+  .topbar__status {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
   }
 
   .trusted-form__row {

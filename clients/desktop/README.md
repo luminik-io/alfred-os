@@ -13,30 +13,34 @@ automation, debugging, and users who prefer a terminal.
 
 Alfred installs in layers, and this client is the optional top one:
 
-1. **`alfred` CLI + runtime** — the base. Schedules the fleet, runs agents, and
+1. **`alfred` CLI + runtime**: the base. Schedules the fleet, runs agents, and
    owns all state under `$ALFRED_HOME` (`~/.alfred` by default). Required.
-2. **`alfred serve`** — a local read-only HTTP API + web dashboard over that
+2. **`alfred serve`**: a local HTTP API + web dashboard over that
    state, on `http://127.0.0.1:7000`. The desktop client talks to it.
-3. **Alfred Desktop (this app)** — the optional native control plane: a menu-bar
-   tray, an at-a-glance fleet view, a Compose tab for authoring plans, and a
-   narrow set of safe local actions. It does not run agents itself; it reads
+3. **Alfred Desktop (this app)**: the optional native control plane: a menu-bar
+   tray, Home command center, Compose planning inbox, Fleet controls, Logs, and
+   a narrow set of safe local actions. It does not run agents itself; it reads
    `alfred serve` and shells a small allowlist of `alfred` CLI verbs.
 
 You can run the fleet headless with just the CLI. The desktop app is a
 convenience surface on top, not a dependency.
 
-The Compose tab is the in-app spec/plan authoring surface: describe the work in
-plain language, and Alfred's planning assistant scores how ready it is to run,
-surfaces the clarifying questions that are still open, and saves a draft to the
-Plans inbox. Each submission refines the same draft.
+The Home tab answers what needs attention, including blocked plans, stale
+workers, memory review candidates, and recent runs. Compose is the in-app
+spec/plan authoring surface: describe the work in plain language, and Alfred's
+planning assistant scores how ready it is to run, surfaces the clarifying
+questions that are still open, and saves a draft to the planning inbox. Each
+submission refines the same draft.
 
-The Setup tab keeps the same dual path: it can start the local runtime, run
-common Alfred checks in-app, and keep the underlying CLI commands visible as
-advanced detail for users who want to inspect the runtime.
+Fleet handles pause, resume, run-once, and dry-run actions. Logs combines
+notifications and firing timelines. The Setup gear keeps the repair path: it can
+start the local runtime, run common Alfred checks in-app, manage trusted Slack
+collaborators, and keep the underlying CLI commands visible as advanced detail
+for users who want to inspect the runtime.
 
 ## Run locally
 
-The desktop app can start the local API from the Setup tab. If you prefer to
+The desktop app can start the local API from the Setup gear. If you prefer to
 run the runtime yourself, start it first:
 
 ```sh
@@ -149,9 +153,9 @@ POST endpoints (follow-up planning actions and the Compose draft endpoint
 outside the app through Tauri's opener plugin.
 
 State-changing controls use a narrow native allowlist. The app can start the
-local runtime, run fleet/auth/agent checks, run safe agent dry-runs, run memory
-health checks, check Redis memory, author planning drafts from the Compose tab,
-and call local follow-up planning endpoints. It does not expose arbitrary shell
-execution. Broader pause, resume,
-lock-clearing, and memory-promotion actions should keep the same contract:
-explicit preview, affected path, result, and rollback hint.
+local runtime, run fleet/auth/agent checks, pause, resume, run once, run safe
+agent dry-runs, run memory health checks, check Redis memory, author planning
+drafts from the Compose tab, and call local follow-up planning endpoints. It
+does not expose arbitrary shell execution. Broader lock-clearing and
+memory-promotion actions should keep the same contract: explicit preview,
+affected path, result, and rollback hint.

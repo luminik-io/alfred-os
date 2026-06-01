@@ -315,9 +315,9 @@ content, sales, and ops departments are the next larger surface area:
 
 Additional unreleased work adds Slack-driven memory curation, explicit Redis AMS
 memory sync, operator-managed trusted Slack plan collaborators, revision previews
-in approval threads, Planning intake in the local cockpit, and a thin native
-client for setup, health, logs, command previews, and recovery. Slack remains
-the primary collaboration UI.
+in approval threads, Planning intake in the local cockpit, and a native client
+with Home, Compose, Fleet, Logs, and Setup gear surfaces for local trust and
+repair. Slack remains the primary collaboration UI.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 
