@@ -39,8 +39,10 @@ state machine that keeps multiple agents from stepping on each other.
   they do not become a hosted control plane.
 - Treat Slack as the planning surface: teammates can reply in a Batman plan
   thread with scope changes, questions, and acceptance criteria while the
-  operator keeps approval authority. Follow-up replies after PR links are
-  captured as context for the next pass, not as implicit merge approval.
+  operator keeps approval authority. Registered plan-thread replies persist
+  local revision artifacts and echo the current repo scope before approval.
+  Follow-up replies after PR links are captured as context for the next pass,
+  not as implicit merge approval.
 - Run the fleet conversationally from Slack: trusted control commands
   (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
   `memory` / `memories`, `memory remember ...`, `memory harvest`, `remember ...`,

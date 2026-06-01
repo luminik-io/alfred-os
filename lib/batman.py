@@ -1727,6 +1727,7 @@ class SlackReporter:
                     metadata={
                         "bundle_slug": plan.bundle_slug,
                         "affected_repos": list(plan.affected_repos),
+                        "child_count": len(plan.children),
                     },
                 )
             )

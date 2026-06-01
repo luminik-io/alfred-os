@@ -323,6 +323,12 @@ def test_render_plan_revision_ack_shows_scope_and_blocks_questions() -> None:
     assert "Needs a decision before execution" in block
     assert "will not execute" in block
     assert plan_feedback_requires_resolution(["question: Should we include the onboarding state?"])
+    assert not plan_feedback_requires_resolution(
+        [
+            "question: Should we include the onboarding state?",
+            "open questions: none",
+        ]
+    )
 
 
 def test_post_pr_followup_feedback_is_classified_and_acknowledged() -> None:

@@ -827,8 +827,16 @@ def _explicit_questions_from_messages(messages: tuple[str, ...]) -> tuple[str, .
     for message in messages:
         for line in _message_lines(message):
             action = _parse_line(line)
-            if action is not None and action[0] == "open_questions":
-                questions.extend(_split_items(action[1]))
+            if action is None:
+                continue
+            key, value = action
+            if key == "open_questions":
+                if _questions_resolved_value(value):
+                    questions.clear()
+                else:
+                    questions.extend(_split_items(value))
+            elif key == "resolved_open_questions":
+                questions.clear()
     return tuple(_dedupe(questions))
 
 

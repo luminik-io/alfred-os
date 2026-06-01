@@ -77,6 +77,10 @@ Rules:
 - Captured replies do not approve, merge, or change code by themselves.
 - `question:`, `hold:`, `blocker:`, and scope-changing replies require a
   decision before more work starts.
+- Replies in registered Batman plan threads are persisted under
+  `$ALFRED_HOME/state/plan-revisions/`, update the local thread status to
+  `revised` or `needs_resolution`, and acknowledge the repo scope if approved
+  now.
 - The acknowledgement should link the relevant issue or PR, summarize the next
   action items, and state the safety boundary clearly.
 - Follow-up context belongs in the next plan, child issue, or PR pass so Slack
