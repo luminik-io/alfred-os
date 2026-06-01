@@ -98,7 +98,24 @@ def _thread_reply(text: str, *, event_id: str = "Ev1", user: str = "U1") -> dict
 def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) -> None:
     poster = Poster()
     registry = SlackThreadRegistry(tmp_path / "threads")
-    registry.register(SlackThreadRecord(kind="plan", channel="C1", thread_ts="1716480000.000000"))
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("# Batman Plan\n", encoding="utf-8")
+    registry.register(
+        SlackThreadRecord(
+            kind="plan",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Improve Slack planning",
+            parent_repo="your-org/runtime",
+            parent_issue=120,
+            plan_path=str(plan_path),
+            metadata={
+                "affected_repos": ["your-org/runtime", "your-org/site"],
+                "child_count": 2,
+                "children_by_repo": {"your-org/runtime": 1, "your-org/site": 1},
+            },
+        )
+    )
     listener = SlackPlanningListener(
         registry=registry,
         state_root=tmp_path,
@@ -107,16 +124,46 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     )
 
     result = listener.handle_payload(
-        _thread_reply("acceptance: the Slack thread shows the current plan scope")
+        _thread_reply(
+            "remove repo: site\n"
+            "acceptance: the Slack thread shows the current plan scope\n"
+            "question: Should the docs mention Redis?"
+        )
     )
 
     assert result.handled is True
-    assert result.action == "captured_plan_feedback"
+    assert result.action == "plan_revised"
     assert poster.messages[0]["thread_ts"] == "1716480000.000000"
-    assert "Plan feedback captured" in poster.messages[0]["text"]
+    assert "Plan revised" in poster.messages[0]["text"]
+    assert (
+        "Execution scope if approved now (1 repo, 1 child issue(s))" in poster.messages[0]["text"]
+    )
+    assert "`your-org/runtime`" in poster.messages[0]["text"]
+    assert "Alfred will not execute" in poster.messages[0]["text"]
     feedback_files = list((tmp_path / "threads" / "feedback").glob("*.jsonl"))
     assert feedback_files
     assert "current plan scope" in feedback_files[0].read_text(encoding="utf-8")
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.status == "needs_resolution"
+    assert record.metadata["revised_repos"] == ["your-org/runtime"]
+    revision_path = Path(record.metadata["plan_revision_path"])
+    revision = json.loads(revision_path.read_text(encoding="utf-8"))
+    assert revision["latest"]["requires_resolution"] is True
+    assert revision["latest"]["revised_repos"] == ["your-org/runtime"]
+    assert revision["record"]["plan_path"] == str(plan_path)
+
+    resolved = listener.handle_payload(_thread_reply("open questions: none", event_id="Ev2"))
+
+    assert resolved.handled is True
+    assert resolved.action == "plan_revised"
+    assert resolved.readiness_ok is True
+    updated = registry.lookup("C1", "1716480000.000000")
+    assert updated is not None
+    assert updated.status == "revised"
+    assert updated.metadata["plan_revision_count"] == 2
+    latest = json.loads(Path(updated.metadata["plan_revision_path"]).read_text(encoding="utf-8"))
+    assert latest["latest"]["requires_resolution"] is False
 
 
 def test_report_thread_reply_writes_followup_context(tmp_path: Path) -> None:

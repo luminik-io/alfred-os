@@ -827,8 +827,26 @@ def _explicit_questions_from_messages(messages: tuple[str, ...]) -> tuple[str, .
     for message in messages:
         for line in _message_lines(message):
             action = _parse_line(line)
-            if action is not None and action[0] == "open_questions":
-                questions.extend(_split_items(action[1]))
+            if action is None:
+                continue
+            key, value = action
+            if key == "open_questions":
+                if _questions_resolved_value(value):
+                    questions.clear()
+                else:
+                    questions.extend(_split_items(value))
+            elif key == "resolved_open_questions":
+                if _questions_resolved_value(value):
+                    questions.clear()
+                else:
+                    resolved = _split_items(value)
+                    questions = [
+                        question
+                        for question in questions
+                        if not any(
+                            _question_resolution_matches(question, item) for item in resolved
+                        )
+                    ]
     return tuple(_dedupe(questions))
 
 
@@ -993,6 +1011,14 @@ def _questions_resolved_value(value: str) -> bool:
         "not applicable",
         "resolved",
     }
+
+
+def _question_resolution_matches(question: str, resolved: str) -> bool:
+    question_clean = _clean_text(question).lower().strip(" ?.!")
+    resolved_clean = _clean_text(resolved).lower().strip(" ?.!")
+    if not question_clean or not resolved_clean:
+        return False
+    return question_clean == resolved_clean or resolved_clean in question_clean
 
 
 def _normalized_resolved_questions(value: str) -> str:

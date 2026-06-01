@@ -27,9 +27,12 @@ from typing import Any, Protocol
 
 from planning_assistant import (
     Refiner,
+    apply_repository_scope_feedback,
     engine_refiner_from_env,
+    plan_feedback_requires_resolution,
     refine_issue_draft,
     render_operator_feedback_ack,
+    render_plan_revision_ack,
     render_post_pr_feedback_ack,
     render_post_pr_followup_block,
 )
@@ -215,11 +218,13 @@ class SlackPlanningListener:
         record: SlackThreadRecord,
     ) -> ListenerResult:
         feedback = ThreadFeedback(author=event.user, text=event.text, ts=event.ts)
-        self.registry.append_feedback(
+        feedback_path = self.registry.append_feedback(
             record, author=feedback.author, text=feedback.text, ts=feedback.ts
         )
         if record.kind == "draft":
             return self._handle_draft_revision(event, record, feedback)
+        if record.kind == "plan":
+            return self._handle_plan_revision(event, record, feedback, feedback_path)
         if record.kind in {"report", "pr", "followup"}:
             followup_path = self._write_followup_context(record, feedback)
             pr_urls = _string_list(record.metadata.get("created") or record.metadata.get("pr_urls"))
@@ -255,6 +260,76 @@ class SlackPlanningListener:
             action = "captured_plan_feedback"
         self._post_thread_ack(event.channel, event.root_ts, ack or "*Feedback captured*")
         return ListenerResult(True, action, thread_kind=record.kind)
+
+    def _handle_plan_revision(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+        feedback: ThreadFeedback,
+        feedback_path: Path,
+    ) -> ListenerResult:
+        all_feedback = _read_feedback_texts(feedback_path) or (feedback.text,)
+        base_repos = _string_list(record.metadata.get("affected_repos"))
+        default_org = (
+            record.parent_repo.split("/", 1)[0]
+            if record.parent_repo and "/" in record.parent_repo
+            else None
+        )
+        revised_repos = apply_repository_scope_feedback(
+            base_repos,
+            all_feedback,
+            default_org=default_org,
+        )
+        child_count = _revised_child_count(record.metadata, base_repos, revised_repos)
+        requires_resolution = plan_feedback_requires_resolution(all_feedback)
+        revision_path, revision_count = self._write_plan_revision_context(
+            record,
+            feedback,
+            all_feedback,
+            revised_repos,
+            requires_resolution=requires_resolution,
+        )
+        metadata = dict(record.metadata or {})
+        metadata.update(
+            {
+                "last_plan_feedback_at": _utc_now(),
+                "plan_revision_count": revision_count,
+                "plan_requires_resolution": requires_resolution,
+                "revised_repos": list(revised_repos),
+            }
+        )
+        if revision_path is not None:
+            metadata["plan_revision_path"] = str(revision_path)
+        updated_record = self.registry.register(
+            SlackThreadRecord(
+                kind=record.kind,
+                channel=record.channel,
+                thread_ts=record.thread_ts,
+                codename=record.codename,
+                firing_id=record.firing_id,
+                title=record.title,
+                status="needs_resolution" if requires_resolution else "revised",
+                parent_repo=record.parent_repo,
+                parent_issue=record.parent_issue,
+                plan_path=record.plan_path,
+                draft_path=record.draft_path,
+                created_at=record.created_at,
+                metadata=metadata,
+            )
+        )
+        ack = render_plan_revision_ack(
+            all_feedback,
+            revised_repos=revised_repos,
+            child_count=child_count,
+        )
+        self._post_thread_ack(event.channel, event.root_ts, ack or "*Plan feedback captured*")
+        return ListenerResult(
+            True,
+            "plan_revised",
+            detail=str(revision_path or ""),
+            thread_kind=updated_record.kind,
+            readiness_ok=not requires_resolution,
+        )
 
     def _handle_direct_intake(self, event: SlackInputEvent) -> ListenerResult:
         # A trusted direct message/mention that LEADS with a control verb acts
@@ -550,6 +625,76 @@ class SlackPlanningListener:
                 f"{record.channel}/{record.thread_ts}: {exc}",
                 file=sys.stderr,
             )
+
+    def _write_plan_revision_context(
+        self,
+        record: SlackThreadRecord,
+        feedback: ThreadFeedback,
+        all_feedback: Iterable[str],
+        revised_repos: Iterable[str],
+        *,
+        requires_resolution: bool,
+    ) -> tuple[Path | None, int]:
+        revision_dir = self.state_root / "plan-revisions"
+        path = (
+            revision_dir / f"slack-{_safe_event_id(record.channel + '-' + record.thread_ts)}.json"
+        )
+        now = _utc_now()
+        try:
+            revision_dir.mkdir(parents=True, exist_ok=True)
+            with _draft_revision_lock(path):
+                existing = _read_json_object(path) or {}
+                existing_revisions = existing.get("revisions")
+                revisions = existing_revisions if isinstance(existing_revisions, list) else []
+                stored_count = existing.get("revision_count")
+                revision_count = (
+                    stored_count + 1
+                    if isinstance(stored_count, int) and not isinstance(stored_count, bool)
+                    else len(revisions) + 1
+                )
+                revision = {
+                    "author": feedback.author,
+                    "text": feedback.text,
+                    "ts": feedback.ts,
+                    "captured_at": now,
+                    "requires_resolution": requires_resolution,
+                    "revised_repos": list(revised_repos),
+                }
+                payload = {
+                    "source": "slack-plan-thread",
+                    "kind": "plan_revision",
+                    "created_at": existing.get("created_at") or now,
+                    "updated_at": now,
+                    "revision_count": revision_count,
+                    "record": {
+                        "channel": record.channel,
+                        "thread_ts": record.thread_ts,
+                        "codename": record.codename,
+                        "firing_id": record.firing_id,
+                        "title": record.title,
+                        "parent_repo": record.parent_repo,
+                        "parent_issue": record.parent_issue,
+                        "plan_path": record.plan_path,
+                    },
+                    "feedback": list(all_feedback),
+                    "latest": revision,
+                    "revisions": [*revisions, revision][-_MAX_STORED_REVISIONS:],
+                }
+                tmp = path.with_name(f"{path.name}.tmp")
+                tmp.write_text(
+                    json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                tmp.replace(path)
+            return path, revision_count
+        except OSError as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] could not write plan revision for "
+                f"{record.channel}/{record.thread_ts}: {exc}",
+                file=sys.stderr,
+            )
+            existing_count = _metadata_int(record.metadata.get("plan_revision_count")) or 0
+            return None, existing_count + 1
 
     def _write_followup_context(
         self,
@@ -1199,6 +1344,10 @@ def _clean_slack_text(text: str) -> str:
 
 
 def _read_draft_payload(path: Path | None) -> dict[str, Any] | None:
+    return _read_json_object(path)
+
+
+def _read_json_object(path: Path | None) -> dict[str, Any] | None:
     if path is None:
         return None
     try:
@@ -1206,6 +1355,26 @@ def _read_draft_payload(path: Path | None) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return raw if isinstance(raw, dict) else None
+
+
+def _read_feedback_texts(path: Path | None) -> tuple[str, ...]:
+    if path is None:
+        return ()
+    out: list[str] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text") or "").strip()
+            if text:
+                out.append(text)
+    except OSError:
+        return ()
+    return tuple(out)
 
 
 def _draft_from_payload(payload: dict[str, Any] | None) -> IssueDraft | None:
@@ -1363,6 +1532,43 @@ def _string_list(value: Any) -> tuple[str, ...]:
         return tuple(out)
     text = str(value).strip()
     return (text,) if text else ()
+
+
+def _metadata_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _revised_child_count(
+    metadata: dict[str, Any],
+    base_repos: Iterable[str],
+    revised_repos: Iterable[str],
+) -> int | None:
+    children_by_repo = metadata.get("children_by_repo")
+    revised = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
+    if isinstance(children_by_repo, dict) and revised:
+        total = 0
+        matched = False
+        for repo in revised:
+            count = _metadata_int(children_by_repo.get(repo))
+            if count is not None:
+                total += count
+                matched = True
+        if matched:
+            return total
+    child_count = _metadata_int(metadata.get("child_count"))
+    base = tuple(str(repo).strip() for repo in base_repos if str(repo).strip())
+    if child_count is not None and revised == base:
+        return child_count
+    if revised:
+        return len(revised)
+    return child_count
 
 
 def _issue_url_from_record(record: SlackThreadRecord) -> str | None:

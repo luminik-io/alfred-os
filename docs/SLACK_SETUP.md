@@ -168,7 +168,9 @@ Required only if you want Alfred to receive Slack events via Socket Mode. The
 planning listener lets trusted users DM or mention Alfred with rough work, and
 lets Alfred capture replies in registered plan/report threads. Chat edits
 drafts and follow-up context only; implementation still needs the normal
-approval gate.
+approval gate. Registered Batman plan replies also write revision artifacts
+under `$ALFRED_HOME/state/plan-revisions/` and update the local thread status
+as `revised` or `needs_resolution`.
 
 1. Same Slack app → **Settings → Basic Information**.
 2. Scroll to **App-Level Tokens** → **Generate Token and Scopes**.
