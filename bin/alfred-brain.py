@@ -65,6 +65,7 @@ The wrapper ``bin/alfred`` exposes this as ``alfred brain status``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -704,35 +705,43 @@ def _harvest_failure_pattern_memories(
         if pattern_key in existing:
             status = "duplicate"
         elif apply:
-            candidate = brain.propose_memory(
-                codename=codename,
-                repo=repo,
-                body=body,
-                tags=[
-                    "auto-harvest",
-                    "failure-pattern",
-                    f"class:{pattern.get('classification') or 'unknown'}",
-                    f"pattern:{pattern_key}",
-                ],
-                severity=pattern.get("severity", "warning"),
-                source="memory-harvest",
-                evidence=json.dumps(
-                    {
-                        "kind": "failure_pattern",
-                        "pattern_key": pattern_key,
-                        "count": pattern.get("count"),
-                        "first_seen": pattern.get("first_seen"),
-                        "last_seen": pattern.get("last_seen"),
-                        "latest_summary": pattern.get("latest_summary"),
-                        "suggested_action": pattern.get("suggested_action"),
-                    },
-                    sort_keys=True,
-                ),
-                confidence=0.72,
-            )
-            candidate_id = str(getattr(candidate, "id", candidate))
-            existing.add(pattern_key)
-            status = "queued"
+            candidate_id = _harvest_candidate_id(pattern_key)
+            try:
+                candidate = brain.propose_memory(
+                    codename=codename,
+                    repo=repo,
+                    body=body,
+                    tags=[
+                        "auto-harvest",
+                        "failure-pattern",
+                        f"class:{pattern.get('classification') or 'unknown'}",
+                        f"pattern:{pattern_key}",
+                    ],
+                    severity=pattern.get("severity", "warning"),
+                    source="memory-harvest",
+                    evidence=json.dumps(
+                        {
+                            "kind": "failure_pattern",
+                            "pattern_key": pattern_key,
+                            "count": pattern.get("count"),
+                            "first_seen": pattern.get("first_seen"),
+                            "last_seen": pattern.get("last_seen"),
+                            "latest_summary": pattern.get("latest_summary"),
+                            "suggested_action": pattern.get("suggested_action"),
+                        },
+                        sort_keys=True,
+                    ),
+                    confidence=0.72,
+                    candidate_id=candidate_id,
+                )
+            except Exception as exc:
+                if not _looks_like_duplicate_candidate(exc):
+                    raise
+                status = "duplicate"
+            else:
+                candidate_id = str(getattr(candidate, "id", candidate))
+                existing.add(pattern_key)
+                status = "queued"
         proposals.append(
             {
                 "status": status,
@@ -748,9 +757,9 @@ def _harvest_failure_pattern_memories(
 
 def _existing_memory_keys(brain: FleetBrain) -> set[str]:
     keys: set[str] = set()
-    for lesson in brain.list_lessons(limit=1000):
+    for lesson in brain.list_lessons(limit=10_000):
         keys.update(_pattern_keys_from_tags(getattr(lesson, "tags", []) or []))
-    for candidate in brain.list_memory_candidates(status=None, limit=1000):
+    for candidate in brain.list_memory_candidates(status=None, limit=10_000):
         keys.update(_pattern_keys_from_tags(getattr(candidate, "tags", []) or []))
         key = _pattern_key_from_evidence(getattr(candidate, "evidence", "") or "")
         if key:
@@ -769,6 +778,16 @@ def _harvest_pattern_key(pattern: dict[str, Any]) -> str:
         str(pattern.get("engine") or "-").strip() or "-",
     ]
     return "|".join(parts)
+
+
+def _harvest_candidate_id(pattern_key: str) -> str:
+    digest = hashlib.sha256(pattern_key.encode("utf-8")).hexdigest()[:20]
+    return f"harvest-{digest}"
+
+
+def _looks_like_duplicate_candidate(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "unique" in text or "constraint" in text or "duplicate" in text
 
 
 def _pattern_keys_from_tags(tags: object) -> set[str]:

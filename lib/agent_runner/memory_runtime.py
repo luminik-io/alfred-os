@@ -168,6 +168,8 @@ def record_reflections(
     """Persist parsed lessons. Returns the count written."""
     if provider is None:
         return 0
+    # Default changed from direct lesson writes to reviewable candidates so
+    # engine-generated memories never enter recall without operator review.
     mode = os.environ.get("ALFRED_MEMORY_REFLECTION_MODE", "candidate").strip().lower()
     if mode not in _REFLECTION_MODES:
         mode = "candidate"

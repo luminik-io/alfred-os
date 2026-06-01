@@ -615,7 +615,7 @@ class SlackControlHandler:
         args: list[str],
         actor_user_id: str | None,
     ) -> ControlResult:
-        actual = bool(args and args[0].lower() in {"now", "run", "apply"})
+        actual = bool(args and args[0].lower() == "now")
         actor = normalize_slack_user_id(actor_user_id)
         if actual and (not self.operator_user_id or actor != self.operator_user_id):
             return ControlResult(
