@@ -1126,7 +1126,9 @@ def render_memory_harvest(payload: dict[str, Any]) -> str:
                 f"{_short(str(item.get('body') or ''), 180)}"
             )
     lines.append("")
-    if applied:
+    if not proposals:
+        lines.append("Nothing was queued.")
+    elif applied:
         lines.append("Review queued candidates with `memory`, then promote only the useful ones.")
     else:
         lines.append("Run `memory harvest now` to queue these as reviewable candidates.")

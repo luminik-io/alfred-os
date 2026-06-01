@@ -723,6 +723,35 @@ def test_operator_can_apply_memory_harvest() -> None:
     assert runner.calls[-1] == ["/fake/alfred", "brain", "harvest", "--json", "--apply"]
 
 
+def test_empty_memory_harvest_apply_has_clear_empty_state() -> None:
+    class EmptyHarvestRunner(FakeRunner):
+        def _brain(self, argv: list[str]) -> RunResult:
+            if argv[0] == "harvest":
+                return RunResult(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "applied": "--apply" in argv,
+                            "queued": 0,
+                            "duplicates": 0,
+                            "proposals": [],
+                        }
+                    ),
+                )
+            return super()._brain(argv)
+
+    result = _handler(EmptyHarvestRunner(), operator_user_id="UOP").handle(
+        "memory harvest now",
+        trusted=True,
+        actor_user_id="UOP",
+    )
+
+    assert result.action == "memory_harvest"
+    assert "No repeated failure patterns" in result.text
+    assert "Nothing was queued" in result.text
+    assert "Review queued candidates" not in result.text
+
+
 def test_memory_harvest_apply_requires_operator() -> None:
     runner = FakeRunner()
     result = _handler(runner, operator_user_id="UOP").handle(
