@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 // @ts-expect-error process is a nodejs global
 const env = process.env;
 const host = env.TAURI_DEV_HOST;
-const alfredProxyTarget = env.ALFRED_DESKTOP_PROXY_TARGET || "http://127.0.0.1:7000";
+const alfredProxyTarget = env.ALFRED_DESKTOP_PROXY_TARGET || "http://127.0.0.1:7010";
 const alfredProxyOrigin = new URL(alfredProxyTarget).origin;
 
 // https://vite.dev/config/

@@ -280,7 +280,7 @@ export function useAlfred() {
     try {
       const result = await startLocalRuntime();
       setNativeResult(result);
-      window.setTimeout(() => void refresh("http://127.0.0.1:7000"), 900);
+      window.setTimeout(() => void refresh("http://127.0.0.1:7010"), 900);
     } catch (err) {
       setNativeError(err instanceof Error ? err.message : String(err));
       setNativeErrorRaw(errorDetail(err));

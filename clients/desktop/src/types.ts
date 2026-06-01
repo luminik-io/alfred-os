@@ -44,15 +44,28 @@ export type PlanDraft = {
 };
 
 export type ReliabilitySignal = {
+  kind?: string;
   title?: string;
   message?: string;
   summary?: string;
+  target?: string;
+  agent?: string;
   codename?: string;
   repo?: string;
   severity?: string;
   action?: string;
   command?: string;
   reason?: string;
+  subtype?: string;
+  engine?: string | null;
+  count?: number;
+  first_seen?: string;
+  last_seen?: string;
+  latest_summary?: string;
+  classification?: string;
+  suggested_action?: string;
+  evidence?: number[];
+  evidence_ids?: number[];
 };
 
 export type StatusResponse = {

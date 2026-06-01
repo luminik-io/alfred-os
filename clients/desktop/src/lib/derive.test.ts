@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAttention, buildStats, planNeedsAttention } from "./derive";
+import { buildAttention, buildStats, failurePatternsToAttention, planNeedsAttention } from "./derive";
 import type { PlanDraft, Snapshot } from "../types";
 
 function emptySnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
@@ -101,5 +101,37 @@ describe("derive helpers (extracted from App.tsx)", () => {
     const stats = buildStats(snap);
     expect(stats.find((stat) => stat.label === "Memory")?.value).toBe("1");
     expect(buildAttention(snap, "http://127.0.0.1:7000")[0].id).toBe("memory-mem:1");
+    expect(buildAttention(snap, "http://127.0.0.1:7000")[0].title).toBe("your-org/api");
+  });
+
+  it("groups repeated failure patterns by agent", () => {
+    const items = failurePatternsToAttention([
+      {
+        agent: "rasalghul",
+        subtype: "diff-too-large",
+        count: 12,
+        last_seen: "2026-05-30T10:26:20Z",
+      },
+      {
+        agent: "rasalghul",
+        subtype: "pr-stale",
+        count: 8,
+        last_seen: "2026-06-01T07:07:42Z",
+      },
+      {
+        agent: "nightwing",
+        subtype: "no-fixes-landed",
+        count: 20,
+        last_seen: "2026-06-01T10:35:00Z",
+      },
+    ]);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      id: "failure-rasalghul",
+      title: "Rasalghul reliability signal",
+    });
+    expect(items[0].detail).toContain("2 repeated patterns");
+    expect(items[0].detail).toContain("diff-too-large");
   });
 });

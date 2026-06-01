@@ -224,9 +224,9 @@ npm install
 npm run tauri dev
 ```
 
-The Setup gear can start `alfred serve --no-browser` for you. If port 7000 is
-taken, run `alfred serve --port 7010 --no-browser`; the app also probes that
-fallback on first load.
+The Setup gear can start `alfred serve --port 7010 --no-browser` for you. The
+app prefers 7010 because macOS can reserve 7000 for Control Center; if you
+manually run the CLI default on 7000, the app probes that as a fallback.
 
 ## API Shape To Stabilize Next
 

@@ -1,4 +1,4 @@
-import { Brain, ListChecks, Pause, Play, RefreshCw } from "lucide-react";
+import { Brain, ListChecks, Pause, Play, RefreshCw, Settings } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { supportsNativeActions } from "../api";
@@ -25,8 +25,6 @@ export function HomeView({
   attention,
   baseUrl,
   stats,
-  serverInput,
-  setServerInput,
   nativeBusy,
   loading,
   onRunLocalAction,
@@ -37,8 +35,6 @@ export function HomeView({
   attention: AttentionItem[];
   baseUrl: string;
   stats: StatCard[];
-  serverInput: string;
-  setServerInput: (value: string) => void;
   nativeBusy: string | null;
   loading: boolean;
   onRunLocalAction: (request: NativeActionRequest) => void;
@@ -60,6 +56,11 @@ export function HomeView({
     () => snapshot?.status.agents.filter((agent) => agent.status === "error").length || 0,
     [snapshot],
   );
+  const todaySummary = snapshot
+    ? `${attention.length ? `${attention.length} decision${attention.length === 1 ? "" : "s"} waiting` : "No decisions waiting"} · ${
+        snapshot.status.total_today
+      } run${snapshot.status.total_today === 1 ? "" : "s"} today`
+    : "Waiting for the local runtime";
 
   const confirmAll = () => {
     if (!pendingAll) return;
@@ -70,13 +71,10 @@ export function HomeView({
   return (
     <div className="home-view animate-rise">
       <section className="hero-strip hero-strip--home" aria-label="Alfred command center">
-        <div>
+        <div className="home-brief">
           <span className="section-kicker">Local command center</span>
-          <h1>Alfred</h1>
-          <p>
-            Slack stays the main interface. This app keeps the local fleet, planning queue,
-            memory review, and repair actions visible on this machine.
-          </p>
+          <h1 className="visually-hidden">Alfred command center</h1>
+          <p>{todaySummary}</p>
         </div>
         <div className="home-side">
           <div className="home-actions" aria-label="Primary actions">
@@ -88,13 +86,27 @@ export function HomeView({
               className="secondary-button"
               type="button"
               disabled={loading}
-              onClick={() => onRefresh(serverInput)}
+              onClick={() => onRefresh()}
             >
               <RefreshCw size={17} aria-hidden="true" className={loading ? "spin" : undefined} />
               <span>{loading ? "Refreshing" : "Refresh"}</span>
             </button>
-            {canRun ? (
-              <>
+            <button className="secondary-button" type="button" onClick={() => onSwitch("setup")}>
+              <Settings size={17} aria-hidden="true" />
+              <span>Setup</span>
+            </button>
+          </div>
+          <div className="runtime-strip" aria-label="Connected local server">
+            <span>Local server</span>
+            <code>{baseUrl}</code>
+          </div>
+          {canRun ? (
+            <div className="fleet-quick-panel">
+              <div>
+                <span>Fleet controls</span>
+                <strong>Scheduled firings</strong>
+              </div>
+              <div className="fleet-quick-actions">
                 <button
                   className="secondary-button"
                   type="button"
@@ -113,34 +125,9 @@ export function HomeView({
                   <Play size={17} aria-hidden="true" />
                   <span>{nativeBusy === "resume:all" ? "Resuming" : "Resume all"}</span>
                 </button>
-              </>
-            ) : null}
-          </div>
-          <div className="connection-panel connection-panel--compact">
-            <label htmlFor="home-base-url">Local server</label>
-            <div className="server-row">
-              <input
-                id="home-base-url"
-                value={serverInput}
-                onChange={(event) => setServerInput(event.currentTarget.value)}
-                onBlur={() => setServerInput(serverInput.trim())}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    onRefresh(serverInput);
-                  }
-                }}
-                spellCheck={false}
-              />
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={loading}
-                onClick={() => onRefresh(serverInput)}
-              >
-                <span>Use</span>
-              </button>
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </section>
 

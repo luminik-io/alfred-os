@@ -153,7 +153,7 @@ export function SetupView({
             action, then the result panel shows the command, exit status, stdout, and stderr.
           </p>
           <div className="cli-chip-list">
-            <code>alfred serve --port 7000 --no-browser</code>
+            <code>alfred serve --port 7010 --no-browser</code>
             <code>alfred status --json</code>
             <code>alfred auth status</code>
             <code>alfred agents</code>

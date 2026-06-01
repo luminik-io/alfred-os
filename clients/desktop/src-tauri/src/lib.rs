@@ -67,7 +67,7 @@ async fn run_alfred_action(
 
 #[tauri::command]
 fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String> {
-    let port = port.unwrap_or(7000);
+    let port = port.unwrap_or(7010);
     if !(1024..=65535).contains(&port) {
         return Err("runtime port must be between 1024 and 65535".to_string());
     }

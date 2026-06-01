@@ -8,15 +8,15 @@ import type { AgentSummary, NativeCommandResult, Snapshot } from "../types";
 // deterministic. trayEvents/notifications/derive/fleetControl stay real (pure).
 // vi.mock is hoisted above module init, so the mocks and constants the factory
 // needs are declared via vi.hoisted.
-const DEFAULT_BASE_URL = "http://127.0.0.1:7000";
-const FALLBACK_BASE_URL = "http://127.0.0.1:7010";
+const DEFAULT_BASE_URL = "http://127.0.0.1:7010";
+const FALLBACK_BASE_URL = "http://127.0.0.1:7000";
 
 const hooks = vi.hoisted(() => ({
   loadSnapshotMock: vi.fn(),
   runNativeActionMock: vi.fn(),
   rememberBaseUrlMock: vi.fn(),
-  DEFAULT_BASE_URL: "http://127.0.0.1:7000",
-  FALLBACK_BASE_URL: "http://127.0.0.1:7010",
+  DEFAULT_BASE_URL: "http://127.0.0.1:7010",
+  FALLBACK_BASE_URL: "http://127.0.0.1:7000",
 }));
 
 const loadSnapshotMock = hooks.loadSnapshotMock as ReturnType<
@@ -152,7 +152,7 @@ describe("useAlfred refresh race", () => {
 });
 
 describe("useAlfred fallback port", () => {
-  it("retries on 7010 when the default 7000 fails", async () => {
+  it("retries on 7000 when the preferred 7010 endpoint fails", async () => {
     // Initial mount refresh: default rejects, fallback resolves.
     loadSnapshotMock.mockImplementation(async (baseUrl: string) => {
       if (baseUrl === DEFAULT_BASE_URL) {

@@ -16,7 +16,8 @@ Alfred installs in layers, and this client is the optional top one:
 1. **`alfred` CLI + runtime**: the base. Schedules the fleet, runs agents, and
    owns all state under `$ALFRED_HOME` (`~/.alfred` by default). Required.
 2. **`alfred serve`**: a local HTTP API + web dashboard over that
-   state, on `http://127.0.0.1:7000`. The desktop client talks to it.
+   state. The desktop client prefers `http://127.0.0.1:7010` and falls
+   back to `http://127.0.0.1:7000`.
 3. **Alfred Desktop (this app)**: the optional native control plane: a menu-bar
    tray, Home command center, Compose planning inbox, Fleet controls, Logs, and
    a narrow set of safe local actions. It does not run agents itself; it reads
@@ -47,11 +48,9 @@ run the runtime yourself, start it first:
 alfred serve --no-browser
 ```
 
-If port 7000 is already taken:
-
-```sh
-alfred serve --port 7010 --no-browser
-```
+The desktop app's Start runtime action uses port 7010 because macOS can reserve
+7000 for Control Center. A manually started `alfred serve --no-browser` on 7000
+still works; the app probes it as a fallback.
 
 Then run the desktop shell:
 
