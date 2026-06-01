@@ -113,6 +113,12 @@ context" and "Alfred has a scoped draft for the next pass." `remember ...`
 stages a candidate only; it never becomes prompt context until the operator
 runs `memory promote <id>`.
 
+When a Slack-created draft is already scoped enough to be implementation-ready,
+Alfred also queues a reviewable `slack-planning` memory candidate automatically.
+That candidate records the local draft id and evidence, but it is still only a
+candidate. It does not enter recall until the operator explicitly promotes it.
+Set `ALFRED_SLACK_MEMORY_CANDIDATES=0` to disable this automatic queueing.
+
 ## DM And App Mention Intake
 
 When the Slack planning listener is running, trusted users can DM Alfred or

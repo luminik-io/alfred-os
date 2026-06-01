@@ -98,6 +98,12 @@ Alfred converts that follow-up into a local planning draft, recalls reviewed
 planning memory, reruns readiness, and only then queues any new memory candidate.
 Raw chat is never promoted as long-term truth by itself.
 
+Slack-created planning drafts use the same automatic review queue. If the draft
+is already implementation-ready, Alfred proposes a `slack-planning` candidate
+with the local draft path and thread evidence. The candidate is visible in
+`memory`, but it is not recallable until the operator promotes it. Disable this
+with `ALFRED_SLACK_MEMORY_CANDIDATES=0`.
+
 Slack can drive the same review loop:
 
 ```text

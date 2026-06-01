@@ -44,7 +44,8 @@ state machine that keeps multiple agents from stepping on each other.
 - Run the fleet conversationally from Slack: trusted control commands
   (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
   `memory` / `memories`, `remember ...`, `memory promote <id>`, `memory redis`, `pause`,
-  `resume`) inspect and steer local state from chat with no shell. An approved
+  `resume`) inspect and steer local state from chat with no shell. Scoped Slack
+  drafts can queue reviewable memory candidates without promoting them. An approved
   draft can cross the off-by-default bridge into a labeled issue, and in-thread
   progress posts (claimed, PR opened, CI, merged) report back as the fleet
   works it. A plain-language intake profile lets a non-technical user approve
@@ -313,11 +314,12 @@ content, sales, and ops departments are the next larger surface area:
 
 **Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, a mobile-friendly local cockpit with saved Alfred plans, and the first Tauri Mac/Linux client. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
-Additional unreleased work adds Slack-driven memory curation, explicit Redis AMS
-memory sync, operator-managed trusted Slack plan collaborators, revision previews
-in approval threads, Planning intake in the local cockpit, and a native client
-with Home, Compose, Fleet, Logs, and Setup gear surfaces for local trust and
-repair. Slack remains the primary collaboration UI.
+Additional unreleased work adds Slack-driven memory curation, automatic
+reviewable memory candidates from ready Slack drafts, explicit Redis AMS memory
+sync, operator-managed trusted Slack plan collaborators, revision previews in
+approval threads, Planning intake in the local cockpit, and a native client with
+Home, Compose, Fleet, Logs, and Setup gear surfaces for local trust and repair.
+Slack remains the primary collaboration UI.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 

@@ -117,6 +117,12 @@ planning drafts; they never approve execution, file GitHub issues, start agents,
 or merge PRs. `remember ...` only stages a memory candidate; it does not enter
 future prompt context until the operator promotes it.
 
+Ready Slack-created drafts also queue reviewable `slack-planning` candidates
+automatically, with the local draft path and thread evidence attached. This is
+the same safety boundary as `remember ...`: useful decisions become visible in
+the memory review queue, but raw chat never becomes long-term truth without an
+operator promotion. Set `ALFRED_SLACK_MEMORY_CANDIDATES=0` to turn this off.
+
 ## Watch progress in the thread
 
 When the issue bridge files an issue from an approved draft, the thread does not

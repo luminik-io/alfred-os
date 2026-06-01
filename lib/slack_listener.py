@@ -12,6 +12,7 @@ Execution remains gated by the existing reaction approval flow.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -290,6 +291,13 @@ class SlackPlanningListener:
                 readiness=refined.readiness,
                 memory=refined.memory,
             )
+            memory_candidate_ids = self._propose_planning_memory_candidates(
+                event,
+                refined,
+                draft_path,
+                source="slack-draft",
+            )
+            _append_memory_candidate_ids(draft_path, memory_candidate_ids)
         except OSError as exc:
             print(
                 f"[SLACK-LISTENER-WARN] could not save planning draft for "
@@ -391,6 +399,15 @@ class SlackPlanningListener:
                 payload_path,
                 revision_count=revision_count,
             )
+        memory_candidate_ids = self._propose_planning_memory_candidates(
+            event,
+            refined,
+            payload_path,
+            source="slack-revision",
+        )
+        if memory_candidate_ids:
+            with _draft_revision_lock(payload_path):
+                _append_memory_candidate_ids(payload_path, memory_candidate_ids)
         self._post_thread_ack(event.channel, event.root_ts, render_draft_revision_ack(refined))
         return ListenerResult(
             True,
@@ -638,6 +655,76 @@ class SlackPlanningListener:
             )
         )
 
+    def _propose_planning_memory_candidates(
+        self,
+        event: SlackInputEvent,
+        result: Any,
+        draft_path: Path,
+        *,
+        source: str,
+    ) -> tuple[str, ...]:
+        """Queue reviewable memory candidates from scoped Slack planning work."""
+        if _env_disabled("ALFRED_SLACK_MEMORY_CANDIDATES"):
+            return ()
+        readiness = getattr(result, "readiness", None)
+        if readiness is None or not getattr(readiness, "ok", False):
+            return ()
+        writer = _memory_candidate_writer(self.memory_provider)
+        if writer is None or not hasattr(writer, "propose_memory"):
+            return ()
+        draft = getattr(result, "draft", None)
+        if not isinstance(draft, IssueDraft):
+            return ()
+        body = _slack_memory_candidate_body(draft)
+        if not body:
+            return ()
+        evidence = {
+            "kind": "slack_planning",
+            "source": source,
+            "draft_path": str(draft_path),
+            "event_id": event.event_id,
+            "channel": event.channel,
+            "thread_ts": event.root_ts,
+            "readiness_score": getattr(readiness, "score", None),
+            "amendments": list(getattr(result, "amendments", ()) or ()),
+        }
+        ids: list[str] = []
+        propose_memory = writer.propose_memory
+        use_modern_signature = _propose_memory_supports_modern_signature(propose_memory)
+        for repo in draft.repos or ["planning"]:
+            if use_modern_signature:
+                kwargs = {
+                    "codename": "planning",
+                    "repo": repo,
+                    "body": body,
+                    "tags": ["slack", "planning"],
+                    "severity": "info",
+                    "source": source,
+                    "evidence": json.dumps(evidence, sort_keys=True),
+                    "confidence": 0.68,
+                }
+            else:
+                kwargs = {
+                    "agent": "planning",
+                    "repo": repo,
+                    "topic": "slack-planning",
+                    "body": body,
+                    "source": source,
+                    "evidence": [evidence],
+                }
+            try:
+                candidate = propose_memory(**kwargs)
+            except Exception as exc:
+                print(
+                    f"[SLACK-LISTENER-WARN] could not queue {source} memory "
+                    f"candidate for {repo}: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+            candidate_id = getattr(candidate, "id", candidate)
+            ids.append(str(candidate_id))
+        return tuple(ids)
+
     def _save_draft(
         self,
         event: SlackInputEvent,
@@ -697,6 +784,96 @@ class SlackPlanningListener:
             self.poster.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
         except Exception:
             return
+
+
+def _memory_candidate_writer(provider: Any | None) -> Any | None:
+    if provider is None:
+        return None
+    if hasattr(provider, "propose_memory"):
+        return provider
+    brain = getattr(provider, "brain", None)
+    if brain is not None and hasattr(brain, "propose_memory"):
+        return brain
+    providers = getattr(provider, "providers", None)
+    if isinstance(providers, (list, tuple)):
+        for child in providers:
+            writer = _memory_candidate_writer(child)
+            if writer is not None:
+                return writer
+    return None
+
+
+def _env_disabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {
+        "0",
+        "false",
+        "no",
+        "off",
+        "disabled",
+    }
+
+
+def _propose_memory_supports_modern_signature(method: Any) -> bool:
+    try:
+        signature = inspect.signature(method)
+    except (TypeError, ValueError):
+        return True
+    parameters = signature.parameters.values()
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters):
+        return True
+    return {"codename", "tags", "severity", "confidence"}.issubset(signature.parameters)
+
+
+def _append_memory_candidate_ids(path: Path, candidate_ids: Iterable[str]) -> None:
+    ids = [str(candidate_id) for candidate_id in candidate_ids if str(candidate_id)]
+    if not ids:
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(payload, dict):
+        return
+    existing = payload.get("memory_candidate_ids")
+    merged = [str(item) for item in existing] if isinstance(existing, list) else []
+    for candidate_id in ids:
+        if candidate_id not in merged:
+            merged.append(candidate_id)
+    payload["memory_candidate_ids"] = merged
+    tmp = path.with_name(f"{path.name}.tmp")
+    try:
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        return
+
+
+def _slack_memory_candidate_body(draft: IssueDraft) -> str:
+    parts = [
+        f"Slack planning lesson for {draft.title.strip() or 'untitled work'}.",
+        f"Problem: {_short_plain(draft.problem, 220)}" if draft.problem else "",
+        (
+            f"Desired behavior: {_short_plain(draft.desired_behavior, 220)}"
+            if draft.desired_behavior
+            else ""
+        ),
+    ]
+    if draft.acceptance_criteria:
+        parts.append(
+            "Acceptance: "
+            + "; ".join(_short_plain(item, 140) for item in draft.acceptance_criteria[:3])
+        )
+    if draft.test_plan:
+        parts.append(f"Verification: {_short_plain(draft.test_plan, 180)}")
+    body = " ".join(part for part in parts if part).strip()
+    return body[:900]
+
+
+def _short_plain(value: str, limit: int) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: max(0, limit - 1)].rstrip() + "..."
 
 
 def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:
