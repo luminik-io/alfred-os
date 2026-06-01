@@ -1,0 +1,40 @@
+# gitleaks configuration for alfred-os
+#
+# Complements bin/scrub-check.sh (which catches operator-private paths and
+# Luminik identifiers) by scanning for generic secrets: API keys, tokens,
+# and PEM private-key blocks. Run in CI via .github/workflows/gitleaks.yml
+# and locally via the gitleaks pre-commit hook (.pre-commit-config.yaml).
+#
+# This extends the gitleaks default ruleset; the allowlist below only
+# exempts PROVEN, documented placeholders so CI stays green. Never add a
+# real-looking secret here.
+
+title = "alfred-os gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented fake placeholders and test fixtures (proven non-secrets)"
+
+# Path-scoped exemptions: files that only ever contain example/placeholder
+# credentials. The setup-token script, its tests, and the install docs all
+# carry obviously-fake `sk-ant-oat01-...` Claude OAuth placeholders.
+paths = [
+  '''bin/alfred-setup-token\.py''',
+  '''tests/test_alfred_setup_token\.py''',
+  '''docs/CLAUDE_CODE\.md''',
+  '''docs/AI_ASSISTED_INSTALL\.md''',
+]
+
+# Regex-scoped exemptions: specific placeholder strings that may appear
+# anywhere. These are narrowly anchored so they cannot mask a real secret.
+regexes = [
+  # Fake Claude Code OAuth tokens (claude setup-token placeholders) used in
+  # setup-token code, tests, and docs: sk-ant-oat01-fake..., -NEWTOKEN,
+  # -existing, -tooshort, -pasted..., -OLD, -NEW, -xxx, -<...>, etc.
+  '''sk-ant-oat[0-9]{2}-(fake|pasted|NEWTOKEN|NEW|OLD|existing|tooshort|xxx|\$DANGEROUS|<)''',
+  # Obviously-fake Slack bot tokens in the batman-setup tests: the literal
+  # sequential placeholder xoxb-1234567890[-abcdef].
+  '''xoxb-1234567890(-abcdef)?''',
+]

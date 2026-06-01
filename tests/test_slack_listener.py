@@ -4,13 +4,18 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[1]
 LIB = REPO / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
-from slack_listener import SlackPlanningListener, draft_from_slack_text  # noqa: E402
+from slack_listener import (  # noqa: E402
+    SlackPlanningListener,
+    draft_from_slack_text,
+    render_bridge_outcome_ack,
+)
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry  # noqa: E402
 
 
@@ -21,6 +26,23 @@ class Poster:
     def chat_postMessage(self, **kwargs):
         self.messages.append(kwargs)
         return {"ok": True}
+
+
+def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
+    text = render_bridge_outcome_ack(
+        SimpleNamespace(
+            created=False,
+            status="refused_not_ready",
+            detail="draft readiness is 42/100; required 80/100. Answer first: What should ship?",
+            issue_url=None,
+            repo=None,
+        )
+    )
+
+    assert "Draft still needs scope" in text
+    assert "42/100" in text
+    assert "acceptance criteria" in text
+    assert "Nothing was created" in text
 
 
 def _thread_reply(text: str, *, event_id: str = "Ev1", user: str = "U1") -> dict:
@@ -186,6 +208,140 @@ def test_listener_requires_trusted_users(tmp_path: Path) -> None:
     assert result.handled is False
     assert result.action == "ignored"
     assert "trusted" in result.detail
+
+
+def _dm(text: str, *, event_id: str = "EvCtl", user: str = "U1") -> dict:
+    return {
+        "event_id": event_id,
+        "event": {
+            "type": "message",
+            "channel": "D1",
+            "channel_type": "im",
+            "user": user,
+            "text": text,
+            "ts": "1716480020.000001",
+        },
+    }
+
+
+def test_trusted_control_command_routes_to_control_not_draft(tmp_path: Path) -> None:
+    from slack_control import RunResult, SlackControlHandler
+
+    calls: list[list[str]] = []
+
+    def runner(argv: list[str]) -> RunResult:
+        calls.append(argv)
+        return RunResult(returncode=0, stdout="  paused lucius")
+
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SlackControlHandler(alfred_bin="/fake/alfred", runner=runner),
+    )
+
+    result = listener.handle_payload(_dm("pause lucius"))
+
+    assert result.handled is True
+    assert result.action == "control_pause"
+    assert calls[-1] == ["/fake/alfred", "pause", "lucius"]
+    assert "Paused" in poster.messages[-1]["text"]
+    # No planning draft should have been created for a control command.
+    assert not list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_default_control_handler_reads_local_planning_inbox(tmp_path: Path) -> None:
+    followups = tmp_path / "followups"
+    followups.mkdir(parents=True)
+    (followups / "slack-C1-1716480000.md").write_text(
+        "# Follow-up for PR feedback\n\nPlease add the missing docs check.\n",
+        encoding="utf-8",
+    )
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_dm("plans"))
+
+    assert result.handled is True
+    assert result.action == "control_plans"
+    assert "Planning inbox" in poster.messages[-1]["text"]
+    assert "slack-C1-1716480000" in poster.messages[-1]["text"]
+
+
+def test_plan_prefixed_prose_still_creates_planning_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_dm("plan the billing migration with clearer retry copy"))
+
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_operator_can_trust_collaborator_without_listener_restart(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+    )
+
+    trust_result = listener.handle_payload(
+        _dm("trust <@UTEAM1>", event_id="EvTrust", user="UOPERATOR")
+    )
+    assert trust_result.handled is True
+    assert trust_result.action == "control_trust"
+
+    draft_result = listener.handle_payload(
+        _dm("Build a cleaner onboarding checklist", event_id="EvTeam", user="UTEAM1")
+    )
+
+    assert draft_result.handled is True
+    assert draft_result.action == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_trusted_collaborator_cannot_trust_another_user(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+    )
+    listener.handle_payload(_dm("trust <@UTEAM1>", event_id="EvTrust", user="UOPERATOR"))
+
+    result = listener.handle_payload(_dm("trust <@UTEAM2>", event_id="EvTrust2", user="UTEAM1"))
+
+    assert result.handled is True
+    assert result.action == "control_trust_rejected"
+    assert "Only the operator" in poster.messages[-1]["text"]
+
+
+def test_prose_dm_still_creates_planning_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    result = listener.handle_payload(
+        _dm("title: Build a CSV export\nrepo: acme-org/api\ndesired: users can export rows")
+    )
+    assert result.action == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
 
 
 def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:

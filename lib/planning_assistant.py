@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from intake_profiles import IntakeProfile, active_intake_profile
 from spec_helper import IssueDraft, IssueReadinessResult, assess_issue_draft
 
 Refiner = Callable[[IssueDraft, tuple[str, ...]], dict[str, Any] | str | None]
@@ -90,18 +91,21 @@ def refine_issue_draft(
     memory = recall_planning_memory(amended, memory_provider, limit=memory_limit)
     amendments = _summarize_amendments(clean_messages)
     questions = _planning_questions(amended, readiness)
-    summary = _summary_for(readiness, amendments)
     spec_body = render_development_spec(amended, readiness=readiness, memory=memory)
-    return PlanningAssistantResult(
+    result = PlanningAssistantResult(
         draft=amended,
         readiness=readiness,
-        summary=summary,
+        summary="",
         amendments=amendments,
         questions=questions,
         issue_body=readiness.issue_body,
         spec_body=spec_body,
         memory=memory,
     )
+    # The intake profile (technical by default, plain when
+    # ``ALFRED_INTAKE_PROFILE=plain``) controls only the user-facing
+    # summary. Everything above is identical in both modes.
+    return replace(result, summary=active_intake_profile().render_user_summary(result))
 
 
 def recall_planning_memory(
@@ -523,36 +527,35 @@ def post_pr_feedback_requires_resolution(feedback: Iterable[str]) -> bool:
     return any(item.requires_resolution for item in classify_post_pr_feedback(feedback))
 
 
-def build_refiner_prompt(draft: IssueDraft, messages: Iterable[str]) -> str:
-    """Prompt text for an optional local engine backed refiner."""
+def build_refiner_prompt(
+    draft: IssueDraft,
+    messages: Iterable[str],
+    *,
+    profile: IntakeProfile | None = None,
+) -> str:
+    """Prompt text for an optional local engine backed refiner.
 
-    payload = {
-        "draft": {
-            "title": draft.title,
-            "problem": draft.problem,
-            "user": draft.user,
-            "current_behavior": draft.current_behavior,
-            "desired_behavior": draft.desired_behavior,
-            "repos": draft.repos,
-            "acceptance_criteria": draft.acceptance_criteria,
-            "test_plan": draft.test_plan,
-            "out_of_scope": draft.out_of_scope,
-            "rollout": draft.rollout,
-            "open_questions": draft.open_questions,
-        },
-        "operator_messages": list(messages),
-    }
-    return (
-        "You are Alfred's planning assistant. Tighten the draft so technical and "
-        "non-technical operators can describe work safely before an autonomous "
-        "engineering agent starts.\n\n"
-        "Return JSON only with any of these keys: title, problem, user, "
-        "current_behavior, desired_behavior, repos, acceptance_criteria, test_plan, "
-        "out_of_scope, rollout, open_questions. Use arrays for repos and "
-        "acceptance_criteria. Keep scope narrow, ask questions when uncertain, "
-        "and do not invent repository names.\n\n"
-        f"{json.dumps(payload, indent=2)}"
-    )
+    The persona is supplied by the active intake profile. The default
+    technical profile keeps the original operator-facing prompt; the plain
+    profile swaps in a friendly, jargon-free persona. The structured draft
+    that downstream code builds is identical either way.
+    """
+
+    selected = profile or active_intake_profile()
+    return selected.refiner_prompt(draft, messages)
+
+
+def render_user_facing_summary(result: PlanningAssistantResult) -> str:
+    """Render the user-facing summary for ``result`` under the active profile.
+
+    Technical mode reports amendment counts and readiness state. Plain mode
+    returns a short "Here's what I'll do ... OK to go ahead?" plan with no
+    technical fields. ``result.summary`` already carries this string; this
+    helper lets callers re-render after changing profiles in the same
+    process (mainly for tests and the desktop client).
+    """
+
+    return active_intake_profile().render_user_summary(result)
 
 
 def engine_refiner_from_env(*, workdir: Path | None = None) -> Refiner | None:
@@ -997,13 +1000,6 @@ def _normalized_resolved_questions(value: str) -> str:
     if cleaned in {"accepted as risk", "accepted risk"}:
         return "accepted as risk"
     return "None."
-
-
-def _summary_for(readiness: IssueReadinessResult, amendments: tuple[str, ...]) -> str:
-    state = "ready for implementation" if readiness.ok else "needs scope before implementation"
-    if amendments:
-        return f"{len(amendments)} amendment(s) applied; draft {state}."
-    return f"No structured amendments found; draft {state}."
 
 
 def _message_lines(message: str) -> list[str]:

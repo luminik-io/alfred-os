@@ -18,6 +18,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +39,7 @@ import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from server.formatting import friendly_time, short_firing_id  # noqa: E402
+from spec_helper import IssueDraft  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -247,6 +249,58 @@ def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}
+
+
+def test_api_slack_trusted_users_adds_and_removes_local_collaborator(
+    empty_state: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UENV1")
+    client = _client(empty_state)
+
+    before = client.get("/api/slack/trusted-users")
+    assert before.status_code == 200
+    before_rows = {row["user_id"]: row for row in before.json()["users"]}
+    assert before_rows["UOPERATOR"]["sources"] == ["operator"]
+    assert before_rows["UENV1"]["sources"] == ["env"]
+
+    added = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "<@UTEAM1>"},
+        headers={"Origin": "http://testserver"},
+    )
+    assert added.status_code == 200
+    rows = {row["user_id"]: row for row in added.json()["users"]}
+    assert added.json()["added"] is True
+    assert rows["UTEAM1"]["sources"] == ["local"]
+    assert rows["UTEAM1"]["can_remove"] is True
+
+    removed = client.post(
+        "/api/slack/trusted-users/UTEAM1/remove",
+        headers={"Origin": "http://testserver"},
+    )
+    assert removed.status_code == 200
+    assert removed.json()["removed"] is True
+    assert "UTEAM1" not in {row["user_id"] for row in removed.json()["users"]}
+
+
+def test_api_slack_trusted_users_rejects_bad_origin_and_bad_ids(empty_state: Path) -> None:
+    client = _client(empty_state)
+
+    forbidden = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "UTEAM1"},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert forbidden.status_code == 403
+
+    bad_id = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "not a user"},
+        headers={"Origin": "http://testserver"},
+    )
+    assert bad_id.status_code == 400
 
 
 def test_firing_complete_marks_record_finished(tmp_path: Path) -> None:
@@ -483,7 +537,7 @@ def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) ->
         "# Follow-up for rollout bundle\n\n"
         "- Bundle: `rollout-bundle`\n"
         "- Created: https://github.com/your-org/api/pull/42, "
-        "https://github.com/your-org/web\n\n"
+        "https://github.com/your-org/web/issues/77\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `test`: add a smoke test to both shipped slices\n",
@@ -923,7 +977,7 @@ def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path:
 
         def __init__(self) -> None:
             self.writable = Writable()
-            self.providers = [ReadOnly(), self.writable]
+            self.providers = (ReadOnly(), self.writable)
 
         def recall(self, *, repo=None, query=None, limit=3):
             return []
@@ -960,6 +1014,169 @@ def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path:
     assert response.status_code == 200
     assert chain.writable.candidates
     assert chain.writable.candidates[0]["repo"] == "luminik-io/alfred-os"
+
+
+def test_planning_memory_candidate_old_api_object_id_is_extracted(
+    tmp_path: Path,
+) -> None:
+    class Candidate:
+        id = "candidate-object-1"
+
+    class LegacyWriter:
+        def propose_memory(self, **kwargs):
+            if "codename" in kwargs:
+                raise TypeError("legacy api")
+            return Candidate()
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    draft = IssueDraft(
+        title="Add Slack plan revision flow",
+        problem="Operators need to discuss a plan before implementation.",
+        desired_behavior="Alfred saves the refined plan.",
+        repos=["luminik-io/alfred-os"],
+        acceptance_criteria=["Saved spec queues a memory candidate."],
+        test_plan="Unit test the fallback.",
+    )
+
+    ids = server_views._propose_planning_memory_candidate(
+        request,
+        draft,
+        spec_path=tmp_path / "spec.md",
+        spec_body="spec",
+        memory_provider=LegacyWriter(),
+    )
+
+    assert ids == ("candidate-object-1",)
+
+
+def test_compose_draft_returns_readiness_and_saves(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"text": "title: Add a desktop compose panel"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"].startswith("compose-")
+    assert isinstance(payload["readiness"]["score"], int)
+    assert payload["readiness"]["ok"] is False
+    assert payload["questions"]
+    assert any(finding["severity"] == "error" for finding in payload["findings"])
+    assert payload["draft"]["title"] == "Add a desktop compose panel"
+
+    saved = Path(payload["saved_path"])
+    assert saved.exists()
+    assert saved.parent == state / "planning-drafts"
+    on_disk = json.loads(saved.read_text(encoding="utf-8"))
+    assert on_disk["source"] == "compose"
+    assert on_disk["revision_count"] == 1
+
+    plans = client.get("/api/plans").json()["rows"]
+    assert any(row["plan_id"] == payload["draft_id"] for row in plans)
+
+
+def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    first = client.post(
+        "/api/plans/draft",
+        json={
+            "text": (
+                "title: Ship the compose panel\n"
+                "problem: Operators cannot author specs inside the desktop client today."
+            )
+        },
+    ).json()
+    draft_id = first["draft_id"]
+    assert first["readiness"]["ok"] is False
+
+    second = client.post(
+        "/api/plans/draft",
+        json={
+            "draft_id": draft_id,
+            "text": (
+                "desired: The desktop client lets users describe work and shows "
+                "the readiness score plus clarifying questions.\n"
+                "repo: luminik-io/alfred-os\n"
+                "acceptance: Submitting intent renders the readiness score.\n"
+                "test: Vitest covers the compose submit path with a mocked api."
+            ),
+        },
+    ).json()
+
+    assert second["draft_id"] == draft_id
+    assert second["revision_count"] == 2
+    assert second["readiness"]["score"] > first["readiness"]["score"]
+    assert "luminik-io/alfred-os" in second["draft"]["repos"]
+
+    drafts = client.get("/api/plans/drafts").json()["rows"]
+    matching = [row for row in drafts if row["draft_id"] == draft_id]
+    assert len(matching) == 1
+    assert matching[0]["revision_count"] == 2
+
+
+def test_compose_draft_requires_intent(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post("/api/plans/draft", json={"text": "   "})
+
+    assert response.status_code == 400
+    assert not (state / "planning-drafts").exists()
+
+
+def test_compose_draft_rejects_cross_origin(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"text": "title: Cross-origin attempt"},
+        headers={"origin": "https://example.invalid"},
+    )
+
+    assert response.status_code == 403
+    assert not (state / "planning-drafts").exists()
+
+
+def test_compose_draft_rejects_foreign_draft_id(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"draft_id": "slack-20260529-0400-E1", "text": "title: Sneaky"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["draft_id"].startswith("compose-")
+
+
+def test_compose_draft_ignores_unknown_compose_draft_id(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = _client(state)
+    unknown = "compose-20260531-9999-never-seen"
+
+    response = client.post(
+        "/api/plans/draft",
+        json={"draft_id": unknown, "text": "title: Safe new draft"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"].startswith("compose-")
+    assert payload["draft_id"] != unknown
+    assert not (state / "planning-drafts" / f"{unknown}.json").exists()
 
 
 def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:

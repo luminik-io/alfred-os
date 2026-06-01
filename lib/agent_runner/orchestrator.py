@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import _env_present, _env_value_enabled
+from .disk import disk_pressure_status
 from .notify import slack_post
 from .paths import SHARED_AGENT, WORKSPACE
 from .process import claude_invoke, codex_invoke
@@ -57,6 +58,19 @@ class PreflightSpec:
     aws_profile: str | None = None
     require_gh_auth: bool = False
     require_workspace_repos: list[str] = field(default_factory=list)
+    # Disk-pressure floors. ``None`` means "use the env-configured /
+    # built-in defaults" (``ALFRED_MIN_FREE_DISK_GB`` /
+    # ``ALFRED_MIN_FREE_DISK_PCT``), so every agent inherits the guard
+    # without opting in. Set explicitly only when an agent needs more
+    # headroom than the fleet default (e.g. a build agent that checks out
+    # a large monorepo).
+    min_free_disk_gb: float | None = None
+    min_free_disk_pct: float | None = None
+    # When True (the default), a ``critical`` disk-pressure reading makes
+    # preflight raise :class:`PreflightFailed` so the firing skips cleanly
+    # instead of crash-looping on ENOSPC. Set False only for the cleanup
+    # agent itself, which must run *despite* low disk to reclaim space.
+    check_disk: bool = True
 
 
 class PreflightFailed(RuntimeError):
@@ -80,6 +94,17 @@ def preflight(spec: PreflightSpec) -> None:
         PreflightFailed: when one or more checks fail.
     """
     import shutil  # local: only used when an agent actually checks bins
+
+    # 0. Disk-pressure gate (the ENOSPC crash-loop fix).
+    #
+    # Runs before the env/bin/AWS/gh checks: if the disk is critically
+    # full there is no point validating auth — the firing would only
+    # crash on ENOSPC. On a critical reading we fire emergency cleanup
+    # once, re-probe, and if still critical raise PreflightFailed so the
+    # agent exits 0 cleanly (every runner already catches PreflightFailed
+    # and sys.exit(0)). This is what stops the launchd job from looping.
+    if spec.check_disk:
+        _disk_preflight_gate(spec)
 
     misses: list[str] = []
 
@@ -285,6 +310,207 @@ def _record_preflight_slack_post(agent: str, signature: str) -> None:
             f"[{agent}-preflight-slack-state-write-failed] {e}",
             file=sys.stderr,
         )
+
+
+# --------------------------------------------------------------------------
+# Disk-pressure preflight gate (ENOSPC crash-loop fix).
+#
+# On a ``critical`` reading we run emergency cleanup ONCE (guarded by a
+# per-run env flag so a re-probe can't recurse), re-probe, and only then
+# decide to skip. Skipping raises PreflightFailed, which every runner
+# already catches and turns into sys.exit(0). A throttled Slack warning
+# (once per ALFRED_DISK_SLACK_MIN_HOURS, default 6h) tells the operator
+# the fleet is paused on disk pressure without spamming the channel on
+# every tick.
+# --------------------------------------------------------------------------
+
+# Set while emergency cleanup runs so a nested preflight (the cleanup
+# agent's own) cannot trigger a second emergency pass — guards the loop.
+_DISK_EMERGENCY_GUARD_ENV = "ALFRED_DISK_EMERGENCY_IN_PROGRESS"
+
+_DISK_SLACK_STATE_NAME = "last-slack-disk-warning.json"
+
+
+def _disk_slack_min_hours() -> int:
+    try:
+        return max(1, int(os.environ.get("ALFRED_DISK_SLACK_MIN_HOURS", "6")))
+    except ValueError:
+        return 6
+
+
+def _disk_slack_state_path(agent: str) -> Path:
+    from .paths import STATE_ROOT
+
+    return STATE_ROOT / agent / _DISK_SLACK_STATE_NAME
+
+
+def _should_post_disk_slack(agent: str) -> bool:
+    """True when no disk warning was posted within the throttle window.
+
+    Fails open: any unreadable/corrupt state file means "post", so a
+    disk alert is never silently lost.
+    """
+    state_path = _disk_slack_state_path(agent)
+    if not state_path.exists():
+        return True
+    try:
+        data = json.loads(state_path.read_text())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return True
+    last_iso = data.get("last") if isinstance(data, dict) else None
+    if not isinstance(last_iso, str):
+        return True
+    try:
+        last_dt = datetime.strptime(last_iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        return True
+    delta_hours = (datetime.now(UTC) - last_dt).total_seconds() / 3600.0
+    return delta_hours >= _disk_slack_min_hours()
+
+
+def _record_disk_slack_post(agent: str) -> None:
+    """Stamp the most-recent disk-warning post time. Best-effort write."""
+    state_path = _disk_slack_state_path(agent)
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(
+            json.dumps(
+                {"last": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")},
+                indent=2,
+            )
+        )
+    except OSError as e:
+        print(f"[{agent}-disk-slack-state-write-failed] {e}", file=sys.stderr)
+
+
+def _run_emergency_cleanup(agent: str) -> None:
+    """Invoke ``bin/agent-cleanup.py --emergency`` once to reclaim space.
+
+    Best-effort and bounded: a missing script, a crash, or a timeout must
+    never turn a disk-pressure skip into a hard failure — the firing is
+    going to skip cleanly regardless. The ``_DISK_EMERGENCY_GUARD_ENV``
+    flag is set in the child env so the cleanup agent's own preflight
+    cannot trigger a second emergency pass. We deliberately do not set it
+    in our own ``os.environ``: the caller's post-cleanup re-probe is a
+    plain ``disk_pressure_status()`` read, not a nested preflight, so it
+    can't recurse — and leaving our process env untouched avoids leaking
+    the guard into the rest of this firing.
+    """
+    from .paths import ALFRED_HOME
+
+    candidates = [
+        ALFRED_HOME / "bin" / "agent-cleanup.py",
+        Path(__file__).resolve().parent.parent.parent / "bin" / "agent-cleanup.py",
+    ]
+    script = next((c for c in candidates if c.exists()), None)
+    if script is None:
+        print(
+            f"[{agent}-disk-emergency] agent-cleanup.py not found; skipping reclaim",
+            file=sys.stderr,
+        )
+        return
+
+    env = dict(os.environ)
+    env[_DISK_EMERGENCY_GUARD_ENV] = "1"
+    print(f"[{agent}-disk-emergency] running {script} --emergency", file=sys.stderr)
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--emergency"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[{agent}-disk-emergency] cleanup failed: {e}", file=sys.stderr)
+        return
+    out = (result.stdout or "").strip()
+    if out:
+        for line in out.splitlines():
+            print(f"[{agent}-disk-emergency] {line}", file=sys.stderr)
+
+
+def _disk_preflight_gate(spec: PreflightSpec) -> None:
+    """Skip the firing cleanly when the disk is critically full.
+
+    Probes the filesystem holding ALFRED_HOME against the spec's
+    (or env-configured) floors. On a ``critical`` reading: run emergency
+    cleanup once, re-probe, and if still critical post a throttled Slack
+    warning and raise :class:`PreflightFailed` so the runner exits 0.
+
+    No-ops (returns) when disk is healthy, when already inside an
+    emergency-cleanup pass (loop guard), or when the optional per-spec
+    floors leave the env defaults in place and the disk is fine.
+    """
+    # Loop guard: if we are already inside an emergency cleanup pass, do
+    # not probe again — the cleanup agent must be allowed to run.
+    if _env_value_enabled(_DISK_EMERGENCY_GUARD_ENV):
+        return
+
+    # Apply per-spec floor overrides via env for the duration of the
+    # probe so disk_pressure_status reads them. Restore afterwards so we
+    # never leak agent-specific floors into the rest of the process.
+    overrides = {
+        "ALFRED_MIN_FREE_DISK_GB": spec.min_free_disk_gb,
+        "ALFRED_MIN_FREE_DISK_PCT": spec.min_free_disk_pct,
+    }
+    saved = {k: os.environ.get(k) for k in overrides}
+    try:
+        for key, value in overrides.items():
+            if value is not None:
+                os.environ[key] = str(value)
+        status = disk_pressure_status()
+        if not status["critical"]:
+            return
+
+        print(
+            f"[{spec.agent.upper()}-DISK-CRITICAL] "
+            f"free={status['free_gb']:.1f}GB ({status['free_pct']:.1f}%); "
+            "running emergency cleanup before deciding to skip.",
+            file=sys.stderr,
+        )
+        _run_emergency_cleanup(spec.agent)
+        status = disk_pressure_status()
+        if not status["critical"]:
+            print(
+                f"[{spec.agent.upper()}-DISK-RECOVERED] "
+                f"emergency cleanup freed enough space "
+                f"(free={status['free_gb']:.1f}GB, {status['free_pct']:.1f}%); proceeding.",
+                file=sys.stderr,
+            )
+            return
+    finally:
+        for key, old in saved.items():
+            if old is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old
+
+    # Still critical after cleanup: skip this firing cleanly.
+    sentinel = f"[{spec.agent.upper()}-DISK-SKIP]"
+    headline = (
+        f"disk critically low: {status['free_gb']:.1f}GB free "
+        f"({status['free_pct']:.1f}%); skipping firing to avoid ENOSPC"
+    )
+    print(f"{sentinel} {headline}")
+
+    suppress_slack = (
+        _env_value_enabled("ALFRED_DOCTOR")
+        or spec.agent == "test"
+        or (
+            not _env_value_enabled("XPC_SERVICE_NAME")
+            and not _env_value_enabled("ALFRED_PREFLIGHT_FORCE_SLACK")
+        )
+    )
+    if not suppress_slack and _should_post_disk_slack(spec.agent):
+        slack_post(
+            f"💾 {spec.agent} skipped: {headline}. Emergency cleanup ran but "
+            "could not free enough space — free disk on the host.",
+            severity="warn",
+        )
+        _record_disk_slack_post(spec.agent)
+
+    raise PreflightFailed([headline])
 
 
 # --------------------------------------------------------------------------

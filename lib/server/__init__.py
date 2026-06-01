@@ -11,7 +11,6 @@ split into:
 
 from __future__ import annotations
 
-from .app import create_app
 from .reader import AgentSummary, FilesystemReader, FiringRecord, FleetReader, PlanDraft
 
 __all__ = [
@@ -22,3 +21,14 @@ __all__ = [
     "PlanDraft",
     "create_app",
 ]
+
+
+def __getattr__(name: str):
+    """Load FastAPI-backed server pieces only when ``alfred serve`` asks."""
+
+    if name == "create_app":
+        from .app import create_app
+
+        globals()["create_app"] = create_app
+        return create_app
+    raise AttributeError(name)

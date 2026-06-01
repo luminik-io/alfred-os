@@ -88,6 +88,34 @@ WORKSPACE_ROOT=
 # CLAUDE_CODE_OAUTH_TOKEN=
 
 # ----------------------------------------------------------------------
+# Disk guardian (ENOSPC back-off)
+# ----------------------------------------------------------------------
+
+# Every agent's preflight probes free space on the filesystem holding
+# ALFRED_HOME and SKIPS the firing cleanly (exit 0, no crash) when the
+# disk is critically low — so a full disk never crash-loops the fleet on
+# ENOSPC. On a critical reading it first runs `agent-cleanup.py
+# --emergency` once to reclaim Alfred-owned space, then re-checks.
+#
+# Free space below EITHER floor is "critical" (back off now). Defaults:
+#   ALFRED_MIN_FREE_DISK_GB=3.0    absolute floor in GB
+#   ALFRED_MIN_FREE_DISK_PCT=5.0   relative floor in percent
+# ALFRED_MIN_FREE_DISK_GB=3.0
+# ALFRED_MIN_FREE_DISK_PCT=5.0
+
+# Throttle for the "skipped: disk critically low" Slack warning. Default
+# 6h so a sustained disk-full condition pings once per window, not every
+# tick.
+# ALFRED_DISK_SLACK_MIN_HOURS=6
+
+# agent-cleanup.py auto-discovers .worktrees pools under WORKSPACE (e.g.
+# product/<repo>/.worktrees full of node_modules from manual sessions)
+# and sweeps them with the same dirty-skip + recovery-ref rules as the
+# fleet pool. Set to 0 to disable auto-discovery and sweep only the
+# explicit ALFRED_CLEANUP_EXTRA_PATHS list.
+# ALFRED_CLEANUP_AUTODISCOVER=1
+
+# ----------------------------------------------------------------------
 # Operator-side overrides (no sensible defaults)
 # ----------------------------------------------------------------------
 

@@ -577,14 +577,14 @@ def test_parse_repo_lines_keeps_owner_repo_slugs():
 def test_parse_repo_lines_qualifies_bare_names_with_gh_org(monkeypatch, capsys):
     """Issue #116: bare repo names get qualified with GH_ORG when set,
     instead of being silently dropped. Operator's natural shorthand
-    (`niyora`, `niyora-web`) just works for single-org fleets."""
+    (`palette`, `palette-web`) just works for single-org fleets."""
     monkeypatch.setenv("GH_ORG", "acme")
     import batman as bm
 
     # Re-import to pick up the new GH_ORG since the fixture clears
     # sys.modules per-test.
-    out = bm._parse_repo_lines("- niyora\n- niyora-web\n")
-    assert out == ["acme/niyora", "acme/niyora-web"]
+    out = bm._parse_repo_lines("- palette\n- palette-web\n")
+    assert out == ["acme/palette", "acme/palette-web"]
     captured = capsys.readouterr()
     assert "BATMAN-PARSE-INFO" in captured.err
     assert "qualified bare repo name" in captured.err
@@ -597,7 +597,7 @@ def test_parse_repo_lines_warns_when_bare_and_no_gh_org(monkeypatch, capsys):
     monkeypatch.delenv("GH_ORG", raising=False)
     import batman as bm
 
-    out = bm._parse_repo_lines("- niyora\n- backend\n")
+    out = bm._parse_repo_lines("- palette\n- backend\n")
     assert out == []
     captured = capsys.readouterr()
     assert "BATMAN-PARSE-WARN" in captured.err

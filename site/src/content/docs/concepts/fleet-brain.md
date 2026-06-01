@@ -92,6 +92,29 @@ Saved specs include those hints under "Planning Memory" and queue a reviewable
 candidate so useful spec-to-issue lessons can be promoted explicitly. Current
 code and the current issue still win over memory.
 
+Slack follows the same memory boundary. A trusted follow-up reply is captured
+as local planning context first. When someone runs `draft <id>` in Slack,
+Alfred converts that follow-up into a local planning draft, recalls reviewed
+planning memory, reruns readiness, and only then queues any new memory candidate.
+Raw chat is never promoted as long-term truth by itself.
+
+Slack can drive the same review loop:
+
+```text
+memory
+memories
+remember your-org/api: Use request fixtures for API tests.
+memory promote <candidate-id>
+memory reject <candidate-id> too vague
+memory redis
+memory sync
+```
+
+`remember ...` stages a candidate only. Promotion and rejection stay
+operator-only. Redis Agent Memory Server stays optional and explicit: check it
+with `memory redis`, preview reviewed-lesson sync with `memory sync`, and write
+only with `memory sync now`.
+
 ## MCP access
 
 `alfred mcp serve` exposes a small read-only JSON-RPC stdio surface for local

@@ -9,7 +9,7 @@ Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
 cards, human-readable timestamps, responsive table shells, mobile card
 layouts, a sticky header, a saved-plan inbox, a Planning intake page, external
 issue/PR links that open in a separate tab, and action summaries as a
-cross-platform precursor to any future native menu-bar UI.
+cross-platform precursor to the Tauri client under `clients/desktop`.
 
 ## Install
 
@@ -219,12 +219,17 @@ GET /api/plans?limit=50
 GET /api/plans/{plan_id}
 POST /api/plans/{plan_id}/convert-followup
 POST /api/plans/{plan_id}/mark-handled
+GET /api/slack/trusted-users
+POST /api/slack/trusted-users
+POST /api/slack/trusted-users/{user_id}/remove
 ```
 
 Read endpoints intentionally mirror the HTML pages. The follow-up action
 endpoints are local-file actions only: they convert captured feedback into a
 planning draft JSON or archive it as handled. They do not call GitHub, Slack,
-or an engine, and they do not approve execution.
+or an engine, and they do not approve execution. Slack trusted-user endpoints
+only read or update `$ALFRED_HOME/state/slack-trust/trusted-users.json`; they
+do not grant approval rights, call Slack, call GitHub, or run an agent.
 
 ## Architecture
 
@@ -250,8 +255,8 @@ Default bind is `127.0.0.1`. Runtime-state routes are read-only. The Planning
 page accepts a local `POST` only to write markdown drafts under
 `$ALFRED_HOME/planning-drafts` and `$ALFRED_HOME/spec-drafts`. Follow-up actions
 only move captured follow-up files into `handled/` or create local planning
-draft JSON. They do not call GitHub or Slack. The planning assistant only calls
-a model provider when
+draft JSON. Slack collaborator actions only mutate the local trust JSON file.
+They do not call GitHub or Slack. The planning assistant only calls a model provider when
 `ALFRED_PLANNING_ASSISTANT_ENGINE` is explicitly set. The reader's path-traversal guard rejects firing ids containing
 `/`, `\\`, or a leading `.` before any filesystem read.
 
@@ -266,4 +271,4 @@ pytest tests/test_server.py -q
 Covers empty state, populated state via `tmp_path`, codename filter, HTMX
 partial swap, 404 on unknown firing, path-traversal rejection, saved plan
 listing, planning draft readiness/saving, timestamp formatting,
-malformed-JSONL tolerance, and `/healthz`.
+malformed-JSONL tolerance, Slack trusted-user API guards, and `/healthz`.

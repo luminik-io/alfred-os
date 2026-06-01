@@ -4,6 +4,8 @@ Fresh Mac or Debian/Ubuntu host to a working Alfred fleet skeleton, ~30 minutes.
 
 For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
 
+This installs the `core` tier: the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The optional desktop `client` and Slack `slack` tiers layer on top of it; see [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
+
 ## TL;DR
 
 Source checkout path:
@@ -264,6 +266,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 ## Where to go next
 
 - [`BOOTSTRAP.md`](BOOTSTRAP.md): AWS IAM-per-agent, Slack, prompt sync, troubleshooting.
+- [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md): the three install tiers (`core`, optional `client`, optional `slack`). The CLI and fleet are fully standalone; this walkthrough installs `core`.
 - [`docs/AI_ASSISTED_INSTALL.md`](docs/AI_ASSISTED_INSTALL.md): assistant-driven setup with Claude Code, Codex, or another local coding assistant.
 - [`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md): Slack app + webhook + (optional) bot token.

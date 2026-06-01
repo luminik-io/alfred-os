@@ -3,7 +3,7 @@ title: Architecture
 description: Design rationale for host scheduling, worktrees, IAM-per-agent, codename pattern.
 ---
 
-Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md). This page is the executive summary.
+Full design doc at [`ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/ARCHITECTURE.md). The diagram companion, with mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack-native flow, the [disk guardian](/concepts/disk-guardian/), and the [layered install](/concepts/layered-install/), is [`docs/ARCHITECTURE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/ARCHITECTURE.md). This page is the executive summary.
 
 ## The runtime boundary
 

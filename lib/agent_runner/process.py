@@ -38,6 +38,7 @@ from typing import Any
 
 from .config import (
     HYBRID_FALLBACK_SUBTYPES,
+    _truthy_env,
     dry_run_log,
     is_dry_run,
     normalize_engine,
@@ -79,6 +80,27 @@ from .transcripts import (
 # caller's value if given, otherwise this effectively-unlimited number.
 # The per-firing wall-clock ``timeout`` becomes the real ceiling.
 _CLAUDE_UNLIMITED_TURNS: int = 999
+
+# Headless fleet agents run unattended under launchd, so a Claude Code
+# desktop/push notification on every firing is pure noise (and on macOS it
+# stacks up banners no one reads). We pass these settings via the CLI's
+# ``--settings`` flag, which ADDS a settings source on top of the
+# config-dir settings — it does NOT replace auth. Auth comes from the
+# config-dir credentials (OAuth / keychain / CLAUDE_CODE_OAUTH_TOKEN), none
+# of which live in a settings.json, so suppressing notifications here can
+# never log the agent out. Opt back in (e.g. for interactive debugging)
+# with ``ALFRED_AGENT_NOTIFICATIONS=1``.
+_AGENT_NOTIF_SUPPRESS_SETTINGS = '{"agentPushNotifEnabled":false,"preferredNotifChannel":"none"}'
+
+
+def _agent_notifications_enabled() -> bool:
+    """True only when the operator explicitly re-enables agent notifications.
+
+    Default is suppressed (the flag is added). Setting
+    ``ALFRED_AGENT_NOTIFICATIONS=1`` (or true/yes/on) keeps notifications
+    on by omitting the ``--settings`` suppression source.
+    """
+    return _truthy_env("ALFRED_AGENT_NOTIFICATIONS")
 
 
 def _subprocess_text(value: object) -> str:
@@ -292,6 +314,11 @@ def claude_invoke(
         "--permission-mode",
         "bypassPermissions",
     ]
+    # Suppress Claude Code notifications for headless firings by default.
+    # ``--settings`` adds a settings source; it does not touch auth (see
+    # _AGENT_NOTIF_SUPPRESS_SETTINGS). Opt out with ALFRED_AGENT_NOTIFICATIONS=1.
+    if not _agent_notifications_enabled():
+        cmd.extend(["--settings", _AGENT_NOTIF_SUPPRESS_SETTINGS])
     if model:
         cmd.extend(["--model", model])
     if resume_session:

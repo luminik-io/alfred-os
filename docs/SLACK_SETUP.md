@@ -202,6 +202,14 @@ ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
 ALFRED_SLACK_BOT_USER_ID=U0BOTUSERID
 ```
 
+`ALFRED_OPERATOR_SLACK_USER_ID` is the only user who can approve execution or
+change the trusted collaborator list. `ALFRED_TRUSTED_SLACK_USER_IDS` is a
+static comma-separated allowlist for collaborators who can discuss plans, revise
+drafts, and create planning requests. You can also add local collaborators from
+Slack with `trust <@user>` or from the desktop client's Setup tab; those live in
+`$ALFRED_HOME/state/slack-trust/trusted-users.json` and are picked up without
+restarting the listener.
+
 Run it:
 
 ```sh
@@ -218,6 +226,9 @@ Safety model:
 
 - Only `ALFRED_OPERATOR_SLACK_USER_ID` and `ALFRED_TRUSTED_SLACK_USER_IDS`
   are allowed to create drafts or amend registered threads.
+- Local users added through `trust <@user>` or the desktop client have the same
+  planning rights as env-trusted users, but cannot approve execution unless
+  they are also the operator.
 - If no trusted users are configured, the listener ignores every event.
 - Alfred only treats a thread as actionable after it registered the root
   message in `$ALFRED_HOME/state/slack-threads/`.
@@ -230,6 +241,173 @@ Safety model:
 - When memory is enabled, draft creation and revisions recall advisory planning
   memory using `ALFRED_MEMORY_PROVIDERS`; memory never overrides the current
   Slack thread or readiness gates.
+
+## Optional: Slack issue bridge
+
+The bridge is the wire that turns an *approved* planning draft into a labeled
+GitHub issue the autonomous fleet (Lucius / Batman) picks up. It is **off by
+default**. When enabled, a trusted user can approve a draft directly in its
+thread, and Alfred files one issue carrying the pickup label.
+
+**What it does and does not do.** The bridge only runs `gh issue create` with
+the configured pickup label. It never runs code, opens worktrees, pushes
+branches, or spawns an agent. The created issue then enters the normal queue
+and is claimed through every existing gate (claim-lock, spend caps, review,
+Batman's multi-repo approval). The bridge reuses that safety machinery instead
+of bypassing it.
+
+**Five gates are all required** before an issue is created:
+
+1. The bridge is explicitly enabled with `ALFRED_BRIDGE_ENABLED=1`.
+2. A **trusted** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID` /
+   `ALFRED_TRUSTED_SLACK_USER_IDS`). A non-trusted user can never trigger it.
+3. An **explicit approval token** in a registered draft thread: a configured
+   phrase (default `ship it` / `create issue` / `file issue` / `/ship`) or a
+   `:white_check_mark:` reaction on the draft. Ambiguous prose is never treated
+   as approval -- it just refines the draft as before.
+4. A **ready draft**: the saved readiness report has no blocking findings and
+   meets `ALFRED_BRIDGE_MIN_READINESS_SCORE` (default `80`).
+5. Every target repo is present in the `ALFRED_BRIDGE_REPOS` allowlist.
+
+Enable it by setting these env vars on the listener process:
+
+```sh
+ALFRED_BRIDGE_ENABLED=1
+# Allowlist of owner/repo slugs the bridge may file against. A draft repo
+# outside this list is refused. Required: an empty allowlist files nowhere.
+ALFRED_BRIDGE_REPOS=acme-org/api,acme-org/web
+# Pickup label the fleet watches for (must match pick_issue()). Default:
+ALFRED_BRIDGE_LABEL=agent:implement
+# Optional override of the approval phrase list (comma/semicolon separated).
+# Keep these action-oriented; avoid casual words like "go".
+ALFRED_BRIDGE_APPROVAL_PHRASES=ship it, create issue, file issue, /ship
+# Optional minimum saved readiness score before filing. Default: 80.
+ALFRED_BRIDGE_MIN_READINESS_SCORE=80
+```
+
+To let approval reactions work, also subscribe the Slack app to the
+`reaction_added` bot event (under **Event Subscriptions → Subscribe to bot
+events**) and add the `reactions:read` OAuth scope.
+
+Safety model:
+
+- Disabled by default: with `ALFRED_BRIDGE_ENABLED` unset, an explicit approval
+  is acknowledged but creates nothing.
+- An empty `ALFRED_BRIDGE_REPOS` refuses to file anywhere.
+- A draft whose repo is not in the allowlist is refused; nothing is created.
+- A draft below the readiness threshold is refused with the questions to answer
+  next; nothing is created.
+- Idempotent: a draft can only be converted once. A second approval reports the
+  existing issue instead of creating a duplicate.
+- The bridge only creates an issue; it never executes code. The fleet still
+  claims the issue through every existing gate before any change ships.
+
+### Running the listener as a service
+
+The bridge runs inside the existing planning listener process, so the bridge
+env vars belong in the same launchd plist that runs `alfred slack-listener
+run`. The framework's `launchd/_template.plist` renders one job per agent from
+`launchd/agents.conf`; add the bridge variables to that job's
+`EnvironmentVariables` block (alongside `SLACK_APP_TOKEN`,
+`ALFRED_OPERATOR_SLACK_USER_ID`, etc.), since launchd does not interpolate env
+vars inside a plist. For a quick local run:
+
+```sh
+ALFRED_BRIDGE_ENABLED=1 \
+ALFRED_BRIDGE_REPOS=acme-org/api \
+alfred slack-listener run
+```
+
+## Optional: trusted control commands
+
+When the planning listener is running, a trusted user can also drive the fleet
+from chat by **leading a message with a known verb**. These are handled by
+`lib/slack_control.py`, separately from planning intake:
+
+| Command | What it does |
+|---|---|
+| `status` | Fleet health from `alfred status --json` (loaded agents, pauses, locks). |
+| `runs` | Recent firings per agent (last-fired plus today's counts). |
+| `plans` | Local planning inbox: Batman plans, Slack planning drafts, and captured follow-ups. |
+| `plan <id>` | Inspect one local plan or follow-up. Use `plans` to find the id. |
+| `draft <id>` | Convert a captured follow-up into a local planning draft. |
+| `handled <id>` | Operator-only. Archive a captured follow-up without creating a draft. |
+| `memory` / `memories` | Show pending memory candidates and suggested promotions. |
+| `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
+| `memory promote <id>` | Operator-only. Promote a candidate into future recall. |
+| `memory reject <id>` | Operator-only. Reject a noisy candidate. |
+| `memory redis` | Check the optional Redis Agent Memory Server bridge. |
+| `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
+| `memory sync now` | Operator-only. Write reviewed lessons to Redis AMS. |
+| `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
+| `resume <codename>` | Reverse a pause. |
+| `trusted` | Show the operator and trusted Slack users Alfred currently accepts. |
+| `trust <@user>` | Operator-only. Add a local Slack collaborator without a listener restart. |
+| `untrust <@user>` | Operator-only. Remove a locally trusted Slack collaborator. |
+| `help` | List these commands. |
+
+DM Alfred or @-mention it, e.g. `pause lucius` or `status`. Nothing extra to
+configure beyond the planning listener; the same trusted-user gate applies.
+
+Safety model:
+
+- **Explicit leading verb only.** A message is a control command only when its
+  first whitespace-delimited token is a known verb. Free-form prose ("can you
+  pause everything later?") never triggers an action; it falls through to
+  planning intake. This is the main guard against an accidental control action.
+- **Trusted user only.** The listener gates trust before dispatching, and the
+  handler refuses any untrusted control attempt as defense in depth. Trust-list
+  mutations are stricter: only `ALFRED_OPERATOR_SLACK_USER_ID` can run
+  `trust`/`untrust`.
+- **No shell, ever.** `pause`/`resume` run the `alfred` CLI through an explicit
+  argv with `shell=False`. The codename is validated against a strict charset
+  (`[A-Za-z0-9._-]`, never leading `-`) before it reaches the argv, so it can
+  never be read as a flag or inject a second command.
+- **Planning actions stay local.** `plans` and `plan <id>` only read local
+  state. `draft <id>` writes a local planning draft and archives the captured
+  follow-up. `handled <id>` archives the follow-up. None of these commands
+  files GitHub issues, starts agents, approves execution, or merges PRs.
+- **Memory is reviewable.** `remember ...` queues a candidate only. It does not
+  enter future prompt context until the operator runs `memory promote <id>`.
+  `memory redis` is read-only, and `memory sync` defaults to a dry-run preview.
+- **Queries are read-only.** `status`, `runs`, and `trusted` only read fleet
+  state. `trust` and `untrust` only update the local trust JSON file and never
+  run code, call GitHub, or approve a plan.
+
+## Optional: in-thread fleet progress (thread-sync)
+
+When the issue bridge converts an approved draft into a GitHub issue, the
+originating Slack thread would normally go quiet while the fleet works. The
+thread-sync sweep (`lib/slack_thread_status.py`, `bin/alfred-slack-thread-sync.py`)
+closes that loop: for each thread that filed an issue, it reads the issue and
+its linked PR read-only and posts **only the new lifecycle states** back into
+the thread: claimed, PR opened, CI pass/fail, merged, closed.
+
+It runs two ways, both calling the same tracker:
+
+- **In the listener's idle loop**, on a cadence set by
+  `ALFRED_SLACK_THREAD_SYNC_INTERVAL_S` (seconds; default 300; `0` disables the
+  in-listener hook).
+- **As a standalone sweep** you can run from cron or launchd:
+
+  ```sh
+  alfred slack-thread-sync            # post deltas to Slack
+  alfred slack-thread-sync --json     # machine-readable summary
+  alfred slack-thread-sync --dry-run  # compute deltas, post nothing
+  ```
+
+Safety model:
+
+- **Read-only on GitHub.** The only `gh` calls are `issue view` and
+  `pr list`/`pr view`. It never edits a label, claims an issue, comments on
+  GitHub, or runs code. It is write-only into the thread it already owns.
+- **Trust-scoped.** A tracker record is only ever created from the bridge's own
+  conversion path, which is already gated on a trusted user.
+- **Idempotent.** Each thread advances through an ordered lifecycle and each
+  state posts at most once. A sweep with no GitHub change posts nothing.
+
+State lives under `$ALFRED_HOME/state/slack-thread-status/` (one small JSON
+record per tracked thread). Override the directory with `--state-root`.
 
 ## Rotating a webhook
 

@@ -35,11 +35,20 @@ state machine that keeps multiple agents from stepping on each other.
   unresolved review comments, Batman drafts multi-repo rollouts.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
-  summaries. No bespoke dashboard, no proprietary control plane.
+  summaries. The local dashboard and desktop app inspect those same sources;
+  they do not become a hosted control plane.
 - Treat Slack as the planning surface: teammates can reply in a Batman plan
   thread with scope changes, questions, and acceptance criteria while the
   operator keeps approval authority. Follow-up replies after PR links are
   captured as context for the next pass, not as implicit merge approval.
+- Run the fleet conversationally from Slack: trusted control commands
+  (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
+  `memory` / `memories`, `remember ...`, `memory promote <id>`, `memory redis`, `pause`,
+  `resume`) inspect and steer local state from chat with no shell. An approved
+  draft can cross the off-by-default bridge into a labeled issue, and in-thread
+  progress posts (claimed, PR opened, CI, merged) report back as the fleet
+  works it. A plain-language intake profile lets a non-technical user approve
+  outcomes instead of code.
 - Route engines by role. Run implementation on Claude Code and review on
   Codex, or keep Claude as primary with Codex fallback for selected agents.
 - Bring your own subscription. Alfred shells out to your local `claude` and
@@ -241,10 +250,14 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with Slack and GitHub links opening outside the app. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
+| [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename- and plan-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
+| [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
 ## Documentation
 
 - [Install](INSTALL.md): fresh-machine walkthrough.
+- [Install tiers](docs/INSTALL_TIERS.md): `core` (standalone, headless), optional `client` (desktop), optional `slack`.
 - [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
 - [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
@@ -252,12 +265,15 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Tutorial: your first agent](docs/TUTORIAL.md): Echo, end-to-end.
 - [Dry-run mode](docs/DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
 - [Architecture](ARCHITECTURE.md): design rationale.
+- [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
-- [Fleet brain](docs/FLEET_BRAIN.md): local memory, reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
-- [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
+- [Fleet brain](docs/FLEET_BRAIN.md): local memory, Slack-driven reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
+- [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, and local API shape.
+- [Desktop client](docs/DESKTOP_CLIENT.md): the desktop control surface tab by tab, the `alfred serve` seam, and building native installers.
+- [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
 - [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
-- [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token.
+- [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token, planning listener, trusted control commands, the off-by-default issue bridge, and in-thread fleet-progress thread-sync.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
 - [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
@@ -289,18 +305,19 @@ Alfred has a deliberate shape. These are not missing features; they are the desi
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
 The engineering fleet ships today. The local memory layer, reliability
-governor, and `alfred serve` also ship today; content, sales, and ops
-departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
+governor, `alfred serve`, and the first Mac/Linux client also ship today;
+content, sales, and ops departments are the next larger surface area:
+[`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a mobile-friendly local cockpit with saved Alfred plans. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
+**Latest release: v0.4.0.** Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, a mobile-friendly local cockpit with saved Alfred plans, and the first Tauri Mac/Linux client. See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
-Additional unreleased work adds explicit Redis AMS memory sync, trusted Slack
-plan collaborators, revision previews in approval threads, and Planning intake
-in the local cockpit. A future native Mac/Linux client should be a thin local
-control plane for setup, health, logs, credentials, pause/resume, and recovery.
-Slack remains the primary collaboration UI.
+Additional unreleased work adds Slack-driven memory curation, explicit Redis AMS
+memory sync, operator-managed trusted Slack plan collaborators, revision previews
+in approval threads, Planning intake in the local cockpit, and a native client
+with Home, Compose, Fleet, Logs, and Setup gear surfaces for local trust and
+repair. Slack remains the primary collaboration UI.
 
 The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 

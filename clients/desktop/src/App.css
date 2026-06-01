@@ -1,0 +1,1761 @@
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource/quicksand/400.css";
+@import "@fontsource/quicksand/500.css";
+@import "@fontsource/quicksand/600.css";
+@import "@fontsource/quicksand/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+:root {
+  --black: #0a0e14;
+  --surface: #11161f;
+  --surface-2: #161d2a;
+  --surface-3: #1a2331;
+  --border: #1f2937;
+  --border-strong: #2a3548;
+  --muted: #7c8aa2;
+  --text: #c5d0e0;
+  --bright: #f2f6ff;
+  --accent: #00e5c7;
+  --accent-soft: #123a34;
+  --warn: #f4b43e;
+  --error: #ff5a6b;
+  --blue: #5789ff;
+  --radius: 8px;
+  --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  /* Typography tokens. --font-mono was referenced (cli-fallback summary) but
+     never defined; --font-display centralizes the Space Grotesk display face
+     that was inlined across the sheet. */
+  --font-body: "Quicksand", system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text);
+  background: var(--black);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  background:
+    linear-gradient(rgba(0, 229, 199, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 199, 0.035) 1px, transparent 1px),
+    var(--black);
+  background-size: 84px 84px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+/* Keyboard focus must be visible. There was no :focus-visible anywhere before,
+   so tabbing through the app was invisible. Mouse clicks keep no ring. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.83rem;
+  color: var(--bright);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.18rem 0.38rem;
+}
+
+.app-shell {
+  width: min(1240px, 100%);
+  margin: 0 auto;
+  padding: 0 28px 48px;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 76px;
+  margin: 0 -28px;
+  padding: 0 28px;
+  background: color-mix(in srgb, var(--black) 88%, transparent);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(16px) saturate(1.1);
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 4px 4px 0;
+  color: var(--bright);
+  background: transparent;
+  border: none;
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.brand img {
+  width: 38px;
+  height: 38px;
+  filter: drop-shadow(0 0 16px rgba(87, 137, 255, 0.38));
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topnav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-weight: 700;
+}
+
+/* Hover is a subtle surface lift. The active tab is visually distinct: accent
+   text + an accent underline bar, so the current section reads at a glance and
+   is not confused with whatever the pointer is hovering. */
+.nav-button:hover {
+  color: var(--bright);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.nav-button--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+}
+
+.nav-button--active::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.nav-button--active svg {
+  color: var(--accent);
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 2px;
+  color: var(--black);
+  background: var(--accent);
+  border-radius: 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Slim top-header status group: a connection pill + a compact connect/refresh
+   affordance that lives on every tab (the full connection panel is Now-only). */
+.topbar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.connect-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 31px;
+  padding: 0 11px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.connect-chip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.connect-chip svg {
+  color: var(--accent);
+}
+
+.settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+
+.settings-button:hover,
+.settings-button--active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* Fleet Control confirmation bar for state-changing verbs. */
+.confirm-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border));
+  border-radius: var(--radius);
+}
+
+.confirm-bar strong {
+  color: var(--bright);
+}
+
+.confirm-bar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* In-app notification center feed. */
+.feed-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feed-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.feed-item--new {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent) 6%, rgba(255, 255, 255, 0.025));
+}
+
+.feed-item svg {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.feed-item--ok svg {
+  color: var(--accent);
+}
+
+.feed-item--warn svg {
+  color: var(--warn);
+}
+
+.feed-item--error svg {
+  color: var(--error);
+}
+
+.feed-item__body {
+  min-width: 0;
+}
+
+.feed-item__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feed-item__head strong {
+  color: var(--bright);
+}
+
+.feed-item__pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.feed-item p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.feed-item__time {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.hero-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.46fr);
+  gap: 32px;
+  align-items: end;
+  padding: 56px 0 28px;
+}
+
+.hero-strip h1 {
+  max-width: 760px;
+  margin: 0 0 12px;
+  color: var(--bright);
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 6vw, 4.7rem);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.hero-strip p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--text);
+  font-size: 1.08rem;
+}
+
+.hero-strip--home {
+  align-items: center;
+}
+
+.section-kicker {
+  display: inline-flex;
+  margin-bottom: 12px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.home-side {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.compose-stack,
+.logs-stack {
+  display: grid;
+  gap: 18px;
+  padding-top: 34px;
+}
+
+.connection-panel,
+.panel,
+.metric-card,
+.notice-panel {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.connection-panel {
+  padding: 18px;
+}
+
+.connection-panel--compact {
+  width: min(100%, 420px);
+  padding: 14px;
+  box-shadow: none;
+}
+
+.connection-panel label,
+.connection-panel small,
+.panel-header span,
+.metric-card span,
+.plan-card__meta,
+.run-card__meta,
+.compact-list span,
+.dot-label,
+.status-pill {
+  font-family: var(--font-mono);
+}
+
+.connection-panel label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.connection-panel small {
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.server-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.server-row input {
+  width: 100%;
+  min-width: 0;
+  color: var(--bright);
+  background: var(--black);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  outline: none;
+}
+
+.server-row input:focus {
+  border-color: var(--accent);
+}
+
+.icon-button,
+.secondary-button,
+.text-button,
+.danger-button,
+.warn-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border-radius: var(--radius);
+  font-weight: 700;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.icon-button {
+  padding: 0 14px;
+  color: var(--black);
+  background: var(--accent);
+  border: 1px solid transparent;
+}
+
+.icon-button:hover {
+  background: #5bf5df;
+}
+
+/* Destructive affirmative (Yes, pause / Yes, run): never the benign teal. It
+   carries the amber confirm-bar tint so a state-changing confirm is visually
+   distinct from a Refresh/Draft-it primary. */
+.danger-button {
+  padding: 0 14px;
+  color: var(--black);
+  background: var(--warn);
+  border: 1px solid transparent;
+}
+
+.danger-button:hover {
+  background: color-mix(in srgb, var(--warn) 86%, #fff);
+}
+
+/* Service re-activation (Resume): an amber-outlined action, distinct from both
+   the benign teal primary and the plain secondary. */
+.warn-button {
+  padding: 0 12px;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 46%, var(--border-strong));
+}
+
+.warn-button:hover {
+  color: var(--black);
+  background: var(--warn);
+  border-color: var(--warn);
+}
+
+.warn-button svg {
+  color: currentColor;
+}
+
+.secondary-button {
+  padding: 0 12px;
+  color: var(--bright);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  text-decoration: none;
+}
+
+.secondary-button:hover,
+.text-button:hover {
+  color: var(--accent);
+  background: var(--surface-2);
+  border-color: var(--accent);
+}
+
+.text-button {
+  padding: 0 10px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 31px;
+  width: fit-content;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.status-pill span,
+.dot-label span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.status-pill--ok span,
+.dot-label--ok span {
+  background: var(--accent);
+  box-shadow: 0 0 16px rgba(0, 229, 199, 0.55);
+}
+
+.status-pill--warn span,
+.dot-label--warn span {
+  background: var(--warn);
+}
+
+.status-pill--error span,
+.dot-label--error span {
+  background: var(--error);
+}
+
+.status-pill--info span {
+  background: var(--blue);
+}
+
+/* "running" is in-progress, not a fault: blue + a soft pulse, distinct from the
+   amber "warn" tone that signals a problem. */
+.status-pill--running span,
+.dot-label--running span {
+  color: var(--blue);
+  background: var(--blue);
+  animation: status-pulse 1.6s ease-in-out infinite;
+}
+
+.status-pill--running,
+.dot-label--running {
+  color: var(--blue);
+}
+
+/* Live/ok dots get a gentle pulse too so a healthy fleet reads as alive. The
+   existing teal glow stays as the resting shadow; the pulse rides on top. */
+.status-pill--ok span,
+.dot-label--ok span {
+  color: var(--accent);
+  animation: status-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px 0 currentColor;
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 12px 3px currentColor;
+    opacity: 0.7;
+  }
+}
+
+.notice-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px;
+}
+
+.notice-panel svg {
+  flex: 0 0 auto;
+}
+
+.notice-panel p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.notice-panel--warn {
+  border-color: color-mix(in srgb, var(--warn) 46%, var(--border-strong));
+}
+
+.notice-panel--warn svg {
+  color: var(--warn);
+}
+
+/* Connection failure is an error, not a soft warning: give it the red tone so a
+   403 / connection-refused does not read as a benign amber notice. */
+.notice-panel--error {
+  border-color: color-mix(in srgb, var(--error) 50%, var(--border-strong));
+  background: color-mix(in srgb, var(--error) 6%, var(--surface));
+}
+
+.notice-panel--error svg {
+  color: var(--error);
+}
+
+.notice-panel__body {
+  min-width: 0;
+}
+
+/* "Details" disclosure keeps the raw status line / stderr out of the way: the
+   plain-language guidance leads, the technical text is one click away. */
+.notice-details {
+  margin-top: 8px;
+}
+
+.notice-details summary {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.notice-details summary:hover {
+  color: var(--text);
+}
+
+.notice-details pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 200px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--black);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.inline-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.inline-notice--ok {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
+.inline-notice--ok svg {
+  color: var(--accent);
+}
+
+.inline-notice--error {
+  border-color: color-mix(in srgb, var(--error) 42%, var(--border));
+}
+
+.inline-notice--error svg {
+  color: var(--error);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.metric-card {
+  min-height: 126px;
+  padding: 18px;
+}
+
+.metric-card span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--bright);
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.metric-card small {
+  display: block;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* Metric cards that route to a tab are real buttons: left-aligned, full bleed,
+   with a hover affordance so it reads as clickable. */
+.metric-card--link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.metric-card--link:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+  transform: translateY(-2px);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 18px;
+}
+
+.dashboard-grid--memory {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.55fr);
+}
+
+.panel {
+  min-width: 0;
+  padding: 22px;
+}
+
+.panel--wide {
+  grid-row: span 2;
+}
+
+.panel-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.panel-header span {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.panel-header h2 {
+  margin: 4px 0 0;
+  color: var(--bright);
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.panel-intro {
+  max-width: 720px;
+  margin: -4px 0 18px;
+  color: var(--muted);
+}
+
+.attention-list,
+.plan-grid,
+.run-list,
+.setup-stack,
+.link-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.attention-card,
+.plan-card,
+.run-card,
+.agent-card,
+.command-row {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.attention-card {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.attention-card svg {
+  color: var(--accent);
+}
+
+.attention-card--warn {
+  border-color: color-mix(in srgb, var(--warn) 38%, var(--border));
+}
+
+.attention-card--error {
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+}
+
+.attention-card--error svg {
+  color: var(--error);
+}
+
+.attention-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.attention-card strong,
+.plan-card h2,
+.agent-card strong,
+.command-row strong {
+  display: block;
+  color: var(--bright);
+}
+
+.attention-card p,
+.plan-card p,
+.agent-card p,
+.command-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.attention-card code {
+  display: inline-block;
+  margin-top: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.card-actions--start {
+  justify-content: flex-start;
+}
+
+.button-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.console-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.console-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.console-agent-row {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.console-agent-row label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.console-agent-row input {
+  min-width: 0;
+  height: 40px;
+  color: var(--bright);
+  background: var(--black);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  outline: none;
+}
+
+.console-agent-row input:focus {
+  border-color: var(--accent);
+}
+
+.console-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.trusted-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.trusted-form label {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.trusted-form__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.trusted-form input {
+  min-width: 0;
+  height: 40px;
+  color: var(--bright);
+  background: var(--black);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  outline: none;
+}
+
+.trusted-form input:focus {
+  border-color: var(--accent);
+}
+
+.trusted-list {
+  display: grid;
+  gap: 8px;
+}
+
+.trusted-user {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.022);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.trusted-user strong,
+.trusted-user span {
+  display: block;
+}
+
+.trusted-user strong {
+  overflow-wrap: anywhere;
+}
+
+.trusted-user span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ghost-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ghost-icon:hover {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+}
+
+.fallback-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.cli-fallback {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.cli-fallback summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cli-fallback summary::-webkit-details-marker {
+  display: none;
+}
+
+.cli-fallback summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.cli-fallback[open] summary::after {
+  content: "-";
+}
+
+.cli-fallback strong {
+  color: var(--bright);
+}
+
+.cli-fallback span {
+  color: var(--muted);
+}
+
+.cli-fallback p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.cli-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cli-chip-list code {
+  overflow-wrap: anywhere;
+}
+
+.plan-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.plan-card {
+  align-content: space-between;
+}
+
+.plan-card__meta,
+.run-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.plan-card__meta span,
+.run-card__meta code,
+.run-card__meta time {
+  min-height: 26px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.plan-card h2 {
+  margin: 10px 0 6px;
+  font-size: 1.2rem;
+  line-height: 1.25;
+}
+
+.compact-meta,
+.health-list,
+.agent-card dl {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.compact-meta div,
+.health-list div,
+.agent-card dl div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.run-list {
+  gap: 10px;
+}
+
+.run-card {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.run-card__status {
+  align-self: stretch;
+  width: 3px;
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.run-card p {
+  margin: 6px 0 0;
+  color: var(--text);
+}
+
+.compact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.compact-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+.compact-list button:hover {
+  border-color: var(--accent);
+}
+
+.compact-list span {
+  grid-column: 1 / -1;
+  color: var(--accent);
+  font-size: 0.72rem;
+}
+
+.compact-list strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--bright);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-list small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.agent-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dot-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.command-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.command-row code {
+  display: inline-block;
+  margin-top: 10px;
+}
+
+.command-result {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 14px;
+  color: var(--text);
+  background: rgba(0, 229, 199, 0.035);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  border-radius: var(--radius);
+}
+
+.command-result--error {
+  background: rgba(255, 90, 107, 0.04);
+  border-color: color-mix(in srgb, var(--error) 42%, var(--border));
+}
+
+.command-result__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--bright);
+}
+
+.command-result__head svg {
+  color: var(--accent);
+}
+
+.command-result--error .command-result__head svg {
+  color: var(--error);
+}
+
+.command-result p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.command-result pre {
+  max-height: 320px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--black);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.link-stack {
+  align-content: start;
+}
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 28px 20px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* Tone drives the icon color. Neutral (default) is a muted "nothing yet" — NOT
+   the teal success check that previously fronted every empty state, including
+   failures. "ok" is genuinely-good. "error" is failure-shaped emptiness. */
+.empty-state--neutral svg {
+  color: var(--muted);
+}
+
+.empty-state--ok svg {
+  color: var(--accent);
+}
+
+.empty-state--error {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border));
+}
+
+.empty-state--error svg {
+  color: var(--error);
+}
+
+.empty-state strong {
+  color: var(--bright);
+}
+
+.empty-state p {
+  margin: 0;
+  max-width: 46ch;
+}
+
+.empty-state--compact {
+  padding: 18px 14px;
+}
+
+@media (max-width: 1040px) {
+  .hero-strip,
+  .dashboard-grid,
+  .dashboard-grid--memory {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-grid,
+  .agent-grid,
+  .plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel--wide {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 780px) {
+  .app-shell {
+    padding: 0 18px 36px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0 -18px;
+    padding: 14px 18px 10px;
+  }
+
+  .brand img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .topnav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    overflow: visible;
+  }
+
+  .nav-button {
+    width: 100%;
+    min-width: 0;
+    padding: 0 10px;
+  }
+
+  .topbar__status {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .hero-strip {
+    padding-top: 34px;
+  }
+
+  .hero-strip h1 {
+    font-size: clamp(2.25rem, 14vw, 3.5rem);
+  }
+
+  .notice-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .metric-grid,
+  .agent-grid,
+  .plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-side {
+    justify-items: stretch;
+  }
+
+  .server-row,
+  .attention-card,
+  .run-card,
+  .command-row,
+  .console-agent-row,
+  .home-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .home-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .card-actions {
+    justify-content: flex-start;
+  }
+
+  .compact-meta div,
+  .health-list div,
+  .agent-card dl div {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .panel,
+  .connection-panel,
+  .metric-card {
+    padding: 16px;
+  }
+
+  .panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .secondary-button,
+  .icon-button,
+  .text-button,
+  .connect-chip {
+    width: 100%;
+  }
+
+  .topbar__status {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+  }
+
+  .trusted-form__row {
+    grid-template-columns: 1fr;
+  }
+
+  .trusted-user {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .trusted-user .ghost-icon {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
+/* Compose / spec-authoring panel */
+.compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.compose-form label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.compose-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  padding: 14px 16px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.compose-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.compose-form__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.compose-hint {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.compose-questions {
+  margin-top: 8px;
+}
+
+.compose-question-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compose-question-list li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: start;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.compose-question-list li span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.compose-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.compose-score strong {
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  line-height: 1;
+  color: var(--bright);
+}
+
+.compose-score span {
+  color: var(--muted);
+}
+
+.compose-score small {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  background: var(--surface-3);
+}
+
+.compose-score--ok strong {
+  color: var(--accent);
+}
+
+.compose-score--ok small {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.compose-score--warn strong,
+.compose-score--warn small {
+  color: var(--warn);
+}
+
+.compose-score--error strong,
+.compose-score--error small {
+  color: var(--error);
+}
+
+.compose-summary {
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+.compose-findings {
+  margin-top: 14px;
+}
+
+.compose-findings ul {
+  list-style: none;
+  margin: 8px 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compose-finding {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+
+.compose-finding--error svg {
+  color: var(--error);
+}
+
+.compose-finding--warning svg {
+  color: var(--warn);
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. Subtle by design. Everything here is wrapped by the reduced-motion
+   media query at the bottom, which disables it entirely for users who ask.
+   --------------------------------------------------------------------------- */
+
+/* Spinning refresh icon while a fetch is in flight. */
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Gentle fade + rise on mount for the active view and its panels, so tab
+   switches and first paint feel composed instead of snapping in. */
+.animate-rise,
+.panel,
+.metric-card,
+.command-result {
+  animation: rise-in 220ms ease-out both;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spin,
+  .status-pill--ok span,
+  .dot-label--ok span,
+  .status-pill--running span,
+  .dot-label--running span {
+    animation: none !important;
+  }
+
+  .metric-card--link:hover {
+    transform: none;
+  }
+}

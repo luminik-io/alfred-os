@@ -82,9 +82,67 @@ question: should this also touch mobile?
 Alfred treats those replies as follow-up context for the next plan, issue, or
 PR pass. They do not approve, merge, or change code by themselves.
 
+## Control the fleet from chat
+
+A trusted user can also drive the fleet by **leading a message with a known
+verb**. These are control and query commands, handled separately from planning
+intake:
+
+| Command | What it does |
+|---|---|
+| `status` | Fleet health: loaded agents, pauses, locks. |
+| `runs` | Recent firings per agent. |
+| `plans` | Local planning inbox: saved plans, Slack drafts, and captured follow-ups. |
+| `plan <id>` | Inspect one local plan or follow-up. |
+| `draft <id>` | Convert a captured follow-up into a local planning draft. |
+| `handled <id>` | Operator-only: archive a captured follow-up without drafting. |
+| `memory` / `memories` | Show pending memory candidates and promotion suggestions. |
+| `remember [repo:] <lesson>` | Queue a reviewable memory candidate from Slack. |
+| `memory promote <id>` | Operator-only: promote a candidate into future recall. |
+| `memory reject <id>` | Operator-only: reject a noisy candidate. |
+| `memory redis` | Check the optional Redis Agent Memory Server bridge. |
+| `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
+| `memory sync now` | Operator-only: write reviewed lessons to Redis AMS. |
+| `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
+| `resume <codename>` | Reverse a pause. |
+| `help` | List these commands. |
+
+Only a message whose first token is a known verb triggers an action. Free-form
+prose like "can you pause everything later?" never controls the fleet; it falls
+through to planning intake. `pause`/`resume` run the `alfred` CLI through an
+explicit argv with no shell, and the codename is charset-validated before it
+reaches the command, so chat can never inject a flag. `status` and `runs` are
+read-only. `draft <id>` and `handled <id>` only touch local follow-up files and
+planning drafts; they never approve execution, file GitHub issues, start agents,
+or merge PRs. `remember ...` only stages a memory candidate; it does not enter
+future prompt context until the operator promotes it.
+
+## Watch progress in the thread
+
+When the issue bridge files an issue from an approved draft, the thread does not
+go quiet. A read-only sweep posts the fleet's progress back into the same thread
+as it happens: issue claimed, PR opened, CI green or failing, merged. Each state
+posts at most once, so a sweep with no change posts nothing.
+
+The sweep runs inside the listener's idle loop on a cadence set by
+`ALFRED_SLACK_THREAD_SYNC_INTERVAL_S` (default 5 minutes), or on your own
+schedule with `alfred slack-thread-sync`. It only reads the issue and its linked
+PR; it never edits labels, claims issues, comments on GitHub, or runs code. Full
+setup is in [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md).
+
+## Plain mode
+
+For a non-technical front door, set `ALFRED_INTAKE_PROFILE=plain`. The same
+structured draft and every downstream gate are unchanged; only the conversation
+changes. Instead of readiness scores and repo names, the person sees plain
+questions and a short "Here's what I'll do... OK to go ahead?" plan, and approves
+an outcome rather than code. See [plain mode](/concepts/plain-mode/).
+
 ## Local UI boundary
 
 The native client and `alfred serve` should make the fleet easier to trust:
 health, plans, runs, memory review, setup checks, and safe repairs. They should
 not become a second chat app. Every plan should link back to the Slack thread
 where collaboration happened.
+
+The listener and bridge are the optional `slack` tier of the [layered install](/concepts/layered-install/). The core fleet runs without them; a fresh install keeps the issue bridge off until the operator arms it.

@@ -39,7 +39,11 @@ from slack_approval import (
     resolve_bot_token,
     trusted_feedback_user_ids_from_env,
 )
+from slack_control import SlackControlHandler, is_control_message
+from slack_issue_bridge import SlackIssueBridge
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
+from slack_thread_status import SlackThreadStatusTracker
+from slack_trust import SlackTrustStore
 from spec_helper import IssueDraft
 
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
@@ -64,6 +68,7 @@ class SlackInputEvent:
     ts: str
     thread_ts: str
     channel_type: str = ""
+    reaction: str = ""
 
     @property
     def root_ts(self) -> str:
@@ -72,6 +77,10 @@ class SlackInputEvent:
     @property
     def is_thread_reply(self) -> bool:
         return bool(self.thread_ts and self.thread_ts != self.ts)
+
+    @property
+    def is_reaction(self) -> bool:
+        return self.event_type == "reaction_added"
 
     @property
     def is_direct_intake(self) -> bool:
@@ -119,16 +128,37 @@ class SlackPlanningListener:
         seen_store: SeenEventStore | None = None,
         refiner: Refiner | None = None,
         memory_provider: Any | None = None,
+        bridge: SlackIssueBridge | None = None,
+        status_tracker: SlackThreadStatusTracker | None = None,
+        control_handler: SlackControlHandler | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self.state_root = state_root or _default_state_root()
         self.registry = registry or SlackThreadRegistry(self.state_root / "slack-threads")
         self.poster = poster
+        self.bridge = bridge if bridge is not None else SlackIssueBridge()
+        self.status_tracker = (
+            status_tracker
+            if status_tracker is not None
+            else SlackThreadStatusTracker(
+                root=self.state_root / "slack-thread-status",
+                poster=poster,
+            )
+        )
         operator = operator_user_id_from_env()
-        self.trusted_user_ids = set(
-            trusted_user_ids
-            if trusted_user_ids is not None
-            else trusted_feedback_user_ids_from_env(operator)
+        self._operator_user_id = operator
+        self._static_trusted_user_ids = (
+            set(trusted_user_ids) if trusted_user_ids is not None else None
+        )
+        self.control_handler = (
+            control_handler
+            if control_handler is not None
+            else SlackControlHandler(
+                operator_user_id=operator,
+                trust_store=SlackTrustStore.from_state_root(self.state_root),
+                state_root=self.state_root,
+                memory_provider=memory_provider,
+            )
         )
         self.bot_user_id = bot_user_id or (os.environ.get(ENV_BOT_USER_ID) or "").strip()
         self.seen = seen_store or SeenEventStore(self.state_root / "slack-listener" / "seen")
@@ -144,17 +174,39 @@ class SlackPlanningListener:
             return ListenerResult(False, "duplicate", "event already processed")
         if self.bot_user_id and event.user == self.bot_user_id:
             return ListenerResult(False, "ignored", "bot self-message")
-        if not self.trusted_user_ids:
+        trusted_user_ids = self._trusted_user_ids()
+        if not trusted_user_ids:
             return ListenerResult(False, "ignored", "no trusted Slack users configured")
-        if event.user not in self.trusted_user_ids:
+        if event.user not in trusted_user_ids:
             return ListenerResult(False, "ignored", "untrusted Slack user")
 
         record = self.registry.lookup(event.channel, event.root_ts)
+        if record is not None and event.is_reaction:
+            return self._handle_thread_reaction(event, record)
         if record is not None and event.is_thread_reply:
             return self._handle_registered_thread(event, record)
+        if event.is_reaction:
+            return ListenerResult(False, "ignored", "reaction is not on a registered thread")
         if event.is_direct_intake:
             return self._handle_direct_intake(event)
         return ListenerResult(False, "ignored", "message is not a registered thread or intake")
+
+    def _handle_thread_reaction(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+    ) -> ListenerResult:
+        """An approval reaction on a registered draft thread can create an issue.
+
+        Reactions on non-draft threads (plan/report/pr) carry no approval
+        authority here: the reaction approval gate in ``slack_approval`` owns
+        plan execution. This path only bridges a *draft* into a queued issue.
+        """
+        if record.kind != "draft":
+            return ListenerResult(False, "ignored", "reaction is not on a draft thread")
+        if not self.bridge.is_approval(reaction=event.reaction):
+            return ListenerResult(False, "ignored", "reaction is not an approval token")
+        return self._attempt_issue_conversion(event, record)
 
     def _handle_registered_thread(
         self,
@@ -204,6 +256,24 @@ class SlackPlanningListener:
         return ListenerResult(True, action, thread_kind=record.kind)
 
     def _handle_direct_intake(self, event: SlackInputEvent) -> ListenerResult:
+        # A trusted direct message/mention that LEADS with a control verb acts
+        # on the fleet instead of opening a planning draft. The user is already
+        # trust-gated in ``handle_payload``; the handler re-checks. Free-form
+        # prose (no leading verb) falls straight through to planning intake.
+        if is_control_message(event.text):
+            control = self.control_handler.handle(
+                event.text,
+                trusted=True,
+                actor_user_id=event.user,
+            )
+            if control.handled:
+                self._post_thread_ack(event.channel, event.root_ts, control.text)
+                return ListenerResult(
+                    True,
+                    f"control_{control.action}",
+                    detail=control.detail,
+                )
+
         draft = draft_from_slack_text(event.text)
         refined = refine_issue_draft(
             draft,
@@ -271,6 +341,12 @@ class SlackPlanningListener:
         record: SlackThreadRecord,
         feedback: ThreadFeedback,
     ) -> ListenerResult:
+        # Explicit, unambiguous approval text turns the saved draft into a
+        # queued GitHub issue. Anything else is normal refinement. The user
+        # is already trust-gated in handle_payload; the bridge re-checks.
+        if self.bridge.is_approval(text=feedback.text):
+            return self._attempt_issue_conversion(event, record)
+
         payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
         if payload_path is None:
             return self._ack_unavailable_draft(event, record, "saved draft path is unavailable")
@@ -324,6 +400,139 @@ class SlackPlanningListener:
             readiness_ok=refined.readiness.ok,
             readiness_score=refined.readiness.score,
         )
+
+    def _attempt_issue_conversion(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+    ) -> ListenerResult:
+        """Bridge an approved draft to a labeled GitHub issue (idempotently).
+
+        SAFETY: this never runs code. It only asks the bridge to create one
+        labeled GitHub issue, which the autonomous fleet later claims through
+        all existing gates. The approving user is trust-gated in
+        ``handle_payload``; ``trusted=True`` reflects that, and the bridge
+        re-verifies it plus enablement, approval, and the repo allowlist.
+        """
+        payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
+        if payload_path is None:
+            return self._ack_unavailable_draft(event, record, "saved draft path is unavailable")
+
+        with _draft_revision_lock(payload_path):
+            payload = _read_draft_payload(payload_path)
+            if payload is None:
+                print(
+                    f"[SLACK-LISTENER-WARN] saved draft unavailable for "
+                    f"{event.channel}/{event.root_ts}: {payload_path}",
+                    file=sys.stderr,
+                )
+                return self._ack_unavailable_draft(event, record, "saved draft is unavailable")
+
+            already_converted = _draft_already_converted(payload) or record.status == "converted"
+            outcome = self.bridge.convert(
+                payload,
+                trusted=event.user in self._trusted_user_ids(),
+                thread_link=_thread_link(record),
+                already_converted=already_converted,
+            )
+            if outcome.created:
+                self._record_conversion(payload_path, payload, record, outcome)
+
+        self._post_thread_ack(event.channel, event.root_ts, render_bridge_outcome_ack(outcome))
+        if outcome.created:
+            return ListenerResult(
+                True,
+                "issue_created",
+                detail=outcome.detail,
+                draft_path=str(payload_path),
+                thread_kind=record.kind,
+            )
+        if outcome.status == "already_converted":
+            return ListenerResult(
+                True,
+                "issue_already_created",
+                detail=outcome.detail,
+                draft_path=str(payload_path),
+                thread_kind=record.kind,
+            )
+        action = "approval_no_issue" if outcome.refused else "approval_ignored"
+        return ListenerResult(
+            True,
+            action,
+            detail=outcome.detail,
+            draft_path=str(payload_path),
+            thread_kind=record.kind,
+        )
+
+    def _record_conversion(
+        self,
+        payload_path: Path,
+        payload: dict[str, Any],
+        record: SlackThreadRecord,
+        outcome: Any,
+    ) -> None:
+        """Persist the converted state so the draft can never double-create."""
+        try:
+            _write_converted_draft_payload(payload_path, payload, outcome)
+        except OSError as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] could not mark draft converted {payload_path}: {exc}",
+                file=sys.stderr,
+            )
+        metadata = dict(record.metadata or {})
+        metadata.update(
+            {
+                "bridge_issue_url": outcome.issue_url,
+                "bridge_repo": outcome.repo,
+                "converted_at": _utc_now(),
+            }
+        )
+        self.registry.register(
+            SlackThreadRecord(
+                kind=record.kind,
+                channel=record.channel,
+                thread_ts=record.thread_ts,
+                codename=record.codename,
+                firing_id=record.firing_id,
+                title=record.title,
+                status="converted",
+                parent_repo=record.parent_repo,
+                parent_issue=record.parent_issue,
+                plan_path=record.plan_path,
+                draft_path=record.draft_path,
+                created_at=record.created_at,
+                metadata=metadata,
+            )
+        )
+        self._register_status_thread(record, outcome)
+
+    def _register_status_thread(self, record: SlackThreadRecord, outcome: Any) -> None:
+        """Link the originating thread to the filed issue for progress posts.
+
+        Best-effort: the status tracker is read-only on GitHub and only posts
+        back into the thread the bridge already owns, so a failure here never
+        blocks issue creation. The thread root is ``record.thread_ts`` (the
+        registered draft thread), which is where the bridge posted its
+        acknowledgement.
+        """
+        issue_number = _issue_number_from_url(getattr(outcome, "issue_url", ""))
+        if issue_number is None:
+            return
+        try:
+            self.status_tracker.register_issue_thread(
+                channel=record.channel,
+                thread_ts=record.thread_ts,
+                repo=str(getattr(outcome, "repo", "") or ""),
+                issue_number=issue_number,
+                issue_url=str(getattr(outcome, "issue_url", "") or ""),
+                title=record.title,
+            )
+        except Exception as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] could not register status thread for "
+                f"{record.channel}/{record.thread_ts}: {exc}",
+                file=sys.stderr,
+            )
 
     def _write_followup_context(
         self,
@@ -460,6 +669,27 @@ class SlackPlanningListener:
         tmp.replace(path)
         return path
 
+    def sync_thread_status(self, *, fetcher: Any | None = None) -> list[dict[str, Any]]:
+        """Sweep tracked issue threads and post fleet progress deltas.
+
+        Read-only on GitHub. Used by the ``alfred slack-thread-sync`` CLI and
+        the listener's optional idle-loop hook. ``fetcher`` defaults to the
+        read-only ``gh``-backed fetcher.
+        """
+        from slack_thread_status import default_issue_state_fetcher
+
+        return self.status_tracker.sweep(fetcher=fetcher or default_issue_state_fetcher)
+
+    def _trusted_user_ids(self) -> set[str]:
+        if self._static_trusted_user_ids is not None:
+            return set(self._static_trusted_user_ids)
+        return set(
+            trusted_feedback_user_ids_from_env(
+                self._operator_user_id,
+                state_root=self.state_root,
+            )
+        )
+
     def _post_thread_ack(self, channel: str, thread_ts: str, text: str) -> None:
         if self.poster is None or not text.strip():
             return
@@ -474,6 +704,8 @@ def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:
     if not isinstance(event, dict):
         return None
     event_type = str(event.get("type") or "")
+    if event_type == "reaction_added":
+        return _parse_reaction_event(payload, event)
     if event_type not in {"app_mention", "message"}:
         return None
     subtype = str(event.get("subtype") or "")
@@ -496,6 +728,33 @@ def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:
         ts=ts,
         thread_ts=str(event.get("thread_ts") or ""),
         channel_type=str(event.get("channel_type") or ""),
+    )
+
+
+def _parse_reaction_event(payload: dict[str, Any], event: dict[str, Any]) -> SlackInputEvent | None:
+    """Parse a ``reaction_added`` event into a thread-targeted input event.
+
+    The reacted message ts (``item.ts``) becomes both ``ts`` and ``thread_ts``
+    so the event resolves to the registered draft thread root. Reaction events
+    carry no message text; approval is decided purely on the reaction name.
+    """
+    raw_item = event.get("item")
+    item = raw_item if isinstance(raw_item, dict) else {}
+    channel = str(item.get("channel") or "")
+    ts = str(item.get("ts") or "")
+    user = str(event.get("user") or "")
+    reaction = str(event.get("reaction") or "")
+    if not channel or not ts or not user or not reaction:
+        return None
+    return SlackInputEvent(
+        event_id=str(payload.get("event_id") or f"reaction:{channel}:{ts}:{user}:{reaction}"),
+        event_type="reaction_added",
+        channel=channel,
+        user=user,
+        text="",
+        ts=ts,
+        thread_ts=ts,
+        reaction=reaction,
     )
 
 
@@ -581,6 +840,48 @@ def render_draft_revision_ack(result: Any) -> str:
     return "\n".join(lines)
 
 
+def render_bridge_outcome_ack(outcome: Any) -> str:
+    """Render a Slack acknowledgement for an issue-bridge conversion attempt."""
+    if outcome.created:
+        return "\n".join(
+            [
+                "*Issue created*",
+                "",
+                f"*Repo:* `{outcome.repo}`",
+                f"*Issue:* {outcome.issue_url}",
+                "",
+                "It is now in the autonomous queue. The fleet still claims it "
+                "through every existing gate (claim-lock, spend caps, review, "
+                "Batman approval) before any change ships.",
+            ]
+        )
+    if outcome.status == "already_converted":
+        suffix = f"\n\n*Existing issue:* {outcome.issue_url}" if outcome.issue_url else ""
+        return (
+            "*Already filed*\n\nThis draft was already converted to an issue, "
+            "so I did not create a duplicate." + suffix
+        )
+    if outcome.status == "disabled":
+        return (
+            "*Approval noted, but the issue bridge is off*\n\n"
+            "Set `ALFRED_BRIDGE_ENABLED=1` and `ALFRED_BRIDGE_REPOS` to let "
+            "explicit approvals file issues. Nothing was created."
+        )
+    if outcome.status in {"refused_not_ready", "refused_readiness_missing"}:
+        return (
+            "*Draft still needs scope*\n\n"
+            f"{outcome.detail or 'The draft needs a complete readiness check before filing.'}\n\n"
+            "Reply in this thread with the missing acceptance criteria, repo scope, "
+            "test plan, or `open questions: none` once the risk is accepted. Nothing "
+            "was created and no code was run."
+        )
+    return (
+        "*Could not create the issue*\n\n"
+        f"{outcome.detail or 'The draft was not eligible to file.'}\n\n"
+        "Nothing was created and no code was run. Adjust the draft and approve again."
+    )
+
+
 def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
     app_token = (os.environ.get(ENV_APP_TOKEN) or os.environ.get(ENV_ALT_APP_TOKEN) or "").strip()
     if not app_token:
@@ -597,6 +898,7 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
         poster=poster,
         refiner=engine_refiner_from_env(),
         memory_provider=_default_memory_provider(),
+        bridge=SlackIssueBridge(),
     )
     client = SocketModeClient(app_token=app_token, web_client=poster)
 
@@ -610,8 +912,29 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
 
     client.socket_mode_request_listeners.append(_handler)
     client.connect()
+    interval = _thread_sync_interval_s()
     while True:
-        time.sleep(60)
+        time.sleep(interval if interval > 0 else 60)
+        if interval > 0:
+            try:
+                active.sync_thread_status()
+            except Exception as exc:
+                print(f"[SLACK-LISTENER-WARN] thread-status sync failed: {exc}", file=sys.stderr)
+
+
+def _thread_sync_interval_s() -> int:
+    """Idle-loop sweep cadence in seconds (0 disables the in-listener hook).
+
+    Defaults to 5 minutes. The standalone ``alfred slack-thread-sync`` entry
+    point can run on the operator's own schedule regardless of this setting.
+    """
+    raw = (os.environ.get("ALFRED_SLACK_THREAD_SYNC_INTERVAL_S") or "").strip()
+    if not raw:
+        return 300
+    try:
+        return max(int(raw), 0)
+    except ValueError:
+        return 300
 
 
 def _structured_fields(lines: list[str]) -> dict[str, str]:
@@ -739,6 +1062,47 @@ def _write_revised_draft_payload(
     return revision_count
 
 
+def _draft_already_converted(payload: dict[str, Any]) -> bool:
+    bridge = payload.get("bridge")
+    return isinstance(bridge, dict) and bool(bridge.get("converted"))
+
+
+def _write_converted_draft_payload(
+    path: Path,
+    payload: dict[str, Any],
+    outcome: Any,
+) -> None:
+    """Stamp the saved draft as converted so it can never double-create.
+
+    Written atomically via a temp file, matching the revision writer.
+    """
+    updated = dict(payload)
+    updated["bridge"] = {
+        "converted": True,
+        "issue_url": outcome.issue_url,
+        "repo": outcome.repo,
+        "converted_at": _utc_now(),
+    }
+    updated["updated_at"] = _utc_now()
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _thread_link(record: SlackThreadRecord) -> str:
+    """Best-effort Slack thread reference for the issue footer.
+
+    Uses an explicit permalink from metadata when present, else a stable
+    ``channel/thread_ts`` reference. We never call the Slack API to build it.
+    """
+    permalink = str(record.metadata.get("permalink") or "").strip()
+    if permalink:
+        return permalink
+    if record.channel and record.thread_ts:
+        return f"slack://thread?channel={record.channel}&ts={record.thread_ts}"
+    return ""
+
+
 def _draft_revision_lock(path: Path) -> threading.Lock:
     key = str(path.resolve())
     with _DRAFT_REVISION_LOCKS_GUARD:
@@ -796,6 +1160,17 @@ def _issue_url_from_record(record: SlackThreadRecord) -> str | None:
     if record.parent_repo and record.parent_issue:
         return f"https://github.com/{record.parent_repo}/issues/{record.parent_issue}"
     return None
+
+
+def _issue_number_from_url(url: str) -> int | None:
+    """Extract the trailing issue number from a GitHub issue URL."""
+    match = re.search(r"/issues/(\d+)\b", str(url or ""))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
 
 
 def _safe_event_id(event_id: str) -> str:

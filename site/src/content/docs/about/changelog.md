@@ -13,6 +13,7 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
 - **Python 3.14 bytes/str fix**: `subprocess.TimeoutExpired.stdout` returns bytes on Python 3.14 even when `text=True` is passed to `subprocess.run`. The `agent_runner.process.run` wrapper now decodes so downstream callers that hand the result to `Path.write_text` keep working.
 - **Fleet memory reliability tools**: reviewable memory candidates, normalized failure-event history, `alfred brain doctor`, and a read-only `alfred mcp serve` bridge for local MCP clients.
 - **Optional Redis AMS memory provider**: operators who already run Redis Agent Memory Server can set `ALFRED_MEMORY_PROVIDERS=fleet,redis`, check it with `alfred brain redis-status`, and sync reviewed lessons with `alfred brain redis-sync` while keeping the default install local and dependency-light.
+- **Slack memory curation**: trusted users can run `memory`, `remember [repo:] <lesson>`, and `memory redis` from Slack to inspect and stage memory, while operator-only `memory promote <id>` / `memory reject <id>` control what enters future recall.
 - **Planning memory loop**: the Planning tab recalls promoted repo lessons while drafting, embeds advisory hints in saved specs, and queues reviewable spec-to-issue memory candidates.
 - **`alfred serve` cockpit polish**: Fleet / Firings / Plans / Planning tabs, saved Alfred plan inbox, issue/spec intake, human-readable timestamps, and mobile card layouts for the previously cramped tables.
 - **Batman planning replies**: `add repo:` and `remove repo:` replies in the approval thread now amend execution scope before child issues or worktrees are created.
@@ -21,6 +22,9 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
   app mentions, and registered Alfred threads. It saves local planning drafts
   and feedback context while keeping reaction approval as the only execution
   gate.
+- **Native local client preview**: `clients/desktop` ships the first Tauri
+  Mac/Linux shell over `alfred serve` JSON APIs, with Home, Compose, Fleet,
+  Logs, and Setup gear surfaces plus external Slack/GitHub/local links.
 - **`alfred spec`**: template, lint, and readiness helpers for specs-driven development, including acceptance criteria, rollout checks, and GitHub-ready issue drafts.
 - **Removed**: `lib/claude_proxy/`, `bin/claude-proxy.py`, the four proxy tests, `docs/CLAUDE_PROXY.md`, `docs/MACOS_KEYCHAIN.md`, `bin/alfred-grant-keychain.sh`, and `examples/launchd/luminik.claude-proxy.plist.example`. The proxy daemon shipped in v0.4.0 worked around a macOS Keychain ACL issue that `CLAUDE_CODE_OAUTH_TOKEN` resolves natively. Operators who installed the proxy should `launchctl bootout` it and unset `ALFRED_CLAUDE_PROXY_SOCKET`. No agent-script changes needed.
 
