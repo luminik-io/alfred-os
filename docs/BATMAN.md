@@ -130,7 +130,10 @@ merge, or change code by themselves.
 Batman accepts two body shapes. Pick whichever feels natural; the
 parser tries the canonical shape first and falls back to the loose
 shape automatically (a warning lands in `/tmp/alfred.batman.stderr`
-when the fallback fires, so you know to tighten up next time).
+when the fallback fires, so you know to tighten up next time). If the
+loose shape is present but Alfred would still have to guess a default
+rollout, the plan is marked with a blocking readiness finding instead
+of synthesizing backend/frontend/mobile work.
 
 **Canonical shape** (matches the worked example below; explicit
 `Repos:` and `Children:` blocks):
