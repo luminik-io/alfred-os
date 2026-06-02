@@ -244,10 +244,14 @@ def _check_bash(command: str, cwd: str | None = None) -> tuple[str, str]:
 
 
 def _targets_protected(token: str) -> bool:
-    # Matches "main", "origin/main"-style refspecs, "HEAD:main", "+main".
-    t = token.lstrip("+")
-    tail = t.split(":")[-1].split("/")[-1]
-    return tail in PROTECTED_BRANCHES
+    # Match the FULL destination branch name, not its last path segment, so a
+    # feature branch like `feat/main` or `bane/release` is NOT mistaken for
+    # `main`/`release`. Handles `main`, `HEAD:main`, `+main`, `src:dst`, and
+    # `refs/heads/main`.
+    dst = token.lstrip("+").split(":")[-1]
+    if dst.startswith("refs/heads/"):
+        dst = dst[len("refs/heads/") :]
+    return dst in PROTECTED_BRANCHES
 
 
 def _push_has_explicit_refspec(toks: list[str]) -> bool:
@@ -294,8 +298,11 @@ def _is_recursive_force(toks: list[str]) -> bool:
     has_r = has_f = False
     for t in toks:
         if t.startswith("-") and not t.startswith("--"):
-            has_r = has_r or "r" in t[1:]
-            has_f = has_f or "f" in t[1:]
+            # `rm` treats -r and -R identically (both recursive); match either
+            # case so `rm -Rf` / `rm -fR` are caught, not just `-rf`.
+            flags = t[1:].lower()
+            has_r = has_r or "r" in flags
+            has_f = has_f or "f" in flags
         elif t == "--recursive":
             has_r = True
         elif t == "--force":
@@ -332,16 +339,32 @@ def _abs_inside_cwd(path: str, cwd: str | None) -> bool:
 
 def _is_dangerous_rm_target(target: str, cwd: str | None = None) -> bool:
     t = target.strip().strip("'\"")
-    if t in {"/", "~", "*", ".", "..", "/*"}:
+    if not t:
+        return False
+    # Whole-tree / home / cwd-root / parent sentinels.
+    if t in {"/", "~", "*", ".", "./", "..", "../", "/*", "$PWD", "${PWD}"}:
         return True
-    if t.startswith(("~", "$HOME", "${HOME}")):
+    if t.startswith(("~", "$HOME", "${HOME}", "$PWD", "${PWD}")):
+        return True
+    if t.startswith("../"):
         return True
     if t.startswith("/"):
-        # Absolute path: safe only if it resolves inside the firing worktree.
-        # `rm -rf /workspace/alfred/dist` from cwd=/workspace/alfred is allowed;
-        # an absolute path outside cwd (or unknown cwd) is dangerous.
-        return not _abs_inside_cwd(t, cwd)
-    return t.startswith("../")
+        # Absolute path. A path STRICTLY inside the firing worktree is a safe
+        # cleanup (`rm -rf /workspace/alfred/dist` from cwd=/workspace/alfred);
+        # deleting the worktree root itself, an absolute path outside cwd, or an
+        # unknown cwd is dangerous.
+        if cwd:
+            try:
+                tgt = os.path.realpath(t)
+                base = os.path.realpath(cwd)
+                if tgt == base:
+                    return True
+                if tgt.startswith(base + os.sep):
+                    return False
+            except Exception:
+                pass
+        return True
+    return False
 
 
 def _cd_escapes_worktree(toks: list[str], cwd: str | None = None) -> bool:

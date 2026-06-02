@@ -57,6 +57,10 @@ def test_feature_branch_push_allowed():
     _allow("Bash", {"command": "git push origin bane/coverage-123"})
     # force-with-lease to a feature branch is fine (no protected target).
     _allow("Bash", {"command": "git push --force-with-lease origin feat/x"})
+    # A feature branch whose last path segment is a protected WORD must NOT be
+    # mistaken for that branch (regression: feat/main != main).
+    _allow("Bash", {"command": "git push origin feat/main"})
+    _allow("Bash", {"command": "git push origin bane/release"})
 
 
 def test_push_all_or_mirror_denied():
@@ -126,8 +130,22 @@ def test_dangerous_rm_denied():
         "rm -rf /opt/app-data",
         "rm -fr /etc/hosts",
         "rm -r -f ../sibling-repo",
+        # capital -R is recursive too (regression: rm -Rf was allowed).
+        "rm -Rf /",
+        "rm -fR $HOME",
+        "rm -Rf /etc",
+        # deleting the working dir itself / $PWD wipes the whole checkout.
+        "rm -rf $PWD",
+        "rm -rf .",
+        "rm -rf ./",
     ):
         _deny("Bash", {"command": cmd})
+
+
+def test_rm_exact_cwd_denied(tmp_path):
+    # An absolute path equal to the firing cwd deletes the entire worktree.
+    decision, _ = ah.evaluate_pretooluse("Bash", {"command": f"rm -rf {tmp_path}"}, str(tmp_path))
+    assert decision == "deny"
 
 
 def test_relative_rm_allowed():
