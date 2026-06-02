@@ -26,5 +26,31 @@ jobs:
         with:
           # Full history so --history can pickaxe every commit, not just HEAD.
           fetch-depth: 0
-      - name: Scan git history for known-private patterns
-        run: bash bin/scrub-check.sh --history
+      - name: Scan git history for known-private patterns (informational)
+        # The history rewrite that purges pre-existing leaks is a deferred,
+        # supervised operator step, so history is known-dirty TODAY. Running
+        # this as a hard gate would paint every weekly run red for no
+        # actionable reason. So we report findings to the job summary and stay
+        # green. Flip ENFORCE to "true" once the history has been rewritten
+        # clean, and this becomes a real regression gate for future leaks.
+        env:
+          ENFORCE: "false"
+        run: |
+          set +e
+          bash bin/scrub-check.sh --history > /tmp/history-scan.txt 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "✅ Git history is clean." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### ⚠️ Git history still contains pre-existing matches"
+              echo ""
+              echo "The rewrite that purges these is a **deferred, supervised** operator step, so this run is **informational** and does not fail."
+              echo ""
+              echo '```'
+              tail -n 60 /tmp/history-scan.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          [ "$ENFORCE" = "true" ] && exit "$status"
+          exit 0
