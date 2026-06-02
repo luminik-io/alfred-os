@@ -280,7 +280,7 @@ def _push_positional_args(toks: list[str]) -> list[str]:
 
 
 def _push_refspecs(toks: list[str]) -> list[str]:
-    """Just the refspec args of a ``git push`` — positional args minus the
+    """Just the refspec args of a ``git push``: positional args minus the
     leading remote name, so a remote named like a protected branch
     (``prod``/``release``/``master``) is never mistaken for a push target."""
     return _push_positional_args(toks)[1:]

@@ -35,4 +35,4 @@
 arn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:[0-9]{12}:
 [0-9]{12}\.dkr\.ecr\.
 [0-9]{12}\.signin\.aws\.amazon\.com
-account[_-]?id[ "':=]+[0-9]{12}
+[Aa][Cc][Cc][Oo][Uu][Nn][Tt][_-]?[Ii][Dd][ "':=]+[0-9]{12}
