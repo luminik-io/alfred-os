@@ -103,6 +103,60 @@ def _agent_notifications_enabled() -> bool:
     return _truthy_env("ALFRED_AGENT_NOTIFICATIONS")
 
 
+# Headless firings also run under ``--permission-mode bypassPermissions`` (full
+# trust), so a deterministic PreToolUse hook is the only backstop that survives
+# prompt drift. ``lib/alfred_hooks.py`` denies pushes to protected branches,
+# destructive ``rm -rf`` outside the worktree, secret-file reads, ``curl|bash``
+# pipelines, and (when ``ALFRED_SCRUB_NAMES`` is configured) writes of banned
+# names. It is merged into the same ``--settings`` payload as the notification
+# suppression. On by default; disable for a manual debug run with
+# ``ALFRED_AGENT_HOOKS=0``.
+def _agent_hooks_enabled() -> bool:
+    """PreToolUse guardrails are OPT-IN; unrestricted ("YOLO") is the default.
+
+    Alfred's value is unattended autonomy, so we do NOT impose guardrails by
+    default. The hook is an optional deterministic backstop for anyone who wants
+    one on a bypassPermissions fleet (e.g. a cautious first run on an unfamiliar
+    repo). Turn it on with ``ALFRED_AGENT_HOOKS=1`` (true/yes/on).
+    """
+    return _truthy_env("ALFRED_AGENT_HOOKS")
+
+
+def _agent_hook_settings() -> dict:
+    """PreToolUse guardrail hook config, or ``{}`` when disabled/missing."""
+    if not _agent_hooks_enabled():
+        return {}
+    # process.py lives at lib/agent_runner/process.py; the hook is lib/alfred_hooks.py.
+    script = Path(__file__).resolve().parent.parent / "alfred_hooks.py"
+    if not script.exists():
+        return {}
+    command = f'python3 "{script}" pretooluse'
+    return {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Bash|Read|Write|Edit|MultiEdit|NotebookEdit",
+                    "hooks": [{"type": "command", "command": command}],
+                }
+            ]
+        }
+    }
+
+
+def _agent_settings_args() -> list[str]:
+    """Single ``--settings`` payload: notification suppression + the hook.
+
+    Returns ``[]`` only when both are opted out, keeping the command line clean.
+    """
+    settings: dict = {}
+    if not _agent_notifications_enabled():
+        settings.update({"agentPushNotifEnabled": False, "preferredNotifChannel": "none"})
+    settings.update(_agent_hook_settings())
+    if not settings:
+        return []
+    return ["--settings", json.dumps(settings, separators=(",", ":"))]
+
+
 def _subprocess_text(value: object) -> str:
     if value is None:
         return ""
@@ -314,11 +368,11 @@ def claude_invoke(
         "--permission-mode",
         "bypassPermissions",
     ]
-    # Suppress Claude Code notifications for headless firings by default.
-    # ``--settings`` adds a settings source; it does not touch auth (see
-    # _AGENT_NOTIF_SUPPRESS_SETTINGS). Opt out with ALFRED_AGENT_NOTIFICATIONS=1.
-    if not _agent_notifications_enabled():
-        cmd.extend(["--settings", _AGENT_NOTIF_SUPPRESS_SETTINGS])
+    # One ``--settings`` source carrying notification suppression (default on,
+    # opt out with ALFRED_AGENT_NOTIFICATIONS=1) AND the PreToolUse guardrail
+    # hook (default on, opt out with ALFRED_AGENT_HOOKS=0). ``--settings`` adds
+    # a source; it does not touch auth.
+    cmd.extend(_agent_settings_args())
     if model:
         cmd.extend(["--model", model])
     if resume_session:

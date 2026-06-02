@@ -66,13 +66,43 @@ def test_notif_suppression_flag_present_by_default(monkeypatch) -> None:
 
 
 def test_notif_flag_absent_when_opted_in(monkeypatch) -> None:
-    """ALFRED_AGENT_NOTIFICATIONS=1 keeps notifications on (no --settings)."""
+    """ALFRED_AGENT_NOTIFICATIONS=1 + hooks off drops the --settings source."""
     monkeypatch.setenv("ALFRED_AGENT_NOTIFICATIONS", "1")
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "0")  # isolate the notif toggle
     cmd = _capture_claude_argv(monkeypatch)
 
-    assert "--settings" not in cmd, (
-        f"--settings must be omitted when ALFRED_AGENT_NOTIFICATIONS=1; got {cmd}"
-    )
+    assert "--settings" not in cmd, f"--settings must be omitted when both are opted out; got {cmd}"
+
+
+def test_guardrail_hook_off_by_default(monkeypatch) -> None:
+    """Unrestricted (YOLO) is the default: notif suppressed, but no hook."""
+    monkeypatch.delenv("ALFRED_AGENT_NOTIFICATIONS", raising=False)
+    monkeypatch.delenv("ALFRED_AGENT_HOOKS", raising=False)
+    cmd = _capture_claude_argv(monkeypatch)
+    assert "--settings" in cmd  # notif suppression still present
+    settings = cmd[cmd.index("--settings") + 1]
+    assert '"PreToolUse"' not in settings, "guardrail hook must be OFF by default"
+
+
+def test_pretooluse_hook_opt_in(monkeypatch) -> None:
+    """ALFRED_AGENT_HOOKS=1 attaches the guardrail hook."""
+    monkeypatch.delenv("ALFRED_AGENT_NOTIFICATIONS", raising=False)
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "1")
+    cmd = _capture_claude_argv(monkeypatch)
+    assert "--settings" in cmd
+    settings = cmd[cmd.index("--settings") + 1]
+    assert '"PreToolUse"' in settings and "alfred_hooks.py" in settings
+
+
+def test_hook_when_both_opted_in_drops_notif_keys(monkeypatch) -> None:
+    """Notifications on + hooks on: --settings carries the hook, not notif keys."""
+    monkeypatch.setenv("ALFRED_AGENT_NOTIFICATIONS", "1")
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "1")
+    cmd = _capture_claude_argv(monkeypatch)
+    assert "--settings" in cmd
+    settings = cmd[cmd.index("--settings") + 1]
+    assert "agentPushNotifEnabled" not in settings
+    assert '"PreToolUse"' in settings
 
 
 def test_notif_flag_does_not_replace_auth_or_other_flags(monkeypatch) -> None:
@@ -93,6 +123,7 @@ def test_notif_flag_does_not_replace_auth_or_other_flags(monkeypatch) -> None:
 
 def test_notif_opt_in_accepts_other_truthy_values(monkeypatch) -> None:
     """Truthy spellings (true/yes/on) also opt back in."""
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "0")  # isolate the notif toggle
     for val in ("true", "yes", "on", "TRUE"):
         monkeypatch.setenv("ALFRED_AGENT_NOTIFICATIONS", val)
         cmd = _capture_claude_argv(monkeypatch)
