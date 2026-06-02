@@ -171,7 +171,7 @@ def test_secret_read_via_bash_denied():
 
 def test_secret_read_via_read_tool_denied():
     _deny("Read", {"file_path": "/repo/.env"})
-    _deny("Read", {"file_path": "/home/u/.ssh/id_ed25519"})
+    _deny("Read", {"file_path": "~/.ssh/id_ed25519"})
     _deny("Read", {"file_path": "config/credentials.json"})
 
 
