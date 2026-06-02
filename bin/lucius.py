@@ -70,6 +70,9 @@ if "--dry-run" in sys.argv:
 AGENT = os.environ.get("AGENT_CODENAME", "lucius")
 LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
 PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
+# The shipped starter template for the feature-dev role (what alfred-init seeds
+# as <codename>.md). Used to detect an untouched seed by content comparison.
+SEED_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "prompts" / "feature-dev.md"
 
 # Launchd plist label used for the auto-pause path. Defaults to a generic name;
 # override in the plist EnvironmentVariables to match your label scheme.
@@ -163,20 +166,36 @@ PRE_PUSH = _load_pre_push_config(AGENT)
 TRUSTED_AUTHOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
+def _strip_auto_seed_marker(text: str) -> str:
+    """Drop the leading ``alfred:auto-seed`` marker line, if present."""
+    lines = text.splitlines()
+    if lines and "alfred:auto-seed" in lines[0]:
+        return "\n".join(lines[1:])
+    return text
+
+
 def _is_unmodified_auto_seed(path: Path) -> bool:
     """True when the prompt file is still the untouched alfred-init starter.
 
-    Seeded templates carry an ``alfred:auto-seed`` marker on the first line.
-    An untouched seed is scaffolding, not operator intent, so injecting it would
-    let a stale starter override newer in-code guidance. The operator activates
-    the file by editing it (the marker line says to delete itself).
+    Detection is by exact content match against the shipped starter template,
+    with or without the leading ``alfred:auto-seed`` marker line. This catches
+    both new seeds (marker present) AND legacy installs whose seed was copied
+    by a release before the marker existed (marker absent). Any operator edit
+    breaks the match, so a customized prompt is always honored. An untouched
+    seed is scaffolding, not operator intent, so it must not override newer
+    in-code guidance.
     """
     try:
-        with open(path, encoding="utf-8") as fh:
-            first = fh.readline()
+        on_disk = path.read_text(encoding="utf-8").strip()
     except OSError:
         return False
-    return "alfred:auto-seed" in first
+    try:
+        template = SEED_TEMPLATE_PATH.read_text(encoding="utf-8")
+    except OSError:
+        # No template to compare against: fall back to the marker check so a
+        # freshly-seeded file is still recognized.
+        return "alfred:auto-seed" in (on_disk.splitlines()[:1] or [""])[0]
+    return on_disk in (template.strip(), _strip_auto_seed_marker(template).strip())
 
 
 def _operator_prompt_guidance(repo: str, issue: dict, wt: Path, branch: str) -> str:
