@@ -157,6 +157,74 @@ def _agent_settings_args() -> list[str]:
     return ["--settings", json.dumps(settings, separators=(",", ":"))]
 
 
+# ---------- Memory MCP attachment ----------
+#
+# bin/alfred-mcp.py is a stdio MCP server exposing read-only memory tools
+# (recall, recent file touches, failure patterns, brain status) over the local
+# brain. Attaching it to every firing lets agents recall prior lessons as a
+# TOOL (the model decides when) instead of memory being a passive store the
+# operator queries by hand. This is a capability, not a restriction, so it is
+# on by default; disable with ALFRED_MEMORY_MCP=0.
+MEMORY_MCP_SERVER = "alfred_memory"
+_MEMORY_RECALL_TOOLS = (
+    "alfred_memory_recall",
+    "alfred_recent_file_touches",
+    "alfred_failure_patterns",
+    "alfred_brain_status",
+)
+
+
+def _memory_mcp_enabled() -> bool:
+    val = os.environ.get("ALFRED_MEMORY_MCP")
+    if val is None:
+        return True
+    return val.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _memory_mcp_script() -> Path | None:
+    # process.py is lib/agent_runner/process.py; the server is bin/alfred-mcp.py.
+    script = Path(__file__).resolve().parents[2] / "bin" / "alfred-mcp.py"
+    return script if script.exists() else None
+
+
+def _memory_mcp_args() -> list[str]:
+    """``--mcp-config`` args attaching the read-only memory server, or ``[]``.
+
+    The server exposes only read-only tools (no arbitrary-query escape hatch),
+    so no per-tool restriction is needed even under bypassPermissions.
+    """
+    if not _memory_mcp_enabled():
+        return []
+    script = _memory_mcp_script()
+    if script is None:
+        return []
+    config = {
+        "mcpServers": {MEMORY_MCP_SERVER: {"command": "python3", "args": [str(script), "serve"]}}
+    }
+    return ["--mcp-config", json.dumps(config, separators=(",", ":"))]
+
+
+def _memory_tool_names() -> list[str]:
+    return [f"mcp__{MEMORY_MCP_SERVER}__{t}" for t in _MEMORY_RECALL_TOOLS]
+
+
+def _with_memory_mcp_tools(allowed_tools: str) -> str:
+    """Append the read-only memory recall tools to an allowlist when enabled.
+
+    Preserves the caller's separator style (comma vs space). No-op when the MCP
+    is disabled or the server script is missing.
+    """
+    if not _memory_mcp_enabled() or _memory_mcp_script() is None:
+        return allowed_tools
+    base = (allowed_tools or "").strip()
+    existing = set(base.replace(",", " ").split())
+    additions = [n for n in _memory_tool_names() if n not in existing]
+    if not additions:
+        return base
+    sep = "," if ("," in base or " " not in base) else " "
+    return (base + sep if base else "") + sep.join(additions)
+
+
 def _subprocess_text(value: object) -> str:
     if value is None:
         return ""
@@ -360,7 +428,7 @@ def claude_invoke(
         "-p",
         prompt,
         "--allowedTools",
-        allowed_tools,
+        _with_memory_mcp_tools(allowed_tools),
         "--max-turns",
         str(effective_max_turns),
         "--output-format",
@@ -369,10 +437,13 @@ def claude_invoke(
         "bypassPermissions",
     ]
     # One ``--settings`` source carrying notification suppression (default on,
-    # opt out with ALFRED_AGENT_NOTIFICATIONS=1) AND the PreToolUse guardrail
-    # hook (default on, opt out with ALFRED_AGENT_HOOKS=0). ``--settings`` adds
-    # a source; it does not touch auth.
+    # opt out with ALFRED_AGENT_NOTIFICATIONS=1) AND the OPT-IN PreToolUse
+    # guardrail hook (off by default; enable with ALFRED_AGENT_HOOKS=1).
+    # ``--settings`` adds a source; it does not touch auth.
     cmd.extend(_agent_settings_args())
+    # Attach the read-only memory MCP server so agents can recall lessons as a
+    # tool (capability, on by default; ALFRED_MEMORY_MCP=0 to disable).
+    cmd.extend(_memory_mcp_args())
     if model:
         cmd.extend(["--model", model])
     if resume_session:
