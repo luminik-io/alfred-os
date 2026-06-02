@@ -33,6 +33,7 @@ Wired in via ``agent_runner._agent_settings_args()`` which emits a ``--settings`
 payload pointing PreToolUse at ``python3 <lib>/alfred_hooks.py pretooluse``.
 Disable for a manual debugging run with ``ALFRED_AGENT_HOOKS=0``.
 """
+
 from __future__ import annotations
 
 import json
@@ -41,7 +42,6 @@ import re
 import shlex
 import subprocess
 import sys
-from typing import Optional
 
 # Branches the fleet must never push to directly (locked guardrail).
 PROTECTED_BRANCHES = {"main", "master", "production", "release", "prod"}
@@ -55,8 +55,20 @@ INSPECTED_TOOLS = {"Bash", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit"}
 
 # Shell readers that would dump a file's contents into the transcript.
 _READERS = (
-    "cat", "bat", "less", "more", "head", "tail", "xxd", "od", "strings",
-    "base64", "cp", "scp", "rsync", "openssl",
+    "cat",
+    "bat",
+    "less",
+    "more",
+    "head",
+    "tail",
+    "xxd",
+    "od",
+    "strings",
+    "base64",
+    "cp",
+    "scp",
+    "rsync",
+    "openssl",
 )
 
 ALLOW: tuple[str, str] = ("allow", "")
@@ -71,13 +83,25 @@ def _is_secret_path(path: str) -> bool:
     if re.search(r"\.env(\.(example|sample|template|dist|defaults?))\b", p):
         return False
     needles = (
-        r"\.env(\b|$|[./])",          # .env, .env.local, .env.production
-        r"\.pem\b", r"\.p8\b", r"\.pfx\b", r"\.keystore\b",
-        r"\bid_rsa\b", r"\bid_ed25519\b", r"\bid_dsa\b", r"\bid_ecdsa\b",
-        r"/\.ssh/", r"/\.aws/credentials\b", r"/\.aws/config\b",
-        r"/\.npmrc\b", r"/\.pypirc\b", r"/\.netrc\b",
-        r"\bcredentials\.json\b", r"\bservice[-_]account",
-        r"\.p12\b", r"secrets?\.(ya?ml|json|env)\b",
+        r"\.env(\b|$|[./])",  # .env, .env.local, .env.production
+        r"\.pem\b",
+        r"\.p8\b",
+        r"\.pfx\b",
+        r"\.keystore\b",
+        r"\bid_rsa\b",
+        r"\bid_ed25519\b",
+        r"\bid_dsa\b",
+        r"\bid_ecdsa\b",
+        r"(^|/)\.ssh/",
+        r"(^|/)\.aws/credentials\b",
+        r"(^|/)\.aws/config\b",
+        r"(^|/)\.npmrc\b",
+        r"(^|/)\.pypirc\b",
+        r"(^|/)\.netrc\b",
+        r"\bcredentials\.json\b",
+        r"\bservice[-_]account",
+        r"\.p12\b",
+        r"secrets?\.(ya?ml|json|env)\b",
     )
     return any(re.search(n, p) for n in needles)
 
@@ -103,14 +127,13 @@ def _load_scrub_names() -> tuple[str, ...]:
     if path and os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as fh:
-                names += [ln.strip() for ln in fh
-                          if ln.strip() and not ln.lstrip().startswith("#")]
+                names += [ln.strip() for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
         except OSError:
             pass
     return tuple(dict.fromkeys(n.lower() for n in names))
 
 
-def _banned_name_in(text: Optional[str]) -> Optional[str]:
+def _banned_name_in(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
@@ -129,7 +152,7 @@ def _tokens(command: str) -> list[str]:
         return command.split()
 
 
-def _check_bash(command: str, cwd: Optional[str] = None) -> tuple[str, str]:
+def _check_bash(command: str, cwd: str | None = None) -> tuple[str, str]:
     if not command or not command.strip():
         return ALLOW
     low = command.lower()
@@ -138,15 +161,21 @@ def _check_bash(command: str, cwd: Optional[str] = None) -> tuple[str, str]:
 
     # --- download-and-run pipeline ---
     if re.search(r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(bash|sh|zsh|python3?)\b", low):
-        return ("deny", "Blocked: piping a remote download straight into a shell "
-                        "(supply-chain risk). Download, inspect, then run.")
+        return (
+            "deny",
+            "Blocked: piping a remote download straight into a shell "
+            "(supply-chain risk). Download, inspect, then run.",
+        )
 
     is_git = "git" in toks
     if is_git:
         # Skipping hooks / signing is forbidden for the fleet.
         if "--no-verify" in tokset or "--no-gpg-sign" in tokset:
-            return ("deny", "Blocked: --no-verify / --no-gpg-sign skips the commit "
-                            "hooks the fleet must always run.")
+            return (
+                "deny",
+                "Blocked: --no-verify / --no-gpg-sign skips the commit "
+                "hooks the fleet must always run.",
+            )
         if "push" in toks:
             # The one locked rule: never push to a protected branch (forced or
             # not). Force-pushing a *feature* branch is legitimate (rebased PRs),
@@ -154,38 +183,63 @@ def _check_bash(command: str, cwd: Optional[str] = None) -> tuple[str, str]:
             protected_join = "/".join(sorted(PROTECTED_BRANCHES))
             # 1. Explicit protected refspec, e.g. `git push origin main`, `+main`.
             if any(_targets_protected(t) for t in toks):
-                return ("deny", f"Blocked: pushing to a protected branch "
-                                f"({protected_join}). Open a PR from a feature "
-                                "branch instead.")
+                return (
+                    "deny",
+                    f"Blocked: pushing to a protected branch "
+                    f"({protected_join}). Open a PR from a feature "
+                    "branch instead.",
+                )
             # 2. --all / --mirror push every local branch (incl. protected ones)
             #    without naming them.
             if tokset & {"--all", "--mirror"}:
-                return ("deny", "Blocked: 'git push --all/--mirror' pushes every "
-                                "branch, including protected ones. Push a single "
-                                "feature branch explicitly.")
+                return (
+                    "deny",
+                    "Blocked: 'git push --all/--mirror' pushes every "
+                    "branch, including protected ones. Push a single "
+                    "feature branch explicitly.",
+                )
             # 3. Implicit push (no refspec, e.g. `git push` / `git push origin`)
             #    pushes the CURRENT branch. Resolve it from cwd and block if it is
             #    protected, since the argv carries no branch token to match.
             if not _push_has_explicit_refspec(toks) and _current_branch_protected(cwd):
-                return ("deny", f"Blocked: the checkout is on a protected branch "
-                                f"({protected_join}); an implicit 'git push' would "
-                                "push it. Switch to a feature branch first.")
+                return (
+                    "deny",
+                    f"Blocked: the checkout is on a protected branch "
+                    f"({protected_join}); an implicit 'git push' would "
+                    "push it. Switch to a feature branch first.",
+                )
 
     # --- destructive rm ---
     if re.search(r"\brm\b", low) and _is_recursive_force(toks):
+        # A relative `rm -rf build` is only safe if the shell's working dir is
+        # still inside the worktree. `cd /tmp && rm -rf build` moves out first,
+        # so a relative target escapes the path check below.
+        if _cd_escapes_worktree(toks, cwd):
+            return (
+                "deny",
+                "Blocked: 'rm -rf' after a 'cd' out of the worktree "
+                "would delete outside the checkout. Run rm from the "
+                "firing's working directory.",
+            )
         for t in _rm_targets(toks):
             if _is_dangerous_rm_target(t, cwd):
-                return ("deny", f"Blocked: 'rm -rf {t}' targets a path outside the "
-                                "worktree (or $HOME / root). Delete only paths "
-                                "inside the firing's checkout.")
+                return (
+                    "deny",
+                    f"Blocked: 'rm -rf {t}' targets a path outside the "
+                    "worktree (or $HOME / root). Delete only paths "
+                    "inside the firing's checkout.",
+                )
 
     # --- secret reads via shell ---
     if toks and toks[0] in _READERS:
         for t in toks[1:]:
             if _is_secret_path(t):
-                return ("deny", f"Blocked: reading credential file '{t}' would copy "
-                                "secrets into the transcript. Reference the SSM/env "
-                                "name instead of the value.")
+                return (
+                    "deny",
+                    f"Blocked: reading credential file '{t}' would copy "
+                    "secrets into the transcript. Reference the SSM/env "
+                    "name instead of the value.",
+                )
     return ALLOW
 
 
@@ -215,7 +269,7 @@ def _push_has_explicit_refspec(toks: list[str]) -> bool:
     return len(args) >= 2
 
 
-def _current_branch_protected(cwd: Optional[str]) -> bool:
+def _current_branch_protected(cwd: str | None) -> bool:
     """True when the checkout at ``cwd`` is on a protected branch.
 
     Fail-open (returns False) when cwd is missing or git can't answer, matching
@@ -227,7 +281,9 @@ def _current_branch_protected(cwd: Optional[str]) -> bool:
     try:
         out = subprocess.run(
             ["git", "-C", cwd, "symbolic-ref", "--quiet", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
     except Exception:
         return False
@@ -262,33 +318,64 @@ def _rm_targets(toks: list[str]) -> list[str]:
     return out
 
 
-def _is_dangerous_rm_target(target: str, cwd: Optional[str] = None) -> bool:
+def _abs_inside_cwd(path: str, cwd: str | None) -> bool:
+    """True if absolute ``path`` resolves to somewhere inside ``cwd``."""
+    if not cwd:
+        return False
+    try:
+        tgt = os.path.realpath(path)
+        base = os.path.realpath(cwd)
+        return tgt == base or tgt.startswith(base + os.sep)
+    except Exception:
+        return False
+
+
+def _is_dangerous_rm_target(target: str, cwd: str | None = None) -> bool:
     t = target.strip().strip("'\"")
     if t in {"/", "~", "*", ".", "..", "/*"}:
         return True
     if t.startswith(("~", "$HOME", "${HOME}")):
         return True
     if t.startswith("/"):
-        # Absolute path: safe only if it resolves to somewhere inside the
-        # firing's worktree (cwd). A safe cleanup like `rm -rf
-        # /workspace/alfred/dist` from cwd=/workspace/alfred is allowed; an
-        # absolute path outside cwd (or unknown cwd) is dangerous.
-        if cwd:
-            try:
-                tgt = os.path.realpath(t)
-                base = os.path.realpath(cwd)
-                if tgt == base or tgt.startswith(base + os.sep):
-                    return False
-            except Exception:
-                pass
-        return True
-    if t.startswith("../"):
-        return True
+        # Absolute path: safe only if it resolves inside the firing worktree.
+        # `rm -rf /workspace/alfred/dist` from cwd=/workspace/alfred is allowed;
+        # an absolute path outside cwd (or unknown cwd) is dangerous.
+        return not _abs_inside_cwd(t, cwd)
+    return t.startswith("../")
+
+
+def _cd_escapes_worktree(toks: list[str], cwd: str | None = None) -> bool:
+    """True if the command ``cd``s to a directory not provably inside ``cwd``.
+
+    Guards the compound case `cd /tmp && rm -rf build`: the relative `build`
+    would otherwise pass the per-target check while actually deleting outside
+    the checkout. We flag any ``cd`` whose target is absolute-outside-cwd, ``~``,
+    ``$HOME``, or ``..``-relative.
+    """
+    expect_target = False
+    for t in toks:
+        if t == "cd":
+            expect_target = True
+            continue
+        if not expect_target:
+            continue
+        if t.startswith("-"):  # cd flags like -P / -L
+            continue
+        target = t.strip().strip("'\"")
+        expect_target = False
+        if target.startswith(("~", "$HOME", "${HOME}")):
+            return True
+        if target.startswith("/"):
+            if not _abs_inside_cwd(target, cwd):
+                return True
+        elif target == ".." or target.startswith("../"):
+            return True
     return False
 
 
-def evaluate_pretooluse(tool_name: str, tool_input: dict,
-                        cwd: Optional[str] = None) -> tuple[str, str]:
+def evaluate_pretooluse(
+    tool_name: str, tool_input: dict, cwd: str | None = None
+) -> tuple[str, str]:
     """Pure decision function. Returns ("allow"|"deny", reason)."""
     if tool_name not in INSPECTED_TOOLS:
         return ALLOW
@@ -301,28 +388,35 @@ def evaluate_pretooluse(tool_name: str, tool_input: dict,
     path = str(ti.get("file_path") or ti.get("path") or ti.get("notebook_path") or "")
     if tool_name == "Read":
         if _is_secret_path(path):
-            return ("deny", f"Blocked: reading credential file '{path}'. Reference "
-                            "the SSM ARN / env-var name, never the secret value.")
+            return (
+                "deny",
+                f"Blocked: reading credential file '{path}'. Reference "
+                "the SSM ARN / env-var name, never the secret value.",
+            )
         return ALLOW
 
     # Write / Edit / MultiEdit / NotebookEdit — scan the content being written.
     content_fields = (
-        ti.get("content"), ti.get("new_string"), ti.get("new_source"),
+        ti.get("content"),
+        ti.get("new_string"),
+        ti.get("new_source"),
         ti.get("new_str"),
     )
     for chunk in content_fields:
         hit = _banned_name_in(chunk if isinstance(chunk, str) else None)
         if hit:
-            return ("deny", f"Blocked: writing the banned name '{hit}' into "
-                            f"'{path or 'a file'}'. Use a generic handle "
-                            "(the OSS scrub rule forbids personal names).")
+            return (
+                "deny",
+                f"Blocked: writing the banned name '{hit}' into "
+                f"'{path or 'a file'}'. Use a generic handle "
+                "(the OSS scrub rule forbids personal names).",
+            )
     # MultiEdit carries a list of edits.
-    for edit in (ti.get("edits") or []):
+    for edit in ti.get("edits") or []:
         if isinstance(edit, dict):
             hit = _banned_name_in(str(edit.get("new_string", "")))
             if hit:
-                return ("deny", f"Blocked: writing the banned name '{hit}' "
-                                "(OSS scrub rule).")
+                return ("deny", f"Blocked: writing the banned name '{hit}' " "(OSS scrub rule).")
     return ALLOW
 
 
@@ -348,7 +442,7 @@ def _emit(decision: str, reason: str) -> int:
     return 0
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     event = argv[0] if argv else "pretooluse"
     try:

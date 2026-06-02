@@ -71,9 +71,7 @@ def test_notif_flag_absent_when_opted_in(monkeypatch) -> None:
     monkeypatch.setenv("ALFRED_AGENT_HOOKS", "0")  # isolate the notif toggle
     cmd = _capture_claude_argv(monkeypatch)
 
-    assert "--settings" not in cmd, (
-        f"--settings must be omitted when both are opted out; got {cmd}"
-    )
+    assert "--settings" not in cmd, f"--settings must be omitted when both are opted out; got {cmd}"
 
 
 def test_guardrail_hook_off_by_default(monkeypatch) -> None:
