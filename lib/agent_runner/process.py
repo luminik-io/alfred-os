@@ -187,15 +187,21 @@ def _memory_mcp_script() -> Path | None:
     return script if script.exists() else None
 
 
-def _memory_mcp_args() -> list[str]:
+def _memory_mcp_args(script: Path | None = None) -> list[str]:
     """``--mcp-config`` args attaching the read-only memory server, or ``[]``.
 
     The server exposes only read-only tools (no arbitrary-query escape hatch),
     so no per-tool restriction is needed even under bypassPermissions.
+
+    ``script`` lets the caller resolve ``_memory_mcp_script()`` once per invoke
+    and share it with ``_with_memory_mcp_tools`` so the allowlist augmentation
+    and the ``--mcp-config`` attachment can never disagree (no TOCTOU between two
+    separate ``Path.exists()`` checks). Falls back to resolving it here.
     """
     if not _memory_mcp_enabled():
         return []
-    script = _memory_mcp_script()
+    if script is None:
+        script = _memory_mcp_script()
     if script is None:
         return []
     config = {
@@ -208,13 +214,18 @@ def _memory_tool_names() -> list[str]:
     return [f"mcp__{MEMORY_MCP_SERVER}__{t}" for t in _MEMORY_RECALL_TOOLS]
 
 
-def _with_memory_mcp_tools(allowed_tools: str) -> str:
+def _with_memory_mcp_tools(allowed_tools: str, script: Path | None = None) -> str:
     """Append the read-only memory recall tools to an allowlist when enabled.
 
     Preserves the caller's separator style (comma vs space). No-op when the MCP
-    is disabled or the server script is missing.
+    is disabled or the server script is missing. ``script`` shares one resolved
+    ``_memory_mcp_script()`` with ``_memory_mcp_args`` (see its docstring).
     """
-    if not _memory_mcp_enabled() or _memory_mcp_script() is None:
+    if not _memory_mcp_enabled():
+        return allowed_tools
+    if script is None:
+        script = _memory_mcp_script()
+    if script is None:
         return allowed_tools
     base = (allowed_tools or "").strip()
     existing = set(base.replace(",", " ").split())
@@ -423,12 +434,16 @@ def claude_invoke(
         return dry_run_claude_result(prompt, model=model, engine="claude")
 
     effective_max_turns = max_turns if max_turns is not None else _CLAUDE_UNLIMITED_TURNS
+    # Resolve the memory-MCP server path ONCE so the allowlist augmentation and
+    # the --mcp-config attachment below always agree (no TOCTOU between two
+    # independent Path.exists() checks).
+    memory_script = _memory_mcp_script()
     cmd = [
         CLAUDE_BIN,
         "-p",
         prompt,
         "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools),
+        _with_memory_mcp_tools(allowed_tools, memory_script),
         "--max-turns",
         str(effective_max_turns),
         "--output-format",
@@ -442,8 +457,9 @@ def claude_invoke(
     # ``--settings`` adds a source; it does not touch auth.
     cmd.extend(_agent_settings_args())
     # Attach the read-only memory MCP server so agents can recall lessons as a
-    # tool (capability, on by default; ALFRED_MEMORY_MCP=0 to disable).
-    cmd.extend(_memory_mcp_args())
+    # tool (capability, on by default; ALFRED_MEMORY_MCP=0 to disable). Reuses
+    # the single resolved memory_script from above.
+    cmd.extend(_memory_mcp_args(memory_script))
     if model:
         cmd.extend(["--model", model])
     if resume_session:

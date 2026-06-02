@@ -27,6 +27,16 @@ _OK = (
 
 
 def _capture(monkeypatch) -> list[str]:
+    # A real firing never runs in dry-run, but if ALFRED_DRY_RUN leaks in from
+    # the environment, claude_invoke short-circuits via dry_run_claude_result()
+    # before ever calling `run`, leaving `captured` empty and raising a confusing
+    # KeyError. Pin it off so the test exercises the real command-build path.
+    monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
+    # Pin the MCP server path so the wiring assertions do not depend on
+    # bin/alfred-mcp.py being physically present (sparse / isolated lib checkouts
+    # would otherwise make _memory_mcp_script() return None and the helpers
+    # short-circuit, failing `cfg is not None` for an unrelated reason).
+    monkeypatch.setattr(_proc, "_memory_mcp_script", lambda: Path("/repo/bin/alfred-mcp.py"))
     captured: dict = {}
 
     def fake_run(cmd, *, cwd=None, timeout=60, capture=True, env=None, **kwargs):

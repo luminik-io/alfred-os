@@ -61,6 +61,18 @@ def test_feature_branch_push_allowed():
     # mistaken for that branch (regression: feat/main != main).
     _allow("Bash", {"command": "git push origin feat/main"})
     _allow("Bash", {"command": "git push origin bane/release"})
+    # A REMOTE named like a protected branch must not be mistaken for a push
+    # target (Greptile P1: the remote token is skipped, only refspecs scanned).
+    _allow("Bash", {"command": "git push prod feat/my-feature"})
+    _allow("Bash", {"command": "git push release feat/x"})
+    _allow("Bash", {"command": "git push master feat/y"})
+
+
+def test_protected_target_still_denied_with_named_remote():
+    # Even with a protected-named remote, an explicit protected refspec is still
+    # a real push to that branch and must stay blocked.
+    _deny("Bash", {"command": "git push prod main"})
+    _deny("Bash", {"command": "git push origin feat/x main"})
 
 
 def test_push_all_or_mirror_denied():

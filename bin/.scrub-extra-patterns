@@ -25,8 +25,14 @@
 /Users/[A-Za-z0-9._-]+/\.(alfred|hermes|aws|ssh|config|gnupg|kube|docker)
 /home/[A-Za-z0-9._-]+/\.(alfred|hermes|aws|ssh|config|gnupg|kube|docker)
 
-# (ii) Bare 12-digit AWS account ID. Generic: any standalone 12-digit run.
-# This is an identifier, not a secret, but it should not appear in a public
-# repo. (bin/.scrub-extra-patterns.example is per-line-allowlisted so its
-# documented placeholder does not trip this.)
-\b[0-9]{12}\b
+# (ii) AWS account ID (12 digits) in the shapes it actually leaks. A bare
+# `\b[0-9]{12}\b` is avoided on purpose: `\b` is a GNU-grep extension, NOT part
+# of POSIX ERE, so under BSD grep (macOS, where the operator runs this locally)
+# it silently never matches; and a context-free 12-digit run also trips on
+# innocent literals (E.164 phone numbers, epoch values, test IDs). These
+# anchored, POSIX-portable patterns catch the real leak vectors instead. For an
+# exact account ID, add it to a private bin/.scrub-extra-patterns.local override.
+arn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:[0-9]{12}:
+[0-9]{12}\.dkr\.ecr\.
+[0-9]{12}\.signin\.aws\.amazon\.com
+account[_-]?id[ "':=]+[0-9]{12}

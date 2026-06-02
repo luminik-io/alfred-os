@@ -133,11 +133,17 @@ def _load_scrub_names() -> tuple[str, ...]:
     return tuple(dict.fromkeys(n.lower() for n in names))
 
 
-def _banned_name_in(text: str | None) -> str | None:
+def _banned_name_in(text: str | None, scrub_names: tuple[str, ...] | None = None) -> str | None:
     if not text:
         return None
+    # evaluate_pretooluse loads the scrub list once and passes it in, so a single
+    # hook event re-uses one read instead of re-opening the file per content
+    # field. When called standalone (tests), fall back to loading it here.
+    names = _load_scrub_names() if scrub_names is None else scrub_names
+    if not names:
+        return None
     low = text.lower()
-    for name in _load_scrub_names():
+    for name in names:
         # Whole-word-ish match so a name can't fire inside an unrelated token.
         if re.search(r"(?<![a-z0-9])" + re.escape(name) + r"(?![a-z0-9])", low):
             return name
@@ -182,7 +188,11 @@ def _check_bash(command: str, cwd: str | None = None) -> tuple[str, str]:
             # so it stays allowed; only a protected target is blocked.
             protected_join = "/".join(sorted(PROTECTED_BRANCHES))
             # 1. Explicit protected refspec, e.g. `git push origin main`, `+main`.
-            if any(_targets_protected(t) for t in toks):
+            #    Scan only the refspec args, NOT the remote name: a remote called
+            #    `prod`/`release`/`master` must not make `git push prod feat/x`
+            #    look like a push to a protected branch (the first positional
+            #    after `push` is the remote and is skipped).
+            if any(_targets_protected(t) for t in _push_refspecs(toks)):
                 return (
                     "deny",
                     f"Blocked: pushing to a protected branch "
@@ -254,13 +264,9 @@ def _targets_protected(token: str) -> bool:
     return dst in PROTECTED_BRANCHES
 
 
-def _push_has_explicit_refspec(toks: list[str]) -> bool:
-    """True when `git push` names a refspec (so step 1's token scan covers it).
-
-    Counts non-flag args after ``push``: the first is the remote (``origin``),
-    a second is a refspec. 0-1 args means an implicit current-branch push, which
-    carries no branch token and so needs the cwd-based current-branch check.
-    """
+def _push_positional_args(toks: list[str]) -> list[str]:
+    """Non-flag args after ``push``, in order. The first is the remote
+    (``origin``), any further ones are refspecs (``main``, ``HEAD:main``)."""
     args: list[str] = []
     seen_push = False
     for t in toks:
@@ -270,7 +276,24 @@ def _push_has_explicit_refspec(toks: list[str]) -> bool:
         if not seen_push or t.startswith("-"):
             continue
         args.append(t)
-    return len(args) >= 2
+    return args
+
+
+def _push_refspecs(toks: list[str]) -> list[str]:
+    """Just the refspec args of a ``git push`` — positional args minus the
+    leading remote name, so a remote named like a protected branch
+    (``prod``/``release``/``master``) is never mistaken for a push target."""
+    return _push_positional_args(toks)[1:]
+
+
+def _push_has_explicit_refspec(toks: list[str]) -> bool:
+    """True when `git push` names a refspec (so step 1's token scan covers it).
+
+    The first non-flag arg after ``push`` is the remote (``origin``); a second is
+    a refspec. 0-1 args means an implicit current-branch push, which carries no
+    branch token and so needs the cwd-based current-branch check.
+    """
+    return len(_push_positional_args(toks)) >= 2
 
 
 def _current_branch_protected(cwd: str | None) -> bool:
@@ -419,6 +442,10 @@ def evaluate_pretooluse(
         return ALLOW
 
     # Write / Edit / MultiEdit / NotebookEdit — scan the content being written.
+    # Load the scrub list once for the whole event (it is read per call below).
+    scrub_names = _load_scrub_names()
+    if not scrub_names:
+        return ALLOW
     content_fields = (
         ti.get("content"),
         ti.get("new_string"),
@@ -426,7 +453,7 @@ def evaluate_pretooluse(
         ti.get("new_str"),
     )
     for chunk in content_fields:
-        hit = _banned_name_in(chunk if isinstance(chunk, str) else None)
+        hit = _banned_name_in(chunk if isinstance(chunk, str) else None, scrub_names)
         if hit:
             return (
                 "deny",
@@ -437,7 +464,7 @@ def evaluate_pretooluse(
     # MultiEdit carries a list of edits.
     for edit in ti.get("edits") or []:
         if isinstance(edit, dict):
-            hit = _banned_name_in(str(edit.get("new_string", "")))
+            hit = _banned_name_in(str(edit.get("new_string", "")), scrub_names)
             if hit:
                 return ("deny", f"Blocked: writing the banned name '{hit}' (OSS scrub rule).")
     return ALLOW
