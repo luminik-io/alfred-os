@@ -1,3 +1,4 @@
+<!-- alfred:auto-seed v1 (delete this line to activate this file as operator guidance) -->
 <!--
   Role: cross-repo-coordinator
   Default codename: batman

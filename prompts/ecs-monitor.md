@@ -1,3 +1,4 @@
+<!-- alfred:auto-seed v1 (delete this line to activate this file as operator guidance) -->
 <!--
   Role: ecs-monitor
   Codename: operator-customizable. The starter fleet ships this role as a

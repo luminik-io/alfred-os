@@ -163,9 +163,29 @@ PRE_PUSH = _load_pre_push_config(AGENT)
 TRUSTED_AUTHOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
+def _is_unmodified_auto_seed(path: Path) -> bool:
+    """True when the prompt file is still the untouched alfred-init starter.
+
+    Seeded templates carry an ``alfred:auto-seed`` marker on the first line.
+    An untouched seed is scaffolding, not operator intent, so injecting it would
+    let a stale starter override newer in-code guidance. The operator activates
+    the file by editing it (the marker line says to delete itself).
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            first = fh.readline()
+    except OSError:
+        return False
+    return "alfred:auto-seed" in first
+
+
 def _operator_prompt_guidance(repo: str, issue: dict, wt: Path, branch: str) -> str:
-    """Load operator-supplied Lucius guidance seeded by alfred-init, if present."""
-    if not PROMPT_PATH.exists():
+    """Load operator-supplied Lucius guidance seeded by alfred-init, if present.
+
+    Skips an unmodified auto-seeded template (deferring to in-code guidance);
+    only an operator-edited prompt is injected.
+    """
+    if not PROMPT_PATH.exists() or _is_unmodified_auto_seed(PROMPT_PATH):
         return ""
     guidance = load_prompt(
         PROMPT_PATH,

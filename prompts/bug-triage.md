@@ -1,3 +1,4 @@
+<!-- alfred:auto-seed v1 (delete this line to activate this file as operator guidance) -->
 <!--
   Role: bug-triage
   Codename: operator-customizable. The default fleet ships this agent as
