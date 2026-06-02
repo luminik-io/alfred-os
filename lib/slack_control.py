@@ -766,10 +766,14 @@ class SlackControlHandler:
                 )
             removed = store.remove(target_user_id)
         except ValueError as exc:
+            # target_user_id was already validated by parse_control_command, so a
+            # ValueError here comes from the trust store itself (corrupt or
+            # unreadable JSON via _list_local(strict=True)), not a bad id.
+            # Surface the real cause instead of the misleading "not a user id".
             return ControlResult(
                 True,
                 f"{verb}_rejected",
-                text=f"*Rejected:* `{_short(target_user_id)}` is not a Slack user id.",
+                text=(f"*Couldn't update the trusted-collaborator store.*\n\n{_short(str(exc))}"),
                 detail=str(exc),
             )
         if removed:

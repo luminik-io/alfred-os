@@ -1034,12 +1034,11 @@ def _planning_uses_runtime_state(request: Request) -> bool:
         base = os.path.expanduser("~/.alfred")
     if not base:
         return False
-    try:
-        runtime_state = (Path(base).expanduser() / "state").resolve()
-        return state_root.expanduser().resolve() == runtime_state
-    except OSError:
-        runtime_state = (Path(base).expanduser() / "state").absolute()
-        return state_root.expanduser().absolute() == runtime_state
+    # Path.resolve(strict=False) (the default since 3.6) resolves as much as
+    # exists without touching the filesystem and does not raise OSError, so no
+    # fallback branch is needed here.
+    runtime_state = (Path(base).expanduser() / "state").resolve()
+    return state_root.expanduser().resolve() == runtime_state
 
 
 def _planning_memory_writer(request: Request, *, provider=None):

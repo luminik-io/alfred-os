@@ -261,9 +261,10 @@ for how this label fits the rest of the lifecycle.
 
 ## Timeout and transport-down semantics
 
-- `timeout_s` (default 86400s = 24h) bounds the wall-clock wait.
+- `timeout_s` (default 900s = 15min) bounds the wall-clock wait.
   `APPROVAL_TIMEOUT` is returned if the operator does not react within
-  the window.
+  the window. For overnight gates, pass an explicit longer value (e.g.
+  `timeout_s=86400` for 24h) as the examples above do.
 - After five consecutive `reactions.get` failures, the gate returns
   `APPROVAL_TRANSPORT_DOWN`. Likely causes: rotated token, deleted plan
   message, removed `reactions:read` scope, or a network outage longer
