@@ -240,7 +240,7 @@ def test_leading_verb_parses() -> None:
     assert cmd is not None and cmd.verb == "handled" and cmd.arg == "followup-1"
     cmd = parse_control_command("trust <@U2DEF>")
     assert cmd is not None and cmd.verb == "trust" and cmd.arg == "U2DEF"
-    cmd = parse_control_command("<@UALFRED> untrust <@U2DEF|neha>")
+    cmd = parse_control_command("<@UALFRED> untrust <@U2DEF|teammate>")
     assert cmd is not None and cmd.verb == "untrust" and cmd.arg == "U2DEF"
 
 

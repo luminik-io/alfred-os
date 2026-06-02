@@ -217,9 +217,13 @@ launchd/agents.conf
 launchd/_generated/
 
 # Operator-specific scrub patterns (exact private values like AWS account IDs).
-# Loaded by bin/scrub-check.sh at runtime so this PUBLIC script never embeds the
-# very identifiers it scans for. Copy bin/.scrub-extra-patterns.example to start.
-bin/.scrub-extra-patterns
+# These are loaded by bin/scrub-check.sh at runtime so this PUBLIC script never
+# embeds the very identifiers it scans for. bin/.scrub-extra-patterns is now a
+# tracked DEFAULT carrying only GENERIC patterns and ships with the repo; keep
+# any operator-specific OVERRIDE (real account IDs, private hostnames) in a
+# gitignored .local file and point ALFRED_SCRUB_EXTRA_PATTERNS at it.
+# Copy bin/.scrub-extra-patterns.example to start.
+bin/.scrub-extra-patterns.local
 
 # PyPI configuration file
 .pypirc

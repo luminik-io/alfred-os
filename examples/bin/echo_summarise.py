@@ -45,7 +45,11 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib")
+# Prefer this repo's own lib/ so a stale deployed copy under ALFRED_HOME/lib
+# never shadows the agent_runner shipped alongside this example. The repo lib
+# goes first; the deployed lib is only a fallback appended at the end.
+sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "lib")))
+sys.path.append((os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib")
 from agent_runner import (
     EventLog,
     PreflightFailed,

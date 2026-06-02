@@ -109,7 +109,7 @@ $ PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 [dry-run]  2. (preflight) preflight reported config gaps, continuing (dry-run)
 [dry-run]  3. (pick) would `gh issue list --label agent:summarise`; using a synthetic issue instead
 [dry-run]  4. (gh) would claim dry-run-org/dry-run-repo#0 for echo (...): add agent:in-flight, post claim comment
-[dry-run]  5. (llm) would invoke claude with prompt of 464 chars, model=(cli-default), max_turns=5
+[dry-run]  5. (llm) would invoke claude with prompt of 463 chars, model=(cli-default), max_turns=5
 [dry-run]  6. (spend) would increment real ledger (firings_today+=1, turns_today+=3, cost_usd_today+=0.0); dry-run ledger only
 [dry-run]  7. (gh) would `gh issue comment #0` on dry-run-org/dry-run-repo: **Echo (auto-summary):** [dry-run] synthetic claude result ...
 [dry-run]  8. (gh) would release dry-run-org/dry-run-repo#0 for echo (...): outcome=success, remove agent:in-flight, add agent:done
