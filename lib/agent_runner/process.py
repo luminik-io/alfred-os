@@ -112,10 +112,14 @@ def _agent_notifications_enabled() -> bool:
 # suppression. On by default; disable for a manual debug run with
 # ``ALFRED_AGENT_HOOKS=0``.
 def _agent_hooks_enabled() -> bool:
-    val = os.environ.get("ALFRED_AGENT_HOOKS")
-    if val is None:
-        return True
-    return val.strip().lower() not in {"0", "false", "no", "off", ""}
+    """PreToolUse guardrails are OPT-IN; unrestricted ("YOLO") is the default.
+
+    Alfred's value is unattended autonomy, so we do NOT impose guardrails by
+    default. The hook is an optional deterministic backstop for anyone who wants
+    one on a bypassPermissions fleet (e.g. a cautious first run on an unfamiliar
+    repo). Turn it on with ``ALFRED_AGENT_HOOKS=1`` (true/yes/on).
+    """
+    return _truthy_env("ALFRED_AGENT_HOOKS")
 
 
 def _agent_hook_settings() -> dict:

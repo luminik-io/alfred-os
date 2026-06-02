@@ -76,20 +76,30 @@ def test_notif_flag_absent_when_opted_in(monkeypatch) -> None:
     )
 
 
-def test_pretooluse_hook_present_by_default(monkeypatch) -> None:
-    """The guardrail hook is added to --settings by default."""
+def test_guardrail_hook_off_by_default(monkeypatch) -> None:
+    """Unrestricted (YOLO) is the default: notif suppressed, but no hook."""
     monkeypatch.delenv("ALFRED_AGENT_NOTIFICATIONS", raising=False)
     monkeypatch.delenv("ALFRED_AGENT_HOOKS", raising=False)
+    cmd = _capture_claude_argv(monkeypatch)
+    assert "--settings" in cmd  # notif suppression still present
+    settings = cmd[cmd.index("--settings") + 1]
+    assert '"PreToolUse"' not in settings, "guardrail hook must be OFF by default"
+
+
+def test_pretooluse_hook_opt_in(monkeypatch) -> None:
+    """ALFRED_AGENT_HOOKS=1 attaches the guardrail hook."""
+    monkeypatch.delenv("ALFRED_AGENT_NOTIFICATIONS", raising=False)
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "1")
     cmd = _capture_claude_argv(monkeypatch)
     assert "--settings" in cmd
     settings = cmd[cmd.index("--settings") + 1]
     assert '"PreToolUse"' in settings and "alfred_hooks.py" in settings
 
 
-def test_hook_persists_when_notifications_opted_in(monkeypatch) -> None:
-    """Opting into notifications drops the notif keys but keeps the hook."""
+def test_hook_when_both_opted_in_drops_notif_keys(monkeypatch) -> None:
+    """Notifications on + hooks on: --settings carries the hook, not notif keys."""
     monkeypatch.setenv("ALFRED_AGENT_NOTIFICATIONS", "1")
-    monkeypatch.delenv("ALFRED_AGENT_HOOKS", raising=False)
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "1")
     cmd = _capture_claude_argv(monkeypatch)
     assert "--settings" in cmd
     settings = cmd[cmd.index("--settings") + 1]
