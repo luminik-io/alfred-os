@@ -1,0 +1,32 @@
+# bin/.scrub-extra-patterns  (DEFAULT, tracked — ships with the repo)
+#
+# scrub-check.sh loads this file at runtime and scans for every regex below
+# alongside its built-in patterns. This DEFAULT carries only GENERIC patterns
+# (no real account IDs, no personal names) so the public working tree stays
+# clean by default.
+#
+# Operator-specific EXACT values (your real AWS account ID, private hostnames,
+# private Slack channels) do NOT belong here — they would leak into the public
+# repo. Put those in a private, gitignored override instead:
+#
+#     cp bin/.scrub-extra-patterns.example bin/.scrub-extra-patterns.local
+#     ALFRED_SCRUB_EXTRA_PATTERNS=bin/.scrub-extra-patterns.local bash bin/scrub-check.sh
+#
+# bin/.scrub-extra-patterns.local is gitignored (see .gitignore). Pointing
+# ALFRED_SCRUB_EXTRA_PATTERNS at it replaces this default; source both if you
+# want both by concatenating them into one file.
+#
+# Format: one POSIX extended-regex per line. Blank lines and "# " comments
+# ignored; a bare "#word" line is treated as a pattern, not a comment.
+
+# (i) Bare operator home-directory paths. The built-in patterns already catch
+# the .alfred / .hermes / Claude_Workspace layouts; broaden coverage to any
+# dotfile dir that tends to carry host-private config (credentials, keys).
+/Users/[A-Za-z0-9._-]+/\.(alfred|hermes|aws|ssh|config|gnupg|kube|docker)
+/home/[A-Za-z0-9._-]+/\.(alfred|hermes|aws|ssh|config|gnupg|kube|docker)
+
+# (ii) Bare 12-digit AWS account ID. Generic: any standalone 12-digit run.
+# This is an identifier, not a secret, but it should not appear in a public
+# repo. (bin/.scrub-extra-patterns.example is per-line-allowlisted so its
+# documented placeholder does not trip this.)
+\b[0-9]{12}\b

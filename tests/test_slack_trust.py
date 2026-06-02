@@ -22,7 +22,7 @@ from slack_trust import (  # noqa: E402
 def test_normalize_slack_user_id_accepts_ids_and_mentions() -> None:
     assert normalize_slack_user_id("U0123ABCDEF") == "U0123ABCDEF"
     assert normalize_slack_user_id("<@U0123ABCDEF>") == "U0123ABCDEF"
-    assert normalize_slack_user_id("<@U0123ABCDEF|neha>") == "U0123ABCDEF"
+    assert normalize_slack_user_id("<@U0123ABCDEF|teammate>") == "U0123ABCDEF"
     assert normalize_slack_user_id("not a user") is None
 
 

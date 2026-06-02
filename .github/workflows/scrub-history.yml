@@ -1,0 +1,56 @@
+name: scrub-history
+
+# Scheduled full git-HISTORY scrub. The PR-blocking scrub-check job in ci.yml
+# only sees the current checkout; this catches private paths or secrets that
+# were committed in the PAST. It runs on a cron (and on demand) and is
+# deliberately NOT wired to pull_request / push, so it never blocks a PR.
+on:
+  schedule:
+    # 06:17 UTC every Monday.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: scrub-history
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  history-scan:
+    name: Full git-history cleanliness scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so --history can pickaxe every commit, not just HEAD.
+          fetch-depth: 0
+      - name: Scan git history for known-private patterns (informational)
+        # The history rewrite that purges pre-existing leaks is a deferred,
+        # supervised operator step, so history is known-dirty TODAY. Running
+        # this as a hard gate would paint every weekly run red for no
+        # actionable reason. So we report findings to the job summary and stay
+        # green. Flip ENFORCE to "true" once the history has been rewritten
+        # clean, and this becomes a real regression gate for future leaks.
+        env:
+          ENFORCE: "false"
+        run: |
+          set +e
+          bash bin/scrub-check.sh --history > /tmp/history-scan.txt 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "✅ Git history is clean." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### ⚠️ Git history still contains pre-existing matches"
+              echo ""
+              echo "The rewrite that purges these is a **deferred, supervised** operator step, so this run is **informational** and does not fail."
+              echo ""
+              echo '```'
+              tail -n 60 /tmp/history-scan.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          [ "$ENFORCE" = "true" ] && exit "$status"
+          exit 0

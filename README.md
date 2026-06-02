@@ -91,13 +91,17 @@ of 0:
 
 ```text
 [dry-run]  1. (start) echo dry-run firing, no LLM, no spend, no gh/slack/git side effects
+[ECHO-PREFLIGHT-FAILED] 2 issue(s):
+  - env var `ECHO_REPO_SLUG` is unset
+  - env var `GH_ORG` is unset
 [dry-run]  2. (preflight) preflight reported config gaps, continuing (dry-run)
 [dry-run]  3. (pick) would `gh issue list --label agent:summarise`; using a synthetic issue instead
-[dry-run]  4. (gh) would claim dry-run-org/dry-run-repo#0 for echo: add agent:in-flight, post claim comment
-[dry-run]  5. (llm) would invoke claude with prompt of 464 chars, model=(cli-default), max_turns=5
-[dry-run]  6. (spend) would increment real ledger (firings_today+=1, turns_today+=3); dry-run ledger only
-[dry-run]  7. (gh) would `gh issue comment #0` on dry-run-org/dry-run-repo: **Echo (auto-summary):** ...
-[dry-run]  8. (gh) would release dry-run-org/dry-run-repo#0 for echo: outcome=success, remove agent:in-flight, add agent:done
+[dry-run]  4. (gh) would claim dry-run-org/dry-run-repo#0 for echo (firing_id=...): add agent:in-flight, post claim comment
+[dry-run]  5. (llm) would invoke claude with prompt of 463 chars, model=(cli-default), max_turns=5
+[dry-run]  6. (spend) would increment real ledger (firings_today+=1, turns_today+=3, cost_usd_today+=0.0); dry-run ledger only
+[dry-run]  7. (gh) would `gh issue comment #0` on dry-run-org/dry-run-repo: **Echo (auto-summary):** [dry-run] synthetic claude result, no LLM was invoked. ...
+[dry-run]  8. (gh) would release dry-run-org/dry-run-repo#0 for echo (firing_id=...): outcome=success, remove agent:in-flight, add agent:done
+[dry-run]  9. (spend) would set real ledger (consecutive_failures=0); dry-run ledger only
 [dry-run] 10. (spend) would increment real ledger (successes_today+=1); dry-run ledger only
 [dry-run] 11. (slack) would post to Slack (severity=info): Echo summarised dry-run-org/dry-run-repo#0: ...
 ```
