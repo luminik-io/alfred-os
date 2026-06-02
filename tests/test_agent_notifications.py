@@ -66,13 +66,35 @@ def test_notif_suppression_flag_present_by_default(monkeypatch) -> None:
 
 
 def test_notif_flag_absent_when_opted_in(monkeypatch) -> None:
-    """ALFRED_AGENT_NOTIFICATIONS=1 keeps notifications on (no --settings)."""
+    """ALFRED_AGENT_NOTIFICATIONS=1 + hooks off drops the --settings source."""
     monkeypatch.setenv("ALFRED_AGENT_NOTIFICATIONS", "1")
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "0")  # isolate the notif toggle
     cmd = _capture_claude_argv(monkeypatch)
 
     assert "--settings" not in cmd, (
-        f"--settings must be omitted when ALFRED_AGENT_NOTIFICATIONS=1; got {cmd}"
+        f"--settings must be omitted when both are opted out; got {cmd}"
     )
+
+
+def test_pretooluse_hook_present_by_default(monkeypatch) -> None:
+    """The guardrail hook is added to --settings by default."""
+    monkeypatch.delenv("ALFRED_AGENT_NOTIFICATIONS", raising=False)
+    monkeypatch.delenv("ALFRED_AGENT_HOOKS", raising=False)
+    cmd = _capture_claude_argv(monkeypatch)
+    assert "--settings" in cmd
+    settings = cmd[cmd.index("--settings") + 1]
+    assert '"PreToolUse"' in settings and "alfred_hooks.py" in settings
+
+
+def test_hook_persists_when_notifications_opted_in(monkeypatch) -> None:
+    """Opting into notifications drops the notif keys but keeps the hook."""
+    monkeypatch.setenv("ALFRED_AGENT_NOTIFICATIONS", "1")
+    monkeypatch.delenv("ALFRED_AGENT_HOOKS", raising=False)
+    cmd = _capture_claude_argv(monkeypatch)
+    assert "--settings" in cmd
+    settings = cmd[cmd.index("--settings") + 1]
+    assert "agentPushNotifEnabled" not in settings
+    assert '"PreToolUse"' in settings
 
 
 def test_notif_flag_does_not_replace_auth_or_other_flags(monkeypatch) -> None:
@@ -93,6 +115,7 @@ def test_notif_flag_does_not_replace_auth_or_other_flags(monkeypatch) -> None:
 
 def test_notif_opt_in_accepts_other_truthy_values(monkeypatch) -> None:
     """Truthy spellings (true/yes/on) also opt back in."""
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "0")  # isolate the notif toggle
     for val in ("true", "yes", "on", "TRUE"):
         monkeypatch.setenv("ALFRED_AGENT_NOTIFICATIONS", val)
         cmd = _capture_claude_argv(monkeypatch)
