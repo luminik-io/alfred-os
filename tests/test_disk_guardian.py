@@ -80,15 +80,21 @@ def test_disk_status_critical_below_gb_floor(monkeypatch):
     assert status["low"] is False  # critical takes precedence over low
 
 
-def test_disk_status_critical_below_pct_floor(monkeypatch):
+def test_disk_status_low_pct_on_large_disk_is_advisory_not_critical(monkeypatch):
     import agent_runner.disk as disk
 
-    # 4% free of a 100 GB disk: 4 GB (over the GB floor) but under 5%.
+    # 10 GB free of a 500 GB disk: 2% free is well under the 5% floor, but
+    # 10 GB is far above the 3 GB GB floor. The percent floor is advisory only,
+    # so this must NOT be critical (letting a low percent on a big-but-busy disk
+    # force a back-off is what could wedge the whole fleet). It is "low" as an
+    # early warning via the percent band, but a firing may still run.
     monkeypatch.setattr(
-        disk.shutil, "disk_usage", lambda _p: _fake_usage(free_gb=4.0, total_gb=100.0)
+        disk.shutil, "disk_usage", lambda _p: _fake_usage(free_gb=10.0, total_gb=500.0)
     )
     status = disk.disk_pressure_status()
-    assert status["critical"] is True
+    assert status["critical"] is False
+    assert status["low"] is True
+    assert status["free_gb"] == pytest.approx(10.0, abs=0.1)
 
 
 def test_disk_status_low_band_between_floor_and_1_5x(monkeypatch):
