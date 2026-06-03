@@ -18,9 +18,13 @@ without editing code:
 * ``ALFRED_MIN_FREE_DISK_GB``  — absolute floor in GB (default ``3.0``).
 * ``ALFRED_MIN_FREE_DISK_PCT`` — relative floor in percent (default ``5.0``).
 
-``critical`` is True when free space is below *either* threshold;
-``low`` is True when free space is within ``1.5x`` of *either* threshold
-(an early-warning band that has not yet crossed into ``critical``).
+The absolute GB floor is the hard guard: ``critical`` is True only when free
+space drops below ``ALFRED_MIN_FREE_DISK_GB``. The percent floor is advisory
+only. A low percent on a large disk (e.g. a few GB free on a multi-hundred-GB
+volume) still leaves ample absolute headroom, so it must not force a back-off
+on its own. ``low`` is an early-warning band (free space within ``1.5x`` of
+*either* floor) that has not yet crossed into ``critical``; the percent floor
+feeds this advisory band so the operator still gets a heads-up.
 
 What this module does NOT own:
 
@@ -124,9 +128,18 @@ def disk_pressure_status(path: str | os.PathLike[str] | None = None) -> DiskPres
     free_pct = (usage.free / usage.total * 100.0) if usage.total else 100.0
 
     below_gb = free_gb < min_gb
-    below_pct = free_pct < min_pct
-    critical = below_gb or below_pct
+    # The absolute GB floor is the real ENOSPC guard: a firing needs a few GB of
+    # headroom no matter how large the disk is. The percent is advisory ONLY. A
+    # low percent on a large disk (e.g. a few GB free on a multi-hundred-GB
+    # volume) is not a reason to skip, because the absolute free space is ample.
+    # Letting the percent alone force a skip can wedge the whole fleet off a
+    # big-but-busy disk.
+    critical = below_gb
 
+    # Advisory "low" band: a floor is approaching but the disk is not yet
+    # critical. The percent contributes here (and to any throttled heads-up) so
+    # the operator still gets an early warning, without it ever blocking a
+    # firing on its own.
     low_gb = free_gb < min_gb * _LOW_BAND_MULTIPLIER
     low_pct = free_pct < min_pct * _LOW_BAND_MULTIPLIER
     low = (low_gb or low_pct) and not critical
