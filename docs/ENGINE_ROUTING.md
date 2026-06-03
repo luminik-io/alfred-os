@@ -100,7 +100,7 @@ Each new engine needs three things to land: a CLI binary on PATH, a deterministi
 ## See also
 
 - [Architecture](./../ARCHITECTURE.md): why the engine is a fresh subprocess per firing.
-- [How it works](./../docs/HOW_IT_WORKS.md): the firing trace including the engine call.
+- [Agent lifecycle](./ARCHITECTURE.md#agent-lifecycle): the firing trace including the engine call.
 - [Claude Code](./CLAUDE_CODE.md): install, auth, Pro vs Max sizing, account swap.
 - [Codex provider](./CODEX_PROVIDER.md): the Codex runtime contract and write-boundary posture.
 - [State and memory](./STATE_AND_MEMORY.md): the `engines/<codename>` state file.

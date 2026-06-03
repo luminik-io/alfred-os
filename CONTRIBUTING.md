@@ -49,7 +49,7 @@ Body explains why, not what. The diff already shows what.
 
 ## Testing changes to the runtime library
 
-`lib/agent_runner.py` is shared by every agent. Test changes by:
+`lib/agent_runner/` is shared by every agent. Test changes by:
 
 1. Editing the lib in this repo.
 2. Running `bash deploy.sh` (it's idempotent).

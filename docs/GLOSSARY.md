@@ -28,7 +28,7 @@ in depth.
 - **`agent:pr-open` label**: Set on the issue when the implementing agent
   opens its PR; cleared when the PR merges or closes.
   See also: [State machine](STATE_MACHINE.md).
-- **AGENT_RUNNER**: The shared Python library at `lib/agent_runner.py` that
+- **AGENT_RUNNER**: The shared Python library at `lib/agent_runner/` that
   every agent script imports for preflight, locking, spend, gh, and Slack.
   See also: [agent_runner reference](../site/src/content/docs/reference/agent-runner.md).
 - **AgentResult**: The dataclass an engine returns to the runner, containing

@@ -12,7 +12,7 @@ Acknowledgement target: 72 hours. Patch (or documented trade-off) target for cri
 
 In scope:
 
-- `lib/agent_runner.py`: framework primitives every consumer agent imports.
+- `lib/agent_runner/`: framework primitives every consumer agent imports.
 - `bin/`: operator-facing helpers.
 - `examples/bin/label_state.py`: operator CLI for the state machine.
 - `examples/git-hooks/pre-push`: pre-push hook installed in consumer repos.
