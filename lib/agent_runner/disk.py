@@ -20,7 +20,7 @@ without editing code:
 
 The absolute GB floor is the hard guard: ``critical`` is True only when free
 space drops below ``ALFRED_MIN_FREE_DISK_GB``. The percent floor is advisory
-only — a low percent on a large disk (e.g. a few GB free on a multi-hundred-GB
+only. A low percent on a large disk (e.g. a few GB free on a multi-hundred-GB
 volume) still leaves ample absolute headroom, so it must not force a back-off
 on its own. ``low`` is an early-warning band (free space within ``1.5x`` of
 *either* floor) that has not yet crossed into ``critical``; the percent floor
