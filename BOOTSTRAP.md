@@ -15,7 +15,7 @@ The fleet runs on a single always-on host. A Mac Mini works. An old laptop with 
 | Tool | Why | Install |
 |---|---|---|
 | macOS 13+ or Debian/Ubuntu Linux | `launchd` per-user agents (macOS) or `systemd --user` timers (Linux) for per-firing scheduling | n/a (see [`docs/LINUX.md`](docs/LINUX.md) for the Linux path) |
-| Python 3.11+ | The agent runners and `agent_runner.py` library | `brew install python@3.11` |
+| Python 3.11+ | The agent runners and `agent_runner` library | `brew install python@3.11` |
 | Node via fnm | Frontend pre-push checks; `claude` CLI lives under fnm by default in this repo | `brew install fnm && fnm install --lts` |
 | `git` 2.40+ | Worktree commands the agents lean on | `brew install git` |
 | `gh` (GitHub CLI) | Every agent uses `gh issue` / `gh pr` | `brew install gh && gh auth login` |
@@ -113,7 +113,7 @@ aws --profile <admin-profile> secretsmanager create-secret \
 
 Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` if you keep secrets under a different prefix.
 
-The runtime caches the webhook at `$ALFRED_HOME/state/slack-webhook.cache` with a 30-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner.py`](lib/agent_runner.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
+The runtime caches the webhook at `$ALFRED_HOME/state/slack-webhook.cache` with a 30-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner/`](lib/agent_runner/__init__.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
 
 ## 4. Configure the fleet
 
@@ -166,8 +166,10 @@ Expected output:
 ...
 ```
 
-The script copies `lib/agent_runner.py` to `$ALFRED_HOME/lib` and every regular
-file in `bin/` to `$ALFRED_HOME/bin`. When `launchd/agents.conf` exists, it
+The script copies the whole `lib/` tree (top-level modules plus the
+`agent_runner/`, `connectors/`, `fleet_brain/`, `memory/`, and `server/`
+subpackages) to `$ALFRED_HOME/lib` and every regular file in `bin/` to
+`$ALFRED_HOME/bin`. When `launchd/agents.conf` exists, it
 renders host scheduler units from that manifest: launchd plists on macOS,
 systemd user services/timers on Linux.
 

@@ -48,7 +48,7 @@ Current map of the public docs. Trust code first, then this index.
 
 - [`OUTPUT_SAMPLES.md`](OUTPUT_SAMPLES.md): every shape of Slack post, doctor run, issue body, PR, and state JSON in one place.
 - [`GLOSSARY.md`](GLOSSARY.md): one-sentence definitions for every codename, label, sentinel, and runtime concept.
-- [`../lib/agent_runner.py`](../lib/agent_runner.py): shared runtime library.
+- [`../lib/agent_runner/`](../lib/agent_runner/__init__.py): shared runtime library (package; public API in `__init__.py`).
 - [`../lib/slack_format.py`](../lib/slack_format.py): Slack Block Kit formatting helpers.
 - [`../lib/batman.py`](../lib/batman.py): multi-repo bundle primitives.
 - [`../bin/`](../bin/): operator CLI, init wizard, doctor, deploy helpers, and reference agent runners.

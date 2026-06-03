@@ -156,7 +156,7 @@ the LLM call.
 
 ## Anything else not working on Linux?
 
-The framework primitives in `lib/agent_runner.py` (preflight, lock, spend,
+The framework primitives in `lib/agent_runner/` (preflight, lock, spend,
 claude_invoke, gh, slack, claim_issue/release_issue, severity routing) are
 plain Python and Bash and have always run on Linux. `tests/` runs the full
 `pytest` suite on Linux CI. If you hit a Linux-specific bug, file an issue.

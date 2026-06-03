@@ -57,7 +57,7 @@ for a read-only reliability report. Missing optional dependencies or a missing
 brain database degrade to an "unknown" governor panel instead of failing the
 page.
 
-Canonical layout (written by `lib/agent_runner.py`):
+Canonical layout (written by `lib/agent_runner/`):
 
 ```
 $ALFRED_HOME/state/

@@ -157,7 +157,7 @@ To add a role not in the default set (e.g., `arsenal` for "deploy-time security 
 3. Run `bash deploy.sh`.
 4. Run `bash bin/doctor.sh` to confirm preflight passes.
 
-The existing primitives in `lib/agent_runner.py` cover the common patterns: lock, preflight, spend, gh, slack, claim/release, claude_invoke, event log. Read [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md) before writing the script.
+The existing primitives in `lib/agent_runner/` cover the common patterns: lock, preflight, spend, gh, slack, claim/release, claude_invoke, event log. Read [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md) before writing the script.
 
 ## Roadmap categories (post-v0.2)
 

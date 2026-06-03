@@ -179,7 +179,7 @@ $ALFRED_HOME/state/
         <firing-id>.last.md
 ```
 
-The `claude_invoke_streaming()` helper in `lib/agent_runner.py` writes
+The `claude_invoke_streaming()` helper in `lib/agent_runner/` writes
 transcripts here automatically. The SpendState helper writes spend files
 on each firing. Hosts that have not run any agent yet will have an empty
 or missing state directory; both CLIs degrade gracefully (exit 2 with a

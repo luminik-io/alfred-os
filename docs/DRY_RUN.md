@@ -72,7 +72,7 @@ firing), the event log, prompt construction, and the runner's own
 result-branching logic.
 
 Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper,
-checked at exactly these seams in [`lib/agent_runner.py`](../lib/agent_runner.py):
+checked at exactly these seams in [`lib/agent_runner/`](../lib/agent_runner/__init__.py):
 
 | Boundary | Real behaviour | Dry-run behaviour |
 |---|---|---|

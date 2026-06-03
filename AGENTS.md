@@ -8,7 +8,7 @@ first; this file is the short version those agents need.
 
 Alfred is the open-source runtime for a fleet of autonomous engineering agents
 on Claude Code and Codex. The OS scheduler (launchd on macOS, systemd on Linux)
-fires each agent; `lib/agent_runner.py` wraps every firing in a lock,
+fires each agent; `lib/agent_runner/` wraps every firing in a lock,
 preflight, spend cap, and an isolated git worktree. Agents are one Python file
 per role under `bin/`, named after a coherent fictional cast (the codename
 pattern). `examples/` holds the reference agents the tutorial builds.

@@ -99,7 +99,7 @@ The pre-push hook in `examples/git-hooks/pre-push` enforces this symmetrically: 
 
 `is_repo_paused(slug)` reads this file. Missing or unparseable file is treated as "no repos paused" (fail-open).
 
-## API surface (in `agent_runner.py`)
+## API surface (in `agent_runner`)
 
 ```python
 # State transitions

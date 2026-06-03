@@ -46,7 +46,7 @@ Resolution order:
 
 ## Runtime Contract
 
-`lib/agent_runner.py` owns the adapter.
+`lib/agent_runner/` owns the adapter.
 
 - Binary: `CODEX_BIN` or `codex` on PATH.
 - Model: `CODEX_MODEL`, or Codex CLI default.

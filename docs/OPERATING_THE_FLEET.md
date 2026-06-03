@@ -177,7 +177,7 @@ Block thirty minutes once a week. The fleet does most of its own housekeeping vi
 ## See also
 
 - [Architecture](./../ARCHITECTURE.md): the design that makes this runbook short.
-- [How it works](./../docs/HOW_IT_WORKS.md): one firing traced end to end.
+- [Agent lifecycle](./ARCHITECTURE.md#agent-lifecycle): one firing traced end to end.
 - [State and memory](./STATE_AND_MEMORY.md): every state file this page reads or writes.
 - [Engine routing](./ENGINE_ROUTING.md): per-codename Claude / Codex / hybrid.
 - [Issue claim state machine](./STATE_MACHINE.md): cooperative coordination via GitHub labels and comments.

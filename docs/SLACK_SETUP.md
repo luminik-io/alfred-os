@@ -109,7 +109,7 @@ You should see the message in your channel and `posted: True` on stdout.
 
 ## 6. Severity ladder (optional but recommended)
 
-`slack_post()` accepts a `severity=` keyword: `info` (default), `warn`, `alert`. The latter two prefix and ping respectively. See [`STATE_MACHINE.md`](STATE_MACHINE.md) for the design rationale and [`agent_runner.py`](../lib/agent_runner.py) for the docstring.
+`slack_post()` accepts a `severity=` keyword: `info` (default), `warn`, `alert`. The latter two prefix and ping respectively. See [`STATE_MACHINE.md`](STATE_MACHINE.md) for the design rationale and [`agent_runner`](../lib/agent_runner/__init__.py) for the docstring.
 
 Quick demo:
 
