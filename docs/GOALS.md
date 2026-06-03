@@ -18,7 +18,11 @@ a goal in natural language inside a thread:
 The native client is the local control surface for the same goal state. It should
 show active goals, blocked goals, evidence, plans, runs, memory used, and safe
 local actions without pushing the operator into a browser for local Alfred state.
-The CLI remains the portable substrate:
+
+The CLI is the intended portable substrate. The goal verbs below are the planned
+contract, not a shipped command yet; the durable goal ledger and its
+`alfred goal` surface are tracked under "Native local client v2" in
+[`../ROADMAP.md`](../ROADMAP.md):
 
 ```sh
 alfred goal create
