@@ -92,6 +92,16 @@ def test_has_blocker_detects_each_blocker():
     assert not labels.has_blocker(set())
 
 
+def test_claim_blockers_allow_batman_bundle_labels():
+    assert labels.LARGE_FEATURE in labels.pickup_blocking_labels({labels.LARGE_FEATURE})
+    assert labels.bundle_label("checkout") in labels.pickup_blocking_labels(
+        {labels.bundle_label("checkout")}
+    )
+    assert labels.claim_blocking_labels({labels.LARGE_FEATURE}) == []
+    assert labels.claim_blocking_labels({labels.bundle_label("checkout")}) == []
+    assert labels.claim_blocking_labels({labels.DONE}) == [labels.DONE]
+
+
 def test_robin_triage_blockers_include_feature_and_bundle_labels():
     blockers = labels.robin_triage_blocking_labels(
         {

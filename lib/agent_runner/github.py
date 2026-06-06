@@ -989,7 +989,7 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
     if state.get("state") != "OPEN":
         return False
     labels = {lbl["name"] for lbl in state.get("labels", [])}
-    blockers = label_constants.pickup_blocking_labels(labels)
+    blockers = label_constants.claim_blocking_labels(labels)
     if blockers:
         return False
     ensure_labels(repo_slug, LIFECYCLE_LABELS)

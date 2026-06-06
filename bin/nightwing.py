@@ -748,6 +748,11 @@ def main() -> int:
                 f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] comment {cid}: "
                 f"files={files}. {detail}"
             )
+            slack_post(
+                f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] PR {pr_num} "
+                f"comment {cid}; files={files}. {detail}",
+                severity="warn",
+            )
             events.emit(
                 "workflow_validation_failed",
                 comment_id=cid,

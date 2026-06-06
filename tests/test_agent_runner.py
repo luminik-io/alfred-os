@@ -1398,9 +1398,11 @@ def test_claim_issue_rolls_back_when_claim_comment_fails(monkeypatch):
     ]
 
 
-def test_claim_issue_refuses_bundle_label(monkeypatch):
+def test_claim_issue_allows_bundle_labels_for_batman_claim(monkeypatch):
     import agent_runner as ar
 
+    edits = []
+    comments = []
     monkeypatch.setattr(ar, "is_repo_paused", lambda repo: False)
     monkeypatch.setattr(
         ar,
@@ -1415,13 +1417,19 @@ def test_claim_issue_refuses_bundle_label(monkeypatch):
             "number": num,
         },
     )
-    monkeypatch.setattr(
-        ar,
-        "gh_issue_edit",
-        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not edit")),
-    )
+    monkeypatch.setattr(ar, "ensure_labels", lambda *a, **kw: None)
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: comments.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "_detect_contested_claim", lambda *a, **kw: None)
 
-    assert not ar.claim_issue("myrepo", 62, codename="lucius", firing_id="fid-1")
+    assert ar.claim_issue("myrepo", 62, codename="batman", firing_id="fid-1")
+    assert edits == [
+        (
+            ("myrepo", 62),
+            {"add_labels": ["agent:in-flight"], "remove_labels": ["agent:implement"]},
+        )
+    ]
+    assert comments
 
 
 def test_release_issue_reports_comment_failure(monkeypatch):

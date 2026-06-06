@@ -143,6 +143,17 @@ PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
 )
 """Static labels that make an issue ineligible for autonomous pickup."""
 
+CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
+    label for label in PICKUP_BLOCKING_LABEL_SET if label != LARGE_FEATURE
+)
+"""Static labels that make an atomic issue claim unsafe.
+
+Unlike pickup scanning, claim-time blocking deliberately ignores
+``agent:large-feature`` and dynamic ``agent:bundle:*`` labels. Batman owns
+those labels and must still be able to claim bundle members atomically after it
+has selected an eligible bundle.
+"""
+
 ROBIN_TRIAGE_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
     set(PICKUP_BLOCKING_LABEL_SET) | {FEATURE, ENHANCEMENT}
 )
@@ -164,6 +175,12 @@ def pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> lis
 def has_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
     """True when any label blocks autonomous pickup."""
     return bool(pickup_blocking_labels(labels))
+
+
+def claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return sorted labels that block the shared claim primitive."""
+    s = set(labels)
+    return sorted(s & CLAIM_BLOCKING_LABEL_SET)
 
 
 def robin_triage_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
@@ -305,10 +322,7 @@ def lifecycle_state(labels: set[str] | frozenset[str] | list[str]) -> str | None
 
 
 def has_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
-    """True if the label set contains any claim-blocking label.
-
-    Matches ``claim_issue`` in ``agent_runner.github``.
-    """
+    """Legacy alias for pickup-blocking labels."""
     return has_pickup_blocker(labels)
 
 

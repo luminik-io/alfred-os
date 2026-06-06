@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import os
 import stat
@@ -542,6 +543,22 @@ def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
     assert command == "npm ci && npm run typecheck && npm run lint && CI=1 npm test"
 
 
+def test_lucius_bun_pre_push_runs_package_test_script(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "package.json").write_text(
+        json.dumps({"scripts": {"test": "vitest run"}}),
+        encoding="utf-8",
+    )
+    (repo / "bun.lock").write_text("", encoding="utf-8")
+
+    command = lucius._default_node_pre_push_command(repo)
+
+    assert "CI=1 bun run test" in command
+    assert "CI=1 bun test" not in command
+
+
 def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     lucius = load_bin_module("lucius.py", monkeypatch)
@@ -658,6 +675,18 @@ def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
 
     repos = [cmd[cmd.index("-R") + 1] for cmd in calls]
     assert repos == ["acme/api", "acme/backend", "other-org/shared"]
+
+
+def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
+    nightwing = load_bin_module("nightwing.py", monkeypatch)
+
+    source = inspect.getsource(nightwing.main)
+    start = source.index("workflow_validation = validate_changed_workflows")
+    end = source.index('push = run(["git", "push"', start)
+    block = source[start:end]
+
+    assert "slack_post(" in block
+    assert "WORKFLOW-VALIDATION-FAILED" in block
 
 
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):

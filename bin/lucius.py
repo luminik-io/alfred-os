@@ -240,7 +240,7 @@ def _default_node_pre_push_command(local_dir: Path) -> str:
         install = "bun install --frozen-lockfile"
         manager = "bun"
         typecheck = "bunx tsc --noEmit"
-        test = "CI=1 bun test"
+        test = "CI=1 bun run test"
     else:
         install = (
             "npm ci"
