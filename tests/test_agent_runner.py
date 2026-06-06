@@ -1411,6 +1411,7 @@ def test_claim_issue_allows_bundle_labels_for_batman_claim(monkeypatch):
             "labels": [
                 {"name": "agent:implement"},
                 {"name": "agent:bundle:checkout"},
+                {"name": "agent:plan-pending-approval"},
             ],
             "state": "OPEN",
             "comments": [],

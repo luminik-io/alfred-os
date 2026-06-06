@@ -144,14 +144,17 @@ PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
 """Static labels that make an issue ineligible for autonomous pickup."""
 
 CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
-    label for label in PICKUP_BLOCKING_LABEL_SET if label != LARGE_FEATURE
+    label
+    for label in PICKUP_BLOCKING_LABEL_SET
+    if label not in {LARGE_FEATURE, PLAN_PENDING_APPROVAL}
 )
 """Static labels that make an atomic issue claim unsafe.
 
 Unlike pickup scanning, claim-time blocking deliberately ignores
-``agent:large-feature`` and dynamic ``agent:bundle:*`` labels. Batman owns
-those labels and must still be able to claim bundle members atomically after it
-has selected an eligible bundle.
+``agent:large-feature``, ``agent:plan-pending-approval``, and dynamic
+``agent:bundle:*`` labels. Batman owns those labels and must still be able to
+claim bundle members and approval parents atomically after it has selected
+eligible work.
 """
 
 ROBIN_TRIAGE_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(

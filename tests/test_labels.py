@@ -99,6 +99,7 @@ def test_claim_blockers_allow_batman_bundle_labels():
     )
     assert labels.claim_blocking_labels({labels.LARGE_FEATURE}) == []
     assert labels.claim_blocking_labels({labels.bundle_label("checkout")}) == []
+    assert labels.claim_blocking_labels({labels.PLAN_PENDING_APPROVAL}) == []
     assert labels.claim_blocking_labels({labels.DONE}) == [labels.DONE]
 
 

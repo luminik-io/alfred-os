@@ -63,8 +63,9 @@ def test_missing_file_is_not_auto_seed(lucius, tmp_path):
     assert lucius._is_unmodified_auto_seed(tmp_path / "nope.md") is False
 
 
-def test_lucius_pr_body_link_closes_issue(lucius):
+def test_lucius_issue_link_lines_distinguish_complete_and_wip_work(lucius):
     assert lucius.issue_closing_line(42) == "Closes #42"
+    assert lucius.issue_reference_line(42) == "Issue: #42"
 
 
 def test_operator_prompt_guidance_skips_untouched_seed_end_to_end(lucius):

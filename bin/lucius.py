@@ -163,6 +163,11 @@ def issue_closing_line(issue_num: int) -> str:
     return f"Closes #{issue_num}"
 
 
+def issue_reference_line(issue_num: int) -> str:
+    """Return a non-closing issue link for incomplete draft work."""
+    return f"Issue: #{issue_num}"
+
+
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
     """Load per-repo pre-push commands from ${HOME}/.alfredrc.d/<codename>.yaml.
 
@@ -1208,7 +1213,7 @@ def main() -> int:
 
 {AGENT.title()}'s `{engine_used}` run returned success but did not produce a commit. Inspecting the worktree found unstaged changes - committing them here for human review.
 
-{issue_closing_line(issue_num)}
+{issue_reference_line(issue_num)}
 Engine: {engine_used}
 Turns: {result.num_turns}
 Cost equivalent: ${result.cost_usd:.2f}
