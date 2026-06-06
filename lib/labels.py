@@ -162,6 +162,11 @@ ROBIN_TRIAGE_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
 )
 """Labels that make an issue ineligible for Robin to turn into implementation work."""
 
+FEATURE_DEV_PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
+    set(PICKUP_BLOCKING_LABEL_SET) | {FEATURE, ENHANCEMENT}
+)
+"""Static labels that make an issue ineligible for feature-dev pickup."""
+
 
 def pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
     """Return sorted labels that block autonomous pickup.
@@ -185,10 +190,12 @@ def feature_dev_pickup_blocking_labels(labels: set[str] | frozenset[str] | list[
 
     Batman-created child issues keep their ``agent:bundle:<slug>`` provenance
     label while also carrying ``agent:implement``. Lucius must still pick those
-    up. Static large-feature / approval labels remain blockers.
+    up. Static large-feature / approval labels remain blockers. Human/product
+    feature labels stay blocked here too; Robin decides when those become
+    implementation work.
     """
     s = set(labels)
-    return sorted(s & PICKUP_BLOCKING_LABEL_SET)
+    return sorted(s & FEATURE_DEV_PICKUP_BLOCKING_LABEL_SET)
 
 
 def has_feature_dev_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:

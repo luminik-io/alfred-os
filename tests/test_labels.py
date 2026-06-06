@@ -117,6 +117,13 @@ def test_feature_dev_pickup_allows_batman_child_bundle_label():
     assert labels.feature_dev_pickup_blocking_labels(parent_labels) == [labels.LARGE_FEATURE]
     assert labels.has_feature_dev_pickup_blocker(parent_labels)
 
+    product_labels = {labels.IMPLEMENT, labels.FEATURE, labels.ENHANCEMENT}
+    assert labels.feature_dev_pickup_blocking_labels(product_labels) == [
+        labels.ENHANCEMENT,
+        labels.FEATURE,
+    ]
+    assert labels.has_feature_dev_pickup_blocker(product_labels)
+
 
 def test_robin_triage_blockers_include_feature_and_bundle_labels():
     blockers = labels.robin_triage_blocking_labels(
