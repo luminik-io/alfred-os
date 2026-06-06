@@ -677,6 +677,33 @@ def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
     assert repos == ["acme/api", "acme/backend", "other-org/shared"]
 
 
+def test_lucius_dependency_lookup_failure_warns_and_blocks(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setattr(lucius, "GH_ORG", "acme")
+    posts: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(lucius, "gh_json", lambda _cmd, *, default: default)
+    monkeypatch.setattr(
+        lucius,
+        "slack_post",
+        lambda msg, severity=None: posts.append((msg, severity)),
+    )
+    issue = {
+        "number": 42,
+        "url": "https://github.com/acme/backend/issues/42",
+        "body": "Depends on: #6",
+    }
+
+    assert lucius.issue_has_open_dependencies("backend", issue) is True
+    assert posts == [
+        (
+            "[LUCIUS-DEPENDENCY-LOOKUP-FAILED] holding backend#42; "
+            "could not resolve dependency acme/backend#6",
+            "warn",
+        )
+    ]
+
+
 def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
     nightwing = load_bin_module("nightwing.py", monkeypatch)
 

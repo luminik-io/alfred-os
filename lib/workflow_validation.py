@@ -36,13 +36,31 @@ def _run(
     timeout: int,
     run_cmd: RunCmd,
 ) -> subprocess.CompletedProcess:
-    return run_cmd(
-        list(args),
-        cwd=str(cwd),
-        timeout=timeout,
-        text=True,
-        capture_output=True,
-    )
+    cmd = list(args)
+    try:
+        return run_cmd(
+            cmd,
+            cwd=str(cwd),
+            timeout=timeout,
+            text=True,
+            capture_output=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stderr = f"command timed out after {exc.timeout}s: {' '.join(cmd)}"
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=124,
+            stdout=exc.stdout or "",
+            stderr=stderr,
+        )
+    except OSError as exc:
+        stderr = f"{exc.__class__.__name__}: {exc}"
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=127,
+            stdout="",
+            stderr=stderr,
+        )
 
 
 def changed_workflow_files(

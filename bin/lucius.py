@@ -119,6 +119,7 @@ PACKAGE_DEPENDENCY_FIELDS = (
     "bundleDependencies",
     "bundledDependencies",
 )
+DEPENDENCY_LOOKUP_FAILED = "__ALFRED_DEP_LOOKUP_FAILED__"
 
 
 class PrePushResult:
@@ -767,9 +768,19 @@ def issue_has_open_dependencies(repo: str, issue: dict) -> bool:
                 "--json",
                 "state",
             ],
-            default={"state": "OPEN"},
+            default={"state": DEPENDENCY_LOOKUP_FAILED},
         )
-        if (state.get("state") or "OPEN").upper() != "CLOSED":
+        dep_state = (state.get("state") or DEPENDENCY_LOOKUP_FAILED).upper()
+        if dep_state == DEPENDENCY_LOOKUP_FAILED:
+            issue_num = issue.get("number", "?")
+            msg = (
+                f"[{AGENT.upper()}-DEPENDENCY-LOOKUP-FAILED] holding {repo}#{issue_num}; "
+                f"could not resolve dependency {gh_repo}#{dep.number}"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            return True
+        if dep_state != "CLOSED":
             return True
     return False
 

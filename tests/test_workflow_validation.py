@@ -101,3 +101,23 @@ def test_validate_changed_workflows_reports_actionlint_failure(tmp_path):
     assert result.ok is False
     assert result.reason == "actionlint failed"
     assert result.stderr == "bad workflow"
+
+
+def test_validate_changed_workflows_reports_actionlint_timeout(tmp_path):
+    worktree = tmp_path / "repo"
+    (worktree / ".github" / "workflows").mkdir(parents=True)
+
+    def fake_run(cmd, **kwargs):
+        if "diff" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=".github/workflows/ci.yml\n")
+        raise subprocess.TimeoutExpired(cmd, timeout=kwargs["timeout"])
+
+    result = validate_changed_workflows(
+        worktree,
+        actionlint_bin="actionlint",
+        run_cmd=fake_run,
+    )
+
+    assert result.ok is False
+    assert result.reason == "actionlint failed"
+    assert "timed out" in result.stderr
