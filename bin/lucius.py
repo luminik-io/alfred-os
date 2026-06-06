@@ -541,7 +541,7 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
             # Defensive: skip anything carrying a state-machine blocker. The
             # gh query already filters by agent:implement, but a fresh issue
             # could acquire one of these between query and pick.
-            if label_constants.has_pickup_blocker(label_names):
+            if label_constants.has_feature_dev_pickup_blocker(label_names):
                 continue
             if issue_has_open_dependencies(repo, issue):
                 continue
@@ -855,8 +855,11 @@ def _push_or_preserve(
     *,
     release_on_failure: bool = True,
     run_checks: bool = True,
+    run_workflow_validation: bool | None = None,
 ) -> bool:
     """Push the current branch, preserving local work and releasing for retry on failure."""
+    if run_workflow_validation is None:
+        run_workflow_validation = run_checks
     if run_checks:
         pre_push = run_pre_push_checks(repo, wt)
         if not pre_push.ok:
@@ -883,6 +886,7 @@ def _push_or_preserve(
             slack_post(msg, severity="warn")
             return False
 
+    if run_workflow_validation:
         workflow_validation = validate_changed_workflows(wt)
         if not workflow_validation.ok:
             recovery_ref = create_recovery_ref(wt, branch=branch)
@@ -1252,6 +1256,7 @@ def main() -> int:
                     branch,
                     "partial-push-failed",
                     run_checks=False,
+                    run_workflow_validation=True,
                 ):
                     spend.increment(failures_today=1, consecutive_failures=1)
                     return 0

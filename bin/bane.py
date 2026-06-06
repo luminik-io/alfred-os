@@ -371,6 +371,7 @@ def main() -> int:
         )
         print(msg)
         slack_post(msg, severity="warn")
+        spend.increment(failures_today=1, consecutive_failures=1)
         events.emit("firing_complete", outcome="workflow-validation-failed")
         return 0
     run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=60)

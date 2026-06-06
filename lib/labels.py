@@ -180,6 +180,22 @@ def has_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
     return bool(pickup_blocking_labels(labels))
 
 
+def feature_dev_pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return labels that block the feature-dev agent from picking up work.
+
+    Batman-created child issues keep their ``agent:bundle:<slug>`` provenance
+    label while also carrying ``agent:implement``. Lucius must still pick those
+    up. Static large-feature / approval labels remain blockers.
+    """
+    s = set(labels)
+    return sorted(s & PICKUP_BLOCKING_LABEL_SET)
+
+
+def has_feature_dev_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
+    """True when labels block the feature-dev pickup path."""
+    return bool(feature_dev_pickup_blocking_labels(labels))
+
+
 def claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
     """Return sorted labels that block the shared claim primitive."""
     s = set(labels)

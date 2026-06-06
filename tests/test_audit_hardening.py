@@ -394,6 +394,38 @@ def test_lucius_existing_authored_pr_removes_issue_from_implement_queue(monkeypa
     ]
 
 
+def test_lucius_pick_issue_accepts_batman_bundle_child(monkeypatch):
+    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "backend")
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
+    monkeypatch.setattr(lucius, "issue_has_open_dependencies", lambda repo, issue: False)
+    monkeypatch.setattr(lucius, "find_open_authored_pr_for_issue", lambda repo, issue: None)
+    monkeypatch.setattr(
+        lucius,
+        "gh_json",
+        lambda *a, **kw: [
+            {
+                "number": 42,
+                "title": "feat: implement bundle slice",
+                "url": "https://github.com/acme/backend/issues/42",
+                "labels": [
+                    {"name": "agent:implement"},
+                    {"name": "agent:bundle:checkout"},
+                ],
+                "createdAt": "2026-06-01T00:00:00Z",
+                "body": "",
+                "author": {"login": "maintainer"},
+            }
+        ],
+    )
+
+    repo, issue = lucius.pick_issue()
+
+    assert repo == "backend"
+    assert issue is not None
+    assert issue["number"] == 42
+
+
 def test_lucius_unknown_author_trust_moves_issue_out_of_queue(monkeypatch):
     lucius = load_bin_module("lucius.py", monkeypatch)
 
@@ -710,9 +742,10 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
     assert posts and "Missing: niyora-sync" in posts[0]
 
 
-def test_lucius_partial_salvage_push_can_skip_pre_push_gates(monkeypatch, tmp_path):
+def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     pushed: list[tuple[Path, str]] = []
+    validations: list[Path] = []
 
     monkeypatch.setattr(
         lucius,
@@ -722,7 +755,10 @@ def test_lucius_partial_salvage_push_can_skip_pre_push_gates(monkeypatch, tmp_pa
     monkeypatch.setattr(
         lucius,
         "validate_changed_workflows",
-        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("should skip workflow validation")),
+        lambda wt: (
+            validations.append(wt)
+            or SimpleNamespace(ok=True, stdout="", stderr="", reason="", files=[])
+        ),
     )
     monkeypatch.setattr(
         lucius,
@@ -738,8 +774,141 @@ def test_lucius_partial_salvage_push_can_skip_pre_push_gates(monkeypatch, tmp_pa
         "lucius/83",
         "partial-push-failed",
         run_checks=False,
+        run_workflow_validation=True,
     )
+    assert validations == [tmp_path]
     assert pushed == [(tmp_path, "lucius/83")]
+
+
+def test_lucius_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    releases: list[dict] = []
+    posts: list[str] = []
+
+    monkeypatch.setattr(
+        lucius,
+        "run_pre_push_checks",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("should skip pre-push")),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "validate_changed_workflows",
+        lambda wt: SimpleNamespace(
+            ok=False,
+            stdout="",
+            stderr="workflow syntax error",
+            reason="actionlint_failed",
+            files=[".github/workflows/ci.yml"],
+        ),
+    )
+    monkeypatch.setattr(lucius, "create_recovery_ref", lambda _wt, *, branch: "refs/recovery/x")
+    monkeypatch.setattr(
+        lucius,
+        "release_issue",
+        lambda repo, issue_num, **kw: releases.append({"repo": repo, "issue": issue_num, **kw}),
+    )
+    monkeypatch.setattr(lucius, "slack_post", lambda message, **_kw: posts.append(message))
+    monkeypatch.setattr(
+        lucius,
+        "push_current_branch",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not push")),
+    )
+
+    ok = lucius._push_or_preserve(
+        "mobile",
+        83,
+        "fid-1",
+        tmp_path,
+        "lucius/83",
+        "partial-push-failed",
+        run_checks=False,
+        run_workflow_validation=True,
+    )
+
+    assert ok is False
+    assert releases == [
+        {
+            "repo": "mobile",
+            "issue": 83,
+            "codename": "lucius",
+            "firing_id": "fid-1",
+            "outcome": "workflow-validation-failed",
+        }
+    ]
+    assert posts and ".github/workflows/ci.yml" in posts[0]
+
+
+def test_bane_workflow_validation_failure_counts_as_failure(monkeypatch, tmp_path):
+    monkeypatch.setenv("ALFRED_BANE_REPOS", "backend")
+    bane = load_bin_module("bane.py", monkeypatch)
+    increments: list[dict] = []
+    posts: list[str] = []
+
+    class FakeEvents:
+        firing_id = "fid-1"
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def emit(self, *a, **kw):
+            pass
+
+    class FakeSpend:
+        def __init__(self, *a, **kw):
+            pass
+
+        def increment(self, **kw):
+            increments.append(kw)
+
+    monkeypatch.setattr(bane, "with_lock", lambda agent: None)
+    monkeypatch.setattr(bane, "preflight", lambda spec: None)
+    monkeypatch.setattr(bane, "doctor_mode", lambda: False)
+    monkeypatch.setattr(bane, "EventLog", FakeEvents)
+    monkeypatch.setattr(bane, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(bane, "SpendState", FakeSpend)
+    monkeypatch.setattr(bane, "pick_repo", lambda: "backend")
+    monkeypatch.setattr(bane, "local_repo_dir", lambda repo: repo)
+    monkeypatch.setattr(bane, "WORKSPACE", tmp_path)
+    monkeypatch.setattr(bane, "make_worktree", lambda repo, agent, kind: (tmp_path, "bane/1"))
+    monkeypatch.setattr(
+        bane,
+        "invoke_agent_engine",
+        lambda *a, **kw: (
+            SimpleNamespace(
+                success=True,
+                result_text="[OK] commit abc - file=src/foo.py branches=happy",
+                num_turns=3,
+                cost_usd=0.12,
+                subtype="",
+            ),
+            "codex",
+        ),
+    )
+    monkeypatch.setattr(
+        bane,
+        "run",
+        lambda cmd, **kw: SimpleNamespace(stdout="abc\n", stderr="", returncode=0),
+    )
+    monkeypatch.setattr(
+        bane,
+        "validate_changed_workflows",
+        lambda wt: SimpleNamespace(
+            ok=False,
+            stdout="",
+            stderr="workflow syntax error",
+            reason="actionlint_failed",
+            files=[".github/workflows/ci.yml"],
+        ),
+    )
+    monkeypatch.setattr(bane, "slack_post", lambda message, **kw: posts.append(message))
+
+    assert bane.main() == 0
+
+    assert increments == [
+        {"firings_today": 1, "turns_today": 3, "cost_usd_today": 0.12},
+        {"failures_today": 1, "consecutive_failures": 1},
+    ]
+    assert posts and "[BANE-WORKFLOW-VALIDATION-FAILED]" in posts[0]
 
 
 def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):

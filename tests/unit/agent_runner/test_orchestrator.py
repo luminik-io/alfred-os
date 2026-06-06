@@ -125,6 +125,8 @@ def test_sync_checkout_to_default_fast_forwards_clean_default_branch(
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         if cmd[:2] == ["git", "merge"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="Already up to date.\n", stderr="")
+        if cmd[:3] == ["git", "rev-list", "--count"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="0\n", stderr="")
         raise AssertionError(cmd)
 
     ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fake_run)
@@ -137,6 +139,7 @@ def test_sync_checkout_to_default_fast_forwards_clean_default_branch(
         ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
         ["git", "fetch", "origin", "main"],
         ["git", "merge", "--ff-only", "origin/main"],
+        ["git", "rev-list", "--count", "origin/main..HEAD"],
     ]
 
 
@@ -219,6 +222,52 @@ def test_sync_checkout_to_default_fails_closed_on_merge_error(
     assert ok is False
     assert message == "git merge --ff-only failed: Not possible to fast-forward, aborting."
     assert calls[-1] == ["git", "merge", "--ff-only", "origin/main"]
+
+
+def test_sync_checkout_to_default_fails_closed_on_git_timeout(
+    fresh_agent_runner,
+    tmp_path,
+    monkeypatch,
+):
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_DISABLE_CHECKOUT_SYNC", raising=False)
+
+    def fake_run(cmd, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd, timeout=15)
+
+    ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fake_run)
+
+    assert ok is False
+    assert message == "git status --porcelain timed out after 15s"
+
+
+def test_sync_checkout_to_default_rejects_default_branch_local_commits(
+    fresh_agent_runner,
+    tmp_path,
+    monkeypatch,
+):
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_DISABLE_CHECKOUT_SYNC", raising=False)
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="main\n", stderr="")
+        if cmd[:4] == ["git", "symbolic-ref", "--quiet", "--short"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n", stderr="")
+        if cmd[:2] == ["git", "fetch"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:2] == ["git", "merge"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="Already up to date.\n", stderr="")
+        if cmd[:3] == ["git", "rev-list", "--count"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="2\n", stderr="")
+        raise AssertionError(cmd)
+
+    ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fake_run)
+
+    assert ok is False
+    assert message == "checkout has 2 local commit(s) ahead of origin/main"
 
 
 def test_preflight_reports_checkout_sync_failure(
