@@ -686,6 +686,37 @@ def test_lucius_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_p
     ]
 
 
+def test_lucius_git_helpers_use_remote_default_branch(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    commands: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        commands.append(cmd)
+        if cmd[:3] == ["git", "symbolic-ref", "--quiet"]:
+            return SimpleNamespace(returncode=0, stdout="origin/develop\n", stderr="")
+        if cmd[:3] == ["git", "rev-list", "--count"]:
+            return SimpleNamespace(returncode=0, stdout="2\n", stderr="")
+        if cmd[:3] == ["git", "diff", "--name-only"]:
+            return SimpleNamespace(returncode=0, stdout="package.json\n", stderr="")
+        if cmd[:2] == ["git", "show"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"dependencies": {"old": "1.0.0"}}),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(lucius, "run", fake_run)
+
+    assert lucius._commits_ahead_count(tmp_path) == 2
+    assert lucius._changed_paths(tmp_path) == {"package.json"}
+    assert lucius._git_show_json(tmp_path, "package.json") == {"dependencies": {"old": "1.0.0"}}
+
+    assert ["git", "rev-list", "--count", "origin/develop..HEAD"] in commands
+    assert ["git", "diff", "--name-only", "origin/develop..HEAD"] in commands
+    assert ["git", "show", "origin/develop:package.json"] in commands
+
+
 def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     releases: list[dict] = []
