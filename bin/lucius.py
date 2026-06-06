@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import sys
 import tomllib
 from pathlib import Path
@@ -101,6 +102,40 @@ PREFLIGHT = PreflightSpec(
 
 # Daily turn cap before auto-pausing the launchd agent. Override via env var.
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_LUCIUS_TURN_CAP", "5000"))
+PRE_PUSH_TIMEOUT_SECONDS = int(os.environ.get("ALFRED_PRE_PUSH_TIMEOUT_S", "900"))
+NODE_LOCKFILES = (
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
+)
+PACKAGE_DEPENDENCY_FIELDS = (
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "optionalDependencies",
+    "bundleDependencies",
+    "bundledDependencies",
+)
+
+
+class PrePushResult:
+    def __init__(
+        self,
+        *,
+        ok: bool,
+        command: str = "",
+        reason: str = "",
+        stdout: str = "",
+        stderr: str = "",
+    ) -> None:
+        self.ok = ok
+        self.command = command
+        self.reason = reason
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 def _make_debug_dir(issue_num: int) -> Path | None:
@@ -151,18 +186,84 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
         if repo in user_cfg:
             out[repo] = user_cfg[repo]
             continue
+        local_dir = WORKSPACE / local_repo_dir(repo)
+        node_default = _default_node_pre_push_command(local_dir)
+        if node_default:
+            out[repo] = node_default
+            continue
         # Default by suffix
         if repo.endswith("-backend") or repo.endswith("-api"):
             out[repo] = "./gradlew check"
-        elif repo.endswith(("-frontend", "-mobile", "-web", "-nango")):
-            out[repo] = "npm run lint && npx tsc --noEmit"
         else:
-            local_dir = WORKSPACE / local_repo_dir(repo)
             if (local_dir / "pyproject.toml").exists():
                 out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
             else:
                 out[repo] = ""
     return out
+
+
+def _package_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _node_script_command(manager: str, name: str) -> str:
+    quoted = shlex.quote(name)
+    if manager == "yarn":
+        return f"yarn {quoted}"
+    if manager == "bun":
+        return f"bun run {quoted}"
+    return f"{manager} run {quoted}"
+
+
+def _default_node_pre_push_command(local_dir: Path) -> str:
+    package_json = local_dir / "package.json"
+    if not package_json.exists():
+        return ""
+    package = _package_json(package_json)
+    scripts = package.get("scripts") if isinstance(package.get("scripts"), dict) else {}
+
+    if (local_dir / "pnpm-lock.yaml").exists():
+        install = "pnpm install --frozen-lockfile"
+        manager = "pnpm"
+        typecheck = "pnpm exec tsc --noEmit"
+        test = "CI=1 pnpm test"
+    elif (local_dir / "yarn.lock").exists():
+        install = "yarn install --frozen-lockfile"
+        manager = "yarn"
+        typecheck = "yarn tsc --noEmit"
+        test = "CI=1 yarn test"
+    elif (local_dir / "bun.lock").exists() or (local_dir / "bun.lockb").exists():
+        install = "bun install --frozen-lockfile"
+        manager = "bun"
+        typecheck = "bunx tsc --noEmit"
+        test = "CI=1 bun test"
+    else:
+        install = (
+            "npm ci"
+            if (
+                (local_dir / "package-lock.json").exists()
+                or (local_dir / "npm-shrinkwrap.json").exists()
+            )
+            else "npm install"
+        )
+        manager = "npm"
+        typecheck = "npx tsc --noEmit"
+        test = "CI=1 npm test"
+
+    commands = [install]
+    if "typecheck" in scripts:
+        commands.append(_node_script_command(manager, "typecheck"))
+    elif (local_dir / "tsconfig.json").exists():
+        commands.append(typecheck)
+    if "lint" in scripts:
+        commands.append(_node_script_command(manager, "lint"))
+    if "test" in scripts:
+        commands.append(test)
+    return " && ".join(commands)
 
 
 PRE_PUSH = _load_pre_push_config(AGENT)
@@ -553,6 +654,99 @@ def _worktree_status(wt: Path) -> str:
     return run(["git", "status", "--porcelain"], cwd=str(wt), timeout=10).stdout.strip()
 
 
+def _changed_paths(wt: Path) -> set[str]:
+    commands = (
+        ["git", "diff", "--name-only", "origin/main..HEAD"],
+        ["git", "diff", "--name-only", "--cached"],
+        ["git", "diff", "--name-only"],
+    )
+    paths: set[str] = set()
+    for command in commands:
+        res = run(command, cwd=str(wt), timeout=10)
+        if res.returncode != 0:
+            continue
+        paths.update(line.strip() for line in (res.stdout or "").splitlines() if line.strip())
+    return paths
+
+
+def _git_show_json(wt: Path, ref_path: str) -> dict:
+    res = run(["git", "show", f"origin/main:{ref_path}"], cwd=str(wt), timeout=10)
+    if res.returncode != 0:
+        return {}
+    try:
+        data = json.loads(res.stdout or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _dependency_sections(package: dict) -> dict:
+    return {field: package.get(field) for field in PACKAGE_DEPENDENCY_FIELDS}
+
+
+def _package_dependencies_changed(wt: Path, package_path: str) -> bool:
+    current = _package_json(wt / package_path)
+    if not current:
+        return False
+    before = _git_show_json(wt, package_path)
+    return _dependency_sections(before) != _dependency_sections(current)
+
+
+def _lockfile_candidates(package_path: str) -> list[str]:
+    package_dir = Path(package_path).parent
+    local = [
+        str(package_dir / lockfile) if str(package_dir) != "." else lockfile
+        for lockfile in NODE_LOCKFILES
+    ]
+    return list(dict.fromkeys([*local, *NODE_LOCKFILES]))
+
+
+def dependency_lockfile_drift(wt: Path) -> list[str]:
+    """Return package.json dependency edits whose lockfile did not change."""
+    changed = _changed_paths(wt)
+    drift: list[str] = []
+    for path in sorted(changed):
+        if Path(path).name != "package.json":
+            continue
+        if not _package_dependencies_changed(wt, path):
+            continue
+        existing_locks = [
+            candidate for candidate in _lockfile_candidates(path) if (wt / candidate).exists()
+        ]
+        if existing_locks and not any(lockfile in changed for lockfile in existing_locks):
+            drift.append(
+                f"{path} changed dependency fields but no lockfile changed "
+                f"({', '.join(existing_locks)})"
+            )
+    return drift
+
+
+def run_pre_push_checks(repo: str, wt: Path) -> PrePushResult:
+    drift = dependency_lockfile_drift(wt)
+    if drift:
+        return PrePushResult(ok=False, reason="; ".join(drift))
+
+    command = (PRE_PUSH.get(repo) or "").strip()
+    if not command:
+        return PrePushResult(ok=True)
+
+    result = run(["bash", "-lc", command], cwd=str(wt), timeout=PRE_PUSH_TIMEOUT_SECONDS)
+    if result.returncode != 0:
+        return PrePushResult(
+            ok=False,
+            command=command,
+            reason=f"pre-push command failed with exit {result.returncode}",
+            stdout=result.stdout or "",
+            stderr=result.stderr or "",
+        )
+    return PrePushResult(
+        ok=True,
+        command=command,
+        stdout=result.stdout or "",
+        stderr=result.stderr or "",
+    )
+
+
 def issue_has_open_dependencies(repo: str, issue: dict) -> bool:
     """True when an issue declares dependencies that are not closed yet."""
     for dep in issue_dependencies(issue, default_repo=repo):
@@ -596,6 +790,31 @@ def _push_or_preserve(
     release_on_failure: bool = True,
 ) -> bool:
     """Push the current branch, preserving local work and releasing for retry on failure."""
+    pre_push = run_pre_push_checks(repo, wt)
+    if not pre_push.ok:
+        recovery_ref = create_recovery_ref(wt, branch=branch)
+        if release_on_failure:
+            release_issue(
+                repo,
+                issue_num,
+                codename=AGENT,
+                firing_id=firing_id,
+                outcome="pre-push-checks-failed",
+            )
+        detail = short(
+            pre_push.stderr or pre_push.stdout or pre_push.reason or "pre-push checks failed",
+            300,
+        )
+        command = pre_push.command or "dependency lockfile drift check"
+        ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+        msg = (
+            f"[{AGENT.upper()}-PRE-PUSH-FAILED] preserved local work for #{issue_num}; "
+            f"branch={branch}{ref_part}; command={command!r}. {detail}"
+        )
+        print(msg)
+        slack_post(msg, severity="warn")
+        return False
+
     workflow_validation = validate_changed_workflows(wt)
     if not workflow_validation.ok:
         recovery_ref = create_recovery_ref(wt, branch=branch)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import stat
 import sys
@@ -516,6 +517,106 @@ def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
     assert "Operator-supplied guidance" in text
     assert "Read specs from " in text
     assert "product/specs for #42" in text
+
+
+def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "package.json").write_text(
+        json.dumps(
+            {
+                "scripts": {
+                    "typecheck": "tsc --noEmit",
+                    "lint": "expo lint",
+                    "test": "jest",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (repo / "package-lock.json").write_text("{}", encoding="utf-8")
+
+    command = lucius._default_node_pre_push_command(repo)
+
+    assert command == "npm ci && npm run typecheck && npm run lint && CI=1 npm test"
+
+
+def test_lucius_dependency_lockfile_drift_detects_dependency_change(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(lucius, "_changed_paths", lambda _wt: {"package.json"})
+    monkeypatch.setattr(
+        lucius,
+        "_git_show_json",
+        lambda _wt, _path: {"dependencies": {}},
+    )
+
+    drift = lucius.dependency_lockfile_drift(tmp_path)
+
+    assert drift == [
+        "package.json changed dependency fields but no lockfile changed (package-lock.json)"
+    ]
+
+
+def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    releases: list[dict] = []
+    posts: list[str] = []
+
+    monkeypatch.setattr(
+        lucius,
+        "run_pre_push_checks",
+        lambda _repo, _wt: lucius.PrePushResult(
+            ok=False,
+            command="npm ci && npm run lint",
+            stderr="Missing: niyora-sync@1.0.0 from lock file",
+        ),
+    )
+    monkeypatch.setattr(lucius, "create_recovery_ref", lambda _wt, *, branch: "refs/recovery/x")
+    monkeypatch.setattr(
+        lucius,
+        "release_issue",
+        lambda repo, issue_num, **kw: releases.append({"repo": repo, "issue": issue_num, **kw}),
+    )
+    monkeypatch.setattr(lucius, "slack_post", lambda message, **_kw: posts.append(message))
+    monkeypatch.setattr(
+        lucius,
+        "push_current_branch",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not push")),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "validate_changed_workflows",
+        lambda *_a, **_kw: (_ for _ in ()).throw(
+            AssertionError("workflow validation should not run after pre-push failure")
+        ),
+    )
+
+    ok = lucius._push_or_preserve(
+        "mobile",
+        83,
+        "fid-1",
+        tmp_path,
+        "lucius/83",
+        "push-failed",
+    )
+
+    assert ok is False
+    assert releases == [
+        {
+            "repo": "mobile",
+            "issue": 83,
+            "codename": "lucius",
+            "firing_id": "fid-1",
+            "outcome": "pre-push-checks-failed",
+        }
+    ]
+    assert posts and "Missing: niyora-sync" in posts[0]
 
 
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
