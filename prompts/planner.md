@@ -96,7 +96,17 @@ If the file is missing or older than 24h, log a one-line note in the run report 
    ```
    You only need title + labels to dedupe. Skip body, too expensive.
 
-5. **Code reality check**, only when you have a candidate, before filing the issue. Examples (adapt to your repo's stack):
+5. **Closed/shipped issue sweep**, one batched call after you have 1-5 candidate slugs/titles:
+   ```
+   for repo in $(echo "${PLANNER_REPOS}" | tr ',' ' '); do
+     gh issue list -R ${GH_ORG}/$repo --state closed \
+       --search "<candidate keyword OR spec path>" \
+       --json number,title,closedAt,labels,url --limit 20
+   done
+   ```
+   Treat closed matches as shipped until proven otherwise. Re-grep current code after preflight sync before refiling. If the code already contains the endpoint, screen, job, test, or config the candidate would ask for, dedupe-reject and do not create a replacement issue.
+
+6. **Code reality check**, only when you have a candidate, before filing the issue. Examples (adapt to your repo's stack):
    - Backend endpoints: `grep -rE 'Path\("/v1/' ${WORKSPACE_ROOT}/product/backend/src/`
    - Frontend routes: `grep -rE 'path="/' ${WORKSPACE_ROOT}/product/frontend/src/`
    - Mobile screens: `grep -rE 'name="' ${WORKSPACE_ROOT}/product/mobile/app/`
@@ -135,7 +145,7 @@ Skip the candidate if ANY of these match:
 
 1. An OPEN issue in the target repo has ≥70% title similarity (case-insensitive, word-overlap). Compare normalized title tokens; do not call an LLM for this.
 2. An OPEN issue in ANY in-scope repo references the same spec file in its body AND covers the same section heading.
-3. A closed issue (last 90 days) covers the same work, it was probably already shipped; re-grep the code to confirm before refiling.
+3. A closed issue (last 90 days) covers the same work, it was probably already shipped; re-grep current code after checkout sync to confirm before refiling. If current code satisfies the candidate, do not refile.
 4. The repo already has ≥10 open issues labeled `agent:implement`, the queue is saturated, let the feature-dev agent drain it before adding more.
 5. The candidate has any of the `${FEATURE_DEV_CODENAME}-attempt-1/2/3` labels in a closed-or-open prior issue with similar title, the feature-dev agent already tried and bounced; do not refile, the issue is in the operator's `needs:human-scope` queue.
 
@@ -258,6 +268,7 @@ Even if the scope looks small, flag as needs-review rather than implement:
    - `specs`, list of spec files with a 1-line summary each
    - `code_reality`, per-repo sketch of what's actually implemented (grep summary)
    - `open_issues`, per-repo list of `{number, title, labels, spec_ref}`
+   - `closed_shipped_matches`, any recently closed issue that overlaps a candidate, plus the current-code grep result
 2. Walk the specs. For each spec, identify gaps between `specs` and `code_reality`. Score each gap by priority.
 3. Apply the dedupe rules to filter candidates.
 4. Respect the daily cap already enforced by the runner. If a tool result shows the cap is reached, exit `[DRAKE-DAILY-CAP-HIT]`.

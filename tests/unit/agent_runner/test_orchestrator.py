@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
 
@@ -82,7 +84,8 @@ def test_preflight_honours_workspace_subdir_for_checkout_check(monkeypatch, tmp_
     # ``product/`` subdir. The test fails loud if preflight still looks
     # under ``$WORKSPACE_ROOT/product/...``.
     repo_dir = tmp_path / "ws" / "src" / "myrepo"
-    (repo_dir / ".git").mkdir(parents=True)
+    repo_dir.mkdir(parents=True)
+    subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True)
 
     for mod in list(sys.modules):
         if mod == "agent_runner" or mod.startswith("agent_runner."):
@@ -99,3 +102,148 @@ def test_preflight_honours_workspace_subdir_for_checkout_check(monkeypatch, tmp_
     # bins list short-circuits the binary-check loop so we don't need to
     # stub ``shutil.which``.
     ar.preflight(spec)
+
+
+def test_sync_checkout_to_default_fast_forwards_clean_default_branch(
+    fresh_agent_runner,
+    tmp_path,
+    monkeypatch,
+):
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_DISABLE_CHECKOUT_SYNC", raising=False)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(list(cmd))
+        if cmd[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="main\n", stderr="")
+        if cmd[:4] == ["git", "symbolic-ref", "--quiet", "--short"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n", stderr="")
+        if cmd[:2] == ["git", "fetch"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:2] == ["git", "merge"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="Already up to date.\n", stderr="")
+        raise AssertionError(cmd)
+
+    ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fake_run)
+
+    assert ok is True
+    assert message == "synced origin/main"
+    assert calls == [
+        ["git", "status", "--porcelain"],
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        ["git", "fetch", "origin", "main"],
+        ["git", "merge", "--ff-only", "origin/main"],
+    ]
+
+
+def test_sync_checkout_to_default_skips_dirty_checkout(
+    fresh_agent_runner,
+    tmp_path,
+    monkeypatch,
+):
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_DISABLE_CHECKOUT_SYNC", raising=False)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout=" M app.py\n", stderr="")
+
+    ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fake_run)
+
+    assert ok is True
+    assert message == "skipped: checkout dirty"
+    assert calls == [["git", "status", "--porcelain"]]
+
+
+def test_sync_checkout_to_default_skips_feature_branch(
+    fresh_agent_runner,
+    tmp_path,
+    monkeypatch,
+):
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_DISABLE_CHECKOUT_SYNC", raising=False)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(list(cmd))
+        if cmd[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="feature/client\n", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n", stderr="")
+
+    ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fake_run)
+
+    assert ok is True
+    assert message == "skipped: on feature/client, default is main"
+    assert calls == [
+        ["git", "status", "--porcelain"],
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+    ]
+
+
+def test_sync_checkout_to_default_fails_closed_on_merge_error(
+    fresh_agent_runner,
+    tmp_path,
+    monkeypatch,
+):
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_DISABLE_CHECKOUT_SYNC", raising=False)
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(list(cmd))
+        if cmd[:2] == ["git", "status"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="main\n", stderr="")
+        if cmd[:4] == ["git", "symbolic-ref", "--quiet", "--short"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n", stderr="")
+        if cmd[:2] == ["git", "fetch"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(
+            cmd,
+            1,
+            stdout="",
+            stderr="Not possible to fast-forward, aborting.\n",
+        )
+
+    ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fake_run)
+
+    assert ok is False
+    assert message == "git merge --ff-only failed: Not possible to fast-forward, aborting."
+    assert calls[-1] == ["git", "merge", "--ff-only", "origin/main"]
+
+
+def test_preflight_reports_checkout_sync_failure(
+    fresh_agent_runner,
+    monkeypatch,
+    tmp_path,
+):
+    ar = fresh_agent_runner
+    repo_dir = ar.WORKSPACE / "myrepo"
+    (repo_dir / ".git").mkdir(parents=True)
+    monkeypatch.setattr(
+        ar.orchestrator,
+        "sync_checkout_to_default",
+        lambda repo_path: (False, "git fetch failed: offline"),
+    )
+
+    spec = ar.PreflightSpec(
+        agent="testagent",
+        bins=[],
+        require_workspace_repos=["myrepo"],
+        check_disk=False,
+    )
+
+    with pytest.raises(ar.PreflightFailed) as exc:
+        ar.preflight(spec)
+
+    assert "could not sync" in str(exc.value)
+    assert "git fetch failed: offline" in str(exc.value)
