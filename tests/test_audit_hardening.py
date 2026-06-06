@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -653,6 +654,38 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
         }
     ]
     assert posts and "Missing: niyora-sync" in posts[0]
+
+
+def test_lucius_partial_salvage_push_can_skip_pre_push_gates(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    pushed: list[tuple[Path, str]] = []
+
+    monkeypatch.setattr(
+        lucius,
+        "run_pre_push_checks",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("should skip pre-push")),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "validate_changed_workflows",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("should skip workflow validation")),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "push_current_branch",
+        lambda wt, branch: pushed.append((wt, branch)) or SimpleNamespace(returncode=0),
+    )
+
+    assert lucius._push_or_preserve(
+        "mobile",
+        83,
+        "fid-1",
+        tmp_path,
+        "lucius/83",
+        "partial-push-failed",
+        run_checks=False,
+    )
+    assert pushed == [(tmp_path, "lucius/83")]
 
 
 def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):

@@ -389,6 +389,11 @@ def _run_lifecycle(
         )
         _clear_pending_envelope(parent_repo, parent_issue_number)
         _unset_pending_approval_label(parent_repo, parent_issue_number)
+        gh_issue_edit(
+            parent_repo,
+            parent_issue_number,
+            add_labels=[label_constants.NEEDS_HUMAN_SCOPE],
+        )
         lifecycle.report(plan, _empty_result_reason(reason=EXEC_NO_CHILDREN))
         return 0
 

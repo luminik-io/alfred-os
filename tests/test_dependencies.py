@@ -41,6 +41,16 @@ Depends on: #12, frontend#34
     )
 
 
+def test_parse_dependency_refs_ignores_ambiguous_bare_words():
+    body = """
+Depends on: fix#12, pr#13, frontend#34
+"""
+
+    assert parse_dependency_refs(body, default_repo="acme/backend") == (
+        IssueRef("acme/frontend", 34),
+    )
+
+
 def test_sort_issues_by_dependencies_orders_bundle_siblings():
     frontend = _issue(2, "frontend", "Depends on: acme/backend#1")
     backend = _issue(1, "backend")

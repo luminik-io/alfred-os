@@ -18,6 +18,23 @@ QUALIFIED_REF = re.compile(
     r"(?<![\w.-])(?:(?P<owner>[\w.-]+)/)?(?P<repo>[\w.-]+)#(?P<number>\d+)\b"
 )
 LOCAL_REF = re.compile(r"(?<![\w/.-])#(?P<number>\d+)\b")
+AMBIGUOUS_BARE_REPO_REFS = frozenset(
+    {
+        "close",
+        "closed",
+        "closes",
+        "fix",
+        "fixed",
+        "fixes",
+        "issue",
+        "issues",
+        "pr",
+        "pull",
+        "resolve",
+        "resolved",
+        "resolves",
+    }
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -51,6 +68,8 @@ def parse_dependency_refs(body: str, *, default_repo: str = "") -> tuple[IssueRe
             consumed.append(match.span())
         for match in QUALIFIED_REF.finditer(text):
             if _inside_any(match.span(), consumed):
+                continue
+            if _is_ambiguous_bare_repo_ref(match):
                 continue
             refs.add(
                 IssueRef(
@@ -130,6 +149,10 @@ def sort_issues_by_dependencies(issues: Iterable[dict]) -> list[dict]:
 def _inside_any(span: tuple[int, int], spans: list[tuple[int, int]]) -> bool:
     start, end = span
     return any(start >= used_start and end <= used_end for used_start, used_end in spans)
+
+
+def _is_ambiguous_bare_repo_ref(match: re.Match[str]) -> bool:
+    return not match.group("owner") and match.group("repo").lower() in AMBIGUOUS_BARE_REPO_REFS
 
 
 def _repo_slug(repo: str, *, owner: str | None = None, default_repo: str = "") -> str:

@@ -254,6 +254,7 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
     reports = []
     slack_posts = []
     cleared = []
+    issue_edits = []
 
     plan = SimpleNamespace(
         bundle_slug="empty-plan",
@@ -292,6 +293,11 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
         "_unset_pending_approval_label",
         lambda repo, number: cleared.append(("unset", repo, number)),
     )
+    monkeypatch.setattr(
+        runner,
+        "gh_issue_edit",
+        lambda repo, number, **kw: issue_edits.append((repo, number, kw)),
+    )
 
     out = runner._run_lifecycle(
         config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent"),
@@ -308,6 +314,13 @@ def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
     assert cleared == [
         ("clear", "myorg/parent", 83),
         ("unset", "myorg/parent", 83),
+    ]
+    assert issue_edits == [
+        (
+            "myorg/parent",
+            83,
+            {"add_labels": ["needs:human-scope"]},
+        )
     ]
 
 

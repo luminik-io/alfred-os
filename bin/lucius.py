@@ -810,60 +810,62 @@ def _push_or_preserve(
     outcome: str,
     *,
     release_on_failure: bool = True,
+    run_checks: bool = True,
 ) -> bool:
     """Push the current branch, preserving local work and releasing for retry on failure."""
-    pre_push = run_pre_push_checks(repo, wt)
-    if not pre_push.ok:
-        recovery_ref = create_recovery_ref(wt, branch=branch)
-        if release_on_failure:
-            release_issue(
-                repo,
-                issue_num,
-                codename=AGENT,
-                firing_id=firing_id,
-                outcome="pre-push-checks-failed",
+    if run_checks:
+        pre_push = run_pre_push_checks(repo, wt)
+        if not pre_push.ok:
+            recovery_ref = create_recovery_ref(wt, branch=branch)
+            if release_on_failure:
+                release_issue(
+                    repo,
+                    issue_num,
+                    codename=AGENT,
+                    firing_id=firing_id,
+                    outcome="pre-push-checks-failed",
+                )
+            detail = short(
+                pre_push.stderr or pre_push.stdout or pre_push.reason or "pre-push checks failed",
+                300,
             )
-        detail = short(
-            pre_push.stderr or pre_push.stdout or pre_push.reason or "pre-push checks failed",
-            300,
-        )
-        command = pre_push.command or "dependency lockfile drift check"
-        ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
-        msg = (
-            f"[{AGENT.upper()}-PRE-PUSH-FAILED] preserved local work for #{issue_num}; "
-            f"branch={branch}{ref_part}; command={command!r}. {detail}"
-        )
-        print(msg)
-        slack_post(msg, severity="warn")
-        return False
+            command = pre_push.command or "dependency lockfile drift check"
+            ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+            msg = (
+                f"[{AGENT.upper()}-PRE-PUSH-FAILED] preserved local work for #{issue_num}; "
+                f"branch={branch}{ref_part}; command={command!r}. {detail}"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            return False
 
-    workflow_validation = validate_changed_workflows(wt)
-    if not workflow_validation.ok:
-        recovery_ref = create_recovery_ref(wt, branch=branch)
-        if release_on_failure:
-            release_issue(
-                repo,
-                issue_num,
-                codename=AGENT,
-                firing_id=firing_id,
-                outcome="workflow-validation-failed",
+        workflow_validation = validate_changed_workflows(wt)
+        if not workflow_validation.ok:
+            recovery_ref = create_recovery_ref(wt, branch=branch)
+            if release_on_failure:
+                release_issue(
+                    repo,
+                    issue_num,
+                    codename=AGENT,
+                    firing_id=firing_id,
+                    outcome="workflow-validation-failed",
+                )
+            detail = short(
+                workflow_validation.stderr
+                or workflow_validation.stdout
+                or workflow_validation.reason
+                or "workflow validation failed",
+                300,
             )
-        detail = short(
-            workflow_validation.stderr
-            or workflow_validation.stdout
-            or workflow_validation.reason
-            or "workflow validation failed",
-            300,
-        )
-        ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
-        files = ", ".join(workflow_validation.files) or "(unknown workflow)"
-        msg = (
-            f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] preserved local work "
-            f"for #{issue_num}; branch={branch}{ref_part}; files={files}. {detail}"
-        )
-        print(msg)
-        slack_post(msg, severity="warn")
-        return False
+            ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+            files = ", ".join(workflow_validation.files) or "(unknown workflow)"
+            msg = (
+                f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] preserved local work "
+                f"for #{issue_num}; branch={branch}{ref_part}; files={files}. {detail}"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            return False
     push_res = push_current_branch(wt, branch)
     if push_res.returncode == 0:
         return True
@@ -1205,6 +1207,7 @@ def main() -> int:
                     wt,
                     branch,
                     "partial-push-failed",
+                    run_checks=False,
                 ):
                     spend.increment(failures_today=1, consecutive_failures=1)
                     return 0
