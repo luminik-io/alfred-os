@@ -126,6 +126,11 @@ def test_list_large_features_skips_needs_human_scope(monkeypatch):
     assert [row["number"] for row in runner._list_large_features()] == [1]
 
 
+def test_batman_pickup_blocks_done_large_features():
+    runner = _load_runner()
+    assert runner._has_batman_pickup_blocker({"agent:large-feature", "agent:done"})
+
+
 def test_bundle_for_issue_keeps_siblings_inside_scan_scope(monkeypatch):
     runner = _load_runner()
     seen_allowed: list[list[str]] = []

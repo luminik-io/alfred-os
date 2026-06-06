@@ -91,6 +91,7 @@ BATMAN_PICKUP_BLOCKING_LABELS = {
     label_constants.NEEDS_HUMAN_SCOPE,
     label_constants.NEEDS_HUMAN_REVIEW,
     label_constants.NEEDS_INFO,
+    label_constants.DONE,
     label_constants.DONE_ALREADY,
 }
 
