@@ -1170,6 +1170,20 @@ def test_lucius_dependency_lookup_failure_suppresses_when_ledger_write_fails(mon
     assert lucius._should_warn_dependency_lookup_failure("backend#42->backend#6", now=1.0) is False
 
 
+def test_lucius_dependency_lookup_failure_treats_non_object_ledger_as_corrupt(
+    monkeypatch, tmp_path
+):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    ledger = tmp_path / "dependency-lookup-warnings.json"
+    ledger.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(lucius, "DEPENDENCY_WARNING_LEDGER", ledger)
+
+    assert lucius._should_warn_dependency_lookup_failure("backend#42->backend#6", now=1.0) is True
+
+    saved = json.loads(ledger.read_text(encoding="utf-8"))
+    assert saved == {"backend#42->backend#6": 1.0}
+
+
 def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
     nightwing = load_bin_module("nightwing.py", monkeypatch)
     posts: list[tuple[str, str | None]] = []

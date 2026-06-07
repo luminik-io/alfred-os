@@ -833,6 +833,8 @@ def _should_warn_dependency_lookup_failure(key: str, *, now: float | None = None
         raw = json.loads(DEPENDENCY_WARNING_LEDGER.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
     ledger = {}
     for k, v in raw.items():
         try:
