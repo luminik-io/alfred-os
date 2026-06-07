@@ -6,6 +6,8 @@ command verb** to act on the fleet without leaving Slack:
 * ``status``               -> fleet health from ``alfred status --json``
 * ``pause <codename>``     -> stop scheduled firings for one agent
 * ``resume <codename>``    -> reverse a pause
+* ``run <codename>``       -> operator-only: trigger one agent now
+* ``dry-run <codename|all>`` -> simulate firings with no side effects
 * ``runs``                 -> recent firings (last-fired + today counts)
 * ``plans``                -> local planning inbox
 * ``plan <id>``            -> planning draft or follow-up detail
@@ -36,14 +38,16 @@ CRITICAL SAFETY MODEL
   trusted Slack user. This module additionally refuses if handed an
   untrusted flag (defense in depth).
 
-* **No shell, ever.** Commands that mutate state (``pause``/``resume``) run
-  the ``alfred`` CLI through an explicit argv vector via ``subprocess.run``
-  with ``shell=False``. The codename is validated against a strict charset
-  (``[A-Za-z0-9._-]``, no leading ``-``) *before* it is placed in the argv,
-  so it can never be read as a flag or inject a second command.
+* **No shell, ever.** Commands that call the scheduler
+  (``pause``/``resume``/``run``/``dry-run``) run the ``alfred`` CLI through
+  an explicit argv vector via ``subprocess.run`` with ``shell=False``. The
+  codename is validated against a strict charset (``[A-Za-z0-9._-]``, no
+  leading ``-``) *before* it is placed in the argv, so it can never be read
+  as a flag or inject a second command.
 
 * **Queries are read-only.** ``status`` and ``runs`` shell out to
-  ``alfred status --json`` only; they never change fleet state.
+  ``alfred status --json`` only. ``dry-run`` shells out to ``alfred dry-run``
+  and relies on the CLI's no-side-effect preview path.
 
 The CLI invocation is injected (``runner``) so tests exercise the full
 parse + dispatch path without spawning a real process.
@@ -52,9 +56,10 @@ parse + dispatch path without spawning a real process.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -81,7 +86,8 @@ from slack_trust import (
 # A codename is a short identifier. This is deliberately strict: only word
 # characters, dot, underscore and hyphen, never starting with a hyphen (which
 # could otherwise be parsed as a CLI flag). ``all`` is allowed because the
-# pause/resume CLI accepts it as a fleet-wide target.
+# pause/resume/dry-run CLIs accept it as a fleet-wide target. Manual ``run``
+# rejects ``all`` at dispatch.
 _CODENAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{1,64}$")
 
 # Known leading verbs. A message only becomes a control command when its first
@@ -91,6 +97,9 @@ _COMMANDS: frozenset[str] = frozenset(
         "status",
         "pause",
         "resume",
+        "run",
+        "dry-run",
+        "dryrun",
         "runs",
         "plans",
         "plan",
@@ -106,9 +115,33 @@ _COMMANDS: frozenset[str] = frozenset(
     }
 )
 
+_DEFAULT_RUN_CODENAMES: frozenset[str] = frozenset(
+    {
+        "agent-cleanup",
+        "alfred-nightly",
+        "automerge",
+        "bane",
+        "batman",
+        "cleanup",
+        "code-map-refresh",
+        "damian",
+        "drake",
+        "fleet-doctor",
+        "gordon",
+        "huntress",
+        "lucius",
+        "memory-harvest",
+        "morning-brief",
+        "nightwing",
+        "rasalghul",
+        "robin",
+    }
+)
+
 _PLAN_ID_RE = re.compile(r"^(?!\.)[A-Za-z0-9._-]{1,180}$")
 _MEMORY_ID_RE = re.compile(r"^(?!-)[A-Za-z0-9:_-]{1,96}$")
 _REPO_TOKEN_RE = re.compile(r"^(?!-)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_FLEET_YAML_AGENT_RE = re.compile(r"^  ([A-Za-z0-9._-]+):\s*$")
 
 CommandRunner = Callable[[list[str]], "RunResult"]
 
@@ -157,6 +190,8 @@ def parse_control_command(text: str) -> ControlCommand | None:
         return None
     first_token = tokens[0]
     verb = first_token.lstrip("/!").lower()
+    if verb == "dryrun":
+        verb = "dry-run"
     if verb not in _COMMANDS:
         return None
     args = tokens[1:]
@@ -165,6 +200,11 @@ def parse_control_command(text: str) -> ControlCommand | None:
     if verb in {"pause", "resume"}:
         # Exactly one argument, and it must be a valid codename. Extra words
         # mean this is prose ("pause the project for now"), not a command.
+        if len(args) != 1 or not is_valid_codename(args[0]):
+            return None
+        return ControlCommand(verb=verb, arg=args[0])
+
+    if verb in {"run", "dry-run"}:
         if len(args) != 1 or not is_valid_codename(args[0]):
             return None
         return ControlCommand(verb=verb, arg=args[0])
@@ -199,7 +239,7 @@ def is_valid_codename(value: str) -> bool:
     """True iff ``value`` is a safe codename token for the CLI argv.
 
     Strict allowlist: ``[A-Za-z0-9._-]``, 1-64 chars, never leading ``-``.
-    This is the injection guard for ``pause``/``resume``.
+    This is the injection guard for ``pause``/``resume``/``run``/``dry-run``.
     """
     return bool(_CODENAME_RE.match(value or ""))
 
@@ -233,6 +273,7 @@ class SlackControlHandler:
         state_root: Path | str | None = None,
         plan_reader: Any | None = None,
         memory_provider: Any | None = None,
+        known_run_codenames: Iterable[str] | None = None,
         timeout: int = 30,
     ) -> None:
         self.alfred_bin = str(alfred_bin) if alfred_bin else _default_alfred_bin()
@@ -246,6 +287,11 @@ class SlackControlHandler:
         )
         self.plan_reader = plan_reader
         self.memory_provider = memory_provider
+        self._known_run_codenames = (
+            frozenset(c for c in known_run_codenames if is_valid_codename(c))
+            if known_run_codenames is not None
+            else None
+        )
         self.timeout = timeout
 
     def handle(
@@ -297,7 +343,11 @@ class SlackControlHandler:
         if command.verb in {"trust", "untrust"}:
             return self._run_trust_mutation(command.verb, command.arg, actor_user_id)
         if command.verb in {"pause", "resume"}:
-            return self._run_pause_resume(command.verb, command.arg)
+            return self._run_agent_cli(command.verb, command.arg)
+        if command.verb == "run":
+            return self._run_manual_agent(command.arg, actor_user_id)
+        if command.verb == "dry-run":
+            return self._run_agent_cli(command.verb, command.arg)
         return ControlResult(False, "not_a_command", detail=f"unhandled verb {command.verb}")
 
     # -- query commands (read-only) --------------------------------------
@@ -792,7 +842,45 @@ class SlackControlHandler:
             ),
         )
 
-    def _run_pause_resume(self, verb: str, codename: str) -> ControlResult:
+    def _run_manual_agent(self, codename: str, actor_user_id: str | None) -> ControlResult:
+        if codename == "all":
+            return ControlResult(
+                True,
+                "run_rejected",
+                text=(
+                    "*Rejected:* `run all` is intentionally unavailable.\n\n"
+                    "Trigger one agent at a time, e.g. `run batman`."
+                ),
+                detail="run all rejected",
+            )
+        if not self._is_known_run_codename(codename):
+            return ControlResult(
+                False,
+                "not_a_command",
+                detail=f"unknown run codename {codename}",
+            )
+        actor = normalize_slack_user_id(actor_user_id)
+        if not self.operator_user_id or actor != self.operator_user_id:
+            return ControlResult(
+                True,
+                "run_rejected",
+                text=(
+                    "*Only the operator can manually run an agent.*\n\n"
+                    "A manual run can kill an in-flight firing before kickstarting "
+                    "the scheduler unit. Nothing changed."
+                ),
+                detail="actor is not the operator",
+            )
+        return self._run_agent_cli("run", codename)
+
+    def _is_known_run_codename(self, codename: str) -> bool:
+        known = self._known_run_codenames
+        if known is None:
+            known = _discover_run_codenames(self.alfred_bin)
+            self._known_run_codenames = known
+        return codename in known
+
+    def _run_agent_cli(self, verb: str, codename: str) -> ControlResult:
         # Re-validate at the boundary even though the parser already did:
         # nothing reaches the argv without passing this check.
         if not is_valid_codename(codename):
@@ -803,14 +891,11 @@ class SlackControlHandler:
                 detail="invalid codename",
             )
         result = self._runner([self.alfred_bin, verb, codename])
-        verb_past = "paused" if verb == "pause" else "resumed"
         if result.returncode == 0:
             body = (result.stdout or "").strip()
             tail = f"\n```\n{_short(body, 600)}\n```" if body else ""
             return ControlResult(
-                True,
-                verb,
-                text=f"*{verb_past.capitalize()}* `{codename}`.{tail}",
+                True, verb, text=f"*{_agent_cli_success_title(verb)}* `{codename}`.{tail}"
             )
         err = (result.stderr or result.stdout or "").strip()
         return ControlResult(
@@ -857,10 +942,16 @@ def _usage_for_malformed(text: str) -> str | None:
     first = cleaned.split()[0].lstrip("/!").lower()
     if first not in _COMMANDS:
         return None
-    if first in {"pause", "resume"}:
+    if first == "dryrun":
+        first = "dry-run"
+    if first in {"pause", "resume", "run", "dry-run"}:
+        if first in {"run", "dry-run"} and len(cleaned.split()) > 2:
+            return None
         return (
             f"*Usage:* `{first} <codename>`\n\n"
-            f"Give exactly one agent codename (or `all`), e.g. `{first} lucius`."
+            f"Give exactly one agent codename"
+            f"{' (or `all`)' if first in {'pause', 'resume', 'dry-run'} else ''}, "
+            f"e.g. `{first} lucius`."
         )
     if first in {"trust", "untrust"}:
         return (
@@ -903,6 +994,8 @@ def render_help() -> str:
             "- `untrust <@user>`: operator-only: remove a local collaborator.",
             "- `pause <codename>`: stop scheduled firings for one agent (or `all`).",
             "- `resume <codename>`: reverse a pause.",
+            "- `run <codename>`: operator-only: trigger one agent now.",
+            "- `dry-run <codename|all>`: simulate firings with no side effects.",
             "- `help`: show this list.",
             "",
             "Anything without a leading command verb is treated as a planning "
@@ -960,6 +1053,147 @@ def render_recent_runs(data: dict[str, Any]) -> str:
         counts = _run_counts_label(today, ok, fail)
         lines.append(f"- `{name}` — last fired {last}{counts}")
     return "\n".join(lines)
+
+
+def _agent_cli_success_title(verb: str) -> str:
+    if verb == "pause":
+        return "Paused"
+    if verb == "resume":
+        return "Resumed"
+    if verb == "run":
+        return "Triggered"
+    if verb == "dry-run":
+        return "Dry-run"
+    return verb.capitalize()
+
+
+def _discover_run_codenames(alfred_bin: str) -> frozenset[str]:
+    codenames = set(_DEFAULT_RUN_CODENAMES)
+    for raw in os.environ.get("ALFRED_SLACK_RUN_CODENAMES", "").split(","):
+        candidate = raw.strip()
+        if is_valid_codename(candidate):
+            codenames.add(candidate)
+    for path in _agents_conf_candidates(alfred_bin):
+        codenames.update(_codenames_from_agents_conf(path))
+    for path in _fleet_yaml_candidates(alfred_bin):
+        codenames.update(_codenames_from_fleet_yaml(path))
+    return frozenset(codenames)
+
+
+def _agents_conf_candidates(alfred_bin: str) -> list[Path]:
+    repo_root = _repo_root_from_bin(alfred_bin)
+    candidates: list[Path] = []
+    for env_name in ("ALFRED_REPO", "ALFRED_HOME", "HERMES_HOME"):
+        raw = os.environ.get(env_name)
+        if raw:
+            root = Path(raw).expanduser()
+            candidates.extend(
+                [
+                    root / "infra" / "agents" / "launchd" / "agents.conf",
+                    root / "launchd" / "agents.conf",
+                ]
+            )
+    candidates.extend(
+        [
+            repo_root / "infra" / "agents" / "launchd" / "agents.conf",
+            repo_root / "launchd" / "agents.conf",
+            repo_root / "launchd" / "agents.conf.example",
+        ]
+    )
+    return _existing_unique_paths(candidates)
+
+
+def _fleet_yaml_candidates(alfred_bin: str) -> list[Path]:
+    repo_root = _repo_root_from_bin(alfred_bin)
+    candidates: list[Path] = []
+    for env_name in ("ALFRED_REPO", "ALFRED_HOME", "HERMES_HOME"):
+        raw = os.environ.get(env_name)
+        if raw:
+            root = Path(raw).expanduser()
+            candidates.extend(
+                [
+                    root / "infra" / "agents" / "fleet.yaml",
+                    root / "fleet.yaml",
+                ]
+            )
+    candidates.extend(
+        [
+            repo_root / "infra" / "agents" / "fleet.yaml",
+            repo_root / "fleet.yaml",
+        ]
+    )
+    return _existing_unique_paths(candidates)
+
+
+def _repo_root_from_bin(alfred_bin: str) -> Path:
+    path = Path(alfred_bin).expanduser()
+    try:
+        path = path.resolve()
+    except OSError:
+        path = path.absolute()
+    for parent in (path.parent, *path.parents):
+        if (parent / "infra" / "agents").exists() or (parent / "launchd").exists():
+            return parent
+    return path.parent.parent if path.parent != path.parent.parent else path.parent
+
+
+def _existing_unique_paths(candidates: Iterable[Path]) -> list[Path]:
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        if resolved in seen or not resolved.exists():
+            continue
+        seen.add(resolved)
+        out.append(resolved)
+    return out
+
+
+def _codenames_from_agents_conf(path: Path) -> set[str]:
+    codenames: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return codenames
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            line = line.lstrip("#").strip()
+            if "\t" not in line:
+                continue
+        if "\t" not in line:
+            continue
+        label = line.split("\t", 1)[0].strip()
+        codename = label.rsplit(".", 1)[-1]
+        if is_valid_codename(codename):
+            codenames.add(codename)
+    return codenames
+
+
+def _codenames_from_fleet_yaml(path: Path) -> set[str]:
+    codenames: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return codenames
+    in_agents = False
+    for line in lines:
+        if line == "agents:":
+            in_agents = True
+            continue
+        if in_agents and line and not line.startswith(" "):
+            break
+        if not in_agents:
+            continue
+        match = _FLEET_YAML_AGENT_RE.match(line)
+        if match and is_valid_codename(match.group(1)):
+            codenames.add(match.group(1))
+    return codenames
 
 
 def render_plans(rows: list[PlanDraft]) -> str:

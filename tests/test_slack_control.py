@@ -232,6 +232,12 @@ def test_leading_verb_parses() -> None:
     assert cmd is not None and cmd.verb == "pause" and cmd.arg == "lucius"
     cmd = parse_control_command("/resume bane")
     assert cmd is not None and cmd.verb == "resume" and cmd.arg == "bane"
+    cmd = parse_control_command("run batman")
+    assert cmd is not None and cmd.verb == "run" and cmd.arg == "batman"
+    cmd = parse_control_command("dry-run all")
+    assert cmd is not None and cmd.verb == "dry-run" and cmd.arg == "all"
+    cmd = parse_control_command("dryrun lucius")
+    assert cmd is not None and cmd.verb == "dry-run" and cmd.arg == "lucius"
     cmd = parse_control_command("plan followup-1")
     assert cmd is not None and cmd.verb == "plan" and cmd.arg == "followup-1"
     cmd = parse_control_command("draft followup-1")
@@ -267,6 +273,14 @@ def test_pause_requires_single_valid_codename() -> None:
     assert parse_control_command("pause -rf") is None
     assert parse_control_command("pause lucius extra") is None
     assert parse_control_command("pause name/with/slash") is None
+
+
+def test_run_commands_require_single_valid_codename() -> None:
+    assert parse_control_command("run") is None
+    assert parse_control_command("run -rf") is None
+    assert parse_control_command("run lucius extra") is None
+    assert parse_control_command("dry-run") is None
+    assert parse_control_command("dry-run name/with/slash") is None
 
 
 def test_plan_commands_require_single_safe_id() -> None:
@@ -886,11 +900,111 @@ def test_resume_invokes_cli_with_exact_argv() -> None:
     assert runner.calls[-1] == ["/fake/alfred", "resume", "bane"]
 
 
+def test_operator_run_invokes_cli_with_exact_argv() -> None:
+    runner = FakeRunner()
+    result = _handler(runner, operator_user_id="UOP").handle(
+        "run batman",
+        trusted=True,
+        actor_user_id="UOP",
+    )
+
+    assert result.action == "run"
+    assert "Triggered" in result.text
+    assert runner.calls[-1] == ["/fake/alfred", "run", "batman"]
+
+
+def test_operator_run_allows_configured_custom_codename() -> None:
+    runner = FakeRunner()
+    handler = SlackControlHandler(
+        alfred_bin="/fake/alfred",
+        runner=runner,
+        operator_user_id="UOP",
+        known_run_codenames={"oracle"},
+    )
+
+    result = handler.handle("run oracle", trusted=True, actor_user_id="UOP")
+
+    assert result.action == "run"
+    assert runner.calls[-1] == ["/fake/alfred", "run", "oracle"]
+
+
+def test_run_is_operator_only() -> None:
+    runner = FakeRunner()
+    result = _handler(runner, operator_user_id="UOP").handle(
+        "run batman",
+        trusted=True,
+        actor_user_id="UNEHA",
+    )
+
+    assert result.action == "run_rejected"
+    assert "Only the operator" in result.text
+    assert runner.calls == []
+
+
+def test_run_all_is_rejected_without_cli_call() -> None:
+    runner = FakeRunner()
+    result = _handler(runner, operator_user_id="UOP").handle(
+        "run all",
+        trusted=True,
+        actor_user_id="UOP",
+    )
+
+    assert result.action == "run_rejected"
+    assert "run all" in result.text
+    assert runner.calls == []
+
+
+def test_dry_run_invokes_cli_with_exact_argv() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle("dry-run batman", trusted=True)
+
+    assert result.action == "dry-run"
+    assert "Dry-run" in result.text
+    assert runner.calls[-1] == ["/fake/alfred", "dry-run", "batman"]
+
+
+def test_dryrun_alias_invokes_cli_with_exact_argv() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle("dryrun lucius", trusted=True)
+
+    assert result.action == "dry-run"
+    assert runner.calls[-1] == ["/fake/alfred", "dry-run", "lucius"]
+
+
+def test_run_prose_falls_through_to_planning_intake() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle("run the tests", trusted=True)
+
+    assert result.handled is False
+    assert result.action == "not_a_command"
+    assert runner.calls == []
+
+
+def test_two_word_run_prose_falls_through_for_operator() -> None:
+    runner = FakeRunner()
+    result = _handler(runner, operator_user_id="UOP").handle(
+        "run tests",
+        trusted=True,
+        actor_user_id="UOP",
+    )
+
+    assert result.handled is False
+    assert result.action == "not_a_command"
+    assert runner.calls == []
+
+
 def test_pause_failure_is_reported() -> None:
     runner = FakeRunner(mutate_rc=1)
     result = _handler(runner).handle("pause lucius", trusted=True)
     assert result.action == "pause_failed"
     assert "Could not pause" in result.text
+
+
+def test_dry_run_failure_is_reported() -> None:
+    runner = FakeRunner(mutate_rc=1)
+    result = _handler(runner).handle("dry-run lucius", trusted=True)
+    assert result.action == "dry-run_failed"
+    assert "Could not dry-run" in result.text
 
 
 def test_help_lists_commands_without_running_anything() -> None:
@@ -909,6 +1023,18 @@ def test_bare_pause_returns_usage_not_fallthrough() -> None:
     assert result.action == "usage"
     assert "Usage:" in result.text
     assert runner.calls == []  # never shelled out
+
+
+def test_bare_run_and_dry_run_return_usage_not_fallthrough() -> None:
+    runner = FakeRunner()
+    run_result = _handler(runner).handle("run", trusted=True)
+    dry_run_result = _handler(runner).handle("dry-run", trusted=True)
+
+    assert run_result.action == "usage"
+    assert "run <codename>" in run_result.text
+    assert dry_run_result.action == "usage"
+    assert "dry-run <codename>" in dry_run_result.text
+    assert runner.calls == []
 
 
 def test_prose_falls_through_unhandled() -> None:
