@@ -160,11 +160,6 @@ eligible work.
 ROBIN_TRIAGE_BLOCKING_LABEL_SET: Final[frozenset[str]] = PICKUP_BLOCKING_LABEL_SET
 """Labels that make an issue ineligible for Robin to turn into implementation work."""
 
-FEATURE_DEV_PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
-    set(PICKUP_BLOCKING_LABEL_SET) | {FEATURE, ENHANCEMENT}
-)
-"""Static labels that make an issue ineligible for feature-dev pickup."""
-
 FEATURE_DEV_CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset({FEATURE, ENHANCEMENT})
 """Product labels that make a feature-dev claim unsafe after pickup."""
 
@@ -186,17 +181,23 @@ def has_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
     return bool(pickup_blocking_labels(labels))
 
 
+def _is_robin_promoted(labels: set[str]) -> bool:
+    return IMPLEMENT in labels and any(label.startswith("severity:") for label in labels)
+
+
 def feature_dev_pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
     """Return labels that block the feature-dev agent from picking up work.
 
     Batman-created child issues keep their ``agent:bundle:<slug>`` provenance
     label while also carrying ``agent:implement``. Lucius must still pick those
     up. Static large-feature / approval labels remain blockers. Human/product
-    feature labels stay blocked here too; Robin decides when those become
-    implementation work.
+    feature labels stay blocked until Robin adds severity and ``agent:implement``.
     """
     s = set(labels)
-    return sorted(s & FEATURE_DEV_PICKUP_BLOCKING_LABEL_SET)
+    blockers = set(s & PICKUP_BLOCKING_LABEL_SET)
+    if not _is_robin_promoted(s):
+        blockers.update(s & FEATURE_DEV_CLAIM_BLOCKING_LABEL_SET)
+    return sorted(blockers)
 
 
 def has_feature_dev_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
@@ -207,6 +208,8 @@ def has_feature_dev_pickup_blocker(labels: set[str] | frozenset[str] | list[str]
 def feature_dev_claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
     """Return product labels that block a feature-dev claim after pickup."""
     s = set(labels)
+    if _is_robin_promoted(s):
+        return []
     return sorted(s & FEATURE_DEV_CLAIM_BLOCKING_LABEL_SET)
 
 

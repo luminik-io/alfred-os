@@ -1427,6 +1427,47 @@ def test_claim_issue_refuses_product_label_for_lucius_claim(monkeypatch):
     )
 
 
+def test_claim_issue_allows_robin_promoted_product_label_for_feature_dev(monkeypatch):
+    import agent_runner as ar
+
+    edits = []
+    comments = []
+    monkeypatch.setattr(ar, "is_repo_paused", lambda repo: False)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "labels": [
+                {"name": "agent:implement"},
+                {"name": "feature"},
+                {"name": "severity:p2"},
+            ],
+            "state": "OPEN",
+            "comments": [],
+            "number": num,
+        },
+    )
+    monkeypatch.setattr(ar, "ensure_labels", lambda *a, **kw: None)
+    monkeypatch.setattr(ar, "gh_issue_edit", lambda *a, **kw: edits.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "gh_issue_comment", lambda *a, **kw: comments.append((a, kw)) or True)
+    monkeypatch.setattr(ar, "_detect_contested_claim", lambda *a, **kw: None)
+
+    assert ar.claim_issue(
+        "myrepo",
+        64,
+        codename="custom-feature-dev",
+        firing_id="fid-1",
+        role="feature-dev",
+    )
+    assert edits == [
+        (
+            ("myrepo", 64),
+            {"add_labels": ["agent:in-flight"], "remove_labels": ["agent:implement"]},
+        )
+    ]
+    assert comments
+
+
 def test_claim_issue_allows_bundle_labels_for_batman_claim(monkeypatch):
     import agent_runner as ar
 
