@@ -932,7 +932,7 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
 def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     pushed: list[tuple[Path, str]] = []
-    validations: list[Path] = []
+    validations: list[tuple[Path, str | None]] = []
 
     monkeypatch.setattr(
         lucius,
@@ -942,8 +942,8 @@ def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monke
     monkeypatch.setattr(
         lucius,
         "validate_changed_workflows",
-        lambda wt: (
-            validations.append(wt)
+        lambda wt, **kw: (
+            validations.append((wt, kw.get("base")))
             or SimpleNamespace(ok=True, stdout="", stderr="", reason="", files=[])
         ),
     )
@@ -963,7 +963,7 @@ def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monke
         run_checks=False,
         run_workflow_validation=True,
     )
-    assert validations == [tmp_path]
+    assert validations == [(tmp_path, lucius.LUCIUS_WORKTREE_BASE_REF)]
     assert pushed == [(tmp_path, "lucius/83")]
 
 
@@ -980,7 +980,7 @@ def test_lucius_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, 
     monkeypatch.setattr(
         lucius,
         "validate_changed_workflows",
-        lambda wt: SimpleNamespace(
+        lambda wt, **kw: SimpleNamespace(
             ok=False,
             stdout="",
             stderr="workflow syntax error",

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 RunCmd = Callable[..., subprocess.CompletedProcess]
+DEFAULT_WORKFLOW_BASE = "origin/main"
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,7 @@ def changed_workflow_files(
     """Return changed workflow YAML files in ``worktree``."""
     if not worktree.exists():
         return ()
-    comparison_base = base or _remote_default_ref(worktree, run_cmd=run_cmd)
+    comparison_base = base or DEFAULT_WORKFLOW_BASE
     commands = (
         ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", f"{comparison_base}...HEAD"),
         ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", "--cached"),

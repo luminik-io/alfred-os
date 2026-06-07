@@ -940,7 +940,7 @@ def _push_or_preserve(
             return False
 
     if run_workflow_validation:
-        workflow_validation = validate_changed_workflows(wt)
+        workflow_validation = validate_changed_workflows(wt, base=LUCIUS_WORKTREE_BASE_REF)
         if not workflow_validation.ok:
             recovery_ref = create_recovery_ref(wt, branch=branch)
             if release_on_failure:
