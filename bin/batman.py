@@ -137,7 +137,10 @@ def _scan_repo_args() -> list[str]:
 
 def _has_batman_pickup_blocker(label_names: set[str] | frozenset[str]) -> bool:
     """Batman owns large-feature and bundle labels; block only hard gates."""
-    return bool(set(label_names) & BATMAN_PICKUP_BLOCKING_LABELS)
+    labels = set(label_names)
+    return bool(
+        (labels & BATMAN_PICKUP_BLOCKING_LABELS) or label_constants.agent_pr_open_labels(labels)
+    )
 
 
 def _list_large_features() -> list[dict]:

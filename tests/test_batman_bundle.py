@@ -472,6 +472,11 @@ def test_list_large_features_skip_labels_still_apply(monkeypatch):
             "url": "https://github.com/myorg/backend/issues/4",
             "labels": [{"name": "agent:large-feature"}, {"name": "needs:human-scope"}],
         },
+        {
+            "number": 5,
+            "url": "https://github.com/myorg/backend/issues/5",
+            "labels": [{"name": "agent:large-feature"}, {"name": "custom-lucius-pr-open"}],
+        },
     ]
     monkeypatch.setattr(runner, "gh_json", lambda *_a, **_k: fake_rows)
     out = runner._list_large_features()
