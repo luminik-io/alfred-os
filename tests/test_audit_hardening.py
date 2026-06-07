@@ -794,7 +794,7 @@ def test_lucius_nested_lockfile_drift_treats_deleted_local_lock_as_missing(monke
     ]
 
 
-def test_lucius_git_helpers_use_remote_default_branch(monkeypatch, tmp_path):
+def test_lucius_git_helpers_use_worktree_base_branch(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     commands: list[list[str]] = []
 
@@ -822,10 +822,11 @@ def test_lucius_git_helpers_use_remote_default_branch(monkeypatch, tmp_path):
     assert lucius._changed_paths(tmp_path) == {"package.json"}
     assert lucius._git_show_json(tmp_path, "package.json") == {"dependencies": {"old": "1.0.0"}}
 
-    assert ["git", "rev-list", "--count", "origin/develop..HEAD"] in commands
-    assert ["git", "merge-base", "origin/develop", "HEAD"] in commands
+    assert ["git", "rev-list", "--count", "origin/main..HEAD"] in commands
+    assert ["git", "merge-base", "origin/main", "HEAD"] in commands
     assert ["git", "diff", "--name-only", "abc123..HEAD"] in commands
     assert ["git", "show", "abc123:package.json"] in commands
+    assert ["git", "rev-list", "--count", "origin/develop..HEAD"] not in commands
 
 
 def test_lucius_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch, tmp_path):
