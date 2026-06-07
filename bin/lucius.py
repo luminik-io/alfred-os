@@ -686,12 +686,21 @@ def _remote_default_ref(wt: Path) -> str:
     return "origin/main"
 
 
+def _merge_base_ref(wt: Path) -> str:
+    remote_ref = _remote_default_ref(wt)
+    res = run(["git", "merge-base", remote_ref, "HEAD"], cwd=str(wt), timeout=10)
+    merge_base = (res.stdout or "").strip()
+    if res.returncode == 0 and merge_base:
+        return merge_base
+    return remote_ref
+
+
 def _worktree_status(wt: Path) -> str:
     return run(["git", "status", "--porcelain"], cwd=str(wt), timeout=10).stdout.strip()
 
 
 def _changed_paths(wt: Path) -> set[str]:
-    base = _remote_default_ref(wt)
+    base = _merge_base_ref(wt)
     commands = (
         ["git", "diff", "--name-only", f"{base}..HEAD"],
         ["git", "diff", "--name-only", "--cached"],
@@ -708,7 +717,7 @@ def _changed_paths(wt: Path) -> set[str]:
 
 def _git_show_json(wt: Path, ref_path: str) -> dict:
     res = run(
-        ["git", "show", f"{_remote_default_ref(wt)}:{ref_path}"],
+        ["git", "show", f"{_merge_base_ref(wt)}:{ref_path}"],
         cwd=str(wt),
         timeout=10,
     )
@@ -723,7 +732,7 @@ def _git_show_json(wt: Path, ref_path: str) -> dict:
 
 def _git_path_exists(wt: Path, ref_path: str) -> bool:
     res = run(
-        ["git", "cat-file", "-e", f"{_remote_default_ref(wt)}:{ref_path}"],
+        ["git", "cat-file", "-e", f"{_merge_base_ref(wt)}:{ref_path}"],
         cwd=str(wt),
         timeout=10,
     )

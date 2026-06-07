@@ -802,6 +802,8 @@ def test_lucius_git_helpers_use_remote_default_branch(monkeypatch, tmp_path):
         commands.append(cmd)
         if cmd[:3] == ["git", "symbolic-ref", "--quiet"]:
             return SimpleNamespace(returncode=0, stdout="origin/develop\n", stderr="")
+        if cmd[:2] == ["git", "merge-base"]:
+            return SimpleNamespace(returncode=0, stdout="abc123\n", stderr="")
         if cmd[:3] == ["git", "rev-list", "--count"]:
             return SimpleNamespace(returncode=0, stdout="2\n", stderr="")
         if cmd[:3] == ["git", "diff", "--name-only"]:
@@ -821,8 +823,53 @@ def test_lucius_git_helpers_use_remote_default_branch(monkeypatch, tmp_path):
     assert lucius._git_show_json(tmp_path, "package.json") == {"dependencies": {"old": "1.0.0"}}
 
     assert ["git", "rev-list", "--count", "origin/develop..HEAD"] in commands
-    assert ["git", "diff", "--name-only", "origin/develop..HEAD"] in commands
-    assert ["git", "show", "origin/develop:package.json"] in commands
+    assert ["git", "merge-base", "origin/develop", "HEAD"] in commands
+    assert ["git", "diff", "--name-only", "abc123..HEAD"] in commands
+    assert ["git", "show", "abc123:package.json"] in commands
+
+
+def test_lucius_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    commands: list[list[str]] = []
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+
+    def fake_run(cmd, **_kwargs):
+        commands.append(cmd)
+        if cmd[:3] == ["git", "symbolic-ref", "--quiet"]:
+            return SimpleNamespace(returncode=0, stdout="origin/main\n", stderr="")
+        if cmd[:2] == ["git", "merge-base"]:
+            return SimpleNamespace(returncode=0, stdout="base-sha\n", stderr="")
+        if cmd == ["git", "diff", "--name-only", "base-sha..HEAD"]:
+            return SimpleNamespace(returncode=0, stdout="package.json\n", stderr="")
+        if cmd[:3] == ["git", "diff", "--name-only"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if cmd[:2] == ["git", "show"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"dependencies": {}}),
+                stderr="",
+            )
+        if cmd[:3] == ["git", "cat-file", "-e"]:
+            return SimpleNamespace(
+                returncode=0 if cmd[-1] == "base-sha:package-lock.json" else 1,
+                stdout="",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(lucius, "run", fake_run)
+
+    drift = lucius.dependency_lockfile_drift(tmp_path)
+
+    assert drift == [
+        "package.json changed dependency fields but no lockfile changed (package-lock.json)"
+    ]
+    assert ["git", "diff", "--name-only", "origin/main..HEAD"] not in commands
+    assert ["git", "show", "origin/main:package.json"] not in commands
 
 
 def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):

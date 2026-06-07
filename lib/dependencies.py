@@ -90,20 +90,22 @@ def parse_dependency_refs(body: str, *, default_repo: str = "") -> tuple[IssueRe
     return tuple(sorted(refs))
 
 
-def issue_ref(issue: dict) -> IssueRef | None:
+def issue_ref(issue: dict, *, default_repo: str = "") -> IssueRef | None:
     """Return an ``IssueRef`` for a GitHub issue payload."""
-    repo = repo_from_issue_url(issue.get("url", ""))
+    repo = repo_from_issue_url(issue.get("url", "")) or default_repo
+    if not repo:
+        return None
     try:
         number = int(issue["number"])
     except (KeyError, TypeError, ValueError):
         return None
-    return IssueRef(repo, number) if repo else None
+    return IssueRef(repo, number)
 
 
 def issue_dependencies(issue: dict, *, default_repo: str = "") -> tuple[IssueRef, ...]:
     """Return dependencies declared by an issue payload."""
     repo = repo_from_issue_url(issue.get("url", "")) or default_repo
-    own = issue_ref(issue)
+    own = issue_ref(issue, default_repo=repo)
     deps = parse_dependency_refs(issue.get("body", ""), default_repo=repo)
     if own is None:
         return deps

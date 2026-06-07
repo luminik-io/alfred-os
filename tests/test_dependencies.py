@@ -6,7 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
 
-from dependencies import IssueRef, parse_dependency_refs, sort_issues_by_dependencies  # noqa: E402
+from dependencies import (  # noqa: E402
+    IssueRef,
+    issue_dependencies,
+    issue_ref,
+    parse_dependency_refs,
+    sort_issues_by_dependencies,
+)
 
 
 def _issue(num, repo, body=""):
@@ -49,6 +55,15 @@ Depends on: fix#12, pr#13, frontend#34
     assert parse_dependency_refs(body, default_repo="acme/backend") == (
         IssueRef("acme/frontend", 34),
     )
+
+
+def test_issue_ref_ignores_payloads_without_issue_url():
+    issue = {"number": 12, "body": "Depends on: #12, #13"}
+
+    assert issue_ref(issue) is None
+    assert issue_dependencies(issue) == ()
+    assert issue_ref(issue, default_repo="acme/backend") == IssueRef("acme/backend", 12)
+    assert issue_dependencies(issue, default_repo="acme/backend") == (IssueRef("acme/backend", 13),)
 
 
 def test_sort_issues_by_dependencies_orders_bundle_siblings():
