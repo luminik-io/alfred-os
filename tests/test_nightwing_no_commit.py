@@ -212,6 +212,47 @@ def _pick_target_pr_row(num: int, *, labels: list[str]):
     }
 
 
+def test_fixed_comment_ids_from_pr_comments_parses_nightwing_replies(nightwing):
+    comments = [
+        {"body": "Nightwing: fixed in abc1234 (re: comment 4567890 from coderabbitai[bot])"},
+        {"body": "not a fixed reply"},
+    ]
+
+    assert nightwing.fixed_comment_ids_from_pr_comments(comments) == {4567890}
+
+
+def test_pick_target_skips_comment_fixed_by_prior_pr_reply(nightwing, monkeypatch):
+    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "backend")
+    fake_comment = {
+        "id": 4567890,
+        "user": {"login": "coderabbitai[bot]"},
+        "body": "P1: still visible in the review thread",
+        "path": "src/x.py",
+        "line": 1,
+    }
+    fixed_reply = {
+        "body": "Nightwing: fixed in abc1234 (re: comment 4567890 from coderabbitai[bot])"
+    }
+
+    def fake_gh_json(cmd, *, default):
+        joined = " ".join(str(part) for part in cmd)
+        if "pr list" in joined:
+            return [_pick_target_pr_row(99, labels=["agent:authored"])]
+        if "/pulls/" in joined:
+            return [fake_comment]
+        if "/issues/" in joined:
+            return [fixed_reply]
+        return default
+
+    monkeypatch.setattr(nightwing, "gh_json", fake_gh_json)
+    monkeypatch.setattr(nightwing, "is_repo_paused", lambda _repo: False)
+    monkeypatch.setattr(nightwing, "WATCH_REPOS", ["backend"])
+
+    repo, pr, comments = nightwing.pick_target(fixed_ids=set())
+
+    assert (repo, pr, comments) == (None, None, None)
+
+
 def test_pick_target_skips_pr_carrying_human_needed_label(nightwing, monkeypatch):
     """Once Nightwing escalates a PR, the operator owns it; subsequent
     firings must not re-pick its comments and burn turns."""

@@ -6,7 +6,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -14,6 +16,7 @@ sys.path.insert(
     0,
     (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
 )
+import labels as label_constants
 from agent_runner import (
     ALFRED_HOME,
     GH_ORG,
@@ -57,6 +60,8 @@ from agent_runner import (
     with_lock,
     worktree_risk_reason,
 )
+from dependencies import issue_dependencies
+from workflow_validation import validate_changed_workflows
 
 # Accept `--dry-run` as a CLI flag in addition to ALFRED_DRY_RUN=1. Flip the
 # mode before anything else so every agent_runner seam sees it.
@@ -69,6 +74,8 @@ if "--dry-run" in sys.argv:
 # renamed agent renders cleanly.
 AGENT = os.environ.get("AGENT_CODENAME", "lucius")
 LUCIUS_ENGINE = agent_engine(AGENT, default="hybrid")
+DEPENDENCY_WARNING_LEDGER = ALFRED_HOME / "state" / AGENT / "dependency-lookup-warnings.json"
+DEPENDENCY_WARNING_TTL_SECONDS = int(os.environ.get("ALFRED_DEPENDENCY_WARNING_TTL_S", "21600"))
 PROMPT_PATH = ALFRED_HOME / "prompts" / f"{AGENT}.md"
 # The shipped starter template for the feature-dev role (what alfred-init seeds
 # as <codename>.md). Used to detect an untouched seed by content comparison.
@@ -98,6 +105,43 @@ PREFLIGHT = PreflightSpec(
 
 # Daily turn cap before auto-pausing the launchd agent. Override via env var.
 DAILY_TURN_CAP = int(os.environ.get("ALFRED_LUCIUS_TURN_CAP", "5000"))
+PRE_PUSH_TIMEOUT_SECONDS = int(os.environ.get("ALFRED_PRE_PUSH_TIMEOUT_S", "900"))
+LUCIUS_WORKTREE_BASE_REF = "origin/main"
+LUCIUS_PR_BASE_BRANCH = "main"
+NODE_LOCKFILES = (
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
+)
+PACKAGE_DEPENDENCY_FIELDS = (
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "optionalDependencies",
+    "bundleDependencies",
+    "bundledDependencies",
+)
+DEPENDENCY_LOOKUP_FAILED = "__ALFRED_DEP_LOOKUP_FAILED__"
+
+
+class PrePushResult:
+    def __init__(
+        self,
+        *,
+        ok: bool,
+        command: str = "",
+        reason: str = "",
+        stdout: str = "",
+        stderr: str = "",
+    ) -> None:
+        self.ok = ok
+        self.command = command
+        self.reason = reason
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 def _make_debug_dir(issue_num: int) -> Path | None:
@@ -117,6 +161,16 @@ def _write_debug_file(debug_dir: Path | None, name: str, text: str) -> None:
         (debug_dir / name).write_text(text, encoding="utf-8")
     except OSError as exc:
         print(f"[{AGENT.upper()}-DEBUG-WARN] skipped {debug_dir / name}: {exc}", file=sys.stderr)
+
+
+def issue_closing_line(issue_num: int) -> str:
+    """Return the issue link line GitHub and automerge use to close work."""
+    return f"Closes #{issue_num}"
+
+
+def issue_reference_line(issue_num: int) -> str:
+    """Return a non-closing issue link for incomplete draft work."""
+    return f"Issue: #{issue_num}"
 
 
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
@@ -148,22 +202,94 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
         if repo in user_cfg:
             out[repo] = user_cfg[repo]
             continue
+        local_dir = WORKSPACE / local_repo_dir(repo)
         # Default by suffix
         if repo.endswith("-backend") or repo.endswith("-api"):
             out[repo] = "./gradlew check"
-        elif repo.endswith(("-frontend", "-mobile", "-web", "-nango")):
-            out[repo] = "npm run lint && npx tsc --noEmit"
+            continue
+        node_default = _default_node_pre_push_command(local_dir)
+        if node_default:
+            out[repo] = node_default
+            continue
+        if (local_dir / "pyproject.toml").exists():
+            out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
         else:
-            local_dir = WORKSPACE / local_repo_dir(repo)
-            if (local_dir / "pyproject.toml").exists():
-                out[repo] = "uv run ruff check . && uv run mypy . && uv run pytest"
-            else:
-                out[repo] = ""
+            out[repo] = ""
     return out
+
+
+def _package_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _node_script_command(manager: str, name: str) -> str:
+    quoted = shlex.quote(name)
+    if manager == "yarn":
+        return f"yarn {quoted}"
+    if manager == "bun":
+        return f"bun run {quoted}"
+    return f"{manager} run {quoted}"
+
+
+def _default_node_pre_push_command(local_dir: Path) -> str:
+    package_json = local_dir / "package.json"
+    if not package_json.exists():
+        return ""
+    package = _package_json(package_json)
+    scripts = package.get("scripts") if isinstance(package.get("scripts"), dict) else {}
+
+    if (local_dir / "pnpm-lock.yaml").exists():
+        install = "pnpm install --frozen-lockfile"
+        manager = "pnpm"
+        typecheck = "pnpm exec tsc --noEmit"
+        test = "CI=1 pnpm test"
+    elif (local_dir / "yarn.lock").exists():
+        install = "yarn install --frozen-lockfile"
+        manager = "yarn"
+        typecheck = "yarn tsc --noEmit"
+        test = "CI=1 yarn test"
+    elif (local_dir / "bun.lock").exists() or (local_dir / "bun.lockb").exists():
+        install = "bun install --frozen-lockfile"
+        manager = "bun"
+        typecheck = "bunx tsc --noEmit"
+        test = "CI=1 bun run test"
+    else:
+        install = (
+            "npm ci"
+            if (
+                (local_dir / "package-lock.json").exists()
+                or (local_dir / "npm-shrinkwrap.json").exists()
+            )
+            else "npm install --package-lock=false"
+        )
+        manager = "npm"
+        typecheck = "npx tsc --noEmit"
+        test = "CI=1 npm test"
+
+    commands = [install]
+    if "typecheck" in scripts:
+        commands.append(_node_script_command(manager, "typecheck"))
+    elif (local_dir / "tsconfig.json").exists():
+        commands.append(typecheck)
+    if "lint" in scripts:
+        commands.append(_node_script_command(manager, "lint"))
+    if "test" in scripts:
+        commands.append(test)
+    return " && ".join(commands)
 
 
 PRE_PUSH = _load_pre_push_config(AGENT)
 TRUSTED_AUTHOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+
+def _refresh_pre_push_config() -> None:
+    """Reload inferred pre-push commands after preflight syncs checkouts."""
+    global PRE_PUSH
+    PRE_PUSH = _load_pre_push_config(AGENT)
 
 
 def _strip_auto_seed_marker(text: str) -> str:
@@ -423,16 +549,9 @@ def pick_issue() -> tuple[str, dict] | tuple[None, None]:
             # Defensive: skip anything carrying a state-machine blocker. The
             # gh query already filters by agent:implement, but a fresh issue
             # could acquire one of these between query and pick.
-            if label_names & {
-                "agent:in-flight",
-                "agent:pr-open",
-                f"{AGENT}-pr-open",
-                "do-not-pickup",
-                "needs:human-scope",
-                "agent:large-feature",
-            }:
+            if label_constants.has_feature_dev_pickup_blocker(label_names):
                 continue
-            if any(name.startswith("agent:bundle:") for name in label_names):
+            if issue_has_open_dependencies(repo, issue):
                 continue
             existing_pr = find_open_authored_pr_for_issue(repo, issue["number"])
             if existing_pr:
@@ -543,8 +662,12 @@ def release_wip_salvage(repo: str, issue_num: int, firing_id: str, pr_url: str |
     )
 
 
-def _commits_ahead_count(wt: Path) -> int:
-    res = run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=str(wt), timeout=10)
+def _commits_ahead_count(wt: Path, *, base_ref: str = LUCIUS_WORKTREE_BASE_REF) -> int:
+    res = run(
+        ["git", "rev-list", "--count", f"{base_ref}..HEAD"],
+        cwd=str(wt),
+        timeout=10,
+    )
     if res.returncode != 0:
         return 0
     try:
@@ -553,8 +676,217 @@ def _commits_ahead_count(wt: Path) -> int:
         return 0
 
 
+def _remote_default_ref(wt: Path) -> str:
+    res = run(
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    ref = (res.stdout or "").strip()
+    if res.returncode == 0 and ref.startswith("origin/"):
+        return ref
+    return "origin/main"
+
+
+def _merge_base_ref(wt: Path, *, base_ref: str = LUCIUS_WORKTREE_BASE_REF) -> str:
+    res = run(["git", "merge-base", base_ref, "HEAD"], cwd=str(wt), timeout=10)
+    merge_base = (res.stdout or "").strip()
+    if res.returncode == 0 and merge_base:
+        return merge_base
+    return base_ref
+
+
 def _worktree_status(wt: Path) -> str:
     return run(["git", "status", "--porcelain"], cwd=str(wt), timeout=10).stdout.strip()
+
+
+def _changed_paths(wt: Path) -> set[str]:
+    base = _merge_base_ref(wt)
+    commands = (
+        ["git", "diff", "--name-only", f"{base}..HEAD"],
+        ["git", "diff", "--name-only", "--cached"],
+        ["git", "diff", "--name-only"],
+    )
+    paths: set[str] = set()
+    for command in commands:
+        res = run(command, cwd=str(wt), timeout=10)
+        if res.returncode != 0:
+            continue
+        paths.update(line.strip() for line in (res.stdout or "").splitlines() if line.strip())
+    return paths
+
+
+def _git_show_json(wt: Path, ref_path: str) -> dict:
+    res = run(
+        ["git", "show", f"{_merge_base_ref(wt)}:{ref_path}"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    if res.returncode != 0:
+        return {}
+    try:
+        data = json.loads(res.stdout or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _git_path_exists(wt: Path, ref_path: str) -> bool:
+    res = run(
+        ["git", "cat-file", "-e", f"{_merge_base_ref(wt)}:{ref_path}"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    return res.returncode == 0
+
+
+def _dependency_sections(package: dict) -> dict:
+    return {field: package.get(field) for field in PACKAGE_DEPENDENCY_FIELDS}
+
+
+def _package_dependencies_changed(wt: Path, package_path: str) -> bool:
+    current = _package_json(wt / package_path)
+    if not current:
+        return False
+    before = _git_show_json(wt, package_path)
+    return _dependency_sections(before) != _dependency_sections(current)
+
+
+def _lockfile_candidates(package_path: str) -> list[str]:
+    package_dir = Path(package_path).parent
+    local = [
+        str(package_dir / lockfile) if str(package_dir) != "." else lockfile
+        for lockfile in NODE_LOCKFILES
+    ]
+    return list(dict.fromkeys([*local, *NODE_LOCKFILES]))
+
+
+def dependency_lockfile_drift(wt: Path) -> list[str]:
+    """Return package.json dependency edits whose lockfile did not change."""
+    changed = _changed_paths(wt)
+    drift: list[str] = []
+    for path in sorted(changed):
+        if Path(path).name != "package.json":
+            continue
+        if not _package_dependencies_changed(wt, path):
+            continue
+        package_dir = Path(path).parent
+        existing_locks = [
+            candidate
+            for candidate in _lockfile_candidates(path)
+            if (wt / candidate).exists() or _git_path_exists(wt, candidate)
+        ]
+        if str(package_dir) != ".":
+            local_prefix = f"{package_dir}/"
+            local_locks = [
+                lockfile for lockfile in existing_locks if lockfile.startswith(local_prefix)
+            ]
+            if local_locks:
+                existing_locks = local_locks
+        changed_existing_locks = [
+            lockfile
+            for lockfile in existing_locks
+            if lockfile in changed and (wt / lockfile).exists()
+        ]
+        if existing_locks and not changed_existing_locks:
+            drift.append(
+                f"{path} changed dependency fields but no lockfile changed "
+                f"({', '.join(existing_locks)})"
+            )
+    return drift
+
+
+def run_pre_push_checks(repo: str, wt: Path) -> PrePushResult:
+    drift = dependency_lockfile_drift(wt)
+    if drift:
+        return PrePushResult(ok=False, reason="; ".join(drift))
+
+    command = (PRE_PUSH.get(repo) or "").strip()
+    if not command:
+        return PrePushResult(ok=True)
+
+    result = run(["bash", "-lc", command], cwd=str(wt), timeout=PRE_PUSH_TIMEOUT_SECONDS)
+    if result.returncode != 0:
+        return PrePushResult(
+            ok=False,
+            command=command,
+            reason=f"pre-push command failed with exit {result.returncode}",
+            stdout=result.stdout or "",
+            stderr=result.stderr or "",
+        )
+    return PrePushResult(
+        ok=True,
+        command=command,
+        stdout=result.stdout or "",
+        stderr=result.stderr or "",
+    )
+
+
+def _dependency_warning_key(repo: str, issue_num: object, gh_repo: str, dep_number: int) -> str:
+    return f"{repo}#{issue_num}->{gh_repo}#{dep_number}"
+
+
+def _should_warn_dependency_lookup_failure(key: str, *, now: float | None = None) -> bool:
+    """Return True when a dependency lookup failure should notify Slack."""
+    now = time.time() if now is None else now
+    try:
+        raw = json.loads(DEPENDENCY_WARNING_LEDGER.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    ledger = {}
+    for k, v in raw.items():
+        try:
+            ledger[str(k)] = float(v)
+        except (TypeError, ValueError):
+            continue
+    last = ledger.get(key)
+    if last is not None and now - last < DEPENDENCY_WARNING_TTL_SECONDS:
+        return False
+    cutoff = now - (DEPENDENCY_WARNING_TTL_SECONDS * 4)
+    ledger = {k: v for k, v in ledger.items() if v >= cutoff}
+    ledger[key] = now
+    try:
+        DEPENDENCY_WARNING_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        DEPENDENCY_WARNING_LEDGER.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+def issue_has_open_dependencies(repo: str, issue: dict) -> bool:
+    """True when an issue declares dependencies that are not closed yet."""
+    for dep in issue_dependencies(issue, default_repo=repo):
+        gh_repo = dep.repo if "/" in dep.repo else f"{GH_ORG}/{dep.repo}"
+        state = gh_json(
+            [
+                "gh",
+                "issue",
+                "view",
+                str(dep.number),
+                "-R",
+                gh_repo,
+                "--json",
+                "state",
+            ],
+            default={"state": DEPENDENCY_LOOKUP_FAILED},
+        )
+        dep_state = (state.get("state") or DEPENDENCY_LOOKUP_FAILED).upper()
+        if dep_state == DEPENDENCY_LOOKUP_FAILED:
+            issue_num = issue.get("number", "?")
+            msg = (
+                f"[{AGENT.upper()}-DEPENDENCY-LOOKUP-FAILED] holding {repo}#{issue_num}; "
+                f"could not resolve dependency {gh_repo}#{dep.number}"
+            )
+            print(msg)
+            key = _dependency_warning_key(repo, issue_num, gh_repo, dep.number)
+            if _should_warn_dependency_lookup_failure(key):
+                slack_post(msg, severity="warn")
+            return True
+        if dep_state != "CLOSED":
+            return True
+    return False
 
 
 def _preserve_or_remove_worktree(repo: str, wt: Path, branch: str, reason: str) -> str | None:
@@ -577,8 +909,66 @@ def _push_or_preserve(
     outcome: str,
     *,
     release_on_failure: bool = True,
+    run_checks: bool = True,
+    run_workflow_validation: bool | None = None,
 ) -> bool:
     """Push the current branch, preserving local work and releasing for retry on failure."""
+    if run_workflow_validation is None:
+        run_workflow_validation = run_checks
+    if run_checks:
+        pre_push = run_pre_push_checks(repo, wt)
+        if not pre_push.ok:
+            recovery_ref = create_recovery_ref(wt, branch=branch)
+            if release_on_failure:
+                release_issue(
+                    repo,
+                    issue_num,
+                    codename=AGENT,
+                    firing_id=firing_id,
+                    outcome="pre-push-checks-failed",
+                )
+            detail = short(
+                pre_push.stderr or pre_push.stdout or pre_push.reason or "pre-push checks failed",
+                300,
+            )
+            command = pre_push.command or "dependency lockfile drift check"
+            ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+            msg = (
+                f"[{AGENT.upper()}-PRE-PUSH-FAILED] preserved local work for #{issue_num}; "
+                f"branch={branch}{ref_part}; command={command!r}. {detail}"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            return False
+
+    if run_workflow_validation:
+        workflow_validation = validate_changed_workflows(wt, base=LUCIUS_WORKTREE_BASE_REF)
+        if not workflow_validation.ok:
+            recovery_ref = create_recovery_ref(wt, branch=branch)
+            if release_on_failure:
+                release_issue(
+                    repo,
+                    issue_num,
+                    codename=AGENT,
+                    firing_id=firing_id,
+                    outcome="workflow-validation-failed",
+                )
+            detail = short(
+                workflow_validation.stderr
+                or workflow_validation.stdout
+                or workflow_validation.reason
+                or "workflow validation failed",
+                300,
+            )
+            ref_part = f", recovery_ref={recovery_ref}" if recovery_ref else ""
+            files = ", ".join(workflow_validation.files) or "(unknown workflow)"
+            msg = (
+                f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] preserved local work "
+                f"for #{issue_num}; branch={branch}{ref_part}; files={files}. {detail}"
+            )
+            print(msg)
+            slack_post(msg, severity="warn")
+            return False
     push_res = push_current_branch(wt, branch)
     if push_res.returncode == 0:
         return True
@@ -648,6 +1038,7 @@ def main() -> int:
             dry_run_log("preflight", "preflight reported config gaps, continuing (dry-run)")
         else:
             return 0
+    _refresh_pre_push_config()
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
@@ -745,7 +1136,13 @@ def main() -> int:
     # Atomic-ish claim. Refused if any other agent has agent:in-flight,
     # if a PR is already open, or if the operator set do-not-pickup. Race
     # detection inside claim_issue backs out cleanly if we lost.
-    if not claim_issue(repo, issue_num, codename=AGENT, firing_id=events.firing_id):
+    if not claim_issue(
+        repo,
+        issue_num,
+        codename=AGENT,
+        firing_id=events.firing_id,
+        role="feature-dev",
+    ):
         events.emit(
             "firing_complete", outcome="dedup_skip", repo=f"{GH_ORG}/{repo}", number=issue_num
         )
@@ -829,9 +1226,10 @@ def main() -> int:
 
     # Branch on result
     if result.subtype == "success":
+        base_ref = LUCIUS_WORKTREE_BASE_REF
         # Did the engine commit?
         new_commits = run(
-            ["git", "rev-list", "origin/main..HEAD"], cwd=str(wt), timeout=10
+            ["git", "rev-list", f"{base_ref}..HEAD"], cwd=str(wt), timeout=10
         ).stdout.strip()
         commit_count = len([lbl for lbl in new_commits.splitlines() if lbl.strip()])
 
@@ -920,6 +1318,8 @@ def main() -> int:
                     wt,
                     branch,
                     "partial-push-failed",
+                    run_checks=False,
+                    run_workflow_validation=True,
                 ):
                     spend.increment(failures_today=1, consecutive_failures=1)
                     return 0
@@ -928,7 +1328,7 @@ def main() -> int:
 
 {AGENT.title()}'s `{engine_used}` run returned success but did not produce a commit. Inspecting the worktree found unstaged changes - committing them here for human review.
 
-Issue: #{issue_num}
+{issue_reference_line(issue_num)}
 Engine: {engine_used}
 Turns: {result.num_turns}
 Cost equivalent: ${result.cost_usd:.2f}
@@ -948,6 +1348,7 @@ Generated by Alfred
                     title=f"DRAFT: WIP partial implementation of #{issue_num}",
                     body_file=body_file,
                     head=branch,
+                    base=LUCIUS_PR_BASE_BRANCH,
                     labels=["agent:authored", "do-not-review"],
                     draft=True,
                 )
@@ -997,14 +1398,14 @@ Generated by Alfred
             ["git", "log", "-1", "--format=%s"], cwd=str(wt), timeout=10
         ).stdout.strip()
         commit_body = run(
-            ["git", "log", "origin/main..HEAD", "--format=%B"], cwd=str(wt), timeout=10
+            ["git", "log", f"{base_ref}..HEAD", "--format=%B"], cwd=str(wt), timeout=10
         ).stdout.strip()
 
         body_file = Path(f"/tmp/{AGENT}-prbody-{issue_num}.md")
         body_file.write_text(f"""## Summary
 {commit_body[:2000]}
 
-Closes #{issue_num}
+{issue_closing_line(issue_num)}
 
 ## Test plan
 - [ ] CI passes (lint, type-check, build, tests)
@@ -1019,7 +1420,12 @@ Generated by Alfred
 """)
 
         pr_url = gh_pr_create(
-            repo, title=commit_subject, body_file=body_file, head=branch, labels=["agent:authored"]
+            repo,
+            title=commit_subject,
+            body_file=body_file,
+            head=branch,
+            base=LUCIUS_PR_BASE_BRANCH,
+            labels=["agent:authored"],
         )
         remove_worktree(local_repo_dir(repo), wt)
 

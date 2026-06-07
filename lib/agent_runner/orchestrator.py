@@ -26,6 +26,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -79,6 +80,107 @@ class PreflightFailed(RuntimeError):
     The caller catches and exits ``0`` cleanly; preflight has already
     posted a one-line Slack message and printed a sentinel to stdout.
     """
+
+
+def sync_checkout_to_default(
+    repo_path: Path,
+    *,
+    run_cmd: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> tuple[bool, str]:
+    """Fast-forward a clean default-branch checkout before an agent reads it.
+
+    Dirty checkouts, detached heads, and feature branches are deliberately
+    skipped: preflight must never discard operator work.
+    """
+    if _env_value_enabled("ALFRED_DISABLE_CHECKOUT_SYNC"):
+        return True, "sync disabled"
+    if _env_value_enabled("ALFRED_DRY_RUN"):
+        return True, "sync skipped: dry-run"
+
+    def git(
+        args: list[str],
+        *,
+        timeout: int,
+    ) -> tuple[subprocess.CompletedProcess[str] | None, str | None]:
+        command = ["git", *args]
+        try:
+            return (
+                run_cmd(
+                    command,
+                    cwd=str(repo_path),
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                ),
+                None,
+            )
+        except subprocess.TimeoutExpired:
+            return None, f"git {' '.join(args)} timed out after {timeout}s"
+        except OSError as exc:
+            return None, f"git {' '.join(args)} failed: {exc}"
+
+    status, error = git(["status", "--porcelain"], timeout=15)
+    if error:
+        return False, error
+    assert status is not None
+    if status.returncode != 0:
+        detail = (status.stderr or status.stdout or "").strip().splitlines()
+        return False, f"git status failed: {(detail[-1] if detail else status.returncode)}"
+    if (status.stdout or "").strip():
+        return True, "skipped: checkout dirty"
+
+    branch, error = git(["rev-parse", "--abbrev-ref", "HEAD"], timeout=10)
+    if error:
+        return False, error
+    assert branch is not None
+    if branch.returncode != 0:
+        return True, "skipped: branch unavailable"
+    current_branch = (branch.stdout or "").strip()
+    if not current_branch or current_branch == "HEAD":
+        return True, "skipped: detached HEAD"
+
+    default_ref, error = git(
+        ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        timeout=10,
+    )
+    if error:
+        return False, error
+    assert default_ref is not None
+    default_branch = "main"
+    if default_ref.returncode == 0:
+        ref = (default_ref.stdout or "").strip()
+        if ref.startswith("origin/"):
+            default_branch = ref.split("/", 1)[1]
+    if current_branch != default_branch:
+        return True, f"skipped: on {current_branch}, default is {default_branch}"
+
+    fetch, error = git(["fetch", "origin", default_branch], timeout=60)
+    if error:
+        return False, error
+    assert fetch is not None
+    if fetch.returncode != 0:
+        detail = (fetch.stderr or fetch.stdout or "").strip().splitlines()
+        return False, f"git fetch failed: {(detail[-1] if detail else fetch.returncode)}"
+
+    merge, error = git(["merge", "--ff-only", f"origin/{default_branch}"], timeout=60)
+    if error:
+        return False, error
+    assert merge is not None
+    if merge.returncode != 0:
+        detail = (merge.stderr or merge.stdout or "").strip().splitlines()
+        return False, f"git merge --ff-only failed: {(detail[-1] if detail else merge.returncode)}"
+
+    ahead, error = git(["rev-list", "--count", f"origin/{default_branch}..HEAD"], timeout=10)
+    if error:
+        return False, error
+    assert ahead is not None
+    if ahead.returncode != 0:
+        detail = (ahead.stderr or ahead.stdout or "").strip().splitlines()
+        return False, f"git ahead check failed: {(detail[-1] if detail else ahead.returncode)}"
+    ahead_count = (ahead.stdout or "").strip()
+    if ahead_count and ahead_count != "0":
+        return False, f"checkout has {ahead_count} local commit(s) ahead of origin/{default_branch}"
+    return True, f"synced origin/{default_branch}"
 
 
 def preflight(spec: PreflightSpec) -> None:
@@ -201,6 +303,10 @@ def preflight(spec: PreflightSpec) -> None:
         repo_path = WORKSPACE / local
         if not (repo_path / ".git").exists():
             misses.append(f"checkout `{repo_path}` missing or not a git repo")
+            continue
+        ok, sync_message = sync_checkout_to_default(repo_path)
+        if not ok:
+            misses.append(f"checkout `{repo_path}` could not sync: {sync_message}")
 
     if not misses:
         return

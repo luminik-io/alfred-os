@@ -36,6 +36,7 @@ from agent_runner import (
     codex_invoke,
     codex_sandbox_for_agent,
     commit_trailer,
+    create_recovery_ref,
     doctor_mode,
     engine_preflight_bins,
     gh_json,
@@ -55,6 +56,7 @@ from agent_runner import (
     with_lock,
 )
 from agent_runner.transcripts import transcript_path
+from workflow_validation import validate_changed_workflows
 
 AGENT = os.environ.get("AGENT_CODENAME", "nightwing")
 NIGHTWING_ENGINE = agent_engine(AGENT, default="hybrid")
@@ -233,6 +235,10 @@ SECURITY_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 ALREADY_FIXED = re.compile(rf"{AGENT}.*fixed in", re.IGNORECASE)
+FIXED_REPLY_COMMENT_ID = re.compile(
+    rf"{AGENT}:\s*fixed in\s+[0-9a-f]{{7,40}}\s*\(re:\s*comment\s+(\d+)\b",
+    re.IGNORECASE,
+)
 
 
 def _extract_markdown_section(body: str, heading_pattern: str) -> str:
@@ -280,6 +286,62 @@ def comment_severity(body: str) -> str | None:
     return None
 
 
+def fixed_comment_ids_from_pr_comments(comments: list[dict]) -> set[int]:
+    """Return review comment IDs mentioned in prior Nightwing success replies."""
+    fixed: set[int] = set()
+    for comment in comments:
+        body = comment.get("body", "") if isinstance(comment, dict) else ""
+        if not isinstance(body, str):
+            continue
+        for match in FIXED_REPLY_COMMENT_ID.finditer(body):
+            try:
+                fixed.add(int(match.group(1)))
+            except ValueError:
+                continue
+    return fixed
+
+
+def preserve_workflow_validation_failure(
+    wt: Path,
+    *,
+    head_ref: str,
+    pr_num: int,
+    comment_id: int,
+    workflow_validation,
+    events: EventLog,
+) -> tuple[str, str | None]:
+    """Warn and create a recovery ref for unpushed review-fix workflow changes."""
+    recovery_ref = create_recovery_ref(wt, branch=head_ref)
+    detail = short(
+        workflow_validation.stderr
+        or workflow_validation.stdout
+        or workflow_validation.reason
+        or "workflow validation failed",
+        260,
+    )
+    files = ", ".join(workflow_validation.files) or "(unknown workflow)"
+    ref_part = f"; recovery_ref={recovery_ref}" if recovery_ref else ""
+    reason = (
+        f"workflow validation failed for comment {comment_id}; files={files}{ref_part}. {detail}"
+    )
+    print(
+        f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] comment {comment_id}: "
+        f"files={files}{ref_part}. {detail}"
+    )
+    slack_post(
+        f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] PR {pr_num} "
+        f"comment {comment_id}; files={files}{ref_part}. {detail}",
+        severity="warn",
+    )
+    events.emit(
+        "workflow_validation_failed",
+        comment_id=comment_id,
+        files=list(workflow_validation.files),
+        recovery_ref=recovery_ref,
+    )
+    return reason, recovery_ref
+
+
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
     """Same format / defaults as lucius._load_pre_push_config."""
     cfg_path = Path(os.path.expanduser(f"~/.alfredrc.d/{agent_codename}.yaml"))
@@ -308,6 +370,12 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
 
 
 PRE_PUSH = _load_pre_push_config(AGENT)
+
+
+def _refresh_pre_push_config() -> None:
+    """Reload inferred pre-push commands after preflight syncs checkouts."""
+    global PRE_PUSH
+    PRE_PUSH = _load_pre_push_config(AGENT)
 
 
 def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, None, None]:
@@ -380,6 +448,7 @@ def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, No
                 ],
                 default=[],
             )
+            fixed_ids_for_pr = set(fixed_ids) | fixed_comment_ids_from_pr_comments(issue_comments)
             comments = list(inline_comments) + list(issue_comments)
             unresolved = []
             for c in comments:
@@ -406,7 +475,7 @@ def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, No
                 if ALREADY_FIXED.search(body):
                     continue
                 cid = c.get("id")
-                if cid in fixed_ids:
+                if cid in fixed_ids_for_pr:
                     continue
                 unresolved.append(
                     {
@@ -480,6 +549,7 @@ def main() -> int:
         preflight(PREFLIGHT)
     except PreflightFailed:
         return 0
+    _refresh_pre_push_config()
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
@@ -569,6 +639,8 @@ def main() -> int:
     fix_summary = []
     total_turns = 0
     engine_counts: dict[str, int] = {}
+    preserved_failure_reason = ""
+    preserved_recovery_ref: str | None = None
 
     for c in comments:
         cbody = c["body"]
@@ -682,6 +754,23 @@ def main() -> int:
                 f"[{AGENT.upper()}-NO-COMMIT] comment {cid}: {engine_used} exited 0 "
                 f"but HEAD did not advance.\n{diag}"
             )
+            issue_comments = gh_json(
+                [
+                    "gh",
+                    "api",
+                    f"/repos/{GH_ORG}/{repo}/issues/{pr_num}/comments",
+                    "--paginate",
+                ],
+                default=[],
+            )
+            if cid in fixed_comment_ids_from_pr_comments(issue_comments):
+                print(
+                    f"[{AGENT.upper()}-ALREADY-FIXED] comment {cid}: found prior "
+                    f"{AGENT.title()} fixed reply; skipping no-commit streak."
+                )
+                fixed_ids.add(cid)
+                no_commit_streaks.pop(_streak_key(repo, pr_num, cid), None)
+                continue
             # Bump the (PR, comment) streak; escalate at the configured
             # threshold so an infinite-retry loop on the same comment
             # surfaces as an operator-actionable Slack post + label.
@@ -696,6 +785,17 @@ def main() -> int:
             continue
 
         # Push + reply on the PR
+        workflow_validation = validate_changed_workflows(wt, base=f"origin/{head_ref}")
+        if not workflow_validation.ok:
+            preserved_failure_reason, preserved_recovery_ref = preserve_workflow_validation_failure(
+                wt,
+                head_ref=head_ref,
+                pr_num=pr_num,
+                comment_id=cid,
+                workflow_validation=workflow_validation,
+                events=events,
+            )
+            break
         push = run(["git", "push", "origin", f"HEAD:{head_ref}"], cwd=str(wt), timeout=60)
         if push.returncode != 0:
             print(f"[{AGENT.upper()}-PUSH-FAIL] comment {cid}: {short(push.stderr, 200)}")
@@ -717,10 +817,26 @@ def main() -> int:
     save_fixed_ids(fixed_ids)
     save_no_commit_streaks(no_commit_streaks)
     spend.increment(firings_today=1, turns_today=total_turns)
-    remove_worktree(repo, wt)
     engine_summary = (
         ", ".join(f"{engine}:{count}" for engine, count in sorted(engine_counts.items())) or "none"
     )
+
+    if preserved_failure_reason:
+        spend.increment(failures_today=1, consecutive_failures=1)
+        msg = (
+            f"{AGENT.title()}: preserved local worktree for PR {pr_num}; "
+            f"{preserved_failure_reason} worktree={wt}"
+        )
+        print(msg)
+        events.emit(
+            "firing_complete",
+            outcome="workflow-validation-failed",
+            preserved_worktree=str(wt),
+            recovery_ref=preserved_recovery_ref,
+        )
+        return 0
+
+    remove_worktree(repo, wt)
 
     if fixes_landed == 0:
         # No fixes landed but the firing completed cleanly. Count as no-op

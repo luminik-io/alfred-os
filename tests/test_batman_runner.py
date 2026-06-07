@@ -11,6 +11,7 @@ import importlib.util
 import sys
 from datetime import UTC
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -125,6 +126,11 @@ def test_list_large_features_skips_needs_human_scope(monkeypatch):
     assert [row["number"] for row in runner._list_large_features()] == [1]
 
 
+def test_batman_pickup_blocks_done_large_features():
+    runner = _load_runner()
+    assert runner._has_batman_pickup_blocker({"agent:large-feature", "agent:done"})
+
+
 def test_bundle_for_issue_keeps_siblings_inside_scan_scope(monkeypatch):
     runner = _load_runner()
     seen_allowed: list[list[str]] = []
@@ -160,6 +166,37 @@ def test_bundle_for_issue_keeps_siblings_inside_scan_scope(monkeypatch):
     assert bundle.bundle_label == "agent:bundle:checkout"
     assert seen_allowed == [["myorg/backend", "myorg/frontend"]]
     assert {row["number"] for row in bundle.issues} == {1, 2}
+
+
+def test_bundle_for_issue_orders_declared_dependencies(monkeypatch):
+    runner = _load_runner()
+    issue = {
+        "number": 2,
+        "title": "dependent",
+        "url": "https://github.com/myorg/backend/issues/2",
+        "labels": [{"name": "agent:bundle:checkout"}],
+        "createdAt": "2026-05-09T10:01:00Z",
+        "body": "Depends on: #1",
+    }
+    dependency = {
+        "number": 1,
+        "title": "dependency",
+        "url": "https://github.com/myorg/backend/issues/1",
+        "labels": [{"name": "agent:bundle:checkout"}],
+        "createdAt": "2026-05-09T10:02:00Z",
+        "body": "",
+    }
+
+    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend")
+    monkeypatch.setattr(
+        runner,
+        "list_issues_by_bundle_label",
+        lambda _label, *, allowed_repos=None: [issue, dependency],
+    )
+
+    bundle = runner._bundle_for_issue(issue)
+
+    assert [row["number"] for row in bundle.issues] == [1, 2]
 
 
 def test_legacy_main_blocks_guessed_default_rollout_before_plan_post(monkeypatch):
@@ -210,6 +247,150 @@ def test_legacy_main_blocks_guessed_default_rollout_before_plan_post(monkeypatch
     assert "Affected Repos" in comments[0][2]
     assert edits == [("myorg/backend", 679, {"add_labels": ["needs:human-scope"]})]
     assert posts and "BATMAN-NEEDS-SCOPE" in posts[0]
+
+
+def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
+    runner = _load_runner()
+    reports = []
+    slack_posts = []
+    cleared = []
+    issue_edits = []
+    ensured = []
+
+    plan = SimpleNamespace(
+        bundle_slug="empty-plan",
+        children=(),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(
+            SimpleNamespace(message="No child issues were parsed from the parent body."),
+        ),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            raise AssertionError("should not request approval for a hollow plan")
+
+        def report(self, _plan, result):
+            reports.append(result)
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        runner, "slack_post", lambda message, **kw: slack_posts.append((message, kw))
+    )
+    monkeypatch.setattr(
+        runner,
+        "_clear_pending_envelope",
+        lambda repo, number: cleared.append(("clear", repo, number)),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_unset_pending_approval_label",
+        lambda repo, number: cleared.append(("unset", repo, number)),
+    )
+    monkeypatch.setattr(
+        runner,
+        "gh_issue_edit",
+        lambda repo, number, **kw: issue_edits.append((repo, number, kw)),
+    )
+    monkeypatch.setattr(
+        runner,
+        "ensure_labels",
+        lambda repo, labels=None: ensured.append((repo, labels)),
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent"),
+        parent_issue={"number": 83, "title": "hollow", "body": ""},
+        firing_id="fid-empty",
+    )
+
+    captured = capsys.readouterr()
+    assert out == 0
+    assert "[BATMAN-DECOMPOSITION-FAILED]" in captured.out
+    assert "parent=myorg/parent#83" in captured.out
+    assert slack_posts and "No approval was requested" in slack_posts[0][0]
+    assert reports and reports[0].reason == runner.EXEC_NO_CHILDREN
+    assert cleared == [
+        ("clear", "myorg/parent", 83),
+        ("unset", "myorg/parent", 83),
+    ]
+    assert ensured == [("myorg/parent", runner.LIFECYCLE_LABELS)]
+    assert issue_edits == [
+        (
+            "myorg/parent",
+            83,
+            {"add_labels": ["needs:human-scope"]},
+        )
+    ]
+
+
+def test_lifecycle_prints_awaiting_approval_sentinel(monkeypatch, capsys):
+    runner = _load_runner()
+    monkeypatch.setitem(
+        sys.modules,
+        "slack_approval",
+        SimpleNamespace(
+            SlackApproval=lambda *_args, **_kwargs: object(),
+            default_slack_client=lambda: object(),
+            operator_user_id_from_env=lambda: "U123",
+        ),
+    )
+    plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(SimpleNamespace(repo="myorg/backend"),),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return runner.ApprovalEnvelope(channel="C123", message_ts="1700.0001", plan=plan)
+
+        def await_approval(self, _envelope):
+            return SimpleNamespace(
+                approved=False,
+                verdict="approval_timeout",
+                elapsed_s=12,
+                detail="no reaction",
+            )
+
+        def report(self, _plan, _result):
+            pass
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(runner, "_save_pending_envelope", lambda *a, **kw: None)
+    monkeypatch.setattr(runner, "_set_pending_approval_label", lambda *a, **kw: None)
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(
+            parent_repo="myorg/parent",
+            auto_execute="approval-gate",
+            approval_timeout_s=60,
+        ),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-ready",
+    )
+
+    captured = capsys.readouterr()
+    assert out == 0
+    assert "[BATMAN-AWAITING-APPROVAL]" in captured.out
+    assert "parent=myorg/parent#83" in captured.out
+    assert "message_ts=1700.0001" in captured.out
+    assert "timeout_s=60" in captured.out
 
 
 # ---------------------------------------------------------------------------

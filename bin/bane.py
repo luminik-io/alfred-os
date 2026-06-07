@@ -54,9 +54,11 @@ from agent_runner import (
     preflight,
     remove_worktree,
     run,
+    short,
     slack_post,
     with_lock,
 )
+from workflow_validation import validate_changed_workflows
 
 AGENT = os.environ.get("AGENT_CODENAME", "bane")
 BANE_ENGINE = agent_engine(AGENT, default="hybrid")
@@ -353,6 +355,25 @@ def main() -> int:
         return 0
 
     # Push + open PR
+    workflow_validation = validate_changed_workflows(wt, base="origin/main")
+    if not workflow_validation.ok:
+        detail = short(
+            workflow_validation.stderr
+            or workflow_validation.stdout
+            or workflow_validation.reason
+            or "workflow validation failed",
+            300,
+        )
+        files = ", ".join(workflow_validation.files) or "(unknown workflow)"
+        msg = (
+            f"[{AGENT.upper()}-WORKFLOW-VALIDATION-FAILED] preserved worktree at {wt}; "
+            f"files={files}. {detail}"
+        )
+        print(msg)
+        slack_post(msg, severity="warn")
+        spend.increment(failures_today=1, consecutive_failures=1)
+        events.emit("firing_complete", outcome="workflow-validation-failed")
+        return 0
     run(["git", "push", "-u", "origin", branch], cwd=str(wt), timeout=60)
     commit_subject = run(
         ["git", "log", "-1", "--format=%s"], cwd=str(wt), timeout=10

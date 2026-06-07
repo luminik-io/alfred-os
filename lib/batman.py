@@ -40,6 +40,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from agent_runner import GH_ORG, GH_REPO_TO_LOCAL, claim_issue, gh_json, release_issue
+from dependencies import issue_dependencies
 
 # Label conventions, must match what Drake files and what `gh` searches.
 BUNDLE_LABEL_PREFIX = "agent:bundle:"
@@ -477,15 +478,16 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
       delegate to ``parse_plan_from_issue(body)`` so legacy
       single-issue plans still parse correctly.
     - **Multi-issue bundle** (the ``agent:bundle:<slug>`` label pattern):
-      each issue lives in its own product repo;
-      that repo IS the issue's affected repo. Per-repo criteria come
-      from each issue's body. Rollout order falls back to the
-      configured ``BATMAN_ROLLOUT_ORDER`` (default
-      ``DEFAULT_ROLLOUT_ORDER``) filtered down to the affected set.
+      each issue lives in its own product repo; that repo IS the issue's
+      affected repo. Per-repo criteria come from each issue's body. Preserve
+      dependency-sorted issue order only when the bundle declares
+      dependencies; otherwise use the configured product rollout order so
+      GitHub search result ordering does not make a routine bundle arbitrary.
     """
     if len(bundle.issues) <= 1:
         return parse_plan_from_issue(bundle.primary_issue.get("body") or "")
 
+    has_declared_dependencies = any(issue_dependencies(issue) for issue in bundle.issues)
     affected: list[str] = []
     criteria_by_repo: dict[str, str] = {}
     for issue in bundle.issues:
@@ -505,9 +507,13 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
         per_repo = parse_plan_from_issue(body)
         criteria_by_repo[local] = per_repo.repo_criteria.get(local) or body
 
-    rollout_order = _rollout_order()
-    ordered = [r for r in rollout_order if r in affected]
-    ordered += [r for r in affected if r not in ordered]
+    if has_declared_dependencies:
+        ordered = affected
+    else:
+        rollout_order = _rollout_order()
+        ordered = [repo for repo in rollout_order if repo in affected]
+        ordered.extend(repo for repo in affected if repo not in ordered)
+
     return PlanShape(affected_repos=ordered, repo_criteria=criteria_by_repo)
 
 

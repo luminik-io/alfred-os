@@ -38,6 +38,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import labels as label_constants
+
 from .config import dry_run_log, is_dry_run
 from .paths import (
     GH_ORG,
@@ -958,7 +960,14 @@ def _issue_state(repo_slug: str, num: int) -> dict:
     )
 
 
-def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> bool:
+def claim_issue(
+    repo_slug: str,
+    num: int,
+    *,
+    codename: str,
+    firing_id: str,
+    role: str | None = None,
+) -> bool:
     """Atomic-ish claim. Returns ``True`` if the claim succeeded, ``False`` if blocked.
 
     Refusal reasons (returns ``False``):
@@ -987,12 +996,9 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
     if state.get("state") != "OPEN":
         return False
     labels = {lbl["name"] for lbl in state.get("labels", [])}
-    blockers = labels & {
-        "agent:in-flight",
-        "agent:pr-open",
-        "do-not-pickup",
-        "needs:human-scope",
-    }
+    blockers = set(label_constants.claim_blocking_labels(labels))
+    if role == "feature-dev":
+        blockers.update(label_constants.feature_dev_claim_blocking_labels(labels))
     if blockers:
         return False
     ensure_labels(repo_slug, LIFECYCLE_LABELS)

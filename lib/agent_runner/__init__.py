@@ -201,6 +201,7 @@ from .orchestrator import (
     reflect,
     route_llm,
     start_ollama_if_needed,
+    sync_checkout_to_default,
 )
 
 # --------------------------------------------------------------------------
@@ -460,6 +461,7 @@ __all__ = [
     "reflect",
     "route_llm",
     "start_ollama_if_needed",
+    "sync_checkout_to_default",
     # disk
     "DEFAULT_MIN_FREE_DISK_GB",
     "DEFAULT_MIN_FREE_DISK_PCT",

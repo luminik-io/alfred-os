@@ -13,6 +13,7 @@ sys.path.insert(
     0,
     (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
 )
+import labels as label_constants
 from agent_runner import (
     GH_ORG,
     STATE_ROOT,
@@ -75,6 +76,14 @@ SEVERITY_LABELS = [
     ("needs:triage", "fef2c0", "Needs Robin or human triage"),
 ]
 
+ALLOWED_EXTRA_LABELS = {
+    label_constants.IMPLEMENT,
+    label_constants.NEEDS_INFO,
+    "duplicate",
+    "bug",
+    "needs:triage",
+}
+
 
 def _load_touched() -> dict[str, str]:
     """Read the touched ledger -> {f"{repo}#{num}": iso_timestamp}.
@@ -114,6 +123,15 @@ def _record_touched(repo: str, num: int) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+def issue_label_names(issue: dict) -> set[str]:
+    """Return GitHub label names from an issue/list payload."""
+    return {
+        label.get("name", "")
+        for label in issue.get("labels", [])
+        if isinstance(label, dict) and label.get("name")
+    }
+
+
 def list_untriaged() -> list[tuple[str, dict]]:
     """Across in-scope repos, find open issues with no severity label and no agent:implement,
     and that Robin has not touched in the last TOUCHED_TTL_DAYS days."""
@@ -142,19 +160,12 @@ def list_untriaged() -> list[tuple[str, dict]]:
             key = f"{repo}#{i['number']}"
             if key in touched:
                 continue
-            label_names = [lbl["name"] for lbl in i.get("labels", [])]
+            label_names = issue_label_names(i)
             if any(n.startswith("severity:") for n in label_names):
                 continue
-            if "agent:implement" in label_names:
+            if label_constants.IMPLEMENT in label_names:
                 continue
-            if "needs:human-scope" in label_names:
-                continue
-            # Issue already in the lifecycle - skip; implementer / automerge own it
-            if "agent:in-flight" in label_names or "agent:pr-open" in label_names:
-                continue
-            if "do-not-pickup" in label_names:
-                continue
-            if "done-already" in label_names:
+            if label_constants.robin_triage_blocking_labels(label_names):
                 continue
             candidates.append((repo, i))
     # Newest first
@@ -218,6 +229,33 @@ def validated_triages(
         item["repo"] = repo
         valid.append(item)
     return valid, rejected
+
+
+def labels_to_add_for_triage(
+    severity: str,
+    extra: object,
+    current_labels: set[str] | frozenset[str] | list[str],
+) -> tuple[list[str], list[str]]:
+    """Return safe labels for a Robin triage and any gate labels seen."""
+    raw_extra = extra if isinstance(extra, (list, tuple, set)) else []
+    clean_extra = [label for label in raw_extra if isinstance(label, str)]
+    gate_labels = label_constants.robin_triage_blocking_labels(current_labels)
+    if gate_labels:
+        clean_extra = [label for label in clean_extra if label != label_constants.IMPLEMENT]
+    return [severity] + [
+        label for label in clean_extra if label in ALLOWED_EXTRA_LABELS
+    ], gate_labels
+
+
+def labels_to_add_when_refetch_fails(severity: str, extra: object) -> list[str]:
+    """Fail closed on `agent:implement` when Robin cannot re-check live labels."""
+    raw_extra = extra if isinstance(extra, (list, tuple, set)) else []
+    clean_extra = [
+        label
+        for label in raw_extra
+        if isinstance(label, str) and label != label_constants.IMPLEMENT
+    ]
+    return [severity] + [label for label in clean_extra if label in ALLOWED_EXTRA_LABELS]
 
 
 def parse_triage_payload(text: str) -> dict:
@@ -455,18 +493,41 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         if not severity.startswith("severity:"):
             continue
 
-        labels_to_add = [severity] + [
-            lbl
-            for lbl in extra
-            if lbl
-            in {
-                "agent:implement",
-                "needs:info",
-                "duplicate",
-                "bug",
-                "needs:triage",
-            }
-        ]
+        raw_extra = extra if isinstance(extra, (list, tuple, set)) else []
+        current = gh_json(
+            [
+                "gh",
+                "issue",
+                "view",
+                str(num),
+                "-R",
+                f"{GH_ORG}/{repo}",
+                "--json",
+                "labels",
+            ],
+            default=None,
+        )
+        if not isinstance(current, dict) or not isinstance(current.get("labels"), list):
+            labels_to_add = labels_to_add_when_refetch_fails(severity, extra)
+            current_gate_labels = ["refetch-failed"]
+            events.emit(
+                "triage_refetch_failed",
+                repo=f"{GH_ORG}/{repo}",
+                number=num,
+            )
+        else:
+            labels_to_add, current_gate_labels = labels_to_add_for_triage(
+                severity,
+                extra,
+                issue_label_names(current),
+            )
+        if current_gate_labels and label_constants.IMPLEMENT in raw_extra:
+            events.emit(
+                "triage_implement_stripped",
+                repo=f"{GH_ORG}/{repo}",
+                number=num,
+                blockers=current_gate_labels,
+            )
         ok = gh_issue_edit(repo, num, add_labels=labels_to_add)
         if comment:
             gh_issue_comment(repo, num, comment)

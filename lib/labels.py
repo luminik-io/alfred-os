@@ -72,6 +72,27 @@ BUNDLE_LABEL_PREFIX: Final[str] = "agent:bundle:"
 PLAN_PENDING_APPROVAL: Final[str] = "agent:plan-pending-approval"
 """Set on a bundle parent while Batman waits on operator approval before execute."""
 
+NEEDS_HUMAN_REVIEW: Final[str] = "agent:needs-human-review"
+"""Human review is required before any autonomous pickup."""
+
+NEEDS_INFO: Final[str] = "needs:info"
+"""Reporter needs to provide missing detail before autonomous work."""
+
+LEGACY_PR_OPEN: Final[str] = "lucius-pr-open"
+"""Legacy PR-open marker kept for dashboards and old runners."""
+
+AGENT_PR_OPEN_SUFFIX: Final[str] = "-pr-open"
+"""Suffix for agent-specific PR-open markers, e.g. ``custom-lucius-pr-open``."""
+
+DONE_ALREADY: Final[str] = "done-already"
+"""Legacy terminal marker for already-complete issues."""
+
+FEATURE: Final[str] = "feature"
+"""Human/product feature request label, not an autonomous implementation gate."""
+
+ENHANCEMENT: Final[str] = "enhancement"
+"""Human/product enhancement label, not an autonomous implementation gate."""
+
 # Legacy long-form alias kept for backward compatibility with downstream code
 # that imports ``LABEL_AGENT_PLAN_PENDING_APPROVAL`` directly (lib/slack_approval.py,
 # lib/batman.py, and any operator extension code that mirrored the original
@@ -106,6 +127,131 @@ def bundle_slug(label: str) -> str | None:
     if not is_bundle_label(label):
         return None
     return label[len(BUNDLE_LABEL_PREFIX) :]
+
+
+def is_agent_pr_open_label(label: str) -> bool:
+    """True if ``label`` is an agent-specific PR-open marker."""
+    return label.endswith(AGENT_PR_OPEN_SUFFIX) and label != PR_OPEN
+
+
+def agent_pr_open_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return every agent-specific PR-open marker in the set, sorted."""
+    return sorted(label for label in labels if is_agent_pr_open_label(label))
+
+
+PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
+    {
+        IN_FLIGHT,
+        PR_OPEN,
+        LEGACY_PR_OPEN,
+        DO_NOT_PICKUP,
+        NEEDS_HUMAN_SCOPE,
+        NEEDS_HUMAN_REVIEW,
+        NEEDS_INFO,
+        DONE,
+        DONE_ALREADY,
+        LARGE_FEATURE,
+        PLAN_PENDING_APPROVAL,
+    }
+)
+"""Static labels that make an issue ineligible for autonomous pickup."""
+
+CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
+    label
+    for label in PICKUP_BLOCKING_LABEL_SET
+    if label not in {LARGE_FEATURE, PLAN_PENDING_APPROVAL}
+)
+"""Static labels that make an atomic issue claim unsafe.
+
+Unlike pickup scanning, claim-time blocking deliberately ignores
+``agent:large-feature``, ``agent:plan-pending-approval``, and dynamic
+``agent:bundle:*`` labels. Batman owns those labels and must still be able to
+claim bundle members and approval parents atomically after it has selected
+eligible work.
+"""
+
+ROBIN_TRIAGE_BLOCKING_LABEL_SET: Final[frozenset[str]] = PICKUP_BLOCKING_LABEL_SET
+"""Labels that make an issue ineligible for Robin to turn into implementation work."""
+
+FEATURE_DEV_PRODUCT_CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
+    {FEATURE, ENHANCEMENT}
+)
+"""Product labels that make a feature-dev claim unsafe before Robin promotion."""
+
+FEATURE_DEV_ALWAYS_CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
+    {LARGE_FEATURE, PLAN_PENDING_APPROVAL}
+)
+"""Batman-owned labels that always make a feature-dev claim unsafe."""
+
+
+def pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return sorted labels that block autonomous pickup.
+
+    Dynamic ``agent:bundle:<slug>`` labels also block pickup because Batman
+    owns bundle claims as an atomic unit.
+    """
+    s = set(labels)
+    blockers = set(s & PICKUP_BLOCKING_LABEL_SET)
+    blockers.update(bundle_labels(s))
+    blockers.update(agent_pr_open_labels(s))
+    return sorted(blockers)
+
+
+def has_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
+    """True when any label blocks autonomous pickup."""
+    return bool(pickup_blocking_labels(labels))
+
+
+def _is_robin_promoted(labels: set[str]) -> bool:
+    return IMPLEMENT in labels and any(label.startswith("severity:") for label in labels)
+
+
+def feature_dev_pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return labels that block the feature-dev agent from picking up work.
+
+    Batman-created child issues keep their ``agent:bundle:<slug>`` provenance
+    label while also carrying ``agent:implement``. Lucius must still pick those
+    up. Static large-feature / approval labels remain blockers. Human/product
+    feature labels stay blocked until Robin adds severity and ``agent:implement``.
+    """
+    s = set(labels)
+    blockers = set(s & PICKUP_BLOCKING_LABEL_SET)
+    blockers.update(agent_pr_open_labels(s))
+    if not _is_robin_promoted(s):
+        blockers.update(s & FEATURE_DEV_PRODUCT_CLAIM_BLOCKING_LABEL_SET)
+    return sorted(blockers)
+
+
+def has_feature_dev_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
+    """True when labels block the feature-dev pickup path."""
+    return bool(feature_dev_pickup_blocking_labels(labels))
+
+
+def feature_dev_claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return labels that block a feature-dev claim after pickup."""
+    s = set(labels)
+    blockers = set(s & FEATURE_DEV_ALWAYS_CLAIM_BLOCKING_LABEL_SET)
+    blockers.update(agent_pr_open_labels(s))
+    if not _is_robin_promoted(s):
+        blockers.update(s & FEATURE_DEV_PRODUCT_CLAIM_BLOCKING_LABEL_SET)
+    return sorted(blockers)
+
+
+def claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return sorted labels that block the shared claim primitive."""
+    s = set(labels)
+    blockers = set(s & CLAIM_BLOCKING_LABEL_SET)
+    blockers.update(agent_pr_open_labels(s))
+    return sorted(blockers)
+
+
+def robin_triage_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return sorted labels that block Robin from adding ``agent:implement``."""
+    s = set(labels)
+    blockers = set(s & ROBIN_TRIAGE_BLOCKING_LABEL_SET)
+    blockers.update(bundle_labels(s))
+    blockers.update(agent_pr_open_labels(s))
+    return sorted(blockers)
 
 
 # --------------------------------------------------------------------------
@@ -239,13 +385,8 @@ def lifecycle_state(labels: set[str] | frozenset[str] | list[str]) -> str | None
 
 
 def has_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
-    """True if the label set contains any claim-blocking label.
-
-    Blocking labels: ``in_flight``, ``pr_open``, ``do_not_pickup``,
-    ``needs_human_scope``. Matches ``claim_issue`` in ``agent_runner``.
-    """
-    s = set(labels)
-    return bool(s & {IN_FLIGHT, PR_OPEN, DO_NOT_PICKUP, NEEDS_HUMAN_SCOPE})
+    """Legacy alias for pickup-blocking labels."""
+    return has_pickup_blocker(labels)
 
 
 def bundle_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:

@@ -48,13 +48,16 @@ for candidate in (
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
 
+import labels as label_constants  # noqa: E402
 from agent_runner import (  # noqa: E402
     GH_ORG,
     GH_REPO_TO_LOCAL,
+    LIFECYCLE_LABELS,
     STATE_ROOT,
     PreflightSpec,
     agent_engine,
     doctor_mode,
+    ensure_labels,
     gh_issue_comment,
     gh_issue_edit,
     gh_json,
@@ -66,6 +69,7 @@ from agent_runner import (  # noqa: E402
 from batman import (  # noqa: E402
     BUNDLE_LABEL_PREFIX,
     EXEC_GATE_DISABLED,
+    EXEC_NO_CHILDREN,
     LARGE_FEATURE_LABEL,
     ApprovalEnvelope,
     BatmanLifecycle,
@@ -75,11 +79,23 @@ from batman import (  # noqa: E402
     list_issues_by_bundle_label,
     parse_plan_from_bundle,
 )
+from dependencies import sort_issues_by_dependencies  # noqa: E402
 from labels import PLAN_PENDING_APPROVAL  # noqa: E402
 from slack_format import firing_thread_root  # noqa: E402
 
 CODENAME = os.environ.get("AGENT_CODENAME", "batman")
 BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
+BATMAN_PICKUP_BLOCKING_LABELS = {
+    label_constants.IN_FLIGHT,
+    label_constants.PR_OPEN,
+    label_constants.LEGACY_PR_OPEN,
+    label_constants.DO_NOT_PICKUP,
+    label_constants.NEEDS_HUMAN_SCOPE,
+    label_constants.NEEDS_HUMAN_REVIEW,
+    label_constants.NEEDS_INFO,
+    label_constants.DONE,
+    label_constants.DONE_ALREADY,
+}
 
 
 def _scan_repos() -> list[str]:
@@ -119,6 +135,14 @@ def _scan_repo_args() -> list[str]:
     return [repo for repo in repo_args if repo]
 
 
+def _has_batman_pickup_blocker(label_names: set[str] | frozenset[str]) -> bool:
+    """Batman owns large-feature and bundle labels; block only hard gates."""
+    labels = set(label_names)
+    return bool(
+        (labels & BATMAN_PICKUP_BLOCKING_LABELS) or label_constants.agent_pr_open_labels(labels)
+    )
+
+
 def _list_large_features() -> list[dict]:
     """Cross-repo search for open ``agent:large-feature`` issues.
 
@@ -156,19 +180,13 @@ def _list_large_features() -> list[dict]:
     if not isinstance(rows, list):
         return []
     allowed_prefixes = tuple(f"https://github.com/{repo}/" for repo in repo_args)
-    skip_labels = {
-        "agent:in-flight",
-        "agent:pr-open",
-        "do-not-pickup",
-        "needs:human-scope",
-    }
     eligible: list[dict] = []
     for r in rows:
         url = r.get("url") or ""
         if not url.startswith(allowed_prefixes):
             continue
         labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
-        if labels & skip_labels:
+        if _has_batman_pickup_blocker(labels):
             continue
         eligible.append(r)
     return eligible
@@ -196,7 +214,7 @@ def _bundle_for_issue(issue: dict) -> Bundle:
     siblings = list_issues_by_bundle_label(label, allowed_repos=_scan_repo_args())
     by_url = {s.get("url"): s for s in siblings if s.get("url")}
     by_url[issue.get("url")] = issue  # always include the trigger issue
-    return Bundle(issues=list(by_url.values()), bundle_label=label)
+    return Bundle(issues=sort_issues_by_dependencies(by_url.values()), bundle_label=label)
 
 
 def _firing_id() -> str:
@@ -269,16 +287,10 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
     )
     if not isinstance(rows, list):
         return []
-    skip_labels = {
-        "agent:in-flight",
-        "agent:pr-open",
-        "do-not-pickup",
-        "needs:human-scope",
-    }
     eligible: list[dict] = []
     for r in rows:
         labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
-        if labels & skip_labels:
+        if _has_batman_pickup_blocker(labels):
             continue
         eligible.append(r)
     return eligible
@@ -365,6 +377,32 @@ def _run_lifecycle(
     parent_repo = config.parent_repo
     parent_issue_number = int(parent_issue.get("number") or 0)
 
+    if not plan.children:
+        detail = "; ".join(f.message for f in plan.readiness_blockers) or (
+            "No child issues were parsed from the parent body."
+        )
+        print(
+            f"[BATMAN-DECOMPOSITION-FAILED] parent={parent_repo}#{parent_issue_number} "
+            f"bundle={plan.bundle_slug} children=0 repos={len(plan.affected_repos)} "
+            f"detail={detail!r}",
+            flush=True,
+        )
+        slack_post(
+            f"[BATMAN-DECOMPOSITION-FAILED] parent={parent_repo}#{parent_issue_number}: "
+            f"{detail} No approval was requested.",
+            severity="warn",
+        )
+        _clear_pending_envelope(parent_repo, parent_issue_number)
+        _unset_pending_approval_label(parent_repo, parent_issue_number)
+        ensure_labels(parent_repo, LIFECYCLE_LABELS)
+        gh_issue_edit(
+            parent_repo,
+            parent_issue_number,
+            add_labels=[label_constants.NEEDS_HUMAN_SCOPE],
+        )
+        lifecycle.report(plan, _empty_result_reason(reason=EXEC_NO_CHILDREN))
+        return 0
+
     # Idempotent approval state (issue #115). On a pending parent issue
     # whose label says we already drafted a plan, do not re-post; instead
     # resume polling the previous Slack message. Operators see one plan
@@ -420,6 +458,12 @@ def _run_lifecycle(
                 _empty_result_reason(reason=EXEC_GATE_DISABLED),
             )
             return 0
+        print(
+            f"[BATMAN-AWAITING-APPROVAL] parent={parent_repo}#{parent_issue_number} "
+            f"channel={envelope.channel} message_ts={envelope.message_ts} "
+            f"timeout_s={config.approval_timeout_s}",
+            flush=True,
+        )
         verdict = lifecycle.await_approval(envelope)
         if not verdict.approved:
             print(

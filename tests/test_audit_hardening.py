@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import stat
 import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -104,6 +106,109 @@ def test_robin_parse_triage_payload_skips_unrelated_json_before_triages(monkeypa
     parsed = robin.parse_triage_payload(payload)
 
     assert parsed["triages"][0]["repo"] == "specs"
+
+
+def test_robin_skips_feature_and_bundle_candidates(monkeypatch):
+    monkeypatch.setenv("GH_ORG", "myorg")
+    robin = load_bin_module("robin.py", monkeypatch)
+    monkeypatch.setattr(robin, "TRIAGE_REPOS", ["backend"])
+    monkeypatch.setattr(robin, "_load_touched", lambda: set())
+    monkeypatch.setattr(robin, "is_repo_paused", lambda repo: False)
+
+    def fake_gh_json(_cmd, *, default):
+        return [
+            {
+                "number": 1,
+                "title": "bug",
+                "body": "",
+                "labels": [],
+                "createdAt": "2026-06-06T11:00:00Z",
+                "author": {"login": "user"},
+            },
+            {
+                "number": 2,
+                "title": "feature",
+                "body": "",
+                "labels": [{"name": "feature"}],
+                "createdAt": "2026-06-06T12:00:00Z",
+                "author": {"login": "user"},
+            },
+            {
+                "number": 3,
+                "title": "large feature",
+                "body": "",
+                "labels": [{"name": "agent:large-feature"}],
+                "createdAt": "2026-06-06T13:00:00Z",
+                "author": {"login": "user"},
+            },
+            {
+                "number": 4,
+                "title": "bundle",
+                "body": "",
+                "labels": [{"name": "agent:bundle:checkout"}],
+                "createdAt": "2026-06-06T14:00:00Z",
+                "author": {"login": "user"},
+            },
+        ]
+
+    monkeypatch.setattr(robin, "gh_json", fake_gh_json)
+
+    candidates = robin.list_untriaged()
+
+    assert [(repo, issue["number"]) for repo, issue in candidates] == [
+        ("backend", 2),
+        ("backend", 1),
+    ]
+
+
+def test_robin_strips_implement_when_current_labels_are_gated(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+
+    labels, gate_labels = robin.labels_to_add_for_triage(
+        "severity:p1",
+        ["agent:implement", "bug"],
+        {"agent:bundle:checkout"},
+    )
+
+    assert labels == ["severity:p1", "bug"]
+    assert gate_labels == ["agent:bundle:checkout"]
+
+
+def test_robin_keeps_implement_for_ungated_bug(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+
+    labels, gate_labels = robin.labels_to_add_for_triage(
+        "severity:p1",
+        ["agent:implement", "bug"],
+        set(),
+    )
+
+    assert labels == ["severity:p1", "agent:implement", "bug"]
+    assert gate_labels == []
+
+
+def test_robin_keeps_implement_for_product_labels(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+
+    labels, gate_labels = robin.labels_to_add_for_triage(
+        "severity:p1",
+        ["agent:implement", "enhancement"],
+        {"feature", "enhancement"},
+    )
+
+    assert labels == ["severity:p1", "agent:implement"]
+    assert gate_labels == []
+
+
+def test_robin_refetch_failure_strips_implement(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+
+    labels = robin.labels_to_add_when_refetch_fails(
+        "severity:p1",
+        ["agent:implement", "bug", "not-allowed"],
+    )
+
+    assert labels == ["severity:p1", "bug"]
 
 
 def test_automerge_blocks_ship_ready_review_older_than_commit(monkeypatch):
@@ -305,6 +410,38 @@ def test_lucius_existing_authored_pr_removes_issue_from_implement_queue(monkeypa
     ]
 
 
+def test_lucius_pick_issue_accepts_batman_bundle_child(monkeypatch):
+    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "backend")
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setattr(lucius, "is_repo_paused", lambda repo: False)
+    monkeypatch.setattr(lucius, "issue_has_open_dependencies", lambda repo, issue: False)
+    monkeypatch.setattr(lucius, "find_open_authored_pr_for_issue", lambda repo, issue: None)
+    monkeypatch.setattr(
+        lucius,
+        "gh_json",
+        lambda *a, **kw: [
+            {
+                "number": 42,
+                "title": "feat: implement bundle slice",
+                "url": "https://github.com/acme/backend/issues/42",
+                "labels": [
+                    {"name": "agent:implement"},
+                    {"name": "agent:bundle:checkout"},
+                ],
+                "createdAt": "2026-06-01T00:00:00Z",
+                "body": "",
+                "author": {"login": "maintainer"},
+            }
+        ],
+    )
+
+    repo, issue = lucius.pick_issue()
+
+    assert repo == "backend"
+    assert issue is not None
+    assert issue["number"] == 42
+
+
 def test_lucius_unknown_author_trust_moves_issue_out_of_queue(monkeypatch):
     lucius = load_bin_module("lucius.py", monkeypatch)
 
@@ -440,6 +577,765 @@ def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
     assert "Operator-supplied guidance" in text
     assert "Read specs from " in text
     assert "product/specs for #42" in text
+
+
+def test_lucius_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(lucius, "with_lock", lambda agent: calls.append(("lock", agent)))
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
+    monkeypatch.setattr(
+        lucius,
+        "preflight",
+        lambda _spec: calls.append(("preflight", dict(lucius.PRE_PUSH))),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "_load_pre_push_config",
+        lambda agent: calls.append(("load", agent)) or {"service-web": "npm ci"},
+    )
+    monkeypatch.setattr(
+        lucius,
+        "doctor_mode",
+        lambda: calls.append(("doctor", dict(lucius.PRE_PUSH))) or True,
+    )
+
+    assert lucius.main() == 0
+
+    assert [call[0] for call in calls] == ["lock", "preflight", "load", "doctor"]
+    assert calls[-1] == ("doctor", {"service-web": "npm ci"})
+
+
+def test_nightwing_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
+    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(nightwing, "with_lock", lambda agent: calls.append(("lock", agent)))
+    monkeypatch.setattr(
+        nightwing,
+        "preflight",
+        lambda _spec: calls.append(("preflight", dict(nightwing.PRE_PUSH))),
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "_load_pre_push_config",
+        lambda agent: calls.append(("load", agent)) or {"service-web": "npm ci"},
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "doctor_mode",
+        lambda: calls.append(("doctor", dict(nightwing.PRE_PUSH))) or True,
+    )
+
+    assert nightwing.main() == 0
+
+    assert [call[0] for call in calls] == ["lock", "preflight", "load", "doctor"]
+    assert calls[-1] == ("doctor", {"service-web": "npm ci"})
+
+
+def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "package.json").write_text(
+        json.dumps(
+            {
+                "scripts": {
+                    "typecheck": "tsc --noEmit",
+                    "lint": "expo lint",
+                    "test": "jest",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (repo / "package-lock.json").write_text("{}", encoding="utf-8")
+
+    command = lucius._default_node_pre_push_command(repo)
+
+    assert command == "npm ci && npm run typecheck && npm run lint && CI=1 npm test"
+
+
+def test_lucius_bun_pre_push_runs_package_test_script(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "package.json").write_text(
+        json.dumps({"scripts": {"test": "vitest run"}}),
+        encoding="utf-8",
+    )
+    (repo / "bun.lock").write_text("", encoding="utf-8")
+
+    command = lucius._default_node_pre_push_command(repo)
+
+    assert "CI=1 bun run test" in command
+    assert "CI=1 bun test" not in command
+
+
+def test_lucius_npm_pre_push_does_not_create_lockfile(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "package.json").write_text(
+        json.dumps({"scripts": {"lint": "eslint ."}}),
+        encoding="utf-8",
+    )
+
+    command = lucius._default_node_pre_push_command(repo)
+
+    assert command.startswith("npm install --package-lock=false")
+    assert "npm install &&" not in command
+
+
+def test_lucius_prefers_gradle_for_backend_suffix_over_package_json(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    repo = tmp_path / "workspace" / "service"
+    repo.mkdir(parents=True)
+    (repo / "package.json").write_text(
+        json.dumps({"scripts": {"test": "jest"}}),
+        encoding="utf-8",
+    )
+    (repo / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(lucius, "WORKSPACE", tmp_path / "workspace")
+    monkeypatch.setattr(lucius, "LUCIUS_REPOS", ["service-backend"])
+    monkeypatch.setattr(lucius, "local_repo_dir", lambda _repo: "service")
+
+    command = lucius._load_pre_push_config("lucius")["service-backend"]
+
+    assert command == "./gradlew check"
+
+
+def test_lucius_dependency_lockfile_drift_detects_dependency_change(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(lucius, "_changed_paths", lambda _wt: {"package.json"})
+    monkeypatch.setattr(
+        lucius,
+        "_git_show_json",
+        lambda _wt, _path: {"dependencies": {}},
+    )
+
+    drift = lucius.dependency_lockfile_drift(tmp_path)
+
+    assert drift == [
+        "package.json changed dependency fields but no lockfile changed (package-lock.json)"
+    ]
+
+
+def test_lucius_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    package_dir = tmp_path / "packages" / "widget"
+    package_dir.mkdir(parents=True)
+    (package_dir / "package.json").write_text(
+        json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
+        encoding="utf-8",
+    )
+    (package_dir / "package-lock.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        lucius,
+        "_changed_paths",
+        lambda _wt: {"packages/widget/package.json", "package-lock.json"},
+    )
+    monkeypatch.setattr(
+        lucius,
+        "_git_show_json",
+        lambda _wt, _path: {"dependencies": {}},
+    )
+
+    drift = lucius.dependency_lockfile_drift(tmp_path)
+
+    assert drift == [
+        "packages/widget/package.json changed dependency fields but no lockfile changed "
+        "(packages/widget/package-lock.json)"
+    ]
+
+
+def test_lucius_nested_lockfile_drift_treats_deleted_local_lock_as_missing(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    package_dir = tmp_path / "packages" / "widget"
+    package_dir.mkdir(parents=True)
+    (package_dir / "package.json").write_text(
+        json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        lucius,
+        "_changed_paths",
+        lambda _wt: {
+            "packages/widget/package.json",
+            "packages/widget/package-lock.json",
+            "package-lock.json",
+        },
+    )
+    monkeypatch.setattr(
+        lucius,
+        "_git_show_json",
+        lambda _wt, _path: {"dependencies": {}},
+    )
+    monkeypatch.setattr(
+        lucius,
+        "_git_path_exists",
+        lambda _wt, path: path == "packages/widget/package-lock.json",
+    )
+
+    drift = lucius.dependency_lockfile_drift(tmp_path)
+
+    assert drift == [
+        "packages/widget/package.json changed dependency fields but no lockfile changed "
+        "(packages/widget/package-lock.json)"
+    ]
+
+
+def test_lucius_git_helpers_use_worktree_base_branch(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    commands: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        commands.append(cmd)
+        if cmd[:3] == ["git", "symbolic-ref", "--quiet"]:
+            return SimpleNamespace(returncode=0, stdout="origin/develop\n", stderr="")
+        if cmd[:2] == ["git", "merge-base"]:
+            return SimpleNamespace(returncode=0, stdout="abc123\n", stderr="")
+        if cmd[:3] == ["git", "rev-list", "--count"]:
+            return SimpleNamespace(returncode=0, stdout="2\n", stderr="")
+        if cmd[:3] == ["git", "diff", "--name-only"]:
+            return SimpleNamespace(returncode=0, stdout="package.json\n", stderr="")
+        if cmd[:2] == ["git", "show"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"dependencies": {"old": "1.0.0"}}),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(lucius, "run", fake_run)
+
+    assert lucius._commits_ahead_count(tmp_path) == 2
+    assert lucius._changed_paths(tmp_path) == {"package.json"}
+    assert lucius._git_show_json(tmp_path, "package.json") == {"dependencies": {"old": "1.0.0"}}
+
+    assert ["git", "rev-list", "--count", "origin/main..HEAD"] in commands
+    assert ["git", "merge-base", "origin/main", "HEAD"] in commands
+    assert ["git", "diff", "--name-only", "abc123..HEAD"] in commands
+    assert ["git", "show", "abc123:package.json"] in commands
+    assert ["git", "rev-list", "--count", "origin/develop..HEAD"] not in commands
+
+
+def test_lucius_lockfile_drift_ignores_upstream_only_lockfile_change(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    commands: list[list[str]] = []
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+
+    def fake_run(cmd, **_kwargs):
+        commands.append(cmd)
+        if cmd[:3] == ["git", "symbolic-ref", "--quiet"]:
+            return SimpleNamespace(returncode=0, stdout="origin/main\n", stderr="")
+        if cmd[:2] == ["git", "merge-base"]:
+            return SimpleNamespace(returncode=0, stdout="base-sha\n", stderr="")
+        if cmd == ["git", "diff", "--name-only", "base-sha..HEAD"]:
+            return SimpleNamespace(returncode=0, stdout="package.json\n", stderr="")
+        if cmd[:3] == ["git", "diff", "--name-only"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if cmd[:2] == ["git", "show"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"dependencies": {}}),
+                stderr="",
+            )
+        if cmd[:3] == ["git", "cat-file", "-e"]:
+            return SimpleNamespace(
+                returncode=0 if cmd[-1] == "base-sha:package-lock.json" else 1,
+                stdout="",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    monkeypatch.setattr(lucius, "run", fake_run)
+
+    drift = lucius.dependency_lockfile_drift(tmp_path)
+
+    assert drift == [
+        "package.json changed dependency fields but no lockfile changed (package-lock.json)"
+    ]
+    assert ["git", "diff", "--name-only", "origin/main..HEAD"] not in commands
+    assert ["git", "show", "origin/main:package.json"] not in commands
+
+
+def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    releases: list[dict] = []
+    posts: list[str] = []
+
+    monkeypatch.setattr(
+        lucius,
+        "run_pre_push_checks",
+        lambda _repo, _wt: lucius.PrePushResult(
+            ok=False,
+            command="npm ci && npm run lint",
+            stderr="Missing: niyora-sync@1.0.0 from lock file",
+        ),
+    )
+    monkeypatch.setattr(lucius, "create_recovery_ref", lambda _wt, *, branch: "refs/recovery/x")
+    monkeypatch.setattr(
+        lucius,
+        "release_issue",
+        lambda repo, issue_num, **kw: releases.append({"repo": repo, "issue": issue_num, **kw}),
+    )
+    monkeypatch.setattr(lucius, "slack_post", lambda message, **_kw: posts.append(message))
+    monkeypatch.setattr(
+        lucius,
+        "push_current_branch",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not push")),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "validate_changed_workflows",
+        lambda *_a, **_kw: (_ for _ in ()).throw(
+            AssertionError("workflow validation should not run after pre-push failure")
+        ),
+    )
+
+    ok = lucius._push_or_preserve(
+        "mobile",
+        83,
+        "fid-1",
+        tmp_path,
+        "lucius/83",
+        "push-failed",
+    )
+
+    assert ok is False
+    assert releases == [
+        {
+            "repo": "mobile",
+            "issue": 83,
+            "codename": "lucius",
+            "firing_id": "fid-1",
+            "outcome": "pre-push-checks-failed",
+        }
+    ]
+    assert posts and "Missing: niyora-sync" in posts[0]
+
+
+def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    pushed: list[tuple[Path, str]] = []
+    validations: list[tuple[Path, str | None]] = []
+
+    monkeypatch.setattr(
+        lucius,
+        "run_pre_push_checks",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("should skip pre-push")),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "validate_changed_workflows",
+        lambda wt, **kw: (
+            validations.append((wt, kw.get("base")))
+            or SimpleNamespace(ok=True, stdout="", stderr="", reason="", files=[])
+        ),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "push_current_branch",
+        lambda wt, branch: pushed.append((wt, branch)) or SimpleNamespace(returncode=0),
+    )
+
+    assert lucius._push_or_preserve(
+        "mobile",
+        83,
+        "fid-1",
+        tmp_path,
+        "lucius/83",
+        "partial-push-failed",
+        run_checks=False,
+        run_workflow_validation=True,
+    )
+    assert validations == [(tmp_path, lucius.LUCIUS_WORKTREE_BASE_REF)]
+    assert pushed == [(tmp_path, "lucius/83")]
+
+
+def test_lucius_partial_salvage_preserves_invalid_workflow_changes(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    releases: list[dict] = []
+    posts: list[str] = []
+
+    monkeypatch.setattr(
+        lucius,
+        "run_pre_push_checks",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("should skip pre-push")),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "validate_changed_workflows",
+        lambda wt, **kw: SimpleNamespace(
+            ok=False,
+            stdout="",
+            stderr="workflow syntax error",
+            reason="actionlint_failed",
+            files=[".github/workflows/ci.yml"],
+        ),
+    )
+    monkeypatch.setattr(lucius, "create_recovery_ref", lambda _wt, *, branch: "refs/recovery/x")
+    monkeypatch.setattr(
+        lucius,
+        "release_issue",
+        lambda repo, issue_num, **kw: releases.append({"repo": repo, "issue": issue_num, **kw}),
+    )
+    monkeypatch.setattr(lucius, "slack_post", lambda message, **_kw: posts.append(message))
+    monkeypatch.setattr(
+        lucius,
+        "push_current_branch",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not push")),
+    )
+
+    ok = lucius._push_or_preserve(
+        "mobile",
+        83,
+        "fid-1",
+        tmp_path,
+        "lucius/83",
+        "partial-push-failed",
+        run_checks=False,
+        run_workflow_validation=True,
+    )
+
+    assert ok is False
+    assert releases == [
+        {
+            "repo": "mobile",
+            "issue": 83,
+            "codename": "lucius",
+            "firing_id": "fid-1",
+            "outcome": "workflow-validation-failed",
+        }
+    ]
+    assert posts and ".github/workflows/ci.yml" in posts[0]
+
+
+def test_bane_workflow_validation_failure_counts_as_failure(monkeypatch, tmp_path):
+    monkeypatch.setenv("ALFRED_BANE_REPOS", "backend")
+    bane = load_bin_module("bane.py", monkeypatch)
+    increments: list[dict] = []
+    posts: list[str] = []
+
+    class FakeEvents:
+        firing_id = "fid-1"
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def emit(self, *a, **kw):
+            pass
+
+    class FakeSpend:
+        def __init__(self, *a, **kw):
+            pass
+
+        def increment(self, **kw):
+            increments.append(kw)
+
+    monkeypatch.setattr(bane, "with_lock", lambda agent: None)
+    monkeypatch.setattr(bane, "preflight", lambda spec: None)
+    monkeypatch.setattr(bane, "doctor_mode", lambda: False)
+    monkeypatch.setattr(bane, "EventLog", FakeEvents)
+    monkeypatch.setattr(bane, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(bane, "SpendState", FakeSpend)
+    monkeypatch.setattr(bane, "pick_repo", lambda: "backend")
+    monkeypatch.setattr(bane, "local_repo_dir", lambda repo: repo)
+    monkeypatch.setattr(bane, "WORKSPACE", tmp_path)
+    monkeypatch.setattr(bane, "make_worktree", lambda repo, agent, kind: (tmp_path, "bane/1"))
+    monkeypatch.setattr(
+        bane,
+        "invoke_agent_engine",
+        lambda *a, **kw: (
+            SimpleNamespace(
+                success=True,
+                result_text="[OK] commit abc - file=src/foo.py branches=happy",
+                num_turns=3,
+                cost_usd=0.12,
+                subtype="",
+            ),
+            "codex",
+        ),
+    )
+    monkeypatch.setattr(
+        bane,
+        "run",
+        lambda cmd, **kw: SimpleNamespace(stdout="abc\n", stderr="", returncode=0),
+    )
+    monkeypatch.setattr(
+        bane,
+        "validate_changed_workflows",
+        lambda wt, **kw: SimpleNamespace(
+            ok=False,
+            stdout="",
+            stderr="workflow syntax error",
+            reason="actionlint_failed",
+            files=[".github/workflows/ci.yml"],
+        ),
+    )
+    monkeypatch.setattr(bane, "slack_post", lambda message, **kw: posts.append(message))
+
+    assert bane.main() == 0
+
+    assert increments == [
+        {"firings_today": 1, "turns_today": 3, "cost_usd_today": 0.12},
+        {"failures_today": 1, "consecutive_failures": 1},
+    ]
+    assert posts and "[BANE-WORKFLOW-VALIDATION-FAILED]" in posts[0]
+
+
+def test_lucius_dependency_check_preserves_cross_org_refs(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setattr(lucius, "GH_ORG", "acme")
+    calls: list[list[str]] = []
+
+    def fake_gh_json(cmd, *, default):
+        calls.append(list(cmd))
+        return {"state": "CLOSED"}
+
+    monkeypatch.setattr(lucius, "gh_json", fake_gh_json)
+    issue = {
+        "number": 42,
+        "url": "https://github.com/acme/backend/issues/42",
+        "body": "Depends on: other-org/shared#9, api#7, #6",
+    }
+
+    assert lucius.issue_has_open_dependencies("backend", issue) is False
+
+    repos = [cmd[cmd.index("-R") + 1] for cmd in calls]
+    assert repos == ["acme/api", "acme/backend", "other-org/shared"]
+
+
+def test_lucius_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    monkeypatch.setattr(lucius, "GH_ORG", "acme")
+    monkeypatch.setattr(
+        lucius,
+        "DEPENDENCY_WARNING_LEDGER",
+        tmp_path / "dependency-lookup-warnings.json",
+    )
+    posts: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(lucius, "gh_json", lambda _cmd, *, default: default)
+    monkeypatch.setattr(
+        lucius,
+        "slack_post",
+        lambda msg, severity=None: posts.append((msg, severity)),
+    )
+    issue = {
+        "number": 42,
+        "url": "https://github.com/acme/backend/issues/42",
+        "body": "Depends on: #6",
+    }
+
+    assert lucius.issue_has_open_dependencies("backend", issue) is True
+    assert lucius.issue_has_open_dependencies("backend", issue) is True
+    assert posts == [
+        (
+            "[LUCIUS-DEPENDENCY-LOOKUP-FAILED] holding backend#42; "
+            "could not resolve dependency acme/backend#6",
+            "warn",
+        )
+    ]
+
+
+def test_lucius_dependency_lookup_failure_suppresses_when_ledger_write_fails(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+
+    class FailingLedger:
+        parent = SimpleNamespace(mkdir=lambda *a, **kw: None)
+
+        def read_text(self, **_kw):
+            raise OSError("missing")
+
+        def write_text(self, *_a, **_kw):
+            raise OSError("disk full")
+
+    monkeypatch.setattr(lucius, "DEPENDENCY_WARNING_LEDGER", FailingLedger())
+
+    assert lucius._should_warn_dependency_lookup_failure("backend#42->backend#6", now=1.0) is False
+
+
+def test_lucius_dependency_lookup_failure_treats_non_object_ledger_as_corrupt(
+    monkeypatch, tmp_path
+):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    ledger = tmp_path / "dependency-lookup-warnings.json"
+    ledger.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(lucius, "DEPENDENCY_WARNING_LEDGER", ledger)
+
+    assert lucius._should_warn_dependency_lookup_failure("backend#42->backend#6", now=1.0) is True
+
+    saved = json.loads(ledger.read_text(encoding="utf-8"))
+    assert saved == {"backend#42->backend#6": 1.0}
+
+
+def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
+    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    posts: list[tuple[str, str | None]] = []
+    events: list[tuple[str, dict]] = []
+    validation = SimpleNamespace(
+        files=(".github/workflows/ci.yml",),
+        stderr="invalid workflow",
+        stdout="",
+        reason="actionlint failed",
+    )
+
+    monkeypatch.setattr(
+        nightwing, "create_recovery_ref", lambda _wt, *, branch: "recovery/nightwing"
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "slack_post",
+        lambda msg, severity=None: posts.append((msg, severity)),
+    )
+    event_log = SimpleNamespace(emit=lambda name, **kwargs: events.append((name, kwargs)))
+
+    reason, recovery_ref = nightwing.preserve_workflow_validation_failure(
+        Path("/tmp/wt"),
+        head_ref="feature/fix",
+        pr_num=123,
+        comment_id=456,
+        workflow_validation=validation,
+        events=event_log,
+    )
+
+    assert recovery_ref == "recovery/nightwing"
+    assert "workflow validation failed for comment 456" in reason
+    assert posts == [
+        (
+            "[NIGHTWING-WORKFLOW-VALIDATION-FAILED] PR 123 comment 456; "
+            "files=.github/workflows/ci.yml; recovery_ref=recovery/nightwing. invalid workflow",
+            "warn",
+        )
+    ]
+    assert events == [
+        (
+            "workflow_validation_failed",
+            {
+                "comment_id": 456,
+                "files": [".github/workflows/ci.yml"],
+                "recovery_ref": "recovery/nightwing",
+            },
+        )
+    ]
+
+
+def test_nightwing_validation_failure_compares_to_pr_head_and_exits_cleanly(monkeypatch, tmp_path):
+    monkeypatch.setenv("GH_ORG", "acme")
+    monkeypatch.setenv("ALFRED_NIGHTWING_REPOS", "service-web")
+    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    validation_bases: list[str | None] = []
+    removed: list[str] = []
+    event_rows: list[tuple[str, dict]] = []
+
+    class FakeEvents:
+        firing_id = "fid-nightwing"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def emit(self, name, **kwargs):
+            event_rows.append((name, kwargs))
+
+    class FakeSpend:
+        def __init__(self, *args, **kwargs):
+            self.state = {"turns_today": 0}
+
+        def increment(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(nightwing, "with_lock", lambda _agent: None)
+    monkeypatch.setattr(nightwing, "preflight", lambda _spec: None)
+    monkeypatch.setattr(nightwing, "_refresh_pre_push_config", lambda: None)
+    monkeypatch.setattr(nightwing, "doctor_mode", lambda: False)
+    monkeypatch.setattr(nightwing, "is_globally_blocked", lambda: None)
+    monkeypatch.setattr(nightwing, "EventLog", FakeEvents)
+    monkeypatch.setattr(nightwing, "SpendState", FakeSpend)
+    monkeypatch.setattr(nightwing, "load_fixed_ids", lambda: set())
+    monkeypatch.setattr(nightwing, "save_fixed_ids", lambda _ids: None)
+    monkeypatch.setattr(nightwing, "load_no_commit_streaks", lambda: {})
+    monkeypatch.setattr(nightwing, "save_no_commit_streaks", lambda _streaks: None)
+    monkeypatch.setattr(nightwing, "reset_label_present", lambda *_args: False)
+    monkeypatch.setattr(nightwing, "local_repo_dir", lambda _repo: tmp_path / "repo")
+    monkeypatch.setattr(
+        nightwing,
+        "pick_target",
+        lambda _fixed_ids: (
+            "service-web",
+            {"number": 123, "headRefName": "feature/fix"},
+            [
+                {
+                    "body": "Please fix the workflow.",
+                    "path": ".github/workflows/ci.yml",
+                    "line": 7,
+                    "user": "reviewer",
+                    "id": 456,
+                    "severity": "P1",
+                }
+            ],
+        ),
+    )
+    monkeypatch.setattr(nightwing, "make_worktree_from_branch", lambda *_args, **_kwargs: wt)
+    monkeypatch.setattr(nightwing, "build_prompt", lambda *args, **kwargs: "prompt")
+    monkeypatch.setattr(
+        nightwing,
+        "invoke_agent_engine",
+        lambda *args, **kwargs: (
+            SimpleNamespace(success=True, subtype="success", num_turns=2),
+            "codex",
+        ),
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "run",
+        lambda args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="base-sha\n" if args[-1] == "origin/feature/fix" else "new-sha\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "validate_changed_workflows",
+        lambda _wt, **kwargs: (
+            validation_bases.append(kwargs.get("base"))
+            or SimpleNamespace(
+                ok=False,
+                files=(".github/workflows/ci.yml",),
+                stdout="",
+                stderr="invalid workflow",
+                reason="actionlint failed",
+            )
+        ),
+    )
+    monkeypatch.setattr(nightwing, "create_recovery_ref", lambda _wt, *, branch: "recovery/ref")
+    monkeypatch.setattr(nightwing, "slack_post", lambda *args, **kwargs: None)
+    monkeypatch.setattr(nightwing, "remove_worktree", lambda repo, path: removed.append(str(path)))
+
+    assert nightwing.main() == 0
+    assert validation_bases == ["origin/feature/fix"]
+    assert removed == []
+    assert any(
+        name == "firing_complete" and payload["outcome"] == "workflow-validation-failed"
+        for name, payload in event_rows
+    )
 
 
 def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):

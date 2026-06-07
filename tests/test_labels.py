@@ -73,12 +73,99 @@ def test_has_blocker_detects_each_blocker():
     for blocker in (
         labels.IN_FLIGHT,
         labels.PR_OPEN,
+        labels.LEGACY_PR_OPEN,
         labels.DO_NOT_PICKUP,
         labels.NEEDS_HUMAN_SCOPE,
+        labels.NEEDS_HUMAN_REVIEW,
+        labels.NEEDS_INFO,
+        labels.DONE,
+        labels.DONE_ALREADY,
+        labels.LARGE_FEATURE,
+        labels.PLAN_PENDING_APPROVAL,
     ):
         assert labels.has_blocker({blocker})
+        assert labels.has_pickup_blocker({blocker})
+    assert labels.has_blocker({labels.bundle_label("checkout")})
+    assert labels.has_pickup_blocker({labels.bundle_label("checkout")})
     assert not labels.has_blocker({labels.IMPLEMENT})
+    assert not labels.has_pickup_blocker({labels.IMPLEMENT})
     assert not labels.has_blocker(set())
+
+
+def test_claim_blockers_allow_batman_bundle_labels():
+    assert labels.LARGE_FEATURE in labels.pickup_blocking_labels({labels.LARGE_FEATURE})
+    assert labels.bundle_label("checkout") in labels.pickup_blocking_labels(
+        {labels.bundle_label("checkout")}
+    )
+    assert labels.claim_blocking_labels({labels.LARGE_FEATURE}) == []
+    assert labels.claim_blocking_labels({labels.bundle_label("checkout")}) == []
+    assert labels.claim_blocking_labels({labels.PLAN_PENDING_APPROVAL}) == []
+    assert labels.claim_blocking_labels({labels.DONE}) == [labels.DONE]
+    assert labels.claim_blocking_labels({labels.FEATURE}) == []
+    assert labels.feature_dev_claim_blocking_labels({labels.FEATURE}) == [labels.FEATURE]
+    assert labels.feature_dev_claim_blocking_labels(
+        {labels.LARGE_FEATURE, labels.PLAN_PENDING_APPROVAL}
+    ) == [labels.LARGE_FEATURE, labels.PLAN_PENDING_APPROVAL]
+
+
+def test_feature_dev_pickup_allows_batman_child_bundle_label():
+    child_labels = {labels.IMPLEMENT, labels.bundle_label("checkout")}
+    assert labels.pickup_blocking_labels(child_labels) == [labels.bundle_label("checkout")]
+    assert labels.feature_dev_pickup_blocking_labels(child_labels) == []
+    assert not labels.has_feature_dev_pickup_blocker(child_labels)
+
+    parent_labels = {
+        labels.IMPLEMENT,
+        labels.LARGE_FEATURE,
+        labels.bundle_label("checkout"),
+    }
+    assert labels.feature_dev_pickup_blocking_labels(parent_labels) == [labels.LARGE_FEATURE]
+    assert labels.has_feature_dev_pickup_blocker(parent_labels)
+
+    product_labels = {labels.IMPLEMENT, labels.FEATURE, labels.ENHANCEMENT}
+    assert labels.feature_dev_pickup_blocking_labels(product_labels) == [
+        labels.ENHANCEMENT,
+        labels.FEATURE,
+    ]
+    assert labels.has_feature_dev_pickup_blocker(product_labels)
+
+    promoted_product_labels = {
+        labels.IMPLEMENT,
+        labels.FEATURE,
+        labels.ENHANCEMENT,
+        "severity:p2",
+    }
+    assert labels.feature_dev_pickup_blocking_labels(promoted_product_labels) == []
+    assert labels.feature_dev_claim_blocking_labels(promoted_product_labels) == []
+    assert labels.feature_dev_claim_blocking_labels(
+        promoted_product_labels | {labels.LARGE_FEATURE}
+    ) == [labels.LARGE_FEATURE]
+
+
+def test_custom_agent_pr_open_labels_block_pickup_and_claim():
+    marker = "custom-lucius-pr-open"
+    issue_labels = {labels.IMPLEMENT, marker}
+
+    assert labels.agent_pr_open_labels(issue_labels) == [marker]
+    assert labels.pickup_blocking_labels(issue_labels) == [marker]
+    assert labels.feature_dev_pickup_blocking_labels(issue_labels) == [marker]
+    assert labels.feature_dev_claim_blocking_labels(issue_labels) == [marker]
+    assert labels.claim_blocking_labels(issue_labels) == [marker]
+    assert labels.robin_triage_blocking_labels(issue_labels) == [marker]
+
+
+def test_robin_triage_blockers_allow_product_labels_but_block_bundle_labels():
+    blockers = labels.robin_triage_blocking_labels(
+        {
+            labels.FEATURE,
+            labels.ENHANCEMENT,
+            labels.bundle_label("checkout"),
+            labels.IMPLEMENT,
+        }
+    )
+    assert blockers == [
+        labels.bundle_label("checkout"),
+    ]
 
 
 def test_bundle_labels_extraction_and_sort():
