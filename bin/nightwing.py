@@ -785,7 +785,7 @@ def main() -> int:
             continue
 
         # Push + reply on the PR
-        workflow_validation = validate_changed_workflows(wt)
+        workflow_validation = validate_changed_workflows(wt, base="origin/main")
         if not workflow_validation.ok:
             preserved_failure_reason, preserved_recovery_ref = preserve_workflow_validation_failure(
                 wt,

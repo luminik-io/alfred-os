@@ -355,7 +355,7 @@ def main() -> int:
         return 0
 
     # Push + open PR
-    workflow_validation = validate_changed_workflows(wt)
+    workflow_validation = validate_changed_workflows(wt, base="origin/main")
     if not workflow_validation.ok:
         detail = short(
             workflow_validation.stderr

@@ -1079,7 +1079,7 @@ def test_bane_workflow_validation_failure_counts_as_failure(monkeypatch, tmp_pat
     monkeypatch.setattr(
         bane,
         "validate_changed_workflows",
-        lambda wt: SimpleNamespace(
+        lambda wt, **kw: SimpleNamespace(
             ok=False,
             stdout="",
             stderr="workflow syntax error",

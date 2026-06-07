@@ -97,7 +97,7 @@ def changed_workflow_files(
     """Return changed workflow YAML files in ``worktree``."""
     if not worktree.exists():
         return ()
-    comparison_base = base or DEFAULT_WORKFLOW_BASE
+    comparison_base = base or _remote_default_ref(worktree, run_cmd=run_cmd)
     commands = (
         ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", f"{comparison_base}...HEAD"),
         ("git", "diff", "--name-only", "--diff-filter=ACMRTUXB", "--cached"),

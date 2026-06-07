@@ -20,7 +20,7 @@ def test_changed_workflow_files_detects_unstaged_yaml(tmp_path):
 
     def fake_run(cmd, **_kwargs):
         if cmd[0:3] == ["git", "symbolic-ref", "--quiet"]:
-            raise AssertionError("default workflow base should not read origin/HEAD")
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n")
         assert cmd[0:4] == ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"]
         return subprocess.CompletedProcess(
             cmd,
@@ -31,7 +31,7 @@ def test_changed_workflow_files_detects_unstaged_yaml(tmp_path):
     assert changed_workflow_files(worktree, run_cmd=fake_run) == (".github/workflows/ci.yml",)
 
 
-def test_changed_workflow_files_defaults_to_origin_main(tmp_path):
+def test_changed_workflow_files_uses_remote_default_branch(tmp_path):
     worktree = tmp_path / "repo"
     workflows = worktree / ".github" / "workflows"
     workflows.mkdir(parents=True)
@@ -41,13 +41,13 @@ def test_changed_workflow_files_defaults_to_origin_main(tmp_path):
     def fake_run(cmd, **_kwargs):
         commands.append(list(cmd))
         if cmd[0:3] == ["git", "symbolic-ref", "--quiet"]:
-            raise AssertionError("default workflow base should not read origin/HEAD")
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/develop\n")
         if cmd == [
             "git",
             "diff",
             "--name-only",
             "--diff-filter=ACMRTUXB",
-            "origin/main...HEAD",
+            "origin/develop...HEAD",
         ]:
             return subprocess.CompletedProcess(cmd, 0, stdout=".github/workflows/ci.yml\n")
         return subprocess.CompletedProcess(cmd, 0, stdout="")
@@ -58,15 +58,41 @@ def test_changed_workflow_files_defaults_to_origin_main(tmp_path):
         "diff",
         "--name-only",
         "--diff-filter=ACMRTUXB",
-        "origin/main...HEAD",
+        "origin/develop...HEAD",
     ] in commands
+
+
+def test_changed_workflow_files_honors_explicit_base_without_origin_head(tmp_path):
+    worktree = tmp_path / "repo"
+    workflows = worktree / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    commands: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        commands.append(list(cmd))
+        if cmd[0:3] == ["git", "symbolic-ref", "--quiet"]:
+            raise AssertionError("explicit base should not read origin/HEAD")
+        if cmd == [
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMRTUXB",
+            "origin/main...HEAD",
+        ]:
+            return subprocess.CompletedProcess(cmd, 0, stdout=".github/workflows/ci.yml\n")
+        return subprocess.CompletedProcess(cmd, 0, stdout="")
+
+    assert changed_workflow_files(worktree, base="origin/main", run_cmd=fake_run) == (
+        ".github/workflows/ci.yml",
+    )
     assert [
         "git",
         "diff",
         "--name-only",
         "--diff-filter=ACMRTUXB",
-        "origin/develop...HEAD",
-    ] not in commands
+        "origin/main...HEAD",
+    ] in commands
 
 
 def test_changed_workflow_files_returns_empty_for_missing_worktree(tmp_path):
@@ -92,6 +118,8 @@ def test_validate_changed_workflows_fails_closed_when_base_diff_fails(tmp_path):
     worktree.mkdir()
 
     def fake_run(cmd, **_kwargs):
+        if cmd[0:3] == ["git", "symbolic-ref", "--quiet"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n")
         if cmd == [
             "git",
             "diff",
