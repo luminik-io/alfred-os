@@ -849,7 +849,7 @@ def _should_warn_dependency_lookup_failure(key: str, *, now: float | None = None
         DEPENDENCY_WARNING_LEDGER.parent.mkdir(parents=True, exist_ok=True)
         DEPENDENCY_WARNING_LEDGER.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
     except OSError:
-        return True
+        return False
     return True
 
 

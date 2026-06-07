@@ -1153,6 +1153,23 @@ def test_lucius_dependency_lookup_failure_warns_once_and_blocks(monkeypatch, tmp
     ]
 
 
+def test_lucius_dependency_lookup_failure_suppresses_when_ledger_write_fails(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+
+    class FailingLedger:
+        parent = SimpleNamespace(mkdir=lambda *a, **kw: None)
+
+        def read_text(self, **_kw):
+            raise OSError("missing")
+
+        def write_text(self, *_a, **_kw):
+            raise OSError("disk full")
+
+    monkeypatch.setattr(lucius, "DEPENDENCY_WARNING_LEDGER", FailingLedger())
+
+    assert lucius._should_warn_dependency_lookup_failure("backend#42->backend#6", now=1.0) is False
+
+
 def test_nightwing_workflow_validation_failure_posts_slack(monkeypatch):
     nightwing = load_bin_module("nightwing.py", monkeypatch)
     posts: list[tuple[str, str | None]] = []
