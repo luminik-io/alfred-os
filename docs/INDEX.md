@@ -27,6 +27,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
 - [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): provider chaining for the default fleet brain and optional read-only fallback stores.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
+- [`CHAT_RUNTIME_DECISION.md`](CHAT_RUNTIME_DECISION.md): current decision on Chat SDK, AI SDK UI, assistant-ui, and CopilotKit for Slack, web, and native chat.
 - [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): the desktop control surface tab by tab, the `alfred serve` seam and native allowlist, and building native installers.
 - [`GOALS.md`](GOALS.md): durable goal contract for Slack, CLI, client, planning readiness, evaluator, and memory integration.
