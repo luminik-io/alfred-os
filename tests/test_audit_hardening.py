@@ -702,6 +702,43 @@ def test_lucius_nested_lockfile_drift_requires_local_lockfile(monkeypatch, tmp_p
     ]
 
 
+def test_lucius_nested_lockfile_drift_treats_deleted_local_lock_as_missing(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    package_dir = tmp_path / "packages" / "widget"
+    package_dir.mkdir(parents=True)
+    (package_dir / "package.json").write_text(
+        json.dumps({"dependencies": {"niyora-sync": "1.0.0"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        lucius,
+        "_changed_paths",
+        lambda _wt: {
+            "packages/widget/package.json",
+            "packages/widget/package-lock.json",
+            "package-lock.json",
+        },
+    )
+    monkeypatch.setattr(
+        lucius,
+        "_git_show_json",
+        lambda _wt, _path: {"dependencies": {}},
+    )
+    monkeypatch.setattr(
+        lucius,
+        "_git_path_exists",
+        lambda _wt, path: path == "packages/widget/package-lock.json",
+    )
+
+    drift = lucius.dependency_lockfile_drift(tmp_path)
+
+    assert drift == [
+        "packages/widget/package.json changed dependency fields but no lockfile changed "
+        "(packages/widget/package-lock.json)"
+    ]
+
+
 def test_lucius_git_helpers_use_remote_default_branch(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     commands: list[list[str]] = []

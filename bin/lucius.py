@@ -715,6 +715,15 @@ def _git_show_json(wt: Path, ref_path: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _git_path_exists(wt: Path, ref_path: str) -> bool:
+    res = run(
+        ["git", "cat-file", "-e", f"{_remote_default_ref(wt)}:{ref_path}"],
+        cwd=str(wt),
+        timeout=10,
+    )
+    return res.returncode == 0
+
+
 def _dependency_sections(package: dict) -> dict:
     return {field: package.get(field) for field in PACKAGE_DEPENDENCY_FIELDS}
 
@@ -747,7 +756,9 @@ def dependency_lockfile_drift(wt: Path) -> list[str]:
             continue
         package_dir = Path(path).parent
         existing_locks = [
-            candidate for candidate in _lockfile_candidates(path) if (wt / candidate).exists()
+            candidate
+            for candidate in _lockfile_candidates(path)
+            if (wt / candidate).exists() or _git_path_exists(wt, candidate)
         ]
         if str(package_dir) != ".":
             local_prefix = f"{package_dir}/"
@@ -756,7 +767,12 @@ def dependency_lockfile_drift(wt: Path) -> list[str]:
             ]
             if local_locks:
                 existing_locks = local_locks
-        if existing_locks and not any(lockfile in changed for lockfile in existing_locks):
+        changed_existing_locks = [
+            lockfile
+            for lockfile in existing_locks
+            if lockfile in changed and (wt / lockfile).exists()
+        ]
+        if existing_locks and not changed_existing_locks:
             drift.append(
                 f"{path} changed dependency fields but no lockfile changed "
                 f"({', '.join(existing_locks)})"
