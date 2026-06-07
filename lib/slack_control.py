@@ -56,9 +56,10 @@ parse + dispatch path without spawning a real process.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -114,9 +115,33 @@ _COMMANDS: frozenset[str] = frozenset(
     }
 )
 
+_DEFAULT_RUN_CODENAMES: frozenset[str] = frozenset(
+    {
+        "agent-cleanup",
+        "alfred-nightly",
+        "automerge",
+        "bane",
+        "batman",
+        "cleanup",
+        "code-map-refresh",
+        "damian",
+        "drake",
+        "fleet-doctor",
+        "gordon",
+        "huntress",
+        "lucius",
+        "memory-harvest",
+        "morning-brief",
+        "nightwing",
+        "rasalghul",
+        "robin",
+    }
+)
+
 _PLAN_ID_RE = re.compile(r"^(?!\.)[A-Za-z0-9._-]{1,180}$")
 _MEMORY_ID_RE = re.compile(r"^(?!-)[A-Za-z0-9:_-]{1,96}$")
 _REPO_TOKEN_RE = re.compile(r"^(?!-)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_FLEET_YAML_AGENT_RE = re.compile(r"^  ([A-Za-z0-9._-]+):\s*$")
 
 CommandRunner = Callable[[list[str]], "RunResult"]
 
@@ -248,6 +273,7 @@ class SlackControlHandler:
         state_root: Path | str | None = None,
         plan_reader: Any | None = None,
         memory_provider: Any | None = None,
+        known_run_codenames: Iterable[str] | None = None,
         timeout: int = 30,
     ) -> None:
         self.alfred_bin = str(alfred_bin) if alfred_bin else _default_alfred_bin()
@@ -261,6 +287,11 @@ class SlackControlHandler:
         )
         self.plan_reader = plan_reader
         self.memory_provider = memory_provider
+        self._known_run_codenames = (
+            frozenset(c for c in known_run_codenames if is_valid_codename(c))
+            if known_run_codenames is not None
+            else None
+        )
         self.timeout = timeout
 
     def handle(
@@ -812,6 +843,22 @@ class SlackControlHandler:
         )
 
     def _run_manual_agent(self, codename: str, actor_user_id: str | None) -> ControlResult:
+        if codename == "all":
+            return ControlResult(
+                True,
+                "run_rejected",
+                text=(
+                    "*Rejected:* `run all` is intentionally unavailable.\n\n"
+                    "Trigger one agent at a time, e.g. `run batman`."
+                ),
+                detail="run all rejected",
+            )
+        if not self._is_known_run_codename(codename):
+            return ControlResult(
+                False,
+                "not_a_command",
+                detail=f"unknown run codename {codename}",
+            )
         actor = normalize_slack_user_id(actor_user_id)
         if not self.operator_user_id or actor != self.operator_user_id:
             return ControlResult(
@@ -826,6 +873,13 @@ class SlackControlHandler:
             )
         return self._run_agent_cli("run", codename)
 
+    def _is_known_run_codename(self, codename: str) -> bool:
+        known = self._known_run_codenames
+        if known is None:
+            known = _discover_run_codenames(self.alfred_bin)
+            self._known_run_codenames = known
+        return codename in known
+
     def _run_agent_cli(self, verb: str, codename: str) -> ControlResult:
         # Re-validate at the boundary even though the parser already did:
         # nothing reaches the argv without passing this check.
@@ -835,16 +889,6 @@ class SlackControlHandler:
                 f"{verb}_rejected",
                 text=f"*Rejected:* `{_short(codename)}` is not a valid codename.",
                 detail="invalid codename",
-            )
-        if verb == "run" and codename == "all":
-            return ControlResult(
-                True,
-                "run_rejected",
-                text=(
-                    "*Rejected:* `run all` is intentionally unavailable.\n\n"
-                    "Trigger one agent at a time, e.g. `run batman`."
-                ),
-                detail="run all rejected",
             )
         result = self._runner([self.alfred_bin, verb, codename])
         if result.returncode == 0:
@@ -857,10 +901,7 @@ class SlackControlHandler:
         return ControlResult(
             True,
             f"{verb}_failed",
-            text=(
-                f"*Could not {_agent_cli_failure_verb(verb)}* `{codename}`.\n"
-                f"```\n{_short(err, 600) or 'no output'}\n```"
-            ),
+            text=(f"*Could not {verb}* `{codename}`.\n```\n{_short(err, 600) or 'no output'}\n```"),
             detail=err,
         )
 
@@ -1026,10 +1067,133 @@ def _agent_cli_success_title(verb: str) -> str:
     return verb.capitalize()
 
 
-def _agent_cli_failure_verb(verb: str) -> str:
-    if verb == "dry-run":
-        return "dry-run"
-    return verb
+def _discover_run_codenames(alfred_bin: str) -> frozenset[str]:
+    codenames = set(_DEFAULT_RUN_CODENAMES)
+    for raw in os.environ.get("ALFRED_SLACK_RUN_CODENAMES", "").split(","):
+        candidate = raw.strip()
+        if is_valid_codename(candidate):
+            codenames.add(candidate)
+    for path in _agents_conf_candidates(alfred_bin):
+        codenames.update(_codenames_from_agents_conf(path))
+    for path in _fleet_yaml_candidates(alfred_bin):
+        codenames.update(_codenames_from_fleet_yaml(path))
+    return frozenset(codenames)
+
+
+def _agents_conf_candidates(alfred_bin: str) -> list[Path]:
+    repo_root = _repo_root_from_bin(alfred_bin)
+    candidates: list[Path] = []
+    for env_name in ("ALFRED_REPO", "ALFRED_HOME", "HERMES_HOME"):
+        raw = os.environ.get(env_name)
+        if raw:
+            root = Path(raw).expanduser()
+            candidates.extend(
+                [
+                    root / "infra" / "agents" / "launchd" / "agents.conf",
+                    root / "launchd" / "agents.conf",
+                ]
+            )
+    candidates.extend(
+        [
+            repo_root / "infra" / "agents" / "launchd" / "agents.conf",
+            repo_root / "launchd" / "agents.conf",
+            repo_root / "launchd" / "agents.conf.example",
+        ]
+    )
+    return _existing_unique_paths(candidates)
+
+
+def _fleet_yaml_candidates(alfred_bin: str) -> list[Path]:
+    repo_root = _repo_root_from_bin(alfred_bin)
+    candidates: list[Path] = []
+    for env_name in ("ALFRED_REPO", "ALFRED_HOME", "HERMES_HOME"):
+        raw = os.environ.get(env_name)
+        if raw:
+            root = Path(raw).expanduser()
+            candidates.extend(
+                [
+                    root / "infra" / "agents" / "fleet.yaml",
+                    root / "fleet.yaml",
+                ]
+            )
+    candidates.extend(
+        [
+            repo_root / "infra" / "agents" / "fleet.yaml",
+            repo_root / "fleet.yaml",
+        ]
+    )
+    return _existing_unique_paths(candidates)
+
+
+def _repo_root_from_bin(alfred_bin: str) -> Path:
+    path = Path(alfred_bin).expanduser()
+    try:
+        path = path.resolve()
+    except OSError:
+        path = path.absolute()
+    for parent in (path.parent, *path.parents):
+        if (parent / "infra" / "agents").exists() or (parent / "launchd").exists():
+            return parent
+    return path.parent.parent if path.parent != path.parent.parent else path.parent
+
+
+def _existing_unique_paths(candidates: Iterable[Path]) -> list[Path]:
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        if resolved in seen or not resolved.exists():
+            continue
+        seen.add(resolved)
+        out.append(resolved)
+    return out
+
+
+def _codenames_from_agents_conf(path: Path) -> set[str]:
+    codenames: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return codenames
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            line = line.lstrip("#").strip()
+            if "\t" not in line:
+                continue
+        if "\t" not in line:
+            continue
+        label = line.split("\t", 1)[0].strip()
+        codename = label.rsplit(".", 1)[-1]
+        if is_valid_codename(codename):
+            codenames.add(codename)
+    return codenames
+
+
+def _codenames_from_fleet_yaml(path: Path) -> set[str]:
+    codenames: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return codenames
+    in_agents = False
+    for line in lines:
+        if line == "agents:":
+            in_agents = True
+            continue
+        if in_agents and line and not line.startswith(" "):
+            break
+        if not in_agents:
+            continue
+        match = _FLEET_YAML_AGENT_RE.match(line)
+        if match and is_valid_codename(match.group(1)):
+            codenames.add(match.group(1))
+    return codenames
 
 
 def render_plans(rows: list[PlanDraft]) -> str:
