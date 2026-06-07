@@ -1418,7 +1418,13 @@ def test_claim_issue_refuses_product_label_for_lucius_claim(monkeypatch):
         lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not edit")),
     )
 
-    assert not ar.claim_issue("myrepo", 63, codename="lucius", firing_id="fid-1")
+    assert not ar.claim_issue(
+        "myrepo",
+        63,
+        codename="custom-feature-dev",
+        firing_id="fid-1",
+        role="feature-dev",
+    )
 
 
 def test_claim_issue_allows_bundle_labels_for_batman_claim(monkeypatch):

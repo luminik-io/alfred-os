@@ -1101,7 +1101,13 @@ def main() -> int:
     # Atomic-ish claim. Refused if any other agent has agent:in-flight,
     # if a PR is already open, or if the operator set do-not-pickup. Race
     # detection inside claim_issue backs out cleanly if we lost.
-    if not claim_issue(repo, issue_num, codename=AGENT, firing_id=events.firing_id):
+    if not claim_issue(
+        repo,
+        issue_num,
+        codename=AGENT,
+        firing_id=events.firing_id,
+        role="feature-dev",
+    ):
         events.emit(
             "firing_complete", outcome="dedup_skip", repo=f"{GH_ORG}/{repo}", number=issue_num
         )

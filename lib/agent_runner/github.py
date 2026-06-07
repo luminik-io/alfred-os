@@ -960,7 +960,14 @@ def _issue_state(repo_slug: str, num: int) -> dict:
     )
 
 
-def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> bool:
+def claim_issue(
+    repo_slug: str,
+    num: int,
+    *,
+    codename: str,
+    firing_id: str,
+    role: str | None = None,
+) -> bool:
     """Atomic-ish claim. Returns ``True`` if the claim succeeded, ``False`` if blocked.
 
     Refusal reasons (returns ``False``):
@@ -990,7 +997,7 @@ def claim_issue(repo_slug: str, num: int, *, codename: str, firing_id: str) -> b
         return False
     labels = {lbl["name"] for lbl in state.get("labels", [])}
     blockers = set(label_constants.claim_blocking_labels(labels))
-    if "lucius" in codename.lower():
+    if role == "feature-dev":
         blockers.update(label_constants.feature_dev_claim_blocking_labels(labels))
     if blockers:
         return False
