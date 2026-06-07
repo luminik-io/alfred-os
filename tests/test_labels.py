@@ -142,6 +142,18 @@ def test_feature_dev_pickup_allows_batman_child_bundle_label():
     ) == [labels.LARGE_FEATURE]
 
 
+def test_custom_agent_pr_open_labels_block_pickup_and_claim():
+    marker = "custom-lucius-pr-open"
+    issue_labels = {labels.IMPLEMENT, marker}
+
+    assert labels.agent_pr_open_labels(issue_labels) == [marker]
+    assert labels.pickup_blocking_labels(issue_labels) == [marker]
+    assert labels.feature_dev_pickup_blocking_labels(issue_labels) == [marker]
+    assert labels.feature_dev_claim_blocking_labels(issue_labels) == [marker]
+    assert labels.claim_blocking_labels(issue_labels) == [marker]
+    assert labels.robin_triage_blocking_labels(issue_labels) == [marker]
+
+
 def test_robin_triage_blockers_allow_product_labels_but_block_bundle_labels():
     blockers = labels.robin_triage_blocking_labels(
         {

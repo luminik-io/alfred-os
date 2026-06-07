@@ -81,6 +81,9 @@ NEEDS_INFO: Final[str] = "needs:info"
 LEGACY_PR_OPEN: Final[str] = "lucius-pr-open"
 """Legacy PR-open marker kept for dashboards and old runners."""
 
+AGENT_PR_OPEN_SUFFIX: Final[str] = "-pr-open"
+"""Suffix for agent-specific PR-open markers, e.g. ``custom-lucius-pr-open``."""
+
 DONE_ALREADY: Final[str] = "done-already"
 """Legacy terminal marker for already-complete issues."""
 
@@ -124,6 +127,16 @@ def bundle_slug(label: str) -> str | None:
     if not is_bundle_label(label):
         return None
     return label[len(BUNDLE_LABEL_PREFIX) :]
+
+
+def is_agent_pr_open_label(label: str) -> bool:
+    """True if ``label`` is an agent-specific PR-open marker."""
+    return label.endswith(AGENT_PR_OPEN_SUFFIX) and label != PR_OPEN
+
+
+def agent_pr_open_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return every agent-specific PR-open marker in the set, sorted."""
+    return sorted(label for label in labels if is_agent_pr_open_label(label))
 
 
 PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
@@ -180,6 +193,7 @@ def pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> lis
     s = set(labels)
     blockers = set(s & PICKUP_BLOCKING_LABEL_SET)
     blockers.update(bundle_labels(s))
+    blockers.update(agent_pr_open_labels(s))
     return sorted(blockers)
 
 
@@ -202,6 +216,7 @@ def feature_dev_pickup_blocking_labels(labels: set[str] | frozenset[str] | list[
     """
     s = set(labels)
     blockers = set(s & PICKUP_BLOCKING_LABEL_SET)
+    blockers.update(agent_pr_open_labels(s))
     if not _is_robin_promoted(s):
         blockers.update(s & FEATURE_DEV_PRODUCT_CLAIM_BLOCKING_LABEL_SET)
     return sorted(blockers)
@@ -216,6 +231,7 @@ def feature_dev_claim_blocking_labels(labels: set[str] | frozenset[str] | list[s
     """Return labels that block a feature-dev claim after pickup."""
     s = set(labels)
     blockers = set(s & FEATURE_DEV_ALWAYS_CLAIM_BLOCKING_LABEL_SET)
+    blockers.update(agent_pr_open_labels(s))
     if not _is_robin_promoted(s):
         blockers.update(s & FEATURE_DEV_PRODUCT_CLAIM_BLOCKING_LABEL_SET)
     return sorted(blockers)
@@ -224,7 +240,9 @@ def feature_dev_claim_blocking_labels(labels: set[str] | frozenset[str] | list[s
 def claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
     """Return sorted labels that block the shared claim primitive."""
     s = set(labels)
-    return sorted(s & CLAIM_BLOCKING_LABEL_SET)
+    blockers = set(s & CLAIM_BLOCKING_LABEL_SET)
+    blockers.update(agent_pr_open_labels(s))
+    return sorted(blockers)
 
 
 def robin_triage_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
@@ -232,6 +250,7 @@ def robin_triage_blocking_labels(labels: set[str] | frozenset[str] | list[str]) 
     s = set(labels)
     blockers = set(s & ROBIN_TRIAGE_BLOCKING_LABEL_SET)
     blockers.update(bundle_labels(s))
+    blockers.update(agent_pr_open_labels(s))
     return sorted(blockers)
 
 
