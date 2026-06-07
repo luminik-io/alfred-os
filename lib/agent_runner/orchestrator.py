@@ -94,6 +94,8 @@ def sync_checkout_to_default(
     """
     if _env_value_enabled("ALFRED_DISABLE_CHECKOUT_SYNC"):
         return True, "sync disabled"
+    if _env_value_enabled("ALFRED_DRY_RUN"):
+        return True, "sync skipped: dry-run"
 
     def git(
         args: list[str],

@@ -143,6 +143,20 @@ def test_sync_checkout_to_default_fast_forwards_clean_default_branch(
     ]
 
 
+def test_sync_checkout_to_default_skips_in_dry_run(fresh_agent_runner, tmp_path, monkeypatch):
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_DISABLE_CHECKOUT_SYNC", raising=False)
+    monkeypatch.setenv("ALFRED_DRY_RUN", "1")
+
+    def fail_run(cmd, **_kwargs):
+        raise AssertionError(f"dry-run sync should not run git: {cmd}")
+
+    ok, message = ar.sync_checkout_to_default(tmp_path, run_cmd=fail_run)
+
+    assert ok is True
+    assert message == "sync skipped: dry-run"
+
+
 def test_sync_checkout_to_default_skips_dirty_checkout(
     fresh_agent_runner,
     tmp_path,
