@@ -479,9 +479,8 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
     - **Multi-issue bundle** (the ``agent:bundle:<slug>`` label pattern):
       each issue lives in its own product repo;
       that repo IS the issue's affected repo. Per-repo criteria come
-      from each issue's body. Rollout order falls back to the
-      configured ``BATMAN_ROLLOUT_ORDER`` (default
-      ``DEFAULT_ROLLOUT_ORDER``) filtered down to the affected set.
+      from each issue's body. The incoming bundle issue order is already
+      dependency-sorted, so preserve it as the rollout order.
     """
     if len(bundle.issues) <= 1:
         return parse_plan_from_issue(bundle.primary_issue.get("body") or "")
@@ -505,10 +504,7 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
         per_repo = parse_plan_from_issue(body)
         criteria_by_repo[local] = per_repo.repo_criteria.get(local) or body
 
-    rollout_order = _rollout_order()
-    ordered = [r for r in rollout_order if r in affected]
-    ordered += [r for r in affected if r not in ordered]
-    return PlanShape(affected_repos=ordered, repo_criteria=criteria_by_repo)
+    return PlanShape(affected_repos=affected, repo_criteria=criteria_by_repo)
 
 
 # ---------------------------------------------------------------------------

@@ -197,15 +197,15 @@ def test_parse_plan_from_bundle_multi_uses_per_issue_repo():
 
     bundle = bm.Bundle(
         issues=[
-            _issue(1, "backend", body="Do the backend thing"),
             _issue(2, "frontend", body="Do the frontend thing"),
+            _issue(1, "backend", body="Do the backend thing"),
             _issue(3, "mobile", body="Do the mobile thing"),
         ],
         bundle_label="agent:bundle:auth-rework",
     )
     plan = bm.parse_plan_from_bundle(bundle)
-    # Default rollout order respected: backend before frontend before mobile.
-    assert plan.affected_repos == ["backend", "frontend", "mobile"]
+    # The picker has already dependency-sorted bundle issues; preserve that order.
+    assert plan.affected_repos == ["frontend", "backend", "mobile"]
     assert plan.repo_criteria["backend"] == "Do the backend thing"
     assert plan.repo_criteria["frontend"] == "Do the frontend thing"
 

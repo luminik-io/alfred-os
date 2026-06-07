@@ -155,7 +155,10 @@ def test_robin_skips_feature_and_bundle_candidates(monkeypatch):
 
     candidates = robin.list_untriaged()
 
-    assert [(repo, issue["number"]) for repo, issue in candidates] == [("backend", 1)]
+    assert [(repo, issue["number"]) for repo, issue in candidates] == [
+        ("backend", 2),
+        ("backend", 1),
+    ]
 
 
 def test_robin_strips_implement_when_current_labels_are_gated(monkeypatch):
@@ -164,11 +167,11 @@ def test_robin_strips_implement_when_current_labels_are_gated(monkeypatch):
     labels, gate_labels = robin.labels_to_add_for_triage(
         "severity:p1",
         ["agent:implement", "bug"],
-        {"feature"},
+        {"agent:bundle:checkout"},
     )
 
     assert labels == ["severity:p1", "bug"]
-    assert gate_labels == ["feature"]
+    assert gate_labels == ["agent:bundle:checkout"]
 
 
 def test_robin_keeps_implement_for_ungated_bug(monkeypatch):
@@ -181,6 +184,19 @@ def test_robin_keeps_implement_for_ungated_bug(monkeypatch):
     )
 
     assert labels == ["severity:p1", "agent:implement", "bug"]
+    assert gate_labels == []
+
+
+def test_robin_keeps_implement_for_product_labels(monkeypatch):
+    robin = load_bin_module("robin.py", monkeypatch)
+
+    labels, gate_labels = robin.labels_to_add_for_triage(
+        "severity:p1",
+        ["agent:implement", "enhancement"],
+        {"feature", "enhancement"},
+    )
+
+    assert labels == ["severity:p1", "agent:implement"]
     assert gate_labels == []
 
 

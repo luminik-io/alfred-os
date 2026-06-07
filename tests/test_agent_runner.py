@@ -1398,6 +1398,29 @@ def test_claim_issue_rolls_back_when_claim_comment_fails(monkeypatch):
     ]
 
 
+def test_claim_issue_refuses_product_label_for_lucius_claim(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setattr(ar, "is_repo_paused", lambda repo: False)
+    monkeypatch.setattr(
+        ar,
+        "_issue_state",
+        lambda repo, num: {
+            "labels": [{"name": "agent:implement"}, {"name": "feature"}],
+            "state": "OPEN",
+            "comments": [],
+            "number": num,
+        },
+    )
+    monkeypatch.setattr(
+        ar,
+        "gh_issue_edit",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not edit")),
+    )
+
+    assert not ar.claim_issue("myrepo", 63, codename="lucius", firing_id="fid-1")
+
+
 def test_claim_issue_allows_bundle_labels_for_batman_claim(monkeypatch):
     import agent_runner as ar
 
@@ -1412,6 +1435,7 @@ def test_claim_issue_allows_bundle_labels_for_batman_claim(monkeypatch):
                 {"name": "agent:implement"},
                 {"name": "agent:bundle:checkout"},
                 {"name": "agent:plan-pending-approval"},
+                {"name": "enhancement"},
             ],
             "state": "OPEN",
             "comments": [],

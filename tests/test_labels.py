@@ -101,6 +101,8 @@ def test_claim_blockers_allow_batman_bundle_labels():
     assert labels.claim_blocking_labels({labels.bundle_label("checkout")}) == []
     assert labels.claim_blocking_labels({labels.PLAN_PENDING_APPROVAL}) == []
     assert labels.claim_blocking_labels({labels.DONE}) == [labels.DONE]
+    assert labels.claim_blocking_labels({labels.FEATURE}) == []
+    assert labels.feature_dev_claim_blocking_labels({labels.FEATURE}) == [labels.FEATURE]
 
 
 def test_feature_dev_pickup_allows_batman_child_bundle_label():
@@ -125,7 +127,7 @@ def test_feature_dev_pickup_allows_batman_child_bundle_label():
     assert labels.has_feature_dev_pickup_blocker(product_labels)
 
 
-def test_robin_triage_blockers_include_feature_and_bundle_labels():
+def test_robin_triage_blockers_allow_product_labels_but_block_bundle_labels():
     blockers = labels.robin_triage_blocking_labels(
         {
             labels.FEATURE,
@@ -136,8 +138,6 @@ def test_robin_triage_blockers_include_feature_and_bundle_labels():
     )
     assert blockers == [
         labels.bundle_label("checkout"),
-        labels.ENHANCEMENT,
-        labels.FEATURE,
     ]
 
 

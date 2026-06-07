@@ -157,15 +157,16 @@ claim bundle members and approval parents atomically after it has selected
 eligible work.
 """
 
-ROBIN_TRIAGE_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
-    set(PICKUP_BLOCKING_LABEL_SET) | {FEATURE, ENHANCEMENT}
-)
+ROBIN_TRIAGE_BLOCKING_LABEL_SET: Final[frozenset[str]] = PICKUP_BLOCKING_LABEL_SET
 """Labels that make an issue ineligible for Robin to turn into implementation work."""
 
 FEATURE_DEV_PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
     set(PICKUP_BLOCKING_LABEL_SET) | {FEATURE, ENHANCEMENT}
 )
 """Static labels that make an issue ineligible for feature-dev pickup."""
+
+FEATURE_DEV_CLAIM_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset({FEATURE, ENHANCEMENT})
+"""Product labels that make a feature-dev claim unsafe after pickup."""
 
 
 def pickup_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
@@ -201,6 +202,12 @@ def feature_dev_pickup_blocking_labels(labels: set[str] | frozenset[str] | list[
 def has_feature_dev_pickup_blocker(labels: set[str] | frozenset[str] | list[str]) -> bool:
     """True when labels block the feature-dev pickup path."""
     return bool(feature_dev_pickup_blocking_labels(labels))
+
+
+def feature_dev_claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
+    """Return product labels that block a feature-dev claim after pickup."""
+    s = set(labels)
+    return sorted(s & FEATURE_DEV_CLAIM_BLOCKING_LABEL_SET)
 
 
 def claim_blocking_labels(labels: set[str] | frozenset[str] | list[str]) -> list[str]:
