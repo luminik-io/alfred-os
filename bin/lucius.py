@@ -284,6 +284,12 @@ PRE_PUSH = _load_pre_push_config(AGENT)
 TRUSTED_AUTHOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
+def _refresh_pre_push_config() -> None:
+    """Reload inferred pre-push commands after preflight syncs checkouts."""
+    global PRE_PUSH
+    PRE_PUSH = _load_pre_push_config(AGENT)
+
+
 def _strip_auto_seed_marker(text: str) -> str:
     """Drop the leading ``alfred:auto-seed`` marker line, if present."""
     lines = text.splitlines()
@@ -1020,6 +1026,7 @@ def main() -> int:
             dry_run_log("preflight", "preflight reported config gaps, continuing (dry-run)")
         else:
             return 0
+    _refresh_pre_push_config()
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")

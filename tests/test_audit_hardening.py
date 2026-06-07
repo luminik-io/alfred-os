@@ -579,6 +579,61 @@ def test_lucius_build_prompt_includes_operator_prompt(monkeypatch, tmp_path):
     assert "product/specs for #42" in text
 
 
+def test_lucius_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(lucius, "with_lock", lambda agent: calls.append(("lock", agent)))
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
+    monkeypatch.setattr(
+        lucius,
+        "preflight",
+        lambda _spec: calls.append(("preflight", dict(lucius.PRE_PUSH))),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "_load_pre_push_config",
+        lambda agent: calls.append(("load", agent)) or {"service-web": "npm ci"},
+    )
+    monkeypatch.setattr(
+        lucius,
+        "doctor_mode",
+        lambda: calls.append(("doctor", dict(lucius.PRE_PUSH))) or True,
+    )
+
+    assert lucius.main() == 0
+
+    assert [call[0] for call in calls] == ["lock", "preflight", "load", "doctor"]
+    assert calls[-1] == ("doctor", {"service-web": "npm ci"})
+
+
+def test_nightwing_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
+    nightwing = load_bin_module("nightwing.py", monkeypatch)
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(nightwing, "with_lock", lambda agent: calls.append(("lock", agent)))
+    monkeypatch.setattr(
+        nightwing,
+        "preflight",
+        lambda _spec: calls.append(("preflight", dict(nightwing.PRE_PUSH))),
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "_load_pre_push_config",
+        lambda agent: calls.append(("load", agent)) or {"service-web": "npm ci"},
+    )
+    monkeypatch.setattr(
+        nightwing,
+        "doctor_mode",
+        lambda: calls.append(("doctor", dict(nightwing.PRE_PUSH))) or True,
+    )
+
+    assert nightwing.main() == 0
+
+    assert [call[0] for call in calls] == ["lock", "preflight", "load", "doctor"]
+    assert calls[-1] == ("doctor", {"service-web": "npm ci"})
+
+
 def test_lucius_infers_node_pre_push_from_package_json(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     repo = tmp_path / "repo"

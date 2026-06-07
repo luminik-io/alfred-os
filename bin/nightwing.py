@@ -372,6 +372,12 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
 PRE_PUSH = _load_pre_push_config(AGENT)
 
 
+def _refresh_pre_push_config() -> None:
+    """Reload inferred pre-push commands after preflight syncs checkouts."""
+    global PRE_PUSH
+    PRE_PUSH = _load_pre_push_config(AGENT)
+
+
 def pick_target(fixed_ids: set) -> tuple[str, dict, list[dict]] | tuple[None, None, None]:
     """Find an agent:authored PR with unresolved P0/P1 reviewer comments.
 
@@ -543,6 +549,7 @@ def main() -> int:
         preflight(PREFLIGHT)
     except PreflightFailed:
         return 0
+    _refresh_pre_push_config()
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
