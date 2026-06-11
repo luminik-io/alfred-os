@@ -36,7 +36,7 @@ def create_app(reader: FleetReader) -> FastAPI:
     app = FastAPI(
         title="alfred serve",
         description="Localhost-only read-only dashboard over $ALFRED_HOME/state.",
-        version="0.4.0",
+        version="0.4.1",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -55,6 +55,20 @@ def create_app(reader: FleetReader) -> FastAPI:
     # wiring happens.
     app.state.reader = reader
     app.state.templates = templates
+
+    # Mint a fresh per-launch token and persist it (0600) under the state root.
+    # State-mutating POSTs require it via the X-Alfred-Token header, so a
+    # drive-by same-origin localhost page (which cannot read the token file)
+    # can never arm work or mutate fleet/trust/plan state.
+    state_root = getattr(reader, "state_root", None)
+    if isinstance(state_root, Path):
+        try:
+            views.ensure_server_token(state_root)
+        except OSError as exc:
+            # A serve start must not be blocked by a token-write failure; the
+            # gate then fails closed (mutating POSTs return 403) rather than
+            # silently downgrading to same-origin-only.
+            logger.warning("could not write server token under %s: %s", state_root, exc)
 
     views.register_routes(app)
     return app

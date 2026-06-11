@@ -856,6 +856,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
+def cmd_schedule(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-schedule.py"
+    forwarded = args.schedule_args or ["list"]
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
+def cmd_assign(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-assign.py"
+    forwarded = [args.issue]
+    if args.dry_run:
+        forwarded.append("--dry-run")
+    if args.json:
+        forwarded.append("--json")
+    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+
+
 def cmd_spec(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-spec.py"
     forwarded = args.spec_args or ["--help"]
@@ -1776,6 +1792,16 @@ def main(argv: list[str] | None = None) -> int:
         help="uvicorn log level passed to alfred-serve",
     )
     p_serve.set_defaults(func=cmd_serve)
+
+    p_schedule = sub.add_parser("schedule", help="inspect or edit configured agent cadences")
+    p_schedule.add_argument("schedule_args", nargs=argparse.REMAINDER)
+    p_schedule.set_defaults(func=cmd_schedule)
+
+    p_assign = sub.add_parser("assign", help="route an existing issue to the right agent lane")
+    p_assign.add_argument("issue", help="issue URL or owner/repo#N")
+    p_assign.add_argument("--dry-run", action="store_true")
+    p_assign.add_argument("--json", action="store_true")
+    p_assign.set_defaults(func=cmd_assign)
 
     p_spec = sub.add_parser("spec", help="create and lint specs for agent work")
     p_spec.add_argument("spec_args", nargs=argparse.REMAINDER)

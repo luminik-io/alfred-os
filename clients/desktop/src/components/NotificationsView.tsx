@@ -9,20 +9,18 @@ export function NotificationsView({
   unseen,
   seen,
   onMarkAllSeen,
+  embedded = false,
 }: {
   feed: FeedItem[];
   unseen: number;
   seen: Set<string>;
   onMarkAllSeen: () => void;
+  /** When embedded inside another panel (e.g. the Logs tabs) drop the
+   *  panel chrome + header so it does not nest a card inside a card. */
+  embedded?: boolean;
 }) {
-  return (
-    <section className="panel">
-      <PanelHeader
-        eyebrow="Activity"
-        title={unseen ? `Notification center (${unseen} new)` : "Notification center"}
-        actionLabel={unseen ? "Mark all read" : undefined}
-        onAction={unseen ? onMarkAllSeen : undefined}
-      />
+  const body = (
+    <>
       <p className="panel-intro">
         Recent firings and governor &ldquo;needs you&rdquo; items collect here instead of macOS
         banners. This is the surface to read fleet activity from.
@@ -39,6 +37,22 @@ export function NotificationsView({
           body="Once agents fire or the governor flags a needs-you item, it appears here newest-first."
         />
       )}
+    </>
+  );
+
+  if (embedded) {
+    return body;
+  }
+
+  return (
+    <section className="panel">
+      <PanelHeader
+        eyebrow="Activity"
+        title={unseen ? `Notification center (${unseen} new)` : "Notification center"}
+        actionLabel={unseen ? "Mark all read" : undefined}
+        onAction={unseen ? onMarkAllSeen : undefined}
+      />
+      {body}
     </section>
   );
 }

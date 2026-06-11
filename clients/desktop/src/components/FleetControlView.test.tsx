@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { FleetControlView } from "./FleetControlView";
 import { parseFleetServiceState } from "../lib/fleetControl";
-import type { AgentSummary, NativeCommandResult } from "../types";
+import type { AgentSummary, NativeCommandResult, ScheduledRun } from "../types";
 
 // Render in the desktop-capable mode so the control buttons appear.
 vi.mock("../api", () => ({
@@ -46,16 +46,34 @@ const SERVICE = parseFleetServiceState(
   ),
 );
 
-function renderView(onRunLocalAction = vi.fn()) {
+const SCHEDULE: ScheduledRun[] = [
+  {
+    codename: "lucius",
+    role: "Engineer",
+    kind: "interval",
+    cadence: "every 10m",
+    next_fire_at: null,
+    raw_schedule: "interval:600",
+  },
+  {
+    codename: "bane",
+    role: "Reviewer",
+    kind: "cron-daily",
+    cadence: "daily at 08:00",
+    next_fire_at: "2026-06-08T08:00:00+02:00",
+    raw_schedule: "cron:8:00",
+  },
+];
+
+function renderView(onRunLocalAction = vi.fn(), schedule: ScheduledRun[] = SCHEDULE) {
   render(
     <FleetControlView
       agents={[agent("lucius"), agent("bane")]}
+      schedule={schedule}
       service={SERVICE}
       nativeBusy={null}
-      nativeResult={null}
-      nativeError={null}
       onRunLocalAction={onRunLocalAction}
-      onRefreshService={vi.fn()}
+      onViewLogs={vi.fn()}
     />,
   );
   return onRunLocalAction;
@@ -82,12 +100,11 @@ describe("FleetControlView", () => {
             paused_since: "2026-05-30T09:00:00Z",
           }),
         ]}
+        schedule={[]}
         service={{}}
         nativeBusy={null}
-        nativeResult={null}
-        nativeError={null}
         onRunLocalAction={vi.fn()}
-        onRefreshService={vi.fn()}
+        onViewLogs={vi.fn()}
       />,
     );
     expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
@@ -101,6 +118,24 @@ describe("FleetControlView", () => {
     await user.click(screen.getAllByRole("button", { name: /Dry-run/i })[0]);
     expect(onRun).toHaveBeenCalledWith(
       expect.objectContaining({ action: "dry_run", refreshAfter: true }),
+    );
+  });
+
+  it("sets an agent schedule from a cadence menu", async () => {
+    const onRun = renderView();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("combobox", { name: /schedule lucius/i }));
+    await user.click(screen.getByRole("option", { name: /every 20 min/i }));
+    await user.click(screen.getByRole("button", { name: /set lucius schedule/i }));
+
+    expect(onRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "schedule",
+        target: "lucius",
+        cadence: "20m",
+        refreshAfter: true,
+      }),
     );
   });
 
@@ -142,5 +177,22 @@ describe("FleetControlView", () => {
     await user.keyboard("{Escape}");
     expect(onRun).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("deep-links to that agent's logs from its card", async () => {
+    const onViewLogs = vi.fn();
+    render(
+      <FleetControlView
+        agents={[agent("lucius")]}
+        schedule={[]}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={onViewLogs}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole("button", { name: /view logs/i })[0]);
+    expect(onViewLogs).toHaveBeenCalledWith("lucius");
   });
 });

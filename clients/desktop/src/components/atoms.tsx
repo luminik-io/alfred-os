@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Archive,
   ArrowRight,
+  Check,
   CheckCircle2,
   ExternalLink,
   FilePlus2,
@@ -14,17 +15,19 @@ import {
   Radio,
   Settings,
   TerminalSquare,
+  X,
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { exactTime, friendlyTime, shortId, titleCase } from "../format";
+import { exactTime, friendlyTime, titleCase } from "../format";
+import { planNeedsAttention } from "../lib/derive";
 import { firstLink, isSafeExternalUrl, openExternal } from "../lib/links";
 import type { AttentionItem, FollowupAction } from "../lib/uiTypes";
 import { supportsNativeActions } from "../api";
 import type {
-  FiringRecord,
   NativeCommandResult,
+  PlanDecision,
   PlanDraft,
   ReliabilitySignal,
   Snapshot,
@@ -37,17 +40,40 @@ export function StatusPill({
   snapshot: Snapshot | null;
   error: string | null;
 }) {
-  const status = error ? "offline" : snapshot?.status.reliability.status || "checking";
-  const tone = error ? "error" : status === "ok" ? "ok" : status === "checking" ? "info" : "warn";
+  // The pill rolls up two distinct facts: whether alfred-serve is reachable
+  // (connection) and, when it is, how healthy the fleet is (reliability). Keep
+  // them separate so a fleet warning over a perfectly good connection does not
+  // read as a connection failure.
+  const offline = Boolean(error);
+  const health = snapshot?.status.reliability.status || "checking";
+  const state = offline ? "offline" : health;
+  const tone = offline ? "error" : state === "ok" ? "ok" : state === "checking" ? "info" : "warn";
+  const text =
+    state === "offline"
+      ? "Offline"
+      : state === "checking"
+        ? "Connecting"
+        : state === "ok"
+          ? "Live"
+          : titleCase(state);
+  const label =
+    state === "offline"
+      ? "Alfred serve offline"
+      : state === "checking"
+        ? "Connecting to Alfred serve"
+        : state === "ok"
+          ? "Connected to Alfred serve, fleet healthy"
+          : `Connected to Alfred serve, fleet ${titleCase(state)}`;
   return (
     <span
       className={`status-pill status-pill--${tone}`}
       role="status"
       aria-live="polite"
-      aria-label={`Connection ${titleCase(status)}`}
+      aria-label={label}
+      title={label}
     >
       <span aria-hidden="true" />
-      {titleCase(status)}
+      {text}
     </span>
   );
 }
@@ -103,14 +129,24 @@ export function NativeResultPanel({
   error,
   errorRaw,
   result,
+  onDismiss,
 }: {
   error: string | null;
   errorRaw?: string | null;
   result: NativeCommandResult | null;
+  /** When provided, renders a dismiss control so the panel never lingers. */
+  onDismiss?: () => void;
 }) {
   if (!error && !result) return null;
   const isError = Boolean(error) || result?.success === false;
-  const showDetails = Boolean(error && errorRaw && errorRaw !== error);
+  const showErrorDetails = Boolean(error && errorRaw && errorRaw !== error);
+  // Lead with a plain-English headline; tuck the raw command + stdout/stderr
+  // behind a disclosure so a successful check is a one-liner, not a wall of
+  // JSON pinned to the top of the app.
+  const headline = error
+    ? "Action failed"
+    : result?.message || friendlyActionLabel(result) || "Done";
+  const hasRawOutput = Boolean(result && (result.stdout || result.stderr));
   return (
     <div
       className={`command-result ${isError ? "command-result--error" : ""}`}
@@ -120,34 +156,70 @@ export function NativeResultPanel({
     >
       <div className="command-result__head">
         <TerminalSquare size={18} aria-hidden="true" />
-        <strong>{error ? "Action failed" : result?.message || "Local action output"}</strong>
+        <strong>{headline}</strong>
+        {result && !isError ? <span className="command-result__ok">Success</span> : null}
+        {onDismiss ? (
+          <button
+            className="command-result__dismiss"
+            type="button"
+            aria-label="Dismiss"
+            onClick={onDismiss}
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       {error ? <p>{error}</p> : null}
-      {showDetails ? (
+      {showErrorDetails ? (
         <details className="notice-details">
-          <summary>Details</summary>
+          <summary>Technical details</summary>
           <pre>{errorRaw}</pre>
         </details>
       ) : null}
       {result ? (
-        <>
+        <details className="notice-details">
+          <summary>Technical details</summary>
           <code>{result.command.join(" ")}</code>
           {result.pid ? <p>Process {result.pid} is running in the background.</p> : null}
           {result.status !== null ? <p>Exit status: {result.status}</p> : null}
-          {result.stdout ? <pre>{result.stdout}</pre> : null}
-          {result.stderr ? <pre>{result.stderr}</pre> : null}
-        </>
+          {hasRawOutput ? (
+            <>
+              {result.stdout ? <pre>{result.stdout}</pre> : null}
+              {result.stderr ? <pre>{result.stderr}</pre> : null}
+            </>
+          ) : null}
+        </details>
       ) : null}
     </div>
   );
 }
 
+// Turn a curated CLI command into a plain-English headline for non-technical
+// users (the raw command stays available under "Technical details").
+function friendlyActionLabel(result: NativeCommandResult | null): string | null {
+  if (!result) return null;
+  const joined = result.command.join(" ");
+  if (joined.includes("brain status") || joined.includes("brain-doctor")) return "Memory check complete";
+  if (joined.includes("redis")) return "Redis memory check complete";
+  if (joined.includes("auth status")) return "Auth check complete";
+  if (joined.includes("status --json") || /\bstatus\b/.test(joined)) return "Agent status refreshed";
+  if (joined.includes("agents")) return "Agents listed";
+  if (joined.includes("schedule set")) return "Schedule updated";
+  if (joined.includes("dry-run") || joined.includes("dry_run")) return "Dry-run complete";
+  return null;
+}
+
 export function AttentionCard({
   item,
   onNavigate,
+  onDecide,
+  busyPlanAction,
 }: {
   item: AttentionItem;
   onNavigate?: (tab: AttentionItem["targetTab"]) => void;
+  /** Record a go/no-go directly on a single waiting Batman plan. */
+  onDecide?: (planId: string, decision: PlanDecision) => void;
+  busyPlanAction?: string | null;
 }) {
   const Icon =
     item.icon === "memory"
@@ -157,6 +229,12 @@ export function AttentionCard({
         : item.icon === "setup"
           ? Settings
           : ListChecks;
+  // A single Batman plan awaiting a sign-off can be approved or declined right
+  // here, before work starts. derive.ts only sets planId on that case.
+  const canDecide = Boolean(item.planId) && Boolean(onDecide);
+  const actionBusy = (busyPlanAction && item.planId
+    ? busyPlanAction.startsWith(`${item.planId}:`)
+    : false) as boolean;
   return (
     <article className={`attention-card attention-card--${item.tone}`}>
       <Icon size={20} aria-hidden="true" />
@@ -164,9 +242,36 @@ export function AttentionCard({
         <span>{item.label}</span>
         <strong>{item.title}</strong>
         <p>{item.detail}</p>
+        {canDecide ? (
+          <p className="attention-card__decision-note" role="note">
+            Approving starts this exact scope on Batman's next run. Declining stops it.
+          </p>
+        ) : null}
         {item.command ? <code>{item.command}</code> : null}
       </div>
       <div className="card-actions">
+        {canDecide ? (
+          <>
+            <button
+              className="approve-button"
+              type="button"
+              disabled={actionBusy}
+              onClick={() => onDecide?.(item.planId as string, "approve")}
+            >
+              <Check size={16} aria-hidden="true" />
+              <span>Approve</span>
+            </button>
+            <button
+              className="decline-button"
+              type="button"
+              disabled={actionBusy}
+              onClick={() => onDecide?.(item.planId as string, "decline")}
+            >
+              <X size={16} aria-hidden="true" />
+              <span>Decline</span>
+            </button>
+          </>
+        ) : null}
         {item.targetTab ? (
           <button
             className="secondary-button"
@@ -174,7 +279,7 @@ export function AttentionCard({
             onClick={() => onNavigate?.(item.targetTab)}
           >
             <ArrowRight size={16} aria-hidden="true" />
-            <span>Review</span>
+            <span>{item.icon === "run" ? "Inspect runs" : "Review"}</span>
           </button>
         ) : null}
         {item.href ? <ExternalButton label="Open external" href={item.href} icon={<ExternalLink size={16} />} /> : null}
@@ -201,18 +306,26 @@ export function PlanCard({
   plan,
   busyPlanAction,
   onFollowupAction,
+  onDecision,
   selected = false,
   onSelect,
 }: {
   plan: PlanDraft;
   busyPlanAction: string | null;
   onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
+  /** Record a real go/no-go on a genuine Batman plan (approve starts work). */
+  onDecision?: (plan: PlanDraft, decision: PlanDecision) => void;
   selected?: boolean;
   onSelect?: (plan: PlanDraft) => void;
 }) {
   const slackLink = firstLink(plan.content, /slack\.com/i);
   const parentLink = plan.parent && isSafeExternalUrl(plan.parent) ? plan.parent : null;
   const isFollowup = plan.source === "followup";
+  // Only a genuine Batman go/no-go plan that is still awaiting a sign-off can be
+  // approved or declined in-app. planNeedsAttention already encodes both halves
+  // (source === "batman" and a waiting status), so a decided plan loses the
+  // buttons and reads as approved/declined instead.
+  const canDecide = Boolean(onDecision) && planNeedsAttention(plan);
   const actionBusy = busyPlanAction?.startsWith(`${plan.plan_id}:`) || false;
   return (
     <article className={selected ? "plan-card plan-card--selected" : "plan-card"}>
@@ -238,8 +351,36 @@ export function PlanCard({
             </div>
           ) : null}
         </dl>
+        {canDecide ? (
+          <p className="plan-card__decision-note" role="note">
+            Approving starts this exact scope on Batman's next run. Declining stops
+            it. No code or worktrees move until you decide.
+          </p>
+        ) : null}
       </div>
       <div className="card-actions">
+        {canDecide ? (
+          <>
+            <button
+              className="approve-button"
+              type="button"
+              disabled={actionBusy}
+              onClick={() => onDecision?.(plan, "approve")}
+            >
+              <Check size={16} aria-hidden="true" />
+              <span>Approve</span>
+            </button>
+            <button
+              className="decline-button"
+              type="button"
+              disabled={actionBusy}
+              onClick={() => onDecision?.(plan, "decline")}
+            >
+              <X size={16} aria-hidden="true" />
+              <span>Decline</span>
+            </button>
+          </>
+        ) : null}
         {isFollowup ? (
           <>
             <button
@@ -272,96 +413,10 @@ export function PlanCard({
           <ExternalButton label="Open issue" href={parentLink} icon={<GitPullRequest size={16} />} />
         ) : null}
         {slackLink ? (
-          <ExternalButton label="Open Slack" href={slackLink} icon={<MessageSquare size={16} />} />
+          <ExternalButton label="Open in Slack" href={slackLink} icon={<MessageSquare size={16} />} />
         ) : null}
       </div>
     </article>
-  );
-}
-
-export function RunCard({
-  firing,
-  selected = false,
-  onSelect,
-}: {
-  firing: FiringRecord;
-  selected?: boolean;
-  onSelect?: (firing: FiringRecord) => void;
-}) {
-  return (
-    <article className={selected ? "run-card run-card--selected" : "run-card"}>
-      <div className="run-card__status">
-        <StatusDot status={firing.status} />
-      </div>
-      <div>
-        <div className="run-card__meta">
-          <strong>{firing.codename}</strong>
-          <code title={firing.firing_id}>{shortId(firing.firing_id)}</code>
-          <time title={exactTime(firing.started_at)}>{friendlyTime(firing.started_at)}</time>
-        </div>
-        <p>{firing.summary}</p>
-      </div>
-      {onSelect ? (
-        <button className="secondary-button" type="button" onClick={() => onSelect(firing)}>
-          <Radio size={16} aria-hidden="true" />
-          <span>{selected ? "Selected" : "Inspect"}</span>
-        </button>
-      ) : null}
-    </article>
-  );
-}
-
-export function CompactPlanList({
-  plans,
-  onOpen,
-}: {
-  plans: PlanDraft[];
-  onOpen?: (plan: PlanDraft) => void;
-}) {
-  if (!plans.length) {
-    return <EmptyState title="No plans yet." body="Planning drafts will appear here." compact />;
-  }
-  return (
-    <div className="compact-list">
-      {plans.map((plan) => (
-        <button
-          key={plan.plan_id}
-          type="button"
-          onClick={() => onOpen?.(plan)}
-        >
-          <span>{plan.status}</span>
-          <strong>{plan.title}</strong>
-          <small>{friendlyTime(plan.updated_at)}</small>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function CompactRunList({
-  firings,
-  onOpen,
-}: {
-  firings: FiringRecord[];
-  onOpen?: (firing: FiringRecord) => void;
-}) {
-  if (!firings.length) {
-    return <EmptyState title="No runs yet." body="Recent firing traces will appear here." compact />;
-  }
-  return (
-    <div className="compact-list">
-      {firings.map((firing) => (
-        <button
-          key={firing.firing_id}
-          type="button"
-          onClick={() => onOpen?.(firing)}
-        >
-          <span>{firing.codename}</span>
-          <strong>{firing.summary}</strong>
-          <small>{friendlyTime(firing.started_at)}</small>
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -389,25 +444,6 @@ export function PanelHeader({
         </button>
       ) : null}
     </div>
-  );
-}
-
-export function StatusDot({ status }: { status: string }) {
-  // "running" is in-progress, not a problem: give it its own blue + pulse
-  // treatment rather than the amber "warn" that reads as a fault.
-  const tone =
-    status === "live" || status === "ok"
-      ? "ok"
-      : status === "error"
-        ? "error"
-        : status === "running"
-          ? "running"
-          : "idle";
-  return (
-    <span className={`dot-label dot-label--${tone}`}>
-      <span aria-hidden="true" />
-      {titleCase(status)}
-    </span>
   );
 }
 

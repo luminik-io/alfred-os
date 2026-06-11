@@ -23,9 +23,11 @@
     <div class="detail-actions">
       {% if plan.source == "followup" %}
       <form method="post" action="/plans/{{ plan.plan_id }}/convert-followup">
+        <input type="hidden" name="_token" value="{{ server_token }}">
         <button type="submit">Plan next pass</button>
       </form>
       <form method="post" action="/plans/{{ plan.plan_id }}/mark-handled">
+        <input type="hidden" name="_token" value="{{ server_token }}">
         <button type="submit" class="secondary">Mark handled</button>
       </form>
       {% endif %}

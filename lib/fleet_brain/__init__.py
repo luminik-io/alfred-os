@@ -45,7 +45,7 @@ cloud sync.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -161,6 +161,19 @@ class FleetBrain:
             resolved = Path(db_path) if db_path is not None else default_db_path()
             self.store = SQLiteStore(db_path=resolved)
         self.store.ensure_schema()
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> FleetBrain:
+        """Build a brain from the public environment contract."""
+        if env is None:
+            return cls()
+        explicit = env.get("ALFRED_FLEET_BRAIN_DB", "").strip()
+        if explicit:
+            return cls(db_path=Path(explicit).expanduser())
+        alfred_home = env.get("ALFRED_HOME", "").strip()
+        if alfred_home:
+            return cls(db_path=Path(alfred_home).expanduser() / "fleet-brain.db")
+        return cls(db_path=Path.home() / ".alfred" / "fleet-brain.db")
 
     # ----- write paths --------------------------------------------------
 

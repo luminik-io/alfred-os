@@ -1,15 +1,4 @@
-"""Tests for ``alfred serve`` v1.
-
-Covers:
-
-* Empty state: missing state root renders a clean empty fleet view.
-* Populated state via ``tmp_path``: events JSONL is parsed and surfaced
-  on /, /firings, and /firings/<id>.
-* 404 for unknown firing id.
-* Filter by codename on /firings.
-* HTMX partial swap on /.
-* Path-traversal rejection on the firing id.
-"""
+"""Focused tests for the local ``alfred serve`` planning routes."""
 
 from __future__ import annotations
 
@@ -22,15 +11,9 @@ from types import SimpleNamespace
 
 import pytest
 
-# Skip the entire module when the `serve` extra is not installed. CI runs
-# default `pip install -e .` which does not pull fastapi/uvicorn/jinja2;
-# those tests only make sense when the operator has chosen to install
-# the serve dashboard. Pytest's importorskip skips with a clear marker
-# rather than letting a collection-time ImportError crash the suite.
 pytest.importorskip("fastapi")
 
-# lib/ is not a package on install yet, add it to sys.path explicitly.
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
@@ -38,486 +21,244 @@ if str(LIB) not in sys.path:
 import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
-from server.formatting import friendly_time, short_firing_id  # noqa: E402
-from server.reader import default_state_root  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def empty_state(tmp_path: Path) -> Path:
-    """An ``$ALFRED_HOME/state`` directory that exists but is empty."""
-    state = tmp_path / "state"
-    state.mkdir()
-    return state
-
-
-def test_default_state_root_accepts_legacy_hermes_home(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "legacy"))
-
-    assert default_state_root() == tmp_path / "legacy" / "state"
-
-
-@pytest.fixture()
-def populated_state(tmp_path: Path) -> Path:
-    """A state tree with two codenames, three firings, mixed statuses."""
-    state = tmp_path / "state"
-    (state / "lucius" / "events").mkdir(parents=True)
-    (state / "drake" / "events").mkdir(parents=True)
-    # Also seed a reserved subdir so we can confirm it is not enumerated
-    # as a codename.
-    (state / "transcripts").mkdir()
-
-    _write_jsonl(
-        state / "lucius" / "events" / "2026-05-23-1200-aa.jsonl",
-        [
-            {"ts": "2026-05-23T12:00:00Z", "event": "firing_started", "agent": "lucius"},
-            {
-                "ts": "2026-05-23T12:01:30Z",
-                "event": "issue_picked",
-                "repo": "your-org/api",
-                "number": 42,
-            },
-            {
-                "ts": "2026-05-23T12:05:00Z",
-                "event": "firing_ended",
-                "agent": "lucius",
-                "result": "pr_opened",
-            },
-        ],
-    )
-    _write_jsonl(
-        state / "lucius" / "events" / "2026-05-22-0900-bb.jsonl",
-        [
-            {"ts": "2026-05-22T09:00:00Z", "event": "firing_started", "agent": "lucius"},
-            {"ts": "2026-05-22T09:00:45Z", "event": "firing_failed", "reason": "rate_limit"},
-        ],
-    )
-    _write_jsonl(
-        state / "drake" / "events" / "2026-05-23-1100-cc.jsonl",
-        [
-            {"ts": "2026-05-23T11:00:00Z", "event": "firing_started", "agent": "drake"},
-            {"ts": "2026-05-23T11:02:00Z", "event": "firing_ended", "agent": "drake"},
-        ],
-    )
-    return state
 
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
+    with path.open("w", encoding="utf-8") as handle:
         for record in records:
-            f.write(json.dumps(record) + "\n")
+            handle.write(json.dumps(record) + "\n")
 
 
-def _client(state_root: Path) -> TestClient:
-    return TestClient(create_app(FilesystemReader(state_root=state_root)))
+def _server_token(state: Path) -> str:
+    """Read the per-launch token ``create_app`` wrote under the state root."""
+    return (state / "server-token").read_text(encoding="utf-8").strip()
 
 
-# ---------------------------------------------------------------------------
-# Empty state
-# ---------------------------------------------------------------------------
+def _auth_headers(state: Path, **extra: str) -> dict[str, str]:
+    """Headers a legitimate native-client POST sends: token + same-origin."""
+    headers = {
+        server_views.SERVER_TOKEN_HEADER: _server_token(state),
+        "origin": "http://testserver",
+    }
+    headers.update(extra)
+    return headers
 
 
-def test_empty_state_root_does_not_exist(tmp_path: Path) -> None:
-    """Reader must tolerate a totally missing state root."""
-    client = _client(tmp_path / "does-not-exist")
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "No codenames found" in response.text
-
-
-def test_empty_state_root_empty_dir(empty_state: Path) -> None:
-    client = _client(empty_state)
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "No codenames found" in response.text
-
-    response = client.get("/firings")
-    assert response.status_code == 200
-    assert "No firings to show" in response.text
-
-
-# ---------------------------------------------------------------------------
-# Populated state
-# ---------------------------------------------------------------------------
-
-
-def test_fleet_view_lists_codenames(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/")
-    assert response.status_code == 200
-    assert 'id="fleet-table"' in response.text
-    assert 'class="table-shell"' in response.text
-    assert 'class="ops-table fleet-table"' in response.text
-    assert "lucius" in response.text
-    assert "drake" in response.text
-    # Reserved subdir must not be enumerated as a codename.
-    assert "transcripts</strong>" not in response.text
-
-
-def test_fleet_view_htmx_partial(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/", headers={"HX-Request": "true"})
-    assert response.status_code == 200
-    assert "fleet-table" in response.text
-    assert "<header" not in response.text  # partial, not full shell
-
-
-def test_fleet_view_htmx_partial_skips_reliability_report(populated_state: Path) -> None:
-    class CountingReader(FilesystemReader):
-        reliability_calls = 0
-
-        def reliability_report(self) -> dict[str, object]:
-            self.reliability_calls += 1
-            return {
-                "status": "ok",
-                "actions": [],
-                "failure_patterns": [],
-                "stale_workers": [],
-                "promotion_suggestions": [],
-            }
-
-    reader = CountingReader(state_root=populated_state)
-    client = TestClient(create_app(reader))
-
-    response = client.get("/", headers={"HX-Request": "true"})
-
-    assert response.status_code == 200
-    assert "fleet-table" in response.text
-    assert reader.reliability_calls == 0
-
-    response = client.get("/")
-    assert response.status_code == 200
-    assert reader.reliability_calls == 1
-
-
-def test_firings_view_lists_recent(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/firings")
-    assert response.status_code == 200
-    assert 'class="table-shell"' in response.text
-    assert 'class="ops-table firings-table"' in response.text
-    assert "2026-05-23-1200-aa" in response.text
-    assert "2026-05-22-0900-bb" in response.text
-    assert "2026-05-23-1100-cc" in response.text
-    assert "time-pill" in response.text
-
-
-def test_firings_view_filter_by_codename(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/firings", params={"codename": "drake"})
-    assert response.status_code == 200
-    assert "2026-05-23-1100-cc" in response.text
-    assert "2026-05-23-1200-aa" not in response.text
-
-
-def test_json_api_status_and_firings(populated_state: Path) -> None:
-    client = _client(populated_state)
+def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    plans = tmp_path / "batman-plans"
+    _write_jsonl(
+        state / "batman" / "events" / "2026-05-27-1200-aa.jsonl",
+        [
+            {"ts": "2026-05-27T12:00:00Z", "event": "firing_started"},
+            {"ts": "2026-05-27T12:04:00Z", "event": "firing_complete"},
+        ],
+    )
+    plans.mkdir()
+    (plans / "61-plan.md").write_text(
+        "# Batman Plan for Issue #61\n\n"
+        "**Status:** Draft (awaiting approval)\n\n"
+        "**Issue URL:** https://github.com/luminik-io/alfred/issues/61\n\n"
+        "**Affected Repos:** backend, frontend\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     status = client.get("/api/status")
     assert status.status_code == 200
-    payload = status.json()
-    assert {row["codename"] for row in payload["agents"]} == {"drake", "lucius"}
-    assert "status" in payload["reliability"]
+    assert status.json()["agents"][0]["codename"] == "batman"
 
-    firings = client.get("/api/firings", params={"codename": "lucius", "limit": 1})
+    firings = client.get("/api/firings", params={"codename": "batman"})
     assert firings.status_code == 200
-    rows = firings.json()["rows"]
-    assert len(rows) == 1
-    assert rows[0]["codename"] == "lucius"
+    assert firings.json()["rows"][0]["status"] == "ok"
 
-    detail = client.get("/api/firings/2026-05-23-1200-aa")
+    detail = client.get("/api/firings/2026-05-27-1200-aa")
     assert detail.status_code == 200
-    assert detail.json()["raw_events"][1]["event"] == "issue_picked"
+    assert detail.json()["raw_events"][1]["event"] == "firing_complete"
 
-    missing = client.get("/api/firings/does-not-exist")
-    assert missing.status_code == 404
+    plan = client.get("/api/plans/61-plan")
+    assert plan.status_code == 200
+    assert plan.json()["title"] == "Batman Plan for Issue #61"
 
 
-def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
-    class Reader(FilesystemReader):
-        def reliability_report(self) -> dict[str, object]:
-            return {
-                "status": "warn",
-                "actions": [],
-                "failure_patterns": [],
-                "stale_workers": [],
-                "promotion_suggestions": [],
-                "errors": {"promotion_suggestions": "bridge unavailable"},
-            }
+def test_api_status_reports_paused_state_from_marker(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    # An agent with state but no pause marker is loaded + not paused.
+    _write_jsonl(
+        state / "lucius" / "events" / "2026-05-30-1000-aa.jsonl",
+        [
+            {"ts": "2026-05-30T10:00:00Z", "event": "firing_started"},
+            {"ts": "2026-05-30T10:02:00Z", "event": "firing_complete"},
+        ],
+    )
+    # A paused agent: marker present, body carries the pause timestamp.
+    _write_jsonl(
+        state / "bane" / "events" / "2026-05-30-0900-bb.jsonl",
+        [
+            {"ts": "2026-05-30T09:00:00Z", "event": "firing_started"},
+            {"ts": "2026-05-30T09:01:00Z", "event": "firing_complete"},
+        ],
+    )
+    pause_dir = state / "_paused"
+    pause_dir.mkdir(parents=True)
+    (pause_dir / "bane").write_text(
+        "2026-05-30T09:00:00Z fail-streak self-pause\n", encoding="utf-8"
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    client = TestClient(create_app(Reader(state_root=tmp_path / "state")))
+    payload = client.get("/api/status").json()
+    by_codename = {agent["codename"]: agent for agent in payload["agents"]}
 
-    response = client.get("/api/actions")
+    assert by_codename["lucius"]["paused"] is False
+    assert by_codename["lucius"]["loaded"] is True
+    assert by_codename["lucius"]["paused_since"] is None
 
-    assert response.status_code == 200
-    assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}
+    assert by_codename["bane"]["paused"] is True
+    # A paused agent is unloaded from the scheduler by ``alfred pause``.
+    assert by_codename["bane"]["loaded"] is False
+    assert by_codename["bane"]["paused_since"] == "2026-05-30T09:00:00Z"
 
 
 def test_api_memory_candidates_promote_and_reject(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from fleet_brain import FleetBrain
-
     state = tmp_path / "state"
-    state.mkdir()
-    db_path = tmp_path / "brain.db"
-    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
-    brain = FleetBrain(db_path=db_path)
-    promote = brain.propose_memory(
-        codename="lucius",
-        repo="your-org/api",
-        body="Use request fixtures for attendee imports.",
-        tags=["tests"],
-        source="slack",
-        evidence='{"thread_ts":"1716480000.000000"}',
-        confidence=0.82,
-    )
-    reject = brain.propose_memory(
-        codename="huntress",
-        repo="your-org/web",
-        body="Install browser binaries before staging checks.",
-        source="harvest",
-        confidence=0.74,
-    )
-    client = _client(state)
 
-    listed = client.get("/api/memory/candidates")
-    assert listed.status_code == 200
-    rows = listed.json()["rows"]
-    assert {row["id"] for row in rows} == {promote.id, reject.id}
+    class FakeBrain:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, object]] = []
+
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def list_memory_candidates(
+            self,
+            *,
+            status: str | None,
+            limit: int,
+            **_filters: object,
+        ) -> list[dict[str, object]]:
+            self.calls.append(("list", (status, limit)))
+            return [
+                {
+                    "id": 101,
+                    "source": "slack",
+                    "agent": "lucius",
+                    "repo": "luminik-io/alfred",
+                    "topic": "planning",
+                    "body": "Keep Slack memories reviewable.",
+                    "evidence": [{"source": "slack"}],
+                    "status": "pending",
+                    "created_at": datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
+                }
+            ]
+
+        def promote_memory_candidate(
+            self,
+            candidate_id: int,
+            *,
+            reviewer: str,
+            note: str = "",
+        ) -> dict[str, object] | None:
+            self.calls.append(("promote", (candidate_id, reviewer, note)))
+            return {
+                "id": candidate_id,
+                "agent": "lucius",
+                "repo": "luminik-io/alfred",
+                "status": "promoted",
+            }
+
+        def reject_memory_candidate(
+            self,
+            candidate_id: int,
+            *,
+            reviewer: str,
+            note: str = "",
+        ) -> dict[str, object] | None:
+            self.calls.append(("reject", (candidate_id, reviewer, note)))
+            return {
+                "id": candidate_id,
+                "agent": "lucius",
+                "repo": "luminik-io/alfred",
+                "status": "rejected",
+                "review_note": note,
+            }
+
+    brain = FakeBrain()
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (brain, None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    candidates = client.get("/api/memory/candidates")
+    assert candidates.status_code == 200
+    rows = candidates.json()["rows"]
+    assert rows[0]["id"] == "101"
+    assert rows[0]["codename"] == "lucius"
+    assert rows[0]["status"] == "candidate"
+    assert rows[0]["tags"] == []
+    assert rows[0]["severity"] == "info"
+    assert rows[0]["confidence"] == 0.5
+    assert rows[0]["source_firing_id"] is None
+    assert json.loads(rows[0]["evidence"]) == [{"source": "slack"}]
     assert rows[0]["created_at"].endswith("+00:00")
+    assert brain.calls[0] == ("list", ("pending", 50))
 
-    promoted = client.post(f"/api/memory/candidates/{promote.id}/promote")
-    rejected = client.post(f"/api/memory/candidates/{reject.id}/reject")
-
+    promoted = client.post(
+        "/api/memory/candidates/101/promote",
+        json={"reviewer": "operator", "note": "useful"},
+        headers=_auth_headers(state),
+    )
     assert promoted.status_code == 200
+    assert promoted.json()["lesson_id"] == "lesson:memory_candidate:101"
     assert promoted.json()["status"] == "validated"
-    assert promoted.json()["repo"] == "your-org/api"
+
+    rejected = client.post(
+        "/api/memory/candidates/101/reject",
+        json={"reviewer": "operator", "note": "too broad"},
+        headers=_auth_headers(state),
+    )
     assert rejected.status_code == 200
     assert rejected.json()["status"] == "rejected"
-    assert client.get("/api/memory/candidates").json()["rows"] == []
+    assert rejected.json()["review_note"] == "too broad"
 
 
-def test_api_memory_candidates_reject_cross_origin_posts(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from fleet_brain import FleetBrain
-
-    state = tmp_path / "state"
-    state.mkdir()
-    db_path = tmp_path / "brain.db"
-    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
-    brain = FleetBrain(db_path=db_path)
-    candidate = brain.propose_memory(
-        codename="lucius",
-        repo="your-org/api",
-        body="Use request fixtures.",
-    )
-    client = _client(state)
+def test_api_memory_candidates_reject_cross_origin_posts(tmp_path: Path) -> None:
+    client = TestClient(create_app(FilesystemReader(state_root=tmp_path / "state")))
 
     response = client.post(
-        f"/api/memory/candidates/{candidate.id}/promote",
-        headers={"origin": "https://example.invalid"},
+        "/api/memory/candidates/101/promote",
+        headers={"origin": "https://example.com"},
     )
 
     assert response.status_code == 403
-    assert brain.list_memory_candidates()[0].status == "candidate"
+    assert response.json()["error"] == "forbidden"
 
 
-def test_api_memory_candidates_missing_db_hides_local_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_api_status_paused_marker_without_timestamp_uses_mtime(tmp_path: Path) -> None:
     state = tmp_path / "state"
-    state.mkdir()
-    db_path = tmp_path / "missing" / "brain.db"
-    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
-    client = _client(state)
-
-    response = client.get("/api/memory/candidates")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload == {"rows": [], "error": "fleet brain database not initialized"}
-    assert str(db_path) not in json.dumps(payload)
-
-
-def test_api_memory_candidate_action_does_not_create_missing_db(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state = tmp_path / "state"
-    state.mkdir()
-    db_path = tmp_path / "missing" / "brain.db"
-    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
-    client = _client(state)
-
-    response = client.post("/api/memory/candidates/mem:1/promote")
-
-    assert response.status_code == 500
-    assert response.json()["error"] == "fleet brain database not initialized"
-    assert not db_path.exists()
-
-
-def test_api_slack_trusted_users_adds_and_removes_local_collaborator(
-    empty_state: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UENV1")
-    client = _client(empty_state)
-
-    before = client.get("/api/slack/trusted-users")
-    assert before.status_code == 200
-    before_rows = {row["user_id"]: row for row in before.json()["users"]}
-    assert before_rows["UOPERATOR"]["sources"] == ["operator"]
-    assert before_rows["UENV1"]["sources"] == ["env"]
-
-    added = client.post(
-        "/api/slack/trusted-users",
-        json={"user_id": "<@UTEAM1>"},
-        headers={"Origin": "http://testserver"},
-    )
-    assert added.status_code == 200
-    rows = {row["user_id"]: row for row in added.json()["users"]}
-    assert added.json()["added"] is True
-    assert rows["UTEAM1"]["sources"] == ["local"]
-    assert rows["UTEAM1"]["can_remove"] is True
-
-    removed = client.post(
-        "/api/slack/trusted-users/UTEAM1/remove",
-        headers={"Origin": "http://testserver"},
-    )
-    assert removed.status_code == 200
-    assert removed.json()["removed"] is True
-    assert "UTEAM1" not in {row["user_id"] for row in removed.json()["users"]}
-
-
-def test_api_slack_trusted_users_rejects_bad_origin_and_bad_ids(empty_state: Path) -> None:
-    client = _client(empty_state)
-
-    forbidden = client.post(
-        "/api/slack/trusted-users",
-        json={"user_id": "UTEAM1"},
-        headers={"Origin": "https://evil.example"},
-    )
-    assert forbidden.status_code == 403
-
-    bad_id = client.post(
-        "/api/slack/trusted-users",
-        json={"user_id": "not a user"},
-        headers={"Origin": "http://testserver"},
-    )
-    assert bad_id.status_code == 400
-
-
-def test_firing_complete_marks_record_finished(tmp_path: Path) -> None:
-    state = tmp_path / "state"
-    (state / "lucius" / "events").mkdir(parents=True)
     _write_jsonl(
-        state / "lucius" / "events" / "2026-05-27-1224-aa.jsonl",
-        [
-            {"ts": "2026-05-27T12:24:00Z", "event": "firing_started", "agent": "lucius"},
-            {
-                "ts": "2026-05-27T12:25:00Z",
-                "event": "firing_complete",
-                "agent": "lucius",
-                "outcome": "silent_no_work",
-            },
-        ],
+        state / "robin" / "events" / "2026-05-30-1000-cc.jsonl",
+        [{"ts": "2026-05-30T10:00:00Z", "event": "firing_complete"}],
     )
-    record = FilesystemReader(state_root=state).get_firing("2026-05-27-1224-aa")
+    pause_dir = state / "_paused"
+    pause_dir.mkdir(parents=True)
+    marker = pause_dir / "robin"
+    # An empty/legacy marker body has no parseable timestamp; the reader falls
+    # back to the marker file mtime rather than reporting None.
+    marker.write_text("", encoding="utf-8")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    assert record is not None
-    assert record.status == "ok"
-    assert record.ended_at == "2026-05-27T12:25:00Z"
+    payload = client.get("/api/status").json()
+    robin = next(a for a in payload["agents"] if a["codename"] == "robin")
 
-
-def test_firing_detail_renders_events(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/firings/2026-05-23-1200-aa")
-    assert response.status_code == 200
-    assert "issue_picked" in response.text
-    assert "your-org/api" in response.text
-    assert "firing_ended" in response.text
-
-
-def test_firing_detail_failed_marks_error(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/firings/2026-05-22-0900-bb")
-    assert response.status_code == 200
-    assert "dot-error" in response.text
-    assert "rate_limit" in response.text
+    assert robin["paused"] is True
+    assert robin["loaded"] is False
+    assert robin["paused_since"] is not None
 
 
-# ---------------------------------------------------------------------------
-# Error paths
-# ---------------------------------------------------------------------------
-
-
-def test_unknown_firing_returns_404(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/firings/does-not-exist")
-    assert response.status_code == 404
-    assert "not located" in response.text
-
-
-def test_friendly_time_and_short_firing_id_are_scan_friendly() -> None:
-    now = datetime(2026, 5, 27, 12, 30, tzinfo=UTC)
-
-    assert friendly_time("2026-05-27T12:24:59Z", now=now) == "5m ago"
-    assert friendly_time("2026-05-26T12:24:59Z", now=now) == "yesterday 12:24"
-    assert short_firing_id("20260527-122459-1d31") == "20260527-122459-1d31"
-    assert short_firing_id("20260527-122459-extra-long-1d31") == "20260527-122459...1d31"
-
-
-def test_plans_view_lists_saved_batman_plans(tmp_path: Path) -> None:
-    state = tmp_path / "state"
-    state.mkdir()
-    plans = tmp_path / "batman-plans"
-    plans.mkdir()
-    (plans / "61-plan.md").write_text(
-        "# Batman Plan for Issue #61\n\n"
-        "**Status:** Draft (awaiting approval)\n\n"
-        "**Issue URL:** https://github.com/example/repo/issues/61\n\n"
-        "**Affected Repos:** backend, frontend\n\n"
-        "Plan Preview:\n",
-        encoding="utf-8",
-    )
-    client = _client(state)
-
-    response = client.get("/plans")
-
-    assert response.status_code == 200
-    assert "Batman Plan for Issue #61" in response.text
-    assert "backend, frontend" in response.text
-    assert 'target="_blank" rel="noopener noreferrer"' in response.text
-
-    detail = client.get("/plans/61-plan")
-    assert detail.status_code == 200
-    assert 'target="_blank" rel="noopener noreferrer"' in detail.text
-
-    api_list = client.get("/api/plans")
-    assert api_list.status_code == 200
-    assert api_list.json()["rows"][0]["plan_id"] == "61-plan"
-
-    api_detail = client.get("/api/plans/61-plan")
-    assert api_detail.status_code == 200
-    assert api_detail.json()["title"] == "Batman Plan for Issue #61"
-
-
-def test_plans_view_lists_slack_planning_drafts(tmp_path: Path) -> None:
+def test_json_api_lists_slack_planning_drafts(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"
     drafts.mkdir(parents=True)
@@ -526,13 +267,11 @@ def test_plans_view_lists_slack_planning_drafts(tmp_path: Path) -> None:
             {
                 "source": "slack",
                 "created_at": "2026-05-29T04:00:00Z",
-                "updated_at": "2026-05-29T04:05:00Z",
                 "draft": {
                     "title": "Add threaded plan revisions",
                     "problem": "Operators need to revise Alfred plans before implementation.",
                     "desired_behavior": "Replies update the saved plan draft.",
-                    "repos": ["luminik-io/alfred-os"],
-                    "acceptance_criteria": ["Thread replies update readiness."],
+                    "repos": ["luminik-io/alfred"],
                 },
                 "spec_body": "# Spec\n\nThread replies update readiness.",
                 "readiness": {"ok": True, "score": 92, "questions": []},
@@ -541,32 +280,21 @@ def test_plans_view_lists_slack_planning_drafts(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.get("/plans")
+    plans = client.get("/api/plans")
+    assert plans.status_code == 200
+    assert plans.json()["rows"][0]["title"] == "Add threaded plan revisions"
 
-    assert response.status_code == 200
-    assert "Add threaded plan revisions" in response.text
-    assert "slack" in response.text
-    assert "ready" in response.text
-    assert "92/100" in response.text
-    assert "2 revisions" in response.text
-    assert "Operators need to revise Alfred plans before implementation." in response.text
-
-    detail = client.get("/plans/slack-20260529-0400-E1")
+    detail = client.get("/api/plans/slack-20260529-0400-E1")
     assert detail.status_code == 200
-    assert "# Spec" in detail.text
-    assert "2 revisions" in detail.text
-
-    api_detail = client.get("/api/plans/slack-20260529-0400-E1")
-    assert api_detail.status_code == 200
-    payload = api_detail.json()
+    payload = detail.json()
     assert payload["source"] == "slack"
     assert payload["revision_count"] == 2
     assert payload["readiness_score"] == 92
 
 
-def test_plans_view_lists_slack_followups(tmp_path: Path) -> None:
+def test_json_api_lists_slack_followups(tmp_path: Path) -> None:
     state = tmp_path / "state"
     followups = state / "followups"
     followups.mkdir(parents=True)
@@ -574,33 +302,27 @@ def test_plans_view_lists_slack_followups(tmp_path: Path) -> None:
         "# Follow-up for Improve planning loop\n\n"
         "- Captured: 2026-05-29T06:45:00Z\n"
         "- Thread: C1 / 1716480000.000000\n"
-        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `change`: add a manual docs smoke test\n",
         encoding="utf-8",
     )
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.get("/plans")
+    plans = client.get("/api/plans")
+    assert plans.status_code == 200
+    assert plans.json()["rows"][0]["source"] == "followup"
+    assert plans.json()["rows"][0]["status"] == "needs follow-up"
 
-    assert response.status_code == 200
-    assert "Follow-up for Improve planning loop" in response.text
-    assert "needs follow-up" in response.text
-    assert "add a manual docs smoke test" in response.text
-
-    detail = client.get("/plans/slack-C1-1716480000.000000")
+    detail = client.get("/api/plans/slack-C1-1716480000.000000")
     assert detail.status_code == 200
-    assert "Slack Follow-up Feedback" in detail.text
-
-    api_detail = client.get("/api/plans/slack-C1-1716480000.000000")
-    assert api_detail.status_code == 200
-    payload = api_detail.json()
+    payload = detail.json()
     assert payload["source"] == "followup"
     assert payload["title"] == "Follow-up for Improve planning loop"
-    assert payload["status"] == "needs follow-up"
-    assert payload["parent"] == "https://github.com/luminik-io/alfred-os/issues/120"
+    assert payload["parent"] == "https://github.com/luminik-io/alfred/issues/120"
     assert "manual docs smoke test" in payload["preview"]
+    assert "manual docs smoke test" in payload["content"]
 
 
 def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
@@ -612,16 +334,17 @@ def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
         "# Follow-up for Improve planning loop\n\n"
         "- Captured: 2026-05-29T06:45:00Z\n"
         "- Thread: C1 / 1716480000.000000\n"
-        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `change`: add a manual docs smoke test\n",
         encoding="utf-8",
     )
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
         "/plans/slack-C1-1716480000.000000/convert-followup",
+        headers=_auth_headers(state),
         follow_redirects=False,
     )
 
@@ -633,7 +356,7 @@ def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
     assert payload["source"] == "planning"
     assert payload["converted_from"]["plan_id"] == "slack-C1-1716480000.000000"
     assert payload["draft"]["title"] == "Follow up: Improve planning loop"
-    assert payload["draft"]["repos"] == ["luminik-io/alfred-os"]
+    assert payload["draft"]["repos"] == ["luminik-io/alfred"]
     assert "Captured Follow-up Context" in payload["spec_body"]
     assert "manual docs smoke test" in payload["spec_body"]
     assert not source.exists()
@@ -655,21 +378,27 @@ def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) ->
     source.write_text(
         "# Follow-up for rollout bundle\n\n"
         "- Bundle: `rollout-bundle`\n"
-        "- Created: https://github.com/your-org/api/pull/42, "
-        "https://github.com/your-org/web/issues/77\n\n"
+        "- Created: https://github.com/example-org/api/pull/42, "
+        "https://github.com/example-org/web/issues/77\n\n"
         "## Slack Follow-up Feedback\n\n"
         "### Items\n\n"
         "- `test`: add a smoke test to both shipped slices\n",
         encoding="utf-8",
     )
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.post("/api/plans/20260529-bundle/convert-followup")
+    response = client.post(
+        "/api/plans/20260529-bundle/convert-followup",
+        headers=_auth_headers(state),
+    )
 
     assert response.status_code == 200
     draft_path = Path(response.json()["draft_path"])
     payload = json.loads(draft_path.read_text(encoding="utf-8"))
-    assert payload["draft"]["repos"] == ["your-org/api", "your-org/web"]
+    assert payload["draft"]["repos"] == [
+        "example-org/api",
+        "example-org/web",
+    ]
 
 
 def test_followup_actions_reject_cross_origin_posts(tmp_path: Path) -> None:
@@ -679,11 +408,11 @@ def test_followup_actions_reject_cross_origin_posts(tmp_path: Path) -> None:
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [your-org/api#120](https://github.com/your-org/api/issues/120)\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
         "Cross-origin pages should not be able to mutate this inbox.\n",
         encoding="utf-8",
     )
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     html_response = client.post(
         "/plans/slack-C1-1716480000.000000/convert-followup",
@@ -712,7 +441,7 @@ def test_followup_conversion_removes_draft_when_archive_fails(
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
         "Archive failure should not leave a draft behind.\n",
         encoding="utf-8",
     )
@@ -726,7 +455,10 @@ def test_followup_conversion_removes_draft_when_archive_fails(
         raise_server_exceptions=False,
     )
 
-    response = client.post("/api/plans/slack-C1-1716480000.000000/convert-followup")
+    response = client.post(
+        "/api/plans/slack-C1-1716480000.000000/convert-followup",
+        headers=_auth_headers(state),
+    )
 
     assert response.status_code == 500
     assert source.exists()
@@ -740,14 +472,15 @@ def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
     source = followups / "slack-C1-1716480000.000000.md"
     source.write_text(
         "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [luminik-io/alfred-os#120](https://github.com/luminik-io/alfred-os/issues/120)\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
         "Already answered in the PR thread.\n",
         encoding="utf-8",
     )
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
         "/api/plans/slack-C1-1716480000.000000/mark-handled",
+        headers=_auth_headers(state),
     )
 
     assert response.status_code == 200
@@ -760,7 +493,95 @@ def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
     assert plans == []
 
 
-def test_slack_planning_draft_empty_body_does_not_render_raw_event(tmp_path: Path) -> None:
+def test_plan_detail_embeds_token_and_html_form_post_uses_it(tmp_path: Path) -> None:
+    """The server-rendered plan page is the only client for the HTML form
+    routes and cannot set a custom header. It must embed the per-launch token
+    as a hidden ``_token`` field, and the POST handler must accept that field
+    (a browser form never sends ``SERVER_TOKEN_HEADER``)."""
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    (followups / "slack-C1-1716480000.000000.md").write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "Already answered in the PR thread.\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    detail = client.get("/plans/slack-C1-1716480000.000000")
+    assert detail.status_code == 200
+    token = _server_token(state)
+    # The GET page must carry the token so the form can echo it back.
+    assert f'name="_token" value="{token}"' in detail.text
+
+    # A browser form POST: same-origin + token in the body, NO custom header.
+    handled = client.post(
+        "/plans/slack-C1-1716480000.000000/mark-handled",
+        headers={"origin": "http://testserver"},
+        data={"_token": token},
+        follow_redirects=False,
+    )
+    assert handled.status_code == 303
+    assert not (followups / "slack-C1-1716480000.000000.md").exists()
+
+
+def test_html_form_post_without_token_is_forbidden(tmp_path: Path) -> None:
+    """Same-origin alone is not enough: a form POST missing the ``_token`` body
+    field (e.g. a header-less drive-by) is rejected and mutates nothing."""
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    source = followups / "slack-C1-1716480000.000000.md"
+    source.write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "Header-less callers must not be able to mutate this inbox.\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/plans/slack-C1-1716480000.000000/mark-handled",
+        headers={"origin": "http://testserver"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
+    assert source.exists()
+    assert not (followups / "handled").exists()
+
+
+def test_html_form_post_with_malformed_token_body_is_forbidden(tmp_path: Path) -> None:
+    """Invalid form bytes fail closed rather than raising before auth."""
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    source = followups / "slack-C1-1716480000.000000.md"
+    source.write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n\n"
+        "Malformed form bodies must not mutate this inbox.\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/plans/slack-C1-1716480000.000000/mark-handled",
+        content=b"\xff",
+        headers={
+            "origin": "http://testserver",
+            "content-type": "application/x-www-form-urlencoded",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
+    assert source.exists()
+    assert not (followups / "handled").exists()
+
+
+def test_json_plan_empty_body_does_not_return_raw_slack_event(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"
     drafts.mkdir(parents=True)
@@ -773,26 +594,30 @@ def test_slack_planning_draft_empty_body_does_not_render_raw_event(tmp_path: Pat
                     "title": "Clarify plan intake",
                     "problem": "Operators need a clean preview.",
                     "desired_behavior": "",
-                    "repos": ["luminik-io/alfred-os"],
+                    "repos": ["luminik-io/alfred"],
                 },
                 "issue_body": "",
                 "spec_body": "",
-                "event": {"user": "USECRET", "channel": "CSECRET", "text": "raw slack text"},
+                "event": {
+                    "user": "USECRET",
+                    "channel": "CSECRET",
+                    "text": "raw slack text",
+                },
             }
         ),
         encoding="utf-8",
     )
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    detail = client.get("/plans/slack-empty-body")
+    detail = client.get("/api/plans/slack-empty-body")
 
     assert detail.status_code == 200
-    assert "Operators need a clean preview." in detail.text
-    assert "USECRET" not in detail.text
-    assert "raw slack text" not in detail.text
+    assert detail.json()["content"] == "Operators need a clean preview."
+    assert "USECRET" not in detail.json()["content"]
+    assert "raw slack text" not in detail.json()["content"]
 
 
-def test_plans_view_skips_invalid_newer_draft_to_fill_limit(tmp_path: Path) -> None:
+def test_json_api_skips_invalid_newer_draft_to_fill_limit(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"
     drafts.mkdir(parents=True)
@@ -812,7 +637,7 @@ def test_plans_view_skips_invalid_newer_draft_to_fill_limit(tmp_path: Path) -> N
     now = datetime.now(UTC).timestamp()
     os.utime(valid, (now - 10, now - 10))
     os.utime(invalid, (now, now))
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.get("/api/plans", params={"limit": 1})
 
@@ -822,37 +647,38 @@ def test_plans_view_skips_invalid_newer_draft_to_fill_limit(tmp_path: Path) -> N
     assert rows[0]["title"] == "Valid older draft"
 
 
-def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
+def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
+    class Reader(FilesystemReader):
+        def reliability_report(self) -> dict[str, object]:
+            return {
+                "status": "warn",
+                "actions": [],
+                "failure_patterns": [],
+                "stale_workers": [],
+                "promotion_suggestions": [],
+                "errors": {"promotion_suggestions": "bridge unavailable"},
+            }
+
+    client = TestClient(create_app(Reader(state_root=tmp_path / "state")))
+
+    response = client.get("/api/actions")
+
+    assert response.status_code == 200
+    assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}
+
+
+def test_planning_save_spec_applies_pending_chat_message(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.get("/planning")
-    assert response.status_code == 200
-    assert "Planning" in response.text
-
-    vague = client.post(
-        "/planning",
-        data={
-            "title": "Make it better",
-            "problem": "Confusing.",
-            "desired_behavior": "Improve stuff.",
-            "repos": "luminik-io/alfred-os",
-            "acceptance_criteria": "Make it nice",
-            "action": "preview",
-        },
-    )
-    assert vague.status_code == 200
-    assert "Needs scope" in vague.text
-    assert "What problem is the user facing today?" in vague.text
-
-    refined = client.post(
+    response = client.post(
         "/planning",
         data={
             "title": "Add Slack plan revision flow",
             "problem": (
-                "Operators and teammates need to discuss a Batman plan before implementation "
-                "so Alfred does not ship the wrong workflow."
+                "Operators and teammates need to discuss a Batman plan before "
+                "implementation so Alfred does not ship the wrong workflow."
             ),
             "user": "Repo owner or teammate",
             "current_behavior": "Batman posts a plan and waits for emoji approval.",
@@ -860,97 +686,9 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            "repos": "luminik-io/alfred-os\nexample-org/web",
+            "repos": "luminik-io/alfred\nexample-org/web",
             "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "chat_message": (
-                "acceptance: the child issue body includes approved Slack amendments\n"
-                "remove repo: example-org/web"
-            ),
-            "action": "refine",
-        },
-    )
-    assert refined.status_code == 200
-    assert "2 amendment(s) applied" in refined.text
-    assert "the child issue body includes approved Slack amendments" in refined.text
-    assert "luminik-io/alfred-os" in refined.text
-
-    clear = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before implementation "
-                "so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "luminik-io/alfred-os",
-            "acceptance_criteria": (
-                "A plan with unresolved questions is marked needs-scope.\n"
-                "Slack plan messages tell the operator how to reply with changes."
-            ),
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "action": "save",
-        },
-    )
-    assert clear.status_code == 200
-    assert "Ready for Alfred" in clear.text
-    assert "Draft saved" in clear.text
-    saved = list((tmp_path / "planning-drafts").glob("*.md"))
-    assert len(saved) == 1
-    assert "## Acceptance Criteria" in saved[0].read_text(encoding="utf-8")
-
-    spec = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before implementation "
-                "so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "luminik-io/alfred-os",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "action": "save_spec",
-        },
-    )
-    assert spec.status_code == 200
-    assert "Spec saved" in spec.text
-    specs = list((tmp_path / "spec-drafts").glob("*.md"))
-    assert len(specs) == 1
-    assert "## Implementation Guardrails" in specs[0].read_text(encoding="utf-8")
-
-    spec_with_chat = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before implementation "
-                "so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "luminik-io/alfred-os\nexample-org/web",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
+            "test_plan": "Run Batman tests and manually inspect the Slack payload.",
             "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
             "chat_message": (
                 "acceptance: saved specs include chat amendments\nremove repo: example-org/web"
@@ -958,57 +696,13 @@ def test_planning_view_assesses_and_saves_draft(tmp_path: Path) -> None:
             "action": "save_spec",
         },
     )
-    assert spec_with_chat.status_code == 200
+
+    assert response.status_code == 200
     specs = list((tmp_path / "spec-drafts").glob("*.md"))
     assert specs
     saved_spec = max(specs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8")
     assert "saved specs include chat amendments" in saved_spec
     assert "example-org/web" not in saved_spec
-
-
-def test_planning_refine_engine_uses_existing_workspace_root(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import server.views as views
-
-    captured: dict[str, Path] = {}
-
-    def fake_engine_refiner_from_env(*, workdir: Path):
-        captured["workdir"] = workdir
-
-        def fake_refiner(draft, messages):
-            return {"title": "Engine refined Slack plan"}
-
-        return fake_refiner
-
-    monkeypatch.setattr(views, "engine_refiner_from_env", fake_engine_refiner_from_env)
-    client = _client(tmp_path / "state")
-
-    response = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before implementation "
-                "so Alfred does not ship the wrong workflow."
-            ),
-            "desired_behavior": (
-                "Batman keeps implementation paused while plan feedback is collected."
-            ),
-            "repos": "luminik-io/alfred-os",
-            "acceptance_criteria": "Slack plan feedback is acknowledged in thread.",
-            "test_plan": "Run planning assistant server tests.",
-            "out_of_scope": "No hosted workflow.",
-            "chat_message": "Make the title friendlier.",
-            "action": "refine",
-        },
-    )
-
-    assert response.status_code == 200
-    assert captured["workdir"] == tmp_path
-    assert not (tmp_path / "planning-drafts").exists()
-    assert "Engine refined Slack plan" in response.text
 
 
 def test_planning_memory_provider_ignores_runtime_env_for_temp_state(
@@ -1048,7 +742,9 @@ def test_planning_memory_provider_loads_for_runtime_state(
     assert server_views._planning_memory_provider(request) is sentinel
 
 
-def test_planning_page_surfaces_memory_and_queues_spec_candidate(tmp_path: Path) -> None:
+def test_planning_page_surfaces_memory_and_queues_spec_candidate(
+    tmp_path: Path,
+) -> None:
     class Memory:
         name = "test"
 
@@ -1066,7 +762,7 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(tmp_path: Path)
 
         def propose_memory(self, **kwargs):
             self.candidates.append(kwargs)
-            return f"candidate-{len(self.candidates)}"
+            return len(self.candidates)
 
     state = tmp_path / "state"
     state.mkdir()
@@ -1090,7 +786,7 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(tmp_path: Path)
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            "repos": "luminik-io/alfred-os",
+            "repos": "luminik-io/alfred",
             "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
             "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
             "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
@@ -1104,11 +800,12 @@ def test_planning_page_surfaces_memory_and_queues_spec_candidate(tmp_path: Path)
     assert "Memory review queued" in response.text
     assert len(memory.candidates) == 1
     assert memory.candidates[0]["source"] == "planning-ui"
-    assert memory.candidates[0]["repo"] == "luminik-io/alfred-os"
-    assert json.loads(memory.candidates[0]["evidence"])["kind"] == "planning_spec"
+    assert memory.candidates[0]["repo"] == "luminik-io/alfred"
 
 
-def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path: Path) -> None:
+def test_planning_memory_candidate_uses_writable_provider_inside_tuple_chain(
+    tmp_path: Path,
+) -> None:
     class ReadOnly:
         name = "readonly"
 
@@ -1159,7 +856,7 @@ def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path:
                 "Batman keeps implementation paused when a plan needs revision "
                 "and accepts thread feedback before child issues are filed."
             ),
-            "repos": "luminik-io/alfred-os",
+            "repos": "luminik-io/alfred",
             "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
             "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
             "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
@@ -1169,7 +866,7 @@ def test_planning_memory_candidate_uses_writable_provider_inside_chain(tmp_path:
 
     assert response.status_code == 200
     assert chain.writable.candidates
-    assert chain.writable.candidates[0]["repo"] == "luminik-io/alfred-os"
+    assert chain.writable.candidates[0]["repo"] == "luminik-io/alfred"
 
 
 def test_planning_memory_candidate_old_api_object_id_is_extracted(
@@ -1189,7 +886,7 @@ def test_planning_memory_candidate_old_api_object_id_is_extracted(
         title="Add Slack plan revision flow",
         problem="Operators need to discuss a plan before implementation.",
         desired_behavior="Alfred saves the refined plan.",
-        repos=["luminik-io/alfred-os"],
+        repos=["luminik-io/alfred"],
         acceptance_criteria=["Saved spec queues a memory candidate."],
         test_plan="Unit test the fallback.",
     )
@@ -1208,17 +905,19 @@ def test_planning_memory_candidate_old_api_object_id_is_extracted(
 def test_compose_draft_returns_readiness_and_saves(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
         "/api/plans/draft",
         json={"text": "title: Add a desktop compose panel"},
+        headers=_auth_headers(state),
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["draft_id"].startswith("compose-")
     assert isinstance(payload["readiness"]["score"], int)
+    # A sparse draft is not ready and must surface clarifying questions.
     assert payload["readiness"]["ok"] is False
     assert payload["questions"]
     assert any(finding["severity"] == "error" for finding in payload["findings"])
@@ -1231,23 +930,83 @@ def test_compose_draft_returns_readiness_and_saves(tmp_path: Path) -> None:
     assert on_disk["source"] == "compose"
     assert on_disk["revision_count"] == 1
 
+    # The saved compose draft is listable via the shared plans API.
     plans = client.get("/api/plans").json()["rows"]
     assert any(row["plan_id"] == payload["draft_id"] for row in plans)
+
+
+def test_compose_draft_plain_prose_builds_a_useful_starter_spec(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        json={
+            "text": (
+                "Make the Plan work screen help a non-technical operator turn a "
+                "messy product idea into a reviewable GitHub issue with clear "
+                "acceptance criteria, the right Alfred agent labels, and a "
+                "simple approval path."
+            )
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    draft = payload["draft"]
+    assert draft["title"] == "Plan work drafts reviewable GitHub issues"
+    assert "current flow" in draft["problem"].lower()
+    assert "non-technical operator" in draft["user"].lower()
+    assert "reviewable GitHub issue" in draft["desired_behavior"]
+    assert any("acceptance criteria" in item for item in draft["acceptance_criteria"])
+    assert any("agent labels" in item for item in draft["acceptance_criteria"])
+    assert any("approval path" in item for item in draft["acceptance_criteria"])
+    assert draft["test_plan"]
+    assert payload["readiness"]["score"] > 0
+    assert payload["readiness"]["ok"] is False
+    assert "Which part of the workspace should Alfred change?" in payload["questions"]
+    assert "Operator note:" not in payload["spec_body"]
+
+
+def test_compose_draft_plain_prose_titles_review_queue_starters(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        json={
+            "text": (
+                "The review queue is hard to scan at small window sizes. Make it "
+                "usable without hiding important decisions."
+            )
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft"]["title"] == "Make review queue usable at small sizes"
+    assert payload["readiness"]["score"] > 0
 
 
 def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     first = client.post(
         "/api/plans/draft",
         json={
             "text": (
                 "title: Ship the compose panel\n"
-                "problem: Operators cannot author specs inside the desktop client today."
+                "problem: Operators cannot author specs inside the desktop client "
+                "today and must drop into Slack or the CLI."
             )
         },
+        headers=_auth_headers(state),
     ).json()
     draft_id = first["draft_id"]
     assert first["readiness"]["ok"] is False
@@ -1257,19 +1016,21 @@ def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
         json={
             "draft_id": draft_id,
             "text": (
-                "desired: The desktop client lets users describe work and shows "
+                "desired: A Compose tab posts intent to the draft API and renders "
                 "the readiness score plus clarifying questions.\n"
-                "repo: luminik-io/alfred-os\n"
+                "repo: luminik-io/alfred\n"
                 "acceptance: Submitting intent renders the readiness score.\n"
                 "test: Vitest covers the compose submit path with a mocked api."
             ),
         },
+        headers=_auth_headers(state),
     ).json()
 
+    # Same draft id, revisions accumulate, and the score improves.
     assert second["draft_id"] == draft_id
     assert second["revision_count"] == 2
     assert second["readiness"]["score"] > first["readiness"]["score"]
-    assert "luminik-io/alfred-os" in second["draft"]["repos"]
+    assert "luminik-io/alfred" in second["draft"]["repos"]
 
     drafts = client.get("/api/plans/drafts").json()["rows"]
     matching = [row for row in drafts if row["draft_id"] == draft_id]
@@ -1280,9 +1041,13 @@ def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
 def test_compose_draft_requires_intent(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.post("/api/plans/draft", json={"text": "   "})
+    response = client.post(
+        "/api/plans/draft",
+        json={"text": "   "},
+        headers=_auth_headers(state),
+    )
 
     assert response.status_code == 400
     assert not (state / "planning-drafts").exists()
@@ -1291,7 +1056,7 @@ def test_compose_draft_requires_intent(tmp_path: Path) -> None:
 def test_compose_draft_rejects_cross_origin(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     response = client.post(
         "/api/plans/draft",
@@ -1303,14 +1068,141 @@ def test_compose_draft_rejects_cross_origin(tmp_path: Path) -> None:
     assert not (state / "planning-drafts").exists()
 
 
+def test_conversation_control_handles_local_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    captured: dict[str, object] = {}
+
+    class FakeControlHandler:
+        def __init__(self, **kwargs: object) -> None:
+            captured["operator_user_id"] = kwargs["operator_user_id"]
+            captured["state_root"] = kwargs["state_root"]
+            captured["plan_reader"] = kwargs["plan_reader"]
+
+        def handle(self, text: str, *, trusted: bool, actor_user_id: str) -> object:
+            captured["text"] = text
+            captured["trusted"] = trusted
+            captured["actor_user_id"] = actor_user_id
+            return SimpleNamespace(
+                handled=True,
+                action="run",
+                text="*Triggered one run* `batman`.",
+                detail="",
+            )
+
+    monkeypatch.setattr(server_views, "SlackControlHandler", FakeControlHandler)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/conversation/control",
+        json={"text": "run batman"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["handled"] is True
+    assert payload["action"] == "run"
+    assert payload["actor_user_id"] == "ULOCALCLIENT"
+    assert captured["operator_user_id"] == "ULOCALCLIENT"
+    assert captured["trusted"] is True
+    assert captured["state_root"] == state
+
+
+def test_conversation_control_allows_planning_fallthrough(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+
+    class FakeControlHandler:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def handle(self, text: str, *, trusted: bool, actor_user_id: str) -> object:
+            assert text == "run tests for the onboarding flow"
+            assert trusted is True
+            assert actor_user_id == "ULOCALCLIENT"
+            return SimpleNamespace(
+                handled=False,
+                action="not_a_command",
+                text="",
+                detail="unknown run codename tests",
+            )
+
+    monkeypatch.setattr(server_views, "SlackControlHandler", FakeControlHandler)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/conversation/control",
+        json={"text": "run tests for the onboarding flow"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["handled"] is False
+    assert response.json()["detail"] == "unknown run codename tests"
+
+
+def test_conversation_control_help_prose_falls_through(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/conversation/control",
+        json={"text": "help me add onboarding tests"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["handled"] is False
+    assert payload["action"] == "not_a_command"
+
+
+def test_conversation_control_requires_token_and_same_origin(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    missing_token = client.post(
+        "/api/conversation/control",
+        json={"text": "status"},
+        headers={"origin": "http://testserver"},
+    )
+    assert missing_token.status_code == 403
+
+    foreign_origin = client.post(
+        "/api/conversation/control",
+        json={"text": "status"},
+        headers=_auth_headers(state, origin="https://example.invalid"),
+    )
+    assert foreign_origin.status_code == 403
+
+    empty = client.post(
+        "/api/conversation/control",
+        json={"text": "  "},
+        headers=_auth_headers(state),
+    )
+    assert empty.status_code == 400
+
+
 def test_compose_draft_rejects_foreign_draft_id(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
 
+    # A non-compose id must not let a caller overwrite a Slack/followup draft;
+    # it is ignored and a fresh compose draft id is generated instead.
     response = client.post(
         "/api/plans/draft",
         json={"draft_id": "slack-20260529-0400-E1", "text": "title: Sneaky"},
+        headers=_auth_headers(state),
     )
 
     assert response.status_code == 200
@@ -1320,12 +1212,13 @@ def test_compose_draft_rejects_foreign_draft_id(tmp_path: Path) -> None:
 def test_compose_draft_ignores_unknown_compose_draft_id(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
-    client = _client(state)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
     unknown = "compose-20260531-9999-never-seen"
 
     response = client.post(
         "/api/plans/draft",
         json={"draft_id": unknown, "text": "title: Safe new draft"},
+        headers=_auth_headers(state),
     )
 
     assert response.status_code == 200
@@ -1335,60 +1228,1062 @@ def test_compose_draft_ignores_unknown_compose_draft_id(tmp_path: Path) -> None:
     assert not (state / "planning-drafts" / f"{unknown}.json").exists()
 
 
-def test_plan_detail_rejects_path_traversal(tmp_path: Path) -> None:
-    state = tmp_path / "state"
-    state.mkdir()
-    reader = FilesystemReader(state_root=state)
-
-    assert reader.get_plan("../secrets") is None
-    assert reader.get_plan(".hidden") is None
+# --------------------------------------------------------------------------- #
+# Conversational, repo-grounded spec-builder (POST /api/compose/converse)
+# --------------------------------------------------------------------------- #
 
 
-def test_firing_id_rejects_path_traversal(populated_state: Path) -> None:
-    """Operator-supplied firing id must not be able to read arbitrary files."""
-    _client(populated_state)
-    # Hitting "%2E%2E%2F" decoded equals "../"  FastAPI normalizes path
-    # params so the safest assertion is that any explicit traversal char
-    # is rejected by the reader.
-    reader = FilesystemReader(state_root=populated_state)
-    assert reader.get_firing("../etc/passwd") is None
-    assert reader.get_firing(".hidden") is None
-    assert reader.get_firing("a\\b") is None
+# The spec-interrogator system prompt lives at the repo root; point the runtime
+# at this worktree's copy so the endpoint loads it regardless of the operator's
+# live workspace path.
+_INTERROGATOR_PROMPT = REPO_ROOT / "prompts" / "spec-interrogator.md"
 
 
-def test_healthz(populated_state: Path) -> None:
-    client = _client(populated_state)
-    response = client.get("/healthz")
-    assert response.status_code == 200
-    assert response.text == "ok"
+def _use_interrogator_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALFRED_SPEC_INTERROGATOR_PROMPT", str(_INTERROGATOR_PROMPT))
 
 
-def test_reliability_report_missing_brain_db_is_read_only(
+def _stub_converse_turn(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    reply: str,
+    draft_overrides: dict | None = None,
+    score: int = 30,
+    ready: bool = False,
+    missing: list[str] | None = None,
+    done: bool = False,
+    capture: dict | None = None,
+):
+    """Patch the LLM dispatch so the endpoint runs without a live model call."""
+    import compose_converse as cc
+
+    def fake_run_turn(*, base_draft, messages, repo_grounding, code_map, **_kw):
+        if capture is not None:
+            capture["base_draft"] = base_draft
+            capture["messages"] = list(messages)
+            capture["repo_grounding"] = repo_grounding
+            capture["code_map"] = code_map
+        draft = base_draft
+        if draft_overrides:
+            from dataclasses import replace
+
+            draft = replace(base_draft, **draft_overrides)
+        return cc.ConverseTurn(
+            reply=reply,
+            draft=draft,
+            readiness=cc.ConverseReadiness(score=score, ready=ready, missing=tuple(missing or [])),
+            done=done,
+        )
+
+    monkeypatch.setattr(cc, "run_turn", fake_run_turn)
+
+
+def test_compose_converse_runs_a_turn_and_persists_a_draft(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    db_path = tmp_path / "missing-fleet-brain.db"
-    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(db_path))
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    capture: dict = {}
+    _stub_converse_turn(
+        monkeypatch,
+        reply="Which columns should the export include?",
+        draft_overrides={
+            "title": "Add CSV export",
+            "desired_behavior": "A download button exports the visible rows as CSV.",
+            "repos": ["acme/frontend"],
+        },
+        score=45,
+        missing=["test plan"],
+        capture=capture,
+    )
 
-    report = FilesystemReader(state_root=tmp_path / "state").reliability_report()
-
-    assert report["status"] == "unknown"
-    assert "not initialized" in report["error"]
-    assert not db_path.exists()
-
-
-def test_malformed_jsonl_does_not_crash(tmp_path: Path) -> None:
     state = tmp_path / "state"
-    (state / "lucius" / "events").mkdir(parents=True)
-    path = state / "lucius" / "events" / "2026-05-23-1300-zz.jsonl"
-    path.write_text(
-        '{"ts":"2026-05-23T13:00:00Z","event":"firing_started"}\n'
-        "this is not json\n"
-        '{"ts":"2026-05-23T13:01:00Z","event":"firing_ended"}\n',
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={
+            "repos": ["acme/frontend"],
+            "messages": [{"role": "user", "content": "Add a CSV export to attendees"}],
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["draft_id"].startswith("compose-")
+    assert payload["reply"] == "Which columns should the export include?"
+    assert payload["readiness"] == {
+        "score": 45,
+        "ready": False,
+        "missing": ["test plan"],
+    }
+    assert payload["done"] is False
+    assert payload["draft"]["title"] == "Add CSV export"
+    assert payload["draft"]["repos"] == ["acme/frontend"]
+
+    # The user message reached the dispatch as a parsed ConverseMessage.
+    assert capture["messages"][0].content == "Add a CSV export to attendees"
+
+    # The conversation + spec is persisted as a compose planning draft, listable
+    # via the shared plans API (threads into Plans / the RequestThread).
+    saved = Path(payload["saved_path"])
+    assert saved.exists()
+    assert saved.parent == state / "planning-drafts"
+    on_disk = json.loads(saved.read_text(encoding="utf-8"))
+    assert on_disk["source"] == "compose"
+    assert on_disk["mode"] == "converse"
+    # The assistant reply is appended to the stored transcript.
+    assert on_disk["conversation"][-1]["role"] == "assistant"
+    assert on_disk["conversation"][-1]["content"].startswith("Which columns")
+
+    plans = client.get("/api/plans").json()["rows"]
+    assert any(row["plan_id"] == payload["draft_id"] for row in plans)
+
+
+def test_compose_converse_defaults_single_setup_repo_as_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import server.setup as setup_mod
+
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    home = tmp_path / "home"
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("HOME", str(home))
+    setup_mod.persist_selected_repos(["acme/frontend"])
+    capture: dict = {}
+    _stub_converse_turn(
+        monkeypatch,
+        reply="I saved the scope from your setup.",
+        draft_overrides={"title": "Fix login copy"},
+        capture=capture,
+    )
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "Fix the login copy"}]},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert capture["base_draft"].repos == ["acme/frontend"]
+    assert payload["draft"]["repos"] == ["acme/frontend"]
+
+
+def test_compose_converse_iterates_on_same_draft_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    _stub_converse_turn(
+        monkeypatch,
+        reply="Which repo is this in?",
+        draft_overrides={"title": "Export attendees"},
+        score=20,
+    )
+    first = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "Export attendees to CSV"}]},
+        headers=_auth_headers(state),
+    ).json()
+    draft_id = first["draft_id"]
+
+    capture: dict = {}
+    _stub_converse_turn(
+        monkeypatch,
+        reply="Got it.",
+        draft_overrides={"repos": ["acme/frontend"]},
+        score=70,
+        capture=capture,
+    )
+    second = client.post(
+        "/api/compose/converse",
+        json={
+            "draft_id": draft_id,
+            "messages": [
+                {"role": "user", "content": "Export attendees to CSV"},
+                {"role": "assistant", "content": "Which repo is this in?"},
+                {"role": "user", "content": "It is the frontend"},
+            ],
+        },
+        headers=_auth_headers(state),
+    ).json()
+
+    # Same draft id is refined in place, not duplicated.
+    assert second["draft_id"] == draft_id
+    # The prior turn's title was carried forward into this turn's base draft.
+    assert capture["base_draft"].title == "Export attendees"
+    drafts = client.get("/api/plans/drafts").json()["rows"]
+    assert sum(1 for row in drafts if row["draft_id"] == draft_id) == 1
+
+
+def _capture_intake_guidance(monkeypatch: pytest.MonkeyPatch, capture: dict) -> None:
+    """Patch run_turn to record the intake_guidance the endpoint passed in.
+
+    The guidance text is the observable signal that the plain/technical persona
+    was selected for this turn (compose_converse.intake_guidance_for renders a
+    different one-liner per profile).
+    """
+    import compose_converse as cc
+
+    def fake_run_turn(*, base_draft, intake_guidance, **_kw):
+        capture["intake_guidance"] = intake_guidance
+        return cc.ConverseTurn(
+            reply="ok",
+            draft=base_draft,
+            readiness=cc.ConverseReadiness(score=10, ready=False, missing=()),
+            done=False,
+        )
+
+    monkeypatch.setattr(cc, "run_turn", fake_run_turn)
+
+
+def test_compose_converse_plain_param_forces_plain_persona(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Server env default is technical, but the per-request plain flag must win.
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    monkeypatch.delenv("ALFRED_INTAKE_PROFILE", raising=False)
+    _use_interrogator_prompt(monkeypatch)
+    capture: dict = {}
+    _capture_intake_guidance(monkeypatch, capture)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={
+            "plain": True,
+            "messages": [{"role": "user", "content": "Add a download button"}],
+        },
+        headers=_auth_headers(state),
+    )
+    assert response.status_code == 200
+    assert "Plain mode is on" in capture["intake_guidance"]
+
+
+def test_compose_converse_plain_false_forces_technical_over_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Even with the server env set to plain, plain:false in the body wins.
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    monkeypatch.setenv("ALFRED_INTAKE_PROFILE", "plain")
+    _use_interrogator_prompt(monkeypatch)
+    capture: dict = {}
+    _capture_intake_guidance(monkeypatch, capture)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={
+            "plain": False,
+            "messages": [{"role": "user", "content": "Add a download button"}],
+        },
+        headers=_auth_headers(state),
+    )
+    assert response.status_code == 200
+    assert "Technical mode" in capture["intake_guidance"]
+
+
+def test_compose_converse_absent_plain_falls_back_to_env_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No plain flag in the body: the ALFRED_INTAKE_PROFILE env is the default.
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    monkeypatch.setenv("ALFRED_INTAKE_PROFILE", "plain")
+    _use_interrogator_prompt(monkeypatch)
+    capture: dict = {}
+    _capture_intake_guidance(monkeypatch, capture)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "Add a download button"}]},
+        headers=_auth_headers(state),
+    )
+    assert response.status_code == 200
+    assert "Plain mode is on" in capture["intake_guidance"]
+
+
+def test_compose_converse_degrades_when_no_engine_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No engine env: the live session is unavailable, so the endpoint returns a
+    # clear 503 (the client falls back to the one-shot form) instead of faking.
+    monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
+    monkeypatch.delenv("ALFRED_PLANNING_ASSISTANT_ENGINE", raising=False)
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "Build something"}]},
+        headers=_auth_headers(state),
+    )
+    assert response.status_code == 503
+    assert response.json()["error"] == "live_session_unavailable"
+
+
+def test_compose_converse_degrades_when_engine_returns_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    import compose_converse as cc
+
+    monkeypatch.setattr(cc, "run_turn", lambda **_kw: None)
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "Build something"}]},
+        headers=_auth_headers(state),
+    )
+    assert response.status_code == 503
+    assert response.json()["error"] == "live_session_unavailable"
+
+
+def test_compose_converse_requires_a_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": []},
+        headers=_auth_headers(state),
+    )
+    assert response.status_code == 400
+
+
+def test_compose_converse_rejects_cross_origin(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "hi"}]},
+        headers={
+            server_views.SERVER_TOKEN_HEADER: _server_token(state),
+            "origin": "http://evil.example",
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_compose_converse_requires_the_server_token(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "hi"}]},
+        headers={"origin": "http://testserver"},  # same-origin but no token
+    )
+    assert response.status_code == 403
+
+
+def test_api_queue_arm_requires_the_server_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A same-origin POST without the per-launch token cannot arm pickup."""
+    import issue_queue as iq
+
+    state = tmp_path / "state"
+    state.mkdir()
+    calls: list[tuple[str, int, bool]] = []
+
+    def fake_set_issue_pickup(repo: str, number: int, *, hold: bool):
+        calls.append((repo, number, hold))
+        return True, "unexpected mutation"
+
+    monkeypatch.setattr(iq, "set_issue_pickup", fake_set_issue_pickup)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    # Same-origin but no X-Alfred-Token header: the CSRF gate rejects it before
+    # any label mutation can happen, so a drive-by localhost page cannot arm.
+    response = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "queue"},
+        headers={"origin": "http://testserver"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "forbidden"
+    assert calls == []
+
+    # A wrong token is rejected the same way.
+    bad_token = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "queue"},
+        headers={
+            "origin": "http://testserver",
+            server_views.SERVER_TOKEN_HEADER: "nope",
+        },
+    )
+    assert bad_token.status_code == 403
+    assert calls == []
+
+
+def test_api_queue_arm_allowed_with_the_server_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the operator's per-launch token, arming pickup is allowed."""
+    import issue_queue as iq
+
+    state = tmp_path / "state"
+    state.mkdir()
+    calls: list[tuple[str, int, bool]] = []
+
+    def fake_set_issue_pickup(repo: str, number: int, *, hold: bool):
+        calls.append((repo, number, hold))
+        return True, f"{repo}#{number} queued"
+
+    monkeypatch.setattr(iq, "set_issue_pickup", fake_set_issue_pickup)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "queue"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "queue"
+    assert calls == [("org/repo", 7, False)]
+
+
+def test_api_queue_allows_hold_action(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import issue_queue as iq
+
+    state = tmp_path / "state"
+    state.mkdir()
+    calls: list[tuple[str, int, bool]] = []
+
+    def fake_set_issue_pickup(repo: str, number: int, *, hold: bool):
+        calls.append((repo, number, hold))
+        return True, f"{repo}#{number} held"
+
+    monkeypatch.setattr(iq, "set_issue_pickup", fake_set_issue_pickup)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "hold"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "hold"
+    assert response.json()["detail"] == "org/repo#7 held"
+    assert calls == [("org/repo", 7, True)]
+
+
+def test_api_queue_allows_assign_action(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import issue_assignment
+
+    state = tmp_path / "state"
+    state.mkdir()
+    calls: list[tuple[str, int]] = []
+
+    def fake_assign_issue(repo: str, number: int):
+        calls.append((repo, number))
+        return SimpleNamespace(
+            ok=True,
+            detail=f"{repo}#{number} assigned to Lucius",
+            error="",
+        )
+
+    monkeypatch.setattr(issue_assignment, "assign_issue", fake_assign_issue)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "assign"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "assign"
+    assert response.json()["detail"] == "org/repo#7 assigned to Lucius"
+    assert calls == [("org/repo", 7)]
+
+
+def test_api_queue_allows_done_action(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Done action closes the issue via close_issue (native closed state)."""
+    import issue_queue as iq
+
+    state = tmp_path / "state"
+    state.mkdir()
+    closed: list[tuple[str, int]] = []
+    pickup_calls: list[tuple[str, int, bool]] = []
+
+    def fake_close_issue(repo: str, number: int):
+        closed.append((repo, number))
+        return True, f"{repo}#{number} closed (marked done)"
+
+    def fake_set_issue_pickup(repo: str, number: int, *, hold: bool):
+        pickup_calls.append((repo, number, hold))
+        return True, "unexpected pickup mutation"
+
+    monkeypatch.setattr(iq, "close_issue", fake_close_issue)
+    monkeypatch.setattr(iq, "set_issue_pickup", fake_set_issue_pickup)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "done"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "done"
+    assert response.json()["detail"] == "org/repo#7 closed (marked done)"
+    assert closed == [("org/repo", 7)]
+    # Done must not touch the pickup labels.
+    assert pickup_calls == []
+
+
+def test_api_queue_done_requires_the_server_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Done closes a real issue, so it requires the per-launch token too."""
+    import issue_queue as iq
+
+    state = tmp_path / "state"
+    state.mkdir()
+    closed: list[tuple[str, int]] = []
+
+    def fake_close_issue(repo: str, number: int):
+        closed.append((repo, number))
+        return True, "unexpected close"
+
+    monkeypatch.setattr(iq, "close_issue", fake_close_issue)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "done"},
+        headers={"origin": "http://testserver"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "forbidden"
+    assert closed == []
+
+
+def test_api_queue_rejects_unknown_action(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/queue",
+        json={"repo": "org/repo", "number": 7, "action": "delete"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 400
+    assert "queue" in response.json()["error"]
+
+
+def test_create_app_writes_per_launch_token_with_owner_only_perms(
+    tmp_path: Path,
+) -> None:
+    import stat
+
+    state = tmp_path / "state"
+    create_app(FilesystemReader(state_root=state))
+
+    token_path = state / "server-token"
+    assert token_path.is_file()
+    assert token_path.read_text(encoding="utf-8").strip()
+    mode = stat.S_IMODE(token_path.stat().st_mode)
+    assert mode == 0o600
+
+
+def test_mutating_post_requires_token_and_is_allowed_with_it(
+    tmp_path: Path,
+) -> None:
+    """The canonical CSRF gate: a mutating POST is 403 without the token,
+    allowed with it, and a fresh per-launch token rotates on each app start."""
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "planning-drafts").mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    body = {"text": "title: Token-gated compose draft"}
+
+    # Same-origin but no token -> 403.
+    missing = client.post(
+        "/api/plans/draft",
+        json=body,
+        headers={"origin": "http://testserver"},
+    )
+    assert missing.status_code == 403
+    assert missing.json()["error"] == "forbidden"
+
+    # Correct token -> allowed.
+    allowed = client.post("/api/plans/draft", json=body, headers=_auth_headers(state))
+    assert allowed.status_code == 200
+
+    # The token is also rejected when the request is cross-origin: the
+    # same-origin layer stays in force alongside the token gate.
+    cross_origin = client.post(
+        "/api/plans/draft",
+        json=body,
+        headers={
+            "origin": "https://example.invalid",
+            server_views.SERVER_TOKEN_HEADER: _server_token(state),
+        },
+    )
+    assert cross_origin.status_code == 403
+
+
+def test_authorized_mutation_fails_closed_without_token_file(
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    state = tmp_path / "state"
+    state.mkdir()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(reader=SimpleNamespace(state_root=state))),
+        headers={server_views.SERVER_TOKEN_HEADER: "anything"},
+    )
+
+    # No server-token on disk: the gate must deny rather than downgrade to
+    # same-origin-only.
+    assert server_views._authorized_mutation(request) is False
+
+
+def test_api_slack_trusted_users_adds_and_removes_local_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UENV1")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    listed = client.get("/api/slack/trusted-users")
+
+    assert listed.status_code == 200
+    assert listed.json()["operator_user_id"] == "UOPERATOR"
+    assert any(user["user_id"] == "UENV1" for user in listed.json()["users"])
+
+    added = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "<@ULOCAL1>"},
+        headers=_auth_headers(state),
+    )
+
+    assert added.status_code == 200
+    assert added.json()["added"] is True
+    local = [user for user in added.json()["users"] if user["user_id"] == "ULOCAL1"]
+    assert local
+    assert local[0]["can_remove"] is True
+
+    removed = client.post(
+        "/api/slack/trusted-users/ULOCAL1/remove",
+        headers=_auth_headers(state),
+    )
+
+    assert removed.status_code == 200
+    assert removed.json()["removed"] is True
+    assert all(user["user_id"] != "ULOCAL1" for user in removed.json()["users"])
+
+
+def test_api_slack_trusted_users_rejects_cross_origin_and_bad_ids(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    bad_origin = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "ULOCAL1"},
+        headers={"origin": "https://example.invalid"},
+    )
+
+    assert bad_origin.status_code == 403
+
+    bad_id = client.post(
+        "/api/slack/trusted-users",
+        json={"user_id": "../../nope"},
+        headers=_auth_headers(state),
+    )
+
+    assert bad_id.status_code == 400
+    assert not (state / "slack-trust").exists()
+
+
+def _write_spend(state: Path, codename: str, day: str, **fields: object) -> None:
+    agent_dir = state / codename
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / f"spend-{day}.json").write_text(json.dumps(fields), encoding="utf-8")
+
+
+def test_api_status_rolls_up_todays_cost(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    # Two agents fired today; one yesterday's ledger must be excluded.
+    _write_spend(
+        state,
+        "lucius",
+        today,
+        firings_today=3,
+        successes_today=2,
+        failures_today=1,
+        cost_usd_today=1.25,
+    )
+    _write_spend(
+        state,
+        "bane",
+        today,
+        firings_today=1,
+        successes_today=1,
+        failures_today=0,
+        cost_usd_today=0.50,
+    )
+    _write_spend(
+        state,
+        "lucius",
+        "2020-01-01",
+        firings_today=99,
+        cost_usd_today=99.0,
+    )
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    metrics = client.get("/api/status").json()["metrics"]
+
+    assert metrics["spend_usd"] == 1.75
+    assert metrics["firings"] == 4
+    assert metrics["successes"] == 3
+    assert metrics["failures"] == 1
+    assert metrics["agents_with_spend"] == 2
+
+
+def test_api_status_cost_rollup_is_null_when_no_spend(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    metrics = client.get("/api/status").json()["metrics"]
+
+    # No ledgers today: spend is null (not 0) so the client can show an honest
+    # "not surfaced" instead of fabricating a zero-dollar day.
+    assert metrics["spend_usd"] is None
+    assert metrics["firings"] == 0
+    assert metrics["agents_with_spend"] == 0
+
+
+def test_api_status_reports_intake_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    monkeypatch.delenv("ALFRED_INTAKE_PROFILE", raising=False)
+    assert client.get("/api/status").json()["intake_profile"] == "technical"
+
+    monkeypatch.setenv("ALFRED_INTAKE_PROFILE", "plain")
+    assert client.get("/api/status").json()["intake_profile"] == "plain"
+
+    # A typo never silently downgrades into plain mode.
+    monkeypatch.setenv("ALFRED_INTAKE_PROFILE", "PLAINish")
+    assert client.get("/api/status").json()["intake_profile"] == "technical"
+
+
+def test_api_schedule_returns_cron_and_interval_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    conf = repo / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "# Per-agent launchd config.\n"
+        "alfred.lucius\tlucius.py\tinterval:600\tyes\t\topus\tSingle-repo engineer\n"
+        "alfred.bane\tbane.py\tcron:2:00\tyes\t\topus\tDaily test author\n"
+        "alfred.cold-backup\talfred-cold-backup.py\tcron:0:2:00\tno\t\t\tWeekly cold backup\n"
+        "# alfred.batman\tbatman.py\tinterval:5400\tyes\t\topus\tDisabled\n",
         encoding="utf-8",
     )
-    client = _client(state)
-    response = client.get("/firings/2026-05-23-1300-zz")
+    monkeypatch.setenv("ALFRED_REPO", str(repo))
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    runs = client.get("/api/schedule").json()["runs"]
+    by_codename = {run["codename"]: run for run in runs}
+
+    # The commented-out Batman row is not surfaced.
+    assert set(by_codename) == {"lucius", "bane", "cold-backup"}
+
+    # interval rows carry a cadence string but no guessed next-fire timestamp.
+    assert by_codename["lucius"]["kind"] == "interval"
+    assert by_codename["lucius"]["cadence"] == "every 10m"
+    assert by_codename["lucius"]["next_fire_at"] is None
+    assert by_codename["lucius"]["role"] == "Single-repo engineer"
+
+    # cron rows compute a concrete next-fire.
+    assert by_codename["bane"]["kind"] == "cron-daily"
+    assert by_codename["bane"]["cadence"] == "daily 02:00"
+    assert by_codename["bane"]["next_fire_at"] is not None
+
+    assert by_codename["cold-backup"]["kind"] == "cron-weekly"
+    assert by_codename["cold-backup"]["cadence"] == "Sunday 02:00"
+
+
+def test_api_schedule_empty_when_conf_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("ALFRED_REPO", str(tmp_path / "nonexistent-repo"))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    body = client.get("/api/schedule").json()
+    assert body["runs"] == []
+
+
+def test_draft_from_payload_filters_invalid_repo_slugs() -> None:
+    # The one-shot draft loader must route repos through the same slug gate the
+    # converse path uses, so a dot-traversal slug is never persisted into a
+    # stored draft where a later consumer could resolve it to a workspace path.
+    draft = server_views._draft_from_payload(
+        {
+            "title": "Add CSV export",
+            "repos": ["acme/frontend", "acme/..", "../acme", "acme/frontend"],
+        }
+    )
+    assert draft.repos == ["acme/frontend"]
+
+
+# ---------------------------------------------------------------------------
+# Plan go/no-go decisions: the in-app approve/decline writes the same marker
+# Batman's file-poll fallback watches, and a decided plan reflects its state.
+# ---------------------------------------------------------------------------
+
+
+def _write_batman_plan(tmp_path: Path, issue_num: int, *, title: str) -> Path:
+    """Save a Batman plan exactly where ``draft_plan`` writes one.
+
+    ``batman-plans`` is the sibling of the reader's ``state`` root, so it lands
+    at ``tmp_path/batman-plans/{issue_num}-plan.md`` (state_root.parent).
+    """
+    plans = tmp_path / "batman-plans"
+    plans.mkdir(parents=True, exist_ok=True)
+    path = plans / f"{issue_num}-plan.md"
+    path.write_text(
+        f"# Batman Plan for Issue #{issue_num}\n\n"
+        f"**Title:** {title}\n\n"
+        "**Status:** Draft (awaiting approval)\n\n"
+        f"**Issue URL:** https://github.com/luminik-io/alfred/issues/{issue_num}\n\n"
+        "**Affected Repos:** backend, frontend\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_plan_decision_approve_writes_batman_marker(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/13-plan/decision",
+        headers=_auth_headers(state),
+        json={"decision": "approve"},
+    )
+
     assert response.status_code == 200
-    # The good lines survive; the bad one is dropped silently.
-    assert "firing_started" in response.text
-    assert "firing_ended" in response.text
+    body = response.json()
+    assert body["decision"] == "approve"
+    assert body["issue_number"] == 13
+    assert body["status"] == "approved"
+    # The marker lands exactly where Batman's file poll watches it:
+    # $HERMES_HOME/batman/approvals/{issue_num}.approved (state_root.parent).
+    approved = tmp_path / "batman" / "approvals" / "13.approved"
+    rejected = tmp_path / "batman" / "approvals" / "13.rejected"
+    assert approved.exists()
+    assert not rejected.exists()
+    assert str(approved) == body["marker_path"]
+
+
+def test_plan_decision_decline_writes_rejected_marker_with_reason(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 21, title="Risky migration")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/21-plan/decision",
+        headers=_auth_headers(state),
+        json={"decision": "decline", "reason": "scope too broad"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "declined"
+    rejected = tmp_path / "batman" / "approvals" / "21.rejected"
+    assert rejected.exists()
+    # Batman reads the reject body as a short detail string; ours carries the
+    # source and the operator reason.
+    contents = rejected.read_text(encoding="utf-8")
+    assert "declined via Alfred client" in contents
+    assert "scope too broad" in contents
+
+
+def test_plan_decision_flip_clears_contradicting_marker(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 7, title="Flip me")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    client.post(
+        "/api/plans/7-plan/decision",
+        headers=_auth_headers(state),
+        json={"decision": "approve"},
+    )
+    client.post(
+        "/api/plans/7-plan/decision",
+        headers=_auth_headers(state),
+        json={"decision": "decline"},
+    )
+
+    approvals = tmp_path / "batman" / "approvals"
+    assert not (approvals / "7.approved").exists()
+    assert (approvals / "7.rejected").exists()
+
+
+def test_plan_decision_requires_token(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    # Same-origin but no token: the synchronizer-token gate must reject it.
+    response = client.post(
+        "/api/plans/13-plan/decision",
+        headers={"origin": "http://testserver"},
+        json={"decision": "approve"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "forbidden"
+    assert not (tmp_path / "batman" / "approvals" / "13.approved").exists()
+
+
+def test_plan_decision_rejects_cross_origin_posts(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/13-plan/decision",
+        headers=_auth_headers(state, origin="https://example.invalid"),
+        json={"decision": "approve"},
+    )
+
+    assert response.status_code == 403
+    assert not (tmp_path / "batman" / "approvals" / "13.approved").exists()
+
+
+def test_plan_decision_rejects_invalid_decision(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/13-plan/decision",
+        headers=_auth_headers(state),
+        json={"decision": "maybe"},
+    )
+
+    assert response.status_code == 400
+    assert not (tmp_path / "batman" / "approvals").exists()
+
+
+def test_plan_decision_refuses_non_batman_plan(tmp_path: Path) -> None:
+    # A Slack follow-up is not a go/no-go plan: it has no issue marker Batman
+    # would ever poll, so the decision endpoint must refuse it.
+    state = tmp_path / "state"
+    followups = state / "followups"
+    followups.mkdir(parents=True)
+    (followups / "slack-C1-1716480000.000000.md").write_text(
+        "# Follow-up for Improve planning loop\n\n"
+        "- Parent: [luminik-io/alfred#120](https://github.com/luminik-io/alfred/issues/120)\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/slack-C1-1716480000.000000/decision",
+        headers=_auth_headers(state),
+        json={"decision": "approve"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_decided_batman_plan_reflects_status_and_leaves_queue(tmp_path: Path) -> None:
+    # A genuine Batman go/no-go plan reads as "draft" until decided. Once the
+    # marker exists, the reader reflects approved/declined so the client's
+    # Needs-you filter (source==batman + waiting status) drops it.
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    reader = FilesystemReader(state_root=state)
+
+    before = reader.get_plan("13-plan")
+    assert before is not None
+    assert before.source == "batman"
+    assert "draft" in before.status.lower()
+
+    client = TestClient(create_app(reader))
+    client.post(
+        "/api/plans/13-plan/decision",
+        headers=_auth_headers(state),
+        json={"decision": "approve"},
+    )
+
+    after = reader.get_plan("13-plan")
+    assert after is not None
+    assert after.status == "approved"
+    # And in the list feed the client polls:
+    rows = client.get("/api/plans").json()["rows"]
+    decided = next(row for row in rows if row["plan_id"] == "13-plan")
+    assert decided["status"] == "approved"

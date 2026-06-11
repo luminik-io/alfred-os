@@ -42,14 +42,14 @@ describe("PlansView (post-refactor)", () => {
         actionNotice={null}
         busyPlanAction={null}
         onFollowupAction={onFollowupAction}
+        onDecision={vi.fn()}
+        onFileIssue={vi.fn()}
         onSwitch={onSwitch}
       />,
     );
 
-    expect(screen.getAllByRole("heading", { name: /improve planning loop/i })).toHaveLength(2);
-    expect(screen.getByLabelText(/selected plan details/i)).toHaveTextContent(
-      /add a manual docs smoke test\./i,
-    );
+    expect(screen.getByRole("heading", { name: /improve planning loop/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/selected plan details/i)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /plan next pass/i }));
     expect(onFollowupAction).toHaveBeenCalledWith(expect.objectContaining({ plan_id: "slack-C1-123" }), "convert");
@@ -57,8 +57,14 @@ describe("PlansView (post-refactor)", () => {
     await user.click(screen.getByRole("button", { name: /mark handled/i }));
     expect(onFollowupAction).toHaveBeenCalledWith(expect.objectContaining({ plan_id: "slack-C1-123" }), "handled");
 
-    // The header "Compose new" action routes to the compose tab.
-    await user.click(screen.getByRole("button", { name: /compose new/i }));
+    await user.click(screen.getByRole("button", { name: /inspect/i }));
+    expect(screen.getByLabelText(/selected plan details/i)).toHaveTextContent(
+      /add a manual docs smoke test\./i,
+    );
+    await user.click(screen.getByRole("button", { name: /close/i }));
+
+    // The header "Ask" action routes to the planning tab.
+    await user.click(screen.getByRole("button", { name: /^ask$/i }));
     expect(onSwitch).toHaveBeenCalledWith("compose");
   });
 
@@ -69,24 +75,153 @@ describe("PlansView (post-refactor)", () => {
         actionNotice={null}
         busyPlanAction={null}
         onFollowupAction={vi.fn()}
+        onDecision={vi.fn()}
+        onFileIssue={vi.fn()}
         onSwitch={vi.fn()}
       />,
     );
 
-    expect(screen.getByText(/no plans saved yet\./i)).toBeInTheDocument();
+    expect(screen.getByText(/no saved plans yet\./i)).toBeInTheDocument();
   });
 
   it("shows an action notice when one is present", () => {
     render(
       <PlansView
         plans={[]}
-        actionNotice={{ tone: "ok", message: "Marked the follow-up handled." }}
+        actionNotice={{ tone: "ok", message: "Marked the follow-up handled.", domain: "plans" }}
         busyPlanAction={null}
         onFollowupAction={vi.fn()}
+        onDecision={vi.fn()}
+        onFileIssue={vi.fn()}
         onSwitch={vi.fn()}
       />,
     );
 
     expect(screen.getByText(/marked the follow-up handled\./i)).toBeInTheDocument();
+  });
+
+  it("exposes approve/decline only on a genuine Batman plan awaiting sign-off", async () => {
+    const onDecision = vi.fn();
+    const user = userEvent.setup();
+    const batmanPlan = plan({
+      plan_id: "13-plan",
+      title: "Add CSV export",
+      status: "Draft (awaiting approval)",
+      source: "batman",
+      parent: "https://github.com/your-org/repo/issues/13",
+      path: "/batman-plans/13-plan.md",
+    });
+
+    render(
+      <PlansView
+        plans={[batmanPlan]}
+        actionNotice={null}
+        busyPlanAction={null}
+        onFollowupAction={vi.fn()}
+        onDecision={onDecision}
+        onFileIssue={vi.fn()}
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    // The card and the inspector both surface the affirmative action; the
+    // confirmation note spells out what approving does.
+    expect(screen.getAllByText(/approving starts this exact scope/i).length).toBeGreaterThan(0);
+
+    await user.click(screen.getAllByRole("button", { name: /^approve/i })[0]);
+    expect(onDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: "13-plan" }),
+      "approve",
+    );
+
+    await user.click(screen.getAllByRole("button", { name: /^decline/i })[0]);
+    expect(onDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: "13-plan" }),
+      "decline",
+    );
+  });
+
+  it("hides approve/decline once the Batman plan has been decided", () => {
+    render(
+      <PlansView
+        plans={[
+          plan({
+            plan_id: "13-plan",
+            title: "Add CSV export",
+            status: "approved",
+            source: "batman",
+          }),
+        ]}
+        actionNotice={null}
+        busyPlanAction={null}
+        onFollowupAction={vi.fn()}
+        onDecision={vi.fn()}
+        onFileIssue={vi.fn()}
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /^approve/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^decline/i })).not.toBeInTheDocument();
+  });
+
+  it("files a ready planning draft from the inspector", async () => {
+    const onFileIssue = vi.fn();
+    const user = userEvent.setup();
+    const readyDraft = plan({
+      plan_id: "compose-20260604-export",
+      title: "Add export planning",
+      status: "ready",
+      parent: null,
+      source: "compose",
+      readiness_score: 92,
+      readiness_ok: true,
+      path: "/state/planning-drafts/compose-20260604-export.json",
+    });
+
+    render(
+      <PlansView
+        plans={[readyDraft]}
+        actionNotice={null}
+        busyPlanAction={null}
+        onFollowupAction={vi.fn()}
+        onDecision={vi.fn()}
+        onFileIssue={onFileIssue}
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /inspect/i }));
+    await user.click(screen.getByRole("button", { name: /file github issue/i }));
+    expect(onFileIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: "compose-20260604-export" }),
+    );
+  });
+
+  it("opens an already filed planning draft instead of filing it again", () => {
+    render(
+      <PlansView
+        plans={[
+          plan({
+            plan_id: "compose-20260604-export",
+            title: "Add export planning",
+            status: "ready",
+            parent: "https://github.com/your-org/repo/issues/144",
+            source: "compose",
+            readiness_score: 92,
+            readiness_ok: true,
+          }),
+        ]}
+        actionNotice={null}
+        busyPlanAction={null}
+        onFollowupAction={vi.fn()}
+        onDecision={vi.fn()}
+        onFileIssue={vi.fn()}
+        onSwitch={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /file github issue/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /open issue/i }).length).toBeGreaterThan(0);
   });
 });

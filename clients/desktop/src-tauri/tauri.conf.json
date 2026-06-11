@@ -32,7 +32,7 @@
     "longDescription": "Alfred Desktop is the optional native control plane for a local Alfred install. It surfaces what needs attention, which plans are waiting, which runs failed, and the fleet/auth/agent actions that are safe to run next, over a locally running `alfred serve`.",
     "copyright": "Copyright (c) DataRavel Inc.",
     "publisher": "DataRavel Inc.",
-    "homepage": "https://github.com/luminik-io/alfred-os",
+    "homepage": "https://github.com/luminik-io/alfred",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

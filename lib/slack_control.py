@@ -1,6 +1,6 @@
 """Trusted Slack control + query commands for the fleet.
 
-A trusted user (the founder/operator) can message the bot with a **leading
+A trusted workspace user can message the bot with a **leading
 command verb** to act on the fleet without leaving Slack:
 
 * ``status``               -> fleet health from ``alfred status --json``
@@ -19,6 +19,7 @@ command verb** to act on the fleet without leaving Slack:
 * ``memory promote <id>``  -> operator-only: promote a memory candidate
 * ``memory reject <id>``   -> operator-only: reject a memory candidate
 * ``memory redis``         -> check optional Redis Agent Memory Server
+* ``assign <issue>``       -> operator-only: route an issue to Batman/Lucius
 * ``trusted``              -> list Slack users who can collaborate on plans
 * ``trust <@user>``        -> operator-only: add a trusted collaborator
 * ``untrust <@user>``      -> operator-only: remove a local collaborator
@@ -100,6 +101,7 @@ _COMMANDS: frozenset[str] = frozenset(
         "run",
         "dry-run",
         "dryrun",
+        "schedule",
         "runs",
         "plans",
         "plan",
@@ -108,6 +110,9 @@ _COMMANDS: frozenset[str] = frozenset(
         "memory",
         "memories",
         "remember",
+        "assign",
+        "queue",
+        "hold",
         "trusted",
         "trust",
         "untrust",
@@ -122,11 +127,16 @@ _DEFAULT_RUN_CODENAMES: frozenset[str] = frozenset(
         "automerge",
         "bane",
         "batman",
+        "brand-mention-scanner",
         "cleanup",
         "code-map-refresh",
+        "cold-backup",
+        "content-drift",
         "damian",
         "drake",
         "fleet-doctor",
+        "fleet-recap-evening",
+        "fleet-recap-morning",
         "gordon",
         "huntress",
         "lucius",
@@ -135,6 +145,8 @@ _DEFAULT_RUN_CODENAMES: frozenset[str] = frozenset(
         "nightwing",
         "rasalghul",
         "robin",
+        "shipped-summary-daily",
+        "shipped-summary-weekly",
     }
 )
 
@@ -205,9 +217,24 @@ def parse_control_command(text: str) -> ControlCommand | None:
         return ControlCommand(verb=verb, arg=args[0])
 
     if verb in {"run", "dry-run"}:
+        # Same exact leading-verb shape as pause/resume. ``run`` rejects
+        # ``all`` later with an explicit operator-facing message because a
+        # fleet-wide manual kick would stampede the host.
         if len(args) != 1 or not is_valid_codename(args[0]):
             return None
         return ControlCommand(verb=verb, arg=args[0])
+
+    if verb == "schedule":
+        if not args:
+            return ControlCommand(verb=verb, arg="list")
+        subcommand = args[0].lower()
+        if subcommand == "list" and len(args) == 1:
+            return ControlCommand(verb=verb, arg="list")
+        if subcommand == "show" and len(args) == 2 and is_valid_codename(args[1]):
+            return ControlCommand(verb=verb, arg=f"show {args[1]}")
+        if subcommand == "set" and len(args) == 3 and is_valid_codename(args[1]):
+            return ControlCommand(verb=verb, arg=f"set {args[1]} {args[2]}")
+        return None
 
     if verb in {"trust", "untrust"}:
         if len(args) != 1:
@@ -230,8 +257,17 @@ def parse_control_command(text: str) -> ControlCommand | None:
             return None
         return ControlCommand(verb=verb, arg=rest)
 
-    # status / runs / trusted / help take no required argument; ignore any
-    # trailing words so "status please" still reads as a status request.
+    if verb in {"assign", "queue", "hold"}:
+        # Arg is an issue reference (GitHub URL or owner/repo#N); keep the rest
+        # of the line verbatim and let parse_issue_ref validate it.
+        if not rest:
+            return None
+        return ControlCommand(verb=verb, arg=rest)
+
+    # status / runs / trusted / help are exact commands. Extra words are prose
+    # ("help me write the onboarding spec"), not a control command.
+    if args:
+        return None
     return ControlCommand(verb=verb)
 
 
@@ -340,8 +376,14 @@ class SlackControlHandler:
             return self._run_remember(command.arg, actor_user_id)
         if command.verb == "trusted":
             return self._run_trusted()
+        if command.verb == "schedule":
+            return self._run_schedule(command.arg, actor_user_id)
+        if command.verb == "assign":
+            return self._run_assign(command.arg, actor_user_id)
         if command.verb in {"trust", "untrust"}:
             return self._run_trust_mutation(command.verb, command.arg, actor_user_id)
+        if command.verb in {"queue", "hold"}:
+            return self._run_queue(command.verb, command.arg, actor_user_id)
         if command.verb in {"pause", "resume"}:
             return self._run_agent_cli(command.verb, command.arg)
         if command.verb == "run":
@@ -349,6 +391,115 @@ class SlackControlHandler:
         if command.verb == "dry-run":
             return self._run_agent_cli(command.verb, command.arg)
         return ControlResult(False, "not_a_command", detail=f"unhandled verb {command.verb}")
+
+    def _run_assign(
+        self,
+        arg: str,
+        actor_user_id: str | None,
+    ) -> ControlResult:
+        """`assign <issue>` decides Batman vs Lucius and labels the issue.
+
+        Assignment can make an issue eligible for autonomous pickup, so it is
+        operator-only, matching ``queue``.
+        """
+        from issue_assignment import assign_issue
+        from issue_queue import parse_issue_ref
+
+        actor = normalize_slack_user_id(actor_user_id)
+        if not self.operator_user_id or actor != self.operator_user_id:
+            return ControlResult(
+                True,
+                "assign_rejected",
+                text=(
+                    "*Only the operator can assign work to Alfred.*\n\n"
+                    "Assignment can make an issue eligible for autonomous pickup. Nothing changed."
+                ),
+                detail="actor is not the operator",
+            )
+
+        ref = parse_issue_ref(arg)
+        if ref is None:
+            return ControlResult(
+                True,
+                "assign_rejected",
+                text=(
+                    f"*Couldn't read an issue from* `{_short(arg)}`.\n\n"
+                    "Send a GitHub issue link or `owner/repo#123`."
+                ),
+                detail="unparseable issue ref",
+            )
+        repo, number = ref
+        result = assign_issue(repo, number)
+        if not result.ok:
+            reason = result.error or result.detail
+            return ControlResult(
+                True,
+                "assign_failed",
+                text=f"*Assignment did not run.*\n\n{reason}",
+                detail=reason,
+            )
+        return ControlResult(
+            True,
+            "assign",
+            text=_assignment_ack_text(repo, number, result.detail),
+            detail=result.detail,
+        )
+
+    def _run_queue(
+        self,
+        verb: str,
+        arg: str,
+        actor_user_id: str | None,
+    ) -> ControlResult:
+        """`queue <issue>` makes an issue eligible for pickup; `hold <issue>`
+        takes it out of Alfred's reach. Accepts a GitHub issue URL or
+        owner/repo#N.
+
+        Arming an issue (``queue`` -> ``agent:implement``) makes it eligible for
+        autonomous bypassPermissions pickup, so it is operator-only. De-arming
+        (``hold``) is safe and stays open to all trusted collaborators.
+        """
+        from issue_queue import parse_issue_ref, set_issue_pickup
+
+        if verb == "queue":
+            actor = normalize_slack_user_id(actor_user_id)
+            if not self.operator_user_id or actor != self.operator_user_id:
+                return ControlResult(
+                    True,
+                    "queue_rejected",
+                    text=(
+                        "*Only the operator can queue work for Alfred.*\n\n"
+                        "Arming an issue makes it eligible for autonomous pickup. "
+                        "Use `hold` to take an issue out of Alfred's reach. Nothing changed."
+                    ),
+                    detail="actor is not the operator",
+                )
+
+        ref = parse_issue_ref(arg)
+        if ref is None:
+            return ControlResult(
+                True,
+                f"{verb}_rejected",
+                text=(
+                    f"*Couldn't read an issue from* `{_short(arg)}`.\n\n"
+                    "Send a GitHub issue link or `owner/repo#123`."
+                ),
+                detail="unparseable issue ref",
+            )
+        repo, number = ref
+        ok, detail = set_issue_pickup(repo, number, hold=(verb == "hold"))
+        if not ok:
+            # ``detail`` may carry raw gh stderr. Keep it in the structured
+            # ``detail`` for server-side JSON only; show a generic message on
+            # the Slack/HTTP surface so gh internals never leak to chat.
+            return ControlResult(
+                True,
+                f"{verb}_failed",
+                text="*Queue update failed (gh error).*",
+                detail=detail,
+            )
+        emoji = ":raised_hand:" if verb == "hold" else ":inbox_tray:"
+        return ControlResult(True, verb, text=f"{emoji} {detail}.")
 
     # -- query commands (read-only) --------------------------------------
 
@@ -698,7 +849,14 @@ class SlackControlHandler:
     def _memory_candidates(self, *, limit: int) -> tuple[list[dict[str, Any]] | None, str]:
         data, error = self._run_brain_json_first(
             [
-                ["candidates", "--status", "candidate", "--limit", str(limit), "--json"],
+                [
+                    "candidates",
+                    "--status",
+                    "candidate",
+                    "--limit",
+                    str(limit),
+                    "--json",
+                ],
                 ["candidates", "--status", "pending", "--limit", str(limit), "--json"],
             ]
         )
@@ -774,6 +932,34 @@ class SlackControlHandler:
         )
         return ControlResult(True, "trusted", text="\n".join(lines))
 
+    def _run_schedule(self, raw_args: str, actor_user_id: str | None) -> ControlResult:
+        args = raw_args.split() if raw_args.strip() else ["list"]
+        subcommand = args[0].lower() if args else "list"
+        if subcommand == "set":
+            actor = normalize_slack_user_id(actor_user_id)
+            if not self.operator_user_id or actor != self.operator_user_id:
+                return ControlResult(
+                    True,
+                    "schedule_rejected",
+                    text="*Only the operator can change agent schedules.*\n\nNothing changed.",
+                    detail="actor is not the operator",
+                )
+        result = self._runner([self.alfred_bin, "schedule", *args])
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "schedule command failed").strip()
+            return ControlResult(
+                True,
+                "schedule_failed",
+                text=f"*Schedule update failed.*\n\n```{_short(err, 700)}```",
+                detail=err,
+            )
+        body = (result.stdout or "").strip()
+        return ControlResult(
+            True,
+            "schedule",
+            text=_short(body, 1200) if body else "*Schedule command completed.*",
+        )
+
     # -- mutating commands (validated, shell-free) ------------------------
 
     def _run_trust_mutation(
@@ -816,14 +1002,10 @@ class SlackControlHandler:
                 )
             removed = store.remove(target_user_id)
         except ValueError as exc:
-            # target_user_id was already validated by parse_control_command, so a
-            # ValueError here comes from the trust store itself (corrupt or
-            # unreadable JSON via _list_local(strict=True)), not a bad id.
-            # Surface the real cause instead of the misleading "not a user id".
             return ControlResult(
                 True,
                 f"{verb}_rejected",
-                text=(f"*Couldn't update the trusted-collaborator store.*\n\n{_short(str(exc))}"),
+                text=f"*Rejected:* `{_short(target_user_id)}` is not a Slack user id.",
                 detail=str(exc),
             )
         if removed:
@@ -895,7 +1077,9 @@ class SlackControlHandler:
             body = (result.stdout or "").strip()
             tail = f"\n```\n{_short(body, 600)}\n```" if body else ""
             return ControlResult(
-                True, verb, text=f"*{_agent_cli_success_title(verb)}* `{codename}`.{tail}"
+                True,
+                verb,
+                text=f"*{_agent_cli_success_title(verb)}* `{codename}`.{tail}",
             )
         err = (result.stderr or result.stdout or "").strip()
         return ControlResult(
@@ -965,41 +1149,52 @@ def _usage_for_malformed(text: str) -> str | None:
         if len(cleaned.split()) > 2:
             return None
         return f"*Usage:* `{first} <plan-id>`\n\nUse `plans` to find the exact local inbox id."
+    if first == "schedule":
+        parts = cleaned.split()
+        if len(parts) > 1 and parts[1].lower() not in {"list", "show", "set"}:
+            return None
+        return (
+            "*Usage:* `schedule list`, `schedule show <agent>`, or "
+            "`schedule set <agent> <cadence>`\n\n"
+            "Cadence examples: `10m`, `2h`, `daily@09:00`, `weekly@mon:09:00`."
+        )
+    if first == "assign":
+        return (
+            "*Usage:* `assign owner/repo#123`\n\n"
+            "Only the operator can route an issue to Batman or Lucius."
+        )
     if first == "remember":
         return render_remember_usage()
+    if first in {"status", "runs", "plans", "trusted", "help"}:
+        return None
     return render_help()
 
 
 def render_help() -> str:
     return "\n".join(
         [
-            "*Alfred control commands*",
+            "*Talk to Alfred naturally*",
             "",
-            "Lead a message with one of these verbs (DM me or @-mention me):",
-            "- `status`: fleet health (loaded agents, pauses, locks).",
-            "- `runs`: recent firings per agent.",
-            "- `plans`: local planning inbox.",
-            "- `plan <id>`: inspect a draft or captured follow-up.",
-            "- `draft <id>`: convert a captured follow-up to a local draft.",
-            "- `handled <id>`: operator-only: archive a follow-up without drafting.",
-            "- `memory` / `memories`: review memory candidates and promotion suggestions.",
-            "- `memory promotions`: show high-confidence memory candidates.",
-            "- `memory harvest`: preview repeated-failure lessons; `memory harvest now` queues them.",
-            "- `remember [repo:] <lesson>` or `memory remember ...`: stage a reviewable memory candidate.",
-            "- `memory promote <id>` / `memory reject <id>`: operator-only memory review.",
-            "- `memory redis`: check optional Redis Agent Memory Server.",
-            "- `memory sync`: preview Redis sync; `memory sync now` writes reviewed lessons.",
-            "- `trusted`: list Slack users who can revise plans.",
-            "- `trust <@user>`: operator-only: add a planning collaborator.",
-            "- `untrust <@user>`: operator-only: remove a local collaborator.",
-            "- `pause <codename>`: stop scheduled firings for one agent (or `all`).",
-            "- `resume <codename>`: reverse a pause.",
-            "- `run <codename>`: operator-only: trigger one agent now.",
-            "- `dry-run <codename|all>`: simulate firings with no side effects.",
-            "- `help`: show this list.",
+            "You can DM me or @-mention me with normal requests:",
+            '- "How is the fleet doing?"',
+            '- "What shipped today?"',
+            '- "What is blocked in the planning inbox?"',
+            '- "Run Batman now."',
+            '- "Dry-run Lucius."',
+            '- "Pause Nightwing for a bit."',
+            '- "Change Lucius to every 20 minutes."',
+            '- "Assign luminik-io/alfred#123 to Alfred."',
+            '- "Queue luminik-io/alfred#123 for Alfred."',
+            '- "Put that issue on hold."',
+            '- "Remember for Alfred: Slack confirmations must stay explicit."',
             "",
-            "Anything without a leading command verb is treated as a planning "
-            "request, not a control action.",
+            "For actions that change GitHub or schedules, I will ask for a "
+            "confirmation reaction before anything changes. Dry-runs and status "
+            "questions answer directly.",
+            "",
+            "Power-user shorthand still works for exact operations like `status`, "
+            "`runs`, `plans`, `schedule list`, `schedule show lucius`, "
+            "`memory`, `trusted`, `trust <@user>`, and `untrust <@user>`.",
         ]
     )
 
@@ -1368,7 +1563,7 @@ def render_memory_harvest(payload: dict[str, Any]) -> str:
             candidate = item.get("candidate_id")
             candidate_text = f" `{candidate}`" if candidate else ""
             lines.append(
-                f"- `{status}`{candidate_text} — `{item.get('codename')}/{item.get('repo')}`: "
+                f"- `{status}`{candidate_text} — `{item.get('codename') or item.get('agent')}/{item.get('repo')}`: "
                 f"{_short(str(item.get('body') or ''), 180)}"
             )
         if len(proposals) > 8:
@@ -1408,7 +1603,8 @@ def render_remember_usage() -> str:
             "*Usage:* `remember [owner/repo:] <lesson>`",
             "",
             "Examples:",
-            "- `remember luminik-io/alfred-os: Slack planning replies must stay reviewable.`",
+            "- `remember luminik-io/alfred: Slack planning replies must stay reviewable.`",
+            "- `memory remember luminik-io/alfred: keep the namespace discoverable.`",
             "- `remember Keep memory candidates out of prompt context until promoted.`",
         ]
     )
@@ -1593,6 +1789,22 @@ def _strip_mentions(text: str) -> str:
 def _short(text: str, n: int = 80) -> str:
     text = (text or "").strip()
     return text if len(text) <= n else text[: n - 3].rstrip() + "..."
+
+
+def _issue_link(repo: str, number: int) -> str:
+    """Slack mrkdwn link for a GitHub issue."""
+    return f"<https://github.com/{repo}/issues/{number}|{repo}#{number}>"
+
+
+def _assignment_ack_text(repo: str, number: int, detail: str) -> str:
+    """Human Slack acknowledgement after Alfred routes an issue."""
+    return "\n".join(
+        [
+            ":label: *Issue routed*",
+            f"*Issue:* {_issue_link(repo, number)}",
+            f"*Result:* {detail}",
+        ]
+    )
 
 
 def _default_alfred_bin() -> str:

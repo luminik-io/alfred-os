@@ -2,7 +2,13 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAlfred } from "./useAlfred";
-import type { AgentSummary, NativeCommandResult, Snapshot } from "../types";
+import type {
+  AgentSummary,
+  NativeCommandResult,
+  ShippedBoard,
+  Snapshot,
+  UsageResponse,
+} from "../types";
 
 // Mock the whole api surface so the hook's network/native calls are
 // deterministic. trayEvents/notifications/derive/fleetControl stay real (pure).
@@ -13,14 +19,24 @@ const FALLBACK_BASE_URL = "http://127.0.0.1:7000";
 
 const hooks = vi.hoisted(() => ({
   loadSnapshotMock: vi.fn(),
+  loadShippedMock: vi.fn(),
+  loadUsageMock: vi.fn(),
   runNativeActionMock: vi.fn(),
   rememberBaseUrlMock: vi.fn(),
+  decidePlanMock: vi.fn(),
+  filePlanIssueMock: vi.fn(),
   DEFAULT_BASE_URL: "http://127.0.0.1:7010",
   FALLBACK_BASE_URL: "http://127.0.0.1:7000",
 }));
 
 const loadSnapshotMock = hooks.loadSnapshotMock as ReturnType<
   typeof vi.fn<(baseUrl: string) => Promise<Snapshot>>
+>;
+const loadShippedMock = hooks.loadShippedMock as ReturnType<
+  typeof vi.fn<(baseUrl: string) => Promise<ShippedBoard>>
+>;
+const loadUsageMock = hooks.loadUsageMock as ReturnType<
+  typeof vi.fn<(baseUrl: string) => Promise<UsageResponse>>
 >;
 const runNativeActionMock = hooks.runNativeActionMock as ReturnType<
   typeof vi.fn<() => Promise<NativeCommandResult>>
@@ -30,19 +46,25 @@ const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
 vi.mock("../api", () => ({
   FALLBACK_BASE_URL: hooks.FALLBACK_BASE_URL,
   initialBaseUrl: () => hooks.DEFAULT_BASE_URL,
+  clientBaseUrl: (value?: string | null) => value?.trim() || hooks.DEFAULT_BASE_URL,
   alternateDefaultBaseUrl: (value: string) => {
     const normalized = value.trim().replace(/\/$/, "");
     if (normalized === hooks.DEFAULT_BASE_URL) return hooks.FALLBACK_BASE_URL;
     if (normalized === hooks.FALLBACK_BASE_URL) return hooks.DEFAULT_BASE_URL;
+    if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(normalized)) {
+      return hooks.DEFAULT_BASE_URL;
+    }
     return null;
   },
-  isDefaultBaseUrl: (value: string) =>
-    [hooks.DEFAULT_BASE_URL, hooks.FALLBACK_BASE_URL].includes(value.trim().replace(/\/$/, "")),
   rememberBaseUrl: (value: string) => hooks.rememberBaseUrlMock(value),
   loadSnapshot: (baseUrl: string) => hooks.loadSnapshotMock(baseUrl),
+  loadShipped: (baseUrl: string) => hooks.loadShippedMock(baseUrl),
+  loadUsage: (baseUrl: string) => hooks.loadUsageMock(baseUrl),
   runNativeAction: () => hooks.runNativeActionMock(),
   convertFollowupToDraft: vi.fn(),
   markFollowupHandled: vi.fn(),
+  decidePlan: (...args: unknown[]) => hooks.decidePlanMock(...args),
+  filePlanIssue: (...args: unknown[]) => hooks.filePlanIssueMock(...args),
   startLocalRuntime: vi.fn(),
   setTrayStatus: vi.fn(async () => undefined),
   supportsNativeActions: () => true,
@@ -68,6 +90,8 @@ function agent(codename: string, overrides: Partial<AgentSummary> = {}): AgentSu
 function snapshot(agents: AgentSummary[]): Snapshot {
   return {
     loadedAt: new Date(),
+    shipped: null,
+    schedule: [],
     status: { agents, total_today: 0, reliability: { status: "ok" } },
     actions: {
       status: "ok",
@@ -80,6 +104,27 @@ function snapshot(agents: AgentSummary[]): Snapshot {
     firings: [],
     plans: [],
     trustedSlack: null,
+  };
+}
+
+function shippedBoard(): ShippedBoard {
+  return {
+    lookback_days: 14,
+    repos: [],
+    columns: { queued: [], in_progress: [], shipped: [] },
+    counts: { queued: 0, in_progress: 0, shipped: 0 },
+  };
+}
+
+function usage(): UsageResponse {
+  return {
+    available: true,
+    kind: "subscription",
+    source: "native",
+    block: null,
+    codex: null,
+    limits: null,
+    weekly: null,
   };
 }
 
@@ -108,8 +153,13 @@ function nativeResult(): NativeCommandResult {
 
 beforeEach(() => {
   loadSnapshotMock.mockReset();
+  loadShippedMock.mockReset();
+  loadUsageMock.mockReset();
   runNativeActionMock.mockReset();
   rememberBaseUrlMock.mockReset();
+  hooks.filePlanIssueMock.mockReset();
+  loadShippedMock.mockResolvedValue(shippedBoard());
+  loadUsageMock.mockResolvedValue(usage());
   window.localStorage.clear();
 });
 
@@ -199,6 +249,61 @@ describe("useAlfred fallback port", () => {
     expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
     expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
   });
+
+  it("recovers from a stale saved localhost port", async () => {
+    const staleUrl = "http://127.0.0.1:7011";
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    loadSnapshotMock.mockImplementation(async (baseUrl: string) => {
+      if (baseUrl === staleUrl) {
+        throw new Error("connection refused");
+      }
+      return snapshot([agent("lucius")]);
+    });
+
+    await act(async () => {
+      await result.current.refresh(staleUrl);
+    });
+
+    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
+    expect(result.current.error).toBeNull();
+    expect(loadSnapshotMock).toHaveBeenCalledWith(staleUrl);
+    expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
+    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
+  });
+
+  it("also retries board and usage on the preferred port when the saved port is stale", async () => {
+    const staleUrl = "http://127.0.0.1:7011";
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("bane")]));
+    loadShippedMock.mockImplementation(async (baseUrl: string) => {
+      if (baseUrl === staleUrl) throw new Error("board timed out");
+      return shippedBoard();
+    });
+    loadUsageMock.mockImplementation(async (baseUrl: string) => {
+      if (baseUrl === staleUrl) throw new Error("usage timed out");
+      return usage();
+    });
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => {
+      await Promise.all([result.current.refreshShipped(staleUrl), result.current.refreshUsage(staleUrl)]);
+    });
+
+    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
+    expect(result.current.shippedState).toBe("idle");
+    expect(result.current.shippedError).toBeNull();
+    expect(result.current.usageState).toBe("idle");
+    expect(result.current.usage?.available).toBe(true);
+    expect(loadShippedMock).toHaveBeenCalledWith(staleUrl);
+    expect(loadShippedMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
+    expect(loadUsageMock).toHaveBeenCalledWith(staleUrl);
+    expect(loadUsageMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
+  });
 });
 
 describe("useAlfred post-action refresh ordering", () => {
@@ -226,5 +331,120 @@ describe("useAlfred post-action refresh ordering", () => {
     expect(runNativeActionMock).toHaveBeenCalled();
     expect(result.current.snapshot?.status.agents[0].paused).toBe(true);
     expect(result.current.nativeResult?.success).toBe(true);
+  });
+});
+
+describe("useAlfred plan go/no-go", () => {
+  function batmanPlan() {
+    return {
+      plan_id: "13-plan",
+      title: "Add CSV export",
+      status: "draft",
+      parent: null,
+      affected_repos: null,
+      updated_at: null,
+      path: "",
+      preview: "",
+      content: "",
+      source: "batman",
+      readiness_score: null,
+      readiness_ok: null,
+      revision_count: 0,
+    };
+  }
+
+  it("writes a decision and refreshes so the decided plan leaves the queue", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    hooks.decidePlanMock.mockResolvedValue({
+      plan_id: "13-plan",
+      issue_number: 13,
+      decision: "approve",
+      status: "approved",
+      marker_path: "/tmp/state/../batman/approvals/13.approved",
+    });
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    loadSnapshotMock.mockClear();
+
+    await act(async () => {
+      await result.current.runPlanDecision(batmanPlan(), "approve");
+    });
+
+    expect(hooks.decidePlanMock).toHaveBeenCalledWith(
+      DEFAULT_BASE_URL,
+      "13-plan",
+      "approve",
+    );
+    expect(result.current.noticeFor("plans")?.tone).toBe("ok");
+    expect(result.current.noticeFor("plans")?.message).toMatch(/issue #13/i);
+    // The notice is scoped to its surface: it shows on Plans, never on Board /
+    // Memory / Setup, so a decision banner cannot bleed across surfaces.
+    expect(result.current.noticeFor("board")).toBeNull();
+    expect(result.current.noticeFor("memory")).toBeNull();
+    expect(result.current.noticeFor("setup")).toBeNull();
+    // A refresh fires after the write so the decided plan reflects its state.
+    expect(loadSnapshotMock).toHaveBeenCalled();
+  });
+
+  it("surfaces a decision failure as an error notice", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    hooks.decidePlanMock.mockRejectedValueOnce(new Error("forbidden"));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => {
+      await result.current.runPlanDecision(batmanPlan(), "decline");
+    });
+
+    expect(result.current.noticeFor("plans")?.tone).toBe("error");
+    expect(result.current.noticeFor("plans")?.message).toMatch(/forbidden/i);
+    // An error notice is also surface-scoped.
+    expect(result.current.noticeFor("board")).toBeNull();
+  });
+
+  it("files a ready planning draft and refreshes the plans plus board", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    hooks.filePlanIssueMock.mockResolvedValue({
+      ok: true,
+      status: "filed",
+      draft_id: "compose-20260604-export",
+      issue_url: "https://github.com/owner/web/issues/42",
+      repo: "owner/web",
+      label: "agent:implement",
+    });
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    loadSnapshotMock.mockClear();
+    loadShippedMock.mockClear();
+
+    await act(async () => {
+      await result.current.runPlanIssueFile({
+        plan_id: "compose-20260604-export",
+        title: "Add export planning",
+        status: "ready",
+        parent: null,
+        affected_repos: "owner/web",
+        updated_at: null,
+        path: "",
+        preview: "",
+        content: "",
+        source: "compose",
+        readiness_score: 92,
+        readiness_ok: true,
+        revision_count: 0,
+      });
+    });
+
+    expect(hooks.filePlanIssueMock).toHaveBeenCalledWith(
+      DEFAULT_BASE_URL,
+      "compose-20260604-export",
+    );
+    expect(result.current.noticeFor("plans")?.tone).toBe("ok");
+    expect(result.current.noticeFor("plans")?.message).toMatch(/agent:implement/i);
+    expect(loadSnapshotMock).toHaveBeenCalled();
+    expect(loadShippedMock).toHaveBeenCalled();
   });
 });

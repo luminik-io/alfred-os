@@ -5,10 +5,111 @@
     <link rel="icon" type="image/png" href="/brand/alfred-logo-transparent.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Alfred</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #07090f;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 50% -12%, rgba(47, 107, 255, 0.2), transparent 34%),
+          linear-gradient(180deg, #121823, #07090f 42%, #05070b);
+      }
+
+      .boot {
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+        color: #f6f8fb;
+      }
+
+      .boot__card {
+        display: grid;
+        justify-items: center;
+        gap: 14px;
+        padding: 26px 30px;
+        background: rgba(25, 31, 42, 0.74);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+        -webkit-backdrop-filter: blur(20px) saturate(1.25);
+        backdrop-filter: blur(20px) saturate(1.25);
+      }
+
+      .boot__mark {
+        width: 42px;
+        height: 42px;
+        filter: drop-shadow(0 0 18px rgba(87, 137, 255, 0.44));
+      }
+
+      .boot__title {
+        margin: 0;
+        font-size: 1.12rem;
+        font-weight: 750;
+      }
+
+      .boot__caption {
+        margin: 0;
+        color: #9aa4b4;
+        font-size: 0.84rem;
+      }
+
+      .boot__dots {
+        display: inline-flex;
+        gap: 5px;
+      }
+
+      .boot__dots span {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: #f7b344;
+        animation: boot-dot 1.2s ease-in-out infinite;
+      }
+
+      .boot__dots span:nth-child(2) {
+        animation-delay: 0.16s;
+      }
+
+      .boot__dots span:nth-child(3) {
+        animation-delay: 0.32s;
+      }
+
+      @keyframes boot-dot {
+        0%,
+        70%,
+        100% {
+          opacity: 0.28;
+          transform: translateY(0);
+        }
+        35% {
+          opacity: 1;
+          transform: translateY(-3px);
+        }
+      }
+    </style>
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" role="status" aria-live="polite">
+        <div class="boot__card">
+          <img class="boot__mark" src="/brand/alfred-logo-transparent.png" alt="" />
+          <p class="boot__title">Starting Alfred</p>
+          <p class="boot__caption">Connecting the local client.</p>
+          <span class="boot__dots" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -53,7 +53,7 @@ export function parseFleetServiceState(result: NativeCommandResult | null): Flee
 /**
  * Look up an agent's service entry tolerating the CLI's fully-qualified labels.
  * The /api/status feed reports short codenames (e.g. "lucius") while the status
- * JSON may report "example.fleet.lucius"; match on either the exact key or the
+ * JSON may report "alfred.lucius"; match on either the exact key or the
  * trailing segment.
  */
 export function lookupServiceState(

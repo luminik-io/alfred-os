@@ -13,7 +13,6 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
-    _repos_from_text,
     draft_from_slack_text,
     render_bridge_outcome_ack,
 )
@@ -65,18 +64,6 @@ class LegacyMemoryProvider:
         return len(self.calls)
 
 
-def test_repos_from_text_handles_github_urls() -> None:
-    # Slack wraps bare links as <https://github.com/org/repo>; the owner/repo
-    # must come from the URL path, not be mis-parsed as "github.com/org".
-    assert _repos_from_text("please fix <https://github.com/org/repo> today") == ["org/repo"]
-    assert _repos_from_text("see https://github.com/org/repo/issues/5") == ["org/repo"]
-    assert _repos_from_text("clone https://github.com/org/repo.git") == ["org/repo"]
-    # Bare owner/repo tokens still work, and order/dedupe is preserved.
-    assert _repos_from_text("work on org/api and acme/web and org/api") == ["org/api", "acme/web"]
-    # A URL repo plus a bare repo: both captured, URL first, no github.com noise.
-    assert _repos_from_text("<https://github.com/org/api> and acme/web") == ["org/api", "acme/web"]
-
-
 def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
     text = render_bridge_outcome_ack(
         SimpleNamespace(
@@ -94,6 +81,43 @@ def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
     assert "Nothing was created" in text
 
 
+def test_bridge_ack_links_created_issue_for_slack() -> None:
+    text = render_bridge_outcome_ack(
+        SimpleNamespace(
+            created=True,
+            status="created",
+            detail="",
+            is_bundle=False,
+            repo="acme-org/api",
+            issue_url="https://github.com/acme-org/api/issues/42",
+        ),
+        summary="Fixes the checkout retry banner.",
+    )
+
+    assert "Fixes the checkout retry banner." in text
+    assert "*Issue:* <https://github.com/acme-org/api/issues/42|acme-org/api#42>" in text
+
+
+def test_bridge_ack_links_bundle_issues_for_slack() -> None:
+    text = render_bridge_outcome_ack(
+        SimpleNamespace(
+            created=True,
+            status="created",
+            detail="",
+            is_bundle=True,
+            bundle_label="agent:bundle:checkout",
+            issue_urls=(),
+            issues_by_repo={
+                "acme-org/api": "https://github.com/acme-org/api/issues/42",
+                "acme-org/web": "https://github.com/acme-org/web/issues/43",
+            },
+        )
+    )
+
+    assert "`acme-org/api`: <https://github.com/acme-org/api/issues/42|acme-org/api#42>" in text
+    assert "`acme-org/web`: <https://github.com/acme-org/web/issues/43|acme-org/web#43>" in text
+
+
 def _thread_reply(text: str, *, event_id: str = "Ev1", user: str = "U1") -> dict:
     return {
         "event_id": event_id,
@@ -104,6 +128,20 @@ def _thread_reply(text: str, *, event_id: str = "Ev1", user: str = "U1") -> dict
             "text": text,
             "ts": "1716480001.000001",
             "thread_ts": "1716480000.000000",
+        },
+    }
+
+
+def _dm(text: str, *, event_id: str = "EvCtl", user: str = "U1") -> dict:
+    return {
+        "event_id": event_id,
+        "event": {
+            "type": "message",
+            "channel": "D1",
+            "channel_type": "im",
+            "user": user,
+            "text": text,
+            "ts": "1716480020.000001",
         },
     }
 
@@ -119,13 +157,16 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
             channel="C1",
             thread_ts="1716480000.000000",
             title="Improve Slack planning",
-            parent_repo="your-org/runtime",
+            parent_repo="luminik-io/alfred",
             parent_issue=120,
             plan_path=str(plan_path),
             metadata={
-                "affected_repos": ["your-org/runtime", "your-org/site"],
+                "affected_repos": ["luminik-io/alfred", "luminik-io/alfred-os"],
                 "child_count": 2,
-                "children_by_repo": {"your-org/runtime": 1, "your-org/site": 1},
+                "children_by_repo": {
+                    "luminik-io/alfred": 1,
+                    "luminik-io/alfred-os": 1,
+                },
             },
         )
     )
@@ -138,9 +179,9 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
 
     result = listener.handle_payload(
         _thread_reply(
-            "remove repo: site\n"
+            "remove repo: alfred-os\n"
             "acceptance: the Slack thread shows the current plan scope\n"
-            "question: Should the docs mention Redis?"
+            "open question: Should the docs mention Redis?"
         )
     )
 
@@ -151,7 +192,7 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     assert (
         "Execution scope if approved now (1 repo, 1 child issue(s))" in poster.messages[0]["text"]
     )
-    assert "`your-org/runtime`" in poster.messages[0]["text"]
+    assert "`luminik-io/alfred`" in poster.messages[0]["text"]
     assert "Alfred will not execute" in poster.messages[0]["text"]
     feedback_files = list((tmp_path / "threads" / "feedback").glob("*.jsonl"))
     assert feedback_files
@@ -159,11 +200,11 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     record = registry.lookup("C1", "1716480000.000000")
     assert record is not None
     assert record.status == "needs_resolution"
-    assert record.metadata["revised_repos"] == ["your-org/runtime"]
+    assert record.metadata["revised_repos"] == ["luminik-io/alfred"]
     revision_path = Path(record.metadata["plan_revision_path"])
     revision = json.loads(revision_path.read_text(encoding="utf-8"))
     assert revision["latest"]["requires_resolution"] is True
-    assert revision["latest"]["revised_repos"] == ["your-org/runtime"]
+    assert revision["latest"]["revised_repos"] == ["luminik-io/alfred"]
     assert revision["record"]["plan_path"] == str(plan_path)
 
     resolved = listener.handle_payload(_thread_reply("open questions: none", event_id="Ev2"))
@@ -179,6 +220,167 @@ def test_known_plan_thread_reply_is_captured_and_acknowledged(tmp_path: Path) ->
     assert latest["latest"]["requires_resolution"] is False
 
 
+def test_known_plan_thread_question_is_answered_without_revising_plan(tmp_path: Path) -> None:
+    poster = Poster()
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text(
+        "\n".join(
+            [
+                "*Alfred plan ready* · `onboarding`",
+                "*Parent:* <https://github.com/luminik-io/alfred/issues/779|luminik-io/alfred#779>",
+                "*Work:* Improve onboarding state persistence",
+                "*Readiness:* ready for approval",
+                "",
+                "*Scope if approved now:* 2 repos, 2 child issues",
+                "  - `backend`: persist orchestrator events",
+                "  - `frontend`: show connection status",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry.register(
+        SlackThreadRecord(
+            kind="plan",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Improve onboarding state persistence",
+            parent_repo="luminik-io/alfred",
+            parent_issue=779,
+            plan_path=str(plan_path),
+            metadata={
+                "affected_repos": ["luminik-io/backend", "luminik-io/frontend"],
+                "child_count": 2,
+            },
+        )
+    )
+    questions: list[str] = []
+
+    def answerer(record, question, plan_markdown):
+        questions.append(question)
+        assert record.parent_issue == 779
+        assert "Improve onboarding state persistence" in plan_markdown
+        return "This plan stores onboarding progress and shows it clearly in the client."
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        plan_answerer=answerer,
+    )
+
+    result = listener.handle_payload(
+        _thread_reply("question: explain this planned feature in detail")
+    )
+
+    assert result.handled is True
+    assert result.action == "plan_question_answered"
+    assert result.readiness_ok is True
+    assert questions == ["explain this planned feature in detail"]
+    assert poster.messages[0]["thread_ts"] == "1716480000.000000"
+    assert "*Answer*" in poster.messages[0]["text"]
+    assert "Plan revised" not in poster.messages[0]["text"]
+    assert "will not execute" not in poster.messages[0]["text"]
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.status == "open"
+    assert record.metadata["last_plan_question"] == "explain this planned feature in detail"
+    assert not list((tmp_path / "plan-revisions").glob("*.json"))
+
+
+def test_plan_thread_structured_command_ending_in_question_mark_revises_plan(
+    tmp_path: Path,
+) -> None:
+    poster = Poster()
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("*Work:* Improve onboarding\n", encoding="utf-8")
+    registry.register(
+        SlackThreadRecord(
+            kind="plan",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Improve onboarding",
+            parent_repo="luminik-io/alfred",
+            parent_issue=779,
+            plan_path=str(plan_path),
+            metadata={
+                "affected_repos": ["luminik-io/alfred"],
+                "child_count": 1,
+            },
+        )
+    )
+    answered: list[str] = []
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        plan_answerer=lambda _record, question, _plan: answered.append(question) or "answer",
+    )
+
+    result = listener.handle_payload(_thread_reply("test: does the empty state render?"))
+
+    assert result.handled is True
+    assert result.action == "plan_revised"
+    assert answered == []
+    assert "Plan revised" in poster.messages[0]["text"]
+    assert "does the empty state render?" in poster.messages[0]["text"]
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.status == "revised"
+    assert record.metadata["plan_revision_count"] == 1
+
+
+def test_plan_thread_resolved_question_ending_in_question_mark_clears_blocker(
+    tmp_path: Path,
+) -> None:
+    poster = Poster()
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    plan_path = tmp_path / "plan.md"
+    plan_path.write_text("*Work:* Improve onboarding\n", encoding="utf-8")
+    registry.register(
+        SlackThreadRecord(
+            kind="plan",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Improve onboarding",
+            parent_repo="luminik-io/alfred",
+            parent_issue=779,
+            plan_path=str(plan_path),
+            metadata={
+                "affected_repos": ["luminik-io/alfred"],
+                "child_count": 1,
+            },
+        )
+    )
+    answered: list[str] = []
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        plan_answerer=lambda _record, question, _plan: answered.append(question) or "answer",
+    )
+
+    blocked = listener.handle_payload(
+        _thread_reply("open question: Should we include docs?", event_id="Ev1")
+    )
+    resolved = listener.handle_payload(
+        _thread_reply("resolved question: Should we include docs?", event_id="Ev2")
+    )
+
+    assert blocked.action == "plan_revised"
+    assert blocked.readiness_ok is False
+    assert resolved.action == "plan_revised"
+    assert resolved.readiness_ok is True
+    assert answered == []
+    record = registry.lookup("C1", "1716480000.000000")
+    assert record is not None
+    assert record.status == "revised"
+
+
 def test_report_thread_reply_writes_followup_context(tmp_path: Path) -> None:
     poster = Poster()
     registry = SlackThreadRegistry(tmp_path / "threads")
@@ -190,9 +392,9 @@ def test_report_thread_reply_writes_followup_context(tmp_path: Path) -> None:
             codename="batman",
             firing_id="firing-1",
             title="Improve planning loop",
-            parent_repo="luminik-io/alfred-os",
+            parent_repo="luminik-io/alfred",
             parent_issue=120,
-            metadata={"created": ["https://github.com/luminik-io/alfred-os/pull/12"]},
+            metadata={"created": ["https://github.com/luminik-io/alfred/pull/12"]},
         )
     )
     listener = SlackPlanningListener(
@@ -211,7 +413,7 @@ def test_report_thread_reply_writes_followup_context(tmp_path: Path) -> None:
     assert len(followups) == 1
     text = followups[0].read_text(encoding="utf-8")
     assert "Slack Follow-up Feedback" in text
-    assert "https://github.com/luminik-io/alfred-os/pull/12" in text
+    assert "https://github.com/luminik-io/alfred/pull/12" in text
     assert "manual docs smoke test" in text
     record = registry.lookup("C1", "1716480000.000000")
     assert record is not None
@@ -230,9 +432,9 @@ def test_report_thread_followup_write_failure_is_acknowledged(tmp_path: Path, mo
             codename="batman",
             firing_id="firing-1",
             title="Improve planning loop",
-            parent_repo="luminik-io/alfred-os",
+            parent_repo="luminik-io/alfred",
             parent_issue=120,
-            metadata={"created": ["https://github.com/luminik-io/alfred-os/pull/12"]},
+            metadata={"created": ["https://github.com/luminik-io/alfred/pull/12"]},
         )
     )
     original_write_text = Path.write_text
@@ -306,82 +508,38 @@ def test_listener_requires_trusted_users(tmp_path: Path) -> None:
     assert "trusted" in result.detail
 
 
-def _dm(text: str, *, event_id: str = "EvCtl", user: str = "U1") -> dict:
-    return {
-        "event_id": event_id,
+def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    payload = {
+        "event_id": "EvDraft",
         "event": {
-            "type": "message",
-            "channel": "D1",
-            "channel_type": "im",
-            "user": user,
-            "text": text,
-            "ts": "1716480020.000001",
+            "type": "app_mention",
+            "channel": "C1",
+            "user": "U1",
+            "text": (
+                "<@UALFRED> title: Improve Slack planning\n"
+                "problem: Users need a safer way to describe work before agents build.\n"
+                "repo: luminik-io/alfred-os\n"
+                "desired: Alfred saves a draft and asks for missing acceptance criteria."
+            ),
+            "ts": "1716480010.000001",
         },
     }
 
-
-def test_trusted_control_command_routes_to_control_not_draft(tmp_path: Path) -> None:
-    from slack_control import RunResult, SlackControlHandler
-
-    calls: list[list[str]] = []
-
-    def runner(argv: list[str]) -> RunResult:
-        calls.append(argv)
-        return RunResult(returncode=0, stdout="  paused lucius")
-
-    poster = Poster()
-    listener = SlackPlanningListener(
-        state_root=tmp_path,
-        poster=poster,
-        trusted_user_ids=("U1",),
-        control_handler=SlackControlHandler(alfred_bin="/fake/alfred", runner=runner),
-    )
-
-    result = listener.handle_payload(_dm("pause lucius"))
-
-    assert result.handled is True
-    assert result.action == "control_pause"
-    assert calls[-1] == ["/fake/alfred", "pause", "lucius"]
-    assert "Paused" in poster.messages[-1]["text"]
-    # No planning draft should have been created for a control command.
-    assert not list((tmp_path / "planning-drafts").glob("*.json"))
-
-
-def test_default_control_handler_reads_local_planning_inbox(tmp_path: Path) -> None:
-    followups = tmp_path / "followups"
-    followups.mkdir(parents=True)
-    (followups / "slack-C1-1716480000.md").write_text(
-        "# Follow-up for PR feedback\n\nPlease add the missing docs check.\n",
-        encoding="utf-8",
-    )
-    poster = Poster()
-    listener = SlackPlanningListener(
-        state_root=tmp_path,
-        poster=poster,
-        trusted_user_ids=("U1",),
-    )
-
-    result = listener.handle_payload(_dm("plans"))
-
-    assert result.handled is True
-    assert result.action == "control_plans"
-    assert "Planning inbox" in poster.messages[-1]["text"]
-    assert "slack-C1-1716480000" in poster.messages[-1]["text"]
-
-
-def test_plan_prefixed_prose_still_creates_planning_draft(tmp_path: Path) -> None:
-    poster = Poster()
-    listener = SlackPlanningListener(
-        state_root=tmp_path,
-        poster=poster,
-        trusted_user_ids=("U1",),
-    )
-
-    result = listener.handle_payload(_dm("plan the billing migration with clearer retry copy"))
+    result = listener.handle_payload(payload)
 
     assert result.handled is True
     assert result.action == "draft_created"
-    assert list((tmp_path / "planning-drafts").glob("*.json"))
+    assert result.draft_path
+    draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
+    assert draft["draft"]["title"] == "Improve Slack planning"
+    assert draft["draft"]["repos"] == ["luminik-io/alfred-os"]
+    assert "Planning draft saved" in poster.messages[0]["text"]
 
 
 def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) -> None:
@@ -399,11 +557,11 @@ def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) ->
             "title: Queue Slack planning memories\n"
             "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
             "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-            "repo: luminik-io/alfred-os\n"
+            "repo: luminik-io/alfred\n"
             "acceptance: the local draft records the memory candidate id for review\n"
             "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
             "out of scope: automatic promotion\n"
-            "question: none",
+            "open questions: none",
             event_id="EvMemory",
         )
     )
@@ -411,12 +569,12 @@ def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) ->
     assert result.handled is True
     assert result.action == "draft_created"
     assert provider.calls
-    assert provider.calls[0]["repo"] == "luminik-io/alfred-os"
+    assert provider.calls[0]["repo"] == "luminik-io/alfred"
     assert provider.calls[0]["source"] == "slack-draft"
     assert provider.calls[0]["tags"] == ["slack", "planning"]
     draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
     assert draft["memory_candidate_ids"] == ["cand-1"]
-    assert draft["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred-os"]
+    assert draft["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred"]
 
 
 def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -> None:
@@ -438,11 +596,11 @@ def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -
                     "<@UALFRED> title: Queue Slack planning memories\n"
                     "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
                     "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/alfred\n"
                     "acceptance: the local draft records the memory candidate id for review\n"
                     "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
                     "out of scope: automatic promotion\n"
-                    "question: none"
+                    "open questions: none"
                 ),
                 "ts": "1716480100.000001",
             },
@@ -459,7 +617,7 @@ def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -
                 "text": (
                     "acceptance: repeated ready revisions do not queue duplicate memory candidates\n"
                     "test: run listener memory tests\n"
-                    "question: none"
+                    "open questions: none"
                 ),
                 "ts": "1716480102.000001",
                 "thread_ts": "1716480100.000001",
@@ -472,7 +630,7 @@ def test_ready_slack_revision_reuses_existing_memory_candidate(tmp_path: Path) -
     assert len(provider.calls) == 1
     payload = json.loads(Path(created.draft_path).read_text(encoding="utf-8"))
     assert payload["memory_candidate_ids"] == ["cand-1"]
-    assert payload["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred-os"]
+    assert payload["memory_candidate_keys"] == ["slack-planning:luminik-io/alfred"]
 
 
 def test_slack_memory_candidate_queue_requires_ready_draft(tmp_path: Path) -> None:
@@ -510,11 +668,11 @@ def test_slack_memory_candidate_queue_can_be_disabled(
             "title: Queue Slack planning memories\n"
             "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
             "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-            "repo: luminik-io/alfred-os\n"
+            "repo: luminik-io/alfred\n"
             "acceptance: the local draft records the memory candidate id for review\n"
             "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
             "out of scope: automatic promotion\n"
-            "question: none",
+            "open questions: none",
             event_id="EvMemoryOff",
         )
     )
@@ -540,11 +698,11 @@ def test_slack_memory_candidate_queue_supports_legacy_writer(tmp_path: Path) -> 
             "title: Queue Slack planning memories\n"
             "problem: Operators need Alfred to preserve useful Slack planning decisions without manual notes.\n"
             "desired: Alfred queues a reviewable memory candidate after a scoped Slack draft is saved.\n"
-            "repo: luminik-io/alfred-os\n"
+            "repo: luminik-io/alfred\n"
             "acceptance: the local draft records the memory candidate id for review\n"
             "test: run the Slack listener unit test and verify no lesson is promoted automatically\n"
             "out of scope: automatic promotion\n"
-            "question: none",
+            "open questions: none",
             event_id="EvLegacyMemory",
         )
     )
@@ -557,100 +715,7 @@ def test_slack_memory_candidate_queue_supports_legacy_writer(tmp_path: Path) -> 
     assert draft["memory_candidate_ids"] == ["1"]
 
 
-def test_operator_can_trust_collaborator_without_listener_restart(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
-    poster = Poster()
-    listener = SlackPlanningListener(
-        state_root=tmp_path,
-        poster=poster,
-    )
-
-    trust_result = listener.handle_payload(
-        _dm("trust <@UTEAM1>", event_id="EvTrust", user="UOPERATOR")
-    )
-    assert trust_result.handled is True
-    assert trust_result.action == "control_trust"
-
-    draft_result = listener.handle_payload(
-        _dm("Build a cleaner onboarding checklist", event_id="EvTeam", user="UTEAM1")
-    )
-
-    assert draft_result.handled is True
-    assert draft_result.action == "draft_created"
-    assert list((tmp_path / "planning-drafts").glob("*.json"))
-
-
-def test_trusted_collaborator_cannot_trust_another_user(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
-    poster = Poster()
-    listener = SlackPlanningListener(
-        state_root=tmp_path,
-        poster=poster,
-    )
-    listener.handle_payload(_dm("trust <@UTEAM1>", event_id="EvTrust", user="UOPERATOR"))
-
-    result = listener.handle_payload(_dm("trust <@UTEAM2>", event_id="EvTrust2", user="UTEAM1"))
-
-    assert result.handled is True
-    assert result.action == "control_trust_rejected"
-    assert "Only the operator" in poster.messages[-1]["text"]
-
-
-def test_prose_dm_still_creates_planning_draft(tmp_path: Path) -> None:
-    poster = Poster()
-    listener = SlackPlanningListener(
-        state_root=tmp_path,
-        poster=poster,
-        trusted_user_ids=("U1",),
-    )
-    result = listener.handle_payload(
-        _dm("title: Build a CSV export\nrepo: acme-org/api\ndesired: users can export rows")
-    )
-    assert result.action == "draft_created"
-    assert list((tmp_path / "planning-drafts").glob("*.json"))
-
-
-def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
-    poster = Poster()
-    listener = SlackPlanningListener(
-        state_root=tmp_path,
-        poster=poster,
-        trusted_user_ids=("U1",),
-    )
-    payload = {
-        "event_id": "EvDraft",
-        "event": {
-            "type": "app_mention",
-            "channel": "C1",
-            "user": "U1",
-            "text": (
-                "<@UALFRED> title: Improve Slack planning\n"
-                "problem: Users need a safer way to describe work before agents build.\n"
-                "repo: luminik-io/alfred-os\n"
-                "desired: Alfred saves a draft and asks for missing acceptance criteria."
-            ),
-            "ts": "1716480010.000001",
-        },
-    }
-
-    result = listener.handle_payload(payload)
-
-    assert result.handled is True
-    assert result.action == "draft_created"
-    assert result.draft_path
-    draft = json.loads(Path(result.draft_path).read_text(encoding="utf-8"))
-    assert draft["draft"]["title"] == "Improve Slack planning"
-    assert draft["draft"]["repos"] == ["luminik-io/alfred-os"]
-    assert "Planning draft saved" in poster.messages[0]["text"]
-
-
-def test_app_mention_save_failure_is_acknowledged(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
+def test_app_mention_save_failure_is_acknowledged(tmp_path: Path, monkeypatch) -> None:
     poster = Poster()
     listener = SlackPlanningListener(
         state_root=tmp_path,
@@ -822,11 +887,11 @@ def test_draft_thread_reply_can_resolve_open_questions(tmp_path: Path) -> None:
                 "text": (
                     "<@UALFRED> title: Improve Slack planning\n"
                     "problem: Operators need a safe way to discuss Alfred work before agents build.\n"
-                    "repo: luminik-io/alfred-os\n"
+                    "repo: luminik-io/alfred\n"
                     "desired: Alfred saves a draft and keeps work paused until questions are resolved.\n"
                     "acceptance: unresolved questions keep the draft in needs-scope state\n"
                     "test: run listener revision tests\n"
-                    "question: should this include PR follow-up replies too?"
+                    "open question: should this include PR follow-up replies too?"
                 ),
                 "ts": "1716480040.000001",
             },
@@ -1033,7 +1098,7 @@ def test_listener_once_uses_env_trusted_users_by_default(
                     "text": (
                         "<@UALFRED> title: Improve Slack planning\n"
                         "problem: Operators need local listener tests to match the live listener.\n"
-                        "repo: luminik-io/alfred-os\n"
+                        "repo: luminik-io/alfred\n"
                         "desired: The once command honors the configured operator by default."
                     ),
                     "ts": "1716480099.000001",
@@ -1056,3 +1121,612 @@ def test_listener_once_uses_env_trusted_users_by_default(
     assert result["handled"] is True
     assert result["action"] == "draft_created"
     assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_default_control_handler_reads_local_planning_inbox(tmp_path: Path) -> None:
+    followups = tmp_path / "followups"
+    followups.mkdir(parents=True)
+    (followups / "slack-C1-1716480000.md").write_text(
+        "# Follow-up for PR feedback\n\nPlease add the missing docs check.\n",
+        encoding="utf-8",
+    )
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_dm("plans"))
+
+    assert result.handled is True
+    assert result.action == "control_plans"
+    assert "Planning inbox" in poster.messages[-1]["text"]
+    assert "slack-C1-1716480000" in poster.messages[-1]["text"]
+
+
+def test_plan_prefixed_prose_still_creates_planning_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+
+    result = listener.handle_payload(_dm("plan the billing migration with clearer retry copy"))
+
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert list((tmp_path / "planning-drafts").glob("*.json"))
+
+
+def test_operator_can_trust_collaborator_without_listener_restart(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.delenv("ALFRED_TRUSTED_SLACK_USER_IDS", raising=False)
+    poster = Poster()
+    listener = SlackPlanningListener(state_root=tmp_path, poster=poster)
+
+    trusted = listener.handle_payload(
+        {
+            "event_id": "EvTrustTeam",
+            "event": {
+                "type": "message",
+                "channel": "D1",
+                "channel_type": "im",
+                "user": "UOPERATOR",
+                "text": "trust <@UTEAM1>",
+                "ts": "1716480100.000001",
+            },
+        }
+    )
+
+    assert trusted.handled is True
+    assert trusted.action == "control_trust"
+    assert "UTEAM1" in poster.messages[-1]["text"]
+
+    created = listener.handle_payload(
+        {
+            "event_id": "EvTeamDraft",
+            "event": {
+                "type": "message",
+                "channel": "D2",
+                "channel_type": "im",
+                "user": "UTEAM1",
+                "text": (
+                    "title: Improve local planning\n"
+                    "problem: A teammate needs to shape work without touching code.\n"
+                    "desired: Alfred saves a scoped draft for the operator."
+                ),
+                "ts": "1716480101.000001",
+            },
+        }
+    )
+
+    assert created.handled is True
+    assert created.action == "draft_created"
+
+
+def test_trusted_collaborator_cannot_trust_another_user(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UTEAM1")
+    poster = Poster()
+    listener = SlackPlanningListener(state_root=tmp_path, poster=poster)
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvTrustDenied",
+            "event": {
+                "type": "message",
+                "channel": "D2",
+                "channel_type": "im",
+                "user": "UTEAM1",
+                "text": "trust <@UTEAM2>",
+                "ts": "1716480102.000001",
+            },
+        }
+    )
+
+    assert result.handled is True
+    assert result.action == "control_trust_rejected"
+    assert "Only the operator" in poster.messages[-1]["text"]
+
+
+# ---------------------------------------------------------------------------
+# Conversational intent router (additive fallback) + safety gate
+# ---------------------------------------------------------------------------
+
+
+class CardPoster:
+    """Poster that returns an incrementing ``ts`` so the card can be tracked."""
+
+    def __init__(self) -> None:
+        self.messages: list[dict] = []
+        self._n = 0
+
+    def chat_postMessage(self, **kwargs):
+        self.messages.append(kwargs)
+        self._n += 1
+        return {"ok": True, "ts": f"170000000{self._n}.000001"}
+
+    def card_ts(self) -> str:
+        # The confirmation card is the first message the router posts.
+        return f"170000000{1}.000001"
+
+
+class _SlackResponseLike:
+    """Mimics slack_sdk's SlackResponse: dict-like (``.get`` / ``[]``) but not a dict."""
+
+    def __init__(self, data: dict) -> None:
+        self._data = data
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+
+class SlackResponsePoster(CardPoster):
+    """CardPoster whose post returns a dict-like SlackResponse, not a real dict."""
+
+    def chat_postMessage(self, **kwargs):
+        self.messages.append(kwargs)
+        self._n += 1
+        return _SlackResponseLike({"ok": True, "ts": f"170000000{self._n}.000001"})
+
+
+def _intent_engine(payload: dict):
+    """A mock LLM dispatch that always returns ``payload`` as JSON."""
+
+    def _invoke(_prompt: str) -> str:
+        return json.dumps(payload)
+
+    return _invoke
+
+
+def _intent_dm(text: str, *, event_id: str = "EvIntent", user: str = "U1") -> dict:
+    return {
+        "event_id": event_id,
+        "event": {
+            "type": "message",
+            "channel": "D9",
+            "channel_type": "im",
+            "user": user,
+            "text": text,
+            "ts": "1716480500.000001",
+        },
+    }
+
+
+def _reaction(
+    *,
+    reaction: str,
+    ts: str,
+    user: str,
+    channel: str = "D9",
+    event_id: str = "EvReact",
+) -> dict:
+    return {
+        "event_id": event_id,
+        "event": {
+            "type": "reaction_added",
+            "user": user,
+            "reaction": reaction,
+            "item": {"type": "message", "channel": channel, "ts": ts},
+        },
+    }
+
+
+def _intent_catalog():
+    from slack_intent import RepoCatalog
+
+    return RepoCatalog.build(
+        {"acme-frontend": "frontend", "acme-backend": "backend"},
+        gh_org="acme-io",
+    )
+
+
+def test_router_explicitly_disabled_falls_through_to_planning(tmp_path: Path, monkeypatch) -> None:
+    # The router is ON by default in production, but ALFRED_INTENT_ROUTER_ENABLED=0
+    # explicitly disables it. With no intent_engine injected and the flag off,
+    # the resolver returns None: the router is inert and free text opens a
+    # planning draft exactly as before. (The conftest autouse fixture already
+    # pins the flag off for the default test environment; we set it here too so
+    # the test is explicit about the contract it asserts.)
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "0")
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    result = listener.handle_payload(_intent_dm("can you queue the web app issue 7"))
+    assert result.handled is True
+    assert result.action == "draft_created"
+
+
+def test_status_query_answered_directly_without_confirmation(tmp_path: Path) -> None:
+    poster = CardPoster()
+
+    class StubControl:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def handle(self, text, *, trusted, actor_user_id=None):
+            self.calls.append(text)
+            return SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*\nall green", detail=""
+            )
+
+    control = StubControl()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+    )
+    result = listener.handle_payload(_intent_dm("how's the fleet doing?"))
+    assert result.handled is True
+    assert result.action == "intent_status"
+    # Read-only: it answered, it never registered a confirmation thread.
+    assert "Fleet status" in poster.messages[-1]["text"]
+    assert "status" in control.calls
+
+
+def test_mutating_intent_posts_card_and_does_not_execute(tmp_path: Path, monkeypatch) -> None:
+    """The central safety gate: a queue intent NEVER runs from prose alone.
+
+    The router posts a confirmation card and registers it, but no queue/hold
+    side effect happens. We hard-fail if ``set_issue_pickup`` is ever called.
+    """
+    import issue_queue
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("set_issue_pickup must not run without confirmation")
+
+    monkeypatch.setattr(issue_queue, "set_issue_pickup", _must_not_run)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+    )
+
+    result = listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12 for me"))
+
+    assert result.handled is True
+    assert result.action == "intent_confirmation_posted"
+    # A card was posted summarizing the interpreted action.
+    card = poster.messages[-1]
+    assert "acme-io/acme-frontend#12" in card["text"]
+    assert card.get("blocks")
+    # And a pending record is registered keyed on the card ts.
+    from slack_thread_registry import SlackThreadRegistry
+
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    record = registry.lookup("D9", poster.card_ts())
+    assert record is not None
+    assert record.kind == "conversational_action"
+    assert record.status == "awaiting_confirmation"
+    assert record.parent_repo == "acme-io/acme-frontend"
+    assert record.parent_issue == 12
+
+
+def test_confirmation_card_registers_with_slack_response_object(
+    tmp_path: Path,
+) -> None:
+    # In production chat_postMessage returns a SlackResponse (dict-like, not a
+    # real dict). The card ts must still register so the operator's later reaction
+    # resolves; otherwise prose-driven confirmation silently breaks.
+    poster = SlackResponsePoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+    )
+
+    result = listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12 for me"))
+    assert result.action == "intent_confirmation_posted"
+
+    from slack_thread_registry import SlackThreadRegistry
+
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    record = registry.lookup("D9", poster.card_ts())
+    assert record is not None
+    assert record.kind == "conversational_action"
+    assert record.parent_issue == 12
+
+
+def test_confirm_reaction_from_operator_executes_action(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+
+    import issue_queue
+
+    calls: list[dict] = []
+
+    def _capture(repo, number, *, hold):
+        calls.append({"repo": repo, "number": number, "hold": hold})
+        return True, f"{repo}#{number} queued for Alfred"
+
+    monkeypatch.setattr(issue_queue, "set_issue_pickup", _capture)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+    )
+
+    posted = listener.handle_payload(
+        _intent_dm("can you queue acme-io/acme-frontend#12", user="UFOUNDER")
+    )
+    assert posted.action == "intent_confirmation_posted"
+    assert calls == []  # nothing ran yet
+
+    # The operator reacts to confirm on the card message.
+    confirmed = listener.handle_payload(
+        _reaction(
+            reaction="white_check_mark",
+            ts=poster.card_ts(),
+            user="UFOUNDER",
+        )
+    )
+    assert confirmed.handled is True
+    assert confirmed.action == "intent_queue_issue"
+    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "hold": False}]
+
+
+def test_confirm_reaction_from_non_operator_does_not_execute(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+
+    import issue_queue
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("only the operator may confirm a conversational action")
+
+    monkeypatch.setattr(issue_queue, "set_issue_pickup", _must_not_run)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+    )
+    listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12", user="UFOUNDER"))
+
+    # A trusted collaborator (not the operator) reacts: it must NOT execute.
+    result = listener.handle_payload(
+        _reaction(
+            reaction="white_check_mark",
+            ts=poster.card_ts(),
+            user="UTEAM",
+        )
+    )
+    assert result.handled is False
+    assert "workspace owner" in result.detail.lower()
+
+
+def test_cancel_reaction_discards_without_executing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+
+    import issue_queue
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("cancel must not execute the action")
+
+    monkeypatch.setattr(issue_queue, "set_issue_pickup", _must_not_run)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "hold_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 8,
+                "confidence": 0.9,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+    )
+    listener.handle_payload(
+        _intent_dm("please put acme-io/acme-backend#8 on hold", user="UFOUNDER")
+    )
+
+    result = listener.handle_payload(_reaction(reaction="x", ts=poster.card_ts(), user="UFOUNDER"))
+    assert result.handled is True
+    assert result.action == "intent_cancelled"
+    assert "Cancelled" in poster.messages[-1]["text"]
+
+
+def test_confirm_reaction_is_idempotent(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+
+    import issue_queue
+
+    calls: list[dict] = []
+
+    def _capture(repo, number, *, hold):
+        calls.append({"repo": repo, "number": number, "hold": hold})
+        return True, f"{repo}#{number} queued"
+
+    monkeypatch.setattr(issue_queue, "set_issue_pickup", _capture)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+    )
+    listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12", user="UFOUNDER"))
+    first = listener.handle_payload(
+        _reaction(
+            reaction="white_check_mark",
+            ts=poster.card_ts(),
+            user="UFOUNDER",
+            event_id="EvReact1",
+        )
+    )
+    second = listener.handle_payload(
+        _reaction(
+            reaction="white_check_mark",
+            ts=poster.card_ts(),
+            user="UFOUNDER",
+            event_id="EvReact2",
+        )
+    )
+    assert first.action == "intent_queue_issue"
+    assert second.handled is False  # already resolved
+    assert len(calls) == 1  # executed exactly once
+
+
+def test_ambiguous_mutating_intent_asks_and_does_not_post_card(tmp_path: Path, monkeypatch) -> None:
+    import issue_queue
+
+    def _must_not_run(*args, **kwargs):
+        raise AssertionError("ambiguous intent must not execute")
+
+    monkeypatch.setattr(issue_queue, "set_issue_pickup", _must_not_run)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "queue_issue", "confidence": 0.85}),
+        repo_catalog=_intent_catalog(),
+    )
+    # No repo / no issue resolvable -> clarify, not a card.
+    result = listener.handle_payload(_intent_dm("can you queue that thing for me"))
+    assert result.handled is True
+    assert result.action == "intent_clarify"
+    # The reply is a question, not a confirmation card.
+    assert not poster.messages[-1].get("blocks")
+
+
+def test_command_shaped_message_uses_conversation_router_first(tmp_path: Path) -> None:
+    class StubControl:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def handle(self, text, *, trusted, actor_user_id=None):
+            self.calls.append(text)
+            return SimpleNamespace(handled=True, action="status", text="*Fleet status*", detail="")
+
+    control = StubControl()
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+    )
+    result = listener.handle_payload(_intent_dm("status"))
+    assert result.handled is True
+    assert result.action == "intent_status"
+    assert control.calls == ["status"]
+
+
+def test_command_fallback_runs_when_router_does_not_classify(tmp_path: Path) -> None:
+    class StubControl:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def handle(self, text, *, trusted, actor_user_id=None):
+            self.calls.append(text)
+            return SimpleNamespace(handled=True, action="status", text="*Fleet status*", detail="")
+
+    control = StubControl()
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "unknown", "confidence": 0.2}),
+        repo_catalog=_intent_catalog(),
+    )
+
+    result = listener.handle_payload(_intent_dm("status"))
+
+    assert result.handled is True
+    assert result.action == "control_status"
+    assert control.calls == ["status"]
+
+
+def test_low_confidence_mutating_intent_falls_through_to_planning(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "confidence": 0.1,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+    )
+    result = listener.handle_payload(_intent_dm("maybe queue acme-io/acme-frontend#12?"))
+    # Sub-threshold confidence is unknown -> safe planning default.
+    assert result.handled is True
+    assert result.action == "draft_created"

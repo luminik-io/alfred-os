@@ -4,7 +4,8 @@ Native Mac/Linux control center for a local Alfred install.
 
 Slack remains Alfred's collaboration surface. This app is for local trust and
 repair: what needs attention, which plans are waiting, which runs failed, which
-memory candidates need review, and which local actions are safe to run next.
+memory candidates need review, which Slack collaborators are trusted, and which
+local actions are safe to run next.
 
 The app is the friendly path into Alfred. The CLI remains fully supported for
 automation, debugging, and users who prefer a terminal.
@@ -19,25 +20,53 @@ Alfred installs in layers, and this client is the optional top one:
    state. The desktop client prefers `http://127.0.0.1:7010` and falls
    back to `http://127.0.0.1:7000`.
 3. **Alfred Desktop (this app)**: the optional native control plane: a menu-bar
-   tray, Home command center, Compose planning inbox, Fleet controls, Logs, and
-   a narrow set of safe local actions. It does not run agents itself; it reads
-   `alfred serve` and shells a small allowlist of `alfred` CLI verbs.
+   tray, five primary destinations (Review, Board, Compose, Fleet, Set up), a
+   command palette, and a narrow set of safe local actions. It does not run
+   agents itself; it reads `alfred serve` and shells a small allowlist of
+   `alfred` CLI verbs.
 
 You can run the fleet headless with just the CLI. The desktop app is a
 convenience surface on top, not a dependency.
 
-The Home tab answers what needs attention, including blocked plans, stale
-workers, memory review candidates, and recent runs. Compose is the in-app
-spec/plan authoring surface: describe the work in plain language, and Alfred's
-planning assistant scores how ready it is to run, surfaces the clarifying
-questions that are still open, and saves a draft to the planning inbox. Each
-submission refines the same draft.
+The app navigation is five primary destinations, each a full page with its own
+in-page tabs where it needs depth, never a long scroll and never a slide-over
+drawer. The design north-star is in [`CLIENT_REDESIGN.md`](CLIENT_REDESIGN.md).
 
-Fleet handles pause, resume, run-once, and dry-run actions. Logs combines
-notifications and firing timelines. The Setup gear keeps the repair path: it can
-start the local runtime, run common Alfred checks in-app, manage trusted Slack
-collaborators, and keep the underlying CLI commands visible as advanced detail
-for users who want to inspect the runtime.
+**Review** is the home / heartbeat: a pinned cost / health strip over three
+in-page lanes. **Needs you** is decisions and failures waiting on the operator,
+**Activity** is what is running and scheduled, and **Shipped** is merged work
+(defaulting to the last 24h, with a 24h / 7d / 14d filter). Shipped is backed by
+`GET /api/shipped` and renders the same readable cards as the Slack board; a card
+opens a request lifecycle thread (Intake -> Plan -> Queued -> Building ->
+Shipped). The cards deep-link to GitHub for the actual code review; the app never
+embeds a diff or merge UI.
+
+**Board** is the first-class Kanban (Queued / In progress / Shipped) with
+per-card Queue / Hold / Done actions and a "queue an issue" composer (Done closes
+the issue via GitHub's native closed state). It shares the board state with
+Review's Shipped lane and the Slack board.
+
+**Compose** is plain-language request intake: describe the work in plain words,
+and Alfred's planning assistant scores how ready it is to run, surfaces the
+clarifying questions still open, and saves a draft to the planning inbox. Each
+submission refines the same draft. The plain-mode spec coach is the default when
+the runtime starts with `ALFRED_INTAKE_PROFILE=plain`.
+
+**Fleet** is the operator-depth page, organized as in-page tabs (this replaces
+the old slide-over Operator drawer). **Agents** carries pause, resume, run-once,
+and dry-run controls per codename. **Logs** has an **Activity** feed plus a
+**Latest run** view that shows one agent's most recent captured run, refreshed on
+the dashboard poll rather than streamed byte-by-byte. **Lessons** shows
+reviewable memory candidates with promote / reject and failure-pattern harvest.
+**Plans** is the plan and issue detail inspector.
+
+**Set up** is the client-owned, onboarding-first surface and the repair path: it
+detects installed engine CLIs, connects GitHub and picks repos, starts the local
+runtime, runs common Alfred checks in-app, adds or removes local trusted Slack
+collaborators, and keeps the underlying CLI commands visible as advanced detail.
+
+A command palette (Cmd+K) navigates anywhere, and a dark/light "Wayne
+Enterprises" theme toggle lives in the top bar.
 
 ## Run locally
 
@@ -146,16 +175,20 @@ the app launch without that step. Linux artifacts are unaffected.
 
 The frontend does not call arbitrary URLs. The Tauri command only allows an
 allowlisted set of Alfred JSON API paths on `http://localhost`,
-`http://127.0.0.1`, or `http://[::1]`: read-only GET paths plus a narrow set of
-POST endpoints (follow-up planning actions and the Compose draft endpoint
-`POST /api/plans/draft`). Local plan and firing detail stays in native
-inspector panes; explicit Slack and GitHub links open outside the app through
-Tauri's opener plugin.
+`http://127.0.0.1`, or `http://[::1]`: read-only GET paths (including
+`GET /api/shipped` for the Kanban board) plus a narrow set of POST endpoints
+(follow-up planning actions, the Compose draft endpoint `POST /api/plans/draft`,
+the Kanban queue control `POST /api/queue`, and local Slack trusted-user
+updates). `POST /api/queue` mutates fleet/repo state, so it requires the
+operator's per-launch token via the `X-Alfred-Token` header, not just a
+same-origin request. Local plan and firing detail stays in native inspector
+panes; explicit Slack and GitHub links open outside the app through Tauri's
+opener plugin.
 
 State-changing controls use a narrow native allowlist. The app can start the
 local runtime, run fleet/auth/agent checks, pause, resume, run once, run safe
 agent dry-runs, run memory health checks, check Redis memory, author planning
-drafts from the Compose tab, and call local follow-up planning endpoints. It
-does not expose arbitrary shell execution. Broader lock-clearing and
-memory-promotion actions should keep the same contract: explicit preview,
-affected path, result, and rollback hint.
+drafts from the Compose tab, call local follow-up planning endpoints, and update
+the local Slack trust file. It does not expose arbitrary shell execution.
+Broader lock-clearing and memory-promotion actions should keep the same
+contract: explicit preview, affected path, result, and rollback hint.

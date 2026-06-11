@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -30,6 +30,8 @@ function candidate(overrides: Partial<MemoryCandidate> = {}): MemoryCandidate {
 function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
     loadedAt: new Date("2026-05-30T12:00:00Z"),
+    shipped: null,
+    schedule: [],
     status: { agents: [], total_today: 0, reliability: { status: "ok" } },
     actions: {
       status: "ok",
@@ -47,7 +49,7 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 }
 
 describe("MemoryView", () => {
-  it("renders candidates and dispatches review actions", async () => {
+  it("renders a lesson as a plain-language card and keeps the keep/dismiss actions", async () => {
     const onMemoryCandidateAction = vi.fn();
     const user = userEvent.setup();
 
@@ -62,17 +64,82 @@ describe("MemoryView", () => {
       />,
     );
 
+    // The lesson body is the headline, framed in plain words around it.
     expect(screen.getByRole("heading", { name: /use request fixtures/i })).toBeInTheDocument();
-    expect(screen.getByText("your-org/api")).toBeInTheDocument();
+    // Provenance reads in plain language: where it came from + who noticed it.
+    expect(screen.getByText(/from a slack conversation/i)).toBeInTheDocument();
+    expect(screen.getByText(/about your-org\/api/i)).toBeInTheDocument();
+    expect(screen.getByText(/noticed by lucius/i)).toBeInTheDocument();
+    // There is an explanation of what keeping a lesson does.
+    expect(screen.getByText(/keeping a lesson lets alfred use it/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /^promote$/i }));
+    await user.click(screen.getByRole("button", { name: /keep this lesson/i }));
     expect(onMemoryCandidateAction).toHaveBeenCalledWith("mem:1", "promote");
 
-    await user.click(screen.getByRole("button", { name: /^reject$/i }));
+    await user.click(screen.getByRole("button", { name: /dismiss/i }));
     expect(onMemoryCandidateAction).toHaveBeenCalledWith("mem:1", "reject");
   });
 
-  it("runs health and Redis actions from the side panel", async () => {
+  it("hides the raw JSON evidence behind a closed disclosure", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot()}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    const evidenceSummary = screen.getByText("Technical detail");
+    const evidenceDetails = evidenceSummary.closest("details");
+    expect(evidenceDetails).not.toBeNull();
+    // Disclosure is closed by default: the raw JSON is not surfaced up front.
+    expect(evidenceDetails).not.toHaveAttribute("open");
+  });
+
+  it("maps planning and repeated-failure sources to plain origins", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot({
+          memoryCandidates: {
+            rows: [
+              candidate({ id: "mem:2", source: "planning", body: "Planning lesson." }),
+              candidate({ id: "mem:3", source: "memory_candidate", body: "Failure lesson." }),
+            ],
+          },
+        })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/from planning a request/i)).toBeInTheDocument();
+    expect(screen.getByText(/from a repeated problem alfred hit/i)).toBeInTheDocument();
+  });
+
+  it("shows a calm empty state when nothing has been learned", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot({ memoryCandidates: { rows: [] } })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/alfred has not learned anything new yet/i),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the Redis / memory probes behind a closed Advanced disclosure", async () => {
     const onRunLocalAction = vi.fn();
     const user = userEvent.setup();
 
@@ -87,9 +154,20 @@ describe("MemoryView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /run memory check/i }));
-    await user.click(screen.getByRole("button", { name: /preview redis sync/i }));
-    await user.click(screen.getByRole("button", { name: /queue failure lessons/i }));
+    // The Advanced disclosure is present but closed by default, so the Redis
+    // plumbing does not lead the surface.
+    const advancedSummary = screen.getByText(/advanced \(technical detail\)/i);
+    const advancedDetails = advancedSummary.closest("details");
+    expect(advancedDetails).not.toBeNull();
+    expect(advancedDetails).not.toHaveAttribute("open");
+
+    // The probes still exist and still dispatch the real native actions once
+    // the operator opens the disclosure.
+    await user.click(advancedSummary);
+    const advanced = within(advancedDetails as HTMLElement);
+    await user.click(advanced.getByRole("button", { name: /run memory check/i }));
+    await user.click(advanced.getByRole("button", { name: /preview redis sync/i }));
+    await user.click(advanced.getByRole("button", { name: /queue failure lessons/i }));
 
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "brain_doctor" });
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "redis_sync_preview" });

@@ -17,6 +17,16 @@ export function firstLink(text: string, matcher: RegExp): string | null {
   return urls.find((url) => matcher.test(url)) || null;
 }
 
+/** Parse "owner/repo#123" or a GitHub issue URL into a repo + number. */
+export function parseIssueRef(text: string): { repo: string; number: number } | null {
+  const trimmed = text.trim();
+  const url = trimmed.match(/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)/i);
+  if (url) return { repo: url[1], number: Number(url[2]) };
+  const slug = trimmed.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/);
+  if (slug) return { repo: slug[1], number: Number(slug[2]) };
+  return null;
+}
+
 export function isSafeExternalUrl(href: string): boolean {
   try {
     const url = new URL(href);

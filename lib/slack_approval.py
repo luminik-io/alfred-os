@@ -74,7 +74,7 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 from labels import LABEL_AGENT_PLAN_PENDING_APPROVAL
 
@@ -333,7 +333,7 @@ def default_slack_client(token: str | None = None) -> SlackClient:
             "or pre-populate the cache at "
             f"$ALFRED_HOME/state/slack-bot-token.cache (or {ENV_TOKEN_CACHE})."
         )
-    return WebClient(token=resolved)
+    return cast(SlackClient, WebClient(token=resolved))
 
 
 # ---------- The gate ----------

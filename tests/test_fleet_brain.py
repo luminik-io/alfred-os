@@ -665,6 +665,23 @@ def test_default_db_path_respects_explicit_env(
     assert default_db_path() == target
 
 
+def test_fleetbrain_from_env_respects_public_paths(tmp_path: Path) -> None:
+    explicit = tmp_path / "explicit-from-env.db"
+    brain = FleetBrain.from_env(
+        {
+            "ALFRED_FLEET_BRAIN_DB": str(explicit),
+            "ALFRED_HOME": str(tmp_path / "ignored-home"),
+        }
+    )
+    brain.reflect(codename="batman", repo="org/api", body="remember the explicit path")
+    assert explicit.exists()
+
+    home = tmp_path / "alfred-home"
+    home_brain = FleetBrain.from_env({"ALFRED_HOME": str(home)})
+    home_brain.reflect(codename="lucius", repo="org/web", body="remember the home path")
+    assert (home / "fleet-brain.db").exists()
+
+
 # ---------------------------------------------------------------------------
 # ULID-ish identifier sortability
 # ---------------------------------------------------------------------------

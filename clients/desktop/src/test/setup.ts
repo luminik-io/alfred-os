@@ -24,6 +24,22 @@ const storage = memoryStorage();
 Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
 
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => undefined;
+}
+
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => undefined;
+}
+
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => undefined;
+}
+
 // The Tauri opener plugin is not available in jsdom; stub it so components
 // that import it (via lib/links) can render without a real Tauri runtime.
 vi.mock("@tauri-apps/plugin-opener", () => ({

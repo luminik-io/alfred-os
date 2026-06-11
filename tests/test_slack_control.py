@@ -64,6 +64,11 @@ class FakeRunner:
         self.calls.append(argv)
         if len(argv) >= 3 and argv[1] == "brain":
             return self._brain(argv[2:])
+        if len(argv) >= 2 and argv[1] == "schedule":
+            return RunResult(
+                returncode=0,
+                stdout=f"alfred schedule: {' '.join(argv[2:])}\n",
+            )
         if "status" in argv and "--json" in argv:
             return RunResult(returncode=0, stdout=self.status)
         # pause/resume
@@ -85,12 +90,12 @@ class FakeRunner:
                 stdout=json.dumps(
                     [
                         {
-                            "id": "cand-1",
-                            "codename": "lucius",
-                            "repo": "luminik-io/alfred-os",
+                            "id": 101,
+                            "agent": "lucius",
+                            "repo": "luminik-io/alfred",
                             "body": "Keep Slack memory candidates reviewable.",
                             "confidence": 0.82,
-                            "status": "candidate",
+                            "status": "pending",
                         }
                     ]
                 ),
@@ -101,9 +106,9 @@ class FakeRunner:
                 stdout=json.dumps(
                     [
                         {
-                            "candidate_id": "cand-2",
-                            "codename": "drake",
-                            "repo": "luminik-io/alfred-os",
+                            "candidate_id": 102,
+                            "agent": "drake",
+                            "repo": "luminik-io/alfred",
                             "body": "Specs need acceptance criteria before implementation.",
                             "score": 0.91,
                         }
@@ -126,7 +131,12 @@ class FakeRunner:
             return RunResult(
                 returncode=0,
                 stdout=json.dumps(
-                    {"dry_run": "--dry-run" in argv, "matched": 3, "synced": 3, "failed": []}
+                    {
+                        "dry_run": "--dry-run" in argv,
+                        "matched": 3,
+                        "synced": 3,
+                        "failed": [],
+                    }
                 ),
             )
         if argv[0] == "harvest":
@@ -140,9 +150,10 @@ class FakeRunner:
                         "proposals": [
                             {
                                 "status": "queued" if "--apply" in argv else "preview",
-                                "candidate_id": "cand-harvest" if "--apply" in argv else None,
+                                "candidate_id": 104 if "--apply" in argv else None,
+                                "agent": "huntress",
                                 "codename": "huntress",
-                                "repo": "luminik-io/alfred-os",
+                                "repo": "luminik-io/alfred",
                                 "body": "When huntress repeatedly hits error_timeout, check local setup.",
                             }
                         ],
@@ -150,28 +161,11 @@ class FakeRunner:
                 ),
             )
         if argv[0] == "propose":
-            if "--agent" in argv:
-                repo = argv[argv.index("--repo") + 1]
-                body = argv[argv.index("--body") + 1]
-            elif "--" in argv:
-                separator = argv.index("--")
-                repo = argv[separator - 1]
-                body = argv[separator + 1]
-            else:
-                repo = argv[2]
-                body = argv[3]
-                if body.startswith("--"):
-                    return RunResult(returncode=2, stderr="unrecognized arguments")
+            if "--agent" not in argv:
+                return RunResult(returncode=2, stderr="unsupported oss-style args")
             return RunResult(
                 returncode=0,
-                stdout=json.dumps(
-                    {
-                        "id": "cand-new",
-                        "repo": repo,
-                        "body": body,
-                        "status": "candidate",
-                    }
-                ),
+                stdout="memory_candidate id=103 status=pending\n",
             )
         if argv[0] in {"promote", "reject"}:
             return RunResult(returncode=0, stdout=json.dumps({"id": argv[1], "status": argv[0]}))
@@ -224,9 +218,9 @@ def test_leading_verb_parses() -> None:
     assert parse_control_command("runs").verb == "runs"
     assert parse_control_command("plans").verb == "plans"
     assert parse_control_command("memory").verb == "memory"
-    cmd = parse_control_command("memory promote cand-1")
-    assert cmd is not None and cmd.verb == "memory" and cmd.arg == "promote cand-1"
-    cmd = parse_control_command("remember luminik-io/alfred-os: keep it reviewable")
+    cmd = parse_control_command("memory promote 101")
+    assert cmd is not None and cmd.verb == "memory" and cmd.arg == "promote 101"
+    cmd = parse_control_command("remember luminik-io/alfred: keep it reviewable")
     assert cmd is not None and cmd.verb == "remember"
     cmd = parse_control_command("pause lucius")
     assert cmd is not None and cmd.verb == "pause" and cmd.arg == "lucius"
@@ -238,6 +232,10 @@ def test_leading_verb_parses() -> None:
     assert cmd is not None and cmd.verb == "dry-run" and cmd.arg == "all"
     cmd = parse_control_command("dryrun lucius")
     assert cmd is not None and cmd.verb == "dry-run" and cmd.arg == "lucius"
+    cmd = parse_control_command("schedule show lucius")
+    assert cmd is not None and cmd.verb == "schedule" and cmd.arg == "show lucius"
+    cmd = parse_control_command("schedule set lucius 20m")
+    assert cmd is not None and cmd.verb == "schedule" and cmd.arg == "set lucius 20m"
     cmd = parse_control_command("plan followup-1")
     assert cmd is not None and cmd.verb == "plan" and cmd.arg == "followup-1"
     cmd = parse_control_command("draft followup-1")
@@ -246,7 +244,7 @@ def test_leading_verb_parses() -> None:
     assert cmd is not None and cmd.verb == "handled" and cmd.arg == "followup-1"
     cmd = parse_control_command("trust <@U2DEF>")
     assert cmd is not None and cmd.verb == "trust" and cmd.arg == "U2DEF"
-    cmd = parse_control_command("<@UALFRED> untrust <@U2DEF|teammate>")
+    cmd = parse_control_command("<@UALFRED> untrust <@U2DEF|neha>")
     assert cmd is not None and cmd.verb == "untrust" and cmd.arg == "U2DEF"
 
 
@@ -262,6 +260,8 @@ def test_prose_is_not_a_command() -> None:
         "please resume work on the planner",
         "I want to status check the repo",  # 'I' is the leading token
         "let's run the tests",
+        "help me add onboarding tests",
+        "plans for the onboarding flow",
         "pause the project for the holidays",  # extra words -> not a command
         "resume lucius and bane",  # two args -> not a clean command
     ):
@@ -283,6 +283,21 @@ def test_run_commands_require_single_valid_codename() -> None:
     assert parse_control_command("dry-run name/with/slash") is None
 
 
+def test_schedule_commands_are_strict() -> None:
+    assert parse_control_command("schedule") is not None
+    assert parse_control_command("schedule list") is not None
+    assert parse_control_command("schedule show lucius") is not None
+    assert parse_control_command("schedule set lucius 20m") is not None
+    assert parse_control_command("schedule the onboarding review") is None
+    assert parse_control_command("schedule set lucius every 20 minutes") is None
+    assert parse_control_command("schedule set bad/name 20m") is None
+
+    runner = FakeRunner()
+    result = _handler(runner).handle("schedule the onboarding review", trusted=True)
+    assert result.handled is False
+    assert result.action == "not_a_command"
+
+
 def test_plan_commands_require_single_safe_id() -> None:
     assert parse_control_command("plan") is None
     assert parse_control_command("plan ../secret") is None
@@ -297,7 +312,7 @@ def test_is_control_message_detects_leading_verb() -> None:
     assert is_control_message("plans")
     assert is_control_message("plan followup-1")
     assert is_control_message("memory")
-    assert is_control_message("remember luminik-io/alfred-os: keep it reviewable")
+    assert is_control_message("remember luminik-io/alfred: keep it reviewable")
     assert is_control_message("trusted")
     assert is_control_message("trust <@U2DEF>")
     assert not is_control_message("ship the docs")
@@ -330,7 +345,7 @@ def _write_followup(state_root: Path, name: str = "slack-C1-1716480000") -> Path
             [
                 "# Follow-up for PR feedback",
                 "",
-                "- Parent: https://github.com/luminik-io/alfred-os/pull/123",
+                "- Parent: https://github.com/luminik-io/alfred/pull/123",
                 "- Thread: C1 / 1716480000.000000",
                 "",
                 "Please tighten the docs and add a smoke test before we call this done.",
@@ -399,7 +414,7 @@ def test_plan_command_shows_followup_detail(tmp_path: Path) -> None:
     assert result.action == "plan"
     assert "captured follow-up" in result.text
     assert f"draft {followup.stem}" in result.text
-    assert "https://github.com/luminik-io/alfred-os/pull/123" in result.text
+    assert "https://github.com/luminik-io/alfred/pull/123" in result.text
 
 
 def test_trusted_user_can_convert_followup_to_local_draft(tmp_path: Path) -> None:
@@ -534,10 +549,19 @@ def test_memory_command_lists_review_queue() -> None:
 
     assert result.action == "memory"
     assert "Memory review" in result.text
-    assert "cand-1" in result.text
-    assert "cand-2" in result.text
+    assert "101" in result.text
+    assert "102" in result.text
     assert runner.calls == [
-        ["/fake/alfred", "brain", "candidates", "--status", "candidate", "--limit", "5", "--json"],
+        [
+            "/fake/alfred",
+            "brain",
+            "candidates",
+            "--status",
+            "candidate",
+            "--limit",
+            "5",
+            "--json",
+        ],
         ["/fake/alfred", "brain", "promotions", "--limit", "5", "--json"],
     ]
 
@@ -547,19 +571,21 @@ def test_remember_queues_reviewable_memory_candidate() -> None:
     handler = _handler(runner)
 
     result = handler.handle(
-        "remember luminik-io/alfred-os: Slack memory stays reviewable.",
+        "remember luminik-io/alfred: Slack memory stays reviewable.",
         trusted=True,
         actor_user_id="UTEAM",
     )
 
     assert result.action == "remember"
     assert "Memory candidate queued" in result.text
-    assert "cand-new" in result.text
-    assert runner.calls[-1][-4:] == [
+    assert "103" in result.text
+    assert runner.calls[-1][:6] == [
+        "/fake/alfred",
+        "brain",
+        "propose",
+        "--agent",
         "operator",
-        "luminik-io/alfred-os",
-        "--",
-        "Slack memory stays reviewable.",
+        "--repo",
     ]
 
 
@@ -568,32 +594,22 @@ def test_memory_remember_alias_queues_reviewable_memory_candidate() -> None:
     handler = _handler(runner)
 
     result = handler.handle(
-        "memory remember luminik-io/alfred-os: Keep Slack memory reviewable.",
+        "memory remember luminik-io/alfred: Slack memory stays reviewable.",
         trusted=True,
         actor_user_id="UTEAM",
     )
 
     assert result.action == "remember"
     assert "Memory candidate queued" in result.text
-    assert runner.calls[-1][-4:] == [
+    assert "103" in result.text
+    assert runner.calls[-1][:6] == [
+        "/fake/alfred",
+        "brain",
+        "propose",
+        "--agent",
         "operator",
-        "luminik-io/alfred-os",
-        "--",
-        "Keep Slack memory reviewable.",
+        "--repo",
     ]
-
-
-def test_remember_body_starting_with_dash_is_queued() -> None:
-    runner = FakeRunner()
-    result = _handler(runner).handle(
-        "remember global: --dry-run all integration tests before promotion.",
-        trusted=True,
-        actor_user_id="UTEAM",
-    )
-
-    assert result.action == "remember"
-    assert "cand-new" in result.text
-    assert runner.calls[-1][-2:] == ["--", "--dry-run all integration tests before promotion."]
 
 
 def test_remember_without_repo_uses_global_scope() -> None:
@@ -604,7 +620,7 @@ def test_remember_without_repo_uses_global_scope() -> None:
     )
 
     assert result.action == "remember"
-    assert runner.calls[-1][-3] == "global"
+    assert "global" in runner.calls[-1]
 
 
 def test_remember_global_word_without_colon_stays_in_body() -> None:
@@ -615,11 +631,8 @@ def test_remember_global_word_without_colon_stays_in_body() -> None:
     )
 
     assert result.action == "remember"
-    assert runner.calls[-1][-3:] == [
-        "global",
-        "--",
-        "global search copy should stay explicit.",
-    ]
+    body_arg_index = runner.calls[-1].index("--body") + 1
+    assert runner.calls[-1][body_arg_index] == "global search copy should stay explicit."
 
 
 def test_remember_rejects_pathlike_repo_scope() -> None:
@@ -640,11 +653,26 @@ def test_remember_rejects_pathlike_repo_scope() -> None:
     assert runner.calls == []
 
 
+def test_remember_body_starting_with_dash_is_queued() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle(
+        "remember global: --dry-run all integration tests before promotion.",
+        trusted=True,
+        actor_user_id="UTEAM",
+    )
+
+    assert result.action == "remember"
+    assert "103" in result.text
+    assert runner.calls[-1][runner.calls[-1].index("--body") + 1] == (
+        "--dry-run all integration tests before promotion."
+    )
+
+
 def test_untrusted_memory_commands_are_ignored() -> None:
     runner = FakeRunner()
     handler = _handler(runner)
 
-    memory = handler.handle("memory promote cand-1", trusted=False, actor_user_id="UTEAM")
+    memory = handler.handle("memory promote 101", trusted=False, actor_user_id="UTEAM")
     remember = handler.handle(
         "remember global: this should not be staged",
         trusted=False,
@@ -664,7 +692,7 @@ def test_memory_promote_requires_operator() -> None:
         operator_user_id="UOPERATOR",
     )
 
-    result = handler.handle("memory promote cand-1", trusted=True, actor_user_id="UTEAM")
+    result = handler.handle("memory promote 101", trusted=True, actor_user_id="UTEAM")
 
     assert result.action == "memory_promote_rejected"
     assert "Only the operator" in result.text
@@ -680,7 +708,7 @@ def test_operator_can_promote_memory_candidate() -> None:
     )
 
     result = handler.handle(
-        "memory promote cand-1",
+        "memory promote 101",
         trusted=True,
         actor_user_id="UOPERATOR",
     )
@@ -690,7 +718,7 @@ def test_operator_can_promote_memory_candidate() -> None:
         "/fake/alfred",
         "brain",
         "promote",
-        "cand-1",
+        "101",
         "--reviewer",
         "UOPERATOR",
         "--json",
@@ -706,7 +734,7 @@ def test_operator_reject_memory_note_starting_with_dash_is_literal() -> None:
     )
 
     result = handler.handle(
-        "memory reject cand-1 --too vague for future recall",
+        "memory reject 101 --too vague for future recall",
         trusted=True,
         actor_user_id="UOPERATOR",
     )
@@ -730,7 +758,13 @@ def test_memory_sync_defaults_to_dry_run() -> None:
 
     assert result.action == "memory_sync"
     assert "preview" in result.text
-    assert runner.calls[-1] == ["/fake/alfred", "brain", "redis-sync", "--json", "--dry-run"]
+    assert runner.calls[-1] == [
+        "/fake/alfred",
+        "brain",
+        "redis-sync",
+        "--json",
+        "--dry-run",
+    ]
 
 
 def test_memory_harvest_previews_by_default() -> None:
@@ -753,7 +787,7 @@ def test_operator_can_apply_memory_harvest() -> None:
 
     assert result.action == "memory_harvest"
     assert "Memory harvest queued" in result.text
-    assert "cand-harvest" in result.text
+    assert "104" in result.text
     assert runner.calls[-1] == ["/fake/alfred", "brain", "harvest", "--json", "--apply"]
 
 
@@ -801,8 +835,9 @@ def test_memory_harvest_renderer_reports_overflow() -> None:
                                 {
                                     "status": "preview",
                                     "candidate_id": None,
+                                    "agent": "huntress",
                                     "codename": "huntress",
-                                    "repo": "luminik-io/alfred-os",
+                                    "repo": "luminik-io/alfred",
                                     "body": f"Repeated failure pattern {idx}",
                                 }
                                 for idx in range(10)
@@ -833,8 +868,9 @@ def test_memory_harvest_apply_with_only_duplicates_is_not_labeled_queued() -> No
                                 {
                                     "status": "duplicate",
                                     "candidate_id": None,
+                                    "agent": "huntress",
                                     "codename": "huntress",
-                                    "repo": "luminik-io/alfred-os",
+                                    "repo": "luminik-io/alfred",
                                     "body": "Repeated failure pattern already queued.",
                                 }
                             ],
@@ -971,6 +1007,35 @@ def test_dryrun_alias_invokes_cli_with_exact_argv() -> None:
     assert runner.calls[-1] == ["/fake/alfred", "dry-run", "lucius"]
 
 
+def test_schedule_list_invokes_cli_with_exact_argv() -> None:
+    runner = FakeRunner()
+    result = _handler(runner).handle("schedule list", trusted=True)
+
+    assert result.action == "schedule"
+    assert "alfred schedule: list" in result.text
+    assert runner.calls[-1] == ["/fake/alfred", "schedule", "list"]
+
+
+def test_schedule_set_is_operator_only() -> None:
+    runner = FakeRunner()
+    handler = _handler(runner, operator_user_id="UOP")
+
+    rejected = handler.handle(
+        "schedule set lucius 20m",
+        trusted=True,
+        actor_user_id="UNEHA",
+    )
+    accepted = handler.handle(
+        "schedule set lucius 20m",
+        trusted=True,
+        actor_user_id="UOP",
+    )
+
+    assert rejected.action == "schedule_rejected"
+    assert accepted.action == "schedule"
+    assert runner.calls[-1] == ["/fake/alfred", "schedule", "set", "lucius", "20m"]
+
+
 def test_run_prose_falls_through_to_planning_intake() -> None:
     runner = FakeRunner()
     result = _handler(runner).handle("run the tests", trusted=True)
@@ -1011,7 +1076,8 @@ def test_help_lists_commands_without_running_anything() -> None:
     runner = FakeRunner()
     result = _handler(runner).handle("help", trusted=True)
     assert result.action == "help"
-    assert "control commands" in result.text.lower()
+    assert "talk to alfred naturally" in result.text.lower()
+    assert "Run Batman now" in result.text
     assert "trust <@user>" in result.text
     assert runner.calls == []
 

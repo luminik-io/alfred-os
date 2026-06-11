@@ -10,7 +10,7 @@ Bundle primitives live in ``lib/batman.py`` so the parsing /
 claim-rollback / plan-shape logic stays unit-testable. This file is the
 runner skeleton: preflight, find a bundle, post a plan summary, exit.
 The full execution chain (worktrees + Claude invocation + cross-repo
-PR chaining + founder approval gate) is intentionally NOT in alfred-os
+PR chaining + operator approval gate) is intentionally NOT in alfred-os
 yet. Fleets with extra coordination requirements can layer those
 site-specific extensions on top.
 

@@ -47,7 +47,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
-      - run: uv run --python ${{ matrix.python }} --with pytest pytest tests/ -v
+      - run: uv run --python ${{ matrix.python }} --with pytest --with fastapi --with httpx --with jinja2 pytest tests/ -v
 
   shellcheck:
     name: shellcheck (bash)

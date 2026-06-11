@@ -3,21 +3,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addTrustedSlackUser,
   alternateDefaultBaseUrl,
+  clientBaseUrl,
   convertFollowupToDraft,
+  decidePlan,
   errorDetail,
+  filePlanIssue,
   initialBaseUrl,
+  loadShipped,
   loadSnapshot,
+  loadUsage,
   markFollowupHandled,
   promoteMemoryCandidate,
   rememberBaseUrl,
   removeTrustedSlackUser,
   rejectMemoryCandidate,
   runNativeAction,
+  setQueuePickup,
   setTrayStatus,
   startLocalRuntime,
   supportsNativeActions,
 } from "../api";
-import { buildAttention, buildStats } from "../lib/derive";
+import { buildInspectionItems, buildNeedsYou } from "../lib/derive";
 import {
   buildFleetRows,
   deriveFleetHealth,
@@ -32,10 +38,24 @@ import {
   persistSeenIds,
 } from "../lib/notifications";
 import { listenTrayEvents } from "../lib/trayEvents";
-import type { ActionNotice, FollowupAction, NativeActionRequest } from "../lib/uiTypes";
-import type { NativeCommandResult, PlanDraft, Snapshot } from "../types";
+import type {
+  ActionNotice,
+  FollowupAction,
+  NativeActionRequest,
+  NoticeDomain,
+} from "../lib/uiTypes";
+import type {
+  NativeCommandResult,
+  PlanDecision,
+  PlanDraft,
+  QueueAction,
+  ShippedBoard,
+  Snapshot,
+  UsageResponse,
+} from "../types";
 
 const POLL_INTERVAL_MS = 60_000;
+type ShippedRefreshOptions = { demo?: boolean };
 
 export type UseAlfred = ReturnType<typeof useAlfred>;
 
@@ -48,6 +68,7 @@ export function useAlfred() {
   const [busyPlanAction, setBusyPlanAction] = useState<string | null>(null);
   const [busyMemoryAction, setBusyMemoryAction] = useState<string | null>(null);
   const [busyTrustedUser, setBusyTrustedUser] = useState<string | null>(null);
+  const [busyQueue, setBusyQueue] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<ActionNotice>(null);
   const [nativeBusy, setNativeBusy] = useState<string | null>(null);
   const [nativeResult, setNativeResult] = useState<NativeCommandResult | null>(null);
@@ -55,6 +76,20 @@ export function useAlfred() {
   const [nativeErrorRaw, setNativeErrorRaw] = useState<string | null>(null);
   const [fleetService, setFleetService] = useState<FleetServiceState>({});
   const [seenIds, setSeenIds] = useState<Set<string>>(() => loadSeenIds());
+  // The Kanban board is fetched independently of the core snapshot (its
+  // multi-repo gh scan is slow), with its own state so it never blocks the view.
+  const [shipped, setShipped] = useState<ShippedBoard | null>(null);
+  const [shippedState, setShippedState] = useState<"idle" | "loading" | "error">("idle");
+  const [shippedError, setShippedError] = useState<string | null>(null);
+  const shippedReqRef = useRef(0);
+  const shippedDemoModeRef = useRef(false);
+
+  // Subscription usage is fetched independently too: the local log reader can
+  // still be slower than the core snapshot on large histories, so it never
+  // gates the view. The last good reading stays visible while refetching.
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [usageState, setUsageState] = useState<"idle" | "loading" | "error">("idle");
+  const usageReqRef = useRef(0);
 
   // Monotonic request id so a slow background poll cannot clobber newer state.
   // A 60s poll started before the user paused an agent could otherwise resolve
@@ -64,7 +99,7 @@ export function useAlfred() {
 
   const refresh = useCallback(
     async (nextBaseUrl = baseUrl) => {
-      const targetBaseUrl = nextBaseUrl.trim();
+      const targetBaseUrl = clientBaseUrl(nextBaseUrl);
       const id = ++reqRef.current;
       setLoading(true);
       setError(null);
@@ -103,14 +138,106 @@ export function useAlfred() {
     [baseUrl],
   );
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  // Board fetch, independent of the core snapshot. Keeps the last good board
+  // visible while refetching (no flicker), and never throws into the view.
+  const refreshShipped = useCallback(
+    async (nextBaseUrl = baseUrl, options: ShippedRefreshOptions = {}) => {
+      const target = clientBaseUrl(nextBaseUrl);
+      const includeDemo = options.demo ?? shippedDemoModeRef.current;
+      if (options.demo !== undefined) {
+        shippedDemoModeRef.current = options.demo;
+      }
+      const id = ++shippedReqRef.current;
+      setShippedState("loading");
+      try {
+        let resolvedBaseUrl = target;
+        let board: ShippedBoard;
+        try {
+          board = await loadShipped(target, 14, { demo: includeDemo });
+        } catch (firstErr) {
+          const alternateBaseUrl = alternateDefaultBaseUrl(target);
+          if (!alternateBaseUrl) throw firstErr;
+          board = await loadShipped(alternateBaseUrl, 14, { demo: includeDemo });
+          resolvedBaseUrl = alternateBaseUrl;
+        }
+        if (id !== shippedReqRef.current) return;
+        if (resolvedBaseUrl !== target) {
+          setBaseUrl(resolvedBaseUrl);
+          rememberBaseUrl(resolvedBaseUrl);
+        }
+        setShipped(board);
+        setShippedError(null);
+        setShippedState("idle");
+      } catch (err) {
+        if (id !== shippedReqRef.current) return;
+        setShippedError(err instanceof Error ? err.message : String(err));
+        setShippedState("error");
+      }
+    },
+    [baseUrl],
+  );
+
+  // Usage fetch, independent of the core snapshot. Keeps the last good reading
+  // visible while refetching, and never throws into the view: the server's
+  // honest "unavailable" payload is stored as-is so the panel can explain it.
+  const refreshUsage = useCallback(
+    async (nextBaseUrl = baseUrl) => {
+      const target = clientBaseUrl(nextBaseUrl);
+      const id = ++usageReqRef.current;
+      setUsageState("loading");
+      try {
+        let resolvedBaseUrl = target;
+        let next: UsageResponse;
+        try {
+          next = await loadUsage(target);
+        } catch (firstErr) {
+          const alternateBaseUrl = alternateDefaultBaseUrl(target);
+          if (!alternateBaseUrl) throw firstErr;
+          next = await loadUsage(alternateBaseUrl);
+          resolvedBaseUrl = alternateBaseUrl;
+        }
+        if (id !== usageReqRef.current) return;
+        if (resolvedBaseUrl !== target) {
+          setBaseUrl(resolvedBaseUrl);
+          rememberBaseUrl(resolvedBaseUrl);
+        }
+        setUsage(next);
+        setUsageState("idle");
+      } catch (err) {
+        if (id !== usageReqRef.current) return;
+        // A transport failure (runtime down, older server without the route):
+        // synthesize the same "unavailable" shape the server returns so the
+        // panel renders one consistent degraded state.
+        setUsage({
+          available: false,
+          kind: "subscription",
+          source: "native",
+          block: null,
+          codex: null,
+          limits: null,
+          weekly: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        setUsageState("error");
+      }
+    },
+    [baseUrl],
+  );
 
   useEffect(() => {
-    const timer = window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
+    void refresh();
+    void refreshShipped();
+    void refreshUsage();
+  }, [refresh, refreshShipped, refreshUsage]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refresh();
+      void refreshShipped();
+      void refreshUsage();
+    }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, refreshShipped, refreshUsage]);
 
   const runFollowupAction = useCallback(
     async (plan: PlanDraft, action: FollowupAction) => {
@@ -126,18 +253,114 @@ export function useAlfred() {
           action === "convert"
             ? `Created planning draft ${result.draft_id || "for the next pass"}.`
             : "Marked the follow-up handled and moved it out of the inbox.";
-        setActionNotice({ tone: "ok", message });
+        setActionNotice({ tone: "ok", message, domain: "plans" });
         await refresh(baseUrl);
       } catch (err) {
         setActionNotice({
           tone: "error",
           message: err instanceof Error ? err.message : String(err),
+          domain: "plans",
         });
       } finally {
         setBusyPlanAction(null);
       }
     },
     [baseUrl, refresh],
+  );
+
+  // Record a real go/no-go on a genuine Batman plan. Approve starts that exact
+  // scope; decline stops it. The server writes the marker Batman's file poll
+  // watches, so this needs no Slack round-trip. Refresh after so the decided
+  // plan reflects its new status and drops out of Needs-you.
+  const runPlanDecision = useCallback(
+    async (plan: PlanDraft, decision: PlanDecision) => {
+      const key = `${plan.plan_id}:${decision}`;
+      setBusyPlanAction(key);
+      setActionNotice(null);
+      try {
+        const result = await decidePlan(baseUrl, plan.plan_id, decision);
+        const target = `issue #${result.issue_number}`;
+        const message =
+          decision === "approve"
+            ? `Approved ${target}. Batman starts this exact scope on its next run.`
+            : `Declined ${target}. Batman will not start this work.`;
+        setActionNotice({ tone: "ok", message, domain: "plans" });
+        await refresh(baseUrl);
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+          domain: "plans",
+        });
+      } finally {
+        setBusyPlanAction(null);
+      }
+    },
+    [baseUrl, refresh],
+  );
+
+  const runPlanIssueFile = useCallback(
+    async (plan: PlanDraft) => {
+      const key = `${plan.plan_id}:file-issue`;
+      setBusyPlanAction(key);
+      setActionNotice(null);
+      try {
+        const result = await filePlanIssue(baseUrl, plan.plan_id);
+        const issue = result.issue_url || `${result.repo || "selected repo"} issue`;
+        const message =
+          result.status === "already_filed"
+            ? `Already filed ${issue}.`
+            : `Filed ${issue} with ${result.label || "agent:implement"}.`;
+        setActionNotice({ tone: "ok", message, domain: "plans" });
+        await refresh(baseUrl);
+        await refreshShipped(baseUrl);
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+          domain: "plans",
+        });
+      } finally {
+        setBusyPlanAction(null);
+      }
+    },
+    [baseUrl, refresh, refreshShipped],
+  );
+
+  // Assign, arm, hold, or close an issue on the Kanban board. Refreshes the
+  // board so the card moves to reflect the new GitHub state.
+  const runQueueAction = useCallback(
+    async (repo: string, issueNumber: number, action: QueueAction): Promise<boolean> => {
+      setBusyQueue(`${action}:${repo}#${issueNumber}`);
+      setActionNotice(null);
+      try {
+        await setQueuePickup(baseUrl, repo, issueNumber, action);
+        setActionNotice({
+          tone: "ok",
+          message:
+            action === "queue"
+              ? `Queued ${repo}#${issueNumber} for pickup.`
+              : action === "assign"
+                ? `Assigned ${repo}#${issueNumber} to Alfred.`
+              : action === "done"
+                ? `Closed ${repo}#${issueNumber} as done.`
+                : `Held ${repo}#${issueNumber} so no agent picks it up.`,
+          domain: "board",
+        });
+        await refreshShipped();
+        return true;
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+          domain: "board",
+        });
+        return false;
+      } finally {
+        setBusyQueue(null);
+      }
+    },
+    [baseUrl, refreshShipped],
   );
 
   const addTrustedUser = useCallback(
@@ -153,12 +376,14 @@ export function useAlfred() {
           message: result.added
             ? `Trusted Slack collaborator ${clean}.`
             : `${clean} was already trusted locally.`,
+          domain: "setup",
         });
         await refresh(baseUrl);
       } catch (err) {
         setActionNotice({
           tone: "error",
           message: err instanceof Error ? err.message : String(err),
+          domain: "setup",
         });
       } finally {
         setBusyTrustedUser(null);
@@ -182,12 +407,14 @@ export function useAlfred() {
             action === "promote"
               ? `Promoted memory candidate ${candidateId}.`
               : `Rejected memory candidate ${candidateId}.`,
+          domain: "memory",
         });
         await refresh(baseUrl);
       } catch (err) {
         setActionNotice({
           tone: "error",
           message: err instanceof Error ? err.message : String(err),
+          domain: "memory",
         });
       } finally {
         setBusyMemoryAction(null);
@@ -207,12 +434,14 @@ export function useAlfred() {
           message: result.removed
             ? `Removed local trusted collaborator ${userId}.`
             : `${userId} is not a removable local collaborator.`,
+          domain: "setup",
         });
         await refresh(baseUrl);
       } catch (err) {
         setActionNotice({
           tone: "error",
           message: err instanceof Error ? err.message : String(err),
+          domain: "setup",
         });
       } finally {
         setBusyTrustedUser(null);
@@ -241,14 +470,14 @@ export function useAlfred() {
   }, []);
 
   const runLocalAction = useCallback(
-    async ({ action, target, refreshAfter = false }: NativeActionRequest) => {
+    async ({ action, target, cadence, refreshAfter = false }: NativeActionRequest) => {
       const key = `${action}:${target || "fleet"}`;
       setNativeBusy(key);
       setNativeError(null);
       setNativeErrorRaw(null);
       setNativeResult(null);
       try {
-        const result = await runNativeAction(action, target);
+        const result = await runNativeAction(action, target, cadence);
         setNativeResult(result);
         if (refreshAfter) {
           await refresh(baseUrl);
@@ -286,8 +515,45 @@ export function useAlfred() {
     }
   }, [refresh]);
 
-  const attention = useMemo(() => buildAttention(snapshot), [snapshot]);
-  const stats = useMemo(() => buildStats(snapshot), [snapshot]);
+  const clearNativeResult = useCallback(() => {
+    setNativeResult(null);
+    setNativeError(null);
+    setNativeErrorRaw(null);
+  }, []);
+
+  // A successful action result should not linger forever pinned to the top of
+  // the app. Auto-clear it after a few seconds (errors stay until dismissed so
+  // they are not missed); the operator can also dismiss it immediately.
+  useEffect(() => {
+    if (!nativeResult || nativeError || nativeResult.success === false) return;
+    const timer = window.setTimeout(() => setNativeResult(null), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [nativeResult, nativeError]);
+
+  // An inline action notice should not linger forever on its surface either.
+  // Auto-clear a successful notice after a few seconds (errors stay until the
+  // next action replaces them so a failure is not missed), mirroring the
+  // nativeResult timer above.
+  useEffect(() => {
+    if (!actionNotice || actionNotice.tone !== "ok") return;
+    const timer = window.setTimeout(() => setActionNotice(null), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [actionNotice]);
+
+  // A notice is scoped to the surface that raised it, so a banner from one
+  // surface (e.g. promoting a lesson on Memory) never bleeds onto another
+  // (Plans / Board / Setup). Each surface reads its own slice via this helper.
+  const noticeFor = useCallback(
+    (domain: NoticeDomain): ActionNotice =>
+      actionNotice && actionNotice.domain === domain ? actionNotice : null,
+    [actionNotice],
+  );
+
+  // The calm "needs you" decisions (plan sign-off + memory review) drive
+  // Review's home lane; reliability inspection signals are operator depth and
+  // surface only in the Operator drawer.
+  const needsYou = useMemo(() => buildNeedsYou(snapshot), [snapshot]);
+  const inspectionItems = useMemo(() => buildInspectionItems(snapshot), [snapshot]);
 
   const feed = useMemo(() => buildFeed(snapshot), [snapshot]);
   const unseenCount = useMemo(() => countUnseen(feed, seenIds), [feed, seenIds]);
@@ -342,13 +608,15 @@ export function useAlfred() {
     busyPlanAction,
     busyMemoryAction,
     busyTrustedUser,
-    actionNotice,
+    busyQueue,
+    noticeFor,
     nativeBusy,
     nativeResult,
     nativeError,
     nativeErrorRaw,
-    attention,
-    stats,
+    clearNativeResult,
+    needsYou,
+    inspectionItems,
     fleetService,
     fleetRows,
     fleetHealth,
@@ -356,9 +624,19 @@ export function useAlfred() {
     unseenCount,
     seenIds,
     markActivitySeen,
+    shipped,
+    shippedState,
+    shippedError,
+    refreshShipped,
+    usage,
+    usageState,
+    refreshUsage,
     refresh,
     refreshFleetService,
     runFollowupAction,
+    runPlanDecision,
+    runPlanIssueFile,
+    runQueueAction,
     runMemoryCandidateAction,
     addTrustedUser,
     removeTrustedUser,

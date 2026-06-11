@@ -1,7 +1,7 @@
 """Read-only state reader for ``alfred serve``.
 
-Reads fleet state from ``$ALFRED_HOME/state`` (falling back to
-``~/.alfred/state``). The reader is exposed as a :class:`typing.Protocol`
+Reads fleet state from ``$ALFRED_HOME/state`` (falling back to the legacy
+``$HERMES_HOME/state`` and then ``~/.alfred/state``). The reader is exposed as a :class:`typing.Protocol`
 so tests can swap in a stub without touching disk; the default
 implementation walks the filesystem layout written by ``lib.agent_runner``.
 
@@ -30,10 +30,16 @@ import logging
 import os
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+
+from .plan_approvals import (
+    DECISION_APPROVE,
+    decision_for_issue,
+    issue_num_from_plan_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +70,16 @@ class FiringRecord:
 
 @dataclass(frozen=True)
 class AgentSummary:
-    """One codename's at-a-glance fleet-view row."""
+    """One codename's at-a-glance fleet-view row.
+
+    ``paused``/``paused_since`` are read from the operator-managed pause
+    marker (``state/_paused/<codename>``) that ``alfred pause <codename>``
+    writes. ``loaded`` is a best-effort scheduler hint: the read-only server
+    cannot probe launchctl/systemctl, so it reports the inverse of ``paused``
+    (``alfred pause`` unloads the unit, ``alfred resume`` reloads it). The
+    desktop client uses these so its Fleet Control panel no longer has to
+    shell ``alfred status --json`` just to read paused/running state.
+    """
 
     codename: str
     last_firing_id: str | None
@@ -72,6 +87,9 @@ class AgentSummary:
     status: str  # "live" | "idle" | "error"
     last_summary: str
     firings_today: int
+    paused: bool = False
+    paused_since: str | None = None
+    loaded: bool = True
 
 
 @dataclass(frozen=True)
@@ -150,6 +168,11 @@ _RESERVED_STATE_SUBDIRS: frozenset[str] = frozenset(
 )
 
 
+# Matches the ISO-8601 UTC stamp ``write_agent_pause_marker`` records as the
+# first token of a pause marker body (e.g. ``2026-05-30T09:00:00Z``).
+_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+
+
 @dataclass
 class FilesystemReader:
     """Default ``FleetReader`` reading ``$ALFRED_HOME/state`` from disk.
@@ -170,6 +193,7 @@ class FilesystemReader:
             firings = self._iter_firings_for(codename, limit=1)
             last = firings[0] if firings else None
             firings_today = self._firings_today(codename)
+            paused, paused_since = self._pause_state(codename)
             if last is None:
                 out.append(
                     AgentSummary(
@@ -179,6 +203,9 @@ class FilesystemReader:
                         status="idle",
                         last_summary="no firings yet",
                         firings_today=firings_today,
+                        paused=paused,
+                        paused_since=paused_since,
+                        loaded=not paused,
                     )
                 )
                 continue
@@ -190,6 +217,9 @@ class FilesystemReader:
                     status=_status_dot(last),
                     last_summary=last.summary,
                     firings_today=firings_today,
+                    paused=paused,
+                    paused_since=paused_since,
+                    loaded=not paused,
                 )
             )
         return out
@@ -235,27 +265,11 @@ class FilesystemReader:
         return None
 
     def reliability_report(self) -> dict[str, Any]:
-        """Return a best-effort fleet-brain reliability report.
-
-        The dashboard is read-only and must keep rendering if the brain
-        has not been initialized yet, so any memory-layer problem becomes
-        a soft "unknown" report rather than an HTTP 500.
-        """
+        """Return a best-effort fleet-brain reliability report."""
         try:
-            from fleet_brain import FleetBrain, default_db_path
+            from fleet_brain import FleetBrain
 
-            db_path = default_db_path()
-            if not db_path.exists():
-                return {
-                    "status": "unknown",
-                    "actions": [],
-                    "failure_patterns": [],
-                    "stale_workers": [],
-                    "promotion_suggestions": [],
-                    "error": f"fleet brain database not initialized: {db_path}",
-                }
-
-            return FleetBrain(db_path=db_path).reliability_report(limit=6)
+            return FleetBrain.from_env().reliability_report(limit=6)
         except Exception as exc:  # pragma: no cover - defensive UI path
             return {
                 "status": "unknown",
@@ -267,14 +281,7 @@ class FilesystemReader:
             }
 
     def list_plans(self, *, limit: int = 20) -> list[PlanDraft]:
-        """Return saved plan drafts, newest first.
-
-        Batman's approval plans are saved as Markdown under
-        ``$ALFRED_HOME/batman-plans``. Conversational Slack and local
-        planning drafts are saved as JSON under
-        ``$ALFRED_HOME/state/planning-drafts``. Surface both in one inbox
-        so operators can see the complete planning queue.
-        """
+        """Return saved plan drafts, newest first."""
         candidates: list[Path] = []
         plan_root = self._plan_root()
         if plan_root.is_dir():
@@ -359,20 +366,8 @@ class FilesystemReader:
         alt_events = self.state_root / "codenames" / codename / "events"
         if alt_events.is_dir():
             candidates.extend(alt_events.glob("*.jsonl"))
-
         # Sort by mtime descending so we cap I/O even for large fleets.
-        # Guard against OSError from race conditions (file deleted between
-        # glob and stat), broken symlinks, or permission errors so a single
-        # bad event file does not take down the /firings view. Unreadable
-        # entries sort last (mtime=0) and are likely skipped by the limit
-        # cap; if they squeak through, _read_firing handles its own errors.
-        def _safe_mtime(p: Path) -> float:
-            try:
-                return p.stat().st_mtime
-            except OSError:
-                return 0.0
-
-        candidates.sort(key=_safe_mtime, reverse=True)
+        candidates.sort(key=_safe_stat_mtime, reverse=True)
         for path in candidates[: max(limit, 1) * 2]:
             rec = self._read_firing(codename, path)
             if rec is not None:
@@ -413,6 +408,44 @@ class FilesystemReader:
         except (TypeError, ValueError):
             return 0
 
+    def _pause_marker_dir(self) -> Path:
+        """Resolve the operator-managed pause-marker directory.
+
+        Mirrors ``agent_runner_state.PAUSE_MARKER_DIR`` (``state/_paused``).
+        ``alfred pause <codename>`` and the fail-streak self-pause path both
+        write ``state/_paused/<codename>``; reading the same directory lets the
+        dashboard show paused state without shelling the CLI.
+        """
+        return self.state_root / "_paused"
+
+    def _pause_state(self, codename: str) -> tuple[bool, str | None]:
+        """Return ``(paused, paused_since)`` for ``codename``.
+
+        ``paused`` is true iff the marker file exists. ``paused_since`` is the
+        timestamp recorded in the marker body (``write_agent_pause_marker``
+        writes ``<UTC-iso> [reason]``); a body without a parseable timestamp
+        falls back to the file mtime. Any read error degrades to "not paused"
+        so a transiently unreadable state dir never wedges the view.
+        """
+        marker = self._pause_marker_dir() / codename
+        try:
+            if not marker.is_file():
+                return False, None
+        except OSError:
+            return False, None
+        since: str | None = None
+        try:
+            body = marker.read_text(encoding="utf-8").strip()
+        except OSError:
+            body = ""
+        if body:
+            first = body.split()[0]
+            if _TIMESTAMP_RE.match(first):
+                since = first
+        if since is None:
+            since = _mtime_iso(marker)
+        return True, since
+
     def _plan_root(self) -> Path:
         """Resolve the Batman plan directory next to ``state/``."""
         return self.state_root.parent / "batman-plans"
@@ -433,13 +466,34 @@ class FilesystemReader:
             return None
         updated_at = _mtime_iso(path)
         source = "followup" if path.parent == self._followup_root() else "batman"
-        return _plan_from_markdown(
+        plan = _plan_from_markdown(
             plan_id=path.stem,
             path=str(path),
             updated_at=updated_at,
             content=content,
             source=source,
         )
+        return self._with_decision_status(plan)
+
+    def _with_decision_status(self, plan: PlanDraft) -> PlanDraft:
+        """Overlay a recorded go/no-go decision onto a Batman plan.
+
+        A genuine Batman plan is decided out-of-band when the operator (Slack
+        reaction, or in-app approve/decline) writes the marker file Batman's
+        file poll watches. The plan markdown itself still says "Draft", so we
+        read the marker here and reflect ``approved``/``declined`` so a decided
+        plan reports its real state and drops out of the Needs-you queue.
+        """
+        if plan.source != "batman":
+            return plan
+        issue_num = issue_num_from_plan_id(plan.plan_id)
+        if issue_num is None:
+            return plan
+        decision = decision_for_issue(self.state_root, issue_num)
+        if decision is None:
+            return plan
+        status = "approved" if decision == DECISION_APPROVE else "declined"
+        return replace(plan, status=status)
 
     def _read_json_plan(self, path: Path) -> PlanDraft | None:
         try:
@@ -606,11 +660,12 @@ def _plan_from_json_payload(
     content = str(payload.get("spec_body") or payload.get("issue_body") or "").strip()
     if not content:
         content = preview or "Conversation-backed planning draft."
+    parent = _json_bridge_issue_url(payload)
     return PlanDraft(
         plan_id=plan_id,
         title=title,
         status=status,
-        parent=None,
+        parent=parent,
         affected_repos=", ".join(repos) if repos else None,
         updated_at=updated_at,
         path=path,
@@ -621,6 +676,28 @@ def _plan_from_json_payload(
         readiness_ok=readiness_ok,
         revision_count=_optional_int(payload.get("revision_count")) or 0,
     )
+
+
+def _json_bridge_issue_url(payload: dict[str, Any]) -> str | None:
+    bridge = payload.get("bridge")
+    if not isinstance(bridge, dict):
+        return None
+    issue_url = str(bridge.get("issue_url") or "").strip()
+    if issue_url:
+        return issue_url
+    issue_urls = bridge.get("issue_urls")
+    if isinstance(issue_urls, list):
+        for item in issue_urls:
+            text = str(item or "").strip()
+            if text:
+                return text
+    issues_by_repo = bridge.get("issues_by_repo")
+    if isinstance(issues_by_repo, dict):
+        for item in issues_by_repo.values():
+            text = str(item or "").strip()
+            if text:
+                return text
+    return None
 
 
 def _strip_markdown_value(line: str) -> str:

@@ -26,6 +26,8 @@ function firing(overrides: Partial<FiringRecord> = {}): FiringRecord {
 function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
   return {
     loadedAt: new Date("2026-05-30T12:00:00Z"),
+    shipped: null,
+    schedule: [],
     status: { agents: [], total_today: 0, reliability: {} },
     actions: {
       status: "ok",

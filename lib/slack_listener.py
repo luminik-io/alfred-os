@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from issue_summary import default_engine_invoke, summarize_issue
 from planning_assistant import (
     Refiner,
     apply_repository_scope_feedback,
@@ -44,7 +45,27 @@ from slack_approval import (
     trusted_feedback_user_ids_from_env,
 )
 from slack_control import SlackControlHandler, is_control_message
-from slack_issue_bridge import SlackIssueBridge
+from slack_format import github_issue_link, github_url_link
+from slack_intent import (
+    ACTION_ASSIGN,
+    ACTION_DRY_RUN_AGENT,
+    ACTION_HOLD,
+    ACTION_PAUSE_AGENT,
+    ACTION_QUEUE,
+    ACTION_RESUME_AGENT,
+    ACTION_RUN_AGENT,
+    ACTION_SCHEDULE_AGENT,
+    ACTION_STATUS,
+    ConversationContext,
+    Intent,
+    RepoCatalog,
+    ambient_enabled,
+    ambient_engages,
+    classify_intent,
+    default_intent_engine_invoke,
+    looks_like_followup_reference,
+)
+from slack_issue_bridge import SlackIssueBridge, build_issue_body
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
 from slack_thread_status import SlackThreadStatusTracker
 from slack_trust import SlackTrustStore
@@ -53,6 +74,12 @@ from spec_helper import IssueDraft
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
 ENV_ALT_APP_TOKEN = "ALFRED_SLACK_APP_TOKEN"
 ENV_BOT_USER_ID = "ALFRED_SLACK_BOT_USER_ID"
+ENV_PLAN_ANSWER_ENGINE = "ALFRED_PLAN_THREAD_ANSWER_ENGINE"
+ENV_PLAN_ANSWER_TIMEOUT = "ALFRED_PLAN_THREAD_ANSWER_TIMEOUT"
+# Optional allowlist of channel ids where ambient listening may engage. Ambient
+# never engages in a channel that is not on this list, so even with both
+# ambient flags armed the blast radius is exactly the channels named here.
+ENV_AMBIENT_CHANNELS = "ALFRED_SLACK_AMBIENT_CHANNELS"
 _MAX_STORED_REVISIONS = 50
 _DRAFT_REVISION_LOCKS: dict[str, threading.Lock] = {}
 _DRAFT_REVISION_LOCKS_GUARD = threading.Lock()
@@ -60,6 +87,9 @@ _DRAFT_REVISION_LOCKS_GUARD = threading.Lock()
 
 class SlackPoster(Protocol):
     def chat_postMessage(self, **kwargs: Any) -> Any: ...
+
+
+PlanAnswerer = Callable[[SlackThreadRecord, str, str], str | None]
 
 
 @dataclass(frozen=True)
@@ -83,12 +113,63 @@ class SlackInputEvent:
         return bool(self.thread_ts and self.thread_ts != self.ts)
 
     @property
+    def conversation_id(self) -> str:
+        """Stable id for multi-turn conversation context.
+
+        Multi-turn context (the "do it" / "that one" follow-up resolution) must
+        survive consecutive messages in the same conversation. A threaded reply
+        already shares a stable ``thread_ts`` with its root, so threads key on
+        ``thread:{channel}:{root_ts}`` and stay isolated per thread. But a DM or
+        a non-threaded @mention gives every message a fresh ``ts`` and no
+        ``thread_ts``, so keying those on ``root_ts`` would put each turn in its
+        own bucket and a bare follow-up could never find the prior target. For
+        those we key on the conversation participant instead
+        (``dm:{channel}:{user}``), which is stable across the operator's
+        consecutive non-threaded messages in the same channel / DM. The distinct
+        ``thread:`` / ``dm:`` prefixes keep the two id spaces from ever
+        colliding (a thread-root ts can never equal a user id).
+        """
+        if self.is_thread_reply:
+            return f"thread:{self.channel}:{self.root_ts}"
+        return f"dm:{self.channel}:{self.user}"
+
+    @property
     def is_reaction(self) -> bool:
         return self.event_type == "reaction_added"
 
     @property
     def is_direct_intake(self) -> bool:
         return self.event_type == "app_mention" or self.channel_type == "im"
+
+    def mentions_bot(self, bot_user_id: str) -> bool:
+        """True iff this message carries a literal ``<@BOT>`` mention token.
+
+        Slack does NOT strip the mention token from a message's text (the
+        ``<@U...>`` form has no ``|`` and so survives :func:`_clean_slack_text`),
+        which lets the ambient path recognise a channel message that the bot
+        will ALSO receive as a separate ``app_mention`` event. Both the raw and
+        the bare ``@BOT`` forms are honored, mirroring :func:`ambient_engages`.
+        """
+        bot = (bot_user_id or "").strip()
+        if not bot:
+            return False
+        text = self.text or ""
+        return f"<@{bot}>" in text or f"@{bot}" in text
+
+    @property
+    def is_plain_channel_message(self) -> bool:
+        """A plain ``message`` event in a channel (not a DM, not an @mention).
+
+        This is the ambient-listening candidate: ordinary channel chatter the
+        listener ignores today. ``channel_type`` is ``channel`` / ``group`` for
+        public / private channels and ``im`` for DMs; DMs and @mentions are
+        already handled as direct intake, so we exclude them here.
+        """
+        return (
+            self.event_type == "message"
+            and self.channel_type not in {"", "im"}
+            and not self.is_direct_intake
+        )
 
 
 @dataclass(frozen=True)
@@ -132,10 +213,15 @@ class SlackPlanningListener:
         seen_store: SeenEventStore | None = None,
         refiner: Refiner | None = None,
         memory_provider: Any | None = None,
+        now: Callable[[], datetime] | None = None,
         bridge: SlackIssueBridge | None = None,
         status_tracker: SlackThreadStatusTracker | None = None,
         control_handler: SlackControlHandler | None = None,
-        now: Callable[[], datetime] | None = None,
+        intent_engine: Callable[[str], str] | None = None,
+        repo_catalog: RepoCatalog | None = None,
+        conversation_context: ConversationContext | None = None,
+        ambient_channels: Iterable[str] | None = None,
+        plan_answerer: PlanAnswerer | None = None,
     ) -> None:
         self.state_root = state_root or _default_state_root()
         self.registry = registry or SlackThreadRegistry(self.state_root / "slack-threads")
@@ -168,6 +254,34 @@ class SlackPlanningListener:
         self.seen = seen_store or SeenEventStore(self.state_root / "slack-listener" / "seen")
         self.refiner = refiner
         self.memory_provider = memory_provider
+        self._plan_answerer = (
+            plan_answerer if plan_answerer is not None else _default_plan_thread_answerer()
+        )
+        # The conversational intent router is an additive fallback for the
+        # previously-unrouted free-text case. When no engine is injected we
+        # resolve one from env; it returns ``None`` unless the router is
+        # explicitly enabled, so the listener keeps its exact prior behavior
+        # by default. The repo alias catalog is built once from the canonical
+        # repo map plus the env queue allowlist.
+        if intent_engine is not None:
+            self._intent_engine: Callable[[str], str] | None = intent_engine
+        else:
+            self._intent_engine = default_intent_engine_invoke()
+        self._repo_catalog = (
+            repo_catalog if repo_catalog is not None else RepoCatalog.from_environment()
+        )
+        # Bounded, in-process multi-turn context so follow-ups ("yes that one",
+        # "do it") resolve against the previous turn's interpreted target. It is
+        # never persisted and never authority for a mutation: every mutating
+        # intent still surfaces the workspace-owner confirmation card.
+        self._conversation = (
+            conversation_context if conversation_context is not None else ConversationContext()
+        )
+        # Channel allowlist for ambient listening (empty == ambient never
+        # engages, even when both ambient flags are armed).
+        self._ambient_channels = (
+            set(ambient_channels) if ambient_channels is not None else _ambient_channels_from_env()
+        )
         self._now = now or (lambda: datetime.now(UTC))
 
     def handle_payload(self, payload: dict[str, Any]) -> ListenerResult:
@@ -193,6 +307,8 @@ class SlackPlanningListener:
             return ListenerResult(False, "ignored", "reaction is not on a registered thread")
         if event.is_direct_intake:
             return self._handle_direct_intake(event)
+        if event.is_plain_channel_message:
+            return self._maybe_handle_ambient(event)
         return ListenerResult(False, "ignored", "message is not a registered thread or intake")
 
     def _handle_thread_reaction(
@@ -204,8 +320,12 @@ class SlackPlanningListener:
 
         Reactions on non-draft threads (plan/report/pr) carry no approval
         authority here: the reaction approval gate in ``slack_approval`` owns
-        plan execution. This path only bridges a *draft* into a queued issue.
+        plan execution. This path bridges a *draft* into a queued issue, and
+        resolves the workspace owner's confirm/cancel on a *conversational_action*
+        card surfaced by the intent router.
         """
+        if record.kind == "conversational_action":
+            return self._handle_conversational_action_reaction(event, record)
         if record.kind != "draft":
             return ListenerResult(False, "ignored", "reaction is not on a draft thread")
         if not self.bridge.is_approval(reaction=event.reaction):
@@ -281,6 +401,45 @@ class SlackPlanningListener:
             default_org=default_org,
         )
         child_count = _revised_child_count(record.metadata, base_repos, revised_repos)
+        if _is_plan_thread_question(feedback.text):
+            ack = self._answer_plan_thread_question(
+                record,
+                feedback.text,
+                revised_repos=revised_repos,
+                child_count=child_count,
+            )
+            metadata = dict(record.metadata or {})
+            metadata.update(
+                {
+                    "last_plan_question_at": _utc_now(),
+                    "last_plan_question": _strip_plan_question_prefix(feedback.text),
+                    "revised_repos": list(revised_repos),
+                }
+            )
+            updated_record = self.registry.register(
+                SlackThreadRecord(
+                    kind=record.kind,
+                    channel=record.channel,
+                    thread_ts=record.thread_ts,
+                    codename=record.codename,
+                    firing_id=record.firing_id,
+                    title=record.title,
+                    status=record.status or "open",
+                    parent_repo=record.parent_repo,
+                    parent_issue=record.parent_issue,
+                    plan_path=record.plan_path,
+                    draft_path=record.draft_path,
+                    created_at=record.created_at,
+                    metadata=metadata,
+                )
+            )
+            self._post_thread_ack(event.channel, event.root_ts, ack or "*Answer unavailable*")
+            return ListenerResult(
+                True,
+                "plan_question_answered",
+                thread_kind=updated_record.kind,
+                readiness_ok=not bool(metadata.get("plan_requires_resolution")),
+            )
         requires_resolution = plan_feedback_requires_resolution(all_feedback)
         revision_path, revision_count = self._write_plan_revision_context(
             record,
@@ -331,11 +490,59 @@ class SlackPlanningListener:
             readiness_ok=not requires_resolution,
         )
 
+    def _answer_plan_thread_question(
+        self,
+        record: SlackThreadRecord,
+        question: str,
+        *,
+        revised_repos: Iterable[str],
+        child_count: int | None,
+    ) -> str:
+        plan_markdown = _read_text_file(record.plan_path)
+        clean_question = _strip_plan_question_prefix(question)
+        engine_answer = None
+        if self._plan_answerer is not None:
+            try:
+                engine_answer = self._plan_answerer(record, clean_question, plan_markdown)
+            except Exception as exc:
+                print(
+                    f"[SLACK-LISTENER-WARN] plan answerer failed for "
+                    f"{record.channel}/{record.thread_ts}: {exc}",
+                    file=sys.stderr,
+                )
+        if engine_answer and engine_answer.strip():
+            lines = ["*Answer*", "", engine_answer.strip()]
+        else:
+            lines = _fallback_plan_question_answer(
+                record,
+                clean_question,
+                plan_markdown,
+                revised_repos=revised_repos,
+                child_count=child_count,
+            )
+        lines.extend(
+            [
+                "",
+                "*Safety:* this did not change the plan or approve execution. "
+                "Reply naturally with changes, or use `open question:` for "
+                "something that must block approval.",
+            ]
+        )
+        return "\n".join(lines)
+
     def _handle_direct_intake(self, event: SlackInputEvent) -> ListenerResult:
-        # A trusted direct message/mention that LEADS with a control verb acts
-        # on the fleet instead of opening a planning draft. The user is already
-        # trust-gated in ``handle_payload``; the handler re-checks. Free-form
-        # prose (no leading verb) falls straight through to planning intake.
+        # Conversation is the primary Slack surface. Try the natural-language
+        # router first, even for old command-shaped messages like "run batman".
+        # Literal commands remain as a backcompat fallback when the router is
+        # disabled or decides the text is not a known intent.
+        routed = self._maybe_route_intent(event)
+        if routed is not None:
+            return routed
+
+        # Backcompat fallback: a trusted direct message/mention that LEADS with
+        # a control verb acts on the fleet instead of opening a planning draft.
+        # The user is already trust-gated in ``handle_payload``; the handler
+        # re-checks. Free-form prose falls through to planning intake.
         if is_control_message(event.text):
             control = self.control_handler.handle(
                 event.text,
@@ -418,6 +625,538 @@ class SlackPlanningListener:
             readiness_score=refined.readiness.score,
         )
 
+    # ------------------------------------------------------------------
+    # Conversational intent router (additive fallback)
+    # ------------------------------------------------------------------
+
+    def _maybe_route_intent(self, event: SlackInputEvent) -> ListenerResult | None:
+        """Try to interpret free-text prose as a known intent.
+
+        Returns a :class:`ListenerResult` when the router handled the message
+        (answered a status query, asked a clarifying question, or surfaced a
+        confirmation card for a mutating action), or ``None`` to let the caller
+        fall through to the unchanged planning intake.
+
+        The router never executes a mutating action. A ``queue`` / ``hold``
+        intent only ever produces a workspace-owner confirmation card; the action runs
+        in :meth:`_execute_confirmed_intent` after that person reacts.
+
+        Multi-turn: a mutating intent that resolved no repo is augmented from
+        the previous turn's target when the message is a short back-reference
+        ("do it", "that one"). The borrowed target is still just a SUGGESTION;
+        it only ever feeds the confirmation card, never an auto-execution.
+        """
+        if self._intent_engine is None:
+            return None
+
+        intent = classify_intent(
+            event.text,
+            engine_invoke=self._intent_engine,
+            catalog=self._repo_catalog,
+        )
+        intent = self._augment_intent_from_context(event, intent)
+
+        if intent.action == ACTION_STATUS:
+            self._conversation.record(
+                event.conversation_id,
+                text=event.text,
+                action=intent.action,
+            )
+            return self._answer_status_query(event)
+        if intent.action == ACTION_DRY_RUN_AGENT:
+            self._conversation.record(
+                event.conversation_id,
+                text=event.text,
+                action=intent.action,
+            )
+            return self._answer_dry_run_agent(event, intent)
+        if intent.action in {
+            ACTION_ASSIGN,
+            ACTION_QUEUE,
+            ACTION_HOLD,
+            ACTION_RUN_AGENT,
+            ACTION_PAUSE_AGENT,
+            ACTION_RESUME_AGENT,
+            ACTION_SCHEDULE_AGENT,
+        }:
+            self._conversation.record(
+                event.conversation_id,
+                text=event.text,
+                action=intent.action,
+                repo=intent.repo,
+                issue=intent.issue,
+            )
+            return self._propose_intent_action(event, intent)
+        # plan_request / unknown / anything low-confidence: fall through to the
+        # safe planning default (no result), preserving prior behavior.
+        return None
+
+    def _augment_intent_from_context(self, event: SlackInputEvent, intent: Intent) -> Intent:
+        """Fill a mutating intent's missing target from recent conversation.
+
+        Only triggers when (a) the intent is mutating, (b) it resolved no repo
+        of its own, and (c) the message is a short back-reference. In that case
+        we borrow the most recent ``(repo, issue)`` target recorded for this
+        conversation. If the current message carried its own issue number we
+        keep it (the operator may say "do that one but issue 5"). Anything that
+        already resolved a repo is left untouched.
+        """
+        if intent.action not in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
+            return intent
+        if intent.repo:
+            return intent
+        if not looks_like_followup_reference(event.text):
+            return intent
+        prev_repo, prev_issue = self._conversation.last_target(event.conversation_id)
+        if not prev_repo:
+            return intent
+        params = dict(intent.params or {})
+        params["context_repo"] = prev_repo
+        if prev_issue is not None and intent.issue is None:
+            params["context_issue"] = prev_issue
+        resolved_issue = intent.issue if intent.issue is not None else prev_issue
+        # Re-derive the clarification against the now-augmented entities so a
+        # borrowed-but-still-incomplete target still asks rather than guesses.
+        from slack_intent import _clarify_for_mutating
+
+        clarification = _clarify_for_mutating(intent.action, prev_repo, resolved_issue, [])
+        return Intent(
+            action=intent.action,
+            repo=prev_repo,
+            issue=resolved_issue,
+            params=params,
+            confidence=intent.confidence,
+            clarification=clarification,
+        )
+
+    def _maybe_handle_ambient(self, event: SlackInputEvent) -> ListenerResult:
+        """Engage a plain channel message ONLY when armed and clearly relevant.
+
+        Four gates, cheapest first, before any engine call:
+
+        1. ``ambient_enabled()`` (both ``ALFRED_INTENT_ROUTER_ENABLED`` and
+           ``ALFRED_SLACK_AMBIENT``). Off by default => never engages.
+        2. The channel is on the ambient allowlist (empty => never engages).
+        3. The message does NOT mention the bot. A channel post that @mentions
+           the bot is also delivered as a separate ``app_mention`` event (and
+           handled there as direct intake), so engaging it here too would
+           process the same message twice. We let the ``app_mention`` copy own
+           it and skip the ambient copy.
+        4. ``ambient_engages`` (deterministic: addressed to Alfred or a tight
+           fleet-specific action cue). Ordinary chatter never reaches the engine.
+
+        When all pass, the message is routed through the SAME intent path as a
+        DM / @mention, except ambient NEVER falls through to opening a planning
+        draft: unclear channel prose is left alone, not turned into a draft.
+        Mutating intents still only ever surface the confirmation card.
+        """
+        if not ambient_enabled():
+            return ListenerResult(False, "ignored", "ambient listening disabled")
+        if event.channel not in self._ambient_channels:
+            return ListenerResult(False, "ignored", "channel is not on the ambient allowlist")
+        # A bot-mention channel message also arrives as an ``app_mention``
+        # event; let that copy handle it and skip this one so the same message
+        # is never processed twice.
+        if event.mentions_bot(self.bot_user_id):
+            return ListenerResult(
+                False,
+                "ignored",
+                "bot-mention message is handled as app_mention, not ambient",
+            )
+        if not ambient_engages(event.text, bot_user_id=self.bot_user_id):
+            return ListenerResult(False, "ignored", "ambient message is ordinary chatter")
+
+        routed = self._maybe_route_intent(event)
+        if routed is not None:
+            return routed
+
+        # A channel message may still LEAD with a literal control verb (e.g.
+        # "status"); honor that as a backcompat fallback when the router is
+        # disabled or cannot classify the text.
+        if is_control_message(event.text):
+            control = self.control_handler.handle(
+                event.text,
+                trusted=True,
+                actor_user_id=event.user,
+            )
+            if control.handled:
+                self._post_thread_ack(event.channel, event.root_ts, control.text)
+                return ListenerResult(
+                    True,
+                    f"ambient_control_{control.action}",
+                    detail=control.detail,
+                )
+
+        # Engaged but the router recognised nothing actionable: stay quiet. We
+        # deliberately do NOT open a planning draft from ambient channel prose.
+        return ListenerResult(False, "ignored", "ambient message engaged but not actionable")
+
+    def _answer_status_query(self, event: SlackInputEvent) -> ListenerResult:
+        """Answer a read-only status question directly (no confirmation gate).
+
+        Status is non-mutating, so it is safe to answer immediately by reusing
+        the existing read-only control handlers (``status`` / ``runs`` /
+        ``plans``). The user was already trust-gated in :meth:`handle_payload`.
+
+        The question's natural-language flavor selects the most relevant
+        handler ("what did you ship?" -> recent runs, "what's blocked / what
+        needs scope?" -> the planning inbox, otherwise fleet status) and the
+        handler's structured output is framed with a short conversational
+        lead-in instead of being dumped raw.
+        """
+        verb, lead_in = _status_query_plan(event.text)
+        control = self.control_handler.handle(
+            verb,
+            trusted=True,
+            actor_user_id=event.user,
+        )
+        body = (control.text or "").strip()
+        if not body:
+            text = "I could not read the fleet state just now. Try again in a moment."
+        else:
+            text = f"{lead_in}\n\n{body}" if lead_in else body
+        self._post_thread_ack(event.channel, event.root_ts, text)
+        return ListenerResult(
+            True,
+            "intent_status",
+            detail=f"natural-language status query -> {verb}",
+        )
+
+    def _answer_dry_run_agent(self, event: SlackInputEvent, intent: Intent) -> ListenerResult:
+        """Run a conversational dry-run immediately.
+
+        ``dry_run_agent`` is non-mutating, so it can reuse the read-only
+        ``dry-run`` control path without a confirmation card. Missing agent
+        names still clarify rather than guessing.
+        """
+        if intent.needs_clarification:
+            self._post_thread_ack(event.channel, event.root_ts, intent.clarification)
+            return ListenerResult(
+                True,
+                "intent_clarify",
+                detail="dry_run_agent: missing agent",
+            )
+        control = self.control_handler.handle(
+            f"dry-run {intent.agent}",
+            trusted=True,
+            actor_user_id=event.user,
+        )
+        text = (control.text or "").strip()
+        control_failed = _control_result_failed(control)
+        if control_failed or not text:
+            text = (
+                text
+                if text
+                else (
+                    f"I could not dry-run `{intent.agent}` just now. "
+                    "Check that the agent codename exists and try again."
+                )
+            )
+        else:
+            text = f"I ran the dry-run for `{intent.agent}`.\n\n{text}"
+        self._post_thread_ack(event.channel, event.root_ts, text)
+        return ListenerResult(
+            True,
+            "intent_dry_run_agent_failed" if control_failed else "intent_dry_run_agent",
+            detail=control.detail or f"natural-language dry-run -> {intent.agent}",
+        )
+
+    def _propose_intent_action(self, event: SlackInputEvent, intent: Intent) -> ListenerResult:
+        """Surface a workspace-owner-confirmable card for a mutating intent.
+
+        SAFETY: this never mutates anything. When entities are missing or
+        ambiguous it asks a clarifying question. Otherwise it posts a Block Kit
+        confirmation card summarizing the interpreted action and registers a
+        ``conversational_action`` thread keyed on that card's message ts. The
+        action only runs after the workspace owner reacts to confirm
+        (:meth:`_execute_confirmed_intent`); a cancel reaction discards it.
+        """
+        if intent.needs_clarification:
+            self._post_thread_ack(event.channel, event.root_ts, intent.clarification)
+            return ListenerResult(
+                True,
+                "intent_clarify",
+                detail=f"{intent.action}: ambiguous or missing entity",
+            )
+
+        verb = _intent_action_verb(intent.action)
+        target = _intent_action_target(intent)
+        text, blocks = render_intent_confirmation(intent)
+        posted = self._post_message(event.channel, text, blocks=blocks, thread_ts=event.root_ts)
+        card_ts = str((posted or {}).get("ts") or "")
+        if not card_ts:
+            # We could not post the card (no poster, or API error). Do nothing
+            # mutating; fall back to planning intake by reporting unhandled via
+            # a benign result so the caller's contract still holds.
+            return ListenerResult(
+                True,
+                "intent_card_unposted",
+                detail="confirmation card could not be posted; nothing changed",
+            )
+
+        self.registry.register(
+            SlackThreadRecord(
+                kind="conversational_action",
+                channel=event.channel,
+                thread_ts=card_ts,
+                codename="intent",
+                title=f"{verb} {target}",
+                status="awaiting_confirmation",
+                parent_repo=intent.repo,
+                parent_issue=intent.issue,
+                metadata={
+                    "source": "slack-intent",
+                    "intent_action": intent.action,
+                    "repo": intent.repo,
+                    "issue": intent.issue,
+                    "agent": intent.agent,
+                    "schedule": intent.schedule,
+                    "confidence": intent.confidence,
+                    "origin_ts": event.root_ts,
+                    "requested_by": event.user,
+                    "raw_text": intent.params.get("raw_text", ""),
+                },
+            )
+        )
+        return ListenerResult(
+            True,
+            "intent_confirmation_posted",
+            detail=f"{verb} {target} awaiting confirmation",
+        )
+
+    def _handle_conversational_action_reaction(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+    ) -> ListenerResult:
+        """Resolve a reaction on a pending conversational-action card.
+
+        Only the workspace owner's confirm reaction executes the action; a cancel
+        reaction discards it. Any other reactor or any non-approval/non-reject
+        reaction is ignored, so the card stays pending. This reuses the
+        same single-owner authority that the reaction-approval gate relies on:
+        the listener's ``_operator_user_id``.
+        """
+        if record.status not in {"awaiting_confirmation", ""}:
+            # Already resolved (confirmed or cancelled). Reactions are
+            # idempotent: never double-execute.
+            return ListenerResult(False, "ignored", "conversational action already resolved")
+        if not self._operator_user_id or event.user != self._operator_user_id:
+            # Only the configured workspace owner can confirm a mutating action. A trusted
+            # collaborator's reaction never executes.
+            return ListenerResult(
+                False, "ignored", "only the workspace owner can confirm this action"
+            )
+
+        if _is_cancel_reaction(event.reaction):
+            self.registry.mark_status(record, "cancelled")
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                "*Cancelled.* Nothing changed.",
+            )
+            return ListenerResult(
+                True,
+                "intent_cancelled",
+                detail="workspace owner cancelled the proposed action",
+            )
+
+        if not _is_confirm_reaction(event.reaction):
+            return ListenerResult(False, "ignored", "reaction is not a confirm or cancel token")
+
+        return self._execute_confirmed_intent(event, record)
+
+    def _execute_confirmed_intent(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+    ) -> ListenerResult:
+        """Run the assign / queue / hold action the workspace owner just confirmed.
+
+        This is the ONLY place a conversational mutating action executes, and
+        only after the workspace owner's confirm reaction on the card. The actions use
+        the same queue / assignment primitives as the leading-verb fallback, so
+        they inherit the same allowlist and validation guards.
+        """
+        from issue_assignment import assign_issue
+        from issue_queue import set_issue_pickup
+
+        metadata = dict(record.metadata or {})
+        action = str(metadata.get("intent_action") or "")
+        if action in {
+            ACTION_RUN_AGENT,
+            ACTION_PAUSE_AGENT,
+            ACTION_RESUME_AGENT,
+            ACTION_SCHEDULE_AGENT,
+        }:
+            return self._execute_confirmed_agent_intent(event, record, action)
+
+        repo = record.parent_repo or str(metadata.get("repo") or "")
+        issue = record.parent_issue
+        if issue is None:
+            raw_issue = metadata.get("issue")
+            issue = int(raw_issue) if isinstance(raw_issue, int) else None
+
+        if action not in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD} or not repo or issue is None:
+            self.registry.mark_status(record, "error")
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                "*Could not run that.* The confirmed action was incomplete; nothing changed.",
+            )
+            return ListenerResult(False, "intent_invalid", "confirmed action missing repo/issue")
+
+        if action == ACTION_ASSIGN:
+            assignment = assign_issue(repo, issue)
+            self.registry.mark_status(record, "confirmed" if assignment.ok else "failed")
+            if not assignment.ok:
+                reason = assignment.error or assignment.detail
+                self._post_thread_ack(
+                    event.channel,
+                    record.thread_ts,
+                    f"*Assignment did not run.* {reason}",
+                )
+                return ListenerResult(
+                    True,
+                    "intent_assign_issue_failed",
+                    detail=reason,
+                )
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                _assignment_ack_text(repo, issue, assignment.detail),
+            )
+            return ListenerResult(
+                True,
+                "intent_assign_issue",
+                detail=assignment.detail,
+            )
+
+        hold = action == ACTION_HOLD
+        ok, detail = set_issue_pickup(repo, issue, hold=hold)
+        # Mark resolved regardless of the gh outcome so a repeated reaction
+        # never re-runs the command.
+        self.registry.mark_status(record, "confirmed" if ok else "failed")
+        if not ok:
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                "*Queue update failed (gh error).*",
+            )
+            return ListenerResult(
+                True,
+                f"intent_{action}_failed",
+                detail=detail,
+            )
+        emoji = ":raised_hand:" if hold else ":inbox_tray:"
+        self._post_thread_ack(event.channel, record.thread_ts, f"{emoji} {detail}.")
+        return ListenerResult(
+            True,
+            f"intent_{action}",
+            detail=detail,
+        )
+
+    def _execute_confirmed_agent_intent(
+        self,
+        event: SlackInputEvent,
+        record: SlackThreadRecord,
+        action: str,
+    ) -> ListenerResult:
+        """Run a confirmed conversational scheduler action."""
+        metadata = dict(record.metadata or {})
+        agent = str(metadata.get("agent") or "").strip()
+        command = _control_command_for_agent_intent(action)
+        schedule = str(metadata.get("schedule") or "").strip()
+        if not command or not agent:
+            self.registry.mark_status(record, "error")
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                "*Could not run that.* The confirmed agent action was incomplete; nothing changed.",
+            )
+            return ListenerResult(
+                False,
+                "intent_invalid",
+                "confirmed agent action missing command or agent",
+            )
+
+        control_text = f"{command} {agent}"
+        if action == ACTION_SCHEDULE_AGENT:
+            if not schedule:
+                self.registry.mark_status(record, "error")
+                self._post_thread_ack(
+                    event.channel,
+                    record.thread_ts,
+                    "*Could not run that.* The confirmed schedule change was incomplete; nothing changed.",
+                )
+                return ListenerResult(
+                    False,
+                    "intent_invalid",
+                    "confirmed schedule action missing cadence",
+                )
+            control_text = f"{command} {agent} {schedule}"
+
+        control = self.control_handler.handle(
+            control_text,
+            trusted=True,
+            actor_user_id=event.user,
+        )
+        control_failed = _control_result_failed(control)
+        self.registry.mark_status(record, "failed" if control_failed else "confirmed")
+        if control_failed:
+            self._post_thread_ack(
+                event.channel,
+                record.thread_ts,
+                (control.text or f"*Could not {command}* `{agent}`. Nothing changed.").strip(),
+            )
+            return ListenerResult(
+                True,
+                f"intent_{action}_failed",
+                detail=control.detail,
+            )
+        self._post_thread_ack(
+            event.channel,
+            record.thread_ts,
+            (control.text or f"*{_intent_action_verb(action).capitalize()}* `{agent}`.").strip(),
+        )
+        return ListenerResult(
+            True,
+            f"intent_{action}",
+            detail=control.detail,
+        )
+
+    def _post_message(
+        self,
+        channel: str,
+        text: str,
+        *,
+        blocks: list[dict] | None = None,
+        thread_ts: str | None = None,
+    ) -> Any | None:
+        """Post a Slack message and return the API response (with ``ts``).
+
+        Unlike :meth:`_post_thread_ack` this surfaces the response so the
+        caller can register the posted message's ts (needed to resolve a later
+        confirm reaction). Best-effort: returns ``None`` when there is no
+        poster or the API call fails.
+        """
+        if self.poster is None or not text.strip():
+            return None
+        kwargs: dict[str, Any] = {"channel": channel, "text": text}
+        if blocks:
+            kwargs["blocks"] = blocks
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+        try:
+            resp = self.poster.chat_postMessage(**kwargs)
+        except Exception:
+            return None
+        # The Slack SDK returns a ``SlackResponse`` (dict-like, supports
+        # ``.get``/``["ts"]``) in production; tests may inject a plain dict.
+        # Accept either via the mapping interface the caller uses; reject only a
+        # missing or non-mapping response so the card ts still registers.
+        return resp if hasattr(resp, "get") else None
+
     def _handle_draft_revision(
         self,
         event: SlackInputEvent,
@@ -498,10 +1237,10 @@ class SlackPlanningListener:
         event: SlackInputEvent,
         record: SlackThreadRecord,
     ) -> ListenerResult:
-        """Bridge an approved draft to a labeled GitHub issue (idempotently).
+        """Bridge an approved draft to labeled GitHub issue work.
 
-        SAFETY: this never runs code. It only asks the bridge to create one
-        labeled GitHub issue, which the autonomous fleet later claims through
+        SAFETY: this never runs code. It only asks the bridge to create
+        labeled GitHub issues, which the autonomous fleet later claims through
         all existing gates. The approving user is trust-gated in
         ``handle_payload``; ``trusted=True`` reflects that, and the bridge
         re-verifies it plus enablement, approval, and the repo allowlist.
@@ -530,7 +1269,12 @@ class SlackPlanningListener:
             if outcome.created:
                 self._record_conversion(payload_path, payload, record, outcome)
 
-        self._post_thread_ack(event.channel, event.root_ts, render_bridge_outcome_ack(outcome))
+        summary = _issue_summary_for_payload(payload) if outcome.created else ""
+        self._post_thread_ack(
+            event.channel,
+            event.root_ts,
+            render_bridge_outcome_ack(outcome, summary=summary),
+        )
         if outcome.created:
             return ListenerResult(
                 True,
@@ -575,7 +1319,12 @@ class SlackPlanningListener:
         metadata.update(
             {
                 "bridge_issue_url": outcome.issue_url,
+                "bridge_issue_urls": list(getattr(outcome, "issue_urls", ())),
+                "bridge_issues_by_repo": dict(getattr(outcome, "issues_by_repo", {})),
                 "bridge_repo": outcome.repo,
+                "bridge_repos": list(getattr(outcome, "repos", ())),
+                "bridge_bundle_slug": getattr(outcome, "bundle_slug", ""),
+                "bridge_bundle_label": getattr(outcome, "bundle_label", ""),
                 "converted_at": _utc_now(),
             }
         )
@@ -695,6 +1444,17 @@ class SlackPlanningListener:
             )
             existing_count = _metadata_int(record.metadata.get("plan_revision_count")) or 0
             return None, existing_count + 1
+
+    def sync_thread_status(self, *, fetcher: Any | None = None) -> list[dict[str, Any]]:
+        """Sweep tracked issue threads and post fleet progress deltas.
+
+        Read-only on GitHub. Used by the ``alfred slack-thread-sync`` CLI and
+        the listener's optional idle-loop hook. ``fetcher`` defaults to the
+        read-only ``gh``-backed fetcher.
+        """
+        from slack_thread_status import default_issue_state_fetcher
+
+        return self.status_tracker.sweep(fetcher=fetcher or default_issue_state_fetcher)
 
     def _write_followup_context(
         self,
@@ -843,7 +1603,11 @@ class SlackPlanningListener:
                 candidate_key = _slack_memory_candidate_key(repo)
                 if candidate_key in existing_keys:
                     continue
-                repo_evidence = {**evidence, "repo": repo, "candidate_key": candidate_key}
+                repo_evidence = {
+                    **evidence,
+                    "repo": repo,
+                    "candidate_key": candidate_key,
+                }
                 if use_modern_signature:
                     kwargs = {
                         "codename": "planning",
@@ -911,16 +1675,13 @@ class SlackPlanningListener:
         tmp.replace(path)
         return path
 
-    def sync_thread_status(self, *, fetcher: Any | None = None) -> list[dict[str, Any]]:
-        """Sweep tracked issue threads and post fleet progress deltas.
-
-        Read-only on GitHub. Used by the ``alfred slack-thread-sync`` CLI and
-        the listener's optional idle-loop hook. ``fetcher`` defaults to the
-        read-only ``gh``-backed fetcher.
-        """
-        from slack_thread_status import default_issue_state_fetcher
-
-        return self.status_tracker.sweep(fetcher=fetcher or default_issue_state_fetcher)
+    def _post_thread_ack(self, channel: str, thread_ts: str, text: str) -> None:
+        if self.poster is None or not text.strip():
+            return
+        try:
+            self.poster.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
+        except Exception:
+            return
 
     def _trusted_user_ids(self) -> set[str]:
         if self._static_trusted_user_ids is not None:
@@ -931,14 +1692,6 @@ class SlackPlanningListener:
                 state_root=self.state_root,
             )
         )
-
-    def _post_thread_ack(self, channel: str, thread_ts: str, text: str) -> None:
-        if self.poster is None or not text.strip():
-            return
-        try:
-            self.poster.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
-        except Exception:
-            return
 
 
 def _memory_candidate_writer(provider: Any | None) -> Any | None:
@@ -1137,8 +1890,186 @@ def draft_from_slack_text(text: str) -> IssueDraft:
         acceptance_criteria=acceptance,
         test_plan=test_plan,
         out_of_scope=out_of_scope,
-        open_questions=fields.get("question") or fields.get("questions") or "",
+        open_questions=(fields.get("open question") or fields.get("open questions") or ""),
     )
+
+
+# Reaction vocabulary for the conversational-action confirmation gate. These
+# mirror ``slack_approval.SlackApproval`` defaults so the workspace owner uses
+# the same gestures everywhere: a check / thumbs-up confirms, an x / thumbs-down
+# cancels.
+_CONFIRM_REACTIONS: frozenset[str] = frozenset({"white_check_mark", "thumbsup", "+1"})
+_CANCEL_REACTIONS: frozenset[str] = frozenset({"x", "thumbsdown", "-1"})
+
+
+def _reaction_name(reaction: str) -> str:
+    """Normalize a Slack reaction name (drop skin-tone variants)."""
+    return (reaction or "").split("::", 1)[0].strip().lower()
+
+
+def _is_confirm_reaction(reaction: str) -> bool:
+    return _reaction_name(reaction) in _CONFIRM_REACTIONS
+
+
+def _is_cancel_reaction(reaction: str) -> bool:
+    return _reaction_name(reaction) in _CANCEL_REACTIONS
+
+
+def render_intent_confirmation(intent: Intent) -> tuple[str, list[dict]]:
+    """Render the workspace-owner-confirmable card for a mutating intent.
+
+    Returns ``(fallback_text, blocks)``. The fallback text is what notifications
+    and non-Block-Kit clients show; the Block Kit blocks render the structured
+    summary. The card states the interpreted action, target, and exact
+    reactions to confirm or cancel. It never claims the action happened;
+    nothing runs until the workspace owner reacts.
+    """
+    verb = _intent_action_verb(intent.action)
+    effect = _intent_action_effect(intent.action)
+    target = _intent_action_target(intent)
+    target_display = _intent_action_target_display(intent)
+    raw_text = (intent.params or {}).get("raw_text", "")
+    fallback = f"Confirm {verb} {target}? React to confirm; nothing changed yet."
+    blocks: list[dict] = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "*Confirm action*"},
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Action*\n{verb}"},
+                {"type": "mrkdwn", "text": f"*Target*\n{target_display}"},
+            ],
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Effect*\n{effect}."},
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        "Status: waiting for your reaction. "
+                        "Use :white_check_mark: to confirm or :x: to cancel."
+                    ),
+                }
+            ],
+        },
+    ]
+    if raw_text:
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"From your message: {raw_text[:280]}"}],
+            }
+        )
+    return fallback, blocks
+
+
+def _intent_action_verb(action: str) -> str:
+    return {
+        ACTION_ASSIGN: "assign",
+        ACTION_QUEUE: "queue",
+        ACTION_HOLD: "hold",
+        ACTION_RUN_AGENT: "trigger",
+        ACTION_PAUSE_AGENT: "pause",
+        ACTION_RESUME_AGENT: "resume",
+        ACTION_SCHEDULE_AGENT: "reschedule",
+    }.get(action, "run")
+
+
+def _intent_action_effect(action: str) -> str:
+    return {
+        ACTION_ASSIGN: "choose Batman or Lucius and label the issue for that lane",
+        ACTION_QUEUE: "make it eligible for autonomous pickup",
+        ACTION_HOLD: "take it out of Alfred's reach",
+        ACTION_RUN_AGENT: "trigger one manual agent run now",
+        ACTION_PAUSE_AGENT: "stop scheduled firings until it is resumed",
+        ACTION_RESUME_AGENT: "resume scheduled firings",
+        ACTION_SCHEDULE_AGENT: "edit the configured cadence in agents.conf",
+    }.get(action, "run the requested action")
+
+
+def _intent_action_target(intent: Intent) -> str:
+    if intent.action in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
+        return f"{intent.repo}#{intent.issue}"
+    if intent.agent:
+        if intent.action == ACTION_SCHEDULE_AGENT and intent.schedule:
+            return f"{intent.agent} -> {intent.schedule}"
+        return intent.agent
+    return "unknown target"
+
+
+def _intent_action_target_display(intent: Intent) -> str:
+    if intent.action in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
+        if intent.repo and intent.issue:
+            return github_issue_link(intent.repo, intent.issue)
+        return "`unknown issue`"
+    target = _intent_action_target(intent)
+    return f"`{target}`" if target != "unknown target" else target
+
+
+def _control_command_for_agent_intent(action: str) -> str:
+    return {
+        ACTION_RUN_AGENT: "run",
+        ACTION_PAUSE_AGENT: "pause",
+        ACTION_RESUME_AGENT: "resume",
+        ACTION_SCHEDULE_AGENT: "schedule set",
+    }.get(action, "")
+
+
+def _assignment_ack_text(repo: str, issue: int, detail: str) -> str:
+    return "\n".join(
+        [
+            ":label: *Issue routed*",
+            f"*Issue:* {github_issue_link(repo, issue)}",
+            f"*Result:* {detail}",
+        ]
+    )
+
+
+def _status_query_plan(text: str) -> tuple[str, str]:
+    """Map a natural-language read-only question to a control verb + lead-in.
+
+    Returns ``(verb, lead_in)`` where ``verb`` is one of the read-only control
+    commands (``status`` / ``runs`` / ``plans``) and ``lead_in`` is a short
+    conversational sentence rendered above the handler's structured output.
+    Deterministic and side-effect free; the default is ``status``.
+    """
+    normalized = re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+    ship_cues = (
+        "ship",
+        "shipped",
+        "merge",
+        "merged",
+        "what did you do",
+        "what have you done",
+        "recent runs",
+        "what ran",
+        "last run",
+    )
+    blocked_cues = (
+        "blocked",
+        "stuck",
+        "waiting",
+        "needs scope",
+        "need scope",
+        "needs review",
+        "in the inbox",
+        "planning inbox",
+        "what's queued",
+        "whats queued",
+        "what is queued",
+    )
+    if any(cue in normalized for cue in ship_cues):
+        return "runs", "Here's what the fleet has been working on recently:"
+    if any(cue in normalized for cue in blocked_cues):
+        return "plans", "Here's what's in the planning inbox right now:"
+    return "status", "Here's where the fleet stands:"
 
 
 def render_draft_ack(result: Any) -> str:
@@ -1159,8 +2090,8 @@ def render_draft_ack(result: Any) -> str:
         [
             "",
             "*How to steer this:* reply with lines like `repo: owner/repo`, "
-            "`desired: ...`, `acceptance: ...`, `test: ...`, `question: ...`, "
-            "or `open questions: none`.",
+            "`desired: ...`, `acceptance: ...`, `test: ...`, `open question: ...`, "
+            "or `open questions: none`. Ask normal questions in plain language.",
             "*Safety:* chat edits the draft only. Implementation still needs the normal approval gate.",
         ]
     )
@@ -1197,23 +2128,83 @@ def render_draft_revision_ack(result: Any) -> str:
     return "\n".join(lines)
 
 
-def render_bridge_outcome_ack(outcome: Any) -> str:
-    """Render a Slack acknowledgement for an issue-bridge conversion attempt."""
+def _issue_summary_for_payload(payload: dict[str, Any]) -> str:
+    """Best-effort plain-English summary of a converted draft payload.
+
+    Reads the draft title + rendered issue body and asks the engine (when
+    ``ALFRED_ISSUE_SUMMARY_ENABLED`` is set) for a short "what is this" line,
+    falling back to a trimmed body/title. Never raises: a summary is a
+    convenience on the ack, not load-bearing.
+    """
+    try:
+        draft = payload.get("draft")
+        title = ""
+        if isinstance(draft, dict):
+            title = str(draft.get("title") or "").strip()
+        body = str(payload.get("issue_body") or "").strip() or build_issue_body(payload)
+        return summarize_issue(title, body, engine_invoke=default_engine_invoke())
+    except Exception as exc:  # summary is never load-bearing
+        print(
+            f"[SLACK-LISTENER-WARN] issue summary failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return ""
+
+
+def render_bridge_outcome_ack(outcome: Any, *, summary: str = "") -> str:
+    """Render a Slack acknowledgement for an issue-bridge conversion attempt.
+
+    ``summary`` is an optional plain-English "what this issue is" line. When
+    supplied (issue created), it renders above the link so the approver sees
+    what they just filed, not just a bare URL.
+    """
     if outcome.created:
-        return "\n".join(
+        issue_urls = list(getattr(outcome, "issue_urls", ()) or ())
+        issues_by_repo = dict(getattr(outcome, "issues_by_repo", {}) or {})
+        if getattr(outcome, "is_bundle", False):
+            lines = ["*Bundle created*", ""]
+        else:
+            lines = ["*Issue created*", ""]
+        clean_summary = (summary or "").strip()
+        if clean_summary:
+            lines.extend([clean_summary, ""])
+        if getattr(outcome, "is_bundle", False):
+            if getattr(outcome, "bundle_label", ""):
+                lines.append(f"*Bundle label:* `{outcome.bundle_label}`")
+            lines.append("*Issues:*")
+            for repo, url in issues_by_repo.items():
+                lines.append(f"- `{repo}`: {_slack_github_url(url)}")
+            if not issues_by_repo:
+                for url in issue_urls:
+                    lines.append(f"- {_slack_github_url(url)}")
+        else:
+            lines.extend(
+                [
+                    f"*Repo:* `{outcome.repo}`",
+                    f"*Issue:* {_slack_github_url(outcome.issue_url)}",
+                ]
+            )
+        lines.extend(
             [
-                "*Issue created*",
-                "",
-                f"*Repo:* `{outcome.repo}`",
-                f"*Issue:* {outcome.issue_url}",
                 "",
                 "It is now in the autonomous queue. The fleet still claims it "
                 "through every existing gate (claim-lock, spend caps, review, "
                 "Batman approval) before any change ships.",
             ]
         )
+        return "\n".join(lines)
     if outcome.status == "already_converted":
-        suffix = f"\n\n*Existing issue:* {outcome.issue_url}" if outcome.issue_url else ""
+        issue_urls = list(getattr(outcome, "issue_urls", ()) or ())
+        if len(issue_urls) > 1:
+            suffix = "\n\n*Existing issues:*\n" + "\n".join(
+                f"- {_slack_github_url(url)}" for url in issue_urls
+            )
+        else:
+            suffix = (
+                f"\n\n*Existing issue:* {_slack_github_url(outcome.issue_url)}"
+                if outcome.issue_url
+                else ""
+            )
         return (
             "*Already filed*\n\nThis draft was already converted to an issue, "
             "so I did not create a duplicate." + suffix
@@ -1237,6 +2228,10 @@ def render_bridge_outcome_ack(outcome: Any) -> str:
         f"{outcome.detail or 'The draft was not eligible to file.'}\n\n"
         "Nothing was created and no code was run. Adjust the draft and approve again."
     )
+
+
+def _slack_github_url(url: str) -> str:
+    return github_url_link(url) or (url or "")
 
 
 def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
@@ -1265,10 +2260,19 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
             try:
                 active.handle_payload(getattr(req, "payload", {}) or {})
             except Exception as exc:
-                print(f"[SLACK-LISTENER-WARN] handle_payload failed: {exc}", file=sys.stderr)
+                print(
+                    f"[SLACK-LISTENER-WARN] handle_payload failed: {exc}",
+                    file=sys.stderr,
+                )
 
     client.socket_mode_request_listeners.append(_handler)
     client.connect()
+    print(
+        "[SLACK-LISTENER] connected; listening for events "
+        f"(trusted_users={len(active._trusted_user_ids())}, "
+        f"bridge={'on' if active.bridge.config.enabled else 'off'})",
+        flush=True,
+    )
     interval = _thread_sync_interval_s()
     while True:
         time.sleep(interval if interval > 0 else 60)
@@ -1276,22 +2280,10 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
             try:
                 active.sync_thread_status()
             except Exception as exc:
-                print(f"[SLACK-LISTENER-WARN] thread-status sync failed: {exc}", file=sys.stderr)
-
-
-def _thread_sync_interval_s() -> int:
-    """Idle-loop sweep cadence in seconds (0 disables the in-listener hook).
-
-    Defaults to 5 minutes. The standalone ``alfred slack-thread-sync`` entry
-    point can run on the operator's own schedule regardless of this setting.
-    """
-    raw = (os.environ.get("ALFRED_SLACK_THREAD_SYNC_INTERVAL_S") or "").strip()
-    if not raw:
-        return 300
-    try:
-        return max(int(raw), 0)
-    except ValueError:
-        return 300
+                print(
+                    f"[SLACK-LISTENER-WARN] thread-status sync failed: {exc}",
+                    file=sys.stderr,
+                )
 
 
 def _structured_fields(lines: list[str]) -> dict[str, str]:
@@ -1317,17 +2309,10 @@ def _list_field(fields: dict[str, str], key: str) -> list[str]:
 
 
 def _repos_from_text(text: str) -> list[str]:
-    # Slack commonly wraps a bare GitHub link as <https://github.com/org/repo>.
-    # A naive owner/repo scan matches "github.com/org" first, saving an invalid
-    # scope, so pull the real org/repo out of any github.com URL and strip the
-    # URLs before scanning for bare owner/repo tokens.
-    url_repos = re.findall(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)", text)
-    text_wo_urls = re.sub(r"https?://\S+", " ", text)
-    bare_repos = re.findall(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b", text_wo_urls)
+    repos = re.findall(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b", text)
     seen: set[str] = set()
     out: list[str] = []
-    for repo in [*url_repos, *bare_repos]:
-        repo = repo[:-4] if repo.endswith(".git") else repo
+    for repo in repos:
         if repo not in seen:
             seen.add(repo)
             out.append(repo)
@@ -1348,6 +2333,263 @@ def _clean_slack_text(text: str) -> str:
     text = re.sub(r"<mailto:[^|>]+\|([^>]+)>", r"\1", text)
     text = re.sub(r"<([^|>]+)\|([^>]+)>", r"\2", text)
     return "\n".join(line.strip() for line in text.splitlines() if line.strip())
+
+
+def _is_plan_thread_question(text: str) -> bool:
+    lines = _clean_slack_text(text).splitlines()
+    if not lines:
+        return False
+    for raw in lines:
+        line = raw.strip()
+        lowered = line.lower()
+        if lowered.startswith(("open question:", "open questions:")):
+            return False
+        if _is_plan_thread_field_command(line):
+            return False
+        if lowered.startswith(("question:", "questions:")):
+            continue
+        if line.endswith("?"):
+            continue
+        if re.match(
+            r"^(can you|could you|would you|what|why|how|who|which|when|where)\b",
+            lowered,
+        ):
+            continue
+        if lowered.startswith(("explain ", "tell me ", "help me understand ")):
+            continue
+        return False
+    return True
+
+
+def _is_plan_thread_field_command(line: str) -> bool:
+    cleaned = _clean_slack_text(line)
+    lowered = cleaned.lower()
+    if lowered.startswith(("add repo ", "remove repo ")):
+        return True
+    if ":" not in cleaned:
+        return False
+    raw_field = cleaned.split(":", 1)[0]
+    field = " ".join(raw_field.replace("_", " ").replace("-", " ").lower().split())
+    return field in {
+        "acceptance",
+        "acceptance criteria",
+        "change",
+        "context",
+        "current",
+        "current behavior",
+        "desired",
+        "desired behavior",
+        "fix",
+        "non goal",
+        "non goals",
+        "out of scope",
+        "problem",
+        "repo",
+        "repos",
+        "repositories",
+        "clear open questions",
+        "clear question",
+        "clear questions",
+        "remove repo",
+        "resolve question",
+        "resolve questions",
+        "resolved question",
+        "resolved questions",
+        "rollout",
+        "test",
+        "test plan",
+        "tests",
+        "title",
+        "user",
+    }
+
+
+def _strip_plan_question_prefix(text: str) -> str:
+    clean = _clean_slack_text(text)
+    lines: list[str] = []
+    for line in clean.splitlines():
+        if ":" not in line:
+            lines.append(line.strip())
+            continue
+        raw, value = line.split(":", 1)
+        field = " ".join(raw.replace("_", " ").replace("-", " ").lower().split())
+        if field in {"question", "questions"}:
+            lines.append(value.strip())
+        else:
+            lines.append(line.strip())
+    return "\n".join(item for item in lines if item).strip()
+
+
+def _read_text_file(raw_path: str | Path | None) -> str:
+    if not raw_path:
+        return ""
+    try:
+        return Path(raw_path).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _default_plan_thread_answerer() -> PlanAnswerer | None:
+    engine = (os.environ.get(ENV_PLAN_ANSWER_ENGINE) or "").strip()
+    if not engine:
+        return None
+    timeout = _env_int(ENV_PLAN_ANSWER_TIMEOUT, default=180)
+
+    def _answer(
+        record: SlackThreadRecord,
+        question: str,
+        plan_markdown: str,
+    ) -> str | None:
+        try:
+            from agent_runner import invoke_agent_engine
+        except Exception:
+            return None
+        prompt = _plan_answer_prompt(record, question, plan_markdown)
+        firing_id = datetime.now(UTC).strftime("slack-plan-answer-%Y%m%d-%H%M%S")
+        result, _engine_used = invoke_agent_engine(
+            prompt,
+            engine=engine,
+            agent="slack-plan-chat",
+            firing_id=firing_id,
+            workdir=Path.cwd(),
+            claude_allowed_tools="Read",
+            timeout=timeout,
+            claude_max_turns=6,
+            codex_timeout=timeout,
+        )
+        if not result.success or not result.result_text:
+            return None
+        return result.result_text.strip()
+
+    return _answer
+
+
+def _plan_answer_prompt(
+    record: SlackThreadRecord,
+    question: str,
+    plan_markdown: str,
+) -> str:
+    return "\n".join(
+        [
+            "You are Alfred answering a trusted operator inside a Slack plan thread.",
+            "Answer the operator's question conversationally and concretely.",
+            "Do not revise the plan, approve execution, file issues, or invent missing facts.",
+            "If the plan does not contain enough context, say what is missing.",
+            "Keep the reply concise enough for Slack, but useful.",
+            "",
+            "Thread context:",
+            f"- Title: {record.title or '(unknown)'}",
+            f"- Parent: {record.parent_repo}#{record.parent_issue or ''}".rstrip("#"),
+            f"- Codename: {record.codename or '(unknown)'}",
+            "",
+            "Operator question:",
+            question or "(empty)",
+            "",
+            "Current plan markdown:",
+            plan_markdown or "(plan markdown unavailable)",
+        ]
+    )
+
+
+def _fallback_plan_question_answer(
+    record: SlackThreadRecord,
+    question: str,
+    plan_markdown: str,
+    *,
+    revised_repos: Iterable[str],
+    child_count: int | None,
+) -> list[str]:
+    work = _extract_slack_field(plan_markdown, "Work") or record.title or "this plan"
+    readiness = _extract_slack_field(plan_markdown, "Readiness")
+    parent = _extract_slack_field(plan_markdown, "Parent")
+    scope_lines = _extract_plan_scope_lines(plan_markdown)
+    done_when = _extract_plan_section(plan_markdown, "Done when", "Scope checks")
+    repos = tuple(str(repo).strip() for repo in revised_repos if str(repo).strip())
+    repo_label = "repo" if len(repos) == 1 else "repos"
+    child_label = ""
+    if child_count is not None:
+        child_label = f", {child_count} child issue(s)"
+
+    lines = ["*Answer*", ""]
+    lines.append(f"This plan is about: {work}")
+    if parent:
+        lines.append(f"Parent: {parent}")
+    if readiness:
+        lines.append(f"Readiness: {readiness}")
+    if repos:
+        lines.append("")
+        lines.append(f"Current scope: {len(repos)} {repo_label}{child_label}.")
+        lines.extend(f"- `{repo}`" for repo in repos[:8])
+        if len(repos) > 8:
+            lines.append(f"- ...and {len(repos) - 8} more repo(s).")
+    elif scope_lines:
+        lines.append("")
+        lines.append("Current scope:")
+        lines.extend(scope_lines[:8])
+    if done_when:
+        lines.append("")
+        lines.append("Done when:")
+        lines.extend(f"- {line}" for line in done_when[:5])
+    lines.extend(
+        [
+            "",
+            "After approval Alfred will file the scoped child issues, run the relevant agents, and report PR links or failures back in this thread.",
+        ]
+    )
+    if question:
+        lines.extend(["", f"Asked: {question}"])
+    return lines
+
+
+def _extract_slack_field(markdown: str, label: str) -> str:
+    pattern = re.compile(rf"^\*{re.escape(label)}:\*\s*(.+)$", re.MULTILINE)
+    match = pattern.search(markdown or "")
+    return match.group(1).strip() if match else ""
+
+
+def _extract_plan_scope_lines(markdown: str) -> list[str]:
+    lines = []
+    in_scope = False
+    for raw in (markdown or "").splitlines():
+        line = raw.rstrip()
+        if line.startswith("*Scope if approved now:*"):
+            in_scope = True
+            continue
+        if in_scope and line.startswith("*"):
+            break
+        if in_scope and line.strip().startswith("-"):
+            lines.append(line.strip())
+    return lines
+
+
+def _extract_plan_section(
+    markdown: str,
+    start_label: str,
+    end_label: str,
+) -> list[str]:
+    out: list[str] = []
+    in_section = False
+    for raw in (markdown or "").splitlines():
+        line = raw.strip()
+        if line == f"*{start_label}:*":
+            in_section = True
+            continue
+        if in_section and line == f"*{end_label}:*":
+            break
+        if in_section and line:
+            out.append(line.lstrip("- ").strip())
+    return out
+
+
+def _env_int(name: str, *, default: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(1, value)
 
 
 def _read_draft_payload(path: Path | None) -> dict[str, Any] | None:
@@ -1382,6 +2624,94 @@ def _read_feedback_texts(path: Path | None) -> tuple[str, ...]:
     except OSError:
         return ()
     return tuple(out)
+
+
+def _draft_already_converted(payload: dict[str, Any]) -> bool:
+    bridge = payload.get("bridge")
+    return isinstance(bridge, dict) and bool(bridge.get("converted"))
+
+
+def _write_converted_draft_payload(
+    path: Path,
+    payload: dict[str, Any],
+    outcome: Any,
+) -> None:
+    """Stamp the saved draft as converted so it can never double-create.
+
+    Written atomically via a temp file, matching the revision writer.
+    """
+    updated = dict(payload)
+    now = _utc_now()
+    updated["bridge"] = {
+        "converted": True,
+        "issue_url": outcome.issue_url,
+        "issue_urls": list(getattr(outcome, "issue_urls", ()) or ()),
+        "issues_by_repo": dict(getattr(outcome, "issues_by_repo", {}) or {}),
+        "repo": outcome.repo,
+        "repos": list(getattr(outcome, "repos", ()) or ()),
+        "labels": list(getattr(outcome, "labels", ()) or ()),
+        "bundle_slug": getattr(outcome, "bundle_slug", ""),
+        "bundle_label": getattr(outcome, "bundle_label", ""),
+        "converted_at": now,
+        "source": "slack",
+    }
+    updated["updated_at"] = now
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _thread_link(record: SlackThreadRecord) -> str:
+    """Best-effort Slack thread reference for the issue footer.
+
+    Uses an explicit permalink from metadata when present, else a stable
+    ``channel/thread_ts`` reference. We never call the Slack API to build it.
+    """
+    permalink = str(record.metadata.get("permalink") or "").strip()
+    if permalink:
+        return permalink
+    if record.channel and record.thread_ts:
+        return f"slack://thread?channel={record.channel}&ts={record.thread_ts}"
+    return ""
+
+
+def _issue_number_from_url(url: str) -> int | None:
+    """Extract the trailing issue number from a GitHub issue URL."""
+    match = re.search(r"/issues/(\d+)\b", str(url or ""))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _ambient_channels_from_env() -> set[str]:
+    """Parse the ambient channel allowlist from ``ALFRED_SLACK_AMBIENT_CHANNELS``.
+
+    Accepts a space-, comma-, or newline-separated list of Slack channel ids.
+    Empty / unset yields an empty set, which means ambient listening engages in
+    no channel even when both ambient flags are armed (fail-safe scoping).
+    """
+    raw = (os.environ.get(ENV_AMBIENT_CHANNELS) or "").strip()
+    if not raw:
+        return set()
+    return {token for token in re.split(r"[\s,]+", raw) if token}
+
+
+def _thread_sync_interval_s() -> int:
+    """Idle-loop sweep cadence in seconds (0 disables the in-listener hook).
+
+    Defaults to 5 minutes. The standalone ``alfred slack-thread-sync`` entry
+    point can run on the operator's own schedule regardless of this setting.
+    """
+    raw = (os.environ.get("ALFRED_SLACK_THREAD_SYNC_INTERVAL_S") or "").strip()
+    if not raw:
+        return 300
+    try:
+        return max(int(raw), 0)
+    except ValueError:
+        return 300
 
 
 def _draft_from_payload(payload: dict[str, Any] | None) -> IssueDraft | None:
@@ -1450,47 +2780,6 @@ def _write_revised_draft_payload(
     return revision_count
 
 
-def _draft_already_converted(payload: dict[str, Any]) -> bool:
-    bridge = payload.get("bridge")
-    return isinstance(bridge, dict) and bool(bridge.get("converted"))
-
-
-def _write_converted_draft_payload(
-    path: Path,
-    payload: dict[str, Any],
-    outcome: Any,
-) -> None:
-    """Stamp the saved draft as converted so it can never double-create.
-
-    Written atomically via a temp file, matching the revision writer.
-    """
-    updated = dict(payload)
-    updated["bridge"] = {
-        "converted": True,
-        "issue_url": outcome.issue_url,
-        "repo": outcome.repo,
-        "converted_at": _utc_now(),
-    }
-    updated["updated_at"] = _utc_now()
-    tmp = path.with_name(f"{path.name}.tmp")
-    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(path)
-
-
-def _thread_link(record: SlackThreadRecord) -> str:
-    """Best-effort Slack thread reference for the issue footer.
-
-    Uses an explicit permalink from metadata when present, else a stable
-    ``channel/thread_ts`` reference. We never call the Slack API to build it.
-    """
-    permalink = str(record.metadata.get("permalink") or "").strip()
-    if permalink:
-        return permalink
-    if record.channel and record.thread_ts:
-        return f"slack://thread?channel={record.channel}&ts={record.thread_ts}"
-    return ""
-
-
 def _draft_revision_lock(path: Path) -> threading.Lock:
     key = str(path.resolve())
     with _DRAFT_REVISION_LOCKS_GUARD:
@@ -1516,12 +2805,18 @@ def _default_memory_provider() -> Any | None:
     try:
         from memory.config import load_provider
     except Exception as exc:
-        print(f"[SLACK-LISTENER-WARN] memory provider unavailable: {exc}", file=sys.stderr)
+        print(
+            f"[SLACK-LISTENER-WARN] memory provider unavailable: {exc}",
+            file=sys.stderr,
+        )
         return None
     try:
         return load_provider()
     except Exception as exc:
-        print(f"[SLACK-LISTENER-WARN] memory provider failed to load: {exc}", file=sys.stderr)
+        print(
+            f"[SLACK-LISTENER-WARN] memory provider failed to load: {exc}",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -1587,15 +2882,12 @@ def _issue_url_from_record(record: SlackThreadRecord) -> str | None:
     return None
 
 
-def _issue_number_from_url(url: str) -> int | None:
-    """Extract the trailing issue number from a GitHub issue URL."""
-    match = re.search(r"/issues/(\d+)\b", str(url or ""))
-    if not match:
-        return None
-    try:
-        return int(match.group(1))
-    except ValueError:
-        return None
+def _control_result_failed(control: Any) -> bool:
+    """A consumed Slack control is not necessarily a successful mutation."""
+    if not bool(getattr(control, "handled", False)):
+        return True
+    action = str(getattr(control, "action", "") or "")
+    return action.endswith("_failed") or action.endswith("_rejected")
 
 
 def _safe_event_id(event_id: str) -> str:

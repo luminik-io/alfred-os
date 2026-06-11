@@ -207,7 +207,7 @@ def assess_issue_draft(draft: IssueDraft) -> IssueReadinessResult:
                 "Choose at least one concrete GitHub repo, such as owner/repo.",
             )
         )
-        questions.append("Which repository or repositories should Alfred touch?")
+        questions.append("Which part of the workspace should Alfred change?")
 
     actionable_acceptance = [
         item for item in draft.acceptance_criteria if _plain(item) and not _is_placeholder(item)

@@ -75,7 +75,7 @@ function signalToItem(
 ): FeedItem {
   const codename = signal.codename || null;
   const title =
-    signal.title || signal.action || (codename ? `${codename} needs you` : "Fleet needs you");
+    signal.title || signal.action || (codename ? `${codename} needs you` : "Agents need you");
   const detail =
     signal.message || signal.summary || signal.reason || "Open the local source before changing state.";
   return {

@@ -102,6 +102,61 @@ CODEX_DEFAULT_SANDBOX: str = os.environ.get("CODEX_SANDBOX", "read-only").strip(
 CODEX_APPROVAL_POLICY: str = os.environ.get("CODEX_APPROVAL_POLICY", "never").strip() or "never"
 
 # --------------------------------------------------------------------------
+# Config + secret helper functions
+# --------------------------------------------------------------------------
+
+
+def _aws_secret_env(profile_env: str, default_profile: str = "alfred-host") -> dict[str, str]:
+    """Return an AWS env for Alfred-owned secret lookups.
+
+    Scheduled agents should not depend on an operator's interactive AWS
+    session. Strip inherited credential variables, then force the dedicated
+    host profile unless the operator overrides it explicitly.
+    """
+
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k
+        not in (
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_SECURITY_TOKEN",
+        )
+    }
+    profile = (
+        os.environ.get(profile_env, "").strip()
+        or os.environ.get("ALFRED_AWS_PROFILE", "").strip()
+        or default_profile
+    )
+    if profile:
+        env["AWS_PROFILE"] = profile
+    return env
+
+
+def config_value(key: str, default: str = "") -> str:
+    """Resolve a config value from process env, then ``$ALFRED_HOME/.env``."""
+
+    val = os.environ.get(key, "").strip()
+    if val:
+        return val
+    home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    try:
+        with open(Path(home) / ".env", encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                if name.strip() == key:
+                    return value.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return default
+
+
+# --------------------------------------------------------------------------
 # Small datetime helpers (used everywhere, belong with the constants)
 # --------------------------------------------------------------------------
 

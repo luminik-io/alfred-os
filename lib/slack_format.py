@@ -1,32 +1,37 @@
 """Block Kit formatters + bot-token-aware posters for per-firing threads.
 
-The legacy webhook surface in ``agent_runner.slack_post`` is
-incoming-webhook only: text, no threads, no severity colour. Webhooks
-cannot post threaded replies, that requires ``chat.postMessage`` with
-a ``xoxb-`` bot token + ``thread_ts``. This module is the bot-token
-sibling.
+The fleet's legacy Slack transport is
+incoming-webhook-only: text, no threads, no severity colour. Webhooks
+cannot post threaded replies. That requires ``chat.postMessage`` with a
+``xoxb-`` bot token + ``thread_ts``. ``slack_approval`` already proves
+the bot-token path for plan approvals; this module generalises it for
+agent firings.
 
-Three public entry points: ``firing_thread_root`` posts a header block
-carrying ``codename (role), summary``, ``firing_thread_reply`` posts
-in-thread updates, ``firing_thread_close`` summarises with outcome +
-duration. All three return ``False`` (or ``None`` for the root) on
-missing token / network error / no channel, silent-skip pattern, so
-a fleet without Slack configured still runs.
+Three public entry points, all return ``False`` (or ``None`` for the
+root) on missing token / network error / no channel configured. They
+mirror the silent-skip pattern of ``slack_post`` so a caller without
+Slack configured never blows up — at worst, the firing runs with no
+operator visibility.
 
-Every post carries a severity-colour attachment (green / yellow / red)
-so the Slack channel reader sees the same vertical stripe across the
-whole thread.
+Design notes
+------------
 
-Stash one ``ThreadHandle`` per firing on the per-firing state and pass
-it to every reply call. ``channel + ts`` is what
-``chat.postMessage(thread_ts=...)`` needs to thread, and the same
-surface a reaction-watcher would poll.
-
-Bot-token resolution chain (env → disk cache → AWS Secrets Manager)
-mirrors ``slack_post``'s webhook resolver. Override
-``SLACK_BOT_TOKEN_SECRET_ID`` /
-``SLACK_BOT_TOKEN_SECRET_REGION`` if the secret lives at a non-default
-path.
+- ``ThreadHandle`` is the persistence anchor. One per firing. Stash it
+  on the per-firing state (Lucius / Batman both keep one) and pass it to
+  every reply call. ``channel`` + ``ts`` is what Slack's
+  ``chat.postMessage`` needs to thread a reply, and what
+  ``slack_approval.SlackApproval`` polls for the approval flow —
+  same surface, two readers.
+- Block Kit ``header`` block has a hard 150-char text limit. The
+  per-block plain-text limit is 3000. We truncate aggressively in both
+  spots and always with the explicit ``...[truncated]`` suffix so an
+  operator inspecting the message in Slack sees that the post lost
+  data, not the message itself.
+- Severity → colour stripe goes on ``attachments[].color``. Block Kit
+  on its own has no first-class severity colour, but legacy
+  attachments still render a vertical stripe on the left of the
+  message and Slack continues to support it. Green / yellow / red
+  matches the rest of the fleet's mental model.
 """
 
 from __future__ import annotations
@@ -35,28 +40,26 @@ import json
 import os
 import re
 import sys
-import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from agent_runner import ALFRED_HOME, codename_with_role, run
+from agent_runner.metadata import codename_with_role
+from slack_approval import resolve_bot_token as _resolve_bot_token
 
 SLACK_API = "https://slack.com/api"
 
-# ``$ALFRED_HOME/state/slack-bot-token.cache``, written on first AWS
-# resolution, refreshed via TTL. Mirrors the webhook cache in
-# ``slack_post`` so the operator only re-touches AWS when secrets rotate.
-TOKEN_CACHE = ALFRED_HOME / "state" / "slack-bot-token.cache"
-TOKEN_CACHE_TTL = 30 * 24 * 3600  # 30 days
-
-# Default Slack channel for fleet-wide firing posts.
+# Default Slack channel for fleet-wide firing posts. ``SLACK_HOME_CHANNEL``
+# is the canonical name; the ``BATMAN_APPROVAL_CHANNEL`` alias is read by
+# ``slack_approval`` for plan approvals so the two paths land in the same
+# room by default.
 HOME_CHANNEL_ENV = "SLACK_HOME_CHANNEL"
+BATMAN_APPROVAL_CHANNEL_ENV = "BATMAN_APPROVAL_CHANNEL"
 HOME_CHANNEL_DEFAULT = "alfred"
 
-# Severity → attachment colour. Hex codes match the rest of the fleet's
-# mental model (green/yellow/red); a single edit re-skins every firing.
+# Severity → attachment colour. Hex codes match the brief; keeping them
+# centralised here means a single edit re-skins every firing.
 SEVERITY_COLOUR = {
     "info": "#36a64f",
     "warn": "#f4a623",
@@ -70,7 +73,7 @@ SEVERITY_EMOJI = {
 
 # Block Kit limits. Header text is the strictest at 150 chars; plain
 # section blocks max out at 3000. Truncation is loud (``...[truncated]``)
-# so an operator inspecting the message in Slack sees the cut.
+# so an operator sees the cut.
 HEADER_MAX = 150
 SECTION_MAX = 3000
 _TRUNC = "...[truncated]"
@@ -81,15 +84,15 @@ _GITHUB_ISSUE_OR_PR_RE = re.compile(
 
 @dataclass
 class ThreadHandle:
-    """One per firing, stash on the firing's per-run state and pass to
-    every ``firing_thread_reply`` / ``firing_thread_close`` call so all
-    replies thread to the same root.
+    """One per firing — stash on the firing's per-run state (EventLog
+    or local var) and pass to every ``firing_thread_reply`` /
+    ``firing_thread_close`` call so all replies thread to the same root.
 
-    ``channel`` is the resolved Slack channel id (``C0123ABC...``), we
-    keep the id, not the human-readable name, so later API calls don't
-    have to re-resolve. ``ts`` is the message timestamp
-    ``chat.postMessage`` returned; Slack's threading model uses it as
-    ``thread_ts``.
+    ``channel`` is the Slack channel id resolved by the API at post time
+    (``C0123ABC...``) — we keep that, not the human-readable name, so
+    later API calls (post + reactions.get) don't have to re-resolve.
+    ``ts`` is the message timestamp ``chat.postMessage`` returned;
+    Slack's threading model uses it as ``thread_ts``.
     """
 
     channel: str
@@ -98,13 +101,11 @@ class ThreadHandle:
 
 
 def github_issue_link(repo: str, number: int, *, label: str | None = None) -> str:
-    """Return a Slack mrkdwn link for a GitHub issue."""
     display = label or f"{repo}#{number}"
     return f"<https://github.com/{repo}/issues/{number}|{display}>"
 
 
 def github_url_link(url: str, *, label: str | None = None) -> str:
-    """Return a Slack mrkdwn link for a GitHub URL, with a useful label."""
     text = (url or "").strip()
     if not text:
         return ""
@@ -115,76 +116,16 @@ def github_url_link(url: str, *, label: str | None = None) -> str:
     return f"<{text}|{display or text}>"
 
 
-def _resolve_bot_token() -> str | None:
-    """Find a bot token: env → disk cache → AWS Secrets Manager.
-
-    Returns ``None`` when no token is configured; callers silent-skip on
-    that path. The disk cache reduces AWS calls to roughly one per
-    month per host; rotate by deleting the cache or letting TTL expire.
-    """
-    tok = (os.environ.get("SLACK_BOT_TOKEN") or "").strip()
-    if tok:
-        return tok
-    if TOKEN_CACHE.exists():
-        try:
-            age = time.time() - TOKEN_CACHE.stat().st_mtime
-        except OSError:
-            age = TOKEN_CACHE_TTL + 1
-        if age < TOKEN_CACHE_TTL:
-            try:
-                cached = TOKEN_CACHE.read_text().strip()
-                if cached:
-                    return cached
-            except OSError:
-                pass
-    secret_id = os.environ.get("SLACK_BOT_TOKEN_SECRET_ID", "alfred/slack-bot-token")
-    region = os.environ.get("SLACK_BOT_TOKEN_SECRET_REGION", "us-east-1")
-    res = run(
-        [
-            "aws",
-            "secretsmanager",
-            "get-secret-value",
-            "--secret-id",
-            secret_id,
-            "--region",
-            region,
-            "--query",
-            "SecretString",
-            "--output",
-            "text",
-        ],
-        timeout=8,
-    )
-    if res.returncode != 0 or not res.stdout.strip():
-        return None
-    tok = res.stdout.strip()
-    try:
-        TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_CACHE.write_text(tok)
-        TOKEN_CACHE.chmod(0o600)
-    except OSError:
-        pass
-    return tok
-
-
 def _home_channel(channel: str | None = None) -> str:
     """Resolve the channel for a firing post.
 
-    Resolution order (first non-empty wins):
-
-      1. caller-supplied ``channel`` argument
-      2. ``BATMAN_APPROVAL_CHANNEL`` env var, historical name read by
-         the alfred Batman approval flow; honoured here so a fleet
-         that already routes Batman posts to a non-default channel
-         keeps that routing for every firing thread.
-      3. ``SLACK_HOME_CHANNEL`` env var, canonical name.
-      4. literal ``alfred`` fallback.
-
-    Strips any leading ``#`` so the API accepts it.
+    Caller-supplied channel wins. Otherwise read ``SLACK_HOME_CHANNEL``
+    env var, falling back to the literal ``alfred``. Strip any leading
+    ``#`` so the API accepts it.
     """
     raw = (
         channel
-        or os.environ.get("BATMAN_APPROVAL_CHANNEL")
+        or os.environ.get(BATMAN_APPROVAL_CHANNEL_ENV)
         or os.environ.get(HOME_CHANNEL_ENV)
         or HOME_CHANNEL_DEFAULT
     ).strip()
@@ -192,7 +133,12 @@ def _home_channel(channel: str | None = None) -> str:
 
 
 def _truncate(text: str, limit: int) -> str:
-    """Hard-truncate ``text`` to ``limit`` chars, signalling the cut."""
+    """Hard-truncate ``text`` to ``limit`` chars, signalling the cut.
+
+    Always leaves at least one visible char of the original — a 1-char
+    limit-equivalent message is still preferable to ``...[truncated]``
+    alone.
+    """
     text = text or ""
     if len(text) <= limit:
         return text
@@ -201,6 +147,7 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _coerce_severity(severity: str) -> str:
+    """Coerce arbitrary strings to one of ``info`` / ``warn`` / ``alert``."""
     sev = (severity or "info").strip().lower()
     if sev not in SEVERITY_COLOUR:
         return "info"
@@ -210,10 +157,12 @@ def _coerce_severity(severity: str) -> str:
 def _api_post(method: str, payload: dict, *, token: str) -> dict:
     """Tiny ``application/json`` Slack Web API wrapper.
 
-    Block Kit requires a JSON body, ``form-encoded`` requests Slack
-    accepts for plain text get rejected for ``blocks`` /
-    ``attachments``. Returns the parsed response or ``{"ok": False}``
-    on transport failure, never raises.
+    Block Kit requires a JSON body — the ``slack_approval`` module's
+    ``_api_call`` form-encodes its parameters, which Slack accepts for
+    plain-text posts but rejects for ``blocks`` / ``attachments``. Keep
+    this caller separate so the two code paths don't fight over content
+    type. Returns the parsed response or a synthetic ``{"ok": False}``
+    on transport failure — never raises.
     """
     url = f"{SLACK_API}/{method}"
     headers = {
@@ -231,8 +180,67 @@ def _api_post(method: str, payload: dict, *, token: str) -> dict:
         return {"ok": False, "error": f"transport:{type(e).__name__}"}
 
 
+def build_chat_postmessage_payload(
+    *,
+    channel: str,
+    text: str,
+    severity: str = "info",
+    thread_ts: str | None = None,
+    blocks: list | None = None,
+    notification_preview: str | None = None,
+) -> dict:
+    """Single source of truth for ``chat.postMessage`` payloads across the
+    fleet. Every Slack post funnels through this builder.
+
+    Two invariants:
+
+    1. The body lives in exactly one place per payload. With ``blocks``,
+       the body is in the blocks and top-level ``text`` is a notification
+       preview only. Without ``blocks``, the body is in top-level
+       ``text`` and the colour-stripe attachment carries only ``color``
+       + ``fallback``.
+    2. The colour stripe always rides on a legacy attachment (Block Kit
+       has no severity-colour primitive). The attachment exists only to
+       paint the stripe.
+    """
+    sev = _coerce_severity(severity)
+    payload: dict = {
+        "channel": channel.lstrip("#"),
+        "unfurl_links": False,
+        "unfurl_media": False,
+    }
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+
+    if blocks is not None:
+        # Block-Kit caller. The body is in the blocks; the top-level
+        # ``text`` is the notification preview only — must NOT echo
+        # any block content, or Slack stacks it on top of the rendered
+        # Block Kit.
+        payload["text"] = (notification_preview or "alfred fleet update").strip()
+        payload["attachments"] = [
+            {
+                "color": SEVERITY_COLOUR[sev],
+                "blocks": blocks,
+                "fallback": text,
+            }
+        ]
+    else:
+        # Flat caller (the everyday ``slack_post`` path). Body in the
+        # top-level ``text``; attachment carries colour + fallback only.
+        payload["text"] = text
+        payload["attachments"] = [
+            {
+                "color": SEVERITY_COLOUR[sev],
+                "fallback": text,
+            }
+        ]
+    return payload
+
+
 def _get_permalink(channel: str, ts: str, *, token: str) -> str | None:
-    """Best-effort ``chat.getPermalink``. None on failure."""
+    """Best-effort ``chat.getPermalink``. None on failure — the link is
+    convenience, not load-bearing."""
     url = f"{SLACK_API}/chat.getPermalink"
     qs = urllib.parse.urlencode({"channel": channel, "message_ts": ts})
     req = urllib.request.Request(
@@ -251,15 +259,21 @@ def _get_permalink(channel: str, ts: str, *, token: str) -> str | None:
 
 
 def _now_utc_short() -> str:
-    """``2026-05-09 14:32 UTC``, short, easy to scan in Slack context."""
+    """``2026-05-09 14:32 UTC`` — short, unambiguous, easy to scan in
+    Slack's small-text context block."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _format_root_text(codename: str, summary_one_liner: str, severity: str) -> str:
-    """Header-block plain text: ``<emoji> <codename> (<role>), <summary>``."""
+    """Header-block plain text: ``<emoji> <codename> (<role>) — <summary>``.
+
+    Roles come from ``codename_with_role`` (``ALFRED_<NAME>_ROLE`` env
+    var). When unset the codename appears alone — operators on a forked
+    install without role wiring still get readable posts.
+    """
     label = codename_with_role(codename)
     emoji = SEVERITY_EMOJI[severity]
-    raw = f"{emoji} {label}, {summary_one_liner}".strip()
+    raw = f"{emoji} {label}: {summary_one_liner}".strip()
     return _truncate(raw, HEADER_MAX)
 
 
@@ -271,24 +285,33 @@ def firing_thread_root(
     severity: str = "info",
     channel: str | None = None,
     body: str | None = None,
+    plain_summary: str | None = None,
 ) -> ThreadHandle | None:
     """Post the per-firing thread root via ``chat.postMessage``.
 
     Returns a ``ThreadHandle`` on success, ``None`` on any failure
     (missing bot token, missing channel, transport error, Slack-side
     refusal). Callers that need any visibility at all should fall back
-    to ``slack_post`` on the ``None`` branch, the legacy webhook path
+    to ``slack_post`` on the ``None`` branch — the legacy webhook path
     still posts top-level even without the bot token.
 
     Block layout:
 
-      header   ``<emoji> <codename> (<role>), <one-liner>``
+      header    ``<emoji> <codename> (<role>) — <one-liner>``
       divider
-      context  ``firing_id=<id> · <UTC start ts>``
-      [body]   optional mrkdwn section, only when ``body`` is supplied.
+      context   ``firing_id=<id> · <UTC start ts>``
+      [summary] optional small-text context block giving a plain-English
+                "what this issue/plan IS" (what changes, why, blast
+                radius). Supplied by callers via ``issue_summary`` so an
+                operator scanning the channel understands the firing
+                without opening the linked issue.
+      [body]    optional mrkdwn section, only when ``body`` is supplied
+                (Batman uses this for the plan preview so the owner's
+                reaction lands on the same message that carries the
+                plan they're approving — one source of truth per firing).
 
-    Severity colour goes on an attachment so the thread root carries
-    the same vertical stripe as its replies.
+    Severity colour goes on an attachment so the thread root carries the
+    same vertical stripe as its replies.
     """
     sev = _coerce_severity(severity)
     token = _resolve_bot_token()
@@ -299,15 +322,32 @@ def firing_thread_root(
         return None
 
     header_text = _format_root_text(codename, summary_one_liner, sev)
-    context_text = _truncate(f"firing_id={firing_id} · started {_now_utc_short()}", SECTION_MAX)
-    blocks: list[dict] = [
+    context_text = _truncate(
+        f"firing_id={firing_id} · started {_now_utc_short()}",
+        SECTION_MAX,
+    )
+    blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": header_text}},
         {"type": "divider"},
         {
             "type": "context",
-            "elements": [{"type": "mrkdwn", "text": context_text}],
+            "elements": [
+                {"type": "mrkdwn", "text": context_text},
+            ],
         },
     ]
+    summary_text = (plain_summary or "").strip()
+    if summary_text:
+        # Small-text "what is this" block. Truncated to the context-block
+        # ceiling so a long summary never overflows the post.
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": _truncate(summary_text, SECTION_MAX)},
+                ],
+            }
+        )
     if body:
         blocks.append(
             {
@@ -315,36 +355,14 @@ def firing_thread_root(
                 "text": {"type": "mrkdwn", "text": _truncate(body, SECTION_MAX)},
             }
         )
-    attachments = [
-        {
-            "color": SEVERITY_COLOUR[sev],
-            "blocks": blocks,
-            # ``fallback`` shows up in notifications + on clients that
-            # can't render Block Kit (mobile lock-screen, screen
-            # readers). Mirror the header so a quick glance still
-            # works.
-            "fallback": header_text,
-        }
-    ]
-    # Top-level ``text`` is required by chat.postMessage but renders as
-    # PLAIN TEXT above the attachment in modern Slack clients, when we
-    # also put the same string in the attachment's header block, the
-    # message appears DUPLICATED back-to-back. Use a terse generic
-    # notification preview here so the channel UI shows only the Block
-    # Kit attachment, while phone / screen-reader / push-notification
-    # surfaces still get something meaningful via this field.
-    notify_preview = f"Alfred · {codename} firing"
-    resp = _api_post(
-        "chat.postMessage",
-        {
-            "channel": channel_name,
-            "text": notify_preview,
-            "attachments": attachments,
-            "unfurl_links": False,
-            "unfurl_media": False,
-        },
-        token=token,
+    payload = build_chat_postmessage_payload(
+        channel=channel_name,
+        text=header_text,
+        severity=sev,
+        blocks=blocks,
+        notification_preview=f"Alfred · {codename} firing",
     )
+    resp = _api_post("chat.postMessage", payload, token=token)
     if not resp.get("ok"):
         print(
             f"[slack-format] firing_thread_root postMessage failed: {resp.get('error')}",
@@ -359,21 +377,17 @@ def firing_thread_root(
     return ThreadHandle(channel=posted_channel, ts=ts, permalink=permalink)
 
 
-def firing_thread_reply(
-    handle: ThreadHandle | None,
-    *,
-    text: str,
-    severity: str = "info",
-) -> bool:
+def firing_thread_reply(handle: ThreadHandle | None, *, text: str, severity: str = "info") -> bool:
     """Post an in-thread reply with a severity-colour attachment.
 
-     Returns ``False`` on missing handle (caller never got a thread root,
-    silent skip) or any API error. Severity colour stripe goes on the
-     attachment so the reply carries the same green/yellow/red as the
-     root.
+    Returns ``False`` on missing handle (caller never got a thread root
+    — silent skip) or any API error. Severity colour stripe goes on the
+    attachment so the reply carries the same green/yellow/red as the
+    root.
 
-     Callers can pass ``None`` for the handle to express "post nothing,
-     we have no thread", useful for try-and-fall-through flows.
+    Callers can pass ``None`` for the handle to express "post nothing,
+    we have no thread" — useful for callers that try-and-fall-through
+    rather than branching on the root post's return.
     """
     if handle is None:
         return False
@@ -386,28 +400,20 @@ def firing_thread_reply(
         return False
 
     body = _truncate(text, SECTION_MAX)
-    attachments = [
-        {
-            "color": SEVERITY_COLOUR[sev],
-            "blocks": [
-                {"type": "section", "text": {"type": "mrkdwn", "text": body}},
-            ],
-            "fallback": body,
-        }
-    ]
-    notify_preview = "Alfred · thread reply"
-    resp = _api_post(
-        "chat.postMessage",
-        {
-            "channel": handle.channel,
-            "thread_ts": handle.ts,
-            "text": notify_preview,
-            "attachments": attachments,
-            "unfurl_links": False,
-            "unfurl_media": False,
-        },
-        token=token,
+    payload = build_chat_postmessage_payload(
+        channel=handle.channel,
+        text=body,
+        severity=sev,
+        thread_ts=handle.ts,
+        blocks=[
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": body},
+            }
+        ],
+        notification_preview="Alfred · thread reply",
     )
+    resp = _api_post("chat.postMessage", payload, token=token)
     if not resp.get("ok"):
         print(
             f"[slack-format] firing_thread_reply postMessage failed: {resp.get('error')}",
@@ -464,4 +470,6 @@ __all__ = [
     "firing_thread_close",
     "firing_thread_reply",
     "firing_thread_root",
+    "github_issue_link",
+    "github_url_link",
 ]
