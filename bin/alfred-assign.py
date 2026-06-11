@@ -7,19 +7,26 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(
-    0,
-    (
+_HERE = Path(__file__).resolve().parent
+for candidate in (
+    _HERE.parent / "lib",
+    Path(
         os.environ.get("ALFRED_HOME")
         or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
-    + "/lib",
-)
+    / "lib",
+):
+    if candidate.exists():
+        candidate_path = str(candidate)
+        if candidate_path in sys.path:
+            sys.path.remove(candidate_path)
+        sys.path.insert(0, candidate_path)
 
-from issue_assignment import assign_issue
-from issue_queue import parse_issue_ref
+from issue_assignment import assign_issue  # noqa: E402
+from issue_queue import parse_issue_ref  # noqa: E402
 
 
 def main() -> int:

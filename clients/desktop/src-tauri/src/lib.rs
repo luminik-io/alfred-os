@@ -329,6 +329,7 @@ fn is_allowed_read_path(path: &str) -> bool {
         "/api/firings",
         "/api/plans",
         "/api/memory/candidates",
+        "/api/schedule",
         "/api/slack/trusted-users",
         "/api/shipped",
         "/api/usage",
@@ -381,7 +382,7 @@ fn is_allowed_plan_decision(path: &str) -> bool {
     if parts.len() != 2 || parts[0].is_empty() {
         return false;
     }
-    parts[1] == "decision"
+    matches!(parts[1], "decision" | "file-issue")
 }
 
 fn is_allowed_memory_action(path: &str) -> bool {
@@ -764,6 +765,14 @@ mod tests {
     }
 
     #[test]
+    fn get_allowlist_accepts_schedule_path() {
+        let (path, query) = validate_api_path("/api/schedule", &Method::GET)
+            .expect("schedule path should be accepted for GET");
+        assert_eq!(path, "/api/schedule");
+        assert_eq!(query, None);
+    }
+
+    #[test]
     fn setup_api_paths_are_allowlisted() {
         for read in [
             "/api/setup/status",
@@ -800,6 +809,13 @@ mod tests {
         assert_eq!(query, None);
 
         assert!(is_allowed_plan_decision("/api/plans/batman-42/decision"));
+        let (path, query) = validate_api_path("/api/plans/compose-123/file-issue", &Method::POST)
+            .expect("plan file-issue path should be accepted for POST");
+        assert_eq!(path, "/api/plans/compose-123/file-issue");
+        assert_eq!(query, None);
+        assert!(is_allowed_plan_decision(
+            "/api/plans/compose-123/file-issue"
+        ));
         // The single-segment draft path and unknown verbs must stay off the rule.
         assert!(!is_allowed_plan_decision("/api/plans/draft"));
         assert!(!is_allowed_plan_decision("/api/plans/batman-42/delete"));
