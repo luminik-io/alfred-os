@@ -8,10 +8,11 @@ co-authors a structured development spec, and judges when the spec is ready.
 
 Design notes:
 
-* Turn-by-turn, NOT token streaming. One model invocation per HTTP call, routed
-  through the existing ``invoke_agent_engine`` dispatch (Claude / Codex /
-  hybrid), so it rides the same request/response Tauri bridge as every other
-  endpoint. There is no SSE.
+* Turn-by-turn core. One model invocation per HTTP call, routed through the
+  existing ``invoke_agent_engine`` dispatch (Claude / Codex / hybrid). The
+  optional streaming HTTP route still runs one turn, but tails Claude's
+  stream-json transcript while that turn is running so the client can render
+  incremental assistant text before the final reconciled result.
 * UNTRUSTED INPUT: the user's messages are wrapped in a hashed sentinel boundary
   (the same pattern Lucius uses for GitHub issues) so a "spec" cannot inject
   instructions into the interrogator.

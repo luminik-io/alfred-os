@@ -2,17 +2,17 @@
 
 This module owns the boundary between Python and the shell:
 
-* :func:`run` — ``subprocess.run`` with sane defaults and no exceptions
+* :func:`run`: ``subprocess.run`` with sane defaults and no exceptions
   on timeout (returns a ``CompletedProcess`` with ``returncode=124``).
-* :func:`gh_json` — call ``gh`` with ``--json`` and parse to ``dict``
+* :func:`gh_json`: call ``gh`` with ``--json`` and parse to ``dict``
   / ``list``; return a default on any failure.
-* :func:`pid_start_key` — read ``ps -p ... lstart`` for lock-identity.
-* :func:`short` — display-trim long output for logs.
-* :func:`claude_invoke` and :func:`claude_invoke_streaming` —
+* :func:`pid_start_key`: read ``ps -p ... lstart`` for lock-identity.
+* :func:`short`: display-trim long output for logs.
+* :func:`claude_invoke` and :func:`claude_invoke_streaming`:
   invoke the Claude Code CLI and parse its sentinel response.
-* :func:`codex_invoke` — invoke the Codex CLI non-interactively and
+* :func:`codex_invoke`: invoke the Codex CLI non-interactively and
   marshal its artefacts.
-* :func:`invoke_agent_engine` — engine-aware dispatch for
+* :func:`invoke_agent_engine`: engine-aware dispatch for
   Claude / Codex / Claude-first hybrid with fallback.
 
 What this module does NOT own:
@@ -31,6 +31,7 @@ import os
 import secrets
 import signal
 import subprocess
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,6 +72,7 @@ from .transcripts import (
     _extract_codex_session_id,
     _extract_codex_tokens,
     codex_artifact_paths,
+    transcript_path,
 )
 
 # Claude Code's ``-p`` (non-interactive) mode applies a hidden 40-turn
@@ -85,7 +87,7 @@ _CLAUDE_UNLIMITED_TURNS: int = 999
 # desktop/push notification on every firing is pure noise (and on macOS it
 # stacks up banners no one reads). We pass these settings via the CLI's
 # ``--settings`` flag, which ADDS a settings source on top of the
-# config-dir settings — it does NOT replace auth. Auth comes from the
+# config-dir settings. It does NOT replace auth. Auth comes from the
 # config-dir credentials (OAuth / keychain / CLAUDE_CODE_OAUTH_TOKEN), none
 # of which live in a settings.json, so suppressing notifications here can
 # never log the agent out. Opt back in (e.g. for interactive debugging)
@@ -547,6 +549,7 @@ def claude_invoke_streaming(
     timeout: int = 1200,
     resume_session: str | None = None,
     model: str | None = None,
+    _auth_retry: bool = False,
 ) -> ClaudeResult:
     """Streaming counterpart of :func:`claude_invoke`. Same return shape.
 
@@ -556,25 +559,157 @@ def claude_invoke_streaming(
     ``CLAUDE_CODE_OAUTH_TOKEN`` (see ``docs/CLAUDE_CODE.md``) which makes
     ``claude`` skip Keychain entirely, the proxy was removed in v0.4.1.
 
-    The wrapper survives because the ``agent`` and ``firing_id`` kwargs
-    are part of the public call signature every codename agent uses;
-    removing them would be a breaking ABI change. Both kwargs are
-    currently unused (see :func:`claude_invoke` for the actual transport)
-    but are reserved for downstream changes that need per-firing context
-    without touching every caller.
+    This path now invokes Claude with ``--output-format stream-json`` and writes
+    every stdout event to
+    ``$ALFRED_HOME/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl`` as
+    it arrives. The final ``result`` event is parsed into the same
+    :class:`ClaudeResult` shape as :func:`claude_invoke`, so existing callers
+    keep their return contract while live log/compose views can tail the JSONL.
     """
+    if is_dry_run():
+        dry_run_log(
+            "llm",
+            f"would invoke claude streaming with prompt of {len(prompt)} chars, "
+            f"agent={agent}, firing_id={firing_id}, model={model or '(cli-default)'}",
+        )
+        return dry_run_claude_result(prompt, model=model, engine="claude")
+
     if max_turns is None:
         max_turns = _CLAUDE_UNLIMITED_TURNS
 
-    return claude_invoke(
+    memory_script = _memory_mcp_script()
+    cmd = [
+        CLAUDE_BIN,
+        "-p",
         prompt,
-        workdir=workdir,
-        allowed_tools=allowed_tools,
-        max_turns=max_turns,
-        timeout=timeout,
-        resume_session=resume_session,
-        model=model,
-    )
+        "--allowedTools",
+        _with_memory_mcp_tools(allowed_tools, memory_script),
+        "--max-turns",
+        str(max_turns),
+        "--output-format",
+        "stream-json",
+        "--permission-mode",
+        "bypassPermissions",
+    ]
+    cmd.extend(_agent_settings_args())
+    cmd.extend(_memory_mcp_args(memory_script))
+    if model:
+        cmd.extend(["--model", model])
+    if resume_session:
+        cmd.extend(["--resume", resume_session])
+
+    transcript = transcript_path(agent, firing_id)
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    captured_lines: list[str] = []
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(workdir),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        return ClaudeResult(
+            success=False,
+            subtype="parse-failed",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=str(exc),
+            raw={},
+            stop_reason="error",
+            error_message=f"claude CLI not found: {exc}",
+        )
+
+    def _capture_stdout() -> None:
+        assert proc.stdout is not None
+        with transcript.open("w", encoding="utf-8") as handle:
+            for raw_line in proc.stdout:
+                captured_lines.append(raw_line)
+                handle.write(raw_line)
+                handle.flush()
+
+    reader = threading.Thread(target=_capture_stdout, name=f"claude-stream-{agent}", daemon=True)
+    reader.start()
+
+    timed_out = False
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        with contextlib.suppress(OSError):
+            proc.kill()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=5)
+    reader.join(timeout=5)
+    stderr = ""
+    if proc.stderr is not None:
+        with contextlib.suppress(OSError):
+            stderr = proc.stderr.read()
+
+    stdout_text = "".join(captured_lines)
+    if timed_out:
+        return ClaudeResult(
+            success=False,
+            subtype="error_timeout",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=stdout_text or stderr,
+            raw={"returncode": 124, "timeout": timeout, "transcript_path": str(transcript)},
+            stop_reason="aborted",
+            error_message=f"claude_invoke_streaming exceeded {timeout}s",
+        )
+
+    final_event = _last_stream_result(captured_lines)
+    if final_event is None:
+        return ClaudeResult(
+            success=False,
+            subtype="parse-failed",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=stdout_text or stderr,
+            raw={"returncode": proc.returncode, "transcript_path": str(transcript)},
+            stop_reason="error",
+            error_message="claude stream-json produced no result event",
+        )
+
+    result = _build_claude_result(final_event, fallback_text=stderr or stdout_text)
+    result.raw.setdefault("transcript_path", str(transcript))
+    if _should_retry_claude_auth(result, already_retried=_auth_retry):
+        return claude_invoke_streaming(
+            prompt,
+            workdir=workdir,
+            allowed_tools=allowed_tools,
+            agent=agent,
+            firing_id=firing_id,
+            max_turns=max_turns,
+            timeout=timeout,
+            resume_session=resume_session,
+            model=model,
+            _auth_retry=True,
+        )
+    return result
+
+
+def _last_stream_result(lines: list[str]) -> dict[str, Any] | None:
+    """Return the final Claude stream-json result event from captured lines."""
+    final: dict[str, Any] | None = None
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            obj = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and ("result" in obj or obj.get("type") == "result"):
+            final = obj
+    return final
 
 
 # --------------------------------------------------------------------------

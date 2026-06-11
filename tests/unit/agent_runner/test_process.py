@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -75,36 +77,51 @@ def test_claude_invoke_dry_run_short_circuits(fresh_agent_runner, monkeypatch):
         ar.set_dry_run(False)
 
 
-def test_claude_invoke_streaming_delegates_to_claude_invoke(fresh_agent_runner, monkeypatch):
-    """After v0.4.1 the streaming wrapper no longer routes through a
-    proxy daemon; it should forward straight to ``claude_invoke`` with
-    the historical kwargs preserved so existing agent callers keep
-    working unchanged. Also verifies the wrapper does not read
-    ``ALFRED_CLAUDE_PROXY_SOCKET`` any more.
-    """
+def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypatch):
+    """Streaming Claude writes stream-json lines and parses the final result."""
     ar = fresh_agent_runner
     from pathlib import Path
+
+    import agent_runner.process as proc
 
     monkeypatch.setenv("ALFRED_CLAUDE_PROXY_SOCKET", "/tmp/socket-that-should-be-ignored")
 
     captured: dict[str, object] = {}
+    assistant = {
+        "type": "assistant",
+        "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]},
+    }
+    final = {
+        "type": "result",
+        "subtype": "success",
+        "result": "ok",
+        "num_turns": 1,
+        "total_cost_usd": 0.01,
+        "session_id": "s-1",
+        "stop_reason": "end_turn",
+    }
+    stream = json.dumps(assistant) + "\n" + json.dumps(final) + "\n"
 
-    def fake_claude_invoke(prompt, **kwargs):
-        captured["prompt"] = prompt
-        captured.update(kwargs)
-        return ar.ClaudeResult(
-            success=True,
-            subtype="success",
-            num_turns=1,
-            cost_usd=0.0,
-            session_id="s-1",
-            result_text="ok",
-            raw={},
-            stop_reason="end_turn",
-            error_message=None,
-        )
+    class FakeProc:
+        returncode = 0
 
-    monkeypatch.setattr(ar, "claude_invoke", fake_claude_invoke)
+        def __init__(self) -> None:
+            self.stdout = io.StringIO(stream)
+            self.stderr = io.StringIO("")
+
+        def wait(self, timeout: int) -> int:
+            captured["timeout"] = timeout
+            return self.returncode
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return FakeProc()
+
+    monkeypatch.setattr(proc.subprocess, "Popen", fake_popen)
 
     res = ar.claude_invoke_streaming(
         prompt="hello",
@@ -119,16 +136,16 @@ def test_claude_invoke_streaming_delegates_to_claude_invoke(fresh_agent_runner, 
     )
 
     assert res.success
-    # The wrapper should have called claude_invoke once with the same
-    # transport-relevant kwargs. ``agent`` / ``firing_id`` are part of
-    # the public signature but unused at the wrapper level today, so
-    # they should NOT be forwarded as kwargs to ``claude_invoke`` (which
-    # does not accept them).
-    assert captured["prompt"] == "hello"
-    assert captured["allowed_tools"] == "Read,Bash"
+    assert res.result_text == "ok"
+    cmd = captured["cmd"]
+    assert "--output-format" in cmd
+    assert cmd[cmd.index("--output-format") + 1] == "stream-json"
+    assert "--allowedTools" in cmd
+    assert cmd[cmd.index("--allowedTools") + 1].startswith("Read,Bash")
     assert captured["timeout"] == 42
-    assert "agent" not in captured
-    assert "firing_id" not in captured
+    assert captured["kwargs"]["cwd"] == "/tmp"
+    transcript = ar.transcript_path("testagent", "20260524-123456-aaaa")
+    assert transcript.read_text(encoding="utf-8") == stream
 
 
 def test_claude_invoke_timeout_returns_error_timeout(fresh_agent_runner, monkeypatch):

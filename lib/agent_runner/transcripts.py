@@ -2,18 +2,18 @@
 
 This module owns the on-disk transcript surface:
 
-* :func:`transcript_path` — canonical path for a Claude streaming JSONL
+* :func:`transcript_path`: canonical path for a Claude streaming JSONL
   transcript.
-* :func:`codex_artifact_paths` — paths for ``last-message`` / ``stdout``
+* :func:`codex_artifact_paths`: paths for ``last-message`` / ``stdout``
   / ``stderr`` from a non-interactive Codex run.
-* :func:`_extract_codex_session_id` and :func:`_extract_codex_tokens` —
+* :func:`_extract_codex_session_id` and :func:`_extract_codex_tokens`:
   tiny line-scanning helpers used by the codex invoker to recover
   session ID and tokens-used from the human-readable output.
 
 What this module does NOT own:
 
-* Writing or reading the Claude streaming JSONL itself (currently a
-  TODO — see ``process.claude_invoke_streaming``).
+* Writing the Claude streaming JSONL itself. That happens in
+  ``process.claude_invoke_streaming``.
 * Parsing the transcript bodies into events.
 """
 
@@ -30,10 +30,8 @@ def transcript_path(agent: str, firing_id: str) -> Path:
 
     Convention:
     ``${ALFRED_HOME}/state/transcripts/<agent>/<YYYY-MM>/<firing_id>.jsonl``.
-    Currently no transcripts are written (see
-    ``process.claude_invoke_streaming``), but the path resolver ships
-    now so consumer agents and downstream log viewers don't need to
-    change when streaming lands.
+    ``process.claude_invoke_streaming`` writes stream-json events to this path
+    while the firing runs, and server-side log viewers tail it by firing id.
     """
     month = datetime.now(UTC).strftime("%Y-%m")
     return TRANSCRIPTS_ROOT / agent / month / f"{firing_id}.jsonl"

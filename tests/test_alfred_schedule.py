@@ -87,6 +87,35 @@ def test_update_schedule_writes_only_target_row(tmp_path: Path) -> None:
     assert "alfred.gordon\tgordon.py\tcron:8:00" in text
 
 
+def test_update_schedule_accepts_existing_dot_suffixed_labels(tmp_path: Path) -> None:
+    sched = _load_schedule_module()
+    conf = tmp_path / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "\n".join(
+            [
+                "# existing operator config",
+                "my.fleet.lucius\tlucius.py\tinterval:600\tyes\t\topus\tEngineer",
+                "my.fleet.batman\tbatman.py\tinterval:5400\tyes\t\topus\tCoordinator",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    _, rows = sched.load_schedules(conf)
+    assert [row.codename for row in rows] == ["lucius", "batman"]
+    assert sched.find_schedule(rows, "my.fleet.lucius").label == "my.fleet.lucius"
+
+    result = sched.update_schedule(conf, "lucius", "20m")
+
+    assert result["label"] == "my.fleet.lucius"
+    assert result["newSchedule"] == "interval:1200"
+    text = conf.read_text(encoding="utf-8")
+    assert "my.fleet.lucius\tlucius.py\tinterval:1200" in text
+    assert "my.fleet.batman\tbatman.py\tinterval:5400" in text
+
+
 def test_agents_conf_path_prefers_renamed_alfred_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -32,10 +32,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Label prefix public alfred-os launchd jobs use. The agent codename is the
-# label with this prefix stripped (``alfred.lucius`` -> ``lucius``).
-_LABEL_PREFIX = "alfred."
-
 # Weekday names indexed by launchd's convention (0 = Sunday). Used only to
 # render a human cadence string; the next-fire math uses Python weekday math.
 _WEEKDAY_NAMES = (
@@ -145,11 +141,11 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     if len(fields) < 3:
         return None
     label = fields[0].strip()
-    if not label.startswith(_LABEL_PREFIX):
+    if not label:
         return None
     schedule = fields[2].strip()
     role = fields[6].strip() if len(fields) >= 7 else ""
-    codename = label[len(_LABEL_PREFIX) :]
+    codename = _codename_from_label(label)
 
     if schedule.startswith("interval:"):
         seconds = _coerce_int(schedule[len("interval:") :])
@@ -202,6 +198,10 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     # Unknown shape: skip rather than guess.
     logger.debug("unrecognized schedule %r for %s", schedule, codename)
     return None
+
+
+def _codename_from_label(label: str) -> str:
+    return label.rsplit(".", 1)[-1].strip().lower() if "." in label else label.strip().lower()
 
 
 def _interval_cadence(seconds: int) -> str:

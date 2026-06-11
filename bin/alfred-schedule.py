@@ -18,7 +18,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-LABEL_PREFIX = "alfred."
 SCHEDULE_RE = re.compile(r"^(?P<num>[1-9][0-9]*)(?P<unit>[smhd])$")
 TIME_RE = re.compile(r"^(?P<hour>[0-9]{1,2}):(?P<minute>[0-9]{2})$")
 WEEKDAYS = {
@@ -169,7 +168,7 @@ def load_schedules(path: Path) -> tuple[list[str], list[AgentSchedule]]:
 def find_schedule(schedules: list[AgentSchedule], agent: str) -> AgentSchedule:
     target = _normalize_agent(agent)
     for item in schedules:
-        if item.codename == target or item.label == target:
+        if item.codename.lower() == target or item.label.lower() == target:
             return item
     raise ScheduleError(f"unknown agent '{agent}'")
 
@@ -223,9 +222,9 @@ def _parse_conf_row(raw: str) -> AgentSchedule | None:
     if len(fields) < 3:
         return None
     label = fields[0].strip()
-    if not label.startswith(LABEL_PREFIX):
+    if not label:
         return None
-    codename = label[len(LABEL_PREFIX) :]
+    codename = _codename_from_label(label)
     return AgentSchedule(
         codename=codename,
         label=label,
@@ -236,10 +235,11 @@ def _parse_conf_row(raw: str) -> AgentSchedule | None:
 
 
 def _normalize_agent(agent: str) -> str:
-    value = (agent or "").strip()
-    if value.startswith(LABEL_PREFIX):
-        return value
-    return value.lower()
+    return (agent or "").strip().lower()
+
+
+def _codename_from_label(label: str) -> str:
+    return label.rsplit(".", 1)[-1].strip().lower() if "." in label else label.strip().lower()
 
 
 def _interval(seconds: int) -> str:

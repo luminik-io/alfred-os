@@ -2110,6 +2110,27 @@ def test_api_schedule_reads_deployed_runtime_conf(
     assert runs[0]["cadence"] == "every 20m"
 
 
+def test_api_schedule_accepts_existing_dot_suffixed_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    conf = repo / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "my.fleet.lucius\tlucius.py\tinterval:600\tyes\t\topus\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_REPO", str(repo))
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    runs = client.get("/api/schedule").json()["runs"]
+
+    assert [run["codename"] for run in runs] == ["lucius"]
+    assert runs[0]["cadence"] == "every 10m"
+
+
 def test_api_schedule_empty_when_conf_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
