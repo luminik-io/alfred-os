@@ -2203,8 +2203,10 @@ def test_plan_decision_approve_writes_batman_marker(tmp_path: Path) -> None:
     # $HERMES_HOME/batman/approvals/{issue_num}.approved (state_root.parent).
     approved = tmp_path / "batman" / "approvals" / "13.approved"
     rejected = tmp_path / "batman" / "approvals" / "13.rejected"
+    record = tmp_path / "batman" / "approval-decisions" / "13.json"
     assert approved.exists()
     assert not rejected.exists()
+    assert record.exists()
     assert str(approved) == body["marker_path"]
 
 
@@ -2355,3 +2357,28 @@ def test_decided_batman_plan_reflects_status_and_leaves_queue(tmp_path: Path) ->
     rows = client.get("/api/plans").json()["rows"]
     decided = next(row for row in rows if row["plan_id"] == "13-plan")
     assert decided["status"] == "approved"
+
+
+def test_decided_batman_plan_stays_decided_after_marker_is_consumed(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    _write_batman_plan(tmp_path, 13, title="Add CSV export")
+    reader = FilesystemReader(state_root=state)
+    client = TestClient(create_app(reader))
+
+    response = client.post(
+        "/api/plans/13-plan/decision",
+        headers=_auth_headers(state),
+        json={"decision": "approve"},
+    )
+    assert response.status_code == 200
+    marker = tmp_path / "batman" / "approvals" / "13.approved"
+    assert marker.exists()
+
+    marker.unlink()
+
+    after = reader.get_plan("13-plan")
+    assert after is not None
+    assert after.status == "approved"

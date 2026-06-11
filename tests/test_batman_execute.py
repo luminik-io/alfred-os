@@ -19,6 +19,7 @@ parsed surfaces ``EXEC_NO_CHILDREN``).
 
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -379,6 +380,8 @@ def test_in_app_approval_marker_grants_without_slack_poll(tmp_path: Path):
     assert "Alfred client" in verdict.detail
     assert gate.calls == []
     assert not marker.exists()
+    record = tmp_path / "alfred" / "batman" / "approval-decisions" / "42.json"
+    assert json.loads(record.read_text(encoding="utf-8"))["decision"] == "approve"
 
 
 def test_in_app_approval_marker_interrupts_active_slack_wait(tmp_path: Path):
@@ -465,6 +468,10 @@ def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Pa
     assert verdict.verdict == EXEC_REJECTED
     assert "scope too broad" in verdict.detail
     assert not marker.exists()
+    record = tmp_path / "alfred" / "batman" / "approval-decisions" / "42.json"
+    payload = json.loads(record.read_text(encoding="utf-8"))
+    assert payload["decision"] == "decline"
+    assert "scope too broad" in payload["reason"]
 
 
 # ---------- scenario 3: operator rejects ----------

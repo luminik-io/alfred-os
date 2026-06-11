@@ -556,6 +556,13 @@ from planning_assistant import (  # noqa: E402
     render_post_pr_feedback_ack,
     render_post_pr_followup_block,
 )
+from server.plan_approvals import (  # noqa: E402
+    DECISION_APPROVE,
+    DECISION_DECLINE,
+)
+from server.plan_approvals import (  # noqa: E402
+    record_decision as record_plan_decision,
+)
 
 logger = logging.getLogger("alfred.batman.lifecycle")
 
@@ -756,6 +763,10 @@ def _approval_marker_paths(issue_num: int) -> tuple[Path, Path]:
     return base / f"{issue_num}.approved", base / f"{issue_num}.rejected"
 
 
+def _approval_state_root() -> Path:
+    return _alfred_runtime_home() / "state"
+
+
 def _result_with_elapsed(result: ApprovalResult, elapsed_s: float) -> ApprovalResult:
     return ApprovalResult(
         approved=result.approved,
@@ -766,11 +777,34 @@ def _result_with_elapsed(result: ApprovalResult, elapsed_s: float) -> ApprovalRe
     )
 
 
+def _record_consumed_file_decision(
+    plan: BundlePlan,
+    decision: str,
+    *,
+    detail: str = "",
+) -> None:
+    try:
+        record_plan_decision(
+            _approval_state_root(),
+            plan.parent_issue_number,
+            decision,
+            reason=detail,
+            source="Batman file approval",
+        )
+    except OSError as exc:
+        logger.warning(
+            "could not persist consumed Batman approval for issue %s: %s",
+            plan.parent_issue_number,
+            exc,
+        )
+
+
 def _consume_file_approval(plan: BundlePlan) -> ApprovalResult | None:
     """Consume the in-app approval marker for a Batman plan, if one exists."""
 
     approved, rejected = _approval_marker_paths(plan.parent_issue_number)
     if approved.exists():
+        _record_consumed_file_decision(plan, DECISION_APPROVE)
         approved.unlink(missing_ok=True)
         rejected.unlink(missing_ok=True)
         return ApprovalResult(
@@ -783,6 +817,7 @@ def _consume_file_approval(plan: BundlePlan) -> ApprovalResult | None:
             detail = rejected.read_text(encoding="utf-8").strip()
         except OSError:
             detail = ""
+        _record_consumed_file_decision(plan, DECISION_DECLINE, detail=detail[:300])
         rejected.unlink(missing_ok=True)
         approved.unlink(missing_ok=True)
         return ApprovalResult(
@@ -1138,8 +1173,8 @@ def _parse_repo_lines(block: str) -> list[str]:
 
     Accepts two shapes (issue #116):
 
-    - ``owner/repo`` (canonical) — kept verbatim.
-    - bare ``repo`` — qualified with ``GH_ORG`` when set, so the
+    - ``owner/repo`` (canonical): kept verbatim.
+    - bare ``repo``: qualified with ``GH_ORG`` when set, so the
       operator's natural shorthand works under the common
       "one-org fleet" setup. Without ``GH_ORG`` the bare line is
       skipped with a stderr warning rather than silently dropped.
