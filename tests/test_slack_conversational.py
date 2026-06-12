@@ -1149,8 +1149,7 @@ def test_converse_tier1_reply_answered_directly(tmp_path: Path, monkeypatch) -> 
         poster=poster,
         trusted_user_ids=("U1",),
         intent_engine=_intent_engine(
-            {"action": "converse", "reply": "All quiet. Fleet is green.",
-             "confidence": 0.9}
+            {"action": "converse", "reply": "All quiet. Fleet is green.", "confidence": 0.9}
         ),
         escalation_engine=_no_escalation,
         repo_catalog=_catalog(),
@@ -1181,8 +1180,7 @@ def test_converse_honors_raised_confidence_floor(tmp_path: Path, monkeypatch) ->
         poster=poster,
         trusted_user_ids=("U1",),
         intent_engine=_intent_engine(
-            {"action": "converse", "reply": "Half-sure answer.",
-             "confidence": 0.7}
+            {"action": "converse", "reply": "Half-sure answer.", "confidence": 0.7}
         ),
         escalation_engine=_escalation,
         repo_catalog=_catalog(),
@@ -1329,9 +1327,7 @@ def test_status_facet_overrides_keyword_cues(tmp_path: Path, monkeypatch) -> Non
     assert control.calls == ["runs"]
 
 
-def test_status_facet_absent_falls_back_to_keyword_cue(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_status_facet_absent_falls_back_to_keyword_cue(tmp_path: Path, monkeypatch) -> None:
     # No facet: the deterministic keyword cue ("shipped" -> runs) still drives
     # the verb, preserving prior behavior.
     monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
@@ -1341,9 +1337,7 @@ def test_status_facet_absent_falls_back_to_keyword_cue(
         state_root=tmp_path,
         poster=poster,
         trusted_user_ids=("U1",),
-        intent_engine=_intent_engine(
-            {"action": "status_query", "confidence": 0.9}
-        ),
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.9}),
         repo_catalog=_catalog(),
         control_handler=control,
     )
@@ -1373,8 +1367,7 @@ def test_listener_passes_persona_into_classifier(tmp_path: Path, monkeypatch) ->
 
     def _engine(prompt: str) -> str:
         seen.append(prompt)
-        return json.dumps({"action": "converse", "reply": "Indeed.",
-                           "confidence": 0.9})
+        return json.dumps({"action": "converse", "reply": "Indeed.", "confidence": 0.9})
 
     poster = CardPoster()
     listener = SlackPlanningListener(
@@ -1411,8 +1404,7 @@ def test_persona_does_not_change_confirmation_gate(tmp_path: Path, monkeypatch) 
         poster=poster,
         trusted_user_ids=("U1",),
         intent_engine=_intent_engine(
-            {"action": "hold_issue", "repo": "acme-io/acme-backend",
-             "issue": 3, "confidence": 0.95}
+            {"action": "hold_issue", "repo": "acme-io/acme-backend", "issue": 3, "confidence": 0.95}
         ),
         repo_catalog=_catalog(),
         control_handler=StubControl(),
@@ -1441,8 +1433,12 @@ def test_context_survives_listener_restart(tmp_path: Path, monkeypatch) -> None:
         poster=poster1,
         trusted_user_ids=("U1",),
         intent_engine=_intent_engine(
-            {"action": "queue_issue", "repo": "acme-io/acme-backend",
-             "issue": 4, "confidence": 0.95}
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 4,
+                "confidence": 0.95,
+            }
         ),
         repo_catalog=catalog,
         control_handler=StubControl(),

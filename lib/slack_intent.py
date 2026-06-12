@@ -1175,9 +1175,7 @@ def _clarify_for_agent_action(action: str, agent: str, schedule: str = "") -> st
     )
 
 
-def build_intent_prompt(
-    text: str, catalog: RepoCatalog, *, persona: str | None = None
-) -> str:
+def build_intent_prompt(text: str, catalog: RepoCatalog, *, persona: str | None = None) -> str:
     """Build the strict, JSON-only classification prompt.
 
     The prompt pins the closed action vocabulary, demands a single JSON object,
@@ -1198,8 +1196,7 @@ def build_intent_prompt(
     )
     persona_block = resolve_persona(persona)
     return (
-        persona_block
-        + "\n\n"
+        persona_block + "\n\n"
         "You classify a single Slack message from a trusted operator into ONE "
         "intent for an autonomous engineering fleet. You are a parser, not an "
         "actor: you never take any action, you only describe what the operator "
@@ -1374,9 +1371,7 @@ def default_intent_engine_invoke(*, workdir: Path | None = None) -> EngineInvoke
     return _invoke
 
 
-def default_escalation_engine_invoke(
-    *, workdir: Path | None = None
-) -> EngineInvoke | None:
+def default_escalation_engine_invoke(*, workdir: Path | None = None) -> EngineInvoke | None:
     """Resolve the tier-2 conversational invoker, or ``None`` if disabled.
 
     Tier-2 is the richer read-only fallback for a ``converse`` turn that tier-1

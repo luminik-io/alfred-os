@@ -2106,8 +2106,7 @@ def render_intent_confirmation(intent: Intent) -> tuple[str, list[dict]]:
                 {
                     "type": "mrkdwn",
                     "text": (
-                        ":white_check_mark: runs it. :x: cancels. "
-                        "Nothing changes until you react."
+                        ":white_check_mark: runs it. :x: cancels. Nothing changes until you react."
                     ),
                 }
             ],
