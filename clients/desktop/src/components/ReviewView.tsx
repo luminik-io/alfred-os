@@ -9,11 +9,11 @@ import {
   ListChecks,
   MemoryStick,
   MessageSquare,
-  PenLine,
   Radio,
   Settings,
   X,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { exactTime, friendlyTime } from "../format";
@@ -22,6 +22,7 @@ import {
   buildCostHealth,
   buildRunning,
   buildShippedDigest,
+  isErrorStatus,
   threadForCard,
 } from "../lib/derive";
 import { openExternal } from "../lib/links";
@@ -29,6 +30,7 @@ import type { AttentionItem, RequestThreadModel, TabKey } from "../lib/uiTypes";
 import type {
   PlanDecision,
   PlanDraft,
+  AgentSummary,
   ShippedBoard,
   ShippedCard,
   Snapshot,
@@ -36,8 +38,6 @@ import type {
 } from "../types";
 import { RequestThread } from "./RequestThread";
 import { Tabs, type TabItem } from "./Tabs";
-import { UsagePanel } from "./UsagePanel";
-import { AlfredMetric } from "./ui/alfred";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import {
@@ -53,6 +53,40 @@ const SHIPPED_WINDOWS: Array<{ key: number; label: string }> = [
   { key: 1, label: "24h" },
   { key: 7, label: "7 days" },
   { key: 14, label: "14 days" },
+];
+
+const ROUTE_AGENT_PRIORITY = ["batman", "lucius", "drake", "damian", "bane"];
+
+type RouteCard = {
+  codename: string;
+  displayName: string;
+  roleTitle: string;
+  purpose: string;
+  themeAccent: string;
+};
+
+const FALLBACK_ROUTE_CARDS: RouteCard[] = [
+  {
+    codename: "batman",
+    displayName: "Batman",
+    roleTitle: "Architect",
+    purpose: "Plans and coordinates multi-repo work with approval.",
+    themeAccent: "var(--primary)",
+  },
+  {
+    codename: "lucius",
+    displayName: "Lucius",
+    roleTitle: "Senior Developer",
+    purpose: "Ships scoped implementation issues as pull requests.",
+    themeAccent: "var(--blue)",
+  },
+  {
+    codename: "drake",
+    displayName: "Drake",
+    roleTitle: "Spec Planner",
+    purpose: "Turns vague work into implementation-ready issues.",
+    themeAccent: "var(--accent)",
+  },
 ];
 
 type InboxLane = "needs" | "activity" | "shipped";
@@ -86,6 +120,7 @@ export function ReviewView({
   const [lane, setLane] = useState<InboxLane>(preferredLane);
   const [lanePinned, setLanePinned] = useState(false);
   const [shippedDays, setShippedDays] = useState<number>(1);
+  const routeCards = useMemo(() => buildRouteCards(snapshot), [snapshot]);
 
   useEffect(() => {
     if (!lanePinned) setLane(preferredLane);
@@ -101,18 +136,25 @@ export function ReviewView({
   }, [shipped, shippedDays]);
   const filteredDigest = useMemo(() => buildShippedDigest(filteredShipped), [filteredShipped]);
 
+  // Honest morning-after rollup: shipped count, go-aheads waiting, and snags.
+  // Errored runs (including llm-error) are counted as snags, never as ok.
+  const snagCount = (snapshot?.firings || []).filter((firing) =>
+    isErrorStatus(firing.status),
+  ).length;
   const summary = snapshot
     ? [
-        decisions ? `${decisions} waiting` : "Nothing waiting",
-        running.running.length ? `${running.running.length} running` : "No active runs",
-        filteredDigest.length ? `${filteredDigest.length} shipped` : null,
+        filteredDigest.length
+          ? `Shipped ${filteredDigest.length} ${filteredDigest.length === 1 ? "thing" : "things"} overnight.`
+          : null,
+        decisions ? `${decisions} ${decisions === 1 ? "needs" : "need"} your go-ahead.` : null,
+        snagCount ? `${snagCount} hit a snag.` : null,
       ]
         .filter(Boolean)
-        .join(" · ")
+        .join(" ") || "Quiet night. Nothing needed you."
     : "Waiting for the local runtime";
 
   const laneTabs: TabItem<InboxLane>[] = [
-    { key: "needs", label: "Needs you", icon: Bell, badge: decisions || null },
+    { key: "needs", label: "Decisions", icon: Bell, badge: decisions || null },
     { key: "activity", label: "Activity", icon: Activity, badge: running.running.length || null },
     { key: "shipped", label: "Shipped", icon: GitPullRequest, badge: filteredDigest.length || null },
   ];
@@ -128,7 +170,7 @@ export function ReviewView({
         : "No runs recorded yet.",
     },
     {
-      label: "Needs approval",
+      label: "Decisions",
       value: decisions ? String(decisions) : "0",
       detail: decisions
         ? "Plans, lessons, or blockers are waiting."
@@ -150,46 +192,61 @@ export function ReviewView({
     setLanePinned(true);
     setLane(key);
   };
+  const usageLabel =
+    usageState === "loading"
+      ? "Reading usage"
+      : usage?.available
+        ? "Usage synced"
+        : "Usage not synced";
+  const proofLabel = filteredDigest.length
+    ? `${filteredDigest.length} shipped`
+    : "No shipped proof";
 
   return (
-    <div className="space-y-4" aria-label="Inbox">
-      <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
-        <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-1">
-            <CardDescription>Inbox</CardDescription>
-            <CardTitle className="font-heading text-2xl">What needs you</CardTitle>
-            <p className="text-sm text-muted-foreground">{summary}</p>
-          </div>
-          <CardAction className="flex gap-2">
-            <Button type="button" onClick={() => onSwitch("compose")}>
-              <PenLine aria-hidden="true" />
-              Ask Alfred
-            </Button>
-            <Button type="button" variant="outline" onClick={() => onSwitch("setup")}>
-              <Settings aria-hidden="true" />
-              Setup
-            </Button>
-          </CardAction>
-        </CardHeader>
-      </Card>
+    <div className="command-center" aria-label="Home">
+      <header className="command-center__top" aria-label="Command center summary">
+        <div className="command-center__title">
+          <p>Home</p>
+          <h1>Here's what your fleet did.</h1>
+          <span>{summary}</span>
+        </div>
+        <button
+          className="command-center__prompt"
+          type="button"
+          aria-label="Ask Alfred"
+          onClick={() => onSwitch("compose")}
+        >
+          <MessageSquare aria-hidden="true" />
+          <span>
+            <strong>Ask Alfred</strong>
+            <small>Plan work or assign an issue</small>
+          </span>
+          <ArrowRight aria-hidden="true" />
+        </button>
+        <div className="command-center__actions">
+          <Button type="button" variant="outline" onClick={() => onSwitch("pipeline")}>
+            <GitPullRequest aria-hidden="true" />
+            Open Pipeline
+          </Button>
+        </div>
+      </header>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card className="min-w-0 border-border/70 bg-card/80 shadow-sm backdrop-blur">
-          <CardHeader className="gap-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-fit">
-                <CardDescription>Queue</CardDescription>
-              </div>
-              <Tabs
-                tabs={laneTabs}
-                active={lane}
-                onChange={onLaneChange}
-                idBase="review-lane"
-                ariaLabel="Inbox sections"
-              />
+      <div className="command-center__grid">
+        <section className="command-center__pane command-center__pane--main" aria-label="Command queue">
+          <div className="command-center__pane-head">
+            <div>
+              <p>{lane === "needs" ? "Pending" : lane === "activity" ? "Live work" : "Shipped proof"}</p>
+              <h2>{lane === "needs" ? "Decisions" : lane === "activity" ? "Agent activity" : "What shipped"}</h2>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            <Tabs
+              tabs={laneTabs}
+              active={lane}
+              onChange={onLaneChange}
+              idBase="review-lane"
+              ariaLabel="Inbox sections"
+            />
+          </div>
+          <div className="command-center__pane-body">
             {lane === "needs" ? (
               <NeedsYouLane
                 items={needsYou}
@@ -208,7 +265,7 @@ export function ReviewView({
                 digest={filteredDigest}
                 shippedDays={shippedDays}
                 onSetDays={setShippedDays}
-                onOpenWork={() => onSwitch("board")}
+                onOpenWork={() => onSwitch("pipeline")}
                 onOpenThread={
                   onOpenThread
                     ? (card) => onOpenThread(threadForCard(card, filteredShipped))
@@ -216,39 +273,60 @@ export function ReviewView({
                 }
               />
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <aside className="space-y-4" aria-label="Review insights">
-          <section aria-label="Alfred shift summary">
-            <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
-              <CardHeader>
-                <CardDescription>Agents</CardDescription>
-                <CardTitle>Keep agents moving</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                {overviewCards.map((card) => (
-                  <AlfredMetric
-                    key={card.label}
-                    detail={card.detail}
-                    label={card.label}
-                    value={card.value}
-                  />
-                ))}
-              </CardContent>
-            </Card>
+        <aside className="command-center__rail" aria-label="Review insights">
+          <section className="command-center__route" aria-label="Agent route">
+            <div className="command-center__rail-head">
+              <p>Roles</p>
+              <Button type="button" variant="ghost" size="sm" onClick={() => onSwitch("fleet")}>
+                Fleet
+              </Button>
+            </div>
+            <div className="command-center__agent-route">
+              {routeCards.map((agent) => (
+                <article
+                  key={agent.codename}
+                  style={{ "--agent-accent": agent.themeAccent } as CSSProperties}
+                >
+                  <span>{agent.displayName}</span>
+                  <strong>{agent.roleTitle}</strong>
+                  <p>{agent.purpose}</p>
+                </article>
+              ))}
+            </div>
           </section>
 
-          <section aria-label="Capacity and proof">
-            <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur">
-              <CardHeader>
-                <CardDescription>Capacity</CardDescription>
-                <CardTitle>Headroom and proof</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <UsagePanel usage={usage} state={usageState} shipped={shipped} compact />
-              </CardContent>
-            </Card>
+          <section className="command-center__pulse" aria-label="Alfred shift summary">
+            <div className="command-center__rail-head">
+              <p>Fleet</p>
+            </div>
+            <div className="command-center__metrics">
+              {overviewCards.map((card) => (
+                <article key={card.label} className="command-center__metric">
+                  <span>{card.label}</span>
+                  <strong>{card.value}</strong>
+                  <p>{card.detail}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="command-center__capacity" aria-label="Capacity and proof">
+            <div className="command-center__rail-head">
+              <p>Limits</p>
+            </div>
+            <div className="command-center__proof-strip">
+              <article>
+                <span>Local quota</span>
+                <strong>{usageLabel}</strong>
+              </article>
+              <article>
+                <span>Delivery</span>
+                <strong>{proofLabel}</strong>
+              </article>
+            </div>
           </section>
         </aside>
       </div>
@@ -272,14 +350,14 @@ function NeedsYouLane({
   if (!items.length) {
     return (
       <EmptyCard
-        title="No review requests"
-        body="Approvals, questions, lessons, and blockers show up here."
+        title="No decisions waiting"
+        body="Plans, questions, lessons, and blockers appear here."
         tone="ok"
       />
     );
   }
   return (
-    <section className="grid gap-3" aria-label="Needs you">
+    <section className="grid gap-3" aria-label="Decisions">
       {items.map((item) => {
         const plan = item.planId
           ? snapshot?.plans.find((candidate) => candidate.plan_id === item.planId)
@@ -306,6 +384,29 @@ function NeedsYouLane({
   );
 }
 
+function buildRouteCards(snapshot: Snapshot | null): RouteCard[] {
+  const agents = snapshot?.status.agents || [];
+  if (!agents.length) return FALLBACK_ROUTE_CARDS;
+  const byCodename = new Map(agents.map((agent) => [agent.codename, agent]));
+  const prioritized = [
+    ...ROUTE_AGENT_PRIORITY.map((codename) => byCodename.get(codename)).filter(
+      (agent): agent is AgentSummary => Boolean(agent),
+    ),
+    ...agents.filter((agent) => !ROUTE_AGENT_PRIORITY.includes(agent.codename)),
+  ];
+  const cards = prioritized
+    .filter((agent) => agent.display_name || agent.role_title || agent.purpose)
+    .slice(0, 3)
+    .map((agent) => ({
+      codename: agent.codename,
+      displayName: agent.display_name || titleFromCodename(agent.codename),
+      roleTitle: agent.role_title || "Agent",
+      purpose: agent.purpose || "Handles scheduled local Alfred work.",
+      themeAccent: agent.theme_accent || "var(--primary)",
+    }));
+  return cards.length ? cards : FALLBACK_ROUTE_CARDS;
+}
+
 function DecisionCard({
   busyPlanAction,
   canDecide,
@@ -324,25 +425,20 @@ function DecisionCard({
   const Icon = item.icon === "memory" ? MemoryStick : item.icon === "run" ? Radio : item.icon === "setup" ? Settings : ListChecks;
   const busy = Boolean(busyPlanAction && item.planId && busyPlanAction.startsWith(`${item.planId}:`));
   return (
-    <Card className="border-border/70 bg-background/35">
-      <CardHeader className="gap-3">
+    <Card size="sm" className="border-border/70 bg-background/35">
+      <CardHeader className="gap-2">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-accent/30 bg-accent/10 text-accent">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-accent/30 bg-accent/10 text-accent">
             <Icon className="size-4" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <CardDescription>{item.label}</CardDescription>
-            <CardTitle className="truncate text-base">{item.title}</CardTitle>
+            <CardDescription className="text-xs">{item.label}</CardDescription>
+            <CardTitle className="truncate text-sm">{item.title}</CardTitle>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">{item.detail}</p>
-        {canDecide ? (
-          <p className="rounded-lg border border-border/70 bg-muted/25 p-2 text-xs text-muted-foreground" role="note">
-            Approving starts this exact scope on Batman's next run. Declining stops it.
-          </p>
-        ) : null}
+      <CardContent className="space-y-2">
+        <p className="truncate text-sm text-muted-foreground">{item.detail}</p>
         {item.command ? (
           <code className="block truncate rounded-md border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
             {item.command}
@@ -351,18 +447,18 @@ function DecisionCard({
         <div className="flex flex-wrap gap-2">
           {canDecide ? (
             <>
-              <Button type="button" disabled={busy} onClick={onApprove}>
+              <Button type="button" size="sm" disabled={busy} onClick={onApprove}>
                 <Check aria-hidden="true" />
                 Approve
               </Button>
-              <Button type="button" variant="outline" disabled={busy} onClick={onDecline}>
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onDecline}>
                 <X aria-hidden="true" />
                 Decline
               </Button>
             </>
           ) : null}
           {item.targetTab ? (
-            <Button type="button" variant="outline" onClick={() => onNavigate(item.targetTab)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => onNavigate(item.targetTab)}>
               <ArrowRight aria-hidden="true" />
               {item.icon === "run" ? "Inspect runs" : "Review"}
             </Button>
@@ -371,6 +467,15 @@ function DecisionCard({
       </CardContent>
     </Card>
   );
+}
+
+function titleFromCodename(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function ActivityLane({
@@ -445,7 +550,7 @@ function ActivityLane({
           </div>
           <div className="grid gap-3">
             {activeThreads.map((thread) => (
-              <RequestThread key={thread.id} thread={thread} onOpenPlan={() => onSwitch("plans")} />
+              <RequestThread key={thread.id} thread={thread} onOpenPlan={() => onSwitch("pipeline")} />
             ))}
           </div>
         </section>
@@ -543,6 +648,7 @@ function ShippedDigest({
           <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {card.demo ? <Badge variant="outline">Sample</Badge> : null}
                 {agent ? <Badge variant="secondary">{agent}</Badge> : null}
                 <strong className="block min-w-0 truncate">{what}</strong>
               </div>

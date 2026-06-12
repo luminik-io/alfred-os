@@ -3,11 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildActiveThreads,
   buildCostHealth,
-  buildInspectionItems,
   buildNeedsYou,
   buildRunning,
   buildShippedDigest,
-  failurePatternsToAttention,
   planNeedsAttention,
   threadForCompose,
 } from "./derive";
@@ -101,7 +99,7 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
     };
     const items = buildNeedsYou(emptySnapshot({ plans: [base] }));
     expect(items[0].id).toBe("plan-13-plan");
-    expect(items[0].targetTab).toBe("plans");
+    expect(items[0].targetTab).toBe("pipeline");
     // The single-plan card carries the plan id so it can offer in-place
     // approve/decline.
     expect(items[0].planId).toBe("13-plan");
@@ -184,8 +182,6 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
       },
     });
     expect(buildNeedsYou(snap)).toHaveLength(0);
-    // The inspection split carries the reliability signals instead.
-    expect(buildInspectionItems(snap).length).toBeGreaterThan(0);
   });
 });
 
@@ -220,20 +216,6 @@ describe("planNeedsAttention", () => {
   it("drops a decided Batman plan out of the queue", () => {
     expect(planNeedsAttention({ ...base, status: "approved" })).toBe(false);
     expect(planNeedsAttention({ ...base, status: "declined" })).toBe(false);
-  });
-});
-
-describe("failurePatternsToAttention", () => {
-  it("groups repeated failure patterns by agent", () => {
-    const items = failurePatternsToAttention([
-      { agent: "rasalghul", subtype: "diff-too-large", count: 12, last_seen: "2026-05-30T10:26:20Z" },
-      { agent: "rasalghul", subtype: "pr-stale", count: 8, last_seen: "2026-06-01T07:07:42Z" },
-      { agent: "nightwing", subtype: "no-fixes-landed", count: 20, last_seen: "2026-06-01T10:35:00Z" },
-    ]);
-    expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({ id: "failure-rasalghul", title: "Rasalghul reliability signal" });
-    expect(items[0].detail).toContain("2 repeated patterns");
-    expect(items[0].detail).toContain("diff-too-large");
   });
 });
 

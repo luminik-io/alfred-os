@@ -1,27 +1,26 @@
 import type { NativeAction } from "../types";
 
-// The redesigned IA: job-shaped primary destinations plus the agent-depth
-// surfaces that live inside the first-class Agents page.
-//   review  -> home / heartbeat (Needs you / Running / Shipped + cost strip)
-//   board   -> Alfred Kanban Board (issues, PRs, shipped work)
-//   compose -> plan work with Alfred (plain-mode spec coach)
-//   operator -> Agents page (service control, logs, lessons, plans)
-//   setup   -> onboarding + connection
-// Agent depth (rendered as subtabs inside Agents):
-//   plans / memory / fleet / logs
+// The lifecycle IA (DESIGN_SPEC section 4): five primary destinations, each a
+// view of the one object, plus Settings behind the top-bar gear.
+//   home     -> the morning-after story (Needs you / What shipped / Hit a snag)
+//   compose  -> Ask: turn plain words into a Request (plain-mode spec coach)
+//   pipeline -> the lifecycle board: Plans awaiting you, Queued, Working, Shipped
+//   fleet    -> agent depth: roster, schedule, activity, capacity, reliability
+//   lessons  -> what the fleet learned (the promotion pipeline)
+//   settings -> connection, repos, Slack, diagnostics (gear, not the rail)
+// Internal-only surface, rendered inside Fleet:
+//   logs     -> the live activity tail for one agent
 export type TabKey =
-  | "review"
-  | "board"
+  | "home"
   | "compose"
-  | "operator"
-  | "setup"
-  | "plans"
-  | "memory"
+  | "pipeline"
   | "fleet"
+  | "lessons"
+  | "settings"
   | "logs";
 
-// The four agent-depth surfaces, surfaced only inside Agents.
-export type OperatorKey = "plans" | "memory" | "fleet" | "logs";
+// The depth surfaces grouped inside Fleet.
+export type OperatorKey = "fleet" | "logs";
 
 export type FollowupAction = "convert" | "handled";
 

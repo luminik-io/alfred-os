@@ -109,7 +109,7 @@ const needsYouItem: AttentionItem = {
   title: "Approve the export plan",
   detail: "Review before Alfred starts.",
   tone: "info",
-  targetTab: "plans",
+  targetTab: "pipeline",
   icon: "plan",
 };
 
@@ -118,20 +118,21 @@ describe("ReviewView", () => {
     renderReview({ needsYou: [needsYouItem] });
     // Lanes are in-page tabs now (no long scroll); the right rail keeps the
     // useful capacity evidence in view without a duplicate cost strip.
-    expect(screen.getByRole("tab", { name: /needs you/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /decisions/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /activity/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /shipped/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /capacity and proof/i })).toBeInTheDocument();
-    // Real local subscription headroom is surfaced in the rail.
-    expect(screen.getByRole("region", { name: /subscription usage/i })).toBeInTheDocument();
-    // A waiting decision opens on the Needs-you lane by default.
-    expect(screen.getByRole("region", { name: /needs you/i })).toBeInTheDocument();
+    // Real local capacity state is surfaced in the rail without a token wall.
+    expect(screen.getByText(/local quota/i)).toBeInTheDocument();
+    expect(screen.getByText(/usage synced/i)).toBeInTheDocument();
+    // A waiting decision opens on the Decisions lane by default.
+    expect(screen.getByRole("region", { name: /decisions/i })).toBeInTheDocument();
     expect(screen.getByText(/approve the export plan/i)).toBeInTheDocument();
   });
 
   it("follows the smart default lane as state loads, until the operator pins one", async () => {
     // Before the first snapshot resolves, the dashboard surfaces a transient
-    // connection item, so decisions is truthy and Review opens on Needs you.
+    // connection item, so decisions is truthy and Inbox opens on Decisions.
     const { rerender } = render(
       <ReviewView
         snapshot={null}
@@ -142,10 +143,10 @@ describe("ReviewView", () => {
         onSwitch={vi.fn()}
       />,
     );
-    expect(screen.getByRole("tab", { name: /needs you/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /decisions/i })).toHaveAttribute("aria-selected", "true");
 
     // A healthy snapshot with no real decisions arrives: the lane moves to
-    // Activity on its own instead of stranding Review on an empty Needs-you panel.
+    // Activity on its own instead of stranding Inbox on an empty Decisions panel.
     rerender(
       <ReviewView
         snapshot={snapshot()}
@@ -157,7 +158,7 @@ describe("ReviewView", () => {
       />,
     );
     expect(screen.getByRole("tab", { name: /activity/i })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: /needs you/i })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: /decisions/i })).toHaveAttribute("aria-selected", "false");
 
     // Once the operator manually picks a lane, respect it even as state changes.
     await userEvent.setup().click(screen.getByRole("tab", { name: /shipped/i }));
@@ -260,36 +261,34 @@ describe("ReviewView", () => {
     // Conventional-commit prefix stripped; reads as an outcome.
     expect(screen.getByText("Add CSV export.")).toBeInTheDocument();
     expect(screen.getByText("Simplify setup copy.")).toBeInTheDocument();
-    expect(screen.getByText("Lucius")).toBeInTheDocument();
-    expect(screen.getByText("Batman")).toBeInTheDocument();
+    expect(screen.getAllByText("Lucius").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Batman").length).toBeGreaterThan(0);
     expect(screen.getByText(/merged into api/i)).toBeInTheDocument();
     expect(screen.getByText(/batman shipped and merged into web/i)).toBeInTheDocument();
   });
 
-  it("shows real subscription headroom from the native reader, labelled as usage not billed-$", () => {
+  it("shows compact local quota state without exposing token totals or dollars", () => {
     renderReview();
-    const panel = screen.getByRole("region", { name: /subscription usage/i });
-    // Real token headroom + reset countdown, not a dollar figure.
-    expect(screen.getByText("142.2M")).toBeInTheDocument();
-    expect(screen.getByText(/claude window, codex/i)).toBeInTheDocument();
-    expect(screen.getByText("2h 5m")).toBeInTheDocument();
-    expect(screen.getByText(/local 5h window/i)).toBeInTheDocument();
-    // A Codex row is present.
-    expect(screen.getByText(/codex 75.8K/i)).toBeInTheDocument();
-    // The compact rail still carries subscription usage, not a per-token bill.
-    expect(panel.textContent).toMatch(/local 5h window/i);
-    expect(panel.textContent).not.toMatch(/\$109/);
+    const rail = screen.getByRole("region", { name: /capacity and proof/i });
+    // The Inbox rail is compact: it shows whether local usage synced and
+    // whether shipped proof exists, not a raw token wall or dollar figure.
+    expect(screen.getByText(/local quota/i)).toBeInTheDocument();
+    expect(screen.getByText(/usage synced/i)).toBeInTheDocument();
+    expect(screen.getByText(/delivery/i)).toBeInTheDocument();
+    expect(screen.getByText(/no shipped proof/i)).toBeInTheDocument();
+    expect(rail.textContent).not.toMatch(/142\.2M/);
+    expect(rail.textContent).not.toMatch(/\$109/);
   });
 
-  it("shows a plain 'usage unavailable' state when local usage cannot be read", () => {
+  it("shows a compact 'usage not synced' state when local usage cannot be read", () => {
     renderReview({
       usage: usage({ available: false, block: null, codex: null, error: "usage logs unavailable" }),
       usageState: "error",
     });
-    expect(screen.getByText(/usage unavailable/i)).toBeInTheDocument();
-    expect(screen.getByText(/usage logs unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/usage not synced/i)).toBeInTheDocument();
+    expect(screen.queryByText(/usage logs unavailable/i)).not.toBeInTheDocument();
     // It must not crash the rest of the Review surface: the capacity rail still
-    // renders alongside the degraded usage panel.
+    // renders alongside degraded usage state.
     expect(screen.getByRole("region", { name: /capacity and proof/i })).toBeInTheDocument();
   });
 
@@ -297,7 +296,7 @@ describe("ReviewView", () => {
     const onSwitch = vi.fn();
     renderReview({ onSwitch });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^ask alfred$/i }));
+    await user.click(screen.getByRole("button", { name: /ask alfred/i }));
     expect(onSwitch).toHaveBeenCalledWith("compose");
   });
 
@@ -324,7 +323,8 @@ describe("ReviewView", () => {
       onPlanDecision,
     });
 
-    expect(screen.getByText(/approving starts this exact scope/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^approve/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^decline/i })).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: /^approve/i }));
     expect(onPlanDecision).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "13-plan" }),

@@ -1,5 +1,11 @@
 export type AgentSummary = {
   codename: string;
+  display_name?: string;
+  role_title?: string;
+  purpose?: string;
+  theme?: string;
+  theme_label?: string;
+  theme_accent?: string;
   last_firing_id: string | null;
   last_run_at: string | null;
   status: "live" | "idle" | "error" | string;
@@ -110,6 +116,12 @@ export type StatusResponse = {
 export type ScheduledRun = {
   codename: string;
   role: string;
+  display_name?: string;
+  role_title?: string;
+  purpose?: string;
+  theme?: string;
+  theme_label?: string;
+  theme_accent?: string;
   kind: "interval" | "cron-daily" | "cron-weekly" | string;
   cadence: string;
   next_fire_at: string | null;
@@ -469,6 +481,14 @@ export type UsageBlock = {
   models: string[];
 };
 
+// One Codex rate-limit window (5h "primary" or weekly "secondary"): the used
+// percentage and when it resets. Both fields can be null when the CLI omitted
+// them from the rate_limits block.
+export type UsageCodexQuotaWindow = {
+  used_percent: number | null;
+  resets_at: string | null;
+};
+
 export type UsageCodex = {
   latest_day: {
     date: string | null;
@@ -480,6 +500,14 @@ export type UsageCodex = {
   totals: {
     total_tokens: number | null;
     cost_usd: number | null;
+  } | null;
+  // Codex's own rate_limits block, when the session JSONL carried one. primary
+  // is the 5-hour window, secondary the weekly window. Absent under older Codex
+  // CLIs or when no rate_limits event was written.
+  quota?: {
+    primary: UsageCodexQuotaWindow | null;
+    secondary: UsageCodexQuotaWindow | null;
+    plan_type: string | null;
   } | null;
 };
 

@@ -129,6 +129,43 @@ describe("UsagePanel", () => {
     render(<UsagePanel usage={usage({ codex: null })} state="idle" />);
     expect(screen.getByText(/claude active window/i)).toBeInTheDocument();
   });
+
+  it("renders a Codex quota tile when the rate_limits block is present", () => {
+    // Far-future reset so the relative countdown is positive and deterministic
+    // enough to assert the percentage label is plain language.
+    render(
+      <UsagePanel
+        usage={usage({
+          codex: {
+            latest_day: {
+              date: "2026-06-03",
+              total_tokens: 75_778,
+              cost_usd: null,
+              input_tokens: 62_886,
+              output_tokens: 92,
+            },
+            totals: { total_tokens: null, cost_usd: null },
+            quota: {
+              primary: { used_percent: 22.5, resets_at: "2099-06-03T14:00:00Z" },
+              secondary: { used_percent: 41, resets_at: "2099-06-08T09:00:00Z" },
+              plan_type: "pro",
+            },
+          },
+        })}
+        state="idle"
+        shipped={shipped()}
+      />,
+    );
+    // 5h primary: 100 - 22.5 = 77.5% left leads the tile value.
+    expect(screen.getByText("77.5% left")).toBeInTheDocument();
+    // Plain-language label naming both windows.
+    expect(screen.getByText(/codex 5h 77.5% left, weekly 59% left/i)).toBeInTheDocument();
+  });
+
+  it("omits the Codex quota tile when no rate_limits block is present", () => {
+    render(<UsagePanel usage={usage()} state="idle" shipped={shipped()} />);
+    expect(screen.queryByText(/codex 5h/i)).not.toBeInTheDocument();
+  });
 });
 
 describe("formatTokens", () => {

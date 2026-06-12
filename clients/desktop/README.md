@@ -16,11 +16,11 @@ Alfred installs in layers, and this client is the optional top one:
 
 1. **`alfred` CLI + runtime**: the base. Schedules the fleet, runs agents, and
    owns all state under `$ALFRED_HOME` (`~/.alfred` by default). Required.
-2. **`alfred serve`**: a local HTTP API + web dashboard over that
-   state. The desktop client prefers `http://127.0.0.1:7010` and falls
-   back to `http://127.0.0.1:7000`.
+2. **`alfred serve`**: a headless localhost JSON/SSE API over that state. The
+   desktop client prefers `http://127.0.0.1:7010` and falls back to
+   `http://127.0.0.1:7000`. It does not serve a browser UI.
 3. **Alfred Desktop (this app)**: the optional native control plane: a menu-bar
-   tray, five primary destinations (Review, Board, Compose, Fleet, Set up), a
+   tray, five primary destinations (Inbox, Ask, Work, Agents, Setup), a
    command palette, and a narrow set of safe local actions. It does not run
    agents itself; it reads `alfred serve` and shells a small allowlist of
    `alfred` CLI verbs.
@@ -32,8 +32,8 @@ The app navigation is five primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
 drawer. The design north-star is in [`CLIENT_REDESIGN.md`](CLIENT_REDESIGN.md).
 
-**Review** is the home / heartbeat: a pinned cost / health strip over three
-in-page lanes. **Needs you** is decisions and failures waiting on the operator,
+**Inbox** is the home / heartbeat: a pinned cost / health strip over three
+in-page lanes. **Decisions** is approvals, questions, and blockers,
 **Activity** is what is running and scheduled, and **Shipped** is merged work
 (defaulting to the last 24h, with a 24h / 7d / 14d filter). Shipped is backed by
 `GET /api/shipped` and renders the same readable cards as the Slack board; a card
@@ -41,22 +41,22 @@ opens a request lifecycle thread (Intake -> Plan -> Queued -> Building ->
 Shipped). The cards deep-link to GitHub for the actual code review; the app never
 embeds a diff or merge UI.
 
-**Board** is the first-class Kanban (Queued / In progress / Shipped) with
+**Work** is the first-class Kanban (Queued / In progress / Shipped) with
 per-card Queue / Hold / Done actions and a "queue an issue" composer (Done closes
 the issue via GitHub's native closed state). It shares the board state with
-Review's Shipped lane and the Slack board.
+Inbox's Shipped lane and the Slack board.
 
-**Compose** is plain-language request intake: describe the work in plain words,
+**Ask** is plain-language request intake: describe the work in plain words,
 and Alfred's planning assistant scores how ready it is to run, surfaces the
 clarifying questions still open, and saves a draft to the planning inbox. Each
 submission refines the same draft. The plain-mode spec coach is the default when
 the runtime starts with `ALFRED_INTAKE_PROFILE=plain`.
 
-**Fleet** is the operator-depth page, organized as in-page tabs (this replaces
-the old slide-over Operator drawer). **Agents** carries pause, resume, run-once,
-and dry-run controls per codename. **Logs** has an **Activity** feed plus a
+**Agents** is the operator-depth page, organized as in-page tabs. **Roster**
+carries pause, resume, run-once, and dry-run controls per codename. **Activity**
+has the cross-agent feed plus a
 **Latest run** view that shows one agent's most recent captured run, refreshed on
-the dashboard poll rather than streamed byte-by-byte. **Lessons** shows
+the API poll rather than streamed byte-by-byte. **Lessons** shows
 reviewable memory candidates with promote / reject and failure-pattern harvest.
 **Plans** is the plan and issue detail inspector.
 
@@ -74,12 +74,12 @@ The desktop app can start the local API from the Setup gear. If you prefer to
 run the runtime yourself, start it first:
 
 ```sh
-alfred serve --no-browser
+alfred serve
 ```
 
 The desktop app's Start runtime action uses port 7010 because macOS can reserve
-7000 for Control Center. A manually started `alfred serve --no-browser` on 7000
-still works; the app probes it as a fallback.
+7000 for Control Center. A manually started `alfred serve` on 7000 still works;
+the app probes it as a fallback.
 
 Then run the desktop shell:
 

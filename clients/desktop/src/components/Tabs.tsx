@@ -44,7 +44,7 @@ export function Tabs<K extends string>({
             <TabsTrigger
               key={tab.key}
               id={`${idBase}-tab-${tab.key}`}
-              className="gap-1.5 px-3"
+              className="min-w-0 gap-1 px-2 sm:gap-1.5 sm:px-3 [&>span]:min-w-0 [&>span]:truncate"
               value={tab.key}
               aria-controls={`${idBase}-panel`}
             >

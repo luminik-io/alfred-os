@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { supportsNativeActions } from "../api";
 import { exactTime, friendlyTime, titleCase } from "../format";
+import { isErrorStatus } from "../lib/derive";
 import {
   buildFleetRows,
   deriveFleetHealth,
@@ -14,13 +15,7 @@ import type { AgentSummary, NativeAction, ScheduledRun } from "../types";
 import { AlfredMetric, AlfredStatusDot, type AlfredTone } from "./ui/alfred";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
+import { CardDescription, CardHeader, CardTitle } from "./ui/card";
 import {
   Dialog,
   DialogContent,
@@ -71,8 +66,24 @@ export function FleetControlView({
   const scheduleByCodename = useMemo(() => scheduleMap(schedule || []), [schedule]);
   const health = deriveFleetHealth(rows);
   const stats = agentStats(rows);
+  const defaultSelected = defaultSelectedCodename(rows);
+  const [selectedCodename, setSelectedCodename] = useState<string | null>(defaultSelected);
   const [pending, setPending] = useState<PendingAction>(null);
   const affirmRef = useRef<HTMLButtonElement | null>(null);
+  const selectedRow = rows.find((row) => row.codename === selectedCodename) || rows[0] || null;
+  const selectedSchedule = selectedRow
+    ? scheduleFor(scheduleByCodename, selectedRow.codename)
+    : undefined;
+
+  useEffect(() => {
+    if (!rows.length) {
+      setSelectedCodename(null);
+      return;
+    }
+    if (!selectedCodename || !rows.some((row) => row.codename === selectedCodename)) {
+      setSelectedCodename(defaultSelectedCodename(rows));
+    }
+  }, [rows, selectedCodename]);
 
   const dispatch = (
     action: NativeAction,
@@ -94,40 +105,62 @@ export function FleetControlView({
   };
 
   return (
-    <section className="space-y-4" aria-label="Agent roster">
-      <div className="grid gap-3 md:grid-cols-5">
-        <SummaryStat label="Health" value={health.summary} tone={health.level} />
-        <SummaryStat label="Running" value={stats.running} tone={stats.running ? "ok" : "idle"} />
-        <SummaryStat
-          label="Paused"
-          value={stats.paused + stats.stopped}
-          tone={stats.paused || stats.stopped ? "warn" : "ok"}
-        />
-        <SummaryStat label="Needs logs" value={stats.erroring} tone={stats.erroring ? "error" : "ok"} />
-        <SummaryStat label="Runs today" value={stats.runsToday} tone="idle" />
-      </div>
-
+    <section className="agents-deck" aria-label="Agent roster">
       {rows.length ? (
-        <div className="grid gap-3 xl:grid-cols-2" role="list" aria-label="Agents">
-          {rows.map((row) => (
-            <FleetCard
-              key={row.codename}
-              row={row}
-              schedule={scheduleFor(scheduleByCodename, row.codename)}
+        <div className="agents-deck__grid">
+          <div className="agents-deck__rail" aria-label="Roster list">
+            <div className="agents-deck__summary">
+              <SummaryStat
+                label="Health"
+                value={health.level === "ok" ? "Live" : titleCase(health.level)}
+                tone={health.level}
+              />
+              <SummaryStat
+                label="Running"
+                value={stats.running}
+                tone={stats.running ? "ok" : "idle"}
+              />
+              <SummaryStat
+                label="Paused"
+                value={stats.paused + stats.stopped}
+                tone={stats.paused || stats.stopped ? "warn" : "ok"}
+              />
+              <SummaryStat
+                label="Failing"
+                value={stats.erroring}
+                tone={stats.erroring ? "error" : "ok"}
+              />
+            </div>
+            <div className="agents-deck__list" role="list" aria-label="Agents">
+              {rows.map((row) => (
+                <AgentRosterRow
+                  key={row.codename}
+                  row={row}
+                  schedule={scheduleFor(scheduleByCodename, row.codename)}
+                  selected={row.codename === selectedRow?.codename}
+                  onSelect={() => setSelectedCodename(row.codename)}
+                />
+              ))}
+            </div>
+          </div>
+          {selectedRow ? (
+            <AgentInspector
+              row={selectedRow}
+              schedule={selectedSchedule}
               canRun={canRun}
               nativeBusy={nativeBusy}
               onDispatch={dispatch}
               onViewLogs={onViewLogs}
             />
-          ))}
+          ) : null}
         </div>
       ) : (
-        <Card>
+        <div className="agents-deck__empty">
           <CardHeader>
             <CardTitle>No agents detected</CardTitle>
             <CardDescription>Connect to Alfred serve to load the roster.</CardDescription>
           </CardHeader>
-        </Card>
+        </div>
       )}
 
       <Dialog open={Boolean(pending)} onOpenChange={(open) => !open && setPending(null)}>
@@ -165,7 +198,54 @@ export function FleetControlView({
   );
 }
 
-function FleetCard({
+function AgentRosterRow({
+  onSelect,
+  row,
+  schedule,
+  selected,
+}: {
+  onSelect: () => void;
+  row: FleetControlRow;
+  schedule?: ScheduledRun;
+  selected: boolean;
+}) {
+  const profile = agentProfile(row, schedule);
+  const { tone, label } = serviceTone(row);
+  return (
+    <button
+      type="button"
+      className="agents-deck__row"
+      data-selected={selected ? "true" : "false"}
+      style={{ "--agent-accent": profile.themeAccent } as React.CSSProperties}
+      onClick={onSelect}
+      role="listitem"
+      aria-current={selected ? "true" : undefined}
+      aria-label={`Select ${profile.label}`}
+    >
+      <span className="agents-deck__row-mark" aria-hidden="true" />
+      <span className="min-w-0">
+        <span className="agents-deck__row-title">{profile.label}</span>
+        <span className="agents-deck__row-purpose">
+          {profile.purpose || scheduleCopy(row, schedule)}
+        </span>
+      </span>
+      <span className="agents-deck__row-meta">
+        <Badge
+          variant="outline"
+          className="alfred-status-badge"
+          data-tone={tone}
+          aria-label={`Status: ${label}`}
+        >
+          <AlfredStatusDot tone={tone} aria-hidden="true" />
+          {label}
+        </Badge>
+        <span>{scheduleCopy(row, schedule)}</span>
+      </span>
+    </button>
+  );
+}
+
+function AgentInspector({
   row,
   schedule,
   canRun,
@@ -194,19 +274,35 @@ function FleetCard({
   }, [currentCadence]);
 
   const options = scheduleOptions(currentCadence);
+  const profile = agentProfile(row, schedule);
   return (
-    <Card className="border-border/70 bg-card/80 shadow-sm backdrop-blur" role="listitem">
-      <CardHeader className="gap-3">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="truncate">{row.codename}</CardTitle>
-            <CardDescription className="truncate">{agentActionCue(row)}</CardDescription>
+    <section
+      className="agent-inspector"
+      aria-label={`${profile.label} details`}
+      style={{ "--agent-accent": profile.themeAccent } as React.CSSProperties}
+    >
+      <div className="agent-inspector__header">
+        <div className="min-w-0">
+          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="h-5 border-border/50 bg-secondary/65 px-2 text-[0.68rem]"
+              title={`Runtime codename: ${row.codename}`}
+            >
+              {row.codename}
+            </Badge>
+            <ServiceBadge row={row} />
           </div>
-          <ServiceBadge row={row} />
+          <h2 className="agent-inspector__title">{profile.label}</h2>
+          <p className="agent-inspector__purpose">
+            {profile.purpose || agentActionCue(row)}
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <dl className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
+        <div className="agent-inspector__pulse" aria-hidden="true" />
+      </div>
+
+      <div className="agent-inspector__body">
+        <dl className="agent-inspector__metrics">
           <MetaItem label="Last run" title={exactTime(row.summary?.last_run_at)}>
             {row.summary ? friendlyTime(row.summary.last_run_at) : "No run"}
           </MetaItem>
@@ -215,40 +311,44 @@ function FleetCard({
           <MetaItem label="Schedule">{scheduleCopy(row, schedule)}</MetaItem>
         </dl>
 
-        <p className="line-clamp-2 min-h-11 text-sm text-muted-foreground">
-          {row.paused && row.pausedSince
-            ? `Paused since ${friendlyTime(row.pausedSince)}.`
-            : row.summary?.last_summary || "No runs yet."}
-        </p>
+        <div className="agent-inspector__latest">
+          <span>Latest signal</span>
+          <p>
+            {row.paused && row.pausedSince
+              ? `Paused since ${friendlyTime(row.pausedSince)}.`
+              : row.summary?.last_summary || "No runs yet."}
+          </p>
+        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="ghost" onClick={() => onViewLogs(row.codename)}>
+        <div className="agent-inspector__actions">
+          <Button type="button" variant="outline" onClick={() => onViewLogs(row.codename)}>
             <ScrollText aria-hidden="true" />
-            View logs
+            Logs
           </Button>
+          {canRun && row.paused ? (
+            <Button
+              type="button"
+              variant="default"
+              disabled={busy("resume")}
+              onClick={() => onDispatch("resume", row.codename, "Resume")}
+            >
+              <Play aria-hidden="true" />
+              {busy("resume") ? "Resuming" : "Resume"}
+            </Button>
+          ) : null}
+          {canRun && !row.paused ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy("pause")}
+              onClick={() => onDispatch("pause", row.codename, "Pause")}
+            >
+              <Pause aria-hidden="true" />
+              {busy("pause") ? "Pausing" : "Pause"}
+            </Button>
+          ) : null}
           {canRun ? (
             <>
-              {row.paused ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy("resume")}
-                  onClick={() => onDispatch("resume", row.codename, "Resume")}
-                >
-                  <Play aria-hidden="true" />
-                  {busy("resume") ? "Resuming" : "Resume"}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy("pause")}
-                  onClick={() => onDispatch("pause", row.codename, "Pause")}
-                >
-                  <Pause aria-hidden="true" />
-                  {busy("pause") ? "Pausing" : "Pause"}
-                </Button>
-              )}
               <Button
                 type="button"
                 variant="secondary"
@@ -272,8 +372,8 @@ function FleetCard({
         </div>
 
         {canRun ? (
-          <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/35 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <div className="space-y-1.5">
+          <div className="agent-inspector__schedule">
+            <div className="min-w-0 space-y-1.5">
               <Label
                 htmlFor={`schedule-${row.codename}`}
                 className="flex items-center gap-1.5 text-xs text-muted-foreground"
@@ -309,8 +409,8 @@ function FleetCard({
             </Button>
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -353,19 +453,47 @@ function serviceTone(row: FleetControlRow): {
   tone: "ok" | "warn" | "error" | "idle";
   label: string;
 } {
-  if (row.summary?.status === "error" || row.consecutiveFailures >= 2) {
-    return { tone: "error", label: "Error" };
+  // Honest human vocabulary (DESIGN_SPEC chip map): an errored run reads as a
+  // snag, a live agent is "Working now", and an idle agent is "Resting" or
+  // "Paused" with a neutral tone. idle never shows the green/ok tone.
+  if (isErrorStatus(row.summary?.status) || row.consecutiveFailures >= 2) {
+    return { tone: "error", label: "Hit a snag" };
   }
-  if (row.service === "paused") {
-    return { tone: "warn", label: "Paused" };
+  if (row.service === "paused" || row.service === "stopped") {
+    return { tone: "idle", label: "Paused" };
   }
-  if (row.service === "stopped") {
-    return { tone: "warn", label: "Stopped" };
+  // Only a genuinely live run shows the working tone. A loaded-but-idle agent
+  // is scheduled, not executing, so it reads as "Resting" with a neutral tone,
+  // never green.
+  if (row.summary?.status === "live") {
+    return { tone: "ok", label: "Working now" };
   }
-  if (row.service === "running") {
-    return { tone: "ok", label: "Running" };
-  }
-  return { tone: "idle", label: titleCase(row.summary?.status || "idle") };
+  return { tone: "idle", label: "Resting" };
+}
+
+function defaultSelectedCodename(rows: FleetControlRow[]): string | null {
+  return (
+    rows.find((row) => row.summary?.status === "error" || row.consecutiveFailures >= 2)
+      ?.codename ||
+    rows.find((row) => row.service === "running")?.codename ||
+    rows[0]?.codename ||
+    null
+  );
+}
+
+function agentProfile(row: FleetControlRow, schedule?: ScheduledRun): {
+  label: string;
+  purpose: string;
+  themeAccent: string;
+} {
+  const displayName = row.summary?.display_name || schedule?.display_name || titleCase(row.codename);
+  const roleTitle = row.summary?.role_title || schedule?.role_title || schedule?.role || "";
+  const purpose = row.summary?.purpose || schedule?.purpose || "";
+  return {
+    label: roleTitle ? `${displayName} · ${roleTitle}` : displayName,
+    purpose,
+    themeAccent: row.summary?.theme_accent || schedule?.theme_accent || "var(--primary)",
+  };
 }
 
 function confirmCopy(action: NativeAction): string {
@@ -375,26 +503,19 @@ function confirmCopy(action: NativeAction): string {
 }
 
 function SummaryStat({
+  detail,
   label,
   value,
   tone,
 }: {
+  detail?: string;
   label: string;
   value: string | number;
   tone: "ok" | "warn" | "error" | "unknown" | "idle";
 }) {
-  return (
-    <Card size="sm" className="border-border/70 bg-card/75 shadow-sm backdrop-blur">
-      <CardContent>
-        <AlfredMetric
-          className="border-0 bg-transparent p-0 shadow-none"
-          label={label}
-          tone={tone as AlfredTone}
-          value={value}
-        />
-      </CardContent>
-    </Card>
-  );
+  // AlfredMetric carries its own card chrome; wrapping it in another Card
+  // doubled the padding and ellipsized the labels at rail width.
+  return <AlfredMetric detail={detail} label={label} tone={tone as AlfredTone} value={value} />;
 }
 
 function agentStats(rows: FleetControlRow[]) {

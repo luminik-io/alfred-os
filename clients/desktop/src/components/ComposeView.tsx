@@ -1,19 +1,14 @@
 import {
   AlertTriangle,
   ArrowRight,
-  Bot,
+  ArrowUp,
   CheckCircle2,
   Copy,
   ExternalLink,
-  FileCheck2,
-  GitBranch,
-  MessagesSquare,
-  Send,
-  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -21,11 +16,12 @@ import {
   composeConverse,
   composeDraft,
   conversationControl,
+  filePlanIssue,
   isLiveSessionUnavailable,
   streamComposeConverse,
   supportsNativeActions,
 } from "../api";
-import { threadForCompose } from "../lib/derive";
+import { repoShortName } from "../lib/chips";
 import { isSafeExternalUrl, openExternal } from "../lib/links";
 import type { TabKey } from "../lib/uiTypes";
 import type {
@@ -33,12 +29,12 @@ import type {
   ComposeDraftResponse,
   ConversationControlResponse,
   ConverseMessage,
-  ConverseReadiness,
   ConverseResponse,
+  FilePlanIssueResponse,
 } from "../types";
-import { EmptyState, PanelHeader } from "./atoms";
-import { RequestThread } from "./RequestThread";
-import { Switch } from "./ui";
+import { PanelHeader } from "./atoms";
+import { LifecycleCard, type RepoChip } from "./LifecycleCard";
+import { PlainModeToggle } from "./PlainModeToggle";
 
 // Plain-language prompt for a non-developer. The old DSL (title:/problem:/repo:)
 // is gone: a designer should be able to type in their own words. The server's
@@ -47,73 +43,39 @@ import { Switch } from "./ui";
 // questions and hide jargon in its summary (see intake_profiles.py).
 const PLACEHOLDER = "Describe the outcome, who needs it, and any limits Alfred should respect.";
 
-const CHAT_OPENER =
-  "Start in plain language. Alfred asks only what is missing, then turns the request into a reviewable plan.";
-
 const STARTERS = [
   {
     label: "Ship a feature",
     text: "Add a CSV export to the attendees table so sales can download the filtered rows they see.",
-    hint: "Useful when you know the user outcome.",
   },
   {
     label: "Fix a workflow",
     text: "The review queue is hard to scan at small window sizes. Make it usable without hiding important decisions.",
-    hint: "Useful when something feels slow or confusing.",
   },
   {
     label: "Polish a screen",
     text: "Improve the setup screen so a non-developer can connect Alfred and understand what is ready.",
-    hint: "Useful for UX, copy, and visual quality.",
   },
 ];
 
-export function ComposeView({
-  baseUrl,
-  intakeProfile,
-  selectedRepos = [],
-  onSwitch,
-}: {
-  baseUrl: string;
-  // The active server-side intake profile from /api/status. "plain" makes the
-  // refiner ask plain questions and hide jargon, so Compose confirms the mode
-  // and softens its copy. Undefined on older servers; treated as technical.
-  intakeProfile?: string;
-  selectedRepos?: string[];
-  onSwitch: (tab: TabKey) => void;
-}) {
-  // The guided chat needs the native bridge (a live Claude/Codex session). Off
-  // Tauri (browser preview) we keep the existing one-shot rubric form so the
-  // preview never breaks. The chat can also fall back to one-shot mid-session
-  // if the server reports no live engine is configured.
-  const [oneShot, setOneShot] = useState(!supportsNativeActions());
+// The composer textarea grows with content up to this many rows, then scrolls.
+const MAX_COMPOSER_ROWS = 8;
 
-  if (oneShot) {
-    return (
-      <OneShotCompose
-        baseUrl={baseUrl}
-        intakeProfile={intakeProfile}
-        selectedRepos={selectedRepos}
-        onSwitch={onSwitch}
-      />
-    );
-  }
-  return (
-    <ConversationalCompose
-      baseUrl={baseUrl}
-      intakeProfile={intakeProfile}
-      selectedRepos={selectedRepos}
-      onSwitch={onSwitch}
-      onDegrade={() => setOneShot(true)}
-    />
-  );
-}
+type MessageTurn = ConverseMessage & { pending?: boolean; kind?: "message" };
 
-// ------------------------------------------------------------------------- //
-// Conversational spec-builder (native): a guided chat with a readiness meter.
-// ------------------------------------------------------------------------- //
+type ChatTurn =
+  | MessageTurn
+  // A draft turn renders the inline lifecycle card with the one-gate File issue
+  // action. It is produced when an assistant turn returns a saved draft.
+  | { role: "assistant"; kind: "draft"; draft: DraftCardModel };
 
-type ChatTurn = ConverseMessage & { pending?: boolean };
+type DraftCardModel = {
+  draftId: string;
+  title: string;
+  repos: string[];
+  ready: boolean;
+  questions: string[];
+};
 
 function cleanRepos(repos: string[] | undefined): string[] {
   const seen = new Set<string>();
@@ -158,29 +120,59 @@ function draftWithRepoContext(
   return repos.length ? { repos } : undefined;
 }
 
-function ConversationalCompose({
+function repoChipsFor(repos: string[]): RepoChip[] {
+  return cleanRepos(repos).map((repo) => ({ short: repoShortName(repo), full: repo }));
+}
+
+function draftCardFrom(result: ConverseResponse | ComposeDraftResponse): DraftCardModel {
+  // ConverseResponse uses readiness.ready; ComposeDraftResponse uses readiness.ok
+  // and questions[]. Normalize both into the inline card model.
+  const ready =
+    "ready" in result.readiness ? result.readiness.ready : result.readiness.ok;
+  const questions =
+    "missing" in result.readiness
+      ? result.readiness.missing
+      : (result as ComposeDraftResponse).questions || [];
+  return {
+    draftId: result.draft_id,
+    title: result.draft.title || ("title" in result ? (result as ComposeDraftResponse).title : "New request"),
+    repos: cleanRepos(result.draft.repos),
+    ready: Boolean(ready),
+    questions: questions || [],
+  };
+}
+
+// ------------------------------------------------------------------------- //
+// One chat surface. Whether a live engine is configured or not, the operator
+// sees a single ChatGPT-grade conversation: a full-height thread, a markdown
+// reply rendered incrementally, and a bottom composer where Enter sends. When a
+// turn produces a ready draft it appears inline as a lifecycle card with the one
+// File issue action (one-gate: file directly, no separate approval step). Off
+// Tauri (browser preview) or when the server has no live engine, the same turn
+// routes through the reliable draft endpoint, so the surface never breaks.
+// ------------------------------------------------------------------------- //
+
+export function ComposeView({
   baseUrl,
   intakeProfile,
-  selectedRepos,
+  selectedRepos = [],
   onSwitch,
-  onDegrade,
 }: {
   baseUrl: string;
+  // The active server-side intake profile from /api/status. "plain" makes the
+  // refiner ask plain questions and hide jargon, so Compose confirms the mode
+  // and softens its copy. Undefined on older servers; treated as technical.
   intakeProfile?: string;
-  selectedRepos: string[];
+  selectedRepos?: string[];
   onSwitch: (tab: TabKey) => void;
-  onDegrade: () => void;
 }) {
   // Plain mode is a per-request toggle, seeded from the server's
-  // ALFRED_INTAKE_PROFILE default but flippable in-app: a non-developer can
-  // turn jargon-free coaching on/off without restarting the runtime. The chosen
-  // value rides each /api/compose/converse call as `plain`.
+  // ALFRED_INTAKE_PROFILE default but flippable in-app. The chosen value rides
+  // each /api/compose/converse call as `plain`.
   const serverPlainDefault = intakeProfile === "plain";
   const [isPlainMode, setIsPlainMode] = useState(serverPlainDefault);
-  // Seed from the server's ALFRED_INTAKE_PROFILE default, but keep following it
-  // until the operator flips the switch: Compose can mount before the first
-  // /api/status arrives (intakeProfile undefined), and a one-time initializer
-  // would then lock the toggle off and override a server plain default.
+  // Seed from the server default but keep following it until the operator flips
+  // the switch: Compose can mount before the first /api/status arrives.
   const [plainPinned, setPlainPinned] = useState(false);
   useEffect(() => {
     if (!plainPinned) setIsPlainMode(serverPlainDefault);
@@ -189,62 +181,101 @@ function ConversationalCompose({
     setPlainPinned(true);
     setIsPlainMode(next);
   };
+
+  // Whether a live engine is reachable. Starts true on native, false in the
+  // browser; flips to false the first time the server reports no engine so we
+  // stop attempting the streaming path.
+  const [hasEngine, setHasEngine] = useState(supportsNativeActions());
+
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ConverseResponse | null>(null);
+  // The most recent saved draft, carried across turns so the same request is
+  // refined (draft_id) and the inline card can file it.
+  const [result, setResult] = useState<ConverseResponse | ComposeDraftResponse | null>(null);
+  const [fileBusy, setFileBusy] = useState(false);
+  const [fileNotice, setFileNotice] = useState<{ tone: "ok" | "error"; message: string; url?: string } | null>(null);
+
   const transcriptRef = useRef<HTMLDivElement | null>(null);
-  // Tracks the in-flight converse run so reset() and unmount can cancel it.
-  // Without this, a slow stream that resolves AFTER the chat was cleared (or the
-  // view unmounted) would resurrect a cleared transcript by committing stale
-  // state. We abort the controller and ignore any result whose controller is no
-  // longer the current one.
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  // Tracks the in-flight run so reset() and unmount can cancel it; a late
+  // resolve must never resurrect a cleared transcript.
   const abortRef = useRef<AbortController | null>(null);
 
   // Keep the newest turn in view as the conversation grows.
   useEffect(() => {
     if (turns.length === 0) return;
     const el = transcriptRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
+    if (el) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
-  // Cancel any in-flight stream when the view unmounts so a late resolve never
-  // touches state on a torn-down component.
+  // Cancel any in-flight stream when the view unmounts.
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
     };
   }, []);
 
+  // Autogrow the composer up to MAX_COMPOSER_ROWS, then scroll. useLayoutEffect
+  // so the height is measured before paint and there is no flash.
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const styles = window.getComputedStyle(el);
+    const lineHeight = parseFloat(styles.lineHeight) || 20;
+    const padding =
+      parseFloat(styles.paddingTop || "0") + parseFloat(styles.paddingBottom || "0");
+    const maxHeight = lineHeight * MAX_COMPOSER_ROWS + padding;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [input]);
+
+  const commitDraftResult = useCallback(
+    (
+      reply: ConverseResponse | ComposeDraftResponse,
+      baseTurns: ChatTurn[],
+      message: string,
+    ) => {
+      setResult(reply);
+      setFileNotice(null);
+      const next: ChatTurn[] = [...baseTurns];
+      if (message.trim()) {
+        next.push({ role: "assistant", content: message, kind: "message" });
+      }
+      next.push({ role: "assistant", kind: "draft", draft: draftCardFrom(reply) });
+      setTurns(next);
+    },
+    [],
+  );
+
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || busy) {
-      return;
-    }
+    if (!text || busy) return;
     setBusy(true);
     setError(null);
-    // Abort any prior in-flight run and start a fresh controller for this turn.
-    // `isCurrent()` lets every state commit below bail if reset()/unmount (or a
-    // newer send) replaced this controller while the turn was still resolving.
+    setFileNotice(null);
+
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     const isCurrent = () => abortRef.current === controller && !controller.signal.aborted;
-    // Echo the user's turn immediately, plus a pending Alfred placeholder.
-    const nextTurns: ChatTurn[] = [...turns, { role: "user", content: text }];
-    setTurns([...nextTurns, { role: "assistant", content: "", pending: true }]);
+    const finishIfCurrent = () => {
+      if (abortRef.current === controller) setBusy(false);
+    };
+
+    // Only message turns go on the wire; draft cards are UI-only.
+    const priorMessages: ChatTurn[] = turns;
+    const nextTurns: ChatTurn[] = [...turns, { role: "user", content: text, kind: "message" }];
+    setTurns([...nextTurns, { role: "assistant", content: "", pending: true, kind: "message" }]);
     setInput("");
 
-    // Send the full transcript (server caps + wraps it as untrusted). Only real
-    // turns go on the wire; the pending placeholder is UI-only.
-    const wire: ConverseMessage[] = nextTurns.map((turn) => ({
-      role: turn.role,
-      content: turn.content,
-    }));
-    const request = {
+    const wire: ConverseMessage[] = nextTurns
+      .filter((turn): turn is ConverseMessage & { kind?: "message" } => turn.kind !== "draft")
+      .map((turn) => ({ role: turn.role, content: turn.content }));
+
+    const converseRequest = {
       messages: wire,
       draft_id: result?.draft_id,
       repos: contextReposForPlanning(result, selectedRepos),
@@ -252,40 +283,61 @@ function ConversationalCompose({
       plain: isPlainMode,
     };
 
+    // Control commands (status, run, etc.) short-circuit before any planning.
     try {
       const control = await conversationControl(baseUrl, { text }, controller.signal);
-      if (!isCurrent()) {
-        return;
-      }
+      if (!isCurrent()) return;
       if (control.handled) {
-        setTurns([
-          ...nextTurns,
-          { role: "assistant", content: controlReply(control) },
-        ]);
+        setTurns([...nextTurns, { role: "assistant", content: controlReply(control), kind: "message" }]);
+        finishIfCurrent();
         return;
       }
     } catch (err) {
-      if (controller.signal.aborted) {
-        return;
-      }
-      setTurns(turns);
+      if (controller.signal.aborted) return;
+      setTurns(priorMessages);
       setInput(text);
       setError(err instanceof Error ? err.message : String(err));
+      finishIfCurrent();
       return;
     }
 
-    // Stream tokens into the pending bubble as the model writes them (#36), then
-    // reconcile to the final ConverseResponse. If streaming is unavailable or
-    // errors mid-flight we fall back to the existing one-shot converse, which
-    // returns the same shape; the live engine still ran the turn either way, so
-    // the fallback only changes how the reply is delivered, never the result.
+    const runDraftFallback = async (): Promise<boolean> => {
+      // The reliable, always-available path: save a draft and render it inline.
+      try {
+        const draft = await composeDraft(baseUrl, {
+          text,
+          draft_id: result?.draft_id,
+          draft: draftWithRepoContext(result, selectedRepos),
+          context_repos: contextReposForPlanning(result, selectedRepos),
+        });
+        if (!isCurrent()) return true;
+        setHasEngine(false);
+        commitDraftResult(draft, nextTurns, draft.summary || "I saved a plan. Review it below, then file the issue when it is ready.");
+        return true;
+      } catch (draftErr) {
+        if (controller.signal.aborted) return true;
+        setTurns(priorMessages);
+        setInput(text);
+        setError(draftErr instanceof Error ? draftErr.message : String(draftErr));
+        return true;
+      }
+    };
+
+    // No live engine (browser preview, or server reports none): go straight to
+    // the reliable draft endpoint, no streaming attempt.
+    if (!hasEngine) {
+      await runDraftFallback().finally(() => {
+        finishIfCurrent();
+      });
+      return;
+    }
+
     const renderToken = (fragment: string) => {
-      // Drop tokens that arrive after this run was cancelled/superseded.
       if (!isCurrent()) return;
       setTurns((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
-        if (last && last.role === "assistant" && last.pending) {
+        if (last && last.kind !== "draft" && last.role === "assistant" && last.pending) {
           next[next.length - 1] = { ...last, content: last.content + fragment };
         }
         return next;
@@ -295,88 +347,34 @@ function ConversationalCompose({
     try {
       let reply: ConverseResponse;
       try {
-        reply = await streamComposeConverse(baseUrl, request, renderToken, controller.signal);
+        reply = await streamComposeConverse(baseUrl, converseRequest, renderToken, controller.signal);
       } catch (streamErr) {
-        // A cancelled run (reset/unmount) must not fall back or surface an
-        // error; it simply stops touching state.
-        if (controller.signal.aborted) {
-          return;
-        }
-        // The live-session degrade (no engine) must propagate to the one-shot
-        // fallback, not silently retry; any other streaming failure falls back
-        // to the non-streaming converse (a buffered request that still works
-        // when only the streaming transport is the problem).
-        if (isLiveSessionUnavailable(streamErr)) {
-          throw streamErr;
-        }
-        // Reset the pending bubble to empty so a partial stream does not leave
-        // half a reply before the buffered call replaces it.
+        if (controller.signal.aborted) return;
+        if (isLiveSessionUnavailable(streamErr)) throw streamErr;
+        // A transport failure (not a missing engine): retry buffered.
         renderToken("");
         if (isCurrent()) {
-          setTurns([...nextTurns, { role: "assistant", content: "", pending: true }]);
+          setTurns([...nextTurns, { role: "assistant", content: "", pending: true, kind: "message" }]);
         }
-        reply = await composeConverse(baseUrl, request, controller.signal);
+        reply = await composeConverse(baseUrl, converseRequest, controller.signal);
       }
-      // A late resolve after reset()/unmount must not resurrect a cleared chat.
-      if (!isCurrent()) {
-        return;
-      }
-      setResult(reply);
-      setTurns([...nextTurns, { role: "assistant", content: reply.reply }]);
+      if (!isCurrent()) return;
+      commitDraftResult(reply, nextTurns, reply.reply);
     } catch (err) {
-      // Swallow a cancellation: the run was intentionally discarded.
-      if (controller.signal.aborted) {
+      if (controller.signal.aborted) return;
+      if (isLiveSessionUnavailable(err)) {
+        await runDraftFallback();
         return;
       }
-      // No live engine configured server-side: still create the plan through
-      // the reliable draft endpoint, then render the saved draft inside this
-      // chat surface. Pressing Start should always produce a visible saved
-      // plan when the runtime itself is reachable.
-      if (isLiveSessionUnavailable(err)) {
-        try {
-          const draft = await composeDraft(baseUrl, {
-            text,
-            draft_id: result?.draft_id,
-            draft: draftWithRepoContext(result, selectedRepos),
-            context_repos: contextReposForPlanning(result, selectedRepos),
-          });
-          if (!isCurrent()) {
-            return;
-          }
-          const fallback = converseFromDraft(draft);
-          setResult(fallback);
-          setTurns([...nextTurns, { role: "assistant", content: fallback.reply }]);
-          return;
-        } catch (draftErr) {
-          if (controller.signal.aborted) {
-            return;
-          }
-          // If even the reliable endpoint is unavailable, fall back to the
-          // explicit one-shot form with the user's text restored.
-          onDegrade();
-          setInput(text);
-          setError(draftErr instanceof Error ? draftErr.message : String(draftErr));
-          return;
-        }
-      }
-      // A real failure: revert to the pre-send transcript (drop both the
-      // pending bubble AND the just-echoed user turn) and put the text back in
-      // the input, so a retry re-sends it once instead of duplicating the turn.
-      setTurns(turns);
+      setTurns(priorMessages);
       setInput(text);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      // Only the still-current run owns the busy flag; a superseded run must not
-      // clear busy out from under its replacement.
-      if (abortRef.current === controller) {
-        setBusy(false);
-      }
+      finishIfCurrent();
     }
-  }, [baseUrl, busy, input, isPlainMode, onDegrade, result, selectedRepos, turns]);
+  }, [baseUrl, busy, commitDraftResult, hasEngine, input, isPlainMode, result, selectedRepos, turns]);
 
   const reset = useCallback(() => {
-    // Cancel any in-flight stream so a late resolve cannot repopulate the chat
-    // we are clearing here.
     abortRef.current?.abort();
     abortRef.current = null;
     setTurns([]);
@@ -384,294 +382,259 @@ function ConversationalCompose({
     setError(null);
     setInput("");
     setBusy(false);
+    setFileNotice(null);
+    setFileBusy(false);
   }, []);
 
+  // One-gate: file the issue straight from the inline card. The server still
+  // enforces readiness and repo allowlisting; there is no client approval step.
+  const fileIssue = useCallback(
+    async (draftId: string) => {
+      if (fileBusy) return;
+      setFileBusy(true);
+      setFileNotice(null);
+      try {
+        const res: FilePlanIssueResponse = await filePlanIssue(baseUrl, draftId);
+        setFileNotice({
+          tone: "ok",
+          message:
+            res.status === "already_filed"
+              ? "Already filed."
+              : `Filed with ${res.label || "agent:implement"}.`,
+          url: res.issue_url,
+        });
+      } catch (err) {
+        setFileNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setFileBusy(false);
+      }
+    },
+    [baseUrl, fileBusy],
+  );
+
   const started = turns.length > 0;
-  const readiness = result?.readiness ?? null;
 
   return (
-    <section className="compose-stack">
-      <div className={`panel panel--wide compose-chat-panel${result ? " compose-chat-panel--with-result" : ""}`}>
-        <div className="compose-chat-panel__head">
-          <div className="compose-head">
-            <PanelHeader
-              eyebrow={isPlainMode ? "Ask · Plain" : "Ask · Technical"}
-              title="Ask Alfred"
-            />
-            <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
-          </div>
-          <p className="panel-intro">
+    <section className="ask" aria-label="Ask Alfred">
+      <header className="ask__head">
+        <div className="ask__head-text">
+          <PanelHeader
+            eyebrow={isPlainMode ? "Guided setup" : "Technical setup"}
+            title="What should Alfred do?"
+          />
+          <p className="ask__intro">
             {isPlainMode
-              ? "Say what you want done. Alfred asks follow-ups, drafts the plan, and waits for approval."
-              : "Describe the outcome, repos, and constraints. Alfred plans, labels, and prepares the GitHub handoff."}
+              ? "Say the outcome in your own words. Alfred asks only what is missing, then saves a plan you can file as a GitHub issue."
+              : "Give the outcome, repo scope, and constraints. Alfred prepares the GitHub handoff."}
           </p>
-          <div className="compose-session-bar" aria-label="Request status">
-            <span>
-              <MessagesSquare size={14} aria-hidden="true" />
-              Request
-            </span>
-            <span>
-              <FileCheck2 size={14} aria-hidden="true" />
-              Plan
-            </span>
-            <span>
-              <CheckCircle2 size={14} aria-hidden="true" />
-              Approve
-            </span>
-          </div>
-          {isPlainMode ? (
-            <p className="compose-mode-note" role="note">
-              Plain answers are on.
-            </p>
+        </div>
+        <div className="ask__head-controls">
+          <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
+          {started ? (
+            <button className="ghost-button ask__reset" type="button" disabled={busy} onClick={reset}>
+              <Sparkles size={14} aria-hidden="true" />
+              <span>New chat</span>
+            </button>
           ) : null}
         </div>
+      </header>
 
-        <div className={`compose-chat compose-chat--mission${result ? " compose-chat--with-result" : " compose-chat--empty"}`}>
-          <div className="compose-chat__transcript" ref={transcriptRef} role="log" aria-label="Conversation with Alfred">
-            {started ? (
-              turns.map((turn, index) => (
+      <div className={`ask__thread${started ? "" : " ask__thread--empty"}`} ref={transcriptRef} role="log" aria-label="Conversation with Alfred">
+        {started ? (
+          <div className="ask__turns">
+            {turns.map((turn, index) =>
+              turn.kind === "draft" ? (
+                <DraftCard
+                  key={`draft-${index}-${turn.draft.draftId}`}
+                  draft={turn.draft}
+                  busy={fileBusy}
+                  notice={index === turns.length - 1 ? fileNotice : null}
+                  onFile={() => void fileIssue(turn.draft.draftId)}
+                  onOpenPipeline={() => onSwitch("pipeline")}
+                />
+              ) : (
                 <ChatBubble key={`${index}-${turn.role}`} turn={turn} />
-              ))
-            ) : (
-              <ComposeWelcome onPick={setInput} />
+              ),
             )}
           </div>
+        ) : (
+          <AskWelcome isPlainMode={isPlainMode} />
+        )}
+      </div>
 
-          {error ? (
-            <div className="inline-notice inline-notice--error">
-              <AlertTriangle size={18} aria-hidden="true" />
-              <span>{error}</span>
-            </div>
-          ) : null}
-
-          <div className="compose-chat__composer">
-            <label htmlFor="compose-chat-input" className="visually-hidden">
-              Your message to Alfred
-            </label>
-            <textarea
-              id="compose-chat-input"
-              value={input}
-              placeholder={started ? "Reply to Alfred, or add detail." : PLACEHOLDER}
-              rows={started ? 3 : 3}
-              spellCheck
-              disabled={busy}
-              onChange={(event) => setInput(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                // Chat-style: Enter sends, Shift+Enter inserts a newline.
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  if (!busy && input.trim()) void send();
-                }
-              }}
-            />
-            <div className="compose-chat__composer-actions">
-              <small className="compose-hint">Alfred saves the plan as the conversation gets clearer.</small>
-              {started ? (
-                <button className="compose-chat__reset" type="button" disabled={busy} onClick={reset}>
-                  <Sparkles size={14} aria-hidden="true" />
-                  <span>Start over</span>
-                </button>
-              ) : null}
-              <button
-                className="compose-chat__send"
-                type="button"
-                disabled={busy || !input.trim()}
-                onClick={() => void send()}
-                aria-label={busy ? "Alfred is thinking" : started ? "Send" : "Start plan"}
-                title={busy ? "Alfred is thinking" : started ? "Send" : "Start"}
-              >
-                <Send size={16} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-          <ConversationalPlanTray
-            result={result}
-            readiness={readiness}
-            isPlainMode={isPlainMode}
-            selectedRepos={selectedRepos}
-            onOpenPlans={() => onSwitch("plans")}
-          />
+      {error ? (
+        <div className="ask__error inline-notice inline-notice--error" role="alert">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span>{error}</span>
         </div>
+      ) : null}
+
+      <div className="ask__composer-wrap">
+        {!started ? (
+          <div className="ask__starters" aria-label="Starter prompts">
+            {STARTERS.map((starter) => (
+              <button
+                key={starter.label}
+                type="button"
+                className="ask__starter"
+                disabled={busy}
+                onClick={() => {
+                  setInput(starter.text);
+                  composerRef.current?.focus();
+                }}
+              >
+                <span>{starter.label}</span>
+                <ArrowRight size={13} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <form
+          className="ask__composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy && input.trim()) void send();
+          }}
+        >
+          <label htmlFor="ask-input" className="visually-hidden">
+            Your message to Alfred
+          </label>
+          <textarea
+            id="ask-input"
+            ref={composerRef}
+            className="ask__input"
+            value={input}
+            placeholder={started ? "Reply to Alfred, or add detail." : PLACEHOLDER}
+            rows={1}
+            spellCheck
+            disabled={busy}
+            onChange={(event) => setInput(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              // ChatGPT-style: Enter sends, Shift+Enter inserts a newline.
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                if (!busy && input.trim()) void send();
+              }
+            }}
+          />
+          <button
+            className="ask__send"
+            type="submit"
+            disabled={busy || !input.trim()}
+            aria-label={busy ? "Alfred is thinking" : "Send message"}
+            title={busy ? "Alfred is thinking" : "Send"}
+          >
+            <ArrowUp size={18} aria-hidden="true" />
+          </button>
+        </form>
+        <small className="ask__hint">
+          Enter to send, Shift + Enter for a new line. Alfred saves the plan as the chat gets clearer.
+        </small>
       </div>
     </section>
   );
 }
 
-function ConversationalPlanTray({
-  result,
-  readiness,
-  isPlainMode,
-  selectedRepos,
-  onOpenPlans,
-}: {
-  result: ConverseResponse | null;
-  readiness: ConverseReadiness | null;
-  isPlainMode: boolean;
-  selectedRepos: string[];
-  onOpenPlans: () => void;
-}) {
-  if (!result) {
-    return (
-      <MissionContractTray
-        selectedRepos={selectedRepos}
-        onOpenPlans={onOpenPlans}
-      />
-    );
-  }
+function AskWelcome({ isPlainMode }: { isPlainMode: boolean }) {
   return (
-    <div className="compose-plan-tray">
-      <PanelHeader eyebrow="Plan" title="Plan status" />
-      {readiness && !isPlainMode ? <ReadinessMeter readiness={readiness} /> : null}
-      <RequestThread
-        thread={threadForCompose({
-          draftId: result.draft_id,
-          title: result.draft.title,
-          repos: result.draft.repos,
-          ready: result.readiness.ready,
-        })}
-        onOpenPlan={onOpenPlans}
-      />
-      <HandoffPanel result={result} isPlainMode={isPlainMode} onOpenPlans={onOpenPlans} />
+    <div className="ask-welcome">
+      <span className="ask-welcome__mark" aria-hidden="true">
+        <Sparkles size={22} />
+      </span>
+      <p className="ask-welcome__lead">Start with the outcome.</p>
+      <p>
+        {isPlainMode
+          ? "Use normal language. Alfred asks for missing details, then turns it into a plan you can file."
+          : "Add repo scope, constraints, and test expectations when you know them."}
+      </p>
     </div>
   );
-}
-
-function ComposeWelcome({ onPick }: { onPick: (text: string) => void }) {
-  return (
-    <div className="compose-welcome">
-      <div className="compose-welcome__hero">
-        <span className="compose-welcome__mark" aria-hidden="true">
-          <Sparkles size={20} />
-        </span>
-        <h2>Describe the work.</h2>
-        <p>{CHAT_OPENER}</p>
-      </div>
-      <div className="compose-prompts" aria-label="Starter prompts">
-        {STARTERS.map((starter) => (
-          <button
-            key={starter.label}
-            type="button"
-            className="compose-prompt"
-            onClick={() => onPick(starter.text)}
-          >
-            <span>
-              {starter.label}
-              <ArrowRight size={14} aria-hidden="true" />
-            </span>
-            <small>{starter.text}</small>
-            <em>{starter.hint}</em>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MissionContractTray({
-  selectedRepos,
-  onOpenPlans,
-}: {
-  selectedRepos: string[];
-  onOpenPlans: () => void;
-}) {
-  const repos = cleanRepos(selectedRepos);
-  const repoPreview =
-    repos.length === 0
-      ? "Auto-detect"
-      : repos.length > 2
-        ? `${repos.length} repos selected`
-        : repos.length === 1
-        ? repos[0]
-        : repos.join(", ");
-  const repoTitle = repos.length ? repos.join(", ") : repoPreview;
-  return (
-    <div className="compose-plan-tray compose-plan-tray--contract">
-      <PanelHeader eyebrow="Ask" title="Request brief" />
-      <div className="mission-contract" aria-label="Request brief">
-        <article className="mission-contract__item">
-          <GitBranch size={16} aria-hidden="true" />
-          <div>
-            <span>Context</span>
-            <strong title={repoTitle}>{repoPreview}</strong>
-            <p>Selected repos shape the draft. Alfred can infer context when none are selected.</p>
-          </div>
-        </article>
-        <article className="mission-contract__item">
-          <Bot size={16} aria-hidden="true" />
-          <div>
-            <span>Routing</span>
-            <strong>Lucius or Batman</strong>
-            <p>Focused repo work goes to Lucius. Cross-repo work goes to Batman.</p>
-          </div>
-        </article>
-        <article className="mission-contract__item">
-          <ShieldCheck size={16} aria-hidden="true" />
-          <div>
-            <span>Gate</span>
-            <strong>Approval gate</strong>
-            <p>No issue filing or code execution before the explicit approval step.</p>
-          </div>
-        </article>
-      </div>
-      <button className="secondary-button compose-plan-tray__plans" type="button" onClick={onOpenPlans}>
-        <FileCheck2 size={16} aria-hidden="true" />
-        <span>Open plans</span>
-      </button>
-    </div>
-  );
-}
-
-function converseFromDraft(result: ComposeDraftResponse): ConverseResponse {
-  const rawScore = result.readiness.score;
-  const score = rawScore <= 1 ? Math.round(rawScore * 100) : Math.round(rawScore);
-  return {
-    draft_id: result.draft_id,
-    saved_path: result.saved_path,
-    reply: oneShotReply(result),
-    readiness: {
-      score: Math.max(0, Math.min(100, score)),
-      ready: result.readiness.ok,
-      missing: result.questions,
-    },
-    done: false,
-    draft: result.draft,
-  };
 }
 
 function controlReply(result: ConversationControlResponse): string {
   const body = (result.text || result.detail || "").trim();
-  if (body) {
-    return body;
-  }
+  if (body) return body;
   return `Alfred handled ${result.action || "the request"}.`;
 }
 
-// A visible in-app toggle for plain mode. Seeded from the server's
-// ALFRED_INTAKE_PROFILE default, it lets a non-developer flip jargon-free
-// coaching on/off; the value rides each converse call as `plain`. Rendered as a
-// labelled Radix switch so keyboard, pointer, and screen-reader behavior stays
-// native while Alfred owns the visual skin.
-function PlainModeToggle({
-  checked,
-  onChange,
+// The inline lifecycle card rendered when a turn produces a saved draft. One
+// primary action: File issue (one-gate). When the draft is not yet ready the
+// card stays informational and lists the open questions to answer in chat.
+function DraftCard({
+  draft,
+  busy,
+  notice,
+  onFile,
+  onOpenPipeline,
 }: {
-  checked: boolean;
-  onChange: (next: boolean) => void;
+  draft: DraftCardModel;
+  busy: boolean;
+  notice: { tone: "ok" | "error"; message: string; url?: string } | null;
+  onFile: () => void;
+  onOpenPipeline: () => void;
 }) {
+  const filed = notice?.tone === "ok";
   return (
-    <label className="plain-toggle">
-      <Switch
-        className="plain-toggle__switch"
-        checked={checked}
-        onCheckedChange={onChange}
-        aria-label="Plain mode"
+    <div className="ask-draft" aria-label="Saved plan">
+      <LifecycleCard
+        chip={
+          filed
+            ? { label: "Filed", tone: "ok" }
+            : draft.ready
+              ? { label: "Ready to file", tone: "ok" }
+              : { label: "Needs detail", tone: "attention" }
+        }
+        repos={repoChipsFor(draft.repos)}
+        outcome={draft.title}
+        attribution={<span>Saved as a plan</span>}
+        action={
+          filed ? (
+            notice?.url ? (
+              <button className="secondary-button" type="button" onClick={() => void openExternal(notice.url as string)}>
+                <ExternalLink size={15} aria-hidden="true" />
+                <span>View issue</span>
+              </button>
+            ) : (
+              <button className="secondary-button" type="button" onClick={onOpenPipeline}>
+                <span>Open Pipeline</span>
+              </button>
+            )
+          ) : (
+            <button
+              className="icon-button ask-draft__file"
+              type="button"
+              disabled={busy || !draft.ready}
+              onClick={onFile}
+              title={draft.ready ? "File this as a GitHub issue" : "Answer the open questions first"}
+            >
+              <CheckCircle2 size={15} aria-hidden="true" />
+              <span>{busy ? "Filing..." : "File issue"}</span>
+            </button>
+          )
+        }
+        ariaLabel={`Plan: ${draft.title}`}
       />
-      <span className="plain-toggle__label">Plain mode</span>
-    </label>
+      {!draft.ready && draft.questions.length ? (
+        <ul className="ask-draft__questions">
+          {draft.questions.slice(0, 4).map((question, index) => (
+            <li key={`${index}-${question.slice(0, 24)}`}>{question}</li>
+          ))}
+        </ul>
+      ) : null}
+      {notice ? (
+        <p className={`ask-draft__notice ask-draft__notice--${notice.tone}`} role="status">
+          {notice.message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
-function ChatBubble({ turn }: { turn: ChatTurn }) {
+function ChatBubble({ turn }: { turn: MessageTurn }) {
   const who = turn.role === "user" ? "You" : "Alfred";
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -681,13 +644,13 @@ function ChatBubble({ turn }: { turn: ChatTurn }) {
     });
   };
   return (
-    <div className={`compose-bubble compose-bubble--${turn.role}`}>
-      <div className="compose-bubble__head">
-        <span className="compose-bubble__who">{who}</span>
+    <div className={`ask-bubble ask-bubble--${turn.role}`}>
+      <div className="ask-bubble__head">
+        <span className="ask-bubble__who">{who}</span>
         {!turn.pending && turn.content ? (
           <button
             type="button"
-            className="compose-bubble__copy"
+            className="ask-bubble__copy"
             onClick={copy}
             aria-label={copied ? "Copied" : "Copy message"}
             title={copied ? "Copied" : "Copy"}
@@ -697,16 +660,16 @@ function ChatBubble({ turn }: { turn: ChatTurn }) {
         ) : null}
       </div>
       {turn.pending ? (
-        <span className="compose-bubble__pending" aria-label="Alfred is thinking">
-          <span className="compose-bubble__dot" />
-          <span className="compose-bubble__dot" />
-          <span className="compose-bubble__dot" />
+        <span className="ask-bubble__pending" aria-label="Alfred is thinking">
+          <span className="ask-bubble__dot" />
+          <span className="ask-bubble__dot" />
+          <span className="ask-bubble__dot" />
         </span>
       ) : turn.role === "assistant" ? (
         // Render Alfred's replies as markdown so headings, lists, tables and
         // fenced code render like a real chat surface. User turns stay plain
         // text (people type prose, and it avoids rendering injected markup).
-        <div className="compose-bubble__md">
+        <div className="ask-bubble__md">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -719,7 +682,7 @@ function ChatBubble({ turn }: { turn: ChatTurn }) {
           </ReactMarkdown>
         </div>
       ) : (
-        <p className="compose-bubble__text">{turn.content}</p>
+        <p className="ask-bubble__text">{turn.content}</p>
       )}
     </div>
   );
@@ -733,11 +696,11 @@ function SafeMarkdownLink({
   children: ReactNode;
 }) {
   if (!href || !isSafeExternalUrl(href)) {
-    return <span className="compose-bubble__unsafe-link">{children}</span>;
+    return <span className="ask-bubble__unsafe-link">{children}</span>;
   }
   return (
     <button
-      className="compose-bubble__link"
+      className="ask-bubble__link"
       type="button"
       onClick={() => void openExternal(href)}
     >
@@ -745,352 +708,4 @@ function SafeMarkdownLink({
       <ExternalLink size={13} aria-hidden="true" />
     </button>
   );
-}
-
-// A restrained, enterprise readiness meter: a slim track that fills as the spec
-// firms up, plus a quiet "N questions from ready" caption. No badges, no
-// celebration, no points. Matches the Wayne theme tokens used across Compose.
-function ReadinessMeter({ readiness }: { readiness: ConverseReadiness }) {
-  const score = Math.max(0, Math.min(100, Math.round(readiness.score)));
-  const tone = readiness.ready ? "ready" : score >= 60 ? "near" : "early";
-  const remaining = readiness.missing.length;
-  const caption = readiness.ready
-    ? "Ready to hand off."
-    : remaining === 0
-      ? "Almost there."
-      : `${remaining} ${remaining === 1 ? "question" : "questions"} from ready`;
-  return (
-    <div className={`compose-readiness compose-readiness--${tone}`}>
-      <div className="compose-readiness__head">
-        <span className="compose-readiness__label">Plan readiness</span>
-        <span className="compose-readiness__value">{score}%</span>
-      </div>
-      <div
-        className="compose-readiness__track"
-        role="progressbar"
-        aria-valuenow={score}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="Plan readiness"
-      >
-        <div className="compose-readiness__fill" style={{ width: `${score}%` }} />
-      </div>
-      <p className="compose-readiness__caption">{caption}</p>
-      {remaining > 0 ? (
-        <ul className="compose-readiness__missing">
-          {readiness.missing.map((item, index) => (
-            <li key={`${index}-${item.slice(0, 24)}`}>{item}</li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
-// The hand-off: once the spec is ready (model-judged), surface a clear "Open
-// Plans" action that opens the saved-plan inbox where the draft lives. Before
-// ready, the button stays available so the person can inspect or keep chatting.
-function HandoffPanel({
-  result,
-  isPlainMode,
-  onOpenPlans,
-}: {
-  result: ConverseResponse;
-  isPlainMode: boolean;
-  onOpenPlans: () => void;
-}) {
-  const ready = result.readiness.ready;
-  return (
-    <div className="compose-handoff">
-      <p className="compose-handoff__note">
-        {ready
-          ? isPlainMode
-            ? "Ready to review. Open Plans to approve and file the issue."
-            : "Ready to review. Open Plans to approve and create the GitHub issue."
-          : "Saved as a plan. Add the missing details here, or review it in Plans."}
-      </p>
-      <button
-        className={ready ? "icon-button" : "secondary-button"}
-        type="button"
-        onClick={onOpenPlans}
-      >
-        {ready ? <CheckCircle2 size={16} aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
-        <span>Open Plans</span>
-      </button>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------------- //
-// One-shot rubric form (browser preview / degrade): the existing behavior.
-// ------------------------------------------------------------------------- //
-
-function OneShotCompose({
-  baseUrl,
-  intakeProfile,
-  selectedRepos,
-  onSwitch,
-}: {
-  baseUrl: string;
-  intakeProfile?: string;
-  selectedRepos: string[];
-  onSwitch: (tab: TabKey) => void;
-}) {
-  const isPlainMode = intakeProfile === "plain";
-  const [intent, setIntent] = useState("");
-  const [lastIntent, setLastIntent] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ComposeDraftResponse | null>(null);
-  const [controlResult, setControlResult] = useState<ConversationControlResponse | null>(null);
-
-  const submit = useCallback(async () => {
-    const text = intent.trim();
-    if (!text || busy) {
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const control = await conversationControl(baseUrl, { text });
-      if (control.handled) {
-        setControlResult(control);
-        setResult(null);
-        setLastIntent(text);
-        setIntent("");
-        return;
-      }
-      setControlResult(null);
-      const next = await composeDraft(baseUrl, {
-        text,
-        draft_id: result?.draft_id,
-        draft: draftWithRepoContext(result, selectedRepos),
-        context_repos: contextReposForPlanning(result, selectedRepos),
-      });
-      setResult(next);
-      setLastIntent(text);
-      setIntent("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }, [baseUrl, busy, intent, result, selectedRepos]);
-
-  const reset = useCallback(() => {
-    setResult(null);
-    setControlResult(null);
-    setError(null);
-    setIntent("");
-    setLastIntent("");
-  }, []);
-
-  const iterating = result !== null;
-  const nextQuestion = result?.questions?.[0] || null;
-
-  return (
-    <section className="compose-stack">
-      <div className={`panel panel--wide compose-chat-panel${result ? " compose-chat-panel--with-result" : ""}`}>
-        <div className="compose-chat-panel__head">
-          <PanelHeader
-            eyebrow={isPlainMode ? "Ask · Plain" : "Ask · Technical"}
-            title={iterating ? "Refine request" : "Ask Alfred"}
-          />
-          <p className="panel-intro">
-            {isPlainMode
-              ? "Say what you want done. Alfred asks only what is missing and saves a plain plan for approval."
-              : "Describe the change, repo scope, and constraints. Alfred prepares the GitHub handoff."}
-          </p>
-          <div className="compose-session-bar" aria-label="Request status">
-            <span>
-              <MessagesSquare size={14} aria-hidden="true" />
-              Request
-            </span>
-            <span>
-              <FileCheck2 size={14} aria-hidden="true" />
-              Plan
-            </span>
-            <span>
-              <CheckCircle2 size={14} aria-hidden="true" />
-              Issue
-            </span>
-          </div>
-          {isPlainMode ? (
-            <p className="compose-mode-note" role="note">
-              Plain answers are on.
-            </p>
-          ) : null}
-        </div>
-
-        <div className={`compose-chat compose-chat--mission${result ? " compose-chat--with-result" : " compose-chat--empty"}`}>
-          <div className="compose-chat__transcript" role="log" aria-label="Conversation with Alfred">
-            {result ? (
-              <>
-                <ChatBubble turn={{ role: "user", content: lastIntent || "Plan this work item." }} />
-                <ChatBubble turn={{ role: "assistant", content: oneShotReply(result) }} />
-              </>
-            ) : controlResult ? (
-              <>
-                <ChatBubble turn={{ role: "user", content: lastIntent || "Ask Alfred." }} />
-                <ChatBubble turn={{ role: "assistant", content: controlReply(controlResult) }} />
-              </>
-            ) : (
-              <ComposeWelcome onPick={setIntent} />
-            )}
-          </div>
-
-          {error ? (
-            <div className="inline-notice inline-notice--error">
-              <AlertTriangle size={18} aria-hidden="true" />
-              <span>{error}</span>
-            </div>
-          ) : null}
-
-          <div className="compose-chat__composer">
-            <label htmlFor="compose-intent" className="visually-hidden">
-              {iterating ? "Add detail or answer a question" : "What should Alfred build?"}
-            </label>
-            {nextQuestion ? (
-              <div className="compose-next-question" role="note">
-                <span>Next question</span>
-                <strong>{nextQuestion}</strong>
-              </div>
-            ) : null}
-            <textarea
-              id="compose-intent"
-              value={intent}
-              placeholder={nextQuestion || PLACEHOLDER}
-              rows={iterating ? 4 : 3}
-              spellCheck
-              disabled={busy}
-              onChange={(event) => setIntent(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                  void submit();
-                }
-              }}
-            />
-            <div className="compose-chat__composer-actions">
-              <small className="compose-hint">Alfred saves the plan as the conversation gets clearer.</small>
-              {iterating ? (
-                <button className="compose-chat__reset" type="button" disabled={busy} onClick={reset}>
-                  <Sparkles size={14} aria-hidden="true" />
-                  <span>Start a new work item</span>
-                </button>
-              ) : null}
-              <button
-                className="compose-chat__send"
-                type="button"
-                disabled={busy || !intent.trim()}
-                onClick={() => void submit()}
-                aria-label={busy ? "Alfred is working" : iterating ? "Update plan" : "Create plan"}
-                title={busy ? "Alfred is working" : iterating ? "Update plan" : "Create plan"}
-              >
-                <Send size={16} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
-          {result ? (
-            <DraftPlanTray result={result} selectedRepos={selectedRepos} onOpenPlans={() => onSwitch("plans")} />
-          ) : (
-            <MissionContractTray
-              selectedRepos={selectedRepos}
-              onOpenPlans={() => onSwitch("plans")}
-            />
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function DraftPlanTray({
-  result,
-  selectedRepos,
-  onOpenPlans,
-}: {
-  result: ComposeDraftResponse;
-  selectedRepos: string[];
-  onOpenPlans: () => void;
-}) {
-  const scopedRepos = cleanRepos(result.draft.repos);
-  const contextRepos = scopedRepos.length ? [] : cleanRepos(selectedRepos);
-  return (
-    <div className="compose-plan-tray">
-      <PanelHeader eyebrow="Plan" title="Plan status" />
-      <RequestThread
-        thread={threadForCompose({
-          draftId: result.draft_id,
-          title: result.title,
-          repos: result.draft.repos,
-          ready: result.readiness.ok,
-        })}
-        onOpenPlan={onOpenPlans}
-      />
-      {!scopedRepos.length && contextRepos.length > 1 ? (
-        <div className="compose-context-note" role="note">
-          Alfred already has {contextRepos.length} codebases available for context. Pick the workspace area before filing the issue.
-        </div>
-      ) : null}
-      <div className="compose-handoff">
-        <p className="compose-handoff__note">
-          {result.readiness.ok
-            ? "This plan is saved. Open Plans to approve and create the GitHub issue."
-            : "The plan is saved, but Alfred still has questions. Answer them here or open Plans to inspect it."}
-        </p>
-        <button
-          className={result.readiness.ok ? "icon-button" : "secondary-button"}
-          type="button"
-          onClick={onOpenPlans}
-        >
-          {result.readiness.ok ? <CheckCircle2 size={16} aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
-          <span>Open Plans</span>
-        </button>
-      </div>
-      <div className="compose-questions">
-        <PanelHeader eyebrow="A quick check" title="Anything to clear up" />
-        {result.questions.length ? (
-          <ul className="compose-question-list">
-            {result.questions.map((question, index) => (
-              <li key={`${index}-${question.slice(0, 24)}`}>
-                <span aria-hidden="true">?</span>
-                {question}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState
-            title="Nothing unclear."
-            body="Review the saved plan, then file the issue when it is ready."
-            compact
-            tone="ok"
-          />
-        )}
-      </div>
-      {result.findings.length ? (
-        <div className="compose-findings">
-          <PanelHeader eyebrow="Before it ships" title="What still needs a look" />
-          <ul>
-            {result.findings.map((finding) => (
-              <li
-                key={finding.code}
-                className={`compose-finding compose-finding--${finding.severity}`}
-              >
-                {finding.severity === "error" ? (
-                  <AlertTriangle size={15} aria-hidden="true" />
-                ) : (
-                  <CheckCircle2 size={15} aria-hidden="true" />
-                )}
-                <span>{finding.message}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function oneShotReply(result: ComposeDraftResponse): string {
-  return result.summary || "I saved a plan. Review the next steps below.";
 }

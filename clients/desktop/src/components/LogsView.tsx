@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { loadAgentFirings, streamFiringTail } from "../api";
 import { exactTime, friendlyTime } from "../format";
 import { formatTranscriptLine } from "../lib/transcript";
-import type { FeedItem } from "../lib/notifications";
+import type { FeedItem, FeedTarget } from "../lib/notifications";
 import type { FiringRecord } from "../types";
 import { EmptyState, PanelHeader } from "./atoms";
 import { NotificationsView } from "./NotificationsView";
@@ -30,6 +30,7 @@ export function LogsView({
   unseen,
   seen,
   onMarkAllSeen,
+  onOpenMemory,
   firings,
   focus,
 }: {
@@ -38,11 +39,24 @@ export function LogsView({
   unseen: number;
   seen: Set<string>;
   onMarkAllSeen: () => void;
+  /** A memory-suggestion feed row jumps to the Lessons review queue. */
+  onOpenMemory?: () => void;
   firings: FiringRecord[];
   focus: { agent: string | null; nonce: number };
 }) {
   const [subtab, setSubtab] = useState<LogsSubtab>("activity");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(focus.agent);
+
+  // A feed row leads somewhere: an agent row opens that agent's latest run in
+  // place; a lesson-suggestion row hands off to the Lessons subtab.
+  const openFeedTarget = (target: FeedTarget) => {
+    if (target.type === "agent") {
+      setSelectedAgent(target.codename);
+      setSubtab("live");
+      return;
+    }
+    onOpenMemory?.();
+  };
 
   // An agent "View logs" deep-link jumps straight to the latest run for one agent.
   useEffect(() => {
@@ -73,7 +87,14 @@ export function LogsView({
       />
       <div id="logs-panel" role="tabpanel" className="subtab-panel">
         {subtab === "activity" ? (
-          <NotificationsView feed={feed} unseen={unseen} seen={seen} onMarkAllSeen={onMarkAllSeen} embedded />
+          <NotificationsView
+            feed={feed}
+            unseen={unseen}
+            seen={seen}
+            onMarkAllSeen={onMarkAllSeen}
+            onOpenTarget={openFeedTarget}
+            embedded
+          />
         ) : (
           <LiveTailView
             baseUrl={baseUrl}

@@ -220,7 +220,7 @@ describe("OnboardingView", () => {
     await user.click(screen.getByRole("button", { name: /seed work preview/i }));
     await waitFor(() => expect(seed).toHaveBeenCalledWith("http://127.0.0.1:7010"));
     await waitFor(() => expect(onRefreshBoard).toHaveBeenCalledWith({ demo: true }));
-    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("board"));
+    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("pipeline"));
     await user.click(await screen.findByRole("button", { name: /work preview/i }));
     const clearButton = await screen.findByRole("button", { name: /clear demo/i });
     await user.click(clearButton);

@@ -3,7 +3,6 @@ import { parseIssueRef } from "./links";
 import type {
   FiringRecord,
   PlanDraft,
-  ReliabilitySignal,
   ScheduledRun,
   ShippedBoard,
   ShippedCard,
@@ -16,13 +15,22 @@ import type {
   ThreadStepState,
 } from "./uiTypes";
 
+// Any failure status reads as a snag. Covers plain "error" and the
+// provider-level "llm-error" the runtime emits when a model call fails. Lives
+// here (not chips.ts) so cost/health derivation can stay honest without a
+// circular import.
+export function isErrorStatus(status: string | null | undefined): boolean {
+  const value = (status || "").toLowerCase();
+  return value === "error" || value === "llm-error" || value === "llm_error";
+}
+
 // ---------------------------------------------------------------------------
 // Needs you: the calm, client-owned decisions.
 //
 // The ONE action the client owns is the Alfred-native plan/spec sign-off
-// BEFORE work starts (the human-in-the-loop gate), plus memory review. The
-// reliability "needs inspection" signals are operator depth and live in the
-// Operator drawer (buildInspectionItems), not the calm default surface.
+// BEFORE work starts (the human-in-the-loop gate), plus memory review.
+// Reliability signals reach the operator through the Activity feed
+// (lib/notifications.ts), which links each one to its agent's latest run.
 // ---------------------------------------------------------------------------
 
 export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
@@ -34,8 +42,8 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
         title: "Connect to the local Alfred server",
         detail: "Start alfred serve so the client can read local state.",
         tone: "warn",
-        command: "alfred serve --no-browser",
-        targetTab: "setup",
+        command: "alfred serve",
+        targetTab: "settings",
         icon: "setup",
       },
     ];
@@ -54,7 +62,7 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
         plan.affected_repos ||
         "Review the plan before Alfred starts the work.",
       tone: plan.status.toLowerCase().includes("question") ? "warn" : "info",
-      targetTab: "plans",
+      targetTab: "pipeline",
       icon: "plan",
       planId: plan.plan_id,
     });
@@ -70,7 +78,7 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
       tone: waitingPlans.some((plan) => plan.status.toLowerCase().includes("question"))
         ? "warn"
         : "info",
-      targetTab: "plans",
+      targetTab: "pipeline",
       icon: "plan",
     });
   }
@@ -90,7 +98,7 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
       tone: candidates.some((candidate) => candidate.severity === "blocker")
         ? "error"
         : "info",
-      targetTab: "memory",
+      targetTab: "lessons",
       icon: "memory",
     });
   } else {
@@ -102,39 +110,13 @@ export function buildNeedsYou(snapshot: Snapshot | null): AttentionItem[] {
         title: `${plural(suggestions.length, "memory suggestion")} ready`,
         detail: "Review suggested memory updates before they are saved.",
         tone: "info",
-        targetTab: "memory",
+        targetTab: "lessons",
         icon: "memory",
       });
     }
   }
 
   return items.slice(0, 6);
-}
-
-// Operator-depth reliability signals: stale workers, action signals, and the
-// grouped failure patterns. These were in the old "needs you" mix but they are
-// inspection work, so they belong behind the Operator drawer, not on the calm
-// default Review surface.
-export function buildInspectionItems(snapshot: Snapshot | null): AttentionItem[] {
-  if (!snapshot) return [];
-  const items: AttentionItem[] = [];
-  for (const [index, signal] of (snapshot.actions.actions || []).entries()) {
-    if (signal.kind === "failure_pattern") continue;
-    if (signal.kind === "memory_promotion") continue;
-    items.push(signalToAttention(signal, `action-${index}`));
-  }
-  for (const [index, signal] of (snapshot.actions.stale_workers || []).entries()) {
-    items.push(signalToAttention(signal, `stale-${index}`, "run"));
-  }
-  items.push(...failurePatternsToAttention(snapshot.actions.failure_patterns || []));
-  return items;
-}
-
-// Backwards-compatible aggregate used by the Operator drawer: the calm
-// client-owned decisions plus the inspection signals, in one list.
-export function buildAttention(snapshot: Snapshot | null): AttentionItem[] {
-  if (!snapshot) return buildNeedsYou(null);
-  return [...buildInspectionItems(snapshot), ...buildNeedsYou(snapshot)].slice(0, 8);
 }
 
 // ---------------------------------------------------------------------------
@@ -271,7 +253,9 @@ export function buildCostHealth(snapshot: Snapshot | null): CostHealth {
   let sawFiringCost = false;
   for (const firing of firings) {
     if (firing.status === "ok") succeeded += 1;
-    if (firing.status === "error") failed += 1;
+    // An llm-error is a real failure, not a quiet success. Count it honestly so
+    // the Home rollup never treats an errored run as fine.
+    if (isErrorStatus(firing.status)) failed += 1;
     const cost = firingCost(firing);
     if (cost !== null) {
       firingSpend += cost;
@@ -442,88 +426,6 @@ export function buildActiveThreads(board: ShippedBoard | null, limit = 6): Reque
   return cards.slice(0, limit).map((card) => threadForCard(card, board));
 }
 
-// ---------------------------------------------------------------------------
-// Shared reliability helpers (used by the Operator drawer).
-// ---------------------------------------------------------------------------
-
-export function failurePatternsToAttention(signals: ReliabilitySignal[]): AttentionItem[] {
-  const grouped = new Map<string, ReliabilitySignal[]>();
-  for (const signal of signals) {
-    const agent = signal.agent || signal.codename || signal.target || "fleet";
-    grouped.set(agent, [...(grouped.get(agent) || []), signal]);
-  }
-
-  return Array.from(grouped.entries()).map(([agent, group]) => {
-    const total = group.reduce((sum, signal) => sum + (signal.count || 1), 0);
-    const labels = group.map(patternLabel).filter(Boolean);
-    const latest = latestTimestamp(group);
-    const multiple = group.length > 1;
-    const severity = group.some(
-      (signal) => signal.severity === "error" || signal.severity === "blocker",
-    )
-      ? "error"
-      : "warn";
-    return {
-      id: `failure-${agent}`,
-      label: "Needs inspection",
-      title: `${titleCase(agent)} reliability signal`,
-      detail: multiple
-        ? `${group.length} repeated patterns, ${total} events: ${labels.join(", ")}${
-            latest ? `; last seen ${friendlyTime(latest)}` : ""
-          }.`
-        : `${labels[0] || "failure"} repeated ${total} time${total === 1 ? "" : "s"}${
-            latest ? `; last seen ${friendlyTime(latest)}` : ""
-          }.`,
-      command: group.find((signal) => signal.command)?.command,
-      tone: severity,
-      icon: "run",
-      // Open the agent's runs so the operator can inspect, then decide.
-      targetTab: "logs",
-    };
-  });
-}
-
-export function signalToAttention(
-  signal: ReliabilitySignal,
-  id: string,
-  icon: AttentionItem["icon"] = "setup",
-  tone: AttentionItem["tone"] = "warn",
-): AttentionItem {
-  return {
-    id,
-    label: titleCase(signal.severity || signal.codename || "Action"),
-    title: titleCase(signal.title || signal.action || signal.codename || "Review Alfred signal"),
-    detail:
-      signal.message ||
-      signal.summary ||
-      signal.reason ||
-      "Open the local source before changing state.",
-    command: signal.command,
-    tone,
-    icon,
-    targetTab: "logs",
-  };
-}
-
-function patternLabel(signal: ReliabilitySignal): string {
-  return (
-    signal.subtype ||
-    signal.latest_summary ||
-    signal.summary ||
-    signal.reason ||
-    signal.action ||
-    "failure"
-  );
-}
-
-function latestTimestamp(signals: ReliabilitySignal[]): string | null {
-  const timestamps = signals
-    .map((signal) => signal.last_seen || signal.first_seen || null)
-    .filter((value): value is string => Boolean(value));
-  if (!timestamps.length) return null;
-  return timestamps.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-}
-
 // A plan is a genuine go/no-go decision only when Batman is awaiting a sign-off
 // on it. That is exactly `source === "batman"`: those are the plans posted for
 // approval (Slack reaction or the in-app approve/decline). Compose working
@@ -542,4 +444,71 @@ export function planNeedsAttention(plan: PlanDraft): boolean {
     status.includes("question") ||
     status.includes("blocked")
   );
+}
+
+// ---------------------------------------------------------------------------
+// Client-side draft dedupe + low-signal floor (issue 314, Phase 1 item 7).
+//
+// The server can emit several identical drafts (same title + repos) and a junk
+// sub-threshold draft. Until the backend dedupes at the source (Phase 2), the
+// client collapses identical drafts to the newest revision and tucks low-signal
+// drafts behind a disclosure so they never crowd the Pipeline.
+// ---------------------------------------------------------------------------
+
+// Drafts at or below this readiness are "low signal" and hidden behind a
+// disclosure. The screenshot junk ("Hi", readiness 34/100) sits below this.
+export const READINESS_FLOOR = 40;
+
+export type DedupedPlan = {
+  plan: PlanDraft;
+  // How many drafts collapsed into this one (1 = no duplicates).
+  revisions: number;
+};
+
+function planDedupeKey(plan: PlanDraft): string {
+  const title = (plan.title || "").trim().toLowerCase();
+  const repos = (plan.affected_repos || "")
+    .split(/[,\s]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join(",");
+  return `${title}::${repos}`;
+}
+
+function planTimeValue(plan: PlanDraft): number {
+  const parsed = plan.updated_at ? new Date(plan.updated_at).getTime() : NaN;
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+// A low-signal draft is a working draft (not a genuine go/no-go) whose readiness
+// is known and at or below the floor. A plan that needs your go-ahead is never
+// low signal, no matter its score: that is a decision you must see.
+export function isLowSignalPlan(plan: PlanDraft): boolean {
+  if (planNeedsAttention(plan)) return false;
+  if (plan.readiness_score === null) return false;
+  return plan.readiness_score <= READINESS_FLOOR;
+}
+
+// Collapse identical drafts (same title + repos) to their newest revision,
+// carrying a revision count. Order is preserved by first appearance.
+export function dedupePlans(plans: PlanDraft[]): DedupedPlan[] {
+  const byKey = new Map<string, DedupedPlan>();
+  const order: string[] = [];
+  for (const plan of plans) {
+    const key = planDedupeKey(plan);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { plan, revisions: 1 });
+      order.push(key);
+      continue;
+    }
+    existing.revisions += 1;
+    // Keep the newest by updated_at; fall back to the explicit revision_count.
+    const newer =
+      planTimeValue(plan) > planTimeValue(existing.plan) ||
+      (plan.revision_count ?? 0) > (existing.plan.revision_count ?? 0);
+    if (newer) existing.plan = plan;
+  }
+  return order.map((key) => byKey.get(key) as DedupedPlan);
 }

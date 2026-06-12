@@ -1,7 +1,12 @@
-import { Activity, CheckCircle2, Cpu, Timer } from "lucide-react";
+import { Activity, CheckCircle2, Cpu, Gauge, Timer } from "lucide-react";
 
 import { formatReset, formatTokens } from "../lib/usageFormat";
-import type { ShippedBoard, UsageLimitBucket, UsageResponse } from "../types";
+import type {
+  ShippedBoard,
+  UsageCodexQuotaWindow,
+  UsageLimitBucket,
+  UsageResponse,
+} from "../types";
 import { EmptyState, PanelHeader } from "./atoms";
 
 /**
@@ -37,16 +42,18 @@ export function UsagePanel({
           </p>
         </>
       ) : null}
-      <UsageBody usage={usage} state={state} shipped={shipped} />
+      <UsageBody usage={usage} state={state} shipped={shipped} compact={compact} />
     </section>
   );
 }
 
 function UsageBody({
+  compact,
   usage,
   state,
   shipped,
 }: {
+  compact?: boolean;
   usage: UsageResponse | null;
   state: "idle" | "loading" | "error";
   shipped?: ShippedBoard | null;
@@ -86,6 +93,49 @@ function UsageBody({
   // render like a genuinely empty window, or the operator is told there is no
   // Claude usage when really the headroom could not be read.
   const blockError = !block ? usage.errors?.block : undefined;
+  const codexQuota = usage.codex?.quota ?? null;
+  const tiles = [
+    {
+      key: "five-hour",
+      icon: Timer,
+      value: formatQuotaLeft(fiveHour, block ? formatReset(block.minutes_to_reset) : null),
+      label: formatQuotaLabel(fiveHour, "5h window", block ? "local 5h window" : "5h quota not synced"),
+    },
+    {
+      key: "weekly",
+      icon: Activity,
+      value: formatQuotaLeft(week, null),
+      label: formatQuotaLabel(week, "weekly window", "weekly quota not synced"),
+    },
+    // Codex reports its own headroom (5h primary + weekly secondary) via the
+    // rate_limits block in its session JSONL. Only show the tile when that
+    // block was actually present, so the honest empty states stay intact.
+    ...(codexQuota
+      ? [
+          {
+            key: "codex-quota",
+            icon: Gauge,
+            value: formatCodexQuotaValue(codexQuota.primary, codexQuota.secondary),
+            label: formatCodexQuotaLabel(codexQuota.primary, codexQuota.secondary),
+          },
+        ]
+      : []),
+    {
+      key: "local",
+      icon: Cpu,
+      value: formatLocalEvidenceOutput(usage, block, blockError),
+      label: formatLocalEvidenceLabel(usage, block, blockError),
+    },
+    {
+      key: "shipped",
+      icon: CheckCircle2,
+      value: formatShippedOutput(shipped),
+      label: formatShippedLabel(shipped),
+    },
+  ];
+  const visibleTiles = compact
+    ? [tiles[0], tiles[tiles.length - 1]]
+    : tiles;
   return (
     <>
       {blockError ? (
@@ -94,34 +144,18 @@ function UsageBody({
         </p>
       ) : null}
       <div className="usage-grid">
-        <div className="usage-tile">
-          <Timer size={16} aria-hidden="true" />
-          <div>
-            <strong>{formatQuotaLeft(fiveHour, block ? formatReset(block.minutes_to_reset) : null)}</strong>
-            <span>{formatQuotaLabel(fiveHour, "5h window", block ? "local 5h window" : "5h quota not synced")}</span>
-          </div>
-        </div>
-        <div className="usage-tile">
-          <Activity size={16} aria-hidden="true" />
-          <div>
-            <strong>{formatQuotaLeft(week, null)}</strong>
-            <span>{formatQuotaLabel(week, "weekly window", "weekly quota not synced")}</span>
-          </div>
-        </div>
-        <div className="usage-tile">
-          <Cpu size={16} aria-hidden="true" />
-          <div>
-            <strong>{formatLocalEvidenceOutput(usage, block, blockError)}</strong>
-            <span>{formatLocalEvidenceLabel(usage, block, blockError)}</span>
-          </div>
-        </div>
-        <div className="usage-tile">
-          <CheckCircle2 size={16} aria-hidden="true" />
-          <div>
-            <strong>{formatShippedOutput(shipped)}</strong>
-            <span>{formatShippedLabel(shipped)}</span>
-          </div>
-        </div>
+        {visibleTiles.map((tile) => {
+          const Icon = tile.icon;
+          return (
+            <div className="usage-tile" key={tile.key}>
+              <Icon size={16} aria-hidden="true" />
+              <div>
+                <strong>{tile.value}</strong>
+                <span>{tile.label}</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </>
   );
@@ -181,6 +215,50 @@ function formatShippedLabel(shipped?: ShippedBoard | null): string {
 
 function trimPercent(value: number): string {
   return value.toFixed(1).replace(/\.0$/, "");
+}
+
+// Codex's rate_limits report a USED percentage (not remaining), so we flip it
+// to "left" for parity with the Claude quota tiles. Null used_percent -> null.
+function codexLeftPercent(window: UsageCodexQuotaWindow | null): number | null {
+  if (!window || window.used_percent === null || window.used_percent === undefined) {
+    return null;
+  }
+  return Math.max(0, 100 - window.used_percent);
+}
+
+function formatCodexQuotaValue(
+  primary: UsageCodexQuotaWindow | null,
+  secondary: UsageCodexQuotaWindow | null,
+): string {
+  const left = codexLeftPercent(primary) ?? codexLeftPercent(secondary);
+  if (left === null) return "Quota unavailable";
+  return `${trimPercent(left)}% left`;
+}
+
+function formatCodexQuotaLabel(
+  primary: UsageCodexQuotaWindow | null,
+  secondary: UsageCodexQuotaWindow | null,
+): string {
+  const parts: string[] = [];
+  const five = codexLeftPercent(primary);
+  if (five !== null) parts.push(`Codex 5h ${trimPercent(five)}% left`);
+  const weekly = codexLeftPercent(secondary);
+  if (weekly !== null) parts.push(`weekly ${trimPercent(weekly)}% left`);
+  if (parts.length === 0) return "Codex quota not reported";
+  const reset = formatCodexReset(primary?.resets_at ?? secondary?.resets_at ?? null);
+  return reset ? `${parts.join(", ")}, resets in ${reset}` : parts.join(", ");
+}
+
+// Codex reports an ISO ``resets_at`` rather than minutes, so convert to the
+// same friendly "Xh Ym" string the Claude tiles use. Returns null when the
+// timestamp is missing or already past.
+function formatCodexReset(resetsAt: string | null): string | null {
+  if (!resetsAt) return null;
+  const target = Date.parse(resetsAt);
+  if (Number.isNaN(target)) return null;
+  const minutes = Math.floor((target - Date.now()) / 60000);
+  if (minutes <= 0) return null;
+  return formatReset(minutes);
 }
 
 function formatCodexTokens(usage: UsageResponse): string {

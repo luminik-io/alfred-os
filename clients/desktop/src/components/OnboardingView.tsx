@@ -379,25 +379,25 @@ export function OnboardingView({
 
   return (
     <section className="grid gap-4" aria-label="Setup">
-      <Card className="rounded-lg border-border/70 bg-card/70 shadow-none">
-        <CardHeader className="gap-3 md:grid-cols-[1fr_auto]">
-          <div className="min-w-0">
-            <Badge variant="outline" className="mb-2">
+      <section className="alfred-page-hero px-4 py-4" aria-label="Setup summary">
+        <div className="relative flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 space-y-1">
+            <Badge variant="outline" className="mb-1">
               Setup
             </Badge>
-            <CardTitle className="text-xl">Connect Alfred</CardTitle>
-            <CardDescription>
-              Connect local tools, GitHub, and approved repositories, then turn a spec
-              into the first plan. No cloud dashboard or token paste.
-            </CardDescription>
+            <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">
+              Connect Alfred
+            </h1>
+            <p className="max-w-3xl text-sm text-muted-foreground">
+              Connect local tools, GitHub, and approved repositories. No cloud dashboard
+              or token paste.
+            </p>
           </div>
-          <CardAction>
-            <Button variant="outline" type="button" onClick={onOpenConnection}>
-              Diagnostics
-            </Button>
-          </CardAction>
-        </CardHeader>
-      </Card>
+          <Button variant="outline" type="button" onClick={onOpenConnection}>
+            Diagnostics
+          </Button>
+        </div>
+      </section>
 
       {statusError ? (
         <Card className="rounded-lg border-destructive/30 bg-destructive/10 text-destructive shadow-none">
@@ -419,7 +419,7 @@ export function OnboardingView({
         </Card>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(18rem,22rem)_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(17rem,21rem)_1fr]">
         <aside aria-label="Setup readiness" className="grid gap-3">
           <Card
             className={cn(
@@ -1005,7 +1005,7 @@ function DemoStep({
       setNotice({ tone: "ok", message: "Seeded demo cards. Open Work to see them." });
       await onChanged();
       await onRefreshBoard?.({ demo: true });
-      onSwitch?.("board");
+      onSwitch?.("pipeline");
     } catch (err) {
       setNotice({ tone: "error", message: errorDetail(err) || "Could not seed the demo." });
     } finally {

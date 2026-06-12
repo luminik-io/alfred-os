@@ -92,12 +92,7 @@ fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String
         return Err("runtime port must be between 1024 and 65535".to_string());
     }
 
-    let args = vec![
-        "serve".to_string(),
-        "--port".to_string(),
-        port.to_string(),
-        "--no-browser".to_string(),
-    ];
+    let args = vec!["serve".to_string(), "--port".to_string(), port.to_string()];
     let child = Command::new("alfred")
         .args(&args)
         .stdin(Stdio::null())
