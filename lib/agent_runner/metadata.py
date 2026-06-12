@@ -211,7 +211,6 @@ def agent_profile(codename: str) -> AgentProfile:
     and ``THEME``.
     """
     normalized = (codename or "").strip()
-    is_known_profile = normalized in DEFAULT_PROFILES
     defaults = DEFAULT_PROFILES.get(
         normalized,
         (_title_from_codename(normalized), agent_role(normalized), "", "wayne"),
@@ -221,11 +220,17 @@ def agent_profile(codename: str) -> AgentProfile:
         _env_key(normalized, "DISPLAY_NAME"),
         display_name,
     ).strip()
+    # Role-title precedence, highest first:
+    #   1. ALFRED_<CODENAME>_ROLE_TITLE  (the new, explicit override)
+    #   2. ALFRED_<CODENAME>_ROLE        (the legacy launchd/render.sh value)
+    #   3. the built-in default role for a known profile
+    # The legacy role must win over the built-in default even for known
+    # profiles: render.sh still emits ALFRED_<CODENAME>_ROLE from agents.conf
+    # column 7, so an operator who configured a role there would otherwise see
+    # the built-in label instead of their configured one.
     explicit_role_title = os.environ.get(_env_key(normalized, "ROLE_TITLE"))
-    role_title = (explicit_role_title or role_title).strip()
     legacy_role = agent_role(normalized)
-    if legacy_role and not explicit_role_title and not is_known_profile:
-        role_title = legacy_role
+    role_title = (explicit_role_title or legacy_role or role_title).strip()
     purpose = os.environ.get(_env_key(normalized, "PURPOSE"), purpose).strip()
     theme_id = os.environ.get(_env_key(normalized, "THEME"), theme_id).strip()
     return AgentProfile(

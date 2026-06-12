@@ -2192,12 +2192,11 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
 
     import server.setup as setup_mod
 
-    draft_id = _safe_planning_draft_id(plan_id)
-    if draft_id is None:
+    path = _planning_draft_path(Path(state_root), plan_id)
+    if path is None:
         raise ValueError("plan id is not a safe planning draft id")
-    path = Path(state_root) / "planning-drafts" / f"{draft_id}.json"
     if not path.is_file():
-        raise FileNotFoundError(draft_id)
+        raise FileNotFoundError(str(plan_id))
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -2296,6 +2295,25 @@ def _safe_planning_draft_id(raw: Any) -> str | None:
     if not re.fullmatch(r"[A-Za-z0-9._-]+", candidate):
         return None
     return candidate
+
+
+def _planning_draft_path(state_root: Path, raw: Any) -> Path | None:
+    """Resolve a planning-draft id to its on-disk path, or ``None``.
+
+    The id is validated by ``_safe_planning_draft_id`` (allowlist regex, no
+    separators, no leading dot). As a second barrier the resolved path is
+    confirmed to live inside the ``planning-drafts`` directory, so even a
+    validation gap cannot let an operator-supplied id escape the intended
+    directory via traversal or a symlink.
+    """
+    draft_id = _safe_planning_draft_id(raw)
+    if draft_id is None:
+        return None
+    base = (Path(state_root) / "planning-drafts").resolve()
+    path = (base / f"{draft_id}.json").resolve()
+    if path.parent != base:
+        return None
+    return path
 
 
 def _planning_draft_issue_url(payload: dict[str, Any]) -> str:
@@ -2592,10 +2610,9 @@ def _queue_filed_spec_memory_candidate(request: Request, plan_id: str) -> tuple[
     """
     import compose_converse as cc
 
-    draft_id = _safe_planning_draft_id(plan_id)
-    if draft_id is None:
+    path = _planning_draft_path(_state_root(request), plan_id)
+    if path is None:
         return ()
-    path = _state_root(request) / "planning-drafts" / f"{draft_id}.json"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):

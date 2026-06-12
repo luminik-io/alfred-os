@@ -59,6 +59,15 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["debug", "info", "warning", "error"],
         help="uvicorn log level (default: info)",
     )
+    # Accepted for backward compatibility: serve is headless now and never
+    # opens a browser, so this is a no-op. The `bin/alfred serve --no-browser`
+    # wrapper still forwards it, so the flag must stay registered or that
+    # command exits with argparse error 2 (unrecognized arguments).
+    p.add_argument(
+        "--no-browser",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return p
 
 

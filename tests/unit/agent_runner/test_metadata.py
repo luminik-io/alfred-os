@@ -31,6 +31,27 @@ def test_codename_with_role_formatting(fresh_agent_runner, monkeypatch):
     assert ar.codename_with_role("testunset") == "Testunset · feature dev"
 
 
+def test_known_profile_honors_legacy_role_env(fresh_agent_runner, monkeypatch):
+    """A known profile keeps its operator-configured legacy ``_ROLE``.
+
+    ``launchd/render.sh`` still emits ``ALFRED_<CODENAME>_ROLE`` from
+    agents.conf column 7, so a configured role for a standard codename like
+    ``lucius`` must win over the built-in default role. Precedence is
+    ``ROLE_TITLE`` > legacy ``_ROLE`` > built-in default.
+    """
+    ar = fresh_agent_runner
+    monkeypatch.delenv("ALFRED_LUCIUS_ROLE_TITLE", raising=False)
+    # No env: the built-in default role for the known profile.
+    monkeypatch.delenv("ALFRED_LUCIUS_ROLE", raising=False)
+    assert ar.agent_profile("lucius").role_title == "Senior Developer"
+    # Legacy _ROLE configured: it overrides the built-in default.
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Platform Lead")
+    assert ar.agent_profile("lucius").role_title == "Platform Lead"
+    # An explicit ROLE_TITLE still wins over the legacy _ROLE.
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE_TITLE", "Feature Dev")
+    assert ar.agent_profile("lucius").role_title == "Feature Dev"
+
+
 def test_agent_profile_supports_theme_override(fresh_agent_runner, monkeypatch):
     """agent_profile applies a known display name + role and theme overrides."""
     ar = fresh_agent_runner

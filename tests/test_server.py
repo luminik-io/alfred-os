@@ -2079,3 +2079,36 @@ def test_decided_batman_plan_stays_decided_after_marker_is_consumed(
     after = reader.get_plan("13-plan")
     assert after is not None
     assert after.status == "approved"
+
+
+def test_planning_draft_path_accepts_safe_ids(tmp_path: Path) -> None:
+    """A clean draft id resolves to a path inside planning-drafts."""
+    state = tmp_path / "state"
+    (state / "planning-drafts").mkdir(parents=True)
+    path = server_views._planning_draft_path(state, "20260612-1200-abcd")
+    assert path is not None
+    assert path.parent == (state / "planning-drafts").resolve()
+    assert path.name == "20260612-1200-abcd.json"
+
+
+def test_planning_draft_path_rejects_traversal(tmp_path: Path) -> None:
+    """Operator-supplied ids that try to escape the directory are rejected.
+
+    Separators, parent refs, leading dots, absolute paths, and out-of-allowlist
+    characters all return None instead of pointing at a path outside
+    planning-drafts.
+    """
+    state = tmp_path / "state"
+    (state / "planning-drafts").mkdir(parents=True)
+    for bad in (
+        "../../etc/passwd",
+        "..%2f..%2fsecret",
+        "/etc/passwd",
+        "sub/dir",
+        "back\\slash",
+        ".hidden",
+        "spaces are bad",
+        "",
+        None,
+    ):
+        assert server_views._planning_draft_path(state, bad) is None
