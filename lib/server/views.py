@@ -2197,6 +2197,9 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
         raise ValueError("plan id is not a safe planning draft id")
     if not path.is_file():
         raise FileNotFoundError(str(plan_id))
+    # The sanitized id, recovered from the validated filename rather than the
+    # raw request value, for the response bodies below.
+    draft_id = path.stem
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -2301,16 +2304,22 @@ def _planning_draft_path(state_root: Path, raw: Any) -> Path | None:
     """Resolve a planning-draft id to its on-disk path, or ``None``.
 
     The id is validated by ``_safe_planning_draft_id`` (allowlist regex, no
-    separators, no leading dot). As a second barrier the resolved path is
-    confirmed to live inside the ``planning-drafts`` directory, so even a
-    validation gap cannot let an operator-supplied id escape the intended
-    directory via traversal or a symlink.
+    separators, no leading dot). The validated id is then reduced to its bare
+    filename with ``os.path.basename`` so no path component can survive, and as
+    a final barrier the resolved path is confirmed to live directly inside the
+    ``planning-drafts`` directory. Any one of these stops a traversal or symlink
+    escape; together they make an operator-supplied id incapable of reaching a
+    file outside the intended directory.
     """
     draft_id = _safe_planning_draft_id(raw)
     if draft_id is None:
         return None
+    # Strip any path component the validation might somehow have missed; for an
+    # already-allowlisted id this is a no-op, but it keeps the value provably
+    # confined to a single filename before it is joined onto the base.
+    filename = os.path.basename(f"{draft_id}.json")
     base = (Path(state_root) / "planning-drafts").resolve()
-    path = (base / f"{draft_id}.json").resolve()
+    path = (base / filename).resolve()
     if path.parent != base:
         return None
     return path
