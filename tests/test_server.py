@@ -325,51 +325,6 @@ def test_json_api_lists_slack_followups(tmp_path: Path) -> None:
     assert "manual docs smoke test" in payload["content"]
 
 
-def test_followup_can_be_converted_to_planning_draft(tmp_path: Path) -> None:
-    state = tmp_path / "state"
-    followups = state / "followups"
-    followups.mkdir(parents=True)
-    source = followups / "slack-C1-1716480000.000000.md"
-    source.write_text(
-        "# Follow-up for Improve planning loop\n\n"
-        "- Captured: 2026-05-29T06:45:00Z\n"
-        "- Thread: C1 / 1716480000.000000\n"
-        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
-        "## Slack Follow-up Feedback\n\n"
-        "### Items\n\n"
-        "- `change`: add a manual docs smoke test\n",
-        encoding="utf-8",
-    )
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    response = client.post(
-        "/plans/slack-C1-1716480000.000000/convert-followup",
-        headers=_auth_headers(state),
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 303
-    assert response.headers["location"].startswith("/plans/followup-")
-    drafts = list((state / "planning-drafts").glob("followup-*.json"))
-    assert len(drafts) == 1
-    payload = json.loads(drafts[0].read_text(encoding="utf-8"))
-    assert payload["source"] == "planning"
-    assert payload["converted_from"]["plan_id"] == "slack-C1-1716480000.000000"
-    assert payload["draft"]["title"] == "Follow up: Improve planning loop"
-    assert payload["draft"]["repos"] == ["example-org/alfred"]
-    assert "Captured Follow-up Context" in payload["spec_body"]
-    assert "manual docs smoke test" in payload["spec_body"]
-    assert not source.exists()
-    archived = list((followups / "handled").glob("slack-C1-1716480000.000000.md"))
-    assert len(archived) == 1
-    assert "Follow-up action: converted" in archived[0].read_text(encoding="utf-8")
-
-    detail = client.get(response.headers["location"])
-    assert detail.status_code == 200
-    assert "Plan next pass" not in detail.text
-    assert "manual docs smoke test" in detail.text
-
-
 def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) -> None:
     state = tmp_path / "state"
     followups = state / "followups"
@@ -399,36 +354,6 @@ def test_followup_conversion_derives_repos_from_created_links(tmp_path: Path) ->
         "example-org/api",
         "example-org/web",
     ]
-
-
-def test_followup_actions_reject_cross_origin_posts(tmp_path: Path) -> None:
-    state = tmp_path / "state"
-    followups = state / "followups"
-    followups.mkdir(parents=True)
-    source = followups / "slack-C1-1716480000.000000.md"
-    source.write_text(
-        "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
-        "Cross-origin pages should not be able to mutate this inbox.\n",
-        encoding="utf-8",
-    )
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    html_response = client.post(
-        "/plans/slack-C1-1716480000.000000/convert-followup",
-        headers={"origin": "https://example.invalid"},
-        follow_redirects=False,
-    )
-    response = client.post(
-        "/api/plans/slack-C1-1716480000.000000/mark-handled",
-        headers={"origin": "https://example.invalid"},
-    )
-
-    assert html_response.status_code == 403
-    assert response.status_code == 403
-    assert source.exists()
-    assert not (state / "planning-drafts").exists()
-    assert not (followups / "handled").exists()
 
 
 def test_followup_conversion_removes_draft_when_archive_fails(
@@ -491,94 +416,6 @@ def test_followup_can_be_marked_handled(tmp_path: Path) -> None:
     assert "Follow-up action: handled" in archived_path.read_text(encoding="utf-8")
     plans = client.get("/api/plans").json()["rows"]
     assert plans == []
-
-
-def test_plan_detail_embeds_token_and_html_form_post_uses_it(tmp_path: Path) -> None:
-    """The server-rendered plan page is the only client for the HTML form
-    routes and cannot set a custom header. It must embed the per-launch token
-    as a hidden ``_token`` field, and the POST handler must accept that field
-    (a browser form never sends ``SERVER_TOKEN_HEADER``)."""
-    state = tmp_path / "state"
-    followups = state / "followups"
-    followups.mkdir(parents=True)
-    (followups / "slack-C1-1716480000.000000.md").write_text(
-        "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
-        "Already answered in the PR thread.\n",
-        encoding="utf-8",
-    )
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    detail = client.get("/plans/slack-C1-1716480000.000000")
-    assert detail.status_code == 200
-    token = _server_token(state)
-    # The GET page must carry the token so the form can echo it back.
-    assert f'name="_token" value="{token}"' in detail.text
-
-    # A browser form POST: same-origin + token in the body, NO custom header.
-    handled = client.post(
-        "/plans/slack-C1-1716480000.000000/mark-handled",
-        headers={"origin": "http://testserver"},
-        data={"_token": token},
-        follow_redirects=False,
-    )
-    assert handled.status_code == 303
-    assert not (followups / "slack-C1-1716480000.000000.md").exists()
-
-
-def test_html_form_post_without_token_is_forbidden(tmp_path: Path) -> None:
-    """Same-origin alone is not enough: a form POST missing the ``_token`` body
-    field (e.g. a header-less drive-by) is rejected and mutates nothing."""
-    state = tmp_path / "state"
-    followups = state / "followups"
-    followups.mkdir(parents=True)
-    source = followups / "slack-C1-1716480000.000000.md"
-    source.write_text(
-        "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
-        "Header-less callers must not be able to mutate this inbox.\n",
-        encoding="utf-8",
-    )
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    response = client.post(
-        "/plans/slack-C1-1716480000.000000/mark-handled",
-        headers={"origin": "http://testserver"},
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 403
-    assert source.exists()
-    assert not (followups / "handled").exists()
-
-
-def test_html_form_post_with_malformed_token_body_is_forbidden(tmp_path: Path) -> None:
-    """Invalid form bytes fail closed rather than raising before auth."""
-    state = tmp_path / "state"
-    followups = state / "followups"
-    followups.mkdir(parents=True)
-    source = followups / "slack-C1-1716480000.000000.md"
-    source.write_text(
-        "# Follow-up for Improve planning loop\n\n"
-        "- Parent: [example-org/alfred#120](https://github.com/example-org/alfred/issues/120)\n\n"
-        "Malformed form bodies must not mutate this inbox.\n",
-        encoding="utf-8",
-    )
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    response = client.post(
-        "/plans/slack-C1-1716480000.000000/mark-handled",
-        content=b"\xff",
-        headers={
-            "origin": "http://testserver",
-            "content-type": "application/x-www-form-urlencoded",
-        },
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 403
-    assert source.exists()
-    assert not (followups / "handled").exists()
 
 
 def test_json_plan_empty_body_does_not_return_raw_slack_event(tmp_path: Path) -> None:
@@ -667,44 +504,6 @@ def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
     assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}
 
 
-def test_planning_save_spec_applies_pending_chat_message(tmp_path: Path) -> None:
-    state = tmp_path / "state"
-    state.mkdir()
-    client = TestClient(create_app(FilesystemReader(state_root=state)))
-
-    response = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before "
-                "implementation so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "example-org/alfred\nexample-org/web",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "chat_message": (
-                "acceptance: saved specs include chat amendments\nremove repo: example-org/web"
-            ),
-            "action": "save_spec",
-        },
-    )
-
-    assert response.status_code == 200
-    specs = list((tmp_path / "spec-drafts").glob("*.md"))
-    assert specs
-    saved_spec = max(specs, key=lambda path: path.stat().st_mtime).read_text(encoding="utf-8")
-    assert "saved specs include chat amendments" in saved_spec
-    assert "example-org/web" not in saved_spec
-
-
 def test_planning_memory_provider_ignores_runtime_env_for_temp_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -740,133 +539,6 @@ def test_planning_memory_provider_loads_for_runtime_state(
     request = SimpleNamespace(app=app)
 
     assert server_views._planning_memory_provider(request) is sentinel
-
-
-def test_planning_page_surfaces_memory_and_queues_spec_candidate(
-    tmp_path: Path,
-) -> None:
-    class Memory:
-        name = "test"
-
-        def __init__(self) -> None:
-            self.candidates: list[dict[str, object]] = []
-
-        def recall(self, *, repo=None, query=None, limit=3):
-            return [
-                {
-                    "repo": repo,
-                    "body": "Slack plans should show explicit revision commands.",
-                    "tags": ["planning"],
-                }
-            ]
-
-        def propose_memory(self, **kwargs):
-            self.candidates.append(kwargs)
-            return len(self.candidates)
-
-    state = tmp_path / "state"
-    state.mkdir()
-    memory = Memory()
-    app = create_app(FilesystemReader(state_root=state))
-    app.state.planning_memory_provider = memory
-    app.state.planning_memory_writer = memory
-    client = TestClient(app)
-
-    response = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before "
-                "implementation so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "example-org/alfred",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "action": "save_spec",
-        },
-    )
-
-    assert response.status_code == 200
-    assert "Planning memory" in response.text
-    assert "Slack plans should show explicit revision commands." in response.text
-    assert "Memory review queued" in response.text
-    assert len(memory.candidates) == 1
-    assert memory.candidates[0]["source"] == "planning-ui"
-    assert memory.candidates[0]["repo"] == "example-org/alfred"
-
-
-def test_planning_memory_candidate_uses_writable_provider_inside_tuple_chain(
-    tmp_path: Path,
-) -> None:
-    class ReadOnly:
-        name = "readonly"
-
-        def recall(self, *, repo=None, query=None, limit=3):
-            return []
-
-    class Writable:
-        name = "writable"
-
-        def __init__(self) -> None:
-            self.candidates: list[dict[str, object]] = []
-
-        def recall(self, *, repo=None, query=None, limit=3):
-            return []
-
-        def propose_memory(self, **kwargs):
-            self.candidates.append(kwargs)
-            return "candidate-1"
-
-    class Chain:
-        name = "chained"
-
-        def __init__(self) -> None:
-            self.writable = Writable()
-            self.providers = (ReadOnly(), self.writable)
-
-        def recall(self, *, repo=None, query=None, limit=3):
-            return []
-
-    state = tmp_path / "state"
-    state.mkdir()
-    chain = Chain()
-    app = create_app(FilesystemReader(state_root=state))
-    app.state.planning_memory_provider = chain
-    client = TestClient(app)
-
-    response = client.post(
-        "/planning",
-        data={
-            "title": "Add Slack plan revision flow",
-            "problem": (
-                "Operators and teammates need to discuss a Batman plan before "
-                "implementation so Alfred does not ship the wrong workflow."
-            ),
-            "user": "Repo owner or teammate",
-            "current_behavior": "Batman posts a plan and waits for emoji approval.",
-            "desired_behavior": (
-                "Batman keeps implementation paused when a plan needs revision "
-                "and accepts thread feedback before child issues are filed."
-            ),
-            "repos": "example-org/alfred",
-            "acceptance_criteria": "Slack plan messages tell the operator how to reply.",
-            "test_plan": "Run Batman unit tests and manually inspect the Slack payload.",
-            "out_of_scope": "No automatic GitHub issue creation from the planning UI.",
-            "action": "save_spec",
-        },
-    )
-
-    assert response.status_code == 200
-    assert chain.writable.candidates
-    assert chain.writable.candidates[0]["repo"] == "example-org/alfred"
 
 
 def test_planning_memory_candidate_old_api_object_id_is_extracted(
@@ -990,6 +662,31 @@ def test_compose_draft_plain_prose_titles_review_queue_starters(tmp_path: Path) 
     payload = response.json()
     assert payload["draft"]["title"] == "Make review queue usable at small sizes"
     assert payload["readiness"]["score"] > 0
+
+
+def test_compose_draft_plain_title_trims_dangling_connector(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/draft",
+        json={
+            "text": (
+                "Test-only QA draft: make the Alfred Ask screen easier to scan "
+                "after a long status reply. Do not file a GitHub issue."
+            )
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert (
+        payload["draft"]["title"]
+        == "Test-only QA draft: make the Alfred Ask screen easier to scan after a long status reply"
+    )
+    assert not payload["draft"]["title"].lower().endswith((" do", " do not", " not"))
 
 
 def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:

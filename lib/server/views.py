@@ -1,17 +1,9 @@
 """Route handlers for ``alfred serve``.
 
-Three views:
-
-* ``GET /``                  Fleet status (HTMX auto-refresh every 10s).
-* ``GET /firings``           Recent firings (optionally filtered by codename).
-* ``GET /firings/{id}``      Single firing detail.
-* ``GET /plans``             Saved Batman plans.
-* ``GET /plans/{id}``        Single saved Batman plan.
-* ``GET/POST /planning``     Local issue/spec readiness helper.
-
-Two HTMX partials live behind the same URLs via the ``HX-Request`` header,
-``htmx-only`` reduces the round trip to just the table body rather than
-re-rendering the whole shell. Keeps the dashboard cheap to refresh.
+``alfred serve`` is a headless localhost JSON/SSE bridge over fleet state.
+The native client owns the UI, and the CLI owns terminal workflows. Mutating
+routes require the per-launch ``X-Alfred-Token`` header so an unrelated
+localhost page cannot arm work, approve plans, or change trust state.
 """
 
 from __future__ import annotations
@@ -30,9 +22,7 @@ from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import (
-    HTMLResponse,
     JSONResponse,
-    RedirectResponse,
     StreamingResponse,
 )
 from planning_assistant import (
@@ -66,7 +56,6 @@ _LOCAL_CLIENT_USER_ID = "ULOCALCLIENT"
 # drive-by same-origin localhost page cannot arm work or mutate trust/plan
 # state on the operator's behalf.
 SERVER_TOKEN_HEADER = "X-Alfred-Token"
-SERVER_TOKEN_FORM_FIELD = "_token"
 _SERVER_TOKEN_FILENAME = "server-token"
 
 
@@ -109,37 +98,24 @@ def _read_server_token(state_root: Path) -> str | None:
     return token or None
 
 
-def _authorized_mutation(request: Request, *, form_token: str | None = None) -> bool:
+def _authorized_mutation(request: Request) -> bool:
     """Require the per-launch token for a state-mutating POST.
 
     The token must match the value persisted at server start with a
     constant-time compare. JSON/Tauri clients present it via the
-    ``SERVER_TOKEN_HEADER`` header; server-rendered HTML forms (which cannot
-    set a custom header) present it via a hidden ``_token`` field, which the
-    GET handler embeds from the same on-disk token. Either path is a valid
-    synchronizer token: a cross-origin attacker cannot read the GET response
-    body to learn the token, so this still defeats CSRF. ``_same_origin_post``
-    remains an additional layer; together they stop a drive-by same-origin
-    localhost caller (which cannot read the operator's ``0600`` token file)
-    from mutating fleet state.
+    ``SERVER_TOKEN_HEADER`` header. ``_same_origin_post`` remains an additional
+    layer; together they stop a drive-by same-origin localhost caller (which
+    cannot read the operator's ``0600`` token file) from mutating fleet state.
     """
     expected = _read_server_token(_state_root(request))
     if not expected:
         # No token on disk means the gate cannot be satisfied. Fail closed so a
         # missing/unreadable token never silently downgrades to same-origin-only.
         return False
-    presented = request.headers.get(SERVER_TOKEN_HEADER) or form_token
+    presented = request.headers.get(SERVER_TOKEN_HEADER)
     if not presented:
         return False
     return hmac.compare_digest(presented, expected)
-
-
-def _form_token_from_body(raw: bytes) -> str:
-    try:
-        form = parse_qs(raw.decode("utf-8"), keep_blank_values=True)
-    except UnicodeDecodeError:
-        return ""
-    return _first(form, SERVER_TOKEN_FORM_FIELD)
 
 
 # Origins the packaged Tauri webview presents. A built .app loads its bundle
@@ -202,142 +178,7 @@ def _streaming_cors_headers(request: Request, base: dict[str, str] | None = None
 
 
 def register_routes(app: FastAPI) -> None:
-    """Bind the three GET routes to ``app``."""
-
-    @app.get("/", response_class=HTMLResponse)
-    async def fleet(request: Request) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        agents = reader.list_agents()
-        if request.headers.get("HX-Request") == "true":
-            return templates.TemplateResponse(
-                request,
-                "fleet_table.html",
-                {
-                    "agents": agents,
-                    "total_today": sum(a.firings_today for a in agents),
-                },
-            )
-        reliability = reader.reliability_report()
-        recent_firings = reader.list_recent_firings(limit=5)
-        recent_plans = reader.list_plans(limit=4)
-        return templates.TemplateResponse(
-            request,
-            "fleet.html",
-            {
-                "agents": agents,
-                "total_today": sum(a.firings_today for a in agents),
-                "reliability": reliability,
-                "recent_firings": recent_firings,
-                "recent_plans": recent_plans,
-                "fleet_counts": _fleet_counts(agents, recent_firings),
-            },
-        )
-
-    @app.get("/firings", response_class=HTMLResponse)
-    async def firings(request: Request, codename: str | None = None) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        rows = reader.list_recent_firings(limit=50, codename=codename)
-        # Sidebar codename filter list is derived from list_agents so the
-        # filter renders even when the currently filtered view is empty.
-        all_agents = reader.list_agents()
-        return templates.TemplateResponse(
-            request,
-            "firings.html",
-            {
-                "rows": rows,
-                "codename": codename,
-                "all_codenames": [a.codename for a in all_agents],
-            },
-        )
-
-    @app.get("/firings/{firing_id}", response_class=HTMLResponse)
-    async def firing_detail(request: Request, firing_id: str) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        record = reader.get_firing(firing_id)
-        if record is None:
-            return templates.TemplateResponse(
-                request,
-                "not_found.html",
-                {
-                    "title": "Firing not found",
-                    "item_id": firing_id,
-                    "back_url": "/firings",
-                    "back_label": "back to firings",
-                },
-                status_code=404,
-            )
-        return templates.TemplateResponse(
-            request,
-            "firing_detail.html",
-            {"firing": record},
-        )
-
-    @app.get("/plans", response_class=HTMLResponse)
-    async def plans(request: Request) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        rows = reader.list_plans(limit=50)
-        return templates.TemplateResponse(
-            request,
-            "plans.html",
-            {"rows": rows},
-        )
-
-    @app.get("/plans/{plan_id}", response_class=HTMLResponse)
-    async def plan_detail(request: Request, plan_id: str) -> HTMLResponse:
-        reader = request.app.state.reader
-        templates = request.app.state.templates
-        plan = reader.get_plan(plan_id)
-        if plan is None:
-            return templates.TemplateResponse(
-                request,
-                "not_found.html",
-                {
-                    "title": "Plan not found",
-                    "item_id": plan_id,
-                    "back_url": "/plans",
-                    "back_label": "back to plans",
-                },
-                status_code=404,
-            )
-        return templates.TemplateResponse(
-            request,
-            "plan_detail.html",
-            {
-                "plan": plan,
-                "server_token": _read_server_token(_state_root(request)) or "",
-            },
-        )
-
-    @app.post("/plans/{plan_id}/convert-followup")
-    async def convert_followup(request: Request, plan_id: str):
-        if not _same_origin_post(request):
-            return HTMLResponse("Forbidden", status_code=403)
-        if not _authorized_mutation(
-            request, form_token=_form_token_from_body(await request.body())
-        ):
-            return HTMLResponse("Forbidden", status_code=403)
-        plan = request.app.state.reader.get_plan(plan_id)
-        if plan is None or plan.source != "followup":
-            return RedirectResponse("/plans", status_code=303)
-        draft_path, _archived_path = _convert_and_archive_followup(request, plan)
-        return RedirectResponse(f"/plans/{draft_path.stem}", status_code=303)
-
-    @app.post("/plans/{plan_id}/mark-handled")
-    async def mark_followup_handled(request: Request, plan_id: str):
-        if not _same_origin_post(request):
-            return HTMLResponse("Forbidden", status_code=403)
-        if not _authorized_mutation(
-            request, form_token=_form_token_from_body(await request.body())
-        ):
-            return HTMLResponse("Forbidden", status_code=403)
-        plan = request.app.state.reader.get_plan(plan_id)
-        if plan is not None and plan.source == "followup":
-            _archive_followup(plan, action="handled")
-        return RedirectResponse("/plans", status_code=303)
+    """Bind the JSON/SSE routes to ``app``."""
 
     @app.get("/api/status", response_class=JSONResponse)
     async def api_status(request: Request) -> JSONResponse:
@@ -976,6 +817,14 @@ def register_routes(app: FastAPI) -> None:
             )
         if not result.get("ok"):
             return JSONResponse(result, status_code=400)
+        # A fresh filing queues a planning-memory candidate from the draft's
+        # spec so the Lessons queue keeps learning from operator-approved
+        # specs. The idempotent already_filed retry path must stay side-effect
+        # free or duplicate clicks would pollute the review queue. Best
+        # effort: a candidate failure must never fail the filing response.
+        if result.get("status") != "already_filed":
+            with suppress(Exception):
+                _queue_filed_spec_memory_candidate(request, plan_id)
         return JSONResponse(result)
 
     @app.post("/api/plans/draft", response_class=JSONResponse)
@@ -1157,83 +1006,10 @@ def register_routes(app: FastAPI) -> None:
         """
         return Response(status_code=204, headers=_streaming_cors_headers(request))
 
-    @app.get("/planning", response_class=HTMLResponse)
-    async def planning(request: Request) -> HTMLResponse:
-        templates = request.app.state.templates
-        return templates.TemplateResponse(
-            request,
-            "planning.html",
-            {
-                "draft": IssueDraft(title=""),
-                "result": None,
-                "assistant_result": None,
-                "chat_message": "",
-                "saved_path": None,
-                "spec_saved_path": None,
-                "memory_candidate_ids": (),
-            },
-        )
-
-    @app.post("/planning", response_class=HTMLResponse)
-    async def planning_submit(request: Request) -> HTMLResponse:
-        templates = request.app.state.templates
-        form = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
-        draft = _draft_from_form(form)
-        action = _first(form, "action")
-        chat_message = _first(form, "chat_message")
-        memory_provider = _planning_memory_provider(request)
-        should_refine = action == "refine" or (action in {"save", "save_spec"} and chat_message)
-        assistant_result: PlanningAssistantResult = refine_issue_draft(
-            draft,
-            [chat_message] if should_refine else [],
-            refiner=(
-                engine_refiner_from_env(workdir=_planning_workdir(request))
-                if should_refine
-                else None
-            ),
-            memory_provider=memory_provider,
-        )
-        draft = assistant_result.draft
-        result = assistant_result.readiness
-        saved_path = None
-        spec_saved_path = None
-        memory_candidate_ids: tuple[str, ...] = ()
-        if action == "save":
-            saved_path = str(_save_issue_draft(request, draft, result.issue_body))
-        elif action == "save_spec":
-            spec_path = _save_planning_text(
-                request,
-                draft,
-                assistant_result.spec_body,
-                directory="spec-drafts",
-                suffix="spec",
-            )
-            spec_saved_path = str(spec_path)
-            memory_candidate_ids = _propose_planning_memory_candidate(
-                request,
-                draft,
-                spec_path=spec_path,
-                spec_body=assistant_result.spec_body,
-                memory_provider=memory_provider,
-            )
-        return templates.TemplateResponse(
-            request,
-            "planning.html",
-            {
-                "draft": draft,
-                "result": result,
-                "assistant_result": assistant_result,
-                "chat_message": "",
-                "saved_path": saved_path,
-                "spec_saved_path": spec_saved_path,
-                "memory_candidate_ids": memory_candidate_ids,
-            },
-        )
-
-    @app.get("/healthz", response_class=HTMLResponse)
-    async def healthz() -> HTMLResponse:
-        # Minimal liveness probe. Returns 200 with "ok" body, no template.
-        return HTMLResponse("ok")
+    @app.get("/healthz")
+    async def healthz() -> Response:
+        # Minimal liveness probe. Returns 200 with "ok" body.
+        return Response("ok", media_type="text/plain")
 
 
 def _jsonable(value: Any) -> Any:
@@ -1996,37 +1772,6 @@ def _compose_interrogator_prompt_path() -> Path:
     return candidates[0]
 
 
-def _fleet_counts(agents: list[Any], recent_firings: list[Any]) -> dict[str, int]:
-    return {
-        "live": sum(1 for agent in agents if getattr(agent, "status", "") == "live"),
-        "idle": sum(1 for agent in agents if getattr(agent, "status", "") == "idle"),
-        "error": sum(1 for agent in agents if getattr(agent, "status", "") == "error"),
-        "running": sum(
-            1 for firing in recent_firings if getattr(firing, "status", "") == "running"
-        ),
-    }
-
-
-def _draft_from_form(form: dict[str, list[str]]) -> IssueDraft:
-    return IssueDraft(
-        title=_first(form, "title"),
-        problem=_first(form, "problem"),
-        user=_first(form, "user"),
-        current_behavior=_first(form, "current_behavior"),
-        desired_behavior=_first(form, "desired_behavior"),
-        repos=_lines(_first(form, "repos")),
-        acceptance_criteria=_lines(_first(form, "acceptance_criteria")),
-        test_plan=_first(form, "test_plan"),
-        out_of_scope=_first(form, "out_of_scope"),
-        rollout=_first(form, "rollout"),
-        open_questions=_first(form, "open_questions"),
-    )
-
-
-def _first(form: dict[str, list[str]], key: str) -> str:
-    return (form.get(key) or [""])[0].strip()
-
-
 def _lines(value: str) -> list[str]:
     return [line.strip().lstrip("- ").strip() for line in value.splitlines() if line.strip()]
 
@@ -2187,9 +1932,33 @@ def _plain_compose_title(text: str) -> str:
         flags=re.IGNORECASE,
     ).strip()
     title = re.split(r"\s+(?:so that|so|because)\s+", title, maxsplit=1, flags=re.IGNORECASE)[0]
-    if len(title) > 92:
-        title = title[:92].rsplit(" ", 1)[0].rstrip(" ,.;:")
+    title = _clean_plain_compose_title(title)
     return title[:1].upper() + title[1:] if title else "Plan Alfred work"
+
+
+def _clean_plain_compose_title(title: str, *, limit: int = 92) -> str:
+    title = _compact_plain_text(title).strip(" ,.;:")
+    if len(title) > limit:
+        title = title[:limit].rstrip().rsplit(" ", 1)[0].rstrip(" ,.;:")
+    dangling = (
+        " and",
+        " because",
+        " but",
+        " do",
+        " do not",
+        " for",
+        " not",
+        " or",
+        " so",
+        " to",
+        " with",
+        " without",
+    )
+    lowered = title.lower()
+    while any(lowered.endswith(fragment) for fragment in dangling):
+        title = title.rsplit(" ", 1)[0].rstrip(" ,.;:")
+        lowered = title.lower()
+    return title or "Plan Alfred work"
 
 
 def _compose_draft_response_summary(
@@ -2813,6 +2582,36 @@ def _memory_candidate_writer(provider):
             if writer is not None:
                 return writer
     return None
+
+
+def _queue_filed_spec_memory_candidate(request: Request, plan_id: str) -> tuple[str, ...]:
+    """Propose a planning-memory candidate for a just-filed draft's spec.
+
+    Runs only after the issue filing succeeded, so the spec it captures is one
+    the operator explicitly approved into fleet work.
+    """
+    import compose_converse as cc
+
+    draft_id = _safe_planning_draft_id(plan_id)
+    if draft_id is None:
+        return ()
+    path = _state_root(request) / "planning-drafts" / f"{draft_id}.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return ()
+    if not isinstance(payload, dict):
+        return ()
+    spec_body = str(payload.get("spec_body") or "")
+    raw_draft = payload.get("draft")
+    if not spec_body or not isinstance(raw_draft, dict):
+        return ()
+    return _propose_planning_memory_candidate(
+        request,
+        cc.draft_from_payload(raw_draft),
+        spec_path=path,
+        spec_body=spec_body,
+    )
 
 
 def _propose_planning_memory_candidate(
