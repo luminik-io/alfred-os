@@ -82,7 +82,10 @@ DEFAULT_MIN_CONFIDENCE = 0.6
 # tools only: a conversational answer never mutates fleet or GitHub state.
 DEFAULT_ESCALATE_TIMEOUT = 60
 DEFAULT_ESCALATE_TURNS = 3
-DEFAULT_ESCALATE_TOOLS = "Bash(gh *) Read Grep"
+# Comma-separated tool specs, matching what every other claude_allowed_tools
+# caller passes and what agent_runner forwards to ``--allowedTools``. A
+# space-separated string is forwarded as one argv element and mis-parsed.
+DEFAULT_ESCALATE_TOOLS = "Bash(gh *),Read,Grep"
 
 DEFAULT_PERSONA = "butler"
 
