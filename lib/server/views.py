@@ -2322,9 +2322,12 @@ def _planning_draft_path(state_root: Path, raw: Any) -> Path | None:
     if os.path.dirname(candidate) != base:
         return None
     # commonpath confirms containment even if dirname were spoofed by a symlink.
+    # Returning the realpath-resolved, containment-checked candidate (rather
+    # than re-joining the operator value onto base) is what lets the path-
+    # injection analysis see the sink as sanitized at every read site.
     if os.path.commonpath([base, candidate]) != base:
         return None
-    return Path(base) / filename
+    return Path(candidate)
 
 
 def _planning_draft_issue_url(payload: dict[str, Any]) -> str:
