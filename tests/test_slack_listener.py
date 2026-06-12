@@ -1461,8 +1461,8 @@ def test_confirmation_card_registers_with_slack_response_object(
 
 
 def test_confirm_reaction_from_operator_executes_action(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR UTEAM")
 
     import issue_queue
 
@@ -1490,7 +1490,7 @@ def test_confirm_reaction_from_operator_executes_action(tmp_path: Path, monkeypa
     )
 
     posted = listener.handle_payload(
-        _intent_dm("can you queue acme-io/acme-frontend#12", user="UFOUNDER")
+        _intent_dm("can you queue acme-io/acme-frontend#12", user="UOPERATOR")
     )
     assert posted.action == "intent_confirmation_posted"
     assert calls == []  # nothing ran yet
@@ -1500,7 +1500,7 @@ def test_confirm_reaction_from_operator_executes_action(tmp_path: Path, monkeypa
         _reaction(
             reaction="white_check_mark",
             ts=poster.card_ts(),
-            user="UFOUNDER",
+            user="UOPERATOR",
         )
     )
     assert confirmed.handled is True
@@ -1509,8 +1509,8 @@ def test_confirm_reaction_from_operator_executes_action(tmp_path: Path, monkeypa
 
 
 def test_confirm_reaction_from_non_operator_does_not_execute(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR UTEAM")
 
     import issue_queue
 
@@ -1533,7 +1533,7 @@ def test_confirm_reaction_from_non_operator_does_not_execute(tmp_path: Path, mon
         ),
         repo_catalog=_intent_catalog(),
     )
-    listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12", user="UFOUNDER"))
+    listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12", user="UOPERATOR"))
 
     # A trusted collaborator (not the operator) reacts: it must NOT execute.
     result = listener.handle_payload(
@@ -1544,12 +1544,12 @@ def test_confirm_reaction_from_non_operator_does_not_execute(tmp_path: Path, mon
         )
     )
     assert result.handled is False
-    assert "workspace owner" in result.detail.lower()
+    assert "authorized operator" in result.detail.lower()
 
 
 def test_cancel_reaction_discards_without_executing(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR")
 
     import issue_queue
 
@@ -1573,18 +1573,18 @@ def test_cancel_reaction_discards_without_executing(tmp_path: Path, monkeypatch)
         repo_catalog=_intent_catalog(),
     )
     listener.handle_payload(
-        _intent_dm("please put acme-io/acme-backend#8 on hold", user="UFOUNDER")
+        _intent_dm("please put acme-io/acme-backend#8 on hold", user="UOPERATOR")
     )
 
-    result = listener.handle_payload(_reaction(reaction="x", ts=poster.card_ts(), user="UFOUNDER"))
+    result = listener.handle_payload(_reaction(reaction="x", ts=poster.card_ts(), user="UOPERATOR"))
     assert result.handled is True
     assert result.action == "intent_cancelled"
     assert "Cancelled" in poster.messages[-1]["text"]
 
 
 def test_confirm_reaction_is_idempotent(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR")
 
     import issue_queue
 
@@ -1610,12 +1610,12 @@ def test_confirm_reaction_is_idempotent(tmp_path: Path, monkeypatch) -> None:
         ),
         repo_catalog=_intent_catalog(),
     )
-    listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12", user="UFOUNDER"))
+    listener.handle_payload(_intent_dm("can you queue acme-io/acme-frontend#12", user="UOPERATOR"))
     first = listener.handle_payload(
         _reaction(
             reaction="white_check_mark",
             ts=poster.card_ts(),
-            user="UFOUNDER",
+            user="UOPERATOR",
             event_id="EvReact1",
         )
     )
@@ -1623,7 +1623,7 @@ def test_confirm_reaction_is_idempotent(tmp_path: Path, monkeypatch) -> None:
         _reaction(
             reaction="white_check_mark",
             ts=poster.card_ts(),
-            user="UFOUNDER",
+            user="UOPERATOR",
             event_id="EvReact2",
         )
     )

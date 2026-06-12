@@ -156,6 +156,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # doctor.sh probes every scheduled agent for this sentinel; without it a
+    # healthy wrapper is reported as a crash.
+    from agent_runner import doctor_mode
+
+    if doctor_mode():
+        print("[MEMORY-HARVEST-DOCTOR-OK]")
+        return 0
     try:
         payload = _run_harvest(args)
     except Exception as exc:

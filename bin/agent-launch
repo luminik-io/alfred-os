@@ -51,6 +51,13 @@ load_env_file "$HOME/.alfredrc"
 
 export ALFRED_HOME WORKSPACE_ROOT
 
+# Claude Code resolves its credential store from CLAUDE_CONFIG_DIR. An account
+# router may set it via `launchctl setenv`, but that does not survive a reboot;
+# without it Claude can fall back to a legacy keychain entry whose tokens go
+# stale, and every firing then dies with a silent 401. Default to the standard
+# config dir whenever a router has not already set a value.
+export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
 case "$SCRIPT" in
   */*) TARGET="$SCRIPT" ;;
   *) TARGET="$ALFRED_HOME/bin/$SCRIPT" ;;

@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from agent_runner.metadata import agent_label
 from issue_summary import default_engine_invoke, summarize_issue
 from planning_assistant import (
     Refiner,
@@ -48,6 +49,7 @@ from slack_control import SlackControlHandler, is_control_message
 from slack_format import github_issue_link, github_url_link
 from slack_intent import (
     ACTION_ASSIGN,
+    ACTION_CONVERSE,
     ACTION_DRY_RUN_AGENT,
     ACTION_HOLD,
     ACTION_PAUSE_AGENT,
@@ -56,14 +58,21 @@ from slack_intent import (
     ACTION_RUN_AGENT,
     ACTION_SCHEDULE_AGENT,
     ACTION_STATUS,
+    STATUS_FACET_FLEET,
+    STATUS_FACET_PLANS,
+    STATUS_FACET_RUNS,
     ConversationContext,
     Intent,
     RepoCatalog,
     ambient_enabled,
     ambient_engages,
+    build_escalation_prompt,
     classify_intent,
+    default_escalation_engine_invoke,
     default_intent_engine_invoke,
     looks_like_followup_reference,
+    persona_name,
+    resolve_min_confidence,
 )
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
@@ -218,10 +227,12 @@ class SlackPlanningListener:
         status_tracker: SlackThreadStatusTracker | None = None,
         control_handler: SlackControlHandler | None = None,
         intent_engine: Callable[[str], str] | None = None,
+        escalation_engine: Callable[[str], str] | None = None,
         repo_catalog: RepoCatalog | None = None,
         conversation_context: ConversationContext | None = None,
         ambient_channels: Iterable[str] | None = None,
         plan_answerer: PlanAnswerer | None = None,
+        persona: str | None = None,
     ) -> None:
         self.state_root = state_root or _default_state_root()
         self.registry = registry or SlackThreadRegistry(self.state_root / "slack-threads")
@@ -267,16 +278,32 @@ class SlackPlanningListener:
             self._intent_engine: Callable[[str], str] | None = intent_engine
         else:
             self._intent_engine = default_intent_engine_invoke()
+        # Tier-2 conversational escalation: the richer read-only fallback used
+        # when a tier-1 ``converse`` turn cannot answer from prompt context
+        # alone. Resolved from env unless injected; ``None`` disables tier-2
+        # (the listener then answers from the tier-1 reply or a safe default).
+        if escalation_engine is not None:
+            self._escalation_engine: Callable[[str], str] | None = escalation_engine
+        else:
+            self._escalation_engine = default_escalation_engine_invoke()
+        # Operator-controlled persona (voice only). Never alters any gate.
+        self._persona = persona_name(persona)
         self._repo_catalog = (
             repo_catalog if repo_catalog is not None else RepoCatalog.from_environment()
         )
-        # Bounded, in-process multi-turn context so follow-ups ("yes that one",
-        # "do it") resolve against the previous turn's interpreted target. It is
-        # never persisted and never authority for a mutation: every mutating
-        # intent still surfaces the workspace-owner confirmation card.
-        self._conversation = (
-            conversation_context if conversation_context is not None else ConversationContext()
-        )
+        # Bounded, multi-turn context so follow-ups ("yes that one", "do it")
+        # resolve against the previous turn's interpreted target. Persisted to
+        # ``$ALFRED_HOME/state/slack-conversation-context.json`` (loaded here,
+        # saved on each record) so a listener restart does not lose an in-flight
+        # thread. It is never authority for a mutation: every mutating intent
+        # still surfaces the authorized-operator confirmation card.
+        if conversation_context is not None:
+            self._conversation = conversation_context
+        else:
+            self._conversation = ConversationContext.load(
+                self.state_root / "slack-conversation-context.json",
+                now=time.time,
+            )
         # Channel allowlist for ambient listening (empty == ambient never
         # engages, even when both ambient flags are armed).
         self._ambient_channels = (
@@ -321,7 +348,7 @@ class SlackPlanningListener:
         Reactions on non-draft threads (plan/report/pr) carry no approval
         authority here: the reaction approval gate in ``slack_approval`` owns
         plan execution. This path bridges a *draft* into a queued issue, and
-        resolves the workspace owner's confirm/cancel on a *conversational_action*
+        resolves the authorized operator's confirm/cancel on a *conversational_action*
         card surfaced by the intent router.
         """
         if record.kind == "conversational_action":
@@ -638,7 +665,7 @@ class SlackPlanningListener:
         fall through to the unchanged planning intake.
 
         The router never executes a mutating action. A ``queue`` / ``hold``
-        intent only ever produces a workspace-owner confirmation card; the action runs
+        intent only ever produces a authorized-operator confirmation card; the action runs
         in :meth:`_execute_confirmed_intent` after that person reacts.
 
         Multi-turn: a mutating intent that resolved no repo is augmented from
@@ -653,6 +680,7 @@ class SlackPlanningListener:
             event.text,
             engine_invoke=self._intent_engine,
             catalog=self._repo_catalog,
+            persona=self._persona,
         )
         intent = self._augment_intent_from_context(event, intent)
 
@@ -662,7 +690,14 @@ class SlackPlanningListener:
                 text=event.text,
                 action=intent.action,
             )
-            return self._answer_status_query(event)
+            return self._answer_status_query(event, intent)
+        if intent.action == ACTION_CONVERSE:
+            self._conversation.record(
+                event.conversation_id,
+                text=event.text,
+                action=intent.action,
+            )
+            return self._answer_converse(event, intent)
         if intent.action == ACTION_DRY_RUN_AGENT:
             self._conversation.record(
                 event.conversation_id,
@@ -791,20 +826,23 @@ class SlackPlanningListener:
         # deliberately do NOT open a planning draft from ambient channel prose.
         return ListenerResult(False, "ignored", "ambient message engaged but not actionable")
 
-    def _answer_status_query(self, event: SlackInputEvent) -> ListenerResult:
+    def _answer_status_query(
+        self, event: SlackInputEvent, intent: Intent | None = None
+    ) -> ListenerResult:
         """Answer a read-only status question directly (no confirmation gate).
 
         Status is non-mutating, so it is safe to answer immediately by reusing
         the existing read-only control handlers (``status`` / ``runs`` /
         ``plans``). The user was already trust-gated in :meth:`handle_payload`.
 
-        The question's natural-language flavor selects the most relevant
-        handler ("what did you ship?" -> recent runs, "what's blocked / what
-        needs scope?" -> the planning inbox, otherwise fleet status) and the
-        handler's structured output is framed with a short conversational
-        lead-in instead of being dumped raw.
+        Handler selection prefers an explicit ``status_facet`` the model
+        attached to the intent (``fleet`` / ``runs`` / ``plans``); when absent
+        it falls back to the deterministic keyword cues. The handler's
+        structured output is framed with a short conversational lead-in instead
+        of being dumped raw.
         """
-        verb, lead_in = _status_query_plan(event.text)
+        facet = intent.status_facet if intent is not None else ""
+        verb, lead_in = _status_query_plan(event.text, facet=facet)
         control = self.control_handler.handle(
             verb,
             trusted=True,
@@ -821,6 +859,119 @@ class SlackPlanningListener:
             "intent_status",
             detail=f"natural-language status query -> {verb}",
         )
+
+    def _answer_converse(self, event: SlackInputEvent, intent: Intent) -> ListenerResult:
+        """Answer a read-only conversational turn (question, why, summary, banter).
+
+        SAFETY: this path is strictly read-only. It never queues, assigns,
+        holds, runs, pauses, resumes, schedules, or files anything; it only
+        posts an answer back in-thread.
+
+        Two tiers:
+        1. If tier-1 produced a usable ``reply`` AND was confident enough, post
+           it directly (no second engine call).
+        2. Otherwise escalate ONCE to the richer read-only tier-2 engine (60s,
+           bounded turns, read-only tools / assembled context). If tier-2 is
+           unavailable or yields nothing, fall back to the tier-1 reply if any,
+           else a short honest "I could not answer" message.
+        """
+        reply = (intent.reply or "").strip()
+        # Honor the operator-configured floor, not the module default: converse
+        # intents are returned even below the floor so this decision point can
+        # escalate instead of posting a low-confidence answer.
+        floor = resolve_min_confidence(None)
+        confident = intent.confidence >= floor
+        if reply and confident:
+            self._post_thread_ack(event.channel, event.root_ts, reply)
+            return ListenerResult(
+                True,
+                "intent_converse",
+                detail="answered from tier-1 context",
+            )
+
+        escalated = self._escalate_converse(event)
+        if escalated:
+            self._post_thread_ack(event.channel, event.root_ts, escalated)
+            return ListenerResult(
+                True,
+                "intent_converse_escalated",
+                detail="answered via tier-2 read-only escalation",
+            )
+
+        if reply:
+            # Tier-2 unavailable or empty, but tier-1 had something usable.
+            self._post_thread_ack(event.channel, event.root_ts, reply)
+            return ListenerResult(
+                True,
+                "intent_converse",
+                detail="answered from tier-1 reply (no escalation)",
+            )
+
+        self._post_thread_ack(
+            event.channel,
+            event.root_ts,
+            "I could not answer that one just now. Try rephrasing, or ask me "
+            "for a specific status, run, or plan.",
+        )
+        return ListenerResult(
+            True,
+            "intent_converse_unanswered",
+            detail="no tier-1 reply and no escalation result",
+        )
+
+    def _escalate_converse(self, event: SlackInputEvent) -> str:
+        """Run the single tier-2 read-only escalation, returning the answer text.
+
+        Returns "" when escalation is disabled, errors, or yields nothing.
+        Hard caps (one escalation per message, 60s, bounded turns, read-only
+        tools) are enforced by the injected escalation engine. Assembles a
+        read-only fleet-context snapshot from the existing control handlers so
+        the model can still answer when the toolset is unavailable.
+        """
+        if self._escalation_engine is None:
+            return ""
+        context_blocks = self._converse_context_blocks(event)
+        prompt = build_escalation_prompt(
+            event.text,
+            persona=self._persona,
+            context_blocks=context_blocks,
+        )
+        try:
+            answer = self._escalation_engine(prompt)
+        except Exception as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] conversational escalation failed for "
+                f"{event.channel}/{event.root_ts}: {exc}",
+                file=sys.stderr,
+            )
+            return ""
+        return (answer or "").strip()
+
+    def _converse_context_blocks(self, event: SlackInputEvent) -> list[str]:
+        """Assemble read-only fleet snapshots for the tier-2 prompt.
+
+        Reuses the existing read-only control handlers (``status`` / ``runs`` /
+        ``plans``) so the escalation has current fleet state even when its
+        toolset is unavailable. Best-effort: any handler failure is skipped.
+        """
+        blocks: list[str] = []
+        for verb, label in (
+            ("status", "Fleet status"),
+            ("runs", "Recent firings"),
+            ("plans", "Planning inbox"),
+        ):
+            try:
+                control = self.control_handler.handle(
+                    verb,
+                    trusted=True,
+                    actor_user_id=event.user,
+                )
+            except Exception:
+                continue
+            body = (getattr(control, "text", "") or "").strip()
+            if body:
+                blocks.append(f"{label}:\n{body}")
+        return blocks
 
     def _answer_dry_run_agent(self, event: SlackInputEvent, intent: Intent) -> ListenerResult:
         """Run a conversational dry-run immediately.
@@ -862,13 +1013,13 @@ class SlackPlanningListener:
         )
 
     def _propose_intent_action(self, event: SlackInputEvent, intent: Intent) -> ListenerResult:
-        """Surface a workspace-owner-confirmable card for a mutating intent.
+        """Surface a authorized-operator-confirmable card for a mutating intent.
 
         SAFETY: this never mutates anything. When entities are missing or
         ambiguous it asks a clarifying question. Otherwise it posts a Block Kit
         confirmation card summarizing the interpreted action and registers a
         ``conversational_action`` thread keyed on that card's message ts. The
-        action only runs after the workspace owner reacts to confirm
+        action only runs after the authorized operator reacts to confirm
         (:meth:`_execute_confirmed_intent`); a cancel reaction discards it.
         """
         if intent.needs_clarification:
@@ -931,7 +1082,7 @@ class SlackPlanningListener:
     ) -> ListenerResult:
         """Resolve a reaction on a pending conversational-action card.
 
-        Only the workspace owner's confirm reaction executes the action; a cancel
+        Only the authorized operator's confirm reaction executes the action; a cancel
         reaction discards it. Any other reactor or any non-approval/non-reject
         reaction is ignored, so the card stays pending. This reuses the
         same single-owner authority that the reaction-approval gate relies on:
@@ -942,10 +1093,10 @@ class SlackPlanningListener:
             # idempotent: never double-execute.
             return ListenerResult(False, "ignored", "conversational action already resolved")
         if not self._operator_user_id or event.user != self._operator_user_id:
-            # Only the configured workspace owner can confirm a mutating action. A trusted
+            # Only the configured authorized operator can confirm a mutating action. A trusted
             # collaborator's reaction never executes.
             return ListenerResult(
-                False, "ignored", "only the workspace owner can confirm this action"
+                False, "ignored", "only the authorized operator can confirm this action"
             )
 
         if _is_cancel_reaction(event.reaction):
@@ -958,7 +1109,7 @@ class SlackPlanningListener:
             return ListenerResult(
                 True,
                 "intent_cancelled",
-                detail="workspace owner cancelled the proposed action",
+                detail="authorized operator cancelled the proposed action",
             )
 
         if not _is_confirm_reaction(event.reaction):
@@ -971,10 +1122,10 @@ class SlackPlanningListener:
         event: SlackInputEvent,
         record: SlackThreadRecord,
     ) -> ListenerResult:
-        """Run the assign / queue / hold action the workspace owner just confirmed.
+        """Run the assign / queue / hold action the authorized operator just confirmed.
 
         This is the ONLY place a conversational mutating action executes, and
-        only after the workspace owner's confirm reaction on the card. The actions use
+        only after the authorized operator's confirm reaction on the card. The actions use
         the same queue / assignment primitives as the leading-verb fallback, so
         they inherit the same allowlist and validation guards.
         """
@@ -1895,7 +2046,7 @@ def draft_from_slack_text(text: str) -> IssueDraft:
 
 
 # Reaction vocabulary for the conversational-action confirmation gate. These
-# mirror ``slack_approval.SlackApproval`` defaults so the workspace owner uses
+# mirror ``slack_approval.SlackApproval`` defaults so the authorized operator uses
 # the same gestures everywhere: a check / thumbs-up confirms, an x / thumbs-down
 # cancels.
 _CONFIRM_REACTIONS: frozenset[str] = frozenset({"white_check_mark", "thumbsup", "+1"})
@@ -1916,35 +2067,38 @@ def _is_cancel_reaction(reaction: str) -> bool:
 
 
 def render_intent_confirmation(intent: Intent) -> tuple[str, list[dict]]:
-    """Render the workspace-owner-confirmable card for a mutating intent.
+    """Render the authorized-operator-confirmable card for a mutating intent.
 
     Returns ``(fallback_text, blocks)``. The fallback text is what notifications
     and non-Block-Kit clients show; the Block Kit blocks render the structured
     summary. The card states the interpreted action, target, and exact
     reactions to confirm or cancel. It never claims the action happened;
-    nothing runs until the workspace owner reacts.
+    nothing runs until the authorized operator reacts.
     """
     verb = _intent_action_verb(intent.action)
     effect = _intent_action_effect(intent.action)
     target = _intent_action_target(intent)
     target_display = _intent_action_target_display(intent)
     raw_text = (intent.params or {}).get("raw_text", "")
-    fallback = f"Confirm {verb} {target}? React to confirm; nothing changed yet."
+    fallback = (
+        f"I can {verb} {target}. React with :white_check_mark: to run it "
+        "or :x: to cancel. Nothing has changed yet."
+    )
     blocks: list[dict] = [
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "*Confirm action*"},
+            "text": {"type": "mrkdwn", "text": f"*I can {verb} this*"},
         },
         {
             "type": "section",
             "fields": [
+                {"type": "mrkdwn", "text": f"*What I understood*\n{target_display}"},
                 {"type": "mrkdwn", "text": f"*Action*\n{verb}"},
-                {"type": "mrkdwn", "text": f"*Target*\n{target_display}"},
             ],
         },
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*Effect*\n{effect}."},
+            "text": {"type": "mrkdwn", "text": f"*What will happen*\n{effect}."},
         },
         {
             "type": "context",
@@ -1952,8 +2106,8 @@ def render_intent_confirmation(intent: Intent) -> tuple[str, list[dict]]:
                 {
                     "type": "mrkdwn",
                     "text": (
-                        "Status: waiting for your reaction. "
-                        "Use :white_check_mark: to confirm or :x: to cancel."
+                        ":white_check_mark: runs it. :x: cancels. "
+                        "Nothing changes until you react."
                     ),
                 }
             ],
@@ -1963,7 +2117,7 @@ def render_intent_confirmation(intent: Intent) -> tuple[str, list[dict]]:
         blocks.append(
             {
                 "type": "context",
-                "elements": [{"type": "mrkdwn", "text": f"From your message: {raw_text[:280]}"}],
+                "elements": [{"type": "mrkdwn", "text": f"You said: {raw_text[:280]}"}],
             }
         )
     return fallback, blocks
@@ -1983,7 +2137,10 @@ def _intent_action_verb(action: str) -> str:
 
 def _intent_action_effect(action: str) -> str:
     return {
-        ACTION_ASSIGN: "choose Batman or Lucius and label the issue for that lane",
+        ACTION_ASSIGN: (
+            f"choose {agent_label('batman')} or {agent_label('lucius')} "
+            "and label the issue for that lane"
+        ),
         ACTION_QUEUE: "make it eligible for autonomous pickup",
         ACTION_HOLD: "take it out of Alfred's reach",
         ACTION_RUN_AGENT: "trigger one manual agent run now",
@@ -2008,6 +2165,11 @@ def _intent_action_target_display(intent: Intent) -> str:
         if intent.repo and intent.issue:
             return github_issue_link(intent.repo, intent.issue)
         return "`unknown issue`"
+    if intent.agent:
+        label = agent_label(intent.agent)
+        if intent.action == ACTION_SCHEDULE_AGENT and intent.schedule:
+            return f"`{label} -> {intent.schedule}`"
+        return f"`{label}`"
     target = _intent_action_target(intent)
     return f"`{target}`" if target != "unknown target" else target
 
@@ -2031,14 +2193,32 @@ def _assignment_ack_text(repo: str, issue: int, detail: str) -> str:
     )
 
 
-def _status_query_plan(text: str) -> tuple[str, str]:
+_STATUS_FACET_VERBS: dict[str, tuple[str, str]] = {
+    STATUS_FACET_FLEET: ("status", "Here's where the fleet stands:"),
+    STATUS_FACET_RUNS: (
+        "runs",
+        "Here's what the fleet has been working on recently:",
+    ),
+    STATUS_FACET_PLANS: ("plans", "Here's what's in the planning inbox right now:"),
+}
+
+
+def _status_query_plan(text: str, *, facet: str = "") -> tuple[str, str]:
     """Map a natural-language read-only question to a control verb + lead-in.
 
     Returns ``(verb, lead_in)`` where ``verb`` is one of the read-only control
     commands (``status`` / ``runs`` / ``plans``) and ``lead_in`` is a short
     conversational sentence rendered above the handler's structured output.
-    Deterministic and side-effect free; the default is ``status``.
+    Deterministic and side-effect free.
+
+    An explicit ``facet`` (``fleet`` / ``runs`` / ``plans``) the model attached
+    to the intent wins. Otherwise the deterministic keyword cues run, and the
+    default is ``status``.
     """
+    mapped = _STATUS_FACET_VERBS.get((facet or "").strip().lower())
+    if mapped is not None:
+        return mapped
+
     normalized = re.sub(r"\s+", " ", (text or "").lower()).strip()
 
     ship_cues = (
@@ -2089,7 +2269,7 @@ def render_draft_ack(result: Any) -> str:
     lines.extend(
         [
             "",
-            "*How to steer this:* reply with lines like `repo: owner/repo`, "
+            "*How to steer this:* reply with a GitHub repo, "
             "`desired: ...`, `acceptance: ...`, `test: ...`, `open question: ...`, "
             "or `open questions: none`. Ask normal questions in plain language.",
             "*Safety:* chat edits the draft only. Implementation still needs the normal approval gate.",

@@ -792,8 +792,8 @@ def test_conversational_dry_run_failure_does_not_claim_success(tmp_path: Path, m
 
 def test_conversational_run_posts_confirmation_then_executes(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR")
     poster = CardPoster()
     control = StubControl(text="*Triggered* `batman`.")
     listener = SlackPlanningListener(
@@ -813,7 +813,7 @@ def test_conversational_run_posts_confirmation_then_executes(tmp_path: Path, mon
                 "type": "message",
                 "channel": "D1",
                 "channel_type": "im",
-                "user": "UFOUNDER",
+                "user": "UOPERATOR",
                 "text": "please run Batman now",
                 "ts": "1716480810.000001",
             },
@@ -822,15 +822,15 @@ def test_conversational_run_posts_confirmation_then_executes(tmp_path: Path, mon
 
     assert posted.action == "intent_confirmation_posted"
     assert control.calls == []
-    card = json.dumps(poster.messages[-1]["blocks"])
+    card = json.dumps(poster.messages[-1]["blocks"], ensure_ascii=False)
     assert "trigger" in card
-    assert "`batman`" in card
+    assert "Batman · Architect" in card
 
     confirmed = listener.handle_payload(
         _reaction(
             reaction="white_check_mark",
             ts=poster.card_ts(),
-            user="UFOUNDER",
+            user="UOPERATOR",
             channel="D1",
         )
     )
@@ -843,8 +843,8 @@ def test_conversational_run_posts_confirmation_then_executes(tmp_path: Path, mon
 
 def test_confirmed_agent_command_failure_marks_thread_failed(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR")
     poster = CardPoster()
     control = StubControl(
         text="*Could not run* `batman`.\n```\nunknown agent\n```",
@@ -872,7 +872,7 @@ def test_confirmed_agent_command_failure_marks_thread_failed(tmp_path: Path, mon
                 "type": "message",
                 "channel": "D1",
                 "channel_type": "im",
-                "user": "UFOUNDER",
+                "user": "UOPERATOR",
                 "text": "please run Batman now",
                 "ts": "1716480811.000001",
             },
@@ -884,7 +884,7 @@ def test_confirmed_agent_command_failure_marks_thread_failed(tmp_path: Path, mon
         _reaction(
             reaction="white_check_mark",
             ts=poster.card_ts(),
-            user="UFOUNDER",
+            user="UOPERATOR",
             channel="D1",
         )
     )
@@ -902,8 +902,8 @@ def test_conversational_schedule_posts_confirmation_then_executes(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR")
     poster = CardPoster()
     control = StubControl(text="alfred schedule: updated lucius interval:600 -> interval:1200")
     listener = SlackPlanningListener(
@@ -928,7 +928,7 @@ def test_conversational_schedule_posts_confirmation_then_executes(
                 "type": "message",
                 "channel": "D1",
                 "channel_type": "im",
-                "user": "UFOUNDER",
+                "user": "UOPERATOR",
                 "text": "change Lucius to every 20 minutes",
                 "ts": "1716480820.000001",
             },
@@ -937,15 +937,15 @@ def test_conversational_schedule_posts_confirmation_then_executes(
 
     assert posted.action == "intent_confirmation_posted"
     assert control.calls == []
-    card = json.dumps(poster.messages[-1]["blocks"])
+    card = json.dumps(poster.messages[-1]["blocks"], ensure_ascii=False)
     assert "reschedule" in card
-    assert "`lucius -> 20m`" in card
+    assert "Lucius · Senior Developer -> 20m" in card
 
     confirmed = listener.handle_payload(
         _reaction(
             reaction="white_check_mark",
             ts=poster.card_ts(),
-            user="UFOUNDER",
+            user="UOPERATOR",
             channel="D1",
         )
     )
@@ -1012,8 +1012,8 @@ def test_ambient_confirm_executes_only_after_operator_reaction(tmp_path: Path, m
     # command uses.
     monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
     monkeypatch.setenv("ALFRED_SLACK_AMBIENT", "1")
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR UTEAM")
 
     import issue_queue
 
@@ -1043,13 +1043,13 @@ def test_ambient_confirm_executes_only_after_operator_reaction(tmp_path: Path, m
     )
 
     posted = listener.handle_payload(
-        _channel_msg("Alfred queue acme-io/acme-frontend#12", user="UFOUNDER")
+        _channel_msg("Alfred queue acme-io/acme-frontend#12", user="UOPERATOR")
     )
     assert posted.action == "intent_confirmation_posted"
     assert calls == []  # nothing yet
 
     confirmed = listener.handle_payload(
-        _reaction(reaction="white_check_mark", ts=poster.card_ts(), user="UFOUNDER")
+        _reaction(reaction="white_check_mark", ts=poster.card_ts(), user="UOPERATOR")
     )
     assert confirmed.handled is True
     assert confirmed.action == "intent_queue_issue"
@@ -1061,8 +1061,8 @@ def test_conversational_assign_posts_confirmation_then_executes(
 ) -> None:
     monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
     monkeypatch.setenv("ALFRED_SLACK_AMBIENT", "1")
-    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
-    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UOPERATOR")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UOPERATOR UTEAM")
 
     import issue_assignment
 
@@ -1096,7 +1096,7 @@ def test_conversational_assign_posts_confirmation_then_executes(
     )
 
     posted = listener.handle_payload(
-        _channel_msg("Alfred, assign acme-io/acme-frontend#12", user="UFOUNDER")
+        _channel_msg("Alfred, assign acme-io/acme-frontend#12", user="UOPERATOR")
     )
     assert posted.action == "intent_confirmation_posted"
     assert calls == []
@@ -1104,7 +1104,7 @@ def test_conversational_assign_posts_confirmation_then_executes(
     assert "<https://github.com/acme-io/acme-frontend/issues/12|acme-io/acme-frontend#12>" in card
 
     confirmed = listener.handle_payload(
-        _reaction(reaction="white_check_mark", ts=poster.card_ts(), user="UFOUNDER")
+        _reaction(reaction="white_check_mark", ts=poster.card_ts(), user="UOPERATOR")
     )
     assert confirmed.handled is True
     assert confirmed.action == "intent_assign_issue"
@@ -1114,3 +1114,356 @@ def test_conversational_assign_posts_confirmation_then_executes(
         in poster.messages[-1]["text"]
     )
     assert "assigned to Lucius" in poster.messages[-1]["text"]
+
+
+# ---------------------------------------------------------------------------
+# 5. converse action: tier-1 direct answer + tier-2 read-only escalation
+# ---------------------------------------------------------------------------
+
+
+def _dm(text: str, *, event_id: str = "Ev-dm", user: str = "U1") -> dict:
+    return {
+        "event_id": event_id,
+        "event": {
+            "type": "message",
+            "channel": "D1",
+            "channel_type": "im",
+            "user": user,
+            "text": text,
+            "ts": "1716480600.000001",
+        },
+    }
+
+
+def test_converse_tier1_reply_answered_directly(tmp_path: Path, monkeypatch) -> None:
+    # A confident converse turn with a usable reply is answered from tier-1; the
+    # escalation engine must NOT run.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+
+    def _no_escalation(_prompt: str) -> str:
+        raise AssertionError("tier-2 must not run when tier-1 answered")
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {"action": "converse", "reply": "All quiet. Fleet is green.",
+             "confidence": 0.9}
+        ),
+        escalation_engine=_no_escalation,
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+    )
+    result = listener.handle_payload(_dm("how are things looking?"))
+    assert result.handled is True
+    assert result.action == "intent_converse"
+    assert "All quiet. Fleet is green." in poster.messages[-1]["text"]
+
+
+def test_converse_honors_raised_confidence_floor(tmp_path: Path, monkeypatch) -> None:
+    # An operator-raised ALFRED_INTENT_ROUTER_MIN_CONFIDENCE must gate tier-1
+    # replies: a 0.7-confidence answer under a 0.9 floor escalates instead of
+    # posting directly.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_MIN_CONFIDENCE", "0.9")
+
+    escalations: list[str] = []
+
+    def _escalation(prompt: str) -> str:
+        escalations.append(prompt)
+        return "Escalated answer with full context."
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {"action": "converse", "reply": "Half-sure answer.",
+             "confidence": 0.7}
+        ),
+        escalation_engine=_escalation,
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+    )
+    result = listener.handle_payload(_dm("how are things looking?"))
+    assert result.handled is True
+    assert escalations, "low-confidence tier-1 reply must escalate under a raised floor"
+    assert "Escalated answer with full context." in poster.messages[-1]["text"]
+
+
+def test_converse_without_reply_escalates_to_tier2(tmp_path: Path, monkeypatch) -> None:
+    # No tier-1 reply: escalate ONCE to the read-only tier-2 engine and post
+    # its answer. The tier-2 prompt must be read-only framed and carry the
+    # persona block and assembled context.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    seen_prompts: list[str] = []
+
+    def _escalation(prompt: str) -> str:
+        seen_prompts.append(prompt)
+        return "Batman failed on the retry path; the gh token expired."
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "converse", "confidence": 0.4}),
+        escalation_engine=_escalation,
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+        persona="gilfoyle",
+    )
+    result = listener.handle_payload(_dm("why did batman fail earlier?"))
+    assert result.handled is True
+    assert result.action == "intent_converse_escalated"
+    assert "retry path" in poster.messages[-1]["text"]
+    # Exactly one escalation for the one message.
+    assert len(seen_prompts) == 1
+    prompt = seen_prompts[0]
+    assert "READ-ONLY" in prompt
+    assert "Persona:" in prompt
+    # Assembled read-only context from the control handler is present.
+    assert "all green" in prompt
+
+
+def test_converse_escalation_disabled_falls_back_to_tier1_reply(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Tier-2 disabled (no escalation engine) but tier-1 gave SOMETHING even
+    # though it was below the floor: we still surface the tier-1 reply rather
+    # than going silent.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {"action": "converse", "reply": "Probably fine.", "confidence": 0.4}
+        ),
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+    )
+    # Disable tier-2 to exercise the tier-1-reply fallback path.
+    listener._escalation_engine = None
+    result = listener.handle_payload(_dm("anything on fire?"))
+    assert result.handled is True
+    assert result.action == "intent_converse"
+    assert "Probably fine." in poster.messages[-1]["text"]
+
+
+def test_converse_no_answer_anywhere_is_honest(tmp_path: Path, monkeypatch) -> None:
+    # No tier-1 reply and tier-2 returns nothing: post an honest fallback, never
+    # a fabricated answer and never a mutation.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "converse", "confidence": 0.3}),
+        escalation_engine=lambda _p: "",
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+    )
+    result = listener.handle_payload(_dm("ponder the meaning of it all"))
+    assert result.handled is True
+    assert result.action == "intent_converse_unanswered"
+    assert "could not answer" in poster.messages[-1]["text"].lower()
+
+
+def test_converse_never_mutates(tmp_path: Path, monkeypatch) -> None:
+    # SAFETY: a converse turn must never reach the queue/assign/hold/run
+    # primitives. We make the control handler explode if asked to mutate and
+    # confirm converse only ever reads (status/runs/plans for context).
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+
+    class ReadOnlyControl(StubControl):
+        def handle(self, text, *, trusted, actor_user_id=None):
+            verb = text.split()[0]
+            assert verb in {"status", "runs", "plans"}, f"mutating verb leaked: {verb}"
+            return super().handle(text, trusted=trusted, actor_user_id=actor_user_id)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "converse", "confidence": 0.4}),
+        escalation_engine=lambda _p: "Here is a summary.",
+        repo_catalog=_catalog(),
+        control_handler=ReadOnlyControl(),
+    )
+    result = listener.handle_payload(_dm("summarize what happened today"))
+    assert result.handled is True
+    assert result.action == "intent_converse_escalated"
+
+
+# ---------------------------------------------------------------------------
+# 6. status_facet: model hint beats keyword cues, with graceful fallback
+# ---------------------------------------------------------------------------
+
+
+def test_status_facet_overrides_keyword_cues(tmp_path: Path, monkeypatch) -> None:
+    # The text reads like fleet health, but the model attaches status_facet=runs.
+    # The facet wins: the listener calls the ``runs`` control verb.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    poster = CardPoster()
+    control = StubControl()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {"action": "status_query", "status_facet": "runs", "confidence": 0.9}
+        ),
+        repo_catalog=_catalog(),
+        control_handler=control,
+    )
+    result = listener.handle_payload(_dm("how's everything doing?"))
+    assert result.handled is True
+    assert result.action == "intent_status"
+    assert control.calls == ["runs"]
+
+
+def test_status_facet_absent_falls_back_to_keyword_cue(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # No facet: the deterministic keyword cue ("shipped" -> runs) still drives
+    # the verb, preserving prior behavior.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    poster = CardPoster()
+    control = StubControl()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {"action": "status_query", "confidence": 0.9}
+        ),
+        repo_catalog=_catalog(),
+        control_handler=control,
+    )
+    result = listener.handle_payload(_dm("what shipped today?"))
+    assert result.handled is True
+    assert control.calls == ["runs"]
+
+
+def test_status_query_plan_facet_wins() -> None:
+    # Direct unit check of the facet override in the planner helper.
+    assert _status_query_plan("how is everything", facet="plans")[0] == "plans"
+    assert _status_query_plan("what shipped", facet="fleet")[0] == "status"
+    # No facet -> keyword cue.
+    assert _status_query_plan("what shipped", facet="")[0] == "runs"
+    # Unknown facet -> keyword cue fallback.
+    assert _status_query_plan("what shipped", facet="bogus")[0] == "runs"
+
+
+# ---------------------------------------------------------------------------
+# 7. Persona threads through the listener but never alters a gate
+# ---------------------------------------------------------------------------
+
+
+def test_listener_passes_persona_into_classifier(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    seen: list[str] = []
+
+    def _engine(prompt: str) -> str:
+        seen.append(prompt)
+        return json.dumps({"action": "converse", "reply": "Indeed.",
+                           "confidence": 0.9})
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_engine,
+        escalation_engine=lambda _p: "",
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+        persona="gilfoyle",
+    )
+    listener.handle_payload(_dm("status of the universe?"))
+    assert seen, "engine was not called"
+    assert "Persona:" in seen[0]
+    assert "sardonic" in seen[0].lower()
+
+
+def test_persona_does_not_change_confirmation_gate(tmp_path: Path, monkeypatch) -> None:
+    # SAFETY: even with a persona set, a mutating intent still surfaces the
+    # confirmation card and never auto-executes.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    calls: list[dict] = []
+
+    def _set_pickup(repo, number, *, hold):  # pragma: no cover - asserted not called
+        calls.append({"repo": repo, "number": number, "hold": hold})
+        return True, "done"
+
+    monkeypatch.setattr("issue_queue.set_issue_pickup", _set_pickup, raising=False)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {"action": "hold_issue", "repo": "acme-io/acme-backend",
+             "issue": 3, "confidence": 0.95}
+        ),
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+        persona="gilfoyle",
+    )
+    result = listener.handle_payload(_dm("take acme-io/acme-backend#3 off the queue"))
+    assert result.action == "intent_confirmation_posted"
+    # The mutation has NOT run; it awaits a confirmation reaction.
+    assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# 8. Conversation context persistence across a listener restart
+# ---------------------------------------------------------------------------
+
+
+def test_context_survives_listener_restart(tmp_path: Path, monkeypatch) -> None:
+    # Turn 1 records a target on one listener; a fresh listener over the same
+    # state_root rehydrates it and the bare "do it" follow-up borrows it.
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    catalog = _catalog()
+
+    poster1 = CardPoster()
+    listener1 = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster1,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine(
+            {"action": "queue_issue", "repo": "acme-io/acme-backend",
+             "issue": 4, "confidence": 0.95}
+        ),
+        repo_catalog=catalog,
+        control_handler=StubControl(),
+    )
+    first = listener1.handle_payload(
+        _dm("arm acme-io/acme-backend#4 for the fleet", event_id="Ev-r1")
+    )
+    assert first.action == "intent_confirmation_posted"
+    # The context file was written under the shared state root.
+    assert (tmp_path / "slack-conversation-context.json").exists()
+
+    # New listener instance, same state root: simulates a process restart.
+    poster2 = CardPoster()
+    listener2 = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster2,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "queue_issue", "confidence": 0.8}),
+        repo_catalog=catalog,
+        control_handler=StubControl(),
+    )
+    second = listener2.handle_payload(_dm("yes, do it", event_id="Ev-r2"))
+    assert second.action == "intent_confirmation_posted"
+    assert "acme-io/acme-backend#4" in poster2.messages[-1]["text"]

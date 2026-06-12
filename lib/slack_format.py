@@ -265,11 +265,10 @@ def _now_utc_short() -> str:
 
 
 def _format_root_text(codename: str, summary_one_liner: str, severity: str) -> str:
-    """Header-block plain text: ``<emoji> <codename> (<role>): <summary>``.
+    """Header-block plain text: ``<emoji> <display name> · <role>: <summary>``.
 
-    Roles come from ``codename_with_role`` (``ALFRED_<NAME>_ROLE`` env
-    var). When unset the codename appears alone, so operators on a forked
-    install without role wiring still get readable posts.
+    The label comes from the shared agent profile model. Unknown/custom agents
+    can still supply legacy ``ALFRED_<NAME>_ROLE`` metadata as a fallback.
     """
     label = codename_with_role(codename)
     emoji = SEVERITY_EMOJI[severity]
@@ -297,7 +296,7 @@ def firing_thread_root(
 
     Block layout:
 
-      header    ``<emoji> <codename> (<role>): <one-liner>``
+      header    ``<emoji> <display name> · <role>: <one-liner>``
       divider
       context   ``firing_id=<id> · <UTC start ts>``
       [summary] optional small-text context block giving a plain-English

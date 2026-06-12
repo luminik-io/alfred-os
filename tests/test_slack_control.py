@@ -371,8 +371,30 @@ def test_status_command_renders_snapshot() -> None:
     assert result.handled is True
     assert result.action == "status"
     assert "Fleet status" in result.text
-    assert "lucius" in result.text
+    assert "Lucius · Senior Developer" in result.text
+    assert "`lucius`" in result.text
     assert runner.calls == [["/fake/alfred", "status", "--json"]]
+
+
+def test_status_command_accepts_live_agent_key() -> None:
+    payload = json.dumps(
+        {
+            "global": {},
+            "agents": [
+                {
+                    "agent": "batman",
+                    "loaded": True,
+                    "paused": False,
+                    "last_fired": "2026-06-12T18:29:23Z",
+                }
+            ],
+        }
+    )
+    result = _handler(FakeRunner(status=payload)).handle("status", trusted=True)
+
+    assert "Batman · Architect" in result.text
+    assert "`batman`" in result.text
+    assert "`?`" not in result.text
 
 
 def test_runs_command_lists_recent_firings() -> None:
@@ -380,7 +402,7 @@ def test_runs_command_lists_recent_firings() -> None:
     result = _handler(runner).handle("runs", trusted=True)
     assert result.action == "runs"
     assert "Recent firings" in result.text
-    assert "lucius" in result.text
+    assert "Lucius · Senior Developer" in result.text
     assert "last fired 2026-05-30T11:00:00Z" in result.text
 
 
@@ -1078,7 +1100,7 @@ def test_help_lists_commands_without_running_anything() -> None:
     assert result.action == "help"
     assert "talk to alfred naturally" in result.text.lower()
     assert "Run Batman now" in result.text
-    assert "trust <@user>" in result.text
+    assert "trust management" in result.text
     assert runner.calls == []
 
 

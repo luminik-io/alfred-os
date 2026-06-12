@@ -50,7 +50,6 @@ def test_firing_thread_root_returns_none_without_bot_token(monkeypatch):
 def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
     import slack_format as sf
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
     monkeypatch.setattr(sf, "_resolve_bot_token", lambda: "xoxb-fake")
     monkeypatch.setattr(sf, "_get_permalink", lambda *a, **kw: None)
 
@@ -71,10 +70,10 @@ def test_firing_thread_root_posts_block_kit_with_role_when_set(monkeypatch):
     assert handle.channel == "C0123"
     assert handle.ts == "1700000000.000100"
 
-    # Header carries the role-suffixed codename.
+    # Header carries the shared profile label (Display · Role).
     blocks = captured["payload"]["attachments"][0]["blocks"]
     header_text = blocks[0]["text"]["text"]
-    assert "lucius (Single-repo feature engineer)" in header_text
+    assert "Lucius · Senior Developer" in header_text
     assert "firing started" in header_text
 
 
@@ -177,7 +176,7 @@ def test_firing_thread_close_summarises_outcome_duration_firing_id(monkeypatch):
         duration_seconds=125.4,
     )
     body = captured["payload"]["attachments"][0]["blocks"][0]["text"]["text"]
-    assert "lucius" in body
+    assert "Lucius · Senior Developer" in body
     assert "pr-opened" in body
     assert "2m 5s" in body
     assert "2026-05-09-aa" in body

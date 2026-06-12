@@ -65,6 +65,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agent_runner.metadata import agent_profile
 from planning_actions import convert_followup_to_draft, mark_followup_handled
 from server.reader import (
     FilesystemReader,
@@ -1175,16 +1176,16 @@ def render_help() -> str:
         [
             "*Talk to Alfred naturally*",
             "",
-            "You can DM me or @-mention me with normal requests:",
+            "DM me or @-mention me with normal requests:",
             '- "How is the fleet doing?"',
             '- "What shipped today?"',
             '- "What is blocked in the planning inbox?"',
             '- "Run Batman now."',
-            '- "Dry-run Lucius."',
+            '- "Dry-run Lucius before I change the schedule."',
             '- "Pause Nightwing for a bit."',
             '- "Change Lucius to every 20 minutes."',
-            '- "Assign example-org/alfred#123 to Alfred."',
-            '- "Queue example-org/alfred#123 for Alfred."',
+            '- "Assign example-org/alfred#123 to the right agent."',
+            '- "Queue example-org/alfred#123 for the fleet."',
             '- "Put that issue on hold."',
             '- "Remember for Alfred: Slack confirmations must stay explicit."',
             "",
@@ -1192,9 +1193,8 @@ def render_help() -> str:
             "confirmation reaction before anything changes. Dry-runs and status "
             "questions answer directly.",
             "",
-            "Power-user shorthand still works for exact operations like `status`, "
-            "`runs`, `plans`, `schedule list`, `schedule show lucius`, "
-            "`memory`, `trusted`, `trust <@user>`, and `untrust <@user>`.",
+            "Power-user shorthand still exists for exact local operations like "
+            "`status`, `runs`, `plans`, `memory`, and trust management.",
         ]
     )
 
@@ -1213,10 +1213,10 @@ def render_fleet_status(data: dict[str, Any]) -> str:
         paused = sum(1 for a in agents if _agent_paused(a))
         lines.append(f"*Agents:* {len(agents)} configured, {loaded} loaded, {paused} paused")
         for agent in agents[:20]:
-            name = str(agent.get("codename") or agent.get("name") or "?")
+            name = _agent_display_label(agent)
             state = _agent_state_label(agent)
             fired = _last_fired_label(agent)
-            lines.append(f"- `{name}` — {state}{fired}")
+            lines.append(f"- {name} — {state}{fired}")
         if len(agents) > 20:
             lines.append(f"- ...and {len(agents) - 20} more.")
 
@@ -1240,14 +1240,33 @@ def render_recent_runs(data: dict[str, Any]) -> str:
         lines.append("_No agent has fired recently._")
         return "\n".join(lines)
     for agent in fired[:15]:
-        name = str(agent.get("codename") or agent.get("name") or "?")
+        name = _agent_display_label(agent)
         last = str(agent.get("last_fired") or "?")
         today = agent.get("today_firings")
         ok = agent.get("today_successes")
         fail = agent.get("today_failures")
         counts = _run_counts_label(today, ok, fail)
-        lines.append(f"- `{name}` — last fired {last}{counts}")
+        lines.append(f"- {name} — last fired {last}{counts}")
     return "\n".join(lines)
+
+
+def _agent_identifier(agent: dict[str, Any]) -> str:
+    raw = agent.get("codename") or agent.get("name") or agent.get("agent")
+    return str(raw or "").strip() or "?"
+
+
+def _agent_display_label(agent: dict[str, Any]) -> str:
+    codename = _agent_identifier(agent)
+    if codename == "?":
+        return "`?`"
+    profile = agent_profile(codename)
+    explicit_role = str(agent.get("role_title") or "").strip()
+    role_title = explicit_role or profile.role_title
+    if role_title:
+        display_name = str(agent.get("display_name") or profile.display_name).strip()
+        display_name = display_name or codename
+        return f"*{display_name} · {role_title}* (`{codename}`)"
+    return f"`{codename}`"
 
 
 def _agent_cli_success_title(verb: str) -> str:
