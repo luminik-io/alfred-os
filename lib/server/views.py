@@ -2304,25 +2304,27 @@ def _planning_draft_path(state_root: Path, raw: Any) -> Path | None:
     """Resolve a planning-draft id to its on-disk path, or ``None``.
 
     The id is validated by ``_safe_planning_draft_id`` (allowlist regex, no
-    separators, no leading dot). The validated id is then reduced to its bare
-    filename with ``os.path.basename`` so no path component can survive, and as
-    a final barrier the resolved path is confirmed to live directly inside the
-    ``planning-drafts`` directory. Any one of these stops a traversal or symlink
-    escape; together they make an operator-supplied id incapable of reaching a
-    file outside the intended directory.
+    separators, no leading dot) and reduced to a bare filename with
+    ``os.path.basename``. The candidate is then resolved with
+    ``os.path.realpath`` and confirmed, via ``os.path.commonpath``, to sit
+    directly inside the resolved ``planning-drafts`` directory. The
+    realpath+commonpath containment check rejects any traversal or symlink that
+    escapes the directory, so an operator-supplied id can never reach a file
+    elsewhere. Existence is intentionally not checked here; callers distinguish
+    a missing file (404) from an unsafe id (None).
     """
     draft_id = _safe_planning_draft_id(raw)
     if draft_id is None:
         return None
-    # Strip any path component the validation might somehow have missed; for an
-    # already-allowlisted id this is a no-op, but it keeps the value provably
-    # confined to a single filename before it is joined onto the base.
     filename = os.path.basename(f"{draft_id}.json")
-    base = (Path(state_root) / "planning-drafts").resolve()
-    path = (base / filename).resolve()
-    if path.parent != base:
+    base = os.path.realpath(Path(state_root) / "planning-drafts")
+    candidate = os.path.realpath(os.path.join(base, filename))
+    if os.path.dirname(candidate) != base:
         return None
-    return path
+    # commonpath confirms containment even if dirname were spoofed by a symlink.
+    if os.path.commonpath([base, candidate]) != base:
+        return None
+    return Path(base) / filename
 
 
 def _planning_draft_issue_url(payload: dict[str, Any]) -> str:

@@ -1774,6 +1774,9 @@ def test_api_schedule_returns_cron_and_interval_runs(
     assert by_codename["lucius"]["cadence"] == "every 10m"
     assert by_codename["lucius"]["next_fire_at"] is None
     assert by_codename["lucius"]["role"] == "Single-repo engineer"
+    # An operator-customized agents.conf role wins over the built-in profile
+    # default ("Lucius · Senior Developer") for the desktop-facing role_title.
+    assert by_codename["lucius"]["role_title"] == "Single-repo engineer"
 
     # cron rows compute a concrete next-fire.
     assert by_codename["bane"]["kind"] == "cron-daily"

@@ -1216,7 +1216,7 @@ def render_fleet_status(data: dict[str, Any]) -> str:
             name = _agent_display_label(agent)
             state = _agent_state_label(agent)
             fired = _last_fired_label(agent)
-            lines.append(f"- {name} — {state}{fired}")
+            lines.append(f"- {name}: {state}{fired}")
         if len(agents) > 20:
             lines.append(f"- ...and {len(agents) - 20} more.")
 
@@ -1246,7 +1246,7 @@ def render_recent_runs(data: dict[str, Any]) -> str:
         ok = agent.get("today_successes")
         fail = agent.get("today_failures")
         counts = _run_counts_label(today, ok, fail)
-        lines.append(f"- {name} — last fired {last}{counts}")
+        lines.append(f"- {name}: last fired {last}{counts}")
     return "\n".join(lines)
 
 

@@ -155,7 +155,11 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     role = fields[6].strip() if len(fields) >= 7 else ""
     codename = _codename_from_label(label)
     profile_fields = agent_profile(codename).to_dict()
-    role_title = profile_fields["role_title"] or role
+    # An operator-customized role in agents.conf column 7 wins over the built-in
+    # profile default. agent_profile supplies a non-empty role_title for known
+    # codenames, so checking the parsed role first is the only way a configured
+    # override surfaces; fall back to the profile default when the row has none.
+    role_title = role or profile_fields["role_title"]
 
     if schedule.startswith("interval:"):
         seconds = _coerce_int(schedule[len("interval:") :])
