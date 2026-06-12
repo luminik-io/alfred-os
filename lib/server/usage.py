@@ -597,16 +597,39 @@ def _iter_claude_events(*, now: datetime) -> Iterable[dict[str, Any]]:
 
 
 def _build_codex() -> dict[str, Any] | None:
-    """Read Codex rollouts into a latest-day row, or None.
+    """Read Codex rollouts into a latest-day row plus a quota view, or None.
 
     Codex ``token_count`` events carry a per-turn delta in
-    ``info.last_token_usage``. We bucket only the latest UTC day because that is
-    the row the desktop panel renders. All-time totals would require scanning
-    old multi-gigabyte sessions on every refresh, so they intentionally stay
-    ``null`` in the preserved response shape.
+    ``info.last_token_usage`` AND a cumulative ``info.total_token_usage`` for the
+    whole session. We bucket only the latest UTC day because that is the row the
+    desktop panel renders. All-time totals would require scanning old
+    multi-gigabyte sessions on every refresh, so they intentionally stay ``null``
+    in the preserved response shape.
+
+    Replay over-count guard (ccusage issue 950): when Codex spawns subagents the
+    same ``last_token_usage`` delta can be replayed into a session's JSONL, so a
+    naive sum of deltas double-counts. Each session file carries a monotonic
+    cumulative ``total_token_usage``; we derive the day's contribution from that
+    cumulative total per session instead of summing deltas. The latest-day
+    contribution for a session is its final cumulative total on the latest day
+    minus its cumulative total as of the prior day's last event (0 if the session
+    began on the latest day).
+
+    Quota: each ``token_count`` event can also carry ``payload.rate_limits`` with
+    a ``primary`` (5h) and ``secondary`` (weekly) window (``used_percent`` plus
+    ``resets_at``) and a ``plan_type``. The published quota is the LAST
+    rate_limits payload seen across sessions (newest event timestamp wins), which
+    is the operator's current Codex headroom.
     """
     latest_date = None
-    latest_bucket = {"total": 0, "input": 0, "output": 0}
+    # Per-session latest-day token contribution, keyed by session file path so a
+    # replayed delta in one file cannot inflate another. Each entry stores the
+    # cumulative total/input/output at the prior-day boundary and on the latest
+    # day's final event.
+    sessions: dict[str, dict[str, dict[str, int]]] = {}
+    # Newest rate_limits payload seen, with its event timestamp for tie-breaks.
+    quota_ts: datetime | None = None
+    quota_raw: dict[str, Any] | None = None
 
     for root in _codex_session_dirs():
         if not os.path.isdir(root):
@@ -620,43 +643,145 @@ def _build_codex() -> dict[str, Any] | None:
                 payload = obj.get("payload")
                 if not isinstance(payload, dict) or payload.get("type") != "token_count":
                     continue
-                info = payload.get("info")
-                if not isinstance(info, dict):
-                    continue
-                last = info.get("last_token_usage")
-                if not isinstance(last, dict):
-                    continue
                 ts = _parse_iso(obj.get("timestamp"))
                 if ts is None:
                     continue
-                total = _int(last.get("total_tokens"))
-                inp = _int(last.get("input_tokens"))
-                out = _int(last.get("output_tokens"))
+
+                rate_limits = payload.get("rate_limits")
+                if isinstance(rate_limits, dict) and (quota_ts is None or ts >= quota_ts):
+                    quota_ts = ts
+                    quota_raw = rate_limits
+
+                info = payload.get("info")
+                if not isinstance(info, dict):
+                    continue
+                cumulative = info.get("total_token_usage")
+                last = info.get("last_token_usage")
+                # Prefer the cumulative session total to dodge the replay
+                # over-count. Fall back to the per-turn delta only when a session
+                # omits the cumulative block.
+                if isinstance(cumulative, dict):
+                    total = _int(cumulative.get("total_tokens"))
+                    inp = _int(cumulative.get("input_tokens"))
+                    out = _int(cumulative.get("output_tokens"))
+                    is_cumulative = True
+                elif isinstance(last, dict):
+                    total = _int(last.get("total_tokens"))
+                    inp = _int(last.get("input_tokens"))
+                    out = _int(last.get("output_tokens"))
+                    is_cumulative = False
+                else:
+                    continue
                 if total == 0 and inp == 0 and out == 0:
                     continue
+
                 event_date = ts.date()
                 if latest_date is None or event_date > latest_date:
                     latest_date = event_date
-                    latest_bucket = {"total": 0, "input": 0, "output": 0}
-                if event_date != latest_date:
-                    continue
-                latest_bucket["total"] += total
-                latest_bucket["input"] += inp
-                latest_bucket["output"] += out
+                    # A newer day rolls every session's latest-day accounting
+                    # forward: the old day's final cumulative total becomes the
+                    # prior-day boundary for the new latest day.
+                    for entry in sessions.values():
+                        day_final = entry.get("day_final")
+                        if isinstance(day_final, dict):
+                            entry["prior"] = dict(day_final)
+                        entry["day_final"] = None  # type: ignore[assignment]
+                        # Delta-only sessions have no cumulative boundary, so
+                        # their old-day deltas must be dropped here or a
+                        # session spanning midnight double-counts yesterday
+                        # inside today's bucket.
+                        entry["delta_total"] = {"total": 0, "input": 0, "output": 0}
+
+                entry = sessions.setdefault(
+                    path,
+                    {
+                        "prior": {"total": 0, "input": 0, "output": 0},
+                        "day_final": None,  # type: ignore[typeddict-item]
+                        "delta_total": {"total": 0, "input": 0, "output": 0},
+                    },
+                )
+                if is_cumulative:
+                    if event_date < latest_date:
+                        entry["prior"] = {"total": total, "input": inp, "output": out}
+                    elif event_date == latest_date:
+                        entry["day_final"] = {
+                            "total": total,
+                            "input": inp,
+                            "output": out,
+                        }
+                else:
+                    # Delta fallback: only count events on the latest day.
+                    if event_date == latest_date:
+                        d = entry["delta_total"]
+                        d["total"] += total
+                        d["input"] += inp
+                        d["output"] += out
 
     if latest_date is None:
         return None
 
+    bucket = {"total": 0, "input": 0, "output": 0}
+    for entry in sessions.values():
+        day_final = entry.get("day_final")
+        if isinstance(day_final, dict):
+            prior = entry.get("prior") or {"total": 0, "input": 0, "output": 0}
+            for key in ("total", "input", "output"):
+                bucket[key] += max(day_final[key] - _int(prior.get(key)), 0)
+        else:
+            d = entry.get("delta_total") or {}
+            for key in ("total", "input", "output"):
+                bucket[key] += _int(d.get(key))
+
     latest_day = {
         "date": latest_date.isoformat(),
-        "total_tokens": latest_bucket["total"],
+        "total_tokens": bucket["total"],
         # No meaningful dollar cost (Codex subscription).
         "cost_usd": None,
-        "input_tokens": latest_bucket["input"],
-        "output_tokens": latest_bucket["output"],
+        "input_tokens": bucket["input"],
+        "output_tokens": bucket["output"],
     }
     totals = {"total_tokens": None, "cost_usd": None}
-    return {"latest_day": latest_day, "totals": totals}
+    out: dict[str, Any] = {"latest_day": latest_day, "totals": totals}
+    quota = _codex_quota(quota_raw)
+    if quota is not None:
+        out["quota"] = quota
+    return out
+
+
+def _codex_quota(rate_limits: Any) -> dict[str, Any] | None:
+    """Shape a Codex ``rate_limits`` block into the panel's quota view.
+
+    Codex emits ``primary`` (the 5-hour window) and ``secondary`` (the weekly
+    window) buckets, each with ``used_percent`` and ``resets_at``, plus a
+    top-level ``plan_type``. Returns None when nothing usable is present so the
+    panel keeps its honest empty state.
+    """
+    if not isinstance(rate_limits, dict):
+        return None
+    primary = _codex_quota_window(rate_limits.get("primary"))
+    secondary = _codex_quota_window(rate_limits.get("secondary"))
+    plan_type = rate_limits.get("plan_type")
+    if primary is None and secondary is None and not isinstance(plan_type, str):
+        return None
+    return {
+        "primary": primary,
+        "secondary": secondary,
+        "plan_type": plan_type if isinstance(plan_type, str) else None,
+    }
+
+
+def _codex_quota_window(value: Any) -> dict[str, Any] | None:
+    """Shape one Codex rate-limit window (``used_percent`` + ``resets_at``)."""
+    if not isinstance(value, dict):
+        return None
+    used = _float(value.get("used_percent"))
+    resets_at = value.get("resets_at")
+    if used is None and not isinstance(resets_at, str):
+        return None
+    return {
+        "used_percent": used,
+        "resets_at": resets_at if isinstance(resets_at, str) else None,
+    }
 
 
 # --------------------------------------------------------------------------- #

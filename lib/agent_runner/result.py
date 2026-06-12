@@ -154,6 +154,14 @@ class ClaudeResult:
     # legacy fields keep working unchanged.
     stop_reason: str | None = None
     error_message: str | None = None
+    # Real per-result token usage from the ``claude -p`` result envelope's
+    # ``usage`` block. Under a subscription the dollar figure is list-price
+    # noise, but these token counts are the honest local signal. They default
+    # to 0 and tolerate the field being absent (Codex results, older runtimes).
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
 
 
 def _derive_success(subtype: str, stop_reason: str | None) -> bool:
@@ -171,6 +179,21 @@ def _derive_success(subtype: str, stop_reason: str | None) -> bool:
     # stop_reason is None or "max_tokens" or some new value we don't
     # model yet, fall back to the legacy heuristic for backward compat.
     return subtype == "success"
+
+
+def _usage_int(usage: dict, key: str) -> int:
+    """Coerce one ``usage`` token field to a non-negative int.
+
+    Absent / null / non-numeric values become 0 so a malformed envelope never
+    raises into the runtime. Negative values are clamped to 0.
+    """
+    value = usage.get(key)
+    if value is None or isinstance(value, bool):
+        return 0
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
@@ -250,6 +273,10 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
                 text or f"claude stop_reason={stop_reason}"
             ).strip() or f"claude stop_reason={stop_reason}"
 
+    usage = raw.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
+
     return ClaudeResult(
         success=_derive_success(subtype, stop_reason),
         subtype=subtype,
@@ -260,6 +287,10 @@ def _build_claude_result(raw: dict, *, fallback_text: str = "") -> ClaudeResult:
         raw=raw,
         stop_reason=stop_reason,
         error_message=error_message,
+        tokens_in=_usage_int(usage, "input_tokens"),
+        tokens_out=_usage_int(usage, "output_tokens"),
+        cache_creation_tokens=_usage_int(usage, "cache_creation_input_tokens"),
+        cache_read_tokens=_usage_int(usage, "cache_read_input_tokens"),
     )
 
 

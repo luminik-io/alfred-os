@@ -105,9 +105,13 @@ def test_preflight_suppresses_slack_when_launchd_env_is_placeholder(monkeypatch)
     assert posted == []
 
 
-def test_preflight_posts_slack_under_launchd(monkeypatch):
+def test_preflight_posts_slack_under_launchd(monkeypatch, tmp_path):
     import agent_runner as ar
 
+    # Redirect the preflight Slack throttle state off the real ~/.alfred:
+    # STATE_ROOT freezes at import, so real fleet activity on this host
+    # would otherwise throttle the post these tests assert on.
+    monkeypatch.setattr(ar, "STATE_ROOT", tmp_path)
     monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
     monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
     monkeypatch.delenv("ALFRED_HOME", raising=False)
@@ -122,9 +126,13 @@ def test_preflight_posts_slack_under_launchd(monkeypatch):
 
 
 @pytest.mark.parametrize("doctor_value", ["0", "false", "no", "off"])
-def test_preflight_posts_slack_when_doctor_env_is_false(monkeypatch, doctor_value):
+def test_preflight_posts_slack_when_doctor_env_is_false(monkeypatch, tmp_path, doctor_value):
     import agent_runner as ar
 
+    # Redirect the preflight Slack throttle state off the real ~/.alfred:
+    # STATE_ROOT freezes at import, so real fleet activity on this host
+    # would otherwise throttle the post these tests assert on.
+    monkeypatch.setattr(ar, "STATE_ROOT", tmp_path)
     monkeypatch.setenv("XPC_SERVICE_NAME", "alfred.lucius")
     monkeypatch.setenv("ALFRED_DOCTOR", doctor_value)
     monkeypatch.delenv("ALFRED_HOME", raising=False)
@@ -291,18 +299,21 @@ def test_agent_role_translates_dash_to_underscore_for_compound_codenames(monkeyp
     assert ar.agent_role("brand-mention-scanner") == "Brand mention monitor"
 
 
-def test_codename_with_role_formats_when_role_set(monkeypatch):
+def test_codename_with_role_formats_profile_label(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
-    assert ar.codename_with_role("lucius") == "lucius (Single-repo feature engineer)"
+    # A known profile renders its ``Display · Role`` label; an explicit
+    # ROLE_TITLE override wins for the role half.
+    monkeypatch.setenv("ALFRED_DRAKE_ROLE_TITLE", "Single-repo Feature Engineer")
+    assert ar.codename_with_role("drake") == "Drake · Single-repo Feature Engineer"
 
 
-def test_codename_with_role_falls_back_to_bare_codename_when_no_role(monkeypatch):
+def test_codename_with_role_falls_back_to_titlecase_label(monkeypatch):
     import agent_runner as ar
 
-    monkeypatch.delenv("ALFRED_LUCIUS_ROLE", raising=False)
-    assert ar.codename_with_role("lucius") == "lucius"
+    # Unknown codenames still get a readable title-cased label.
+    monkeypatch.delenv("ALFRED_TESTUNSET_ROLE", raising=False)
+    assert ar.codename_with_role("testunset") == "Testunset"
 
 
 def test_commit_trailer_is_git_interpret_trailers_compatible():

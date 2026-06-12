@@ -48,6 +48,11 @@ class SpendTotals:
     failures: int = 0
     turns: int = 0
     cost_usd: float = 0.0
+    # Real per-day token rollups. ``cost_usd`` stays for back-compat but is
+    # list-price noise under subscription; these are the honest signal.
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cache_tokens: int = 0
 
 
 @dataclass
@@ -220,6 +225,9 @@ def agent_metric(state_dir: Path, codename: str, days: int) -> AgentMetric:
         metric.spend.failures += _coerce_int(data.get("failures_today"))
         metric.spend.turns += _coerce_int(data.get("turns_today"))
         metric.spend.cost_usd += _coerce_float(data.get("cost_usd_today"))
+        metric.spend.tokens_in += _coerce_int(data.get("tokens_in_today"))
+        metric.spend.tokens_out += _coerce_int(data.get("tokens_out_today"))
+        metric.spend.cache_tokens += _coerce_int(data.get("cache_tokens_today"))
 
     transcripts = _transcript_files(state_dir, codename, days)
     for path in transcripts:

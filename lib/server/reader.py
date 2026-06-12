@@ -35,6 +35,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from agent_runner.metadata import agent_profile
+
 from .plan_approvals import (
     DECISION_APPROVE,
     decision_for_issue,
@@ -90,6 +92,12 @@ class AgentSummary:
     paused: bool = False
     paused_since: str | None = None
     loaded: bool = True
+    display_name: str = ""
+    role_title: str = ""
+    purpose: str = ""
+    theme: str = "wayne"
+    theme_label: str = "Gotham operations"
+    theme_accent: str = "#f4c95d"
 
 
 @dataclass(frozen=True)
@@ -194,6 +202,7 @@ class FilesystemReader:
             last = firings[0] if firings else None
             firings_today = self._firings_today(codename)
             paused, paused_since = self._pause_state(codename)
+            profile_fields = agent_profile(codename).to_dict()
             if last is None:
                 out.append(
                     AgentSummary(
@@ -206,6 +215,12 @@ class FilesystemReader:
                         paused=paused,
                         paused_since=paused_since,
                         loaded=not paused,
+                        display_name=profile_fields["display_name"],
+                        role_title=profile_fields["role_title"],
+                        purpose=profile_fields["purpose"],
+                        theme=profile_fields["theme"],
+                        theme_label=profile_fields["theme_label"],
+                        theme_accent=profile_fields["theme_accent"],
                     )
                 )
                 continue
@@ -220,6 +235,12 @@ class FilesystemReader:
                     paused=paused,
                     paused_since=paused_since,
                     loaded=not paused,
+                    display_name=profile_fields["display_name"],
+                    role_title=profile_fields["role_title"],
+                    purpose=profile_fields["purpose"],
+                    theme=profile_fields["theme"],
+                    theme_label=profile_fields["theme_label"],
+                    theme_accent=profile_fields["theme_accent"],
                 )
             )
         return out

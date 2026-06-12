@@ -412,6 +412,7 @@ def claude_invoke(
     timeout: int = 1200,
     resume_session: str | None = None,
     model: str | None = None,
+    permission_mode: str = "bypassPermissions",
     _auth_retry: bool = False,
 ) -> ClaudeResult:
     """Invoke ``claude -p`` with the given prompt; return a parsed result.
@@ -464,7 +465,7 @@ def claude_invoke(
         "--output-format",
         "json",
         "--permission-mode",
-        "bypassPermissions",
+        permission_mode,
     ]
     # One ``--settings`` source carrying notification suppression (default on,
     # opt out with ALFRED_AGENT_NOTIFICATIONS=1) AND the OPT-IN PreToolUse
@@ -533,6 +534,7 @@ def claude_invoke(
             timeout=timeout,
             resume_session=resume_session,
             model=model,
+            permission_mode=permission_mode,
             _auth_retry=True,
         )
     return result
@@ -549,6 +551,7 @@ def claude_invoke_streaming(
     timeout: int = 1200,
     resume_session: str | None = None,
     model: str | None = None,
+    permission_mode: str = "bypassPermissions",
     _auth_retry: bool = False,
 ) -> ClaudeResult:
     """Streaming counterpart of :func:`claude_invoke`. Same return shape.
@@ -589,7 +592,7 @@ def claude_invoke_streaming(
         "--output-format",
         "stream-json",
         "--permission-mode",
-        "bypassPermissions",
+        permission_mode,
     ]
     cmd.extend(_agent_settings_args())
     cmd.extend(_memory_mcp_args(memory_script))
@@ -691,6 +694,7 @@ def claude_invoke_streaming(
             timeout=timeout,
             resume_session=resume_session,
             model=model,
+            permission_mode=permission_mode,
             _auth_retry=True,
         )
     return result
@@ -944,6 +948,7 @@ def invoke_agent_engine(
     timeout: int,
     claude_max_turns: int | None = None,
     claude_model: str | None = None,
+    claude_permission_mode: str = "bypassPermissions",
     codex_timeout: int | None = None,
     codex_model: str | None = None,
     codex_sandbox: str | None = None,
@@ -988,6 +993,7 @@ def invoke_agent_engine(
             max_turns=claude_max_turns,
             timeout=timeout,
             model=claude_model,
+            permission_mode=claude_permission_mode,
         )
 
     def _invoke_codex() -> ClaudeResult:

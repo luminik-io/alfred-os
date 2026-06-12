@@ -432,7 +432,18 @@ class SpendState:
                 self.state = {}
         self.state.setdefault("firings_today", 0)
         self.state.setdefault("turns_today", 0)
+        # cost_usd_today is kept for back-compat. Under a subscription it is
+        # list-price noise, but existing dashboards/morning-brief still read it.
         self.state.setdefault("cost_usd_today", 0.0)
+        # Real per-day token counters from the engine result envelopes. These
+        # are the honest local signal under subscription (no-API-key) operation.
+        self.state.setdefault("tokens_in_today", 0)
+        self.state.setdefault("tokens_out_today", 0)
+        self.state.setdefault("cache_tokens_today", 0)
+        # Per-engine rollup, e.g. {"claude": {"firings": 3, "turns": 40,
+        # "tokens_in": 1200, ...}, "codex": {...}}. Lets the operator see which
+        # engine actually burned the work for the day.
+        self.state.setdefault("engine_breakdown", {})
         self.state.setdefault("successes_today", 0)
         self.state.setdefault("failures_today", 0)
         self.state.setdefault("blocked_until", None)
@@ -457,6 +468,70 @@ class SpendState:
             dry_run_log(
                 "spend",
                 f"would increment real ledger ({deltas}); dry-run ledger only",
+            )
+        self.save()
+
+    def record_result(self, result: Any, *, engine: str | None = None) -> None:
+        """Record one engine result's firing, turns, cost, and real tokens.
+
+        Backward-compatible superset of the legacy
+        ``increment(firings_today=1, turns_today=..., cost_usd_today=...)``
+        call: it bumps the same three counters AND the new per-day token
+        counters plus the ``engine_breakdown`` rollup. Call sites that still
+        call ``increment`` directly keep working unchanged; the token counters
+        simply stay at their existing value for those firings.
+
+        ``result`` is a ClaudeResult (duck-typed: any object exposing
+        ``num_turns`` / ``cost_usd`` / ``tokens_in`` / ``tokens_out`` /
+        ``cache_creation_tokens`` / ``cache_read_tokens``). Missing token
+        attributes default to 0 so a pre-token ClaudeResult is tolerated.
+        Codex results carry zero token attributes today; the server-side usage
+        reader covers Codex tokens from the session JSONL instead.
+        """
+        turns = int(getattr(result, "num_turns", 0) or 0)
+        cost = float(getattr(result, "cost_usd", 0.0) or 0.0)
+        tokens_in = int(getattr(result, "tokens_in", 0) or 0)
+        tokens_out = int(getattr(result, "tokens_out", 0) or 0)
+        cache_tokens = int(getattr(result, "cache_creation_tokens", 0) or 0) + int(
+            getattr(result, "cache_read_tokens", 0) or 0
+        )
+
+        self.state["firings_today"] = self.state.get("firings_today", 0) + 1
+        self.state["turns_today"] = self.state.get("turns_today", 0) + turns
+        self.state["cost_usd_today"] = self.state.get("cost_usd_today", 0.0) + cost
+        self.state["tokens_in_today"] = self.state.get("tokens_in_today", 0) + tokens_in
+        self.state["tokens_out_today"] = self.state.get("tokens_out_today", 0) + tokens_out
+        self.state["cache_tokens_today"] = self.state.get("cache_tokens_today", 0) + cache_tokens
+
+        if engine:
+            breakdown = self.state.get("engine_breakdown")
+            if not isinstance(breakdown, dict):
+                breakdown = {}
+                self.state["engine_breakdown"] = breakdown
+            bucket = breakdown.get(engine)
+            if not isinstance(bucket, dict):
+                bucket = {
+                    "firings": 0,
+                    "turns": 0,
+                    "cost_usd": 0.0,
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "cache_tokens": 0,
+                }
+                breakdown[engine] = bucket
+            bucket["firings"] = bucket.get("firings", 0) + 1
+            bucket["turns"] = bucket.get("turns", 0) + turns
+            bucket["cost_usd"] = bucket.get("cost_usd", 0.0) + cost
+            bucket["tokens_in"] = bucket.get("tokens_in", 0) + tokens_in
+            bucket["tokens_out"] = bucket.get("tokens_out", 0) + tokens_out
+            bucket["cache_tokens"] = bucket.get("cache_tokens", 0) + cache_tokens
+
+        if is_dry_run():
+            dry_run_log(
+                "spend",
+                f"would record {engine or 'engine'} result "
+                f"(turns+={turns}, tokens_in+={tokens_in}, tokens_out+={tokens_out}); "
+                "dry-run ledger only",
             )
         self.save()
 

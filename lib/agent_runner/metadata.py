@@ -27,6 +27,221 @@ from pathlib import Path
 from .paths import ALFRED_HOME, WORKSPACE_ROOT
 
 
+@dataclass(frozen=True)
+class AgentTheme:
+    """Operator-facing visual naming theme for a fleet profile."""
+
+    theme_id: str
+    label: str
+    accent: str
+
+
+@dataclass(frozen=True)
+class AgentProfile:
+    """Shared display contract for one agent.
+
+    ``codename`` remains the stable runtime identifier. The display name,
+    role title, and purpose make that codename legible in Slack, CLI, and
+    native UI surfaces.
+    """
+
+    codename: str
+    display_name: str
+    role_title: str
+    purpose: str
+    theme: AgentTheme
+
+    @property
+    def label(self) -> str:
+        if self.role_title:
+            return f"{self.display_name} · {self.role_title}"
+        return self.display_name
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "codename": self.codename,
+            "display_name": self.display_name,
+            "role_title": self.role_title,
+            "purpose": self.purpose,
+            "theme": self.theme.theme_id,
+            "theme_label": self.theme.label,
+            "theme_accent": self.theme.accent,
+        }
+
+
+THEMES: dict[str, AgentTheme] = {
+    "wayne": AgentTheme("wayne", "Gotham operations", "#3ad7c1"),
+    "orbit": AgentTheme("orbit", "Orbital crew", "#74a7ff"),
+    "atelier": AgentTheme("atelier", "Studio makers", "#ff8f70"),
+    "mythic": AgentTheme("mythic", "Mythic council", "#8be28b"),
+}
+
+
+DEFAULT_PROFILES: dict[str, tuple[str, str, str, str]] = {
+    "alfred": (
+        "Alfred",
+        "Concierge",
+        "Routes requests, explains state, and keeps the operator oriented.",
+        "wayne",
+    ),
+    "batman": (
+        "Batman",
+        "Architect",
+        "Plans and coordinates multi-repo work with operator approval.",
+        "wayne",
+    ),
+    "lucius": (
+        "Lucius",
+        "Senior Developer",
+        "Ships scoped implementation issues as pull requests.",
+        "orbit",
+    ),
+    "drake": (
+        "Drake",
+        "Spec Planner",
+        "Turns specs and vague requests into implementation-ready issues.",
+        "atelier",
+    ),
+    "damian": (
+        "Damian",
+        "Bundle Planner",
+        "Finds spec-level multi-repo bundles and files coordinated work.",
+        "wayne",
+    ),
+    "bane": (
+        "Bane",
+        "Test Engineer",
+        "Adds targeted regression coverage for recently changed code.",
+        "mythic",
+    ),
+    "rasalghul": (
+        "Ra's al Ghul",
+        "Principal Reviewer",
+        "Reviews pull requests for correctness, safety, and architecture.",
+        "wayne",
+    ),
+    "nightwing": (
+        "Nightwing",
+        "CI Engineer",
+        "Fixes failing checks and unresolved review feedback.",
+        "wayne",
+    ),
+    "robin": (
+        "Robin",
+        "Bug Triage",
+        "Reproduces, labels, and scopes bugs before implementation.",
+        "wayne",
+    ),
+    "huntress": (
+        "Huntress",
+        "QA Smoke Runner",
+        "Runs scheduled smoke checks and reports deploy regressions.",
+        "wayne",
+    ),
+    "gordon": (
+        "Gordon",
+        "Ops Briefing",
+        "Summarizes deployment and fleet health signals.",
+        "wayne",
+    ),
+    "automerge": (
+        "Automerge",
+        "Release Steward",
+        "Merges blessed agent-authored pull requests after gates clear.",
+        "orbit",
+    ),
+    "agent-cleanup": (
+        "Agent Cleanup",
+        "Workspace Janitor",
+        "Prunes stale claims, branches, and worktrees.",
+        "atelier",
+    ),
+    "cleanup": (
+        "Cleanup",
+        "Workspace Janitor",
+        "Prunes stale claims, branches, and worktrees.",
+        "atelier",
+    ),
+    "code-map-refresh": (
+        "Code Map",
+        "Context Indexer",
+        "Refreshes per-repo code maps for planning and implementation.",
+        "orbit",
+    ),
+    "fleet-doctor": (
+        "Fleet Doctor",
+        "Health Auditor",
+        "Checks local fleet health and configuration drift.",
+        "mythic",
+    ),
+    "memory-harvest": (
+        "Memory Harvest",
+        "Lessons Curator",
+        "Queues reviewable memory candidates from repeated patterns.",
+        "mythic",
+    ),
+    "morning-brief": (
+        "Morning Brief",
+        "Daily Briefing",
+        "Prepares the operator's daily status summary.",
+        "atelier",
+    ),
+}
+
+
+def _env_key(codename: str, suffix: str) -> str:
+    return "ALFRED_" + codename.upper().replace("-", "_") + "_" + suffix
+
+
+def _title_from_codename(codename: str) -> str:
+    return " ".join(part.capitalize() for part in codename.replace("_", "-").split("-"))
+
+
+def agent_theme(theme_id: str | None) -> AgentTheme:
+    key = (theme_id or "").strip().lower()
+    return THEMES.get(key) or THEMES["wayne"]
+
+
+def agent_profile(codename: str) -> AgentProfile:
+    """Return a shared display profile for ``codename``.
+
+    Defaults are public-safe and generic. Operators can override display
+    fields through environment variables rendered by their local setup:
+    ``ALFRED_<CODENAME>_DISPLAY_NAME``, ``ROLE_TITLE``, ``PURPOSE``,
+    and ``THEME``.
+    """
+    normalized = (codename or "").strip()
+    is_known_profile = normalized in DEFAULT_PROFILES
+    defaults = DEFAULT_PROFILES.get(
+        normalized,
+        (_title_from_codename(normalized), agent_role(normalized), "", "wayne"),
+    )
+    display_name, role_title, purpose, theme_id = defaults
+    display_name = os.environ.get(
+        _env_key(normalized, "DISPLAY_NAME"),
+        display_name,
+    ).strip()
+    explicit_role_title = os.environ.get(_env_key(normalized, "ROLE_TITLE"))
+    role_title = (explicit_role_title or role_title).strip()
+    legacy_role = agent_role(normalized)
+    if legacy_role and not explicit_role_title and not is_known_profile:
+        role_title = legacy_role
+    purpose = os.environ.get(_env_key(normalized, "PURPOSE"), purpose).strip()
+    theme_id = os.environ.get(_env_key(normalized, "THEME"), theme_id).strip()
+    return AgentProfile(
+        codename=normalized,
+        display_name=display_name or _title_from_codename(normalized),
+        role_title=role_title,
+        purpose=purpose,
+        theme=agent_theme(theme_id),
+    )
+
+
+def agent_label(codename: str) -> str:
+    """Return the user-facing ``Display · Role`` label for an agent."""
+    return agent_profile(codename).label
+
+
 def agent_role(codename: str) -> str:
     """Return the one-line operational role descriptor for an agent.
 
@@ -43,14 +258,12 @@ def agent_role(codename: str) -> str:
 
 
 def codename_with_role(codename: str) -> str:
-    """Format ``"<codename> (<role>)"`` when a role is set, else the bare codename.
+    """Format the user-facing agent label.
 
-    Slack post prefixes and CLI status output use this so a reader who
-    hasn't memorised the agent cast still gets operational context next
-    to every codename.
+    Kept under the historical function name so existing Slack and CLI callers
+    gain clearer role labels without changing imports.
     """
-    role = agent_role(codename)
-    return f"{codename} ({role})" if role else codename
+    return agent_label(codename)
 
 
 def commit_trailer(agent: str, firing_id: str, *, extra: dict[str, str] | None = None) -> str:

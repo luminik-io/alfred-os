@@ -156,8 +156,13 @@ from .memory_runtime import (
 # --------------------------------------------------------------------------
 from .metadata import (
     HANDOFFS,
+    AgentProfile,
+    AgentTheme,
     HandoffTable,
+    agent_label,
+    agent_profile,
     agent_role,
+    agent_theme,
     codename_with_role,
     commit_trailer,
     load_prompt,
@@ -372,8 +377,13 @@ __all__ = [
     "transcript_path",
     # metadata
     "HANDOFFS",
+    "AgentProfile",
+    "AgentTheme",
     "HandoffTable",
+    "agent_label",
+    "agent_profile",
     "agent_role",
+    "agent_theme",
     "codename_with_role",
     "commit_trailer",
     "load_prompt",

@@ -30,6 +30,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from agent_runner.metadata import agent_profile
+
 logger = logging.getLogger(__name__)
 
 # Weekday names indexed by launchd's convention (0 = Sunday). Used only to
@@ -62,6 +64,12 @@ class ScheduledRun:
     cadence: str  # human string, e.g. "every 15m", "daily 07:00"
     next_fire_at: str | None
     raw_schedule: str
+    display_name: str = ""
+    role_title: str = ""
+    purpose: str = ""
+    theme: str = "wayne"
+    theme_label: str = "Gotham operations"
+    theme_accent: str = "#f4c95d"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -146,6 +154,8 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     schedule = fields[2].strip()
     role = fields[6].strip() if len(fields) >= 7 else ""
     codename = _codename_from_label(label)
+    profile_fields = agent_profile(codename).to_dict()
+    role_title = profile_fields["role_title"] or role
 
     if schedule.startswith("interval:"):
         seconds = _coerce_int(schedule[len("interval:") :])
@@ -160,6 +170,12 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
             # show the cadence rather than a guessed (likely wrong) timestamp.
             next_fire_at=None,
             raw_schedule=schedule,
+            display_name=profile_fields["display_name"],
+            role_title=role_title,
+            purpose=profile_fields["purpose"],
+            theme=profile_fields["theme"],
+            theme_label=profile_fields["theme_label"],
+            theme_accent=profile_fields["theme_accent"],
         )
 
     if schedule.startswith("cron:"):
@@ -176,6 +192,12 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
                 cadence=f"daily {hour:02d}:{minute:02d}",
                 next_fire_at=next_fire.isoformat(timespec="seconds"),
                 raw_schedule=schedule,
+                display_name=profile_fields["display_name"],
+                role_title=role_title,
+                purpose=profile_fields["purpose"],
+                theme=profile_fields["theme"],
+                theme_label=profile_fields["theme_label"],
+                theme_accent=profile_fields["theme_accent"],
             )
         if len(parts) == 3:
             weekday = _coerce_int(parts[0])
@@ -193,6 +215,12 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
                 cadence=f"{day_name} {hour:02d}:{minute:02d}",
                 next_fire_at=next_fire.isoformat(timespec="seconds"),
                 raw_schedule=schedule,
+                display_name=profile_fields["display_name"],
+                role_title=role_title,
+                purpose=profile_fields["purpose"],
+                theme=profile_fields["theme"],
+                theme_label=profile_fields["theme_label"],
+                theme_accent=profile_fields["theme_accent"],
             )
 
     # Unknown shape: skip rather than guess.
