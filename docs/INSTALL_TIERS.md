@@ -54,7 +54,7 @@ npm install
 npm run tauri dev
 ```
 
-The Setup gear can start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, and dry-run an agent through a narrow allowlist. Fleet controls handle pause, resume, and run-once actions through the same native boundary. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
+Home opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Fleet defaults to a cinematic agent roster with a list toggle. The Setup gear can start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, and dry-run an agent through a narrow allowlist. Fleet controls handle pause, resume, and run-once actions through the same native boundary. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
 
 ## `slack`: the planning surface
 

@@ -50,8 +50,38 @@ At most one of those four is set on any issue at a time.
 |---|---|
 | `do-not-pickup` | Operator override; agents must skip this issue regardless of any other label |
 | `needs:human-scope` | Issue is too vague for autonomous work; not eligible for pickup |
+| `agent:plan-pending-approval` | Operator-approval gate; any issue carrying it is held from autonomous pickup until the operator approves and the label is cleared |
 
 These can coexist with any lifecycle label.
+
+`agent:plan-pending-approval` is the blocker itself, independent of how an issue
+came to carry it. The label is in `PICKUP_BLOCKING_LABEL_SET` in
+[`lib/labels.py`](../lib/labels.py), so `pickup_blocking_labels()` reports it. In
+`decide_assignment` ([`lib/issue_assignment.py`](../lib/issue_assignment.py)) the
+gate label is kept as a blocker (unlike `do-not-pickup`, `agent:large-feature`,
+and bundle labels, which assignment deliberately discards via
+`_assignment_blocking_labels`), so any issue holding it routes to `ROUTE_BLOCKED`
+with the reason `blocked from autonomous pickup by label(s):
+agent:plan-pending-approval`. The issue is never auto-assigned and the dev agents
+keep skipping it until the operator approves and the label is cleared.
+
+Where the label comes from depends on the path:
+
+- **Autonomously planned single-repo plans** are filed with both `agent:implement`
+  and this gate label by the planner (Drake, in
+  [`prompts/planner.md`](../prompts/planner.md)), so the operator approves before
+  any work begins.
+- **Approved Slack / Compose drafts are different.** The human has already
+  approved the draft inside Slack, so `SlackIssueBridge.convert()`
+  ([`lib/slack_issue_bridge.py`](../lib/slack_issue_bridge.py)) files the issue
+  directly with only `agent:implement` (the bridge's default
+  `config.label`) and no gate label. These issues are immediately eligible for
+  pickup, by design; do not expect an approved draft to be held.
+- **Multi-repo Batman bundles** use a different approval surface. The bundle
+  parent carries `agent:plan-pending-approval` while Batman waits on the
+  operator's Slack approval reaction; the parent's label is added and removed by
+  Batman's parent flow only ([`bin/batman.py`](../bin/batman.py)). The bundle's
+  sibling child issues carry no gate label.
 
 ## Claim comments
 
@@ -189,16 +219,17 @@ Every label string in this state machine lives in [`lib/labels.py`](../lib/label
 
 ```python
 from labels import (
-    IMPLEMENT,           # "agent:implement"
-    IN_FLIGHT,           # "agent:in-flight"
-    PR_OPEN,             # "agent:pr-open"
-    DONE,                # "agent:done"
-    DO_NOT_PICKUP,       # "do-not-pickup"
-    NEEDS_HUMAN_SCOPE,   # "needs:human-scope"
-    AUTHORED,            # "agent:authored"
-    LARGE_FEATURE,       # "agent:large-feature"
-    bundle_label,        # builds "agent:bundle:<slug>"
-    is_legal_transition, # documents the state-machine moves
+    IMPLEMENT,             # "agent:implement"
+    IN_FLIGHT,             # "agent:in-flight"
+    PR_OPEN,               # "agent:pr-open"
+    DONE,                  # "agent:done"
+    DO_NOT_PICKUP,         # "do-not-pickup"
+    NEEDS_HUMAN_SCOPE,     # "needs:human-scope"
+    PLAN_PENDING_APPROVAL, # "agent:plan-pending-approval"
+    AUTHORED,              # "agent:authored"
+    LARGE_FEATURE,         # "agent:large-feature"
+    bundle_label,          # builds "agent:bundle:<slug>"
+    is_legal_transition,   # documents the state-machine moves
 )
 ```
 

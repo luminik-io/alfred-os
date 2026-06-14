@@ -43,6 +43,8 @@ Alfred with or without the client.
 The first screen is a decision queue and local command center:
 
 - fleet health
+- Claude and Codex subscription headroom on the Inbox capacity rail (backed by
+  the live `GET /api/usage` endpoint)
 - pending approvals
 - blocked plans
 - stale workers
@@ -68,13 +70,26 @@ Compose owns plain-language intake and the planning inbox. Plan cards show:
 - approve/reject status
 - PR chain after execution starts
 
+The Ask intake leads with a stable "New request" eyebrow rather than a
+mode-named label, because the plain-language vs technical mode is already shown
+by the toggle beside it.
+
 The app can help draft or refine a spec, but the final collaboration loop stays
 in Slack. Any "send to Alfred" action should post to or link back to the
-approval thread.
+approval thread. A planned single-repo issue lands behind an operator-approval
+gate (`agent:plan-pending-approval`) and is held from autonomous pickup until
+the operator approves it, so nothing single-repo ships without a go-ahead.
 
 ### Fleet
 
-Fleet controls are the operational surface:
+Fleet controls are the operational surface. The agent roster is the default
+view: a cinematic deck of themed agent cards, each carrying the agent's accent,
+status, cadence, runs-today, latest signal, and a monogram. A Cinematic / List
+toggle (persisted to local storage) switches to a dense list when you want
+every agent at a glance. Motion respects `prefers-reduced-motion`, and the
+cards are real buttons announced as actionable controls.
+
+Per-agent controls:
 
 - enabled/paused state
 - schedule
@@ -94,6 +109,10 @@ the CLI supports one.
 Logs combine notifications and firings for forensics:
 
 - timeline by firing
+- step-level run events: real lifecycle milestones (plan created, worktree
+  created, pre-push checks passed, branch pushed, PR opened) emitted at the
+  moment the underlying action succeeds, so the timeline shows real progress
+  rather than only start and stop
 - engine used
 - worktree path
 - issue and PR links
@@ -193,14 +212,17 @@ The first client lives at `clients/desktop`:
 - Brand fonts and logo from the Alfred site system.
 - Local API calls through Rust commands, not browser `fetch`.
 - API calls are restricted to `http://localhost`, `http://127.0.0.1`, or
-  `http://[::1]` and to the `/api/status`, `/api/actions`, `/api/firings`,
-  `/api/plans`, compose-draft, and follow-up action contracts.
+  `http://[::1]` and to the `/api/status`, `/api/actions`, `/api/usage`,
+  `/api/firings`, `/api/plans`, compose-draft, and follow-up action contracts.
 - Local plan and firing details stay in native inspector panes; only explicit
   Slack and GitHub links open outside the app.
 - The app opens to Home and has Home, Compose, Plans, Memory, Fleet, and Logs
   tabs, with Setup behind the gear.
-- Home shows the decision queue, recent plans, recent runs, memory candidates,
-  and fleet-wide pause/resume actions.
+- Home shows the decision queue, the Claude and Codex capacity rail (backed by
+  the live `GET /api/usage` endpoint), recent plans, recent runs,
+  memory candidates, and fleet-wide pause/resume actions.
+- Fleet defaults to the cinematic agent roster with a Cinematic / List toggle
+  persisted to local storage.
 - Compose combines plain-language planning intake with saved plans and
   follow-ups.
 - Logs combines in-app notifications and firing timelines.
@@ -237,6 +259,8 @@ The client uses these local API contracts today:
 ```text
 GET  /api/status
 GET  /api/actions
+GET  /api/usage             # served; backs the capacity rail
+GET  /api/usage/providers   # ships in an upcoming release; not served yet
 GET  /api/firings
 GET  /api/firings/{firing_id}
 GET  /api/plans
@@ -249,6 +273,18 @@ POST /api/memory/candidates/{id}/reject
 GET  /api/planning-drafts
 GET  /api/slack/threads
 ```
+
+`GET /api/usage` is served by `alfred serve` today and backs the capacity rail.
+It reports the operator's real Claude and Codex subscription headroom for the
+rolling 5-hour and weekly windows, read from the engines' own local CLI state
+files on the host. Alfred drives Claude Code and Codex through their local
+subscription CLIs rather than API keys, so there is no billing API to query and
+no per-token dollar figure (that number is meaningless under a Max or Pro
+subscription). A window the local state cannot confirm reads as not synced
+rather than a fabricated number.
+
+`GET /api/usage/providers` and the `alfred usage` CLI ship in an upcoming
+release; the per-provider endpoint is not served by `alfred serve` yet.
 
 The native client also has a narrow local command allowlist:
 
