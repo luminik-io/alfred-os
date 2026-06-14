@@ -15,20 +15,22 @@
 
 Alfred plans across your repos or monorepo packages, implements with the
 Claude Code and Codex subscriptions you already pay for, and reports to
-Slack while you focus on something else. Drake triages your specs. Lucius
-opens scoped pull requests. Ras al Ghul reviews them. Batman coordinates
-across many repos. The agents run on the CLI subscriptions you already pay
-for, on a host you control. No provider API keys, no cloud agent service.
+Slack while you focus on something else. Drake turns your plans into tasks.
+Lucius writes the code and opens pull requests. Ra's al Ghul reviews them.
+Batman coordinates work that spans many repos. The agents run on the
+subscriptions you already pay for, on a computer you control. No provider API
+keys, no cloud agent service.
 
 Docs site: https://alfred.luminik.io
 
 ## Why use it
 
-Interactive coding agents complete a prompt while you sit at the keyboard.
-Alfred is the layer around them when the work is recurring and you want it to
-ship without you. It handles scoped intake from GitHub, per-firing worktree
-isolation, role-based engine routing, review handoff, hard spend caps, and the
-state machine that keeps multiple agents from stepping on each other.
+Interactive coding agents finish one prompt while you sit at the keyboard.
+Alfred is the layer around them for work that keeps coming back and that you
+want shipped without you. It picks up tasks from GitHub, gives each run its own
+isolated copy of the repo, sends the right work to the right agent, hands
+finished code to a reviewer, caps how much it can spend, and keeps several
+agents from stepping on each other.
 
 - Narrow roles, not a chatty multi-agent crowd: Drake plans, Lucius
   implements, Ra's al Ghul reviews, Bane adds tests, Nightwing picks up
@@ -166,7 +168,7 @@ prompts or labels, pass one repo or an explicit comma-separated repo list:
   --slack-webhook skip
 ```
 
-The starter fleet is Drake, Lucius, Ras al Ghul, and agent-cleanup: plan
+The starter fleet is Drake, Lucius, Ra's al Ghul, and agent-cleanup: plan
 issues, implement labelled issues, review PRs, and clean stale state. Slack is
 optional. The `--repos` owner must match `GH_ORG`; the runtime agents store the
 bare repo name in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
