@@ -213,8 +213,8 @@ through JSON endpoints:
 ```text
 GET /api/status
 GET /api/actions
-GET /api/usage
-GET /api/usage/providers
+GET /api/usage             # ships in an upcoming release; not served yet
+GET /api/usage/providers   # ships in an upcoming release; not served yet
 GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
 GET /api/plans?limit=50
@@ -231,10 +231,11 @@ POST /api/slack/trusted-users/{user_id}/remove
 
 Read endpoints intentionally mirror the HTML pages.
 
-`GET /api/usage` and `GET /api/usage/providers` back the desktop client's
-capacity rail. They report the operator's real Claude and Codex subscription
-headroom for the rolling 5-hour and weekly windows, read from the engines' own
-local CLI state files on the host. Alfred drives Claude Code and Codex through
+`GET /api/usage` and `GET /api/usage/providers` ship in an upcoming release; they
+are not served by `alfred serve` yet. Once available they back the desktop
+client's capacity rail. They report the operator's real Claude and Codex
+subscription headroom for the rolling 5-hour and weekly windows, read from the
+engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through
 their local subscription CLIs rather than API keys, so there is no billing API
 and no per-token dollar figure (it is meaningless under a Max or Pro
 subscription). A provider whose local state cannot be read degrades to

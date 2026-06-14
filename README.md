@@ -245,8 +245,8 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`lib/batman.py`](lib/batman.py) | Bundle primitives for the multi-repo coordinator: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
-| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred usage`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
-| [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription headroom for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). Also available as `alfred usage` and over `GET /api/usage`. |
+| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
+| `bin/alfred-usage.py` _(ships in an upcoming release)_ | Live Claude + Codex subscription headroom for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). Will also be available as `alfred usage` and over `GET /api/usage`. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
@@ -263,7 +263,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
 | [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
-| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with in-app Plans, Memory, Fleet, and Logs inspectors plus explicit Slack and GitHub external links. Home carries a live Claude + Codex usage rail (real subscription headroom, no billing API); Fleet defaults to a cinematic agent roster with a list toggle. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
+| [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local control center over `alfred serve` JSON APIs, with in-app Plans, Memory, Fleet, and Logs inspectors plus explicit Slack and GitHub external links. Home carries a Claude + Codex usage rail (real subscription headroom, no billing API; its `/api/usage` backing ships in an upcoming release); Fleet defaults to a cinematic agent roster with a list toggle. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
 | [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`memory`/`remember`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename-, plan-id-, and memory-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
 | [`lib/slack_thread_status.py`](lib/slack_thread_status.py), [`bin/alfred-slack-thread-sync.py`](bin/alfred-slack-thread-sync.py) | In-thread fleet progress: read-only issue/PR/CI sweep that posts only the new lifecycle states back to the originating Slack thread. |
 
@@ -281,9 +281,9 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Fleet brain](docs/FLEET_BRAIN.md): local memory, Slack-driven reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
-- [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, the live usage capacity rail, cinematic agent roster, and local API shape.
-- [Desktop client](docs/DESKTOP_CLIENT.md): the desktop control surface tab by tab, the live Claude + Codex usage rail, the `alfred serve` seam, and building native installers.
-- [Operator analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, `alfred usage`, and `alfred slack-listener`.
+- [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, the usage capacity rail (its `/api/usage` backing ships in an upcoming release), cinematic agent roster, and local API shape.
+- [Desktop client](docs/DESKTOP_CLIENT.md): the desktop control surface tab by tab, the Claude + Codex usage rail (backing endpoint ships in an upcoming release), the `alfred serve` seam, and building native installers.
+- [Operator analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, and `alfred slack-listener` (plus `alfred usage`, which ships in an upcoming release).
 - [Goals](docs/GOALS.md): durable goal contract across Slack, CLI, client, planning readiness, evaluator, and memory.
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
@@ -334,10 +334,11 @@ reviewable memory candidates from ready Slack drafts and repeated-failure
 harvests, explicit Redis AMS memory sync, operator-managed trusted Slack plan
 collaborators, revision previews in approval threads, Planning intake in the
 local cockpit, and a native client with Home, Compose, Plans, Memory, Fleet,
-Logs, and Setup gear surfaces for local trust and repair. The native client now
-surfaces live Claude and Codex subscription headroom on the Home capacity rail
-(read from local CLI state, no billing API; `alfred usage` and `GET /api/usage`
-expose the same data) and a cinematic agent roster with a list toggle. Firings
+Logs, and Setup gear surfaces for local trust and repair. The native client has
+a Home capacity rail for Claude and Codex subscription headroom (read from local
+CLI state, no billing API; the `alfred usage` CLI and `GET /api/usage` endpoint
+that back it ship in an upcoming release) and a cinematic agent roster with a
+list toggle. Firings
 emit step-level run events so the timeline shows real progress, and a planned
 single-repo issue is held behind an operator-approval gate
 (`agent:plan-pending-approval`) until the operator approves it.

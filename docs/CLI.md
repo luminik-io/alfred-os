@@ -95,6 +95,10 @@ fleet success rate: 78.3%  (over 23 completed firings; 0 no-ops not counted)
 
 ## `alfred usage`
 
+> **Note:** `alfred usage` ships in an upcoming release; it is not yet available
+> in this version. The section below is forward-looking reference for the
+> command and its `GET /api/usage` companion endpoint.
+
 Report the operator's real Claude and Codex subscription headroom for the
 rolling 5-hour and weekly limit windows. Alfred drives Claude Code and Codex
 through their local subscription CLIs rather than API keys, so there is no

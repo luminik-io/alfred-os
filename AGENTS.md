@@ -15,9 +15,10 @@ pattern). `examples/` holds the reference agents the tutorial builds.
 
 Operators inspect and steer the fleet through the operator CLI (`bin/alfred`),
 the optional `alfred serve` JSON API, the optional Tauri desktop client under
-`clients/desktop`, and Slack. The desktop client surfaces live Claude + Codex
-subscription headroom (`alfred usage` / `GET /api/usage`, read from local CLI
-state, no billing API) and a cinematic agent roster. A planned single-repo
+`clients/desktop`, and Slack. The desktop client has a Claude + Codex
+subscription-headroom rail (the `alfred usage` CLI / `GET /api/usage` endpoint
+that back it, read from local CLI state with no billing API, ship in an upcoming
+release) and a cinematic agent roster. A planned single-repo
 issue is held behind an operator-approval gate (`agent:plan-pending-approval`)
 until the operator approves it; firings emit step-level run events so the run
 timeline shows real progress.

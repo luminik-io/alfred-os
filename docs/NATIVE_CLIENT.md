@@ -43,7 +43,8 @@ Alfred with or without the client.
 The first screen is a decision queue and local command center:
 
 - fleet health
-- live Claude and Codex subscription headroom on the Inbox capacity rail
+- Claude and Codex subscription headroom on the Inbox capacity rail (its
+  `/api/usage` backing ships in an upcoming release)
 - pending approvals
 - blocked plans
 - stale workers
@@ -217,8 +218,9 @@ The first client lives at `clients/desktop`:
   Slack and GitHub links open outside the app.
 - The app opens to Home and has Home, Compose, Plans, Memory, Fleet, and Logs
   tabs, with Setup behind the gear.
-- Home shows the decision queue, the live Claude and Codex capacity rail, recent
-  plans, recent runs, memory candidates, and fleet-wide pause/resume actions.
+- Home shows the decision queue, the Claude and Codex capacity rail (its
+  `/api/usage` backing ships in an upcoming release), recent plans, recent runs,
+  memory candidates, and fleet-wide pause/resume actions.
 - Fleet defaults to the cinematic agent roster with a Cinematic / List toggle
   persisted to local storage.
 - Compose combines plain-language planning intake with saved plans and
@@ -257,8 +259,8 @@ The client uses these local API contracts today:
 ```text
 GET  /api/status
 GET  /api/actions
-GET  /api/usage
-GET  /api/usage/providers
+GET  /api/usage             # ships in an upcoming release; not served yet
+GET  /api/usage/providers   # ships in an upcoming release; not served yet
 GET  /api/firings
 GET  /api/firings/{firing_id}
 GET  /api/plans
@@ -272,8 +274,9 @@ GET  /api/planning-drafts
 GET  /api/slack/threads
 ```
 
-`GET /api/usage` and `GET /api/usage/providers` back the capacity rail. They
-report the operator's real Claude and Codex subscription headroom for the
+`GET /api/usage` and `GET /api/usage/providers` ship in an upcoming release; they
+are not served by `alfred serve` yet. Once available they back the capacity rail.
+They report the operator's real Claude and Codex subscription headroom for the
 rolling 5-hour and weekly windows, read from the engines' own local CLI state
 files on the host. Alfred drives Claude Code and Codex through their local
 subscription CLIs rather than API keys, so there is no billing API to query and

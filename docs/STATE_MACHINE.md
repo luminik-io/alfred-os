@@ -54,15 +54,25 @@ At most one of those four is set on any issue at a time.
 
 These can coexist with any lifecycle label.
 
-A planned single-repo issue is filed with both `agent:implement` and
-`agent:plan-pending-approval`. The gate label is a pickup blocker, so the issue
-sits unassigned while it is present: `decide_assignment` returns an "awaiting
-your go-ahead" reason and the dev agents keep skipping it. Approving the plan
-(queuing it from the CLI, the desktop client, or the Slack approval flow)
-removes the gate label, exactly the way an approved Batman bundle parent is
-released, and the issue becomes eligible for pickup. The gate is the
-single-repo counterpart to Batman's multi-repo bundle approval, so nothing
-planned ships without an operator go-ahead.
+A planned single-repo issue is filed carrying `agent:plan-pending-approval`. That
+label is the blocker: `agent:plan-pending-approval` is in
+`PICKUP_BLOCKING_LABEL_SET` in [`lib/labels.py`](../lib/labels.py), so
+`pickup_blocking_labels()` reports it. In `decide_assignment`
+([`lib/issue_assignment.py`](../lib/issue_assignment.py)) the gate label is kept
+as a blocker (unlike `do-not-pickup`, `agent:large-feature`, and bundle labels,
+which assignment deliberately discards), so any issue holding it routes to
+`ROUTE_BLOCKED` with the reason `blocked from autonomous pickup by label(s):
+agent:plan-pending-approval`. The issue is never auto-assigned and the dev agents
+keep skipping it while the label is present. The operator clears the gate by
+approving the plan (the planner files it with the label; approval removes the
+label), and only then does the issue become eligible for pickup.
+
+This is the single-repo counterpart to Batman's multi-repo approval, but the two
+use different approval surfaces. A multi-repo Batman bundle parent also carries
+`agent:plan-pending-approval` and waits on the operator's Slack approval reaction;
+the parent's label is removed once that reaction lands. The bundle's sibling
+child issues do not carry the gate label. Either way, nothing planned ships
+without an operator go-ahead.
 
 ## Claim comments
 

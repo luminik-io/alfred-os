@@ -12,7 +12,7 @@ The app is a Tauri shell around a React UI. It opens on Home and keeps primary n
 
 | Tab | What it shows | What it can do |
 |---|---|---|
-| **Home** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the Inbox capacity rail with live Claude and Codex subscription headroom. | Draft work, refresh state, pause or resume all scheduled firings through the native allowlist, and jump to the right surface. |
+| **Home** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the Inbox capacity rail for Claude and Codex subscription headroom (its `/api/usage` backing ships in an upcoming release). | Draft work, refresh state, pause or resume all scheduled firings through the native allowlist, and jump to the right surface. |
 | **Compose** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Plans** | Saved Batman plans, Slack drafts, local compose drafts, and captured follow-ups. | Convert a follow-up into a planning draft, mark it handled, or inspect the saved detail in-app. |
 | **Memory** | Reviewable memory candidates, promotion suggestions, memory errors, Redis status, Redis sync preview, and failure-pattern harvest. | Promote or reject candidates, run the memory doctor, check Redis AMS, preview sync, and queue repeated-failure lessons. |
@@ -32,7 +32,11 @@ The client reads the fleet's own state over the `alfred serve` JSON seam and run
 
 When run in a plain browser (development preview), the app stays read-only: native actions are unavailable and only the JSON read path works.
 
-## Live usage on the capacity rail
+## Usage on the capacity rail
+
+> **Note:** The `GET /api/usage` endpoint and the `alfred usage` CLI described
+> here ship in an upcoming release; they are not served by `alfred serve` in this
+> version yet. The behavior below is forward-looking reference.
 
 The Home Inbox capacity rail shows real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows. The figures come from `GET /api/usage`, which reads the engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through their local subscription CLIs rather than API keys, so there is no billing API to query and no per-token dollar figure (it is meaningless under a Max or Pro subscription). A window the local state cannot confirm reads as not synced rather than a fabricated number. The same numbers are available from the command line with `alfred usage`. See [`SERVE.md`](SERVE.md) for the endpoint and [`CLI.md`](CLI.md) for the CLI.
 
