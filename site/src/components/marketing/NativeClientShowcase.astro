@@ -1,0 +1,536 @@
+---
+/**
+ * NativeClientShowcase.astro
+ *
+ * A crafted (hand-built HTML + SVG) mockup of the native Alfred desktop
+ * client, rendered in the Operations Room aesthetic. NOT a screenshot.
+ *
+ * Three illustrations live inside one chrome frame:
+ *   1. Agent roster   - themed cards for the OSS fleet codenames, each
+ *                        tinted with its own accent, carrying role, status
+ *                        dot, cadence, and a monogram letter.
+ *   2. Capacity panel - Claude 5h + Codex 5h/weekly headroom tiles. All
+ *                        values are GENERIC, plausible, and clearly
+ *                        illustrative sample data.
+ *   3. Ask intake     - a compact conversational composer ("What should
+ *                        Alfred do?") with a sample request and a saved
+ *                        plan chip.
+ *
+ * Public-safety (binding, see PRIVATE_TO_PUBLIC_BOUNDARY.md):
+ *   No real screenshots, no private repo names, no real usage numbers,
+ *   no operator home paths, no internal email domains. Repos shown are
+ *   neutral placeholders (your-backend, acme-org/api). Runtime home is
+ *   ~/.alfred. Every value is illustrative sample data.
+ *
+ * Theme-aware: colors come from --alfred-* tokens and per-agent accent
+ * variables set inline. Motion is CSS-only and reduced-motion safe; the
+ * frame uses the existing .m-reveal scroll-in hook.
+ */
+
+interface Agent {
+  codename: string;
+  role: string;
+  state: "live" | "warn" | "idle";
+  cadence: string;
+  accent: string; // per-card tint, used for the monogram + edge glow
+}
+
+// OSS fleet codenames (all public, documented in /concepts/codename-pattern/).
+const roster: Agent[] = [
+  { codename: "Batman",   role: "Architect",        state: "warn", cadence: "on bundle", accent: "#5789FF" },
+  { codename: "Drake",    role: "Spec planner",     state: "live", cadence: "every 20m", accent: "#00E5C7" },
+  { codename: "Lucius",   role: "Senior developer", state: "live", cadence: "every 20m", accent: "#7CE2B0" },
+  { codename: "Bane",     role: "Test engineer",    state: "live", cadence: "every 30m", accent: "#F4B43E" },
+  { codename: "Ra's al Ghul", role: "PR reviewer",  state: "live", cadence: "on PR open", accent: "#C792EA" },
+  { codename: "Nightwing", role: "Review fixer",    state: "idle", cadence: "on review", accent: "#8FA6C9" },
+  { codename: "Robin",    role: "Bug triage",       state: "live", cadence: "on report", accent: "#FF9E64" },
+  { codename: "Gordon",   role: "Drift watch",      state: "idle", cadence: "daily 07:00", accent: "#56C7E6" },
+];
+
+const monogram = (name: string) => name.replace(/[^A-Za-z]/g, "").charAt(0).toUpperCase();
+const stateLabel: Record<Agent["state"], string> = {
+  live: "live",
+  warn: "holding",
+  idle: "idle",
+};
+---
+
+<figure class="ncs m-figure m-proof m-reveal" aria-label="Illustrated mockup of the native Alfred desktop client">
+  <!-- window chrome -->
+  <div class="ncs__chrome" aria-hidden="true">
+    <span class="ncs__lights">
+      <i class="ncs__light ncs__light--r"></i>
+      <i class="ncs__light ncs__light--y"></i>
+      <i class="ncs__light ncs__light--g"></i>
+    </span>
+    <span class="m-mono ncs__title">Alfred &mdash; Command Center</span>
+    <span class="m-mono ncs__path">~/.alfred/serve :7010</span>
+  </div>
+
+  <!-- app shell: sidebar + main -->
+  <div class="ncs__app">
+    <!-- left rail -->
+    <nav class="ncs__rail" aria-hidden="true">
+      <span class="ncs__rail-item ncs__rail-item--active"><span class="ncs__rail-ico">◧</span>Home</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">✎</span>Compose</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">▤</span>Plans</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">◇</span>Memory</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">⣿</span>Fleet</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">≣</span>Logs</span>
+      <span class="ncs__rail-foot">
+        <span class="ncs__rail-item ncs__rail-item--ok"><span class="m-dot m-dot--live">●</span>serve healthy</span>
+      </span>
+    </nav>
+
+    <!-- main column -->
+    <div class="ncs__main">
+      <!-- ===== capacity panel ===== -->
+      <section class="ncs__block" aria-label="Capacity. Sample values, illustrative only.">
+        <div class="ncs__block-head">
+          <span class="m-mono ncs__kicker">CAPACITY</span>
+          <span class="m-mono m-mute">subscription auth &middot; $0.00 metered</span>
+        </div>
+        <div class="ncs__caps">
+          <div class="cap cap--claude">
+            <div class="cap__row">
+              <span class="cap__name m-mono">Claude 5h window</span>
+              <span class="cap__val m-mono">resets in 2h 10m</span>
+            </div>
+            <div class="cap__bar"><span class="cap__fill" style="width:58%"></span></div>
+            <div class="cap__meta m-mono m-mute">58% of window used</div>
+          </div>
+          <div class="cap cap--codex">
+            <div class="cap__row">
+              <span class="cap__name m-mono">Codex 5h window</span>
+              <span class="cap__val m-mono">resets in 41m</span>
+            </div>
+            <div class="cap__bar"><span class="cap__fill cap__fill--codex" style="width:33%"></span></div>
+            <div class="cap__meta m-mono m-mute">33% of window used</div>
+          </div>
+          <div class="cap cap--weekly">
+            <div class="cap__row">
+              <span class="cap__name m-mono">Codex weekly</span>
+              <span class="cap__val m-mono cap__val--ok">69% left</span>
+            </div>
+            <div class="cap__bar"><span class="cap__fill cap__fill--weekly" style="width:31%"></span></div>
+            <div class="cap__meta m-mono m-mute">resets Mon 00:00</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== agent roster ===== -->
+      <section class="ncs__block" aria-label="Agent roster">
+        <div class="ncs__block-head">
+          <span class="m-mono ncs__kicker">FLEET ROSTER</span>
+          <span class="m-mono m-mute">8 codenames &middot; 1 holding for approval</span>
+        </div>
+        <ul class="ncs__roster">
+          {roster.map((a) => (
+            <li class={`agent agent--${a.state}`} style={`--agent-accent:${a.accent};`}>
+              <span class="agent__mono" aria-hidden="true">{monogram(a.codename)}</span>
+              <span class="agent__body">
+                <span class="agent__top">
+                  <span class="agent__name">{a.codename}</span>
+                  <span class={`agent__dot m-dot m-dot--${a.state === "warn" ? "warn" : a.state === "idle" ? "idle" : "live"}`}>●</span>
+                </span>
+                <span class="agent__role m-mute">{a.role}</span>
+                <span class="agent__foot m-mono">
+                  <span class="agent__cadence">{a.cadence}</span>
+                  <span class="agent__state">{stateLabel[a.state]}</span>
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <!-- ===== ask intake ===== -->
+      <section class="ncs__block ncs__block--ask" aria-label="Ask intake composer">
+        <div class="ncs__block-head">
+          <span class="m-mono ncs__kicker">COMPOSE</span>
+          <span class="m-mono m-mute">plan thread &middot; readiness checked</span>
+        </div>
+        <div class="ask">
+          <div class="ask__prompt m-mono">What should Alfred do?</div>
+          <div class="ask__field">
+            <span class="ask__text">
+              Add a per-org API rate limiter to <span class="ask__repo">acme-org/api</span>, then wire the
+              dashboard toggle in <span class="ask__repo">org/web</span>. Ship behind a flag.
+            </span>
+            <span class="ask__cursor" aria-hidden="true"></span>
+          </div>
+          <div class="ask__foot">
+            <div class="ask__chips">
+              <span class="ask__chip ask__chip--saved">
+                <span class="m-dot m-dot--live">●</span> saved plan &middot; rate-limit-rollout
+              </span>
+              <span class="ask__chip m-mono">2 repos</span>
+              <span class="ask__chip m-mono">flagged</span>
+            </div>
+            <span class="ask__send m-mono" aria-hidden="true">draft plan →</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <figcaption class="ncs__cap">
+    An illustration of the optional desktop client, not a screenshot. Capacity values, repo names
+    (<code>acme-org/api</code>, <code>org/web</code>), and roster state are sample data. The client reads the
+    same local surfaces you can inspect by hand: <code>~/.alfred</code>, <code>alfred serve</code>, and the
+    operator CLI. Slack stays the collaboration trail.
+  </figcaption>
+</figure>
+
+<style>
+  .ncs {
+    padding: 0;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* window chrome */
+  .ncs__chrome {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 11px 16px;
+    background: var(--alfred-surface-2);
+    border-bottom: 1px solid var(--alfred-border);
+  }
+  .ncs__lights { display: inline-flex; gap: 7px; }
+  .ncs__light { width: 11px; height: 11px; border-radius: 999px; display: block; }
+  .ncs__light--r { background: var(--alfred-error); opacity: 0.85; }
+  .ncs__light--y { background: var(--alfred-warn); opacity: 0.85; }
+  .ncs__light--g { background: var(--alfred-accent); opacity: 0.85; }
+  .ncs__title { color: var(--alfred-text); font-size: 12.5px; }
+  .ncs__path { margin-left: auto; color: var(--alfred-mute); font-size: 12px; letter-spacing: 0.02em; }
+
+  /* app shell */
+  .ncs__app {
+    display: grid;
+    grid-template-columns: 172px minmax(0, 1fr);
+  }
+
+  /* left rail */
+  .ncs__rail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 16px 12px;
+    border-right: 1px solid var(--alfred-border);
+    background: linear-gradient(180deg, var(--alfred-surface) 0%, var(--alfred-black) 100%);
+    min-height: 100%;
+  }
+  .ncs__rail-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--alfred-mute);
+  }
+  .ncs__rail-ico {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    width: 14px;
+    text-align: center;
+    color: var(--alfred-mute);
+  }
+  .ncs__rail-item--active {
+    background: var(--alfred-accent-soft);
+    color: var(--alfred-text-bright);
+    box-shadow: inset 2px 0 0 var(--alfred-accent);
+  }
+  .ncs__rail-item--active .ncs__rail-ico { color: var(--alfred-accent); }
+  .ncs__rail-foot { margin-top: auto; padding-top: 14px; }
+  .ncs__rail-item--ok {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--alfred-text);
+    gap: 8px;
+  }
+  .ncs__rail-item--ok .m-dot { font-size: 9px; }
+
+  /* main column */
+  .ncs__main {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 22px 24px 26px;
+    background:
+      radial-gradient(ellipse 520px 260px at 90% -8%, rgba(0, 229, 199, 0.05), transparent 60%),
+      var(--alfred-black);
+  }
+  [data-theme="light"] .ncs__main {
+    background:
+      radial-gradient(ellipse 520px 260px at 90% -8%, rgba(15, 138, 120, 0.05), transparent 60%),
+      var(--alfred-black);
+  }
+
+  .ncs__block-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 13px;
+  }
+  .ncs__kicker {
+    color: var(--alfred-accent);
+    letter-spacing: 0.16em;
+    font-size: 11px;
+  }
+  .ncs__block-head .m-mute { font-size: 12px; }
+
+  /* ===== capacity ===== */
+  .ncs__caps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .cap {
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 7px;
+    padding: 13px 14px;
+    background: var(--alfred-surface);
+  }
+  .cap__row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .cap__name { color: var(--alfred-text); font-size: 12.5px; }
+  .cap__val { color: var(--alfred-text-bright); font-size: 12px; white-space: nowrap; }
+  .cap__val--ok { color: var(--alfred-accent); }
+  .cap__bar {
+    margin: 11px 0 7px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--alfred-border);
+    overflow: hidden;
+  }
+  .cap__fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--alfred-accent), #5BF5DF);
+    transform-origin: left center;
+    transform: scaleX(0);
+    animation: cap-fill 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: 0.25s;
+  }
+  .cap__fill--codex { background: linear-gradient(90deg, var(--alfred-blue), #8FB0FF); animation-delay: 0.38s; }
+  .cap__fill--weekly { background: linear-gradient(90deg, var(--alfred-warn), #FFD27A); animation-delay: 0.5s; }
+  .cap__meta { font-size: 11px; }
+  @keyframes cap-fill {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cap__fill { animation: none; transform: scaleX(1); }
+  }
+
+  /* ===== roster ===== */
+  .ncs__roster {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 11px;
+  }
+  .agent {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 12px 13px;
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 7px;
+    background: var(--alfred-surface);
+    overflow: hidden;
+    transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+  }
+  /* faint per-agent edge glow on the leading edge */
+  .agent::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--agent-accent);
+    opacity: 0.75;
+  }
+  .agent:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--agent-accent) 55%, var(--alfred-border-strong));
+    box-shadow: 0 12px 30px -20px var(--agent-accent);
+  }
+  .agent--idle { opacity: 0.82; }
+  .agent__mono {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--agent-accent);
+    background: color-mix(in oklab, var(--agent-accent) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--agent-accent) 32%, transparent);
+  }
+  .agent__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .agent__top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .agent__name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--alfred-text-bright);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .agent__dot { font-size: 8px; flex: none; }
+  .agent__role { font-size: 12px; line-height: 1.3; }
+  .agent__foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 5px;
+    font-size: 10.5px;
+  }
+  .agent__cadence { color: var(--alfred-mute); }
+  .agent__state {
+    color: var(--agent-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .agent--idle .agent__state { color: var(--alfred-mute); }
+
+  /* ===== ask intake ===== */
+  .ask {
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 8px;
+    background: var(--alfred-surface);
+    padding: 15px 16px 14px;
+    box-shadow: inset 0 0 0 1px rgba(0, 229, 199, 0.04);
+  }
+  .ask__prompt {
+    color: var(--alfred-accent);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    margin-bottom: 10px;
+  }
+  .ask__field {
+    display: flex;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 12px 14px;
+    border: 1px solid var(--alfred-border);
+    border-radius: 6px;
+    background: var(--alfred-black);
+    min-height: 58px;
+  }
+  .ask__text { color: var(--alfred-text); font-size: 14px; line-height: 1.55; }
+  .ask__repo {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--alfred-text-bright);
+    background: var(--alfred-surface-2);
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 4px;
+    padding: 0 5px;
+  }
+  .ask__cursor {
+    display: inline-block;
+    width: 7px;
+    height: 17px;
+    margin: 2px 0 0 3px;
+    background: var(--alfred-accent);
+    vertical-align: -3px;
+    flex: none;
+    animation: ask-blink 1.3s steps(2, end) infinite;
+  }
+  @keyframes ask-blink {
+    0%, 49% { opacity: 1; }
+    50%, 99% { opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ask__cursor { animation: none; }
+  }
+  .ask__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .ask__chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ask__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--alfred-border-strong);
+    background: var(--alfred-surface-2);
+    color: var(--alfred-text);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .ask__chip .m-dot { font-size: 8px; }
+  .ask__chip--saved { color: var(--alfred-text-bright); }
+  .ask__chip.m-mono { font-weight: 500; font-size: 11px; color: var(--alfred-mute); }
+  .ask__send {
+    color: var(--alfred-accent);
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  /* caption */
+  .ncs__cap {
+    padding: 14px 18px 18px;
+    border-top: 1px solid var(--alfred-border);
+    color: var(--alfred-mute);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .ncs__cap code {
+    color: var(--alfred-text-bright);
+    background: var(--alfred-black);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* ===== responsive ===== */
+  @media (max-width: 900px) {
+    .ncs__caps { grid-template-columns: 1fr; }
+    .ncs__roster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 720px) {
+    .ncs__app { grid-template-columns: 1fr; }
+    .ncs__rail {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 6px;
+      border-right: none;
+      border-bottom: 1px solid var(--alfred-border);
+      padding: 12px;
+      min-height: 0;
+    }
+    .ncs__rail-item { padding: 6px 9px; font-size: 13px; }
+    .ncs__rail-foot { margin: 0; padding: 0; }
+    .ncs__main { padding: 18px 16px 22px; gap: 18px; }
+  }
+  @media (max-width: 460px) {
+    .ncs__roster { grid-template-columns: 1fr; }
+    .ncs__rail-item:not(.ncs__rail-item--active):not(.ncs__rail-item--ok) { display: none; }
+    .ncs__path { display: none; }
+  }
+</style>

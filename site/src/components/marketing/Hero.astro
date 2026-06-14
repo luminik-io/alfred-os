@@ -22,6 +22,16 @@ const hasPanel = Astro.slots.has("panel");
 
 <section class={`hero ${hasPanel ? "hero--split" : "hero--solo"}`}>
   <div class="m-ambient" aria-hidden="true"></div>
+  {/* Cinematic fleet layer: a calm horizon sweep plus a few drifting
+      status pings. Pure CSS, no JS, reduced-motion safe. Reads as "the
+      fleet is quietly working in the background" without competing with
+      the headline. */}
+  <div class="hero-fleet" aria-hidden="true">
+    <span class="hero-fleet__sweep"></span>
+    <span class="hero-fleet__ping hero-fleet__ping--1"></span>
+    <span class="hero-fleet__ping hero-fleet__ping--2"></span>
+    <span class="hero-fleet__ping hero-fleet__ping--3"></span>
+  </div>
   <div class="m-container hero__inner">
     <div class="hero__copy">
       <div class="m-eyebrow">{eyebrow}</div>
@@ -69,6 +79,7 @@ const hasPanel = Astro.slots.has("panel");
 
   .hero__inner {
     position: relative;
+    z-index: 1;
     display: grid;
     gap: 56px;
     align-items: center;
@@ -113,5 +124,95 @@ const hasPanel = Astro.slots.has("panel");
     .hero--split .hero__inner {
       grid-template-columns: 1fr;
     }
+  }
+
+  /* ───────────────────────────────────────────────────────────────
+     Cinematic fleet layer. Sits above .m-ambient (the drifting grid)
+     and below the hero copy. A faint horizon sweep crosses the hero on
+     a long loop, and three accent pings breathe at fixed points, like
+     agents reporting in. Everything is decorative, low-opacity, and
+     no-ops under prefers-reduced-motion.
+     ─────────────────────────────────────────────────────────────── */
+  .hero-fleet {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .hero-fleet__sweep {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -30%;
+    width: 30%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 229, 199, 0.05) 45%,
+      rgba(0, 229, 199, 0.09) 50%,
+      rgba(0, 229, 199, 0.05) 55%,
+      transparent 100%
+    );
+    filter: blur(2px);
+    animation: hero-sweep 11s ease-in-out infinite;
+  }
+  :global([data-theme="light"]) .hero-fleet__sweep {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(15, 138, 120, 0.05) 45%,
+      rgba(15, 138, 120, 0.08) 50%,
+      rgba(15, 138, 120, 0.05) 55%,
+      transparent 100%
+    );
+  }
+  @keyframes hero-sweep {
+    0%   { transform: translateX(0); opacity: 0; }
+    12%  { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { transform: translateX(440%); opacity: 0; }
+  }
+
+  .hero-fleet__ping {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--alfred-accent);
+    box-shadow: 0 0 0 0 rgba(0, 229, 199, 0.55);
+    opacity: 0.5;
+    animation: hero-ping 4.4s ease-out infinite;
+  }
+  .hero-fleet__ping--1 { top: 22%; left: 64%; animation-delay: 0s; }
+  .hero-fleet__ping--2 { top: 58%; left: 78%; animation-delay: 1.5s; background: var(--alfred-blue); box-shadow: 0 0 0 0 rgba(87, 137, 255, 0.5); }
+  .hero-fleet__ping--3 { top: 40%; left: 88%; animation-delay: 2.9s; }
+  @keyframes hero-ping {
+    0%   { box-shadow: 0 0 0 0 rgba(0, 229, 199, 0.5); opacity: 0.6; }
+    70%  { box-shadow: 0 0 0 16px rgba(0, 229, 199, 0); opacity: 0.2; }
+    100% { box-shadow: 0 0 0 0 rgba(0, 229, 199, 0); opacity: 0.6; }
+  }
+
+  /* Calm staged entrance for the hero copy + panel. Each lifts in once on
+     load. Tiny, single-shot, and disabled under reduced motion. */
+  .hero__copy > * {
+    animation: hero-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hero__copy .m-eyebrow { animation-delay: 0.02s; }
+  .hero__copy h1 { animation-delay: 0.1s; }
+  .hero__sub { animation-delay: 0.2s; }
+  .hero__ctas { animation-delay: 0.3s; }
+  .hero__panel { animation: hero-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.34s both; }
+  @keyframes hero-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-fleet__sweep,
+    .hero-fleet__ping { animation: none; }
+    .hero-fleet__sweep { opacity: 0; }
+    .hero__copy > *,
+    .hero__panel { animation: none; }
   }
 </style>

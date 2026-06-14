@@ -27,6 +27,7 @@ import FiringLifecycle from "../components/marketing/FiringLifecycle.astro";
 import FleetStatus from "../components/marketing/FleetStatus.astro";
 import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
 import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
+import NativeClientShowcase from "../components/marketing/NativeClientShowcase.astro";
 
 type JobState = "live" | "warn" | "idle" | "info";
 
@@ -128,6 +129,20 @@ const why = [
     </div>
   </Hero>
 
+  <section class="m-section m-section--soft" id="native-client">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="THE NATIVE CLIENT"
+        title="A calm local cockpit for the whole fleet."
+        lede="The optional desktop client is a control surface, not a second Alfred. See the roster at a glance, watch your Claude Code and Codex headroom, and draft the next plan in plain language. Slack stays the place plans get discussed and approved."
+      />
+      <NativeClientShowcase />
+      <p style="margin-top:24px;">
+        <a class="m-link" href="/concepts/native-client/">Read the native-client design</a>
+      </p>
+    </div>
+  </section>
+
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
@@ -136,7 +151,11 @@ const why = [
         lede="The starter fleet is intentionally narrow. Add Bane, Nightwing, and the rest when you need them."
       />
       <div class="job-grid">
-        {jobs.map((j) => <JobCard title={j.title} body={j.body} log={j.log} state={j.state} />)}
+        {jobs.map((j, i) => (
+          <div class={`m-reveal m-reveal-delay-${(i % 4) + 1}`}>
+            <JobCard title={j.title} body={j.body} log={j.log} state={j.state} />
+          </div>
+        ))}
       </div>
     </div>
   </section>
@@ -149,8 +168,8 @@ const why = [
         lede="Most coding agents wait for you to type. Alfred is built for the work that keeps coming after the keyboard closes."
       />
       <div class="why-grid">
-        {why.map((w) => (
-          <article class="m-card m-card--hover">
+        {why.map((w, i) => (
+          <article class={`m-card m-card--hover m-reveal m-reveal-delay-${(i % 3) + 1}`}>
             <h3 class="m-h3">{w.title}</h3>
             <p style="margin-top:10px;color:var(--alfred-text);font-size:15px;line-height:1.6;">{w.body}</p>
           </article>

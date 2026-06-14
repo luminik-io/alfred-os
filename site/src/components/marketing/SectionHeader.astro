@@ -4,12 +4,14 @@ interface Props {
   title: string;
   lede?: string;
   align?: "left" | "center";
+  /** Adds the scroll-in fade-up to the whole header. Defaults to true. */
+  reveal?: boolean;
 }
 
-const { eyebrow, title, lede, align = "left" } = Astro.props;
+const { eyebrow, title, lede, align = "left", reveal = true } = Astro.props;
 ---
 
-<header class={`m-section-header section-header--${align}`}>
+<header class:list={["m-section-header", `section-header--${align}`, reveal && "m-reveal"]}>
   {eyebrow && <div class="m-eyebrow">{eyebrow}</div>}
   <h2 class="m-display-md">{title}</h2>
   {lede && <p>{lede}</p>}
