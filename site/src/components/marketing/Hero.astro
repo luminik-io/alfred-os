@@ -179,18 +179,22 @@ const hasPanel = Astro.slots.has("panel");
     width: 7px;
     height: 7px;
     border-radius: 999px;
+    /* Per-ping ring colour: the keyframes read this triplet via rgba(), so
+       each ping's expanding ring matches its own dot instead of a hard-coded
+       cyan that overrode the blue dot's ring. */
+    --ping-ring: 0, 229, 199;
     background: var(--alfred-accent);
-    box-shadow: 0 0 0 0 rgba(0, 229, 199, 0.55);
+    box-shadow: 0 0 0 0 rgba(var(--ping-ring), 0.55);
     opacity: 0.5;
     animation: hero-ping 4.4s ease-out infinite;
   }
   .hero-fleet__ping--1 { top: 22%; left: 64%; animation-delay: 0s; }
-  .hero-fleet__ping--2 { top: 58%; left: 78%; animation-delay: 1.5s; background: var(--alfred-blue); box-shadow: 0 0 0 0 rgba(87, 137, 255, 0.5); }
+  .hero-fleet__ping--2 { top: 58%; left: 78%; animation-delay: 1.5s; background: var(--alfred-blue); --ping-ring: 87, 137, 255; }
   .hero-fleet__ping--3 { top: 40%; left: 88%; animation-delay: 2.9s; }
   @keyframes hero-ping {
-    0%   { box-shadow: 0 0 0 0 rgba(0, 229, 199, 0.5); opacity: 0.6; }
-    70%  { box-shadow: 0 0 0 16px rgba(0, 229, 199, 0); opacity: 0.2; }
-    100% { box-shadow: 0 0 0 0 rgba(0, 229, 199, 0); opacity: 0.6; }
+    0%   { box-shadow: 0 0 0 0 rgba(var(--ping-ring), 0.5); opacity: 0.6; }
+    70%  { box-shadow: 0 0 0 16px rgba(var(--ping-ring), 0); opacity: 0.2; }
+    100% { box-shadow: 0 0 0 0 rgba(var(--ping-ring), 0); opacity: 0.6; }
   }
 
   /* Calm staged entrance for the hero copy + panel. Each lifts in once on

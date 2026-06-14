@@ -2,21 +2,20 @@
 /**
  * FiringLifecycle.astro
  *
- * Inline SVG diagram of one Alfred firing end to end. Visual replacement
- * for the mermaid graph on the docs homepage, themed to the marketing
- * design system. Animates with a slow "pulse" travelling along the flow
- * line so the diagram feels alive, like a control surface. Respects
- * prefers-reduced-motion.
+ * Inline SVG diagram of one Alfred run, from start to finish. Visual
+ * replacement for the mermaid graph on the docs homepage, themed to the
+ * marketing design system. Animates with a slow "pulse" travelling along the
+ * flow line so the diagram feels alive. Respects prefers-reduced-motion.
  *
  * No JS dependency. Pure SVG + CSS.
  * Theme-aware via .svg-* classes defined in marketing.css.
  */
 ---
 
-<figure class="m-flow m-figure m-reveal" aria-label="One Alfred firing, end to end">
+<figure class="m-flow m-figure m-reveal" aria-label="One Alfred run, from start to finish">
   <div class="m-flow__head">
-    <span class="m-mono m-flow__tag">FIRING LIFECYCLE</span>
-    <span class="m-mono m-flow__meta">scheduler → role runner → engine → slack</span>
+    <span class="m-mono m-flow__tag">ONE RUN, STEP BY STEP</span>
+    <span class="m-mono m-flow__meta">timer → agent → engine → Slack</span>
   </div>
 
   <svg viewBox="0 0 1180 360" role="img" aria-hidden="false" class="m-flow__svg" preserveAspectRatio="xMidYMid meet">
@@ -49,7 +48,7 @@
 
     <g class="m-flow__stage" transform="translate(265 80)">
       <rect width="200" height="200" rx="8" ry="8" class="svg-card svg-card-stroke" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">02 · ROLE RUNNER</text>
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">02 · AGENT</text>
       <text x="20" y="78" font-family="Quicksand, sans-serif" font-size="20" font-weight="700" class="svg-text-bright">lucius.py</text>
       <text x="20" y="100" font-family="Quicksand, sans-serif" font-size="14" class="svg-text">preflight, claim</text>
       <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">picks oldest open</text>
@@ -59,7 +58,7 @@
 
     <g class="m-flow__stage" transform="translate(490 80)">
       <rect width="200" height="200" rx="8" ry="8" class="svg-card svg-card-stroke" filter="url(#cardShadow)" />
-      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">03 · WORKTREE</text>
+      <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="11" class="svg-mute" letter-spacing="2">03 · WORKSPACE</text>
       <text x="20" y="78" font-family="Quicksand, sans-serif" font-size="20" font-weight="700" class="svg-text-bright">git worktree</text>
       <text x="20" y="100" font-family="Quicksand, sans-serif" font-size="14" class="svg-text">isolated workspace</text>
       <text x="20" y="138" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">~/.alfred/wt/...</text>
@@ -89,7 +88,7 @@
 
     <!-- caption -->
     <text x="40" y="332" font-family="JetBrains Mono, monospace" font-size="12" class="svg-mute">
-      one firing = one role run, one issue claim, one worktree, one engine invocation, one slack post
+      one run = one agent, one task, its own copy of the repo, one model call, one Slack update
     </text>
   </svg>
 </figure>

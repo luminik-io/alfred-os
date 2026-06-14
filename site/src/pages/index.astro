@@ -399,6 +399,10 @@ const why = [
      Keep minmax(0, 1fr) here too: bare 1fr is shorthand for
      minmax(auto, 1fr) which reintroduces min-content. */
   @media (max-width: 900px) { .job-grid { grid-template-columns: minmax(0, 1fr); } }
+  /* The reveal wrapper is the actual grid item, so it (not JobCard) needs the
+     min-width: 0 that lets the long <pre> log lines scroll inside the card
+     instead of forcing min-content width and overflowing the page. */
+  .job-grid > :global(.m-reveal) { min-width: 0; }
 
   .why-grid {
     display: grid;

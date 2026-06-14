@@ -318,7 +318,12 @@ const stateLabel: Record<Agent["state"], string> = {
     transform: scaleX(0);
     animation: cap-fill 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
     animation-delay: 0.25s;
+    /* The figure sits below the fold and stays hidden (opacity 0) until the
+       IntersectionObserver adds .is-in. Pause the fill until then, otherwise
+       the bars finish animating while invisible and the effect never plays. */
+    animation-play-state: paused;
   }
+  :global(.m-reveal.is-in) .cap__fill { animation-play-state: running; }
   .cap__fill--codex { background: linear-gradient(90deg, var(--alfred-blue), #8FB0FF); animation-delay: 0.38s; }
   .cap__fill--weekly { background: linear-gradient(90deg, var(--alfred-warn), #FFD27A); animation-delay: 0.5s; }
   .cap__meta { font-size: 11px; }

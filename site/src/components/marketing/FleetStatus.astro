@@ -61,10 +61,10 @@ const loaded = rows.filter((r) => r.load === "live").length;
 const total = rows.length;
 ---
 
-<figure class="fleet m-figure m-reveal" aria-label="Live alfred status output from a real Alfred fleet">
+<figure class="fleet m-figure m-reveal" aria-label="Live alfred status output from real Alfred agents">
   <div class="fleet__head">
     <span class="m-mono fleet__cmd"><span class="fleet__prompt">$</span> alfred status</span>
-    <span class="m-mono m-mute">{loaded}/{total} loaded &middot; live operator output</span>
+    <span class="m-mono m-mute">{loaded}/{total} loaded &middot; live output</span>
   </div>
 
   <div class="fleet__body">
@@ -104,7 +104,7 @@ const total = rows.length;
   </div>
 
   <figcaption class="fleet__cap">
-    Live <code>alfred status</code> output from the operator's own Mac, captured 2026-05-23. Cost is <code>$0.00</code> because Alfred uses your own CLI subscription auth, not metered API spend. The amber row is Batman holding two large bundle plans for approval; the paused rows are agents the operator stopped manually.
+    Live <code>alfred status</code> output from a real Mac, captured 2026-05-23. Cost is <code>$0.00</code> because Alfred runs on your own Claude and Codex subscriptions, not pay-per-token API bills. The amber row is Batman holding two large plans for your approval; the paused rows are agents that were stopped by hand.
   </figcaption>
 </figure>
 
