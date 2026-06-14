@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -260,24 +260,24 @@ describe("ReviewView", () => {
     // Conventional-commit prefix stripped; reads as an outcome.
     expect(screen.getByText("Add CSV export.")).toBeInTheDocument();
     expect(screen.getByText("Simplify setup copy.")).toBeInTheDocument();
-    expect(screen.getByText("Lucius")).toBeInTheDocument();
-    expect(screen.getByText("Batman")).toBeInTheDocument();
+    expect(screen.getAllByText("Lucius").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Batman").length).toBeGreaterThan(0);
     expect(screen.getByText(/merged into api/i)).toBeInTheDocument();
-    expect(screen.getByText(/batman shipped and merged into web/i)).toBeInTheDocument();
+    // Agent shown as a badge (asserted above), sentence no longer repeats it.
+    expect(screen.getByText(/shipped and merged into web/i)).toBeInTheDocument();
   });
 
-  it("shows real subscription headroom from the native reader, labelled as usage not billed-$", () => {
+  it("shows compact engine headroom from the native reader, labelled as usage not billed-$", () => {
     renderReview();
     const panel = screen.getByRole("region", { name: /subscription usage/i });
-    // Real token headroom + reset countdown, not a dollar figure.
-    expect(screen.getByText("142.2M")).toBeInTheDocument();
-    expect(screen.getByText(/claude window, codex/i)).toBeInTheDocument();
-    expect(screen.getByText("2h 5m")).toBeInTheDocument();
-    expect(screen.getByText(/local 5h window/i)).toBeInTheDocument();
-    // A Codex row is present.
-    expect(screen.getByText(/codex 75.8K/i)).toBeInTheDocument();
-    // The compact rail still carries subscription usage, not a per-token bill.
-    expect(panel.textContent).toMatch(/local 5h window/i);
+    // The Inbox capacity rail is the compact headroom view: Claude 5h + weekly
+    // windows with a reset countdown, never a raw token wall or dollar figure.
+    expect(within(panel).getByText(/5h window/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/weekly/i)).toBeInTheDocument();
+    expect(within(panel).getByText("2h 5m")).toBeInTheDocument();
+    // Local token totals and the dollar figure are full-view only; the compact
+    // rail never exposes them.
+    expect(panel.textContent).not.toMatch(/142/);
     expect(panel.textContent).not.toMatch(/\$109/);
   });
 

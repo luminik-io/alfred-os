@@ -13,6 +13,16 @@ The two executable lanes are the existing state machine labels:
 
 Vague work is not forced into either lane. It gets ``needs:human-scope`` so a
 human can clarify it before an autonomous agent spends context guessing.
+
+Operator-approval gate. Every Drake plan, including single-repo work, lands in
+the operator-approval queue before it is assigned to a dev agent. The gate is
+the existing ``agent:plan-pending-approval`` label (the same label Batman holds
+on a bundle parent while it waits on the operator). An issue carrying that label
+is awaiting the operator's go-ahead, so it is never auto-assigned: assignment
+returns ``ROUTE_PENDING_APPROVAL`` and changes nothing. Once the operator
+approves and the gate label is removed (the existing approve path, which also
+adds ``agent:implement``), assignment proceeds to Lucius exactly as before. This
+reuses the existing approval/queue mechanism rather than inventing a new path.
 """
 
 from __future__ import annotations
@@ -33,6 +43,9 @@ ROUTE_BATMAN = "batman"
 ROUTE_HUMAN_SCOPE = "human_scope"
 ROUTE_ALREADY_ROUTED = "already_routed"
 ROUTE_BLOCKED = "blocked"
+# An issue carrying the operator-approval gate label is awaiting the operator's
+# go-ahead and is never auto-assigned until the gate is released.
+ROUTE_PENDING_APPROVAL = "pending_approval"
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
@@ -221,6 +234,26 @@ def decide_assignment(issue: IssueSnapshot) -> AssignmentDecision:
             confidence=1.0,
         )
 
+    # Operator-approval gate. An issue carrying ``agent:plan-pending-approval``
+    # is sitting in the operator's go-ahead queue (Drake files single-repo plans
+    # with this label; Batman holds it on a bundle parent while it waits). It is
+    # never assigned to a dev agent until the operator approves and the gate
+    # label is removed, so refuse assignment while it is present. This is checked
+    # before the generic blocker scan so the operator sees an "awaiting your
+    # go-ahead" reason rather than a generic blocked-by-label message.
+    if label_constants.PLAN_PENDING_APPROVAL in labels:
+        return AssignmentDecision(
+            route=ROUTE_PENDING_APPROVAL,
+            agent="none",
+            add_labels=(),
+            remove_labels=(),
+            reason=(
+                f"awaiting operator go-ahead ({label_constants.PLAN_PENDING_APPROVAL}); "
+                "approve the plan to release it for assignment"
+            ),
+            confidence=1.0,
+        )
+
     blockers = _assignment_blocking_labels(labels)
     if blockers:
         return AssignmentDecision(
@@ -319,7 +352,14 @@ def assign_issue(
         return _error_result(repo, number, str(exc), dry_run=dry_run)
 
     decision = decide_assignment(issue)
-    if decision.route == ROUTE_BLOCKED and not dry_run:
+    # A blocked route never assigns. The operator-approval gate
+    # (ROUTE_PENDING_APPROVAL) is also a non-assigning hold: its decision carries
+    # no label changes, so without this branch it would fall through to the
+    # "not changed -> ok=True" path below and the native Work "assign" action
+    # would report success while the gate label remains and Lucius still skips
+    # it. Report it as a failed assignment held for operator approval instead of
+    # silently releasing the gate.
+    if decision.route in (ROUTE_BLOCKED, ROUTE_PENDING_APPROVAL) and not dry_run:
         return AssignmentResult(
             ok=False,
             repo=repo,
@@ -398,6 +438,12 @@ def render_assignment_detail(
         )
     if decision.route == ROUTE_ALREADY_ROUTED:
         return f"{target} is already routed to {decision.agent}. Reason: {decision.reason}."
+    if decision.route == ROUTE_PENDING_APPROVAL:
+        return (
+            f"{target} is held for operator approval "
+            f"(`{label_constants.PLAN_PENDING_APPROVAL}`); it was not assigned. "
+            f"Reason: {decision.reason}."
+        )
     return f"{target} was not assigned. Reason: {decision.reason}."
 
 
@@ -588,6 +634,7 @@ __all__ = [
     "ROUTE_BLOCKED",
     "ROUTE_HUMAN_SCOPE",
     "ROUTE_LUCIUS",
+    "ROUTE_PENDING_APPROVAL",
     "AssignmentDecision",
     "AssignmentResult",
     "IssueSnapshot",

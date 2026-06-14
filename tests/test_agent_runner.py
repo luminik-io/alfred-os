@@ -407,7 +407,9 @@ def test_event_log_swallows_oserror(tmp_path, monkeypatch, capsys):
     impossible = blocker / "events.jsonl"
 
     ev = ar.EventLog(agent="x", firing_id="y", path=impossible)
-    ev.emit("test")  # must not raise
+    # A valid (closed-set) event type whose WRITE fails: the OSError is swallowed
+    # and logged, never raised, so a broken event log cannot kill a firing.
+    ev.emit("firing_started")  # must not raise
 
     err = capsys.readouterr().err
     assert "[event-log]" in err

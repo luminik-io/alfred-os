@@ -174,6 +174,37 @@ def test_parked_issues_excluded_from_queued(monkeypatch):
     assert [c["number"] for c in queued] == [1]  # only the genuinely-queued issue
 
 
+def test_approval_gated_issue_excluded_from_queued(monkeypatch):
+    # A gated single-repo plan carries BOTH agent:implement AND the
+    # agent:plan-pending-approval gate. The gate blocks pickup, so the board
+    # must not show it in the pickable "Ready" lane while it waits on the
+    # operator (Codex P2 on #218).
+    issues = [
+        {
+            "number": 1,
+            "title": "approved work",
+            "url": "u1",
+            "author": {"login": "a"},
+            "createdAt": _iso(2),
+            "labels": [{"name": "agent:implement"}],
+        },
+        {
+            "number": 2,
+            "title": "gated plan awaiting operator go-ahead",
+            "url": "u2",
+            "author": {"login": "a"},
+            "createdAt": _iso(2),
+            "labels": [
+                {"name": "agent:implement"},
+                {"name": "agent:plan-pending-approval"},
+            ],
+        },
+    ]
+    monkeypatch.setattr(sb, "_gh_json", _fake_gh([], issues))
+    queued = sb.build_board(["acme/api"], now=NOW)["columns"]["queued"]
+    assert [c["number"] for c in queued] == [1]  # gated issue must not read as Ready
+
+
 def test_queue_include_label_required_when_set(monkeypatch):
     # With an include label configured, only pickup-ready issues are queued;
     # roadmap / needs-info backlog is excluded (Codex review on #253).

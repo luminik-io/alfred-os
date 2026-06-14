@@ -54,6 +54,7 @@ from agent_runner import (  # noqa: E402
     GH_REPO_TO_LOCAL,
     LIFECYCLE_LABELS,
     STATE_ROOT,
+    EventLog,
     PreflightSpec,
     agent_engine,
     doctor_mode,
@@ -326,6 +327,43 @@ def _run_lifecycle(
     interesting branch lives on the lifecycle dataclasses so the same
     code paths are exercised by ``tests/test_batman_execute.py`` via
     injected fakes.
+
+    The body is bracketed with the standard ``firing_started`` ...
+    ``firing_complete`` lifecycle records (matching every other runner) so
+    the per-firing event log the lifecycle writes reads as a completed run.
+    Without the terminal record, ``lib/server/reader.py`` would leave the
+    firing stuck as ``unknown`` because the lone mid-firing ``plan_created``
+    milestone is neither a start nor a terminal marker.
+    """
+    events = EventLog(agent=CODENAME, firing_id=firing_id)
+    events.emit("firing_started")
+    rc, outcome = _run_lifecycle_body(
+        config=config,
+        parent_issue=parent_issue,
+        firing_id=firing_id,
+        events=events,
+    )
+    # ``firing_complete`` MUST carry ``outcome`` (closed-set contract); the
+    # reader's success/failure classification hinges on it. A broken event-log
+    # write can never kill the firing - ``EventLog.append`` absorbs I/O errors
+    # and only an unknown event type (a programmer typo) would raise here.
+    events.emit("firing_complete", outcome=outcome)
+    return rc
+
+
+def _run_lifecycle_body(
+    *,
+    config: BatmanLifecycleConfig,
+    parent_issue: dict,
+    firing_id: str,
+    events: EventLog,
+) -> tuple[int, str]:
+    """Plan -> approve -> execute -> report core, returning ``(rc, outcome)``.
+
+    Split out of :func:`_run_lifecycle` so the lifecycle brackets
+    (``firing_started`` / ``firing_complete``) wrap every terminal return in
+    one place. The returned ``outcome`` string is the terminal classification
+    stamped on the ``firing_complete`` record.
     """
     # Build the lifecycle. Imports here are deferred so the lifecycle
     # module is only loaded when the new path is active; legacy fleets
@@ -379,6 +417,23 @@ def _run_lifecycle(
     parent_repo = config.parent_repo
     parent_issue_number = int(parent_issue.get("number") or 0)
 
+    # The plan is now drafted. Record it as a real step in the per-firing event
+    # log, distinct from posting it for approval (the Slack approval gate) and
+    # from an operator approving it, so the run timeline shows the plan came
+    # into being. ``EventLog.append`` absorbs I/O errors itself (a broken write
+    # never kills a firing); only an unknown event type - a closed-set
+    # programmer error - would raise, and that is meant to crash loudly.
+    events.emit(
+        "plan_created",
+        issue=parent_issue_number,
+        affected_repos=list(plan.affected_repos),
+        bundle=plan.bundle_slug,
+        children=len(plan.children),
+        detail=(
+            f"{parent_repo}#{parent_issue_number} ({', '.join(plan.affected_repos) or 'no repos'})"
+        ),
+    )
+
     if not plan.children:
         detail = "; ".join(f.message for f in plan.readiness_blockers) or (
             "No child issues were parsed from the parent body."
@@ -403,7 +458,7 @@ def _run_lifecycle(
             add_labels=[label_constants.NEEDS_HUMAN_SCOPE],
         )
         lifecycle.report(plan, _empty_result_reason(reason=EXEC_NO_CHILDREN))
-        return 0
+        return 0, EXEC_NO_CHILDREN
 
     # Idempotent approval state (issue #115). On a pending parent issue
     # whose label says we already drafted a plan, do not re-post; instead
@@ -445,7 +500,7 @@ def _run_lifecycle(
     #   auto_execute=1 (force):      execute immediately, no gate.
     if not config.execute_enabled:
         print("[BATMAN-HALT-AFTER-PLAN] BATMAN_AUTO_EXECUTE=0; not filing children")
-        return 0
+        return 0, "halt-after-plan"
 
     if config.gate_enabled:
         if envelope is None and file_only_approval:
@@ -465,7 +520,7 @@ def _run_lifecycle(
                 plan,
                 _empty_result_reason(reason=EXEC_GATE_DISABLED),
             )
-            return 0
+            return 0, EXEC_GATE_DISABLED
         print(
             f"[BATMAN-AWAITING-APPROVAL] parent={parent_repo}#{parent_issue_number} "
             f"channel={envelope.channel} message_ts={envelope.message_ts} "
@@ -487,7 +542,7 @@ def _run_lifecycle(
                 _clear_pending_envelope(parent_repo, parent_issue_number)
                 _unset_pending_approval_label(parent_repo, parent_issue_number)
             lifecycle.report(plan, _empty_result_reason(reason=verdict.verdict))
-            return 0
+            return 0, verdict.verdict
         print(f"[BATMAN-APPROVED] elapsed={verdict.elapsed_s:.0f}s")
         # Approval landed: clear the pending state before execute so the
         # next firing doesn't think we're still waiting.
@@ -500,7 +555,7 @@ def _run_lifecycle(
         f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)}"
     )
     lifecycle.report(plan, result)
-    return 0
+    return 0, result.reason
 
 
 # ---------------------------------------------------------------------------

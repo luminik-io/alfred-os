@@ -801,6 +801,14 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def cmd_usage(args: argparse.Namespace) -> int:
+    script = _HERE / "alfred-usage.py"
+    cmd = [sys.executable, str(script)]
+    if args.json:
+        cmd.append("--json")
+    return subprocess.run(cmd, check=False).returncode
+
+
 def cmd_logs(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-logs.py"
     cmd = [sys.executable, str(script), args.codename]
@@ -1759,6 +1767,17 @@ def main(argv: list[str] | None = None) -> int:
     p_metrics.add_argument("--by-day", action="store_true", help="per-day breakdown")
     p_metrics.add_argument("--json", action="store_true")
     p_metrics.set_defaults(func=cmd_metrics)
+
+    p_usage = sub.add_parser(
+        "usage",
+        help="local Claude Code + Codex subscription usage and remaining limits",
+    )
+    p_usage.add_argument(
+        "--json",
+        action="store_true",
+        help='emit the raw {"claude": {...}, "codex": {...}} payload',
+    )
+    p_usage.set_defaults(func=cmd_usage)
 
     p_logs = sub.add_parser("logs", help="inspect stream-JSON transcripts for one agent")
     p_logs.add_argument("codename", help="agent codename (directory under state/transcripts/)")

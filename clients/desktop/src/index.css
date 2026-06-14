@@ -11,6 +11,10 @@
 
 :root {
   color-scheme: light;
+  /* Glass surface tuning used by the agent roster cards (matches the literal
+     blur(24px) saturate(145%) used elsewhere in this file). */
+  --glass-blur: 24px;
+  --glass-saturate: 145%;
   --background: oklch(0.965 0.018 238);
   --foreground: oklch(0.17 0.035 255);
   --card: oklch(0.995 0.006 246 / 72%);
@@ -121,6 +125,7 @@
 @theme inline {
   --font-heading: "Space Grotesk Variable", "Quicksand", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Quicksand", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "Fira Code", monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -424,4 +429,602 @@ body {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
     0 24px 72px rgba(40, 58, 86, 0.11);
+}
+.agents-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: min(620px, calc(100svh - 10rem));
+}
+
+/* Shared command bar: fleet stats on the left, the Cinematic/List view
+   toggle on the right, above whichever roster view is active. */
+.agents-deck__command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.agents-deck__command .agents-deck__summary {
+  flex: 1 1 420px;
+}
+
+.agents-deck__viewtoggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: 0.75rem;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+}
+
+.agents-deck__viewtoggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  padding: 0.4rem 0.7rem;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.agents-deck__viewtoggle button svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.agents-deck__viewtoggle button:hover {
+  color: var(--foreground);
+}
+
+.agents-deck__viewtoggle button[data-active="true"] {
+  background: color-mix(in oklch, var(--primary), transparent 78%);
+  color: var(--foreground);
+}
+
+.agents-deck__grid {
+  display: grid;
+  min-height: min(560px, calc(100svh - 13rem));
+  flex: 1 1 auto;
+  gap: 0.75rem;
+}
+
+/* Cinematic stage: a glowing card constellation, with the inspector docked
+   alongside on wide screens (sticky) and stacked below on narrow ones. */
+.agents-deck__stage {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0.75rem;
+}
+
+@media (min-width: 880px) {
+  .agents-deck__stage {
+    grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
+    align-items: start;
+  }
+
+  .agents-deck__stage .agent-inspector {
+    position: sticky;
+    top: 0.5rem;
+  }
+}
+
+.agents-deck__constellation {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(188px, 1fr));
+  align-content: start;
+  gap: 0.7rem;
+  min-height: 0;
+  max-height: min(72svh, 660px);
+  overflow-y: auto;
+  padding-right: 0.125rem;
+}
+
+.agent-card {
+  --agent-accent: var(--primary);
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 9.5rem;
+  border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 72%);
+  border-radius: 1rem;
+  background: linear-gradient(
+    160deg,
+    color-mix(in oklch, var(--agent-accent), var(--card) 86%),
+    color-mix(in oklch, var(--card), var(--background) 10%) 62%
+  );
+  padding: 0.85rem;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.agent-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--agent-accent), transparent);
+  opacity: 0.7;
+}
+
+.agent-card__glow {
+  position: absolute;
+  inset: -40% 25% auto -12%;
+  height: 70%;
+  background: radial-gradient(
+    60% 60% at 30% 0%,
+    color-mix(in oklch, var(--agent-accent), transparent 68%),
+    transparent 70%
+  );
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.agent-card__scan {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0 3px,
+    color-mix(in oklch, var(--agent-accent), transparent 92%) 3px 4px
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+  z-index: -1;
+}
+
+.agent-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 30%);
+  box-shadow: 0 16px 40px color-mix(in oklch, var(--agent-accent), transparent 84%);
+}
+
+.agent-card:hover .agent-card__scan {
+  opacity: 0.5;
+}
+
+.agent-card[data-selected="true"] {
+  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 18%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, var(--agent-accent), transparent 55%),
+    0 14px 38px color-mix(in oklch, var(--agent-accent), transparent 80%);
+}
+
+.agent-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.agent-card__codename {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+
+.agent-card__name {
+  display: -webkit-box;
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-card__purpose {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.agent-card__cadence {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-card__cadence svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  opacity: 0.7;
+}
+
+.agent-card__runs {
+  flex: 0 0 auto;
+}
+
+.agent-card__signal {
+  overflow: hidden;
+  border-top: 1px solid color-mix(in oklch, var(--border), transparent 35%);
+  padding-top: 0.45rem;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 18%);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 760px) {
+  .agents-deck__grid {
+    grid-template-columns: minmax(210px, 0.82fr) minmax(0, 1.38fr);
+  }
+}
+
+.agents-deck__rail,
+.agent-inspector,
+.agents-deck__empty {
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: 1rem;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 12px 34px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.agents-deck__rail {
+  display: grid;
+  min-height: 0;
+  /* The fleet summary moved to the shared command header, so the list is the
+     only child: give it the single constrained scroll track (not an auto row)
+     so a long roster scrolls beside the inspector instead of expanding it. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.agents-deck__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+@media (min-width: 1280px) {
+  .agents-deck__summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.agents-deck__list {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: 0.5rem;
+  /* Bound the scroll height (mirrors the cinematic constellation) so a long
+     roster scrolls within the rail beside the inspector instead of expanding
+     the page on short windows or large fleets. */
+  max-height: min(72svh, 660px);
+  overflow-y: auto;
+  padding-right: 0.125rem;
+}
+
+.agents-deck__row {
+  --agent-accent: var(--primary);
+  display: grid;
+  width: 100%;
+  grid-template-columns: 0.35rem minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 84%);
+  border-radius: 0.875rem;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+  padding: 0.7rem;
+  color: var(--foreground);
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.agents-deck__row:hover,
+.agents-deck__row[data-selected="true"] {
+  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 46%);
+  background: color-mix(in oklch, var(--agent-accent), var(--card) 90%);
+}
+
+.agents-deck__row:hover {
+  transform: translateX(2px);
+}
+
+.agents-deck__row[data-selected="true"] {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 22px color-mix(in oklch, var(--agent-accent), transparent 88%);
+}
+
+.agents-deck__row-mark {
+  width: 0.35rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--agent-accent);
+  opacity: 0.65;
+}
+
+.agents-deck__row-title,
+.agents-deck__row-purpose,
+.agents-deck__row-meta {
+  display: block;
+  min-width: 0;
+}
+
+.agents-deck__row-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-family: var(--font-heading);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agents-deck__row-purpose {
+  margin-top: 0.15rem;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-deck__row-meta {
+  display: grid;
+  justify-items: end;
+  gap: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.agent-inspector {
+  --agent-accent: var(--primary);
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.agent-inspector__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: start;
+  border-bottom: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 80%);
+  background: color-mix(in oklch, var(--agent-accent), var(--card) 94%);
+  padding: 1rem;
+}
+
+.agent-inspector__title {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  font-weight: 650;
+  line-height: 1.05;
+}
+
+.agent-inspector__purpose {
+  max-width: 62ch;
+  margin: 0.5rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.agent-inspector__pulse {
+  display: grid;
+  place-items: center;
+  width: 3.15rem;
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in oklch, var(--agent-accent), white 26%);
+  border-radius: 1rem;
+  background: color-mix(in oklch, var(--agent-accent), var(--card) 78%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 10px 28px color-mix(in oklch, var(--agent-accent), transparent 84%);
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1;
+  color: color-mix(in oklch, var(--agent-accent), var(--foreground) 34%);
+}
+
+.agent-inspector__body {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  gap: 0.85rem;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.agent-inspector__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+@media (min-width: 1280px) {
+  .agent-inspector__metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.agent-inspector__latest,
+.agent-inspector__schedule {
+  border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 84%);
+  border-radius: 0.875rem;
+  background: color-mix(in oklch, var(--card), var(--background) 9%);
+  padding: 0.85rem;
+}
+
+.agent-inspector__latest span {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.agent-inspector__latest p {
+  margin: 0.35rem 0 0;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.agent-inspector__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.agent-inspector__schedule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.agents-deck__empty {
+  padding: 0.5rem;
+}
+
+@media (max-width: 760px) {
+  .agents-deck__row {
+    grid-template-columns: 0.35rem minmax(0, 1fr);
+  }
+
+  .agents-deck__row-meta {
+    grid-column: 2;
+    justify-items: start;
+  }
+
+  .agent-inspector__schedule {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 920px) {
+  .agents-deck__row {
+    grid-template-columns: 0.35rem minmax(0, 1fr);
+  }
+
+  .agents-deck__row-meta {
+    grid-column: 2;
+    grid-auto-flow: column;
+    justify-content: space-between;
+    justify-items: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agents-deck__row,
+  .agents-deck__row:hover {
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Agent roster motion (cinematic deck). Rise-on-mount for the card lists plus a
+ * reduced-motion guard that neutralizes the card hover lift and the staggered
+ * entry so nothing translates when the user prefers reduced motion.
+ * ------------------------------------------------------------------------- */
+@keyframes alfred-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Rise-on-mount for the agent card / roster lists. The list element opts in
+   with .motion-rise; each child rises with a small per-index stagger, capped so
+   a long roster still settles quickly. Fill-mode is "backwards" so the entry
+   frame applies during the stagger delay, then releases the transform once the
+   rise finishes, leaving the card hover lift free to run. */
+.agents-deck .motion-rise > * {
+  animation: alfred-rise 180ms ease-out backwards;
+  animation-delay: calc(var(--rise-index, 0) * 40ms);
+}
+
+.agents-deck .motion-rise > *:nth-child(1) { --rise-index: 0; }
+.agents-deck .motion-rise > *:nth-child(2) { --rise-index: 1; }
+.agents-deck .motion-rise > *:nth-child(3) { --rise-index: 2; }
+.agents-deck .motion-rise > *:nth-child(4) { --rise-index: 3; }
+.agents-deck .motion-rise > *:nth-child(5) { --rise-index: 4; }
+.agents-deck .motion-rise > *:nth-child(n + 6) { --rise-index: 5; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* No card lift, no row slide, no staggered mount entry. The selected/hover
+     state still changes color and border so the affordance survives; only the
+     transforms and the rise animation are removed. */
+  .agent-card,
+  .agent-card:hover,
+  .agents-deck__row,
+  .agents-deck__row:hover {
+    transform: none;
+    transition: none;
+  }
+
+  .agents-deck .motion-rise > * {
+    animation: none;
+  }
 }

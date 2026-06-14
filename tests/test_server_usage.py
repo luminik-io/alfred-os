@@ -149,28 +149,51 @@ def _seed_claude(projects_dir: Path) -> None:
     )
 
 
-def _codex_token_count(*, ts: str, last_total: int, last_input: int, last_output: int):
-    """One Codex rollout ``token_count`` event with a per-turn delta."""
-    return {
-        "timestamp": ts,
-        "type": "event_msg",
-        "payload": {
-            "type": "token_count",
-            "info": {
-                "last_token_usage": {
-                    "input_tokens": last_input,
-                    "output_tokens": last_output,
-                    "total_tokens": last_total,
-                },
-                "total_token_usage": {"total_tokens": last_total},
+def _codex_token_count(
+    *,
+    ts: str,
+    last_total: int,
+    last_input: int,
+    last_output: int,
+    cum_total: int | None = None,
+    cum_input: int | None = None,
+    cum_output: int | None = None,
+    rate_limits: dict[str, Any] | None = None,
+):
+    """One Codex rollout ``token_count`` event.
+
+    ``last_*`` is the per-turn delta; ``cum_*`` is the cumulative
+    ``total_token_usage`` the real CLI writes (monotonically increasing across
+    the session). When ``cum_*`` is omitted it mirrors the delta so legacy
+    delta-only fixtures still parse. ``rate_limits`` rides on the payload when
+    provided.
+    """
+    payload: dict[str, Any] = {
+        "type": "token_count",
+        "info": {
+            "last_token_usage": {
+                "input_tokens": last_input,
+                "output_tokens": last_output,
+                "total_tokens": last_total,
+            },
+            "total_token_usage": {
+                "input_tokens": cum_input if cum_input is not None else last_input,
+                "output_tokens": cum_output if cum_output is not None else last_output,
+                "total_tokens": cum_total if cum_total is not None else last_total,
             },
         },
     }
+    if rate_limits is not None:
+        payload["rate_limits"] = rate_limits
+    return {"timestamp": ts, "type": "event_msg", "payload": payload}
 
 
 def _seed_codex(sessions_dir: Path) -> None:
     """Seed a Codex rollout spanning two days so the latest-day bucket and the
-    all-time total are both exercised."""
+    all-time total are both exercised. ``total_token_usage`` is cumulative, as
+    the real CLI writes it, so the latest-day contribution is derived from the
+    cumulative session total (replay-over-count safe) rather than summed deltas.
+    """
     _write_jsonl(
         sessions_dir / "2026" / "06" / "rollout-x.jsonl",
         [
@@ -180,19 +203,29 @@ def _seed_codex(sessions_dir: Path) -> None:
                 last_total=1000,
                 last_input=800,
                 last_output=200,
+                cum_total=1000,
+                cum_input=800,
+                cum_output=200,
             ),
-            # Two turns on 2026-06-03 -> the latest day, summed.
+            # Two turns on 2026-06-03 -> the latest day. Cumulative climbs to
+            # 8500; minus the 1000 prior-day boundary -> 7500 for the day.
             _codex_token_count(
                 ts="2026-06-03T09:00:00.000Z",
                 last_total=5000,
                 last_input=4000,
                 last_output=1000,
+                cum_total=6000,
+                cum_input=4800,
+                cum_output=1200,
             ),
             _codex_token_count(
                 ts="2026-06-03T09:30:00.000Z",
                 last_total=2500,
                 last_input=2000,
                 last_output=500,
+                cum_total=8500,
+                cum_input=6800,
+                cum_output=1700,
             ),
         ],
     )
@@ -289,7 +322,8 @@ def test_build_usage_projection_extrapolates_current_pace(seeded: Path) -> None:
 def test_build_usage_codex_latest_day(seeded: Path) -> None:
     codex = usage_module.build_usage(now=_NOW)["codex"]
     assert codex is not None
-    # 2026-06-03 is the latest day: 5000 + 2500 token deltas summed.
+    # 2026-06-03 is the latest day. Its contribution is the session's final
+    # cumulative total (8500) minus the prior-day boundary (1000) = 7500.
     assert codex["latest_day"]["date"] == "2026-06-03"
     assert codex["latest_day"]["total_tokens"] == 7500
     assert codex["latest_day"]["input_tokens"] == 6000
@@ -299,6 +333,195 @@ def test_build_usage_codex_latest_day(seeded: Path) -> None:
     # multi-gigabyte Codex sessions on every dashboard refresh.
     assert codex["totals"]["total_tokens"] is None
     assert codex["totals"]["cost_usd"] is None
+    # No rate_limits in the base fixture -> no quota key (honest empty state).
+    assert "quota" not in codex
+
+
+# --------------------------------------------------------------------------- #
+# Codex rate_limits quota + replay-over-count dedupe
+# --------------------------------------------------------------------------- #
+
+
+def _rate_limits(
+    *,
+    primary_pct: float,
+    primary_reset: str,
+    secondary_pct: float,
+    secondary_reset: str,
+    plan_type: str = "pro",
+) -> dict[str, Any]:
+    return {
+        "primary": {"used_percent": primary_pct, "resets_at": primary_reset},
+        "secondary": {"used_percent": secondary_pct, "resets_at": secondary_reset},
+        "plan_type": plan_type,
+    }
+
+
+def test_build_usage_codex_surfaces_rate_limits_quota(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The codex builder exposes the LAST rate_limits payload as codex.quota."""
+    codex_dir = tmp_path / "codex-sessions"
+    _write_jsonl(
+        codex_dir / "2026" / "06" / "rollout-q.jsonl",
+        [
+            _codex_token_count(
+                ts="2026-06-03T09:00:00.000Z",
+                last_total=5000,
+                last_input=4000,
+                last_output=1000,
+                cum_total=5000,
+                cum_input=4000,
+                cum_output=1000,
+                rate_limits=_rate_limits(
+                    primary_pct=10.0,
+                    primary_reset="2026-06-03T13:00:00Z",
+                    secondary_pct=40.0,
+                    secondary_reset="2026-06-08T09:00:00Z",
+                ),
+            ),
+            # A later event -> its rate_limits wins (newest timestamp).
+            _codex_token_count(
+                ts="2026-06-03T09:30:00.000Z",
+                last_total=2500,
+                last_input=2000,
+                last_output=500,
+                cum_total=7500,
+                cum_input=6000,
+                cum_output=1500,
+                rate_limits=_rate_limits(
+                    primary_pct=22.5,
+                    primary_reset="2026-06-03T14:00:00Z",
+                    secondary_pct=41.0,
+                    secondary_reset="2026-06-08T09:00:00Z",
+                ),
+            ),
+        ],
+    )
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(codex_dir))
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "no-claude"))
+
+    codex = usage_module.build_usage(now=_NOW)["codex"]
+    assert codex is not None
+    quota = codex["quota"]
+    assert quota["plan_type"] == "pro"
+    # The later event's percentages win.
+    assert quota["primary"]["used_percent"] == 22.5
+    assert quota["primary"]["resets_at"] == "2026-06-03T14:00:00Z"
+    assert quota["secondary"]["used_percent"] == 41.0
+    assert quota["secondary"]["resets_at"] == "2026-06-08T09:00:00Z"
+
+
+def test_build_usage_codex_dedupes_subagent_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ccusage issue 950: a replayed last_token_usage delta must not double-count.
+
+    The session writes the SAME per-turn delta twice (subagent replay) but the
+    cumulative total_token_usage only advances once. Deriving the day from the
+    cumulative total yields the true 7500, not a doubled 12500.
+    """
+    codex_dir = tmp_path / "codex-sessions"
+    _write_jsonl(
+        codex_dir / "2026" / "06" / "rollout-replay.jsonl",
+        [
+            _codex_token_count(
+                ts="2026-06-03T09:00:00.000Z",
+                last_total=5000,
+                last_input=4000,
+                last_output=1000,
+                cum_total=5000,
+                cum_input=4000,
+                cum_output=1000,
+            ),
+            # Replayed identical delta; cumulative does NOT advance.
+            _codex_token_count(
+                ts="2026-06-03T09:00:00.000Z",
+                last_total=5000,
+                last_input=4000,
+                last_output=1000,
+                cum_total=5000,
+                cum_input=4000,
+                cum_output=1000,
+            ),
+            _codex_token_count(
+                ts="2026-06-03T09:30:00.000Z",
+                last_total=2500,
+                last_input=2000,
+                last_output=500,
+                cum_total=7500,
+                cum_input=6000,
+                cum_output=1500,
+            ),
+        ],
+    )
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(codex_dir))
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "no-claude"))
+
+    codex = usage_module.build_usage(now=_NOW)["codex"]
+    assert codex is not None
+    # Cumulative-derived: final 7500 - prior-day boundary 0 = 7500 (not 12500).
+    assert codex["latest_day"]["total_tokens"] == 7500
+    assert codex["latest_day"]["input_tokens"] == 6000
+    assert codex["latest_day"]["output_tokens"] == 1500
+
+
+def test_build_usage_codex_delta_only_session_resets_on_day_rollover(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A delta-only session spanning midnight must not leak yesterday into today.
+
+    Legacy sessions without total_token_usage fall back to summing deltas.
+    When the day advances, the old day's accumulated deltas must reset, or
+    the latest-day bucket over-reports by yesterday's tokens.
+    """
+
+    def _delta_only(ts: str, total: int, inp: int, out: int) -> dict:
+        return {
+            "timestamp": ts,
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": inp,
+                        "output_tokens": out,
+                        "total_tokens": total,
+                    }
+                },
+            },
+        }
+
+    codex_dir = tmp_path / "codex-sessions"
+    _write_jsonl(
+        codex_dir / "2026" / "06" / "rollout-midnight.jsonl",
+        [
+            _delta_only("2026-06-02T23:50:00.000Z", 4000, 3000, 1000),
+            _delta_only("2026-06-03T00:10:00.000Z", 1500, 1000, 500),
+        ],
+    )
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(codex_dir))
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "no-claude"))
+
+    codex = usage_module.build_usage(now=_NOW)["codex"]
+    assert codex is not None
+    # Only the post-midnight delta counts toward the latest day.
+    assert codex["latest_day"]["total_tokens"] == 1500
+    assert codex["latest_day"]["input_tokens"] == 1000
+    assert codex["latest_day"]["output_tokens"] == 500
+
+
+def test_build_usage_codex_quota_absent_when_no_rate_limits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    codex_dir = tmp_path / "codex-sessions"
+    _seed_codex(codex_dir)
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(codex_dir))
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "no-claude"))
+
+    codex = usage_module.build_usage(now=_NOW)["codex"]
+    assert codex is not None
+    assert "quota" not in codex
 
 
 def test_build_usage_reads_cached_real_5h_and_weekly_limits(
@@ -539,3 +762,267 @@ def test_api_usage_endpoint_degrades_when_logs_unavailable(
     assert payload["codex"] is None
     assert payload["five_hour"]["available"] is False
     assert payload["weekly"]["available"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Provider-normalized view (build_provider_usage) + CLI + /api/usage/providers
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def seeded_with_quota(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limits_file: Path) -> Path:
+    """Seed Claude transcripts + usage-limit cache + a Codex rate_limits payload
+    so both providers resolve with full 5-hour and weekly windows."""
+    claude_dir = tmp_path / "claude-projects"
+    codex_dir = tmp_path / "codex-sessions"
+    _seed_claude(claude_dir)
+    _write_jsonl(
+        codex_dir / "2026" / "06" / "rollout-q.jsonl",
+        [
+            _codex_token_count(
+                ts="2026-06-03T09:30:00.000Z",
+                last_total=2500,
+                last_input=2000,
+                last_output=500,
+                cum_total=7500,
+                cum_input=6000,
+                cum_output=1500,
+                rate_limits=_rate_limits(
+                    primary_pct=22.5,
+                    primary_reset="2026-06-03T19:00:00Z",
+                    secondary_pct=41.0,
+                    secondary_reset="2026-06-08T09:00:00Z",
+                    plan_type="pro",
+                ),
+            ),
+        ],
+    )
+    limits_file.write_text(
+        json.dumps(
+            {
+                "five_hour": {
+                    "utilization": 35.0,
+                    "resets_at": "2026-06-03T19:00:00+00:00",
+                },
+                "seven_day": {
+                    "utilization": 14.5,
+                    "resets_at": "2026-06-08T09:30:00+00:00",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(claude_dir))
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(codex_dir))
+    return tmp_path
+
+
+def test_build_provider_usage_both_available(seeded_with_quota: Path) -> None:
+    payload = usage_module.build_provider_usage(now=_NOW)
+
+    assert payload["available"] is True
+    assert set(payload) >= {"available", "claude", "codex", "generated_at"}
+
+    claude = payload["claude"]
+    assert claude["available"] is True
+    # 5-hour: real quota utilization from the cache; remaining = 100 - used.
+    assert claude["five_hour"]["used_percent"] == 35.0
+    assert claude["five_hour"]["remaining_percent"] == 65.0
+    assert claude["five_hour"]["reset_at"] == "2026-06-03T19:00:00+00:00"
+    assert claude["five_hour"]["minutes_to_reset"] == 120
+    assert claude["five_hour"]["total_tokens"] == 12600
+    # Weekly: real seven-day utilization from the cache.
+    assert claude["weekly"]["used_percent"] == 14.5
+    assert claude["weekly"]["remaining_percent"] == 85.5
+    assert claude["weekly"]["reset_at"] == "2026-06-08T09:30:00+00:00"
+
+    codex = payload["codex"]
+    assert codex["available"] is True
+    # 5-hour = Codex primary window; remaining derived as 100 - used.
+    assert codex["five_hour"]["used_percent"] == 22.5
+    assert codex["five_hour"]["remaining_percent"] == 77.5
+    assert codex["five_hour"]["reset_at"] == "2026-06-03T19:00:00Z"
+    # minutes_to_reset is derived from resets_at (17:00 -> 19:00 = 120).
+    assert codex["five_hour"]["minutes_to_reset"] == 120
+    # Weekly = Codex secondary window.
+    assert codex["weekly"]["used_percent"] == 41.0
+    assert codex["weekly"]["remaining_percent"] == 59.0
+    assert codex["weekly"]["reset_at"] == "2026-06-08T09:00:00Z"
+    assert codex["plan_type"] == "pro"
+
+
+def test_build_provider_usage_claude_present_codex_absent(
+    seeded_with_quota: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Repoint Codex at an empty dir so only Claude resolves.
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(seeded_with_quota / "no-codex-here"))
+    payload = usage_module.build_provider_usage(now=_NOW)
+
+    assert payload["available"] is True
+    assert payload["claude"]["available"] is True
+    codex = payload["codex"]
+    assert codex["available"] is False
+    assert codex["unavailable_reason"]
+    assert codex["five_hour"]["used_percent"] is None
+    assert codex["weekly"]["used_percent"] is None
+
+
+def test_build_provider_usage_both_absent_degrades_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "nope-claude"))
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(tmp_path / "nope-codex"))
+    payload = usage_module.build_provider_usage(now=_NOW)
+
+    assert payload["available"] is False
+    for provider in ("claude", "codex"):
+        entry = payload[provider]
+        assert entry["available"] is False
+        assert entry["unavailable_reason"]
+        # No fabricated numbers anywhere in an unavailable provider.
+        for window in ("five_hour", "weekly"):
+            assert entry[window]["used_percent"] is None
+            assert entry[window]["remaining_percent"] is None
+            assert entry[window]["reset_at"] is None
+            assert entry[window]["minutes_to_reset"] is None
+
+
+def test_build_provider_usage_reports_per_source_read_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Codex reader blows up while Claude finds nothing: Codex is unavailable
+    # with the error surfaced as its reason, and we never invent its numbers.
+    def boom() -> None:
+        raise RuntimeError("codex disk on fire")
+
+    monkeypatch.setattr(usage_module, "_build_claude_block", lambda *, now: None)
+    monkeypatch.setattr(usage_module, "_build_claude_limits", lambda *, now: None)
+    monkeypatch.setattr(usage_module, "_build_codex", boom)
+    payload = usage_module.build_provider_usage(now=_NOW)
+
+    assert payload["codex"]["available"] is False
+    assert "codex disk on fire" in payload["codex"]["unavailable_reason"]
+
+
+def test_build_provider_usage_all_readers_error_surfaces_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Every local reader fails (e.g. permission/disk errors under ~/.claude and
+    # ~/.codex), so build_usage() is fully unavailable. The provider view must
+    # distinguish "all readers errored" from "no logs present": each provider's
+    # unavailable_reason carries the real read failure, not a generic
+    # "No ... logs found" message, and no numbers are invented.
+    def claude_boom(*, now: Any) -> None:
+        raise PermissionError("claude permission denied")
+
+    def codex_boom() -> None:
+        raise OSError("codex disk read error")
+
+    monkeypatch.setattr(usage_module, "_build_claude_block", claude_boom)
+    monkeypatch.setattr(usage_module, "_build_claude_limits", claude_boom)
+    monkeypatch.setattr(usage_module, "_build_codex", codex_boom)
+
+    payload = usage_module.build_provider_usage(now=_NOW)
+
+    assert payload["available"] is False
+
+    claude = payload["claude"]
+    assert claude["available"] is False
+    # The real read failure is surfaced, not "No Claude 5-hour block ... found".
+    assert "could not be read" in claude["unavailable_reason"]
+    assert "claude permission denied" in claude["unavailable_reason"]
+    assert "No Claude" not in claude["unavailable_reason"]
+
+    codex = payload["codex"]
+    assert codex["available"] is False
+    assert "could not be read" in codex["unavailable_reason"]
+    assert "codex disk read error" in codex["unavailable_reason"]
+    assert "No Codex" not in codex["unavailable_reason"]
+
+    # No fabricated numbers anywhere in an all-errored provider.
+    for entry in (claude, codex):
+        for window in ("five_hour", "weekly"):
+            assert entry[window]["used_percent"] is None
+            assert entry[window]["remaining_percent"] is None
+            assert entry[window]["reset_at"] is None
+            assert entry[window]["minutes_to_reset"] is None
+
+
+def test_api_usage_providers_endpoint_present(
+    seeded_with_quota: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    real = usage_module.build_provider_usage
+    monkeypatch.setattr(usage_module, "build_provider_usage", lambda: real(now=_NOW))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.get("/api/usage/providers")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is True
+    assert payload["claude"]["five_hour"]["used_percent"] == 35.0
+    assert payload["codex"]["five_hour"]["used_percent"] == 22.5
+
+
+def test_api_usage_providers_endpoint_degrades(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "nope-claude"))
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(tmp_path / "nope-codex"))
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.get("/api/usage/providers")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is False
+    assert payload["claude"]["available"] is False
+    assert payload["codex"]["available"] is False
+
+
+# --------------------------------------------------------------------------- #
+# alfred usage CLI (bin/alfred-usage.py)
+# --------------------------------------------------------------------------- #
+
+
+def _load_usage_cli():
+    """Import bin/alfred-usage.py as a module (it is not on the package path)."""
+    import importlib.util
+
+    cli_path = REPO_ROOT / "bin" / "alfred-usage.py"
+    spec = importlib.util.spec_from_file_location("alfred_usage_cli", cli_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_cli_usage_json_present(
+    seeded_with_quota: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli = _load_usage_cli()
+    rc = cli.main(["--json"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["available"] is True
+    assert out["claude"]["five_hour"]["used_percent"] == 35.0
+    assert out["codex"]["five_hour"]["used_percent"] == 22.5
+
+
+def test_cli_usage_human_absent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "nope-claude"))
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(tmp_path / "nope-codex"))
+    cli = _load_usage_cli()
+    # Exit 0 even when unavailable: an absent local CLI state is reportable.
+    rc = cli.main([])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Claude Code" in out
+    assert "Codex" in out
+    assert "unavailable" in out

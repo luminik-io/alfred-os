@@ -282,7 +282,9 @@ describe("ComposeView (conversational)", () => {
 
   it("adapts its copy in plain intake mode", () => {
     renderChat("plain");
-    expect(screen.getByText(/ask · plain/i)).toBeInTheDocument();
+    // The eyebrow is stable ("New request"); plain mode is confirmed by the
+    // quiet note, not by flipping the eyebrow label.
+    expect(screen.getByText(/new request/i)).toBeInTheDocument();
     expect(screen.getByText(/plain answers are on/i)).toBeInTheDocument();
   });
 

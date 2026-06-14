@@ -294,7 +294,10 @@ describe("buildShippedDigest", () => {
     expect(digest[0].what).toBe("Add CSV export.");
     expect(digest[0].agent).toBe("Lucius");
     expect(digest[0].why).toContain("merged into api");
-    expect(digest[0].why).toContain("Lucius shipped");
+    // The agent is shown as a badge (digest[0].agent), so the sentence does not
+    // repeat the agent name (no repeated info per card).
+    expect(digest[0].why).not.toContain("Lucius");
+    expect(digest[0].why).toContain("Shipped and merged into api");
   });
 });
 

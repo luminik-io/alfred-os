@@ -6,18 +6,25 @@ import json
 
 
 def test_event_log_appends_jsonl(fresh_agent_runner, tmp_path):
-    """EventLog writes one JSON-per-line record with auto timestamp + firing id."""
+    """EventLog writes one typed, sequenced JSON-per-line record with auto
+    timestamp + firing id. Event types are validated against the closed set, so
+    these use real members; the legacy top-level ``event`` field is preserved."""
     ar = fresh_agent_runner
     log = ar.EventLog(agent="lucius", firing_id="test-1", path=tmp_path / "events.jsonl")
-    log.emit("started")
-    log.emit("picked", number=42)
+    log.emit("firing_started")
+    log.emit("issue_picked", number=42)
     lines = (tmp_path / "events.jsonl").read_text().splitlines()
     assert len(lines) == 2
     first = json.loads(lines[0])
-    assert first["event"] == "started"
+    # Legacy ``event`` field (== ``type``) is preserved for existing consumers.
+    assert first["event"] == "firing_started"
+    assert first["type"] == "firing_started"
     assert first["agent"] == "lucius"
     assert first["firing_id"] == "test-1"
     assert "ts" in first
+    # Monotonic per-firing seq stamped at append time.
+    assert first["seq"] == 1
+    assert json.loads(lines[1])["seq"] == 2
 
 
 def test_spend_state_increment_persists(fresh_agent_runner):

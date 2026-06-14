@@ -52,11 +52,17 @@ _DEMO_FILENAME = "setup-demo-cards.json"
 # in_progress column. Substring + case-insensitive, so it covers agent:pr-open,
 # lucius-pr-open, do-not-pickup, needs:human-scope, blocked, etc. Override with
 # ALFRED_SHIPPED_QUEUE_EXCLUDE_LABELS (comma-separated).
+#
+# ``plan-pending-approval`` is the operator-approval gate: a gated single-repo
+# plan carries BOTH agent:implement AND agent:plan-pending-approval, so without
+# this hint it would pass the include filter and read as "Ready" while the gate
+# blocks pickup. Excluding it keeps a blocked issue out of the pickable lane.
 _DEFAULT_QUEUE_EXCLUDE = (
     "pr-open",
     "do-not-pickup",
     "needs:human",
     "needs-human",
+    "plan-pending-approval",
     "blocked",
     "on-hold",
     "wontfix",

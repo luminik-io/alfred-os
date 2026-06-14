@@ -21,6 +21,7 @@ from labels import (  # noqa: E402
     NEEDS_HUMAN_REVIEW,
     NEEDS_HUMAN_SCOPE,
     NEEDS_INFO,
+    PLAN_PENDING_APPROVAL,
 )
 
 
@@ -198,3 +199,65 @@ def test_assign_issue_requires_allowlisted_repo(monkeypatch) -> None:
 
     assert not result.ok
     assert "allowlist" in result.error
+
+
+def test_pending_approval_gate_is_not_assigned() -> None:
+    # A gated single-repo plan carries BOTH agent:implement AND the gate label.
+    # The gate must win: the issue is held, not routed to Lucius.
+    decision = ia.decide_assignment(_issue(labels=(IMPLEMENT, PLAN_PENDING_APPROVAL)))
+
+    assert decision.route == ia.ROUTE_PENDING_APPROVAL
+    assert not decision.changed
+    assert PLAN_PENDING_APPROVAL in decision.reason
+
+
+def test_assign_issue_reports_pending_approval_as_blocked(monkeypatch) -> None:
+    # The native Work "assign" action must NOT report success for a gated plan:
+    # the decision carries no label changes, so without explicit handling it
+    # would fall through to the unchanged -> ok=True path and the client would
+    # show "Assigned ... to Alfred" while the gate label remains and Lucius
+    # still skips it.
+    _allowlist(monkeypatch, "acme-io/acme-backend")
+    calls: list[list[str]] = []
+
+    def runner(cmd: list[str]):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    result = ia.assign_issue(
+        "acme-io/acme-backend",
+        12,
+        fetcher=lambda _repo, _number: _issue(labels=(IMPLEMENT, PLAN_PENDING_APPROVAL)),
+        runner=runner,
+    )
+
+    assert not result.ok
+    assert not result.changed
+    assert result.decision.route == ia.ROUTE_PENDING_APPROVAL
+    assert PLAN_PENDING_APPROVAL in result.error
+    # The gate label must not be released as a side effect of a failed assign.
+    assert calls == []
+
+
+def test_assign_issue_dry_run_reports_pending_approval_without_mutating(monkeypatch) -> None:
+    _allowlist(monkeypatch, "acme-io/acme-backend")
+    calls: list[list[str]] = []
+
+    def runner(cmd: list[str]):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    result = ia.assign_issue(
+        "acme-io/acme-backend",
+        12,
+        dry_run=True,
+        fetcher=lambda _repo, _number: _issue(labels=(IMPLEMENT, PLAN_PENDING_APPROVAL)),
+        runner=runner,
+    )
+
+    # Dry run is read-only; it surfaces the held-for-approval decision without
+    # claiming success-as-assigned and without touching the gate label.
+    assert result.dry_run is True
+    assert result.decision.route == ia.ROUTE_PENDING_APPROVAL
+    assert "held for operator approval" in result.detail
+    assert calls == []

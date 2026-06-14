@@ -16,6 +16,15 @@ import type {
   ThreadStepState,
 } from "./uiTypes";
 
+// Any failure status reads as a snag. Covers plain "error" and the
+// provider-level "llm-error" the runtime emits when a model call fails. Lives
+// here (not chips.ts) so cost/health derivation can stay honest without a
+// circular import.
+export function isErrorStatus(status: string | null | undefined): boolean {
+  const value = (status || "").toLowerCase();
+  return value === "error" || value === "llm-error" || value === "llm_error";
+}
+
 // ---------------------------------------------------------------------------
 // Needs you: the calm, client-owned decisions.
 //
@@ -195,12 +204,13 @@ function shippedWhat(card: ShippedCard): string {
 function shippedWhy(card: ShippedCard): string {
   const repo = repoShortName(card.repo);
   const when = card.timestamp ? friendlyTime(card.timestamp) : "recently";
-  const agent = shippedAgent(card);
-  if (agent) {
-    return `${agent} shipped and merged into ${repo} ${when}. Open it on GitHub to review the diff.`;
+  // The agent is already shown as a badge on the card, so the sentence states
+  // the outcome without repeating the agent name (no repeated info per card).
+  if (shippedAgent(card)) {
+    return `Shipped and merged into ${repo} ${when}.`;
   }
   const who = card.author ? `${card.author} ` : "";
-  return `${who}merged into ${repo} ${when}. Open it on GitHub to review the diff.`;
+  return `${who}merged into ${repo} ${when}.`;
 }
 
 function repoShortName(repo: string): string {
