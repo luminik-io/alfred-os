@@ -50,8 +50,19 @@ At most one of those four is set on any issue at a time.
 |---|---|
 | `do-not-pickup` | Operator override; agents must skip this issue regardless of any other label |
 | `needs:human-scope` | Issue is too vague for autonomous work; not eligible for pickup |
+| `agent:plan-pending-approval` | Operator-approval gate; the plan is filed but held from autonomous pickup until the operator approves it |
 
 These can coexist with any lifecycle label.
+
+A planned single-repo issue is filed with both `agent:implement` and
+`agent:plan-pending-approval`. The gate label is a pickup blocker, so the issue
+sits unassigned while it is present: `decide_assignment` returns an "awaiting
+your go-ahead" reason and the dev agents keep skipping it. Approving the plan
+(queuing it from the CLI, the desktop client, or the Slack approval flow)
+removes the gate label, exactly the way an approved Batman bundle parent is
+released, and the issue becomes eligible for pickup. The gate is the
+single-repo counterpart to Batman's multi-repo bundle approval, so nothing
+planned ships without an operator go-ahead.
 
 ## Claim comments
 
@@ -189,16 +200,17 @@ Every label string in this state machine lives in [`lib/labels.py`](../lib/label
 
 ```python
 from labels import (
-    IMPLEMENT,           # "agent:implement"
-    IN_FLIGHT,           # "agent:in-flight"
-    PR_OPEN,             # "agent:pr-open"
-    DONE,                # "agent:done"
-    DO_NOT_PICKUP,       # "do-not-pickup"
-    NEEDS_HUMAN_SCOPE,   # "needs:human-scope"
-    AUTHORED,            # "agent:authored"
-    LARGE_FEATURE,       # "agent:large-feature"
-    bundle_label,        # builds "agent:bundle:<slug>"
-    is_legal_transition, # documents the state-machine moves
+    IMPLEMENT,             # "agent:implement"
+    IN_FLIGHT,             # "agent:in-flight"
+    PR_OPEN,               # "agent:pr-open"
+    DONE,                  # "agent:done"
+    DO_NOT_PICKUP,         # "do-not-pickup"
+    NEEDS_HUMAN_SCOPE,     # "needs:human-scope"
+    PLAN_PENDING_APPROVAL, # "agent:plan-pending-approval"
+    AUTHORED,              # "agent:authored"
+    LARGE_FEATURE,         # "agent:large-feature"
+    bundle_label,          # builds "agent:bundle:<slug>"
+    is_legal_transition,   # documents the state-machine moves
 )
 ```
 

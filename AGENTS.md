@@ -13,6 +13,15 @@ preflight, spend cap, and an isolated git worktree. Agents are one Python file
 per role under `bin/`, named after a coherent fictional cast (the codename
 pattern). `examples/` holds the reference agents the tutorial builds.
 
+Operators inspect and steer the fleet through the operator CLI (`bin/alfred`),
+the optional `alfred serve` JSON API, the optional Tauri desktop client under
+`clients/desktop`, and Slack. The desktop client surfaces live Claude + Codex
+subscription headroom (`alfred usage` / `GET /api/usage`, read from local CLI
+state, no billing API) and a cinematic agent roster. A planned single-repo
+issue is held behind an operator-approval gate (`agent:plan-pending-approval`)
+until the operator approves it; firings emit step-level run events so the run
+timeline shows real progress.
+
 ## Design boundaries (do not cross without a discussion)
 
 - **Single operator.** One person, one host, one config. Not multi-tenant, not

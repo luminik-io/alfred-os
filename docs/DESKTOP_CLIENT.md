@@ -12,11 +12,11 @@ The app is a Tauri shell around a React UI. It opens on Home and keeps primary n
 
 | Tab | What it shows | What it can do |
 |---|---|---|
-| **Home** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, and recent runs. | Draft work, refresh state, pause or resume all scheduled firings through the native allowlist, and jump to the right surface. |
+| **Home** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the Inbox capacity rail with live Claude and Codex subscription headroom. | Draft work, refresh state, pause or resume all scheduled firings through the native allowlist, and jump to the right surface. |
 | **Compose** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Plans** | Saved Batman plans, Slack drafts, local compose drafts, and captured follow-ups. | Convert a follow-up into a planning draft, mark it handled, or inspect the saved detail in-app. |
 | **Memory** | Reviewable memory candidates, promotion suggestions, memory errors, Redis status, Redis sync preview, and failure-pattern harvest. | Promote or reject candidates, run the memory doctor, check Redis AMS, preview sync, and queue repeated-failure lessons. |
-| **Fleet** | Service state and per-agent controls. | Pause, resume, run once, or dry-run a codename through the native allowlist. |
+| **Fleet** | The agent roster (cinematic deck by default, with a Cinematic / List toggle persisted to local storage), service state, and per-agent controls. | Pause, resume, run once, or dry-run a codename through the native allowlist. |
 | **Logs** | Notifications and firing timelines in one readable stream. | Mark activity seen, inspect firing traces in-app, and open explicit Slack or GitHub links outside the app. |
 | **Setup gear** | A command console for fleet, auth, agent, memory, Redis, runtime, and Slack collaborator checks. | Start the local runtime, run curated checks in-app, and add or remove local trusted Slack collaborators. |
 
@@ -26,11 +26,15 @@ Plans carry their origin so the Slack collaboration trail stays visible while th
 
 The client reads the fleet's own state over the `alfred serve` JSON seam and runs a small set of safe local actions through a native command allowlist. It introduces no public port, no relay, and no shadow database; `$ALFRED_HOME` remains the single source of truth.
 
-- **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
+- **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
 - **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
 - **Outside links.** Slack and GitHub links open outside the app through Tauri's opener plugin. Local Alfred plans and firings stay in the native inspector panes.
 
 When run in a plain browser (development preview), the app stays read-only: native actions are unavailable and only the JSON read path works.
+
+## Live usage on the capacity rail
+
+The Home Inbox capacity rail shows real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows. The figures come from `GET /api/usage`, which reads the engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through their local subscription CLIs rather than API keys, so there is no billing API to query and no per-token dollar figure (it is meaningless under a Max or Pro subscription). A window the local state cannot confirm reads as not synced rather than a fabricated number. The same numbers are available from the command line with `alfred usage`. See [`SERVE.md`](SERVE.md) for the endpoint and [`CLI.md`](CLI.md) for the CLI.
 
 ## Run it locally
 

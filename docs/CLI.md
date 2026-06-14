@@ -93,6 +93,39 @@ fleet success rate: 78.3%  (over 23 completed firings; 0 no-ops not counted)
 | 1 | User error (bad `--since`, unknown codename) |
 | 2 | System error (state directory missing) |
 
+## `alfred usage`
+
+Report the operator's real Claude and Codex subscription headroom for the
+rolling 5-hour and weekly limit windows. Alfred drives Claude Code and Codex
+through their local subscription CLIs rather than API keys, so there is no
+billing API to query. `alfred usage` instead reads the state files those CLIs
+persist on disk (under `~/.claude` and `~/.codex` by default) and reports usage
+and remaining headroom. Numbers are never fabricated: a provider whose local
+state cannot be read is reported as unavailable with a reason, and any single
+limit figure the CLI does not persist is shown as `-` (`null` in JSON).
+
+```sh
+alfred usage            # human-readable table
+alfred usage --json     # machine-readable {"claude": {...}, "codex": {...}}
+```
+
+### Example output
+
+```
+Claude Code:
+    5-hour   used 41%    remaining 59%    resets in 2h13m  (at 2026-06-14T18:30:00Z)
+    weekly   used 22%    remaining 78%    resets in 3d     (at 2026-06-17T00:00:00Z)
+    plan     max
+
+Codex:
+    unavailable - no local Codex session state found under ~/.codex
+```
+
+`alfred usage` is the CLI behind the desktop client's capacity rail, which reads
+the same data over `GET /api/usage`. It always exits 0: an absent local CLI
+state is a valid, reportable condition, not a command failure. Scripts can read
+the `available` flag in the `--json` payload to detect that case.
+
 ## `alfred logs`
 
 Inspect stream-JSON transcripts for one codename. Three modes:
