@@ -213,7 +213,7 @@ through JSON endpoints:
 ```text
 GET /api/status
 GET /api/actions
-GET /api/usage             # ships in an upcoming release; not served yet
+GET /api/usage             # served; backs the desktop capacity rail
 GET /api/usage/providers   # ships in an upcoming release; not served yet
 GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
@@ -231,19 +231,21 @@ POST /api/slack/trusted-users/{user_id}/remove
 
 Read endpoints intentionally mirror the HTML pages.
 
-`GET /api/usage` and `GET /api/usage/providers` ship in an upcoming release; they
-are not served by `alfred serve` yet. Once available they back the desktop
-client's capacity rail. They report the operator's real Claude and Codex
-subscription headroom for the rolling 5-hour and weekly windows, read from the
-engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through
+`GET /api/usage` is served by `alfred serve` today and backs the desktop client's
+capacity rail. It reports the operator's real Claude and Codex subscription
+headroom for the rolling 5-hour and weekly windows, read from the engines' own
+local CLI state files on the host. Alfred drives Claude Code and Codex through
 their local subscription CLIs rather than API keys, so there is no billing API
 and no per-token dollar figure (it is meaningless under a Max or Pro
 subscription). A provider whose local state cannot be read degrades to
 `available: false` with a reason rather than guessing, and any single window the
 CLI does not persist reads as not synced rather than a fabricated number. Reads
-run in a worker thread so filesystem work never stalls the event loop. The same
-numbers are available from the command line with `alfred usage` (see
-[`CLI.md`](CLI.md)).
+run in a worker thread so filesystem work never stalls the event loop.
+
+`GET /api/usage/providers` and the `alfred usage` CLI ship in an upcoming
+release; the per-provider endpoint is not served by `alfred serve` yet. The same
+usage numbers will also be available from the command line with `alfred usage`
+(see [`CLI.md`](CLI.md)).
 
 The follow-up action
 endpoints are local-file actions only: they convert captured feedback into a

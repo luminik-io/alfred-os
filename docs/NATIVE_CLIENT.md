@@ -43,8 +43,8 @@ Alfred with or without the client.
 The first screen is a decision queue and local command center:
 
 - fleet health
-- Claude and Codex subscription headroom on the Inbox capacity rail (its
-  `/api/usage` backing ships in an upcoming release)
+- Claude and Codex subscription headroom on the Inbox capacity rail (backed by
+  the live `GET /api/usage` endpoint)
 - pending approvals
 - blocked plans
 - stale workers
@@ -218,8 +218,8 @@ The first client lives at `clients/desktop`:
   Slack and GitHub links open outside the app.
 - The app opens to Home and has Home, Compose, Plans, Memory, Fleet, and Logs
   tabs, with Setup behind the gear.
-- Home shows the decision queue, the Claude and Codex capacity rail (its
-  `/api/usage` backing ships in an upcoming release), recent plans, recent runs,
+- Home shows the decision queue, the Claude and Codex capacity rail (backed by
+  the live `GET /api/usage` endpoint), recent plans, recent runs,
   memory candidates, and fleet-wide pause/resume actions.
 - Fleet defaults to the cinematic agent roster with a Cinematic / List toggle
   persisted to local storage.
@@ -259,7 +259,7 @@ The client uses these local API contracts today:
 ```text
 GET  /api/status
 GET  /api/actions
-GET  /api/usage             # ships in an upcoming release; not served yet
+GET  /api/usage             # served; backs the capacity rail
 GET  /api/usage/providers   # ships in an upcoming release; not served yet
 GET  /api/firings
 GET  /api/firings/{firing_id}
@@ -274,15 +274,17 @@ GET  /api/planning-drafts
 GET  /api/slack/threads
 ```
 
-`GET /api/usage` and `GET /api/usage/providers` ship in an upcoming release; they
-are not served by `alfred serve` yet. Once available they back the capacity rail.
-They report the operator's real Claude and Codex subscription headroom for the
+`GET /api/usage` is served by `alfred serve` today and backs the capacity rail.
+It reports the operator's real Claude and Codex subscription headroom for the
 rolling 5-hour and weekly windows, read from the engines' own local CLI state
 files on the host. Alfred drives Claude Code and Codex through their local
 subscription CLIs rather than API keys, so there is no billing API to query and
 no per-token dollar figure (that number is meaningless under a Max or Pro
 subscription). A window the local state cannot confirm reads as not synced
 rather than a fabricated number.
+
+`GET /api/usage/providers` and the `alfred usage` CLI ship in an upcoming
+release; the per-provider endpoint is not served by `alfred serve` yet.
 
 The native client also has a narrow local command allowlist:
 

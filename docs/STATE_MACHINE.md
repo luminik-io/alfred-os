@@ -50,29 +50,38 @@ At most one of those four is set on any issue at a time.
 |---|---|
 | `do-not-pickup` | Operator override; agents must skip this issue regardless of any other label |
 | `needs:human-scope` | Issue is too vague for autonomous work; not eligible for pickup |
-| `agent:plan-pending-approval` | Operator-approval gate; the plan is filed but held from autonomous pickup until the operator approves it |
+| `agent:plan-pending-approval` | Operator-approval gate; any issue carrying it is held from autonomous pickup until the operator approves and the label is cleared |
 
 These can coexist with any lifecycle label.
 
-A planned single-repo issue is filed carrying `agent:plan-pending-approval`. That
-label is the blocker: `agent:plan-pending-approval` is in
-`PICKUP_BLOCKING_LABEL_SET` in [`lib/labels.py`](../lib/labels.py), so
-`pickup_blocking_labels()` reports it. In `decide_assignment`
-([`lib/issue_assignment.py`](../lib/issue_assignment.py)) the gate label is kept
-as a blocker (unlike `do-not-pickup`, `agent:large-feature`, and bundle labels,
-which assignment deliberately discards), so any issue holding it routes to
-`ROUTE_BLOCKED` with the reason `blocked from autonomous pickup by label(s):
+`agent:plan-pending-approval` is the blocker itself, independent of how an issue
+came to carry it. The label is in `PICKUP_BLOCKING_LABEL_SET` in
+[`lib/labels.py`](../lib/labels.py), so `pickup_blocking_labels()` reports it. In
+`decide_assignment` ([`lib/issue_assignment.py`](../lib/issue_assignment.py)) the
+gate label is kept as a blocker (unlike `do-not-pickup`, `agent:large-feature`,
+and bundle labels, which assignment deliberately discards via
+`_assignment_blocking_labels`), so any issue holding it routes to `ROUTE_BLOCKED`
+with the reason `blocked from autonomous pickup by label(s):
 agent:plan-pending-approval`. The issue is never auto-assigned and the dev agents
-keep skipping it while the label is present. The operator clears the gate by
-approving the plan (the planner files it with the label; approval removes the
-label), and only then does the issue become eligible for pickup.
+keep skipping it until the operator approves and the label is cleared.
 
-This is the single-repo counterpart to Batman's multi-repo approval, but the two
-use different approval surfaces. A multi-repo Batman bundle parent also carries
-`agent:plan-pending-approval` and waits on the operator's Slack approval reaction;
-the parent's label is removed once that reaction lands. The bundle's sibling
-child issues do not carry the gate label. Either way, nothing planned ships
-without an operator go-ahead.
+Where the label comes from depends on the path:
+
+- **Autonomously planned single-repo plans** are filed with this gate label by
+  the planner (Drake), so the operator approves before any work begins (the
+  planner files single-repo plans with this gate label; ships with the companion
+  code update).
+- **Approved Slack / Compose drafts are different.** The human has already
+  approved the draft inside Slack, so `SlackIssueBridge.convert()`
+  ([`lib/slack_issue_bridge.py`](../lib/slack_issue_bridge.py)) files the issue
+  directly with only `agent:implement` (the bridge's default
+  `config.label`) and no gate label. These issues are immediately eligible for
+  pickup, by design; do not expect an approved draft to be held.
+- **Multi-repo Batman bundles** use a different approval surface. The bundle
+  parent carries `agent:plan-pending-approval` while Batman waits on the
+  operator's Slack approval reaction; the parent's label is added and removed by
+  Batman's parent flow only ([`bin/batman.py`](../bin/batman.py)). The bundle's
+  sibling child issues carry no gate label.
 
 ## Claim comments
 
