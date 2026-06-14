@@ -230,8 +230,11 @@ class EventLog:
         stderr and continue.
         """
         # Build + validate the envelope at the NEXT seq value, but only commit
-        # the counter after validation succeeds, so a rejected event (unknown
-        # type, missing required key) does not burn a seq number or leave a gap.
+        # the counter after the byte is confirmed on disk, so neither a rejected
+        # event (unknown type, missing required key) nor a failed write burns a
+        # seq number or leaves a gap. A consumer watching for monotonic gaps
+        # treats a hole as a missing event, so the counter must not advance until
+        # fsync succeeds.
         event = Event.create(
             seq=self._seq + 1,
             agent=self.agent,
@@ -240,13 +243,13 @@ class EventLog:
             payload=payload,
             stage=stage if stage is not None else self.stage,
         )
-        self._seq += 1
         record = event.to_record()
         try:
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, default=str) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+            self._seq += 1
         except OSError as e:
             print(f"[event-log] write failed: {e}", file=sys.stderr)
 

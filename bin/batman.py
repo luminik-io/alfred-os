@@ -396,7 +396,11 @@ def _run_lifecycle(
                 f"({', '.join(plan.affected_repos) or 'no repos'})"
             ),
         )
-    except Exception as exc:
+    except OSError as exc:
+        # Only absorb event-log I/O failures here. An UnknownEventType /
+        # EventPayloadError from agent_events is a closed-set programmer error
+        # (a misspelled event name), so it must crash loudly rather than be
+        # swallowed and printed.
         print(f"[BATMAN-EVENT-LOG] plan_created emit skipped: {exc}", file=sys.stderr)
 
     if not plan.children:
