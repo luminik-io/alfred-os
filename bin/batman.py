@@ -54,6 +54,7 @@ from agent_runner import (  # noqa: E402
     GH_REPO_TO_LOCAL,
     LIFECYCLE_LABELS,
     STATE_ROOT,
+    EventLog,
     PreflightSpec,
     agent_engine,
     doctor_mode,
@@ -378,6 +379,25 @@ def _run_lifecycle(
 
     parent_repo = config.parent_repo
     parent_issue_number = int(parent_issue.get("number") or 0)
+
+    # The plan is now drafted. Record it as a real step in the per-firing event
+    # log, distinct from posting it for approval (the Slack approval gate) and
+    # from an operator approving it, so the run timeline shows the plan came
+    # into being. Never let an event-log hiccup break the firing.
+    try:
+        EventLog(agent=CODENAME, firing_id=firing_id).emit(
+            "plan_created",
+            issue=parent_issue_number,
+            affected_repos=list(plan.affected_repos),
+            bundle=plan.bundle_slug,
+            children=len(plan.children),
+            detail=(
+                f"{parent_repo}#{parent_issue_number} "
+                f"({', '.join(plan.affected_repos) or 'no repos'})"
+            ),
+        )
+    except Exception as exc:
+        print(f"[BATMAN-EVENT-LOG] plan_created emit skipped: {exc}", file=sys.stderr)
 
     if not plan.children:
         detail = "; ".join(f.message for f in plan.readiness_blockers) or (

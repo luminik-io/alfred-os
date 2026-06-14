@@ -394,10 +394,10 @@ function ConversationalCompose({
       <div className={`panel panel--wide compose-chat-panel${result ? " compose-chat-panel--with-result" : ""}`}>
         <div className="compose-chat-panel__head">
           <div className="compose-head">
-            <PanelHeader
-              eyebrow={isPlainMode ? "Ask · Plain" : "Ask · Technical"}
-              title="Ask Alfred"
-            />
+            {/* Stable eyebrow: the Plain/Technical mode is already shown by the
+                toggle beside it, so the eyebrow does not flip between the two
+                (which read as a jumping label). It states the intent instead. */}
+            <PanelHeader eyebrow="New request" title="Ask Alfred" />
             <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
           </div>
           <p className="panel-intro">
@@ -892,8 +892,11 @@ function OneShotCompose({
     <section className="compose-stack">
       <div className={`panel panel--wide compose-chat-panel${result ? " compose-chat-panel--with-result" : ""}`}>
         <div className="compose-chat-panel__head">
+          {/* Stable eyebrow: it does not flip between Plain and Technical (the
+              mode is shown elsewhere), so the label stays steady while the
+              title carries the new-vs-refine distinction. */}
           <PanelHeader
-            eyebrow={isPlainMode ? "Ask · Plain" : "Ask · Technical"}
+            eyebrow="New request"
             title={iterating ? "Refine request" : "Ask Alfred"}
           />
           <p className="panel-intro">

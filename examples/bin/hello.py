@@ -88,7 +88,10 @@ def main() -> int:
     msg = f"👋 Hello from alfred-os at {events.firing_id}"
     print(msg)
     slack_post(msg)
-    events.emit("firing_complete", message=msg)
+    # ``firing_complete`` is a closed typed event: it must carry an ``outcome``
+    # so the run reader can classify the firing (success vs failure). The event
+    # log validates this at write time.
+    events.emit("firing_complete", outcome="success", message=msg)
     return 0
 
 

@@ -177,17 +177,19 @@ describe("ComposeView", () => {
 
   it("adapts its copy when the server is in plain intake mode", () => {
     renderComposeView("plain");
-    // The eyebrow confirms the mode and a quiet note tells a non-developer
-    // Alfred answers without jargon.
-    expect(screen.getByText(/ask · plain/i)).toBeInTheDocument();
+    // The eyebrow is stable ("New request"); the mode is confirmed by a quiet
+    // note telling a non-developer Alfred answers without jargon, plus the
+    // PlainModeToggle, not by flipping the eyebrow.
+    expect(screen.getByText(/new request/i)).toBeInTheDocument();
     expect(screen.getByText(/plain answers are on/i)).toBeInTheDocument();
   });
 
   it("uses the default (technical) copy when no plain profile is active", () => {
     renderComposeView("technical");
     expect(screen.queryByText(/plain answers are on/i)).not.toBeInTheDocument();
-    // The plain "Plain mode" eyebrow is not shown.
+    // The eyebrow stays stable across modes, so it never flips to a Plain label.
     expect(screen.queryByText(/ask · plain/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/new request/i)).toBeInTheDocument();
   });
 
   it("surfaces an error when the draft request fails", async () => {

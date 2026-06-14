@@ -4,7 +4,10 @@ The fleet only picks up issues labeled ``agent:implement`` and never touches an
 issue labeled ``do-not-pickup`` (see ``labels.py`` and ``bin/lucius.py``). This
 module lets the operator flip that from the native client or Slack:
 
-* **queue**  -> add ``agent:implement``, remove ``do-not-pickup`` (Alfred may pick it up)
+* **queue**  -> add ``agent:implement``, remove ``do-not-pickup`` and the
+  ``agent:plan-pending-approval`` operator-approval gate (Alfred may pick it up).
+  Queuing is the operator's go-ahead on a held Drake plan, so it releases the
+  gate the same way an approved Batman bundle parent is released.
 * **hold**   -> add ``do-not-pickup``, remove ``agent:implement`` (Alfred leaves it alone)
 * **done**   -> close the issue (native GitHub closed state, no new label taxonomy)
 
@@ -17,7 +20,7 @@ from __future__ import annotations
 import re
 import subprocess
 
-from labels import DO_NOT_PICKUP, IMPLEMENT
+from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
 from shipped_board import _config_value, _gh_bin, _gh_subprocess_env
 
 _ISSUE_URL_RE = re.compile(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/issues/(\d+)")
@@ -71,6 +74,16 @@ def set_issue_pickup(repo: str, number: int, *, hold: bool) -> tuple[bool, str]:
     ``hold=True`` takes the issue out of Alfred's reach (``do-not-pickup``);
     ``hold=False`` makes it eligible (``agent:implement``). Mutually exclusive
     labels are toggled together so the issue never carries both.
+
+    Queuing is also the operator's go-ahead on a held Drake plan. A single-repo
+    plan is filed with both ``agent:implement`` and ``agent:plan-pending-approval``
+    (the operator-approval gate), so it sits unassigned until the operator
+    approves it. The gate label is a pickup blocker, so simply arming
+    ``agent:implement`` would not be enough: ``decide_assignment`` and Lucius both
+    keep skipping the issue while the gate label is present. Queuing therefore
+    removes the gate too, releasing the plan exactly the way an approved Batman
+    bundle parent is released. Without this an approved single-repo plan would
+    stay blocked forever.
     """
     if not _REPO_SLUG_RE.match(repo or ""):
         return False, f"invalid repo slug: {repo!r}"
@@ -85,45 +98,20 @@ def set_issue_pickup(repo: str, number: int, *, hold: bool) -> tuple[bool, str]:
         return False, f"repo not in Alfred queue allowlist: {repo}"
     if number <= 0:
         return False, f"invalid issue number: {number}"
-    add, remove = (DO_NOT_PICKUP, IMPLEMENT) if hold else (IMPLEMENT, DO_NOT_PICKUP)
-    cmd = [
-        _gh_bin(),
-        "issue",
-        "edit",
-        str(number),
-        "-R",
-        repo,
-        "--add-label",
-        add,
-        "--remove-label",
-        remove,
-    ]
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=_gh_subprocess_env(),
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"{type(exc).__name__}: {exc}"
-    if proc.returncode != 0:
-        # gh refuses --remove-label for a label the issue doesn't have; retry
-        # with only the add so a fresh issue can still be queued/held.
-        retry = [
-            _gh_bin(),
-            "issue",
-            "edit",
-            str(number),
-            "-R",
-            repo,
-            "--add-label",
-            add,
-        ]
+    add_labels: tuple[str, ...]
+    remove_labels: tuple[str, ...]
+    if hold:
+        add_labels = (DO_NOT_PICKUP,)
+        remove_labels = (IMPLEMENT,)
+    else:
+        add_labels = (IMPLEMENT,)
+        remove_labels = (DO_NOT_PICKUP, PLAN_PENDING_APPROVAL)
+    base = [_gh_bin(), "issue", "edit", str(number), "-R", repo]
+
+    def _edit(extra: list[str]) -> tuple[bool, str]:
         try:
-            proc2 = subprocess.run(
-                retry,
+            proc = subprocess.run(
+                base + extra,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -131,8 +119,33 @@ def set_issue_pickup(repo: str, number: int, *, hold: bool) -> tuple[bool, str]:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             return False, f"{type(exc).__name__}: {exc}"
-        if proc2.returncode != 0:
-            return False, (proc2.stderr or proc.stderr or "gh issue edit failed").strip()
+        if proc.returncode != 0:
+            return False, (proc.stderr or proc.stdout or "gh issue edit failed").strip()
+        return True, ""
+
+    add_args: list[str] = []
+    for label in add_labels:
+        add_args.extend(["--add-label", label])
+    remove_args: list[str] = []
+    for label in remove_labels:
+        remove_args.extend(["--remove-label", label])
+
+    # Happy path: one atomic edit toggling the adds and removes together.
+    ok, err = _edit(add_args + remove_args)
+    if not ok:
+        # gh refuses --remove-label for a label the issue does not carry (it
+        # resolves label names to IDs before the mutation), which fails the
+        # whole combined edit. Don't let one missing label strand the others:
+        # in a repo where agent:plan-pending-approval was never created, an
+        # all-or-nothing retry on the adds alone would drop EVERY remove and
+        # leave do-not-pickup in place, so the issue reports "queued" but Lucius
+        # still skips it. Arm the adds first, then remove each label on its own,
+        # best-effort, so do-not-pickup is always cleared.
+        ok, err = _edit(add_args)
+        if not ok:
+            return False, err
+        for label in remove_labels:
+            _edit(["--remove-label", label])
     verb = "held (Alfred will not pick it up)" if hold else "queued for Alfred"
     return True, f"{repo}#{number} {verb}"
 

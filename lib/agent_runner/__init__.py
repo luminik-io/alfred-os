@@ -61,6 +61,21 @@ remain importable, but they are not part of the stable public surface.
 from __future__ import annotations
 
 # --------------------------------------------------------------------------
+# State (locks, spend, fleet, events, global block)
+# --------------------------------------------------------------------------
+from .agent_events import (
+    KNOWN_EVENT_TYPES,
+    START_TYPES,
+    TERMINAL_TYPES,
+    Event,
+    EventPayloadError,
+    EventType,
+    UnknownEventType,
+    coerce_type,
+    parse_record,
+)
+
+# --------------------------------------------------------------------------
 # Config (env, engine, dry-run, doctor)
 # --------------------------------------------------------------------------
 from .config import (
@@ -270,10 +285,6 @@ from .result import (
     _should_retry_claude_auth,
     dry_run_claude_result,
 )
-
-# --------------------------------------------------------------------------
-# State (locks, spend, fleet, events, global block)
-# --------------------------------------------------------------------------
 from .state import (
     _LOCK_GRACE_SECONDS,
     PAUSE_MARKER_DIR,
@@ -385,6 +396,15 @@ __all__ = [
     # state
     "AgentLock",
     "EventLog",
+    "Event",
+    "EventType",
+    "EventPayloadError",
+    "UnknownEventType",
+    "KNOWN_EVENT_TYPES",
+    "START_TYPES",
+    "TERMINAL_TYPES",
+    "coerce_type",
+    "parse_record",
     "PAUSE_MARKER_DIR",
     "SpendState",
     "agent_pause_marker_path",

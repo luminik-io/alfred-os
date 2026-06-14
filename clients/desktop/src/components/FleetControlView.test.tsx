@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FleetControlView } from "./FleetControlView";
 import { parseFleetServiceState } from "../lib/fleetControl";
@@ -80,16 +80,47 @@ function renderView(onRunLocalAction = vi.fn(), schedule: ScheduledRun[] = SCHED
 }
 
 describe("FleetControlView", () => {
-  it("shows Pause for a running agent and Resume for a paused one", () => {
-    renderView();
-    // lucius is running -> Pause offered; bane is paused -> Resume offered.
-    expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
-    // Paused-since detail is surfaced.
-    expect(screen.getByText(/paused since/i)).toBeInTheDocument();
+  beforeEach(() => {
+    // Roster view mode persists in localStorage; reset so each test starts on
+    // the cinematic default regardless of order.
+    try {
+      window.localStorage.clear();
+    } catch {
+      // jsdom without storage: nothing to reset.
+    }
   });
 
-  it("reads paused state from the polled summary without a CLI service map", () => {
+  it("defaults to the cinematic roster and toggles to the dense list", async () => {
+    renderView();
+    const user = userEvent.setup();
+    const cinematic = screen.getByRole("button", { name: /cinematic view/i });
+    const list = screen.getByRole("button", { name: /list view/i });
+    expect(cinematic).toHaveAttribute("aria-pressed", "true");
+    expect(list).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(list);
+    expect(list).toHaveAttribute("aria-pressed", "true");
+    expect(cinematic).toHaveAttribute("aria-pressed", "false");
+    // Selecting an agent still works in either view.
+    await user.click(screen.getByRole("button", { name: /select bane/i }));
+    expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
+  });
+
+  it("shows selected-agent controls and switches to a paused agent", async () => {
+    renderView();
+    const user = userEvent.setup();
+
+    // The deck selects the running agent first, so only that agent's controls show.
+    expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Resume$/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /select bane/i }));
+    expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
+    // The cinematic card and the inspector both surface the paused state.
+    expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
+  });
+
+  it("reads paused state from the polled summary without a CLI service map", async () => {
     render(
       <FleetControlView
         agents={[
@@ -107,9 +138,38 @@ describe("FleetControlView", () => {
         onViewLogs={vi.fn()}
       />,
     );
+    const user = userEvent.setup();
+
     expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /select bane/i }));
     expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
-    expect(screen.getByText(/paused since/i)).toBeInTheDocument();
+    // The cinematic card and the inspector both surface the paused state.
+    expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders the human agent role and purpose above the runtime codename", () => {
+    render(
+      <FleetControlView
+        agents={[
+          agent("lucius", {
+            display_name: "Lucius",
+            role_title: "Senior Developer",
+            purpose: "Ships scoped implementation issues as pull requests.",
+          }),
+        ]}
+        schedule={[]}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Lucius · Senior Developer").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Ships scoped implementation issues as pull requests.").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByTitle("Runtime codename: lucius")).toHaveTextContent("lucius");
   });
 
   it("runs dry-run immediately without confirmation", async () => {
@@ -192,7 +252,7 @@ describe("FleetControlView", () => {
       />,
     );
     const user = userEvent.setup();
-    await user.click(screen.getAllByRole("button", { name: /view logs/i })[0]);
+    await user.click(screen.getByRole("button", { name: /^Logs$/i }));
     expect(onViewLogs).toHaveBeenCalledWith("lucius");
   });
 });

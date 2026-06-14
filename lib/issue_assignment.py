@@ -13,6 +13,16 @@ The two executable lanes are the existing state machine labels:
 
 Vague work is not forced into either lane. It gets ``needs:human-scope`` so a
 human can clarify it before an autonomous agent spends context guessing.
+
+Operator-approval gate. Every Drake plan, including single-repo work, lands in
+the operator-approval queue before it is assigned to a dev agent. The gate is
+the existing ``agent:plan-pending-approval`` label (the same label Batman holds
+on a bundle parent while it waits on the operator). An issue carrying that label
+is awaiting the operator's go-ahead, so it is never auto-assigned: assignment
+returns ``ROUTE_PENDING_APPROVAL`` and changes nothing. Once the operator
+approves and the gate label is removed (the existing approve path, which also
+adds ``agent:implement``), assignment proceeds to Lucius exactly as before. This
+reuses the existing approval/queue mechanism rather than inventing a new path.
 """
 
 from __future__ import annotations
@@ -33,6 +43,9 @@ ROUTE_BATMAN = "batman"
 ROUTE_HUMAN_SCOPE = "human_scope"
 ROUTE_ALREADY_ROUTED = "already_routed"
 ROUTE_BLOCKED = "blocked"
+# An issue carrying the operator-approval gate label is awaiting the operator's
+# go-ahead and is never auto-assigned until the gate is released.
+ROUTE_PENDING_APPROVAL = "pending_approval"
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
@@ -218,6 +231,26 @@ def decide_assignment(issue: IssueSnapshot) -> AssignmentDecision:
             add_labels=(),
             remove_labels=(),
             reason=f"issue is {issue.state.lower()}",
+            confidence=1.0,
+        )
+
+    # Operator-approval gate. An issue carrying ``agent:plan-pending-approval``
+    # is sitting in the operator's go-ahead queue (Drake files single-repo plans
+    # with this label; Batman holds it on a bundle parent while it waits). It is
+    # never assigned to a dev agent until the operator approves and the gate
+    # label is removed, so refuse assignment while it is present. This is checked
+    # before the generic blocker scan so the operator sees an "awaiting your
+    # go-ahead" reason rather than a generic blocked-by-label message.
+    if label_constants.PLAN_PENDING_APPROVAL in labels:
+        return AssignmentDecision(
+            route=ROUTE_PENDING_APPROVAL,
+            agent="none",
+            add_labels=(),
+            remove_labels=(),
+            reason=(
+                f"awaiting operator go-ahead ({label_constants.PLAN_PENDING_APPROVAL}); "
+                "approve the plan to release it for assignment"
+            ),
             confidence=1.0,
         )
 

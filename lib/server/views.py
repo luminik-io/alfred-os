@@ -473,6 +473,47 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse(unavailable_usage_payload(f"{type(exc).__name__}: {exc}"))
         return JSONResponse(_jsonable(payload))
 
+    @app.get("/api/usage/providers", response_class=JSONResponse)
+    async def api_usage_providers(request: Request) -> JSONResponse:
+        """Provider-normalized usage meters: ``{"claude": {...}, "codex": {...}}``.
+
+        A flat re-projection of ``/api/usage`` that surfaces each engine's
+        5-hour and weekly rolling windows under uniform keys (``used_percent``,
+        ``remaining_percent``, ``reset_at``, ``minutes_to_reset``). Alfred drives
+        Claude Code and Codex through their local subscription CLIs, so there is
+        no billing API: figures come straight from the CLIs' own local state
+        files. A provider whose local state cannot be read degrades to
+        ``available: false`` with an ``unavailable_reason`` rather than guessing.
+
+        Reads run in a worker thread so filesystem work never stalls the event
+        loop, and any failure degrades to an honest both-unavailable shape.
+        """
+        from starlette.concurrency import run_in_threadpool
+
+        from server.usage import build_provider_usage
+
+        try:
+            payload = await run_in_threadpool(build_provider_usage)
+        except Exception as exc:  # never break the client on a usage failure
+            err = f"{type(exc).__name__}: {exc}"
+            payload = {
+                "available": False,
+                "error": err,
+                "claude": {
+                    "available": False,
+                    "five_hour": None,
+                    "weekly": None,
+                    "unavailable_reason": err,
+                },
+                "codex": {
+                    "available": False,
+                    "five_hour": None,
+                    "weekly": None,
+                    "unavailable_reason": err,
+                },
+            }
+        return JSONResponse(_jsonable(payload))
+
     @app.post("/api/queue", response_class=JSONResponse)
     async def api_queue(request: Request) -> JSONResponse:
         """Operator queue control: assign, arm, hold, or close an issue.

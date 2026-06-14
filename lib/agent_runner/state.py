@@ -40,6 +40,11 @@ from pathlib import Path
 from typing import Any
 
 from . import process as _process
+from .agent_events import (  # noqa: F401  (re-exported for callers)
+    Event,
+    EventType,
+    UnknownEventType,
+)
 from .config import PROVIDER_LIMIT_SUBTYPES, dry_run_log, is_dry_run
 from .paths import (
     FLEET_ENABLED_FILE,
@@ -129,7 +134,15 @@ def maybe_set_global_block_for_result(
 
 
 class EventLog:
-    """Append-only JSONL log for a single firing.
+    """Append-only JSONL log for a single firing - typed + sequenced.
+
+    Every record is a typed :class:`agent_events.Event` envelope carrying a
+    monotonic per-firing ``seq`` (1, 2, 3, ...), a UTC-ISO ``ts``, a closed
+    ``type`` (rejected at write time if it is not in
+    :class:`agent_events.EventType`), stable ``agent`` / ``firing_id`` identity,
+    an optional ``stage``, and a validated payload. The serialized line keeps
+    the legacy top-level ``event`` field (== ``type``) so existing consumers
+    keep rendering.
 
     Usage::
 
@@ -138,9 +151,11 @@ class EventLog:
         events.emit("issue_picked", repo="myorg/backend", number=275)
         events.emit("pr_opened", url=pr_url, files_changed=12)
 
-    The record shape is intentionally loose: any JSON-serialisable
-    dict goes. Every record gets ``ts`` (UTC ISO with microseconds)
-    and ``agent`` injected automatically.
+    ``append()`` is the typed primitive; ``emit()`` is the thin string-keyed
+    wrapper the existing call sites use. Both validate the event type against
+    the closed set and stamp ``seq`` monotonically. ``seq`` survives a process
+    restart: on init the log reads the max ``seq`` already on disk for the
+    firing and continues from there.
     """
 
     def __init__(
@@ -148,35 +163,104 @@ class EventLog:
         agent: str,
         firing_id: str | None = None,
         path: Path | None = None,
+        *,
+        stage: str | None = None,
     ) -> None:
         self.agent = agent
         if firing_id is None:
             stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             firing_id = f"{stamp}-{secrets.token_hex(2)}"
         self.firing_id = firing_id
+        # Default stage/node identity stamped onto every event unless an emit
+        # call overrides it. ``None`` means "no stage" and is omitted on disk.
+        self.stage = stage
         if path is None:
             d = STATE_ROOT / agent / "events"
             d.mkdir(parents=True, exist_ok=True)
             path = d / f"{firing_id}.jsonl"
         self.path = path
+        # Restart-safe monotonic counter: seed from the max ``seq`` already on
+        # disk so a second EventLog for the same firing (e.g. after a process
+        # restart) continues the sequence instead of restarting at 1.
+        self._seq = self._read_max_seq()
 
-    def emit(self, event: str, **fields: Any) -> None:
-        """Append one record. Never raises; failures are logged to stderr.
+    def _read_max_seq(self) -> int:
+        """Return the highest ``seq`` already recorded for this firing, or 0.
 
-        A broken event log shouldn't kill an agent firing.
+        Best-effort: a missing file, an unreadable file, or torn / legacy lines
+        without a ``seq`` are tolerated (legacy lines simply do not advance the
+        counter). This is what makes the counter survive a process restart.
         """
-        record = {
-            "ts": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-            "agent": self.agent,
-            "firing_id": self.firing_id,
-            "event": event,
-            **fields,
-        }
+        try:
+            raw = self.path.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            return 0
+        max_seq = 0
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not isinstance(obj, dict):
+                continue
+            seq = obj.get("seq")
+            if isinstance(seq, int) and seq > max_seq:
+                max_seq = seq
+        return max_seq
+
+    def append(
+        self,
+        event_type: str | EventType,
+        *,
+        stage: str | None = None,
+        **payload: Any,
+    ) -> None:
+        """Append one typed, sequenced event. Stamps ``seq`` monotonically,
+        validates the type against the closed set, serializes the envelope and
+        fsyncs so a crash mid-firing cannot lose an acknowledged event.
+
+        Raises :class:`agent_events.UnknownEventType` for an out-of-set type and
+        :class:`agent_events.EventPayloadError` for a missing required payload
+        key. These are programmer errors (a typo or a wrong call site), so they
+        are surfaced loudly rather than swallowed - that is the closed-set
+        guarantee. I/O errors, by contrast, never kill a firing: they print to
+        stderr and continue.
+        """
+        # Build + validate the envelope at the NEXT seq value, but only commit
+        # the counter after validation succeeds, so a rejected event (unknown
+        # type, missing required key) does not burn a seq number or leave a gap.
+        event = Event.create(
+            seq=self._seq + 1,
+            agent=self.agent,
+            firing_id=self.firing_id,
+            event_type=event_type,
+            payload=payload,
+            stage=stage if stage is not None else self.stage,
+        )
+        self._seq += 1
+        record = event.to_record()
         try:
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, default=str) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
         except OSError as e:
             print(f"[event-log] write failed: {e}", file=sys.stderr)
+
+    def emit(self, event: str | EventType, **fields: Any) -> None:
+        """Thin typed wrapper over :meth:`append` for the string-keyed call
+        sites. Pulls an optional ``stage`` out of the freeform kwargs so a call
+        site can stamp stage identity without changing the positional API.
+
+        Unknown event types still raise (so a typo is caught), but a broken
+        event-log *write* never kills a firing - that contract is preserved
+        inside :meth:`append`.
+        """
+        stage = fields.pop("stage", None)
+        self.append(event, stage=stage, **fields)
 
 
 # --------------------------------------------------------------------------
