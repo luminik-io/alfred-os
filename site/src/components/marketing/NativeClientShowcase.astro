@@ -37,14 +37,14 @@ interface Agent {
 
 // OSS fleet codenames (all public, documented in /concepts/codename-pattern/).
 const roster: Agent[] = [
-  { codename: "Batman",   role: "Architect",        state: "warn", cadence: "on bundle", accent: "#5789FF" },
-  { codename: "Drake",    role: "Spec planner",     state: "live", cadence: "every 20m", accent: "#00E5C7" },
-  { codename: "Lucius",   role: "Senior developer", state: "live", cadence: "every 20m", accent: "#7CE2B0" },
-  { codename: "Bane",     role: "Test engineer",    state: "live", cadence: "every 30m", accent: "#F4B43E" },
-  { codename: "Ra's al Ghul", role: "PR reviewer",  state: "live", cadence: "on PR open", accent: "#C792EA" },
-  { codename: "Nightwing", role: "Review fixer",    state: "idle", cadence: "on review", accent: "#8FA6C9" },
-  { codename: "Robin",    role: "Bug triage",       state: "live", cadence: "on report", accent: "#FF9E64" },
-  { codename: "Gordon",   role: "Drift watch",      state: "idle", cadence: "daily 07:00", accent: "#56C7E6" },
+  { codename: "Batman",   role: "Plans large features",       state: "warn", cadence: "on bundle", accent: "#5789FF" },
+  { codename: "Drake",    role: "Turns requests into tasks",  state: "live", cadence: "every 20m", accent: "#00E5C7" },
+  { codename: "Lucius",   role: "Writes the code",            state: "live", cadence: "every 20m", accent: "#7CE2B0" },
+  { codename: "Bane",     role: "Writes the tests",           state: "live", cadence: "every 30m", accent: "#F4B43E" },
+  { codename: "Ra's al Ghul", role: "Reviews pull requests",  state: "live", cadence: "on PR open", accent: "#C792EA" },
+  { codename: "Nightwing", role: "Fixes review comments",     state: "idle", cadence: "on review", accent: "#8FA6C9" },
+  { codename: "Robin",    role: "Sorts incoming bugs",        state: "live", cadence: "on report", accent: "#FF9E64" },
+  { codename: "Gordon",   role: "Flags stale docs",           state: "idle", cadence: "daily 07:00", accent: "#56C7E6" },
 ];
 
 const monogram = (name: string) => name.replace(/[^A-Za-z]/g, "").charAt(0).toUpperCase();
@@ -63,7 +63,7 @@ const stateLabel: Record<Agent["state"], string> = {
       <i class="ncs__light ncs__light--y"></i>
       <i class="ncs__light ncs__light--g"></i>
     </span>
-    <span class="m-mono ncs__title">Alfred &mdash; Command Center</span>
+    <span class="m-mono ncs__title">Alfred Desktop</span>
     <span class="m-mono ncs__path">~/.alfred/serve :7010</span>
   </div>
 
@@ -87,8 +87,8 @@ const stateLabel: Record<Agent["state"], string> = {
       <!-- ===== capacity panel ===== -->
       <section class="ncs__block" aria-label="Capacity. Sample values, illustrative only.">
         <div class="ncs__block-head">
-          <span class="m-mono ncs__kicker">CAPACITY</span>
-          <span class="m-mono m-mute">subscription auth &middot; $0.00 metered</span>
+          <span class="m-mono ncs__kicker">USAGE LEFT</span>
+          <span class="m-mono m-mute">on your subscription &middot; $0.00 extra</span>
         </div>
         <div class="ncs__caps">
           <div class="cap cap--claude">
@@ -121,8 +121,8 @@ const stateLabel: Record<Agent["state"], string> = {
       <!-- ===== agent roster ===== -->
       <section class="ncs__block" aria-label="Agent roster">
         <div class="ncs__block-head">
-          <span class="m-mono ncs__kicker">FLEET ROSTER</span>
-          <span class="m-mono m-mute">8 codenames &middot; 1 holding for approval</span>
+          <span class="m-mono ncs__kicker">YOUR AGENTS</span>
+          <span class="m-mono m-mute">8 agents &middot; 1 waiting for your approval</span>
         </div>
         <ul class="ncs__roster">
           {roster.map((a) => (
@@ -147,8 +147,8 @@ const stateLabel: Record<Agent["state"], string> = {
       <!-- ===== ask intake ===== -->
       <section class="ncs__block ncs__block--ask" aria-label="Ask intake composer">
         <div class="ncs__block-head">
-          <span class="m-mono ncs__kicker">COMPOSE</span>
-          <span class="m-mono m-mute">plan thread &middot; readiness checked</span>
+          <span class="m-mono ncs__kicker">NEW REQUEST</span>
+          <span class="m-mono m-mute">Alfred checks it is ready to build</span>
         </div>
         <div class="ask">
           <div class="ask__prompt m-mono">What should Alfred do?</div>
@@ -175,10 +175,10 @@ const stateLabel: Record<Agent["state"], string> = {
   </div>
 
   <figcaption class="ncs__cap">
-    An illustration of the optional desktop client, not a screenshot. Capacity values, repo names
-    (<code>acme-org/api</code>, <code>org/web</code>), and roster state are sample data. The client reads the
-    same local surfaces you can inspect by hand: <code>~/.alfred</code>, <code>alfred serve</code>, and the
-    operator CLI. Slack stays the collaboration trail.
+    An illustration of the optional desktop app, not a screenshot. The usage numbers, repo names
+    (<code>acme-org/api</code>, <code>org/web</code>), and agent state are sample data. The app reads the
+    same files on your own machine that you can open by hand: <code>~/.alfred</code>, <code>alfred serve</code>,
+    and the command line. Slack is where you and your agents keep talking.
   </figcaption>
 </figure>
 

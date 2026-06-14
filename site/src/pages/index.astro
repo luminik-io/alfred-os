@@ -105,25 +105,25 @@ const why = [
 ---
 
 <MarketingLayout
-  title="Alfred | An autonomous engineering team for solo builders"
-  description="Alfred runs a fleet of coding agents on Claude Code and Codex. Plans across your repos or monorepo packages, implements scoped issues, and reports to Slack while you focus on something else."
+  title="Alfred | AI coding agents that build your software while you're away"
+  description="Alfred runs Claude Code and Codex on your own GitHub repos, on the subscriptions you already pay for. It picks up a task, writes the code, opens a pull request, has another agent review it, and tells you on Slack. You review and merge."
   path="/"
 >
   <Hero
-    eyebrow="AN AUTONOMOUS ENGINEERING TEAM"
-    headline="A team of coding agents that ships while you're away."
-    sub="Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else."
+    eyebrow="FOR SOLO BUILDERS AND SMALL TEAMS"
+    headline="Coding agents that build your software while you're away."
+    sub="Alfred runs Claude Code and Codex on your own GitHub repos, using the subscriptions you already pay for. It picks up a task, writes the code, opens a pull request, has a second agent review it, and messages you on Slack. You review and merge."
     primaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
     secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
     <div slot="panel" class="hero-panel">
       <div class="hero-panel__head">
-        <span class="m-eyebrow">FLEET STATUS</span>
+        <span class="m-eyebrow">LIVE STATUS</span>
         <span class="m-mono m-mute">~/.alfred/state</span>
       </div>
       <MetricRow label="agents" value="21" countTo={21} state="live" />
       <MetricRow label="repos" value="9" countTo={9} state="live" />
-      <MetricRow label="firings" value="18m ago" glyph="arrow" state="info" />
+      <MetricRow label="last run" value="18m ago" glyph="arrow" state="info" />
       <MetricRow label="open PRs" value="4" countTo={4} state="warn" />
       <MetricRow label="errors" value="0" state="live" />
     </div>
@@ -132,13 +132,13 @@ const why = [
   <section class="m-section m-section--soft" id="native-client">
     <div class="m-container">
       <SectionHeader
-        eyebrow="THE NATIVE CLIENT"
-        title="A calm local cockpit for the whole fleet."
-        lede="The optional desktop client is a control surface, not a second Alfred. See the roster at a glance, watch your Claude Code and Codex headroom, and draft the next plan in plain language. Slack stays the place plans get discussed and approved."
+        eyebrow="THE DESKTOP APP"
+        title="See and steer your agents from one desktop app."
+        lede="Alfred comes with an optional desktop app. See every agent and what it is working on, check how much of your Claude and Codex usage is left, and start a new request in plain English. Slack is still where you discuss and approve plans."
       />
       <NativeClientShowcase />
       <p style="margin-top:24px;">
-        <a class="m-link" href="/concepts/native-client/">Read the native-client design</a>
+        <a class="m-link" href="/concepts/native-client/">How the desktop app works</a>
       </p>
     </div>
   </section>
