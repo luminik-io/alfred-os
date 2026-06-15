@@ -263,6 +263,43 @@ def test_api_memory_candidate_value_error_is_bad_request(
     _assert_no_exc_leak(body, marker)
 
 
+def test_api_memory_candidate_unknown_id_is_not_found(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown candidate id raises ValueError in the brain, but it must stay a
+    clean 404 (not the generic 400) so a stale client gets the expected
+    "not found" rather than an internal-error action failure. The brain message
+    is inspected internally to pick the status but is never echoed.
+    """
+    state = tmp_path / "state"
+
+    class MissingBrain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def reject_memory_candidate(
+            self, candidate_id: int, *, reviewer: str, note: str = ""
+        ) -> dict[str, object] | None:
+            raise ValueError(f"reject_memory_candidate: unknown candidate {candidate_id!r}")
+
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (MissingBrain(), None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/memory/candidates/999/reject",
+        json={"reviewer": "operator", "note": "stale"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 404
+    body = response.json()
+    assert body["error"] == "memory candidate not found"
+    # The brain's internal message (method name, id) must not leak.
+    assert "reject_memory_candidate" not in str(body)
+    assert "unknown candidate" not in str(body)
+
+
 def test_api_memory_candidates_reject_cross_origin_posts(tmp_path: Path) -> None:
     client = TestClient(create_app(FilesystemReader(state_root=tmp_path / "state")))
 

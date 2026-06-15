@@ -1418,13 +1418,16 @@ async def _api_memory_candidate_action(
             if candidate is None:
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)
             return JSONResponse(_candidate_to_api(candidate))
-    except ValueError:
-        # A ValueError here is a validation / business-logic rejection (the
-        # candidate was found, but the action cannot be applied), not a missing
-        # resource. Answer 400 so callers do not mistake it for "candidate
-        # disappeared" and silently retry. Keep the generic body so no exception
-        # detail leaks (py/stack-trace-exposure).
+    except ValueError as exc:
+        # FleetBrain.promote_memory_candidate / reject_memory_candidate raise
+        # ValueError both for an unknown candidate id (a missing resource) and
+        # for a found-but-inapplicable action. Distinguish on the message
+        # INTERNALLY (it is never echoed) so a stale id stays a clean 404 while a
+        # real validation rejection is a 400. Keep the generic body either way so
+        # no exception detail leaks (py/stack-trace-exposure).
         logger.exception("memory candidate %s action %r failed", candidate_id, action)
+        if "unknown candidate" in str(exc):
+            return JSONResponse({"error": "memory candidate not found"}, status_code=404)
         return JSONResponse({"error": _GENERIC_ERROR}, status_code=400)
     return JSONResponse({"error": "unknown memory action"}, status_code=400)
 
