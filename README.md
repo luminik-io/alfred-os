@@ -248,7 +248,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
 | [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
-| `bin/alfred-usage.py` _(ships in an upcoming release)_ | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is already served over the live `GET /api/usage` endpoint; the `alfred usage` CLI front end ships in an upcoming release. |
+| [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
@@ -285,7 +285,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Fleet brain](docs/FLEET_BRAIN.md): local memory, Slack-driven reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
 - [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, the usage capacity rail (backed by the live `GET /api/usage` endpoint), cinematic agent roster, and local API shape.
 - [Desktop client](docs/DESKTOP_CLIENT.md): the desktop client tab by tab, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the `alfred serve` seam, and building native installers.
-- [Operator analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, and `alfred slack-listener` (plus `alfred usage`, which ships in an upcoming release).
+- [Operator analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, `alfred usage`, and `alfred slack-listener`.
 - [Goals](docs/GOALS.md): durable goal contract across Slack, CLI, client, planning readiness, evaluator, and memory.
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
@@ -344,8 +344,8 @@ setup-token bootstrap, and SEO plus consent-gated analytics on the site. See
 The native app has Home, Compose, Plans, Memory, Fleet, Logs, and Setup surfaces
 for local trust and repair. Its Home view carries a Claude and Codex usage rail
 (real subscription usage, read from the engines' own local CLI state with no
-billing API, backed by the live `GET /api/usage` endpoint; the `alfred usage` CLI
-front end ships in an upcoming release) and a cinematic agent roster with a list
+billing API, backed by the live `GET /api/usage` endpoint, with the same data
+also available from the `alfred usage` CLI) and a cinematic agent roster with a list
 toggle. Runs emit step-level events so the timeline shows real progress, and any
 issue carrying the operator-approval gate label (`agent:plan-pending-approval`)
 is held from autonomous pickup until the operator approves it and the label

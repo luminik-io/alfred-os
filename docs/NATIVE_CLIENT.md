@@ -260,7 +260,7 @@ The client uses these local API contracts today:
 GET  /api/status
 GET  /api/actions
 GET  /api/usage             # served; backs the capacity rail
-GET  /api/usage/providers   # ships in an upcoming release; not served yet
+GET  /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET  /api/firings
 GET  /api/firings/{firing_id}
 GET  /api/plans

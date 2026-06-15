@@ -95,11 +95,6 @@ fleet success rate: 78.3%  (over 23 completed firings; 0 no-ops not counted)
 
 ## `alfred usage`
 
-> **Note:** `alfred usage` ships in an upcoming release; it is not yet available
-> in this version. The section below is forward-looking reference for the
-> command. Its companion `GET /api/usage` endpoint is already served by
-> `alfred serve` today and backs the desktop capacity rail.
-
 Report the operator's real Claude and Codex subscription headroom for the
 rolling 5-hour and weekly limit windows. Alfred drives Claude Code and Codex
 through their local subscription CLIs rather than API keys, so there is no
@@ -126,8 +121,8 @@ Codex:
     unavailable - no local Codex session state found under ~/.codex
 ```
 
-`alfred usage` will expose, from the command line, the same headroom the desktop
-client's capacity rail already reads over the live `GET /api/usage` endpoint. It
+`alfred usage` exposes, from the command line, the same headroom the desktop
+client's capacity rail reads over the live `GET /api/usage` endpoint. It
 always exits 0: an absent local CLI
 state is a valid, reportable condition, not a command failure. Scripts can read
 the `available` flag in the `--json` payload to detect that case.

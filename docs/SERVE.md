@@ -214,7 +214,7 @@ through JSON endpoints:
 GET /api/status
 GET /api/actions
 GET /api/usage             # served; backs the desktop capacity rail
-GET /api/usage/providers   # ships in an upcoming release; not served yet
+GET /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
 GET /api/plans?limit=50

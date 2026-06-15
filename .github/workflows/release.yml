@@ -46,16 +46,36 @@ jobs:
         run: |
           tag="${{ steps.tag.outputs.tag }}"
           tag_no_v="${tag#v}"
-          # Extract the section between [<this-version>] and the next [<...] heading
+          repo="${{ github.repository }}"
+          # The published release body leads with just the version's
+          # "### Highlights" subsection (the short, human-facing summary), not
+          # the full Added/Changed/Fixed lists. Walk into the "## [<version>]"
+          # section, then capture from its "### Highlights" heading up to the
+          # next "###" heading. A "Full changelog" pointer to CHANGELOG.md at
+          # this tag is appended so readers can reach every entry.
+          # Capture the Highlights body, then strip leading and trailing blank
+          # lines so the appended pointer sits exactly one blank line below it.
           awk -v ver="$tag_no_v" '
-            $0 ~ "^## \\[" ver "\\]([[:space:]]|$)" { found=1; next }
-            found && /^## \[/ { exit }
-            found { print }
+            $0 ~ "^## \\[" ver "\\]([[:space:]]|$)" { in_ver=1; next }
+            in_ver && /^## \[/ { exit }
+            in_ver && /^### [Hh]ighlights[[:space:]]*$/ { in_hl=1; next }
+            in_hl && /^### / { exit }
+            in_hl {
+              if (NF == 0) { if (started) blanks++; next }
+              while (blanks-- > 0) print ""
+              blanks = 0
+              started = 1
+              print
+            }
           ' CHANGELOG.md > /tmp/release-notes.md
           if [ ! -s /tmp/release-notes.md ]; then
-            echo "::warning::No changelog section found for $tag; using a stub."
+            echo "::warning::No Highlights subsection found for $tag; using a stub."
             echo "Release $tag" > /tmp/release-notes.md
           fi
+          {
+            echo
+            echo "Full changelog: [CHANGELOG.md](https://github.com/${repo}/blob/${tag}/CHANGELOG.md)"
+          } >> /tmp/release-notes.md
           echo "notes_file=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Create or update DRAFT GitHub Release
