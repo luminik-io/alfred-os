@@ -1283,8 +1283,18 @@ def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
         state.telemetry_url = ""
         warn("No URL given; telemetry stays OFF.")
         return
+    # Optional shared ingest token. The default public Worker has no write gate,
+    # so this is skippable (press enter). Only matters when the operator's Worker
+    # is configured with an INGEST_TOKEN; then reports without the matching token
+    # are rejected. A config-supplied token (state.telemetry_token) is respected.
+    note("If your collector sets an INGEST_TOKEN write gate, paste it here. Otherwise press enter.")
+    token = (
+        state.telemetry_token
+        or ask("Telemetry ingest token (optional, blank to skip)", state.telemetry_token).strip()
+    )
     state.telemetry_enabled = True
     state.telemetry_url = url
+    state.telemetry_token = token
     ok("Telemetry opted IN. Disable any time by removing ALFRED_TELEMETRY_ENABLED.")
 
 

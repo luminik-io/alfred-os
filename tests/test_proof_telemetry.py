@@ -675,17 +675,22 @@ def test_install_id_is_not_derived_from_host(tmp_path):
 # persisted-only install id: skip reporting when the id cannot be persisted
 # (Codex finding #1: never report with an unpersisted, ephemeral id)
 # ---------------------------------------------------------------------------
-def test_persisted_install_id_returns_none_when_unwritable(tmp_path):
+def test_persisted_install_id_returns_none_when_unwritable(tmp_path, monkeypatch):
     # When the install-id file cannot be read OR written, the persisted-only
     # loader returns None rather than minting an ephemeral token.
-    unwritable_parent = tmp_path / "ro"
-    unwritable_parent.mkdir()
-    target = unwritable_parent / "telemetry-install-id"
-    unwritable_parent.chmod(0o500)  # read+execute, no write: mkdir/write fails
-    try:
-        result = pt.load_or_create_persisted_install_id(target)
-    finally:
-        unwritable_parent.chmod(0o700)  # restore so tmp cleanup works
+    #
+    # We force the write to fail by monkeypatching Path.write_text to raise
+    # OSError. This is robust on ANY uid: a chmod(0o500) directory does not stop
+    # root (root bypasses file permission bits in containers/CI), so it would not
+    # exercise the no-id branch when the suite runs as root. Raising directly from
+    # the write call deterministically forces the "cannot persist" path.
+    target = tmp_path / "ro" / "telemetry-install-id"
+
+    def _boom(self, *args, **kwargs):
+        raise OSError("write blocked for test")
+
+    monkeypatch.setattr(Path, "write_text", _boom)
+    result = pt.load_or_create_persisted_install_id(target)
     assert result is None, "an unpersistable id must be None, not an ephemeral token"
 
 
@@ -717,19 +722,26 @@ def test_report_once_does_not_mint_fresh_id_per_call_on_persist_failure(tmp_path
     # than mint a fresh id on each call. We assert no id file is created and no
     # POST happens across repeated calls (the Worker would otherwise see N new
     # installs from one host).
+    #
+    # The write failure is simulated by monkeypatching Path.write_text to raise
+    # OSError rather than by chmod(0o500): root bypasses permission bits, so a
+    # chmod-based denial would silently keep the dir writable under root-based CI
+    # and the no-id branch would never run. Raising on write forces the persist
+    # failure deterministically on any uid.
     home = tmp_path / "home"
     state = home / "state"
     state.mkdir(parents=True)
-    state.chmod(0o500)  # writes into state/ fail
     monkeypatch.setenv("ALFRED_HOME", str(home))
+
+    def _boom(self, *args, **kwargs):
+        raise OSError("write blocked for test")
+
+    monkeypatch.setattr(Path, "write_text", _boom)
     poster = RecordingPoster(ok=True)
     brain = FakeBrain(prs=[FakePR("merged")], touches=[FakeTouch()])
     env = {pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"}
-    try:
-        r1 = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
-        r2 = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
-    finally:
-        state.chmod(0o700)
+    r1 = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
+    r2 = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
     assert r1["status"] == "no_install_id" and r1["sent"] is False
     assert r2["status"] == "no_install_id" and r2["sent"] is False
     assert poster.calls == [], "persist failure must never POST an ephemeral id"
