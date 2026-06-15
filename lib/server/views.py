@@ -1419,8 +1419,13 @@ async def _api_memory_candidate_action(
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)
             return JSONResponse(_candidate_to_api(candidate))
     except ValueError:
+        # A ValueError here is a validation / business-logic rejection (the
+        # candidate was found, but the action cannot be applied), not a missing
+        # resource. Answer 400 so callers do not mistake it for "candidate
+        # disappeared" and silently retry. Keep the generic body so no exception
+        # detail leaks (py/stack-trace-exposure).
         logger.exception("memory candidate %s action %r failed", candidate_id, action)
-        return JSONResponse({"error": _GENERIC_ERROR}, status_code=404)
+        return JSONResponse({"error": _GENERIC_ERROR}, status_code=400)
     return JSONResponse({"error": "unknown memory action"}, status_code=400)
 
 
@@ -2233,27 +2238,72 @@ def _compact_plain_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "").strip())
 
 
+_SCAN_TITLE_SUFFIX = " is hard to scan at small window sizes"
+
+
+def _scan_title_subject(text: str) -> str:
+    """Extract the subject of a "the SUBJECT is hard to scan ..." request.
+
+    Replaces a backtracking ``\\bthe (.+?) is hard to scan at small window
+    sizes\\b`` regex that ran in quadratic time on a hostile body of repeated
+    ``the ...`` prefixes (py/polynomial-redos on ``POST /api/plans/draft``).
+    This walks the (already whitespace-collapsed) text with ``str.find`` only,
+    so the cost is strictly linear in the input length: locate the fixed suffix
+    once, then take the nearest preceding ``the `` token as the subject start.
+    Returns the cleaned subject, or ``""`` when the phrase is absent.
+    """
+    lowered = text.lower()
+    suffix_at = lowered.find(_SCAN_TITLE_SUFFIX)
+    if suffix_at < 0:
+        return ""
+    # Honour the trailing ``\b`` the old regex required after "sizes": the suffix
+    # must end at a word boundary (end of text or a non-word char), so a run-on
+    # like "...window sizesxyz" does not count as a match.
+    suffix_end = suffix_at + len(_SCAN_TITLE_SUFFIX)
+    if suffix_end < len(lowered):
+        nxt = lowered[suffix_end]
+        if nxt.isalnum() or nxt == "_":
+            return ""
+    # ``\bthe `` before the subject: the first "the " token that begins on a word
+    # boundary and falls before the suffix. Scanning left to right mirrors the
+    # old ``\bthe`` anchor (which matched the earliest valid occurrence) without
+    # any backtracking. Each find advances ``cursor`` past the rejected hit, so
+    # the whole loop is linear in the input length.
+    token = "the "
+    cursor = 0
+    while True:
+        start = lowered.find(token, cursor, suffix_at)
+        if start < 0:
+            return ""
+        prev = "" if start == 0 else lowered[start - 1]
+        if start == 0 or not (prev.isalnum() or prev == "_"):
+            # Word boundary before "the" (start of text, or a non-word char).
+            break
+        # Inside another word (e.g. "breathe "): skip this hit and keep scanning.
+        cursor = start + 1
+    subject_start = start + len(token)
+    subject = _compact_plain_text(text[subject_start:suffix_at]).strip(" ,.;:")
+    return subject
+
+
 def _plain_compose_title(text: str) -> str:
     # Collapse all whitespace runs to single spaces up front. Every regex below
     # then matches single-space separators (" ") instead of unbounded "\s+", so
     # a hostile request body padded with long whitespace runs cannot drive
     # polynomial backtracking (py/polynomial-redos): the search space no longer
     # contains repeated-whitespace input for the quantifiers to chew through.
+    # The scan-title heuristic is handled by _scan_title_subject, which uses a
+    # single linear str.find pass instead of a backtracking "the (.+?) sizes"
+    # regex, so repeated "the ..." prefixes can no longer drive quadratic time.
     text = _compact_plain_text(text)
     lowered = text.lower()
     if "plan work" in lowered and "github issue" in lowered:
         return "Plan work drafts reviewable GitHub issues"
     if "setup" in lowered and ("github" in lowered or "repo" in lowered):
         return "Improve Alfred setup flow"
-    scan_match = re.search(
-        r"\bthe (.+?) is hard to scan at small window sizes\b",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if scan_match:
-        subject = _compact_plain_text(scan_match.group(1)).strip(" ,.;:")
-        if subject:
-            return f"Make {subject} usable at small sizes"
+    scan_subject = _scan_title_subject(text)
+    if scan_subject:
+        return f"Make {scan_subject} usable at small sizes"
     title = re.sub(
         r"^(please |can you |could you |i want |we need )",
         "",

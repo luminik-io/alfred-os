@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -222,6 +223,44 @@ def test_api_memory_candidates_promote_and_reject(
     assert rejected.status_code == 200
     assert rejected.json()["status"] == "rejected"
     assert rejected.json()["review_note"] == "too broad"
+
+
+def test_api_memory_candidate_value_error_is_bad_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ValueError from the brain is a validation rejection, so answer 400.
+
+    The candidate was found, but the action could not be applied. Returning 404
+    would let a client mistake this for "candidate disappeared" and silently
+    retry or suppress the error. The body stays generic so no exception detail
+    leaks (py/stack-trace-exposure).
+    """
+    state = tmp_path / "state"
+    marker = _exc_sentinel("promote-value-error")
+
+    class RejectingBrain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def promote_memory_candidate(
+            self, candidate_id: int, *, reviewer: str, note: str = ""
+        ) -> dict[str, object] | None:
+            raise ValueError(marker)
+
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (RejectingBrain(), None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/memory/candidates/101/promote",
+        json={"reviewer": "operator", "note": "bad"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"] == "internal error"
+    _assert_no_exc_leak(body, marker)
 
 
 def test_api_memory_candidates_reject_cross_origin_posts(tmp_path: Path) -> None:
@@ -2384,18 +2423,28 @@ def test_decided_batman_plan_stays_decided_after_marker_is_consumed(
     assert after.status == "approved"
 
 
-# Sentinel an exception carries through a handler's failure path. If it ever
-# shows up in an HTTP response body, the handler is leaking exception/stack
-# detail to the client (py/stack-trace-exposure).
-_SECRET_EXC_MARKER = "leaky-internal-/private/state/token-9f8a"
+# Each failure-path test raises with its own sentinel string. If a sentinel
+# ever shows up in an HTTP response body, that handler is leaking the exception
+# message to the client (py/stack-trace-exposure). A per-route sentinel proves
+# the route's *own* detail is suppressed, so a leak on one route cannot be
+# masked by a different route's generic body.
+def _exc_sentinel(route: str) -> str:
+    return f"sentinel-leak-canary-{route}-/private/state/token-9f8a"
 
 
-def _assert_no_exc_leak(payload: object) -> None:
+def _assert_no_exc_leak(payload: object, marker: str) -> None:
     blob = json.dumps(payload)
-    assert _SECRET_EXC_MARKER not in blob
-    # Generic responses must not echo the exception class name either.
-    assert "RuntimeError" not in blob
+    # 1. The exception's own message text (the per-route sentinel the _boom
+    #    raised) must never reach the client. This proves the *detail* text is
+    #    gone, not merely the word "RuntimeError".
+    assert marker not in blob
+    # 2. No traceback framing may leak (py/stack-trace-exposure).
     assert "Traceback" not in blob
+    assert 'File "' not in blob
+    # 3. No exception class name of any kind ("RuntimeError", "ValueError",
+    #    "OSError", ...). Broadened from the old RuntimeError-only check so a
+    #    future _boom raising a different class is still covered.
+    assert not re.search(r"\b\w+(?:Error|Exception)\b", blob), blob
 
 
 def test_api_shipped_board_failure_returns_generic_error(
@@ -2403,9 +2452,10 @@ def test_api_shipped_board_failure_returns_generic_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = tmp_path / "state"
+    marker = _exc_sentinel("shipped")
 
     def _boom(*_a: object, **_kw: object) -> dict[str, object]:
-        raise RuntimeError(_SECRET_EXC_MARKER)
+        raise RuntimeError(marker)
 
     import shipped_board
 
@@ -2418,7 +2468,7 @@ def test_api_shipped_board_failure_returns_generic_error(
     body = response.json()
     assert body["error"] == "internal error"
     assert body["columns"] == {"queued": [], "in_progress": [], "shipped": []}
-    _assert_no_exc_leak(body)
+    _assert_no_exc_leak(body, marker)
 
 
 def test_api_schedule_failure_returns_generic_error(
@@ -2426,9 +2476,10 @@ def test_api_schedule_failure_returns_generic_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = tmp_path / "state"
+    marker = _exc_sentinel("schedule")
 
     def _boom(*_a: object, **_kw: object) -> list[object]:
-        raise RuntimeError(_SECRET_EXC_MARKER)
+        raise RuntimeError(marker)
 
     import server.schedule as schedule_mod
 
@@ -2440,7 +2491,7 @@ def test_api_schedule_failure_returns_generic_error(
     body = response.json()
     assert body["runs"] == []
     assert body["error"] == "internal error"
-    _assert_no_exc_leak(body)
+    _assert_no_exc_leak(body, marker)
 
 
 def test_api_memory_candidates_failure_returns_generic_error(
@@ -2448,13 +2499,14 @@ def test_api_memory_candidates_failure_returns_generic_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = tmp_path / "state"
+    marker = _exc_sentinel("memory-candidates")
 
     class ExplodingBrain:
         def health(self) -> dict[str, bool]:
             return {"ok": True}
 
         def list_memory_candidates(self, **_kw: object) -> list[object]:
-            raise RuntimeError(_SECRET_EXC_MARKER)
+            raise RuntimeError(marker)
 
     monkeypatch.setattr(
         server_views,
@@ -2468,7 +2520,7 @@ def test_api_memory_candidates_failure_returns_generic_error(
     body = response.json()
     assert body["rows"] == []
     assert body["error"] == "internal error"
-    _assert_no_exc_leak(body)
+    _assert_no_exc_leak(body, marker)
 
 
 def test_api_memory_brain_unavailable_returns_generic_error(
@@ -2477,11 +2529,12 @@ def test_api_memory_brain_unavailable_returns_generic_error(
 ) -> None:
     """A dead fleet brain must not surface its exception text to the client."""
     state = tmp_path / "state"
+    marker = _exc_sentinel("memory-brain-unavailable")
 
     import fleet_brain
 
     def _boom(*_a: object, **_kw: object) -> object:
-        raise RuntimeError(_SECRET_EXC_MARKER)
+        raise RuntimeError(marker)
 
     monkeypatch.setattr(fleet_brain.FleetBrain, "from_env", staticmethod(_boom))
     client = TestClient(create_app(FilesystemReader(state_root=state)))
@@ -2491,7 +2544,7 @@ def test_api_memory_brain_unavailable_returns_generic_error(
     body = response.json()
     assert body["rows"] == []
     assert body["error"] == "internal error"
-    _assert_no_exc_leak(body)
+    _assert_no_exc_leak(body, marker)
 
 
 def test_plain_compose_title_redos_input_is_bounded() -> None:
@@ -2512,3 +2565,56 @@ def test_plain_compose_title_redos_input_is_bounded() -> None:
     assert elapsed < 1.0
     assert len(title) <= 93
     assert isinstance(title, str) and title
+
+
+def test_plain_compose_title_repeated_the_prefix_is_bounded() -> None:
+    """Repeated ``the ...`` prefixes must not drive quadratic scan-title time.
+
+    Regression guard for the second py/polynomial-redos shape: the title scan
+    used ``\\bthe (.+?) ... sizes`` which retried ``\\bthe`` at every "the"
+    occurrence while the lazy ``(.+?)`` rescanned the remainder when the final
+    word failed. A body of tens of thousands of "the " tokens that never reaches
+    the suffix could tie up ``POST /api/plans/draft``. The scan is now a single
+    linear ``str.find`` pass, so this parses in well under the bound.
+    """
+    import time
+
+    hostile = ("the " * 5000) + "x"
+    start = time.perf_counter()
+    title = server_views._plain_compose_title(hostile)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.5
+    assert isinstance(title, str) and title
+    assert len(title) <= 93
+
+
+def test_plain_compose_title_scan_subject_unchanged() -> None:
+    """The linear scan-title rewrite must yield the same titles as before.
+
+    Confirms the ReDoS fix did not change the heuristic's output for the normal
+    "the SUBJECT is hard to scan at small window sizes" phrasing, including the
+    earliest-``the`` selection the old lazy regex used.
+    """
+    assert (
+        server_views._plain_compose_title(
+            "The review queue is hard to scan at small window sizes. Make it usable."
+        )
+        == "Make review queue usable at small sizes"
+    )
+    # Earliest "the" wins, matching the old left-to-right ``\bthe`` anchor.
+    assert (
+        server_views._scan_title_subject("the foo the bar is hard to scan at small window sizes")
+        == "foo the bar"
+    )
+    # "breathe" is not a "the" word boundary; the real subject is still found.
+    assert (
+        server_views._scan_title_subject(
+            "we breathe the dashboard is hard to scan at small window sizes"
+        )
+        == "dashboard"
+    )
+    # A run-on after "sizes" (no trailing word boundary) is not a match.
+    assert (
+        server_views._scan_title_subject("the queue is hard to scan at small window sizesxyz") == ""
+    )
