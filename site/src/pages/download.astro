@@ -1,0 +1,280 @@
+---
+/**
+ * Download page for alfred.luminik.io.
+ *
+ * Links + tracking only. Deliberately shows no download count or numbers:
+ * low or zero counts at launch read as weak proof, so we never render them.
+ *
+ * Release links point at the GitHub Releases "latest" page rather than a
+ * fixed asset URL, so nothing 404s before the signed builds are attached to
+ * a release. Once the signed .dmg and the Linux packages ship on a release,
+ * the same buttons start resolving to those assets without a code change.
+ *
+ * Each download button carries data-download-os and data-download-source so
+ * the inline tracker below can send one GA4 "download" event per click,
+ * gated on the same cookie-consent decision the rest of the site uses.
+ */
+
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import CodeBlock from "../components/marketing/CodeBlock.astro";
+import DownloadTracker from "../components/marketing/DownloadTracker.astro";
+
+const REPO = "https://github.com/luminik-io/alfred-os";
+const RELEASES_LATEST = `${REPO}/releases/latest`;
+---
+
+<MarketingLayout
+  title="Download Alfred | macOS, Linux, or from source"
+  description="Get Alfred for macOS or Linux, or install it from source with one line. Open source, MIT. Pick the build for your machine and start a fleet of coding agents on hardware you already own."
+  path="/download/"
+>
+  <Hero
+    eyebrow="DOWNLOAD"
+    headline="Get Alfred for your machine."
+    sub="Alfred runs on a Mac or Linux box you already own. Grab the build for your system below, or install it from source if you would rather work from the code. Open source, MIT."
+    headlineSize="lg"
+    primaryCta={{ label: "Read the install guide", href: "/getting-started/install/" }}
+    secondaryCta={{ label: "GitHub", href: REPO }}
+  />
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="PICK YOUR BUILD"
+        title="Two ready-made builds, or install from source."
+        lede="The macOS and Linux builds come from the latest release. If a signed build is not up yet, the button takes you to the releases page, where the newest files are always listed."
+      />
+
+      <div class="dl-grid">
+        <article class="m-card dl-card">
+          <div class="dl-card__head">
+            <span class="m-eyebrow">MACOS</span>
+            <span class="m-mono m-mute">macOS 13+</span>
+          </div>
+          <h3 class="m-h3">The macOS app</h3>
+          <p class="dl-card__body">
+            A signed disk image (<span class="m-mono">.dmg</span>). Open it, drag
+            Alfred to Applications, and you are set. The newest macOS build is
+            attached to the latest release.
+          </p>
+          <a
+            class="m-btn dl-card__btn"
+            href={RELEASES_LATEST}
+            rel="noopener"
+            data-download-os="macos"
+            data-download-source="download-page"
+          >Download for macOS</a>
+          <p class="dl-card__note m-mute">
+            No signed build in the latest release yet? You will see it here as
+            soon as it ships. Until then, install from source below.
+          </p>
+        </article>
+
+        <article class="m-card dl-card">
+          <div class="dl-card__head">
+            <span class="m-eyebrow">LINUX</span>
+            <span class="m-mono m-mute">Debian / Ubuntu</span>
+          </div>
+          <h3 class="m-h3">The Linux build</h3>
+          <p class="dl-card__body">
+            An <span class="m-mono">AppImage</span> that runs as-is, or a
+            <span class="m-mono">.deb</span> for apt-based systems. Both are
+            attached to the latest release.
+          </p>
+          <a
+            class="m-btn dl-card__btn"
+            href={RELEASES_LATEST}
+            rel="noopener"
+            data-download-os="linux"
+            data-download-source="download-page"
+          >Download for Linux</a>
+          <p class="dl-card__note m-mute">
+            No packaged build in the latest release yet? You will see it here as
+            soon as it ships. Until then, install from source below.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section m-section--soft">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="FROM SOURCE"
+        title="Rather work from the code? One line gets you running."
+        lede="Built for the developer crowd. Run the installer straight from the repo, or use the Homebrew tap on macOS. Both put the operator commands on your PATH."
+      />
+
+      <div class="dl-source">
+        <div class="dl-source__col">
+          <h3 class="m-h3">The one-line installer</h3>
+          <p class="dl-source__lede">
+            Works on macOS and Debian or Ubuntu Linux. Safe to re-run.
+          </p>
+          <CodeBlock
+            title="install from source"
+            lines={[
+              "$ git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os",
+              "$ cd ~/code/alfred-os",
+              "$ bash install.sh",
+            ]}
+          />
+          <p class="dl-source__after">
+            Use this path when you want the latest <span class="m-mono">main</span>,
+            framework edits, or Linux.
+          </p>
+        </div>
+
+        <div class="dl-source__col">
+          <h3 class="m-h3">The Homebrew tap</h3>
+          <p class="dl-source__lede">
+            For macOS, if you prefer a package-manager install of the latest
+            tagged release.
+          </p>
+          <CodeBlock
+            title="install with homebrew"
+            lines={[
+              "$ brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os",
+              "$ brew install alfred-os",
+              "$ alfred-install",
+            ]}
+          />
+          <p class="dl-source__after">
+            Puts <span class="m-mono">alfred</span>,
+            <span class="m-mono">alfred-init</span>, and the rest of the operator
+            commands on your PATH.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT YOU GET"
+        title="A team of coding agents on your own machine."
+        lede="Alfred installs a local runtime that picks up tasks, writes code, opens pull requests, and posts a short summary to Slack. You review and merge. Nothing runs in the cloud and there is no vendor account."
+      />
+      <div class="dl-reqs">
+        <article class="m-card">
+          <h3 class="m-h3">What you get</h3>
+          <ul class="dl-reqs__list">
+            <li>Four agents to start: Drake, Lucius, Ra's al Ghul, and a cleanup agent</li>
+            <li>A run every 20 minutes, around the clock</li>
+            <li>Planning and approval in Slack, or the desktop app</li>
+            <li>Open source, MIT licensed, yours to read and fork</li>
+          </ul>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">What you need</h3>
+          <ul class="dl-reqs__list">
+            <li>macOS 13 or newer, or Debian / Ubuntu Linux</li>
+            <li>A Claude Code subscription you already pay for</li>
+            <li>A GitHub account for the repos you want worked on</li>
+            <li>A machine that stays awake during the hours you set</li>
+          </ul>
+        </article>
+      </div>
+      <p class="dl-docs">
+        New to all this? Read the
+        <a class="m-link" href="/getting-started/install/">install guide</a>
+        or pick a
+        <a class="m-link" href="/install/">starting point</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container" style="text-align:center;">
+      <a
+        class="m-btn"
+        href={RELEASES_LATEST}
+        rel="noopener"
+        style="font-size:16px;padding:16px 28px;"
+        data-download-os="other"
+        data-download-source="download-page-footer"
+      >See the latest release</a>
+    </div>
+  </section>
+</MarketingLayout>
+
+<DownloadTracker />
+
+<style>
+  .dl-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 720px) { .dl-grid { grid-template-columns: 1fr; } }
+
+  .dl-card { display: flex; flex-direction: column; gap: 14px; }
+  .dl-card__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .dl-card__body {
+    color: var(--alfred-text);
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .dl-card__btn { align-self: start; }
+  .dl-card__note {
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .dl-source {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 880px) { .dl-source { grid-template-columns: 1fr; } }
+  .dl-source__col { display: grid; gap: 12px; min-width: 0; }
+  .dl-source__lede,
+  .dl-source__after {
+    color: var(--alfred-text);
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .dl-source__after { color: var(--alfred-mute); }
+
+  .dl-reqs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 720px) { .dl-reqs { grid-template-columns: 1fr; } }
+  .dl-reqs__list {
+    list-style: none;
+    padding: 0;
+    margin: 14px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    color: var(--alfred-text);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .dl-reqs__list li { padding-left: 20px; position: relative; }
+  .dl-reqs__list li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--alfred-accent);
+  }
+  .dl-docs { margin-top: 28px; color: var(--alfred-text); font-size: 15px; }
+</style>

@@ -7,16 +7,25 @@
  * hero renders single-column.
  */
 
+interface Cta {
+  label: string;
+  href: string;
+  /** Optional data- attributes (e.g. GA4 download tracking hooks). */
+  data?: Record<string, string>;
+}
+
 interface Props {
   eyebrow: string;
   headline: string;
   sub: string;
-  primaryCta?: { label: string; href: string };
-  secondaryCta?: { label: string; href: string };
+  primaryCta?: Cta;
+  secondaryCta?: Cta;
+  /** Optional third CTA, rendered as a ghost button after the secondary. */
+  tertiaryCta?: Cta;
   headlineSize?: "xl" | "lg";
 }
 
-const { eyebrow, headline, sub, primaryCta, secondaryCta, headlineSize = "xl" } = Astro.props;
+const { eyebrow, headline, sub, primaryCta, secondaryCta, tertiaryCta, headlineSize = "xl" } = Astro.props;
 const hasPanel = Astro.slots.has("panel");
 ---
 
@@ -37,11 +46,14 @@ const hasPanel = Astro.slots.has("panel");
       <div class="m-eyebrow">{eyebrow}</div>
       <h1 class={headlineSize === "xl" ? "m-display-xl" : "m-display-lg"}>{headline}</h1>
       <p class="m-body-lg hero__sub">{sub}</p>
-      {(primaryCta || secondaryCta) && (
+      {(primaryCta || secondaryCta || tertiaryCta) && (
         <div class="hero__ctas">
-          {primaryCta && <a class="m-btn" href={primaryCta.href}>{primaryCta.label}</a>}
+          {primaryCta && <a class="m-btn" href={primaryCta.href} {...primaryCta.data}>{primaryCta.label}</a>}
           {secondaryCta && (
-            <a class="m-btn m-btn--ghost" href={secondaryCta.href} rel="noopener">{secondaryCta.label}</a>
+            <a class="m-btn m-btn--ghost" href={secondaryCta.href} rel="noopener" {...secondaryCta.data}>{secondaryCta.label}</a>
+          )}
+          {tertiaryCta && (
+            <a class="m-btn m-btn--ghost" href={tertiaryCta.href} rel="noopener" {...tertiaryCta.data}>{tertiaryCta.label}</a>
           )}
         </div>
       )}

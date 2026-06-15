@@ -1,0 +1,47 @@
+---
+/**
+ * DownloadTracker.astro
+ *
+ * Drop this once on any page that has download buttons. It wires a click
+ * handler to every element carrying a data-download-os attribute and sends
+ * one GA4 "download" event per click, reading os and source from the
+ * button's data- attributes:
+ *
+ *   <a href="..." data-download-os="macos" data-download-source="download-page">
+ *
+ * It mirrors how the rest of the site calls analytics (window.gtag, which
+ * MarketingLayout defines and pushes onto dataLayer) and respects the same
+ * cookie-consent gate. With Google Consent Mode v2 sitting in default-denied,
+ * any event sent before the visitor accepts is dropped anyway; the explicit
+ * consent check keeps the intent obvious and sends nothing for a visitor who
+ * declined.
+ *
+ * No download count or number is ever read or shown. This is click tracking
+ * only.
+ */
+---
+
+<script is:inline>
+  (function () {
+    if (typeof document === "undefined") return;
+
+    function consentGranted() {
+      try {
+        return localStorage.getItem("alfred-cookie-consent") === "allow";
+      } catch (e) {
+        return false;
+      }
+    }
+
+    document.querySelectorAll("[data-download-os]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        if (!consentGranted()) return;
+        if (typeof window.gtag !== "function") return;
+        window.gtag("event", "download", {
+          os: el.getAttribute("data-download-os") || "other",
+          source: el.getAttribute("data-download-source") || "unknown",
+        });
+      });
+    });
+  })();
+</script>
