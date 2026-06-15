@@ -196,6 +196,34 @@ export function clampCount(value) {
   return floored > MAX_PER_FIELD ? MAX_PER_FIELD : floored;
 }
 
+// Dependent PR counters that are, by definition, SUBSETS of prs_opened: every
+// merged or reviewed PR is first an opened one. Neither may exceed prs_opened.
+const DEPENDENT_PR_FIELDS = ["prs_merged", "prs_reviewed"];
+
+/**
+ * Enforce the PR-count invariant SERVER-SIDE: prs_merged and prs_reviewed are
+ * subsets of prs_opened, so neither may exceed it. The client (lib/proof_
+ * telemetry.py) already clamps these, but the Worker re-enforces it as defense
+ * in depth: in open-write mode (no INGEST_TOKEN) a buggy or malicious client
+ * could POST prs_opened:0 with prs_merged>0, and without this clamp the Worker
+ * would store and aggregate that invariant-violating payload, corrupting the
+ * public total. Clamping unconditionally (including the prs_opened==0 case)
+ * means the stored per-install record can never reflect a violation, so the
+ * derived aggregate can never reflect one either.
+ *
+ * Operates on an already-clamped counts object (each field a non-negative
+ * integer via clampCount). Returns a NEW object; never mutates the input.
+ */
+export function clampDependentPrCounts(counts) {
+  const opened = clampCount(counts && counts.prs_opened);
+  const out = { ...counts, prs_opened: opened };
+  for (const field of DEPENDENT_PR_FIELDS) {
+    const value = clampCount(counts && counts[field]);
+    out[field] = value > opened ? opened : value;
+  }
+  return out;
+}
+
 /**
  * Validate and normalize an ingest payload. Returns { ok, value } or
  * { ok: false, error }. Never throws on bad input.
@@ -216,7 +244,15 @@ export function normalizePayload(raw) {
   for (const field of COUNT_FIELDS) {
     counts[field] = clampCount(raw[field]);
   }
-  return { ok: true, value: { install_id: installId, period, counts } };
+  // Enforce the subset invariant server-side: prs_merged/prs_reviewed may never
+  // exceed prs_opened. A buggy or hostile open-write client could POST
+  // prs_opened:0 with prs_merged>0; clamp it here so the normalized counts that
+  // flow into the stored record can never violate the invariant.
+  const invariant = clampDependentPrCounts(counts);
+  return {
+    ok: true,
+    value: { install_id: installId, period, counts: invariant },
+  };
 }
 
 // One record per install, keyed by install_id. Replaced on every report
@@ -231,10 +267,14 @@ function installKey(installId) {
  * derived total. Unknown/negative/non-numeric counts become 0.
  */
 function normalizeSnapshot(stored) {
-  const out = {};
+  const clamped = {};
   for (const field of COUNT_FIELDS) {
-    out[field] = clampCount(stored && stored[field]);
+    clamped[field] = clampCount(stored && stored[field]);
   }
+  // Re-enforce the subset invariant on read too: a hand-edited or legacy record
+  // with prs_merged/prs_reviewed above prs_opened must not poison the derived
+  // total. clampDependentPrCounts caps each dependent counter at prs_opened.
+  const out = clampDependentPrCounts(clamped);
   out.seen_at =
     stored && typeof stored.seen_at === "string" ? stored.seen_at : null;
   return out;
@@ -357,10 +397,16 @@ export async function ingest(kv, payload, now = new Date()) {
   const { install_id: installId, counts } = payload;
 
   const iso = now.toISOString();
-  const snapshot = {};
+  // Clamp every field (non-negative integer, capped) AND re-enforce the subset
+  // invariant on the STORED record: prs_merged/prs_reviewed never exceed
+  // prs_opened. This runs even if a caller reached ingest with counts that did
+  // not pass through normalizePayload, so the per-install record the aggregate
+  // sums can never reflect an invariant-violating payload.
+  const clamped = {};
   for (const field of COUNT_FIELDS) {
-    snapshot[field] = clampCount(counts[field]);
+    clamped[field] = clampCount(counts[field]);
   }
+  const snapshot = clampDependentPrCounts(clamped);
   snapshot.seen_at = iso;
 
   // The entire write: replace this install's record. No shared-state read,

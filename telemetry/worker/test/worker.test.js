@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 
 import worker, {
   clampCount,
+  clampDependentPrCounts,
   normalizePayload,
   ingest,
   computeTotals,
@@ -138,6 +139,82 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
     "prs_opened",
     "prs_reviewed",
   ]);
+});
+
+// --------------------------------------------------------------------------
+// clampDependentPrCounts: server-side subset invariant (Codex finding).
+// prs_merged/prs_reviewed are subsets of prs_opened and may never exceed it.
+// The Worker re-enforces this even though the client clamps, so an open-write
+// client cannot POST prs_opened:0 with prs_merged>0 and corrupt the total.
+// --------------------------------------------------------------------------
+test("clampDependentPrCounts clamps dependent counters to prs_opened (incl. opened==0)", () => {
+  // The exact invariant violation the finding calls out: opened 0, merged 5.
+  assert.deepEqual(
+    clampDependentPrCounts({
+      prs_opened: 0,
+      prs_merged: 5,
+      prs_reviewed: 3,
+      loc_added: 100,
+    }),
+    { prs_opened: 0, prs_merged: 0, prs_reviewed: 0, loc_added: 100 },
+  );
+  // Dependent counters above a non-zero opened are capped at opened.
+  assert.deepEqual(
+    clampDependentPrCounts({
+      prs_opened: 4,
+      prs_merged: 9,
+      prs_reviewed: 7,
+      loc_added: 0,
+    }),
+    { prs_opened: 4, prs_merged: 4, prs_reviewed: 4, loc_added: 0 },
+  );
+});
+
+test("clampDependentPrCounts leaves a valid subset payload unchanged", () => {
+  const valid = { prs_opened: 10, prs_merged: 7, prs_reviewed: 4, loc_added: 1200 };
+  assert.deepEqual(clampDependentPrCounts(valid), valid);
+  // It returns a new object and does not mutate the input.
+  const input = { prs_opened: 5, prs_merged: 9, prs_reviewed: 1, loc_added: 0 };
+  const out = clampDependentPrCounts(input);
+  assert.equal(input.prs_merged, 9, "input is not mutated");
+  assert.equal(out.prs_merged, 5, "output is clamped");
+  assert.notStrictEqual(out, input);
+});
+
+test("normalizePayload clamps prs_merged/prs_reviewed to prs_opened server-side", () => {
+  // A hostile or buggy open-write client POSTs opened:0 with merged>0. The
+  // Worker's normalization must clamp the dependent counters to opened.
+  const out = normalizePayload({
+    install_id: "abcdef12",
+    period: "lifetime",
+    prs_opened: 0,
+    prs_merged: 5,
+    prs_reviewed: 3,
+    loc_added: 100,
+  });
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.value.counts, {
+    prs_opened: 0,
+    prs_merged: 0,
+    prs_reviewed: 0,
+    loc_added: 100,
+  });
+
+  // A normal subset payload (merged/reviewed <= opened) is unchanged.
+  const valid = normalizePayload({
+    install_id: "abcdef12",
+    period: "lifetime",
+    prs_opened: 10,
+    prs_merged: 7,
+    prs_reviewed: 4,
+    loc_added: 800,
+  });
+  assert.deepEqual(valid.value.counts, {
+    prs_opened: 10,
+    prs_merged: 7,
+    prs_reviewed: 4,
+    loc_added: 800,
+  });
 });
 
 // --------------------------------------------------------------------------
@@ -499,6 +576,80 @@ test("ingest never pushes a total negative on a downward correction", async () =
   assert.equal(agg.prs_opened, 2);
   assert.equal(agg.prs_merged, 1);
   assert.ok(agg.prs_opened >= 0 && agg.prs_merged >= 0);
+});
+
+test("ingest clamps a dependent counter above prs_opened in the stored record (defense in depth)", async () => {
+  // Drive ingest with raw counts that VIOLATE the subset invariant, bypassing
+  // normalizePayload, to prove the stored per-install record is clamped by
+  // ingest itself. opened:0, merged:5 must be stored as merged:0.
+  const kv = makeKV();
+  await ingest(
+    kv,
+    {
+      install_id: "install-invariant",
+      period: "lifetime",
+      counts: { prs_opened: 0, prs_merged: 5, prs_reviewed: 3, loc_added: 100 },
+    },
+    FIXED,
+  );
+
+  const snapshot = JSON.parse(kv.store.get("install:install-invariant"));
+  assert.equal(snapshot.prs_opened, 0);
+  assert.equal(snapshot.prs_merged, 0, "stored merged clamped to opened (0)");
+  assert.equal(snapshot.prs_reviewed, 0, "stored reviewed clamped to opened (0)");
+  assert.equal(snapshot.loc_added, 100, "an independent counter is untouched");
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_opened, 0);
+  assert.equal(agg.prs_merged, 0, "the derived aggregate never reflects the violation");
+  assert.equal(agg.prs_reviewed, 0);
+  assert.equal(agg.loc_added, 100);
+});
+
+test("POST /ingest stores opened:0/merged:5 as merged:0 and leaves a valid payload unchanged", async () => {
+  // End-to-end over the HTTP surface: an open-write (no INGEST_TOKEN) client
+  // POSTs an invariant-violating body. The server must clamp it before storing,
+  // so GET /stats can never report merged > opened. A second, valid subset
+  // payload from another install must round-trip unchanged.
+  const env = { TELEMETRY: makeKV() };
+
+  const bad = await worker.fetch(
+    req("POST", "/ingest", {
+      install_id: "install-badsubset",
+      period: "lifetime",
+      prs_opened: 0,
+      prs_merged: 5,
+      prs_reviewed: 3,
+      loc_added: 0,
+    }),
+    env,
+  );
+  assert.equal(bad.status, 200);
+  const badBody = await bad.json();
+  assert.equal(badBody.totals.prs_opened, 0);
+  assert.equal(badBody.totals.prs_merged, 0, "merged clamped to opened (0) before aggregation");
+  assert.equal(badBody.totals.prs_reviewed, 0);
+
+  const good = await worker.fetch(
+    req("POST", "/ingest", {
+      install_id: "install-goodsubset",
+      period: "lifetime",
+      prs_opened: 8,
+      prs_merged: 5,
+      prs_reviewed: 2,
+      loc_added: 300,
+    }),
+    env,
+  );
+  assert.equal(good.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  // Only the valid install contributes PR counts; the bad one added merged 0.
+  assert.equal(stats.prs_opened, 8, "8 + 0");
+  assert.equal(stats.prs_merged, 5, "valid subset payload unchanged, bad one clamped");
+  assert.equal(stats.prs_reviewed, 2);
+  assert.equal(stats.loc_added, 300);
+  assert.equal(stats.installs, 2);
 });
 
 // --------------------------------------------------------------------------
