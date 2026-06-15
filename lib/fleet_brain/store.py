@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Final, Literal, Protocol
 
 from . import schema as schema_mod
 
@@ -337,6 +337,7 @@ class Store(Protocol):
         kind: GitHubItemKind | None = None,
         state: GitHubItemState | None = None,
         bundle_slug: str | None = None,
+        authored_only: bool = False,
     ) -> int: ...
 
     def upsert_bundle_item(self, item: BundleItem) -> BundleItem: ...
@@ -363,6 +364,37 @@ class Store(Protocol):
 # ---------------------------------------------------------------------------
 # SQLite implementation.
 # ---------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------
+# Agent-authorship signals for github_items. The poller (bin/fleet-github-poll)
+# stores EVERY PR it sees from `gh pr list`, including operator- and bot-opened
+# PRs, so a plain `kind="pr"` count would over-report. An item is treated as
+# agent-authored when it carries the framework's provenance label
+# ``agent:authored`` (set on PR open, see lib/labels.AUTHORED) OR its head branch
+# uses one of the agent branch-name prefixes the fleet pushes from. Either signal
+# alone is sufficient; both are written by the poller into columns that already
+# exist (labels_json, head_ref), so no schema or poller change is needed and the
+# count stays an exact COUNT(*) (never bounded by the list 500-row cap).
+# Older rows that predate the agent:authored label are still matched by the
+# branch-prefix signal; a row with neither is counted as NOT agent-authored
+# (conservative: we never claim a PR Alfred did not open).
+AGENT_AUTHORED_LABEL: Final[str] = "agent:authored"
+
+# Branch-name prefixes the fleet's agents push PR head refs from. Kept in sync
+# with lib/shipped_board._DEFAULT_AGENT_BRANCH_PREFIXES.
+AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
+    "alfred/",
+    "alfred-nightly/",
+    "automerge/",
+    "bane/",
+    "batman/",
+    "damian/",
+    "lucius/",
+    "nightwing/",
+    "rasalghul/",
+    "robin/",
+)
 
 
 def _to_iso(dt: datetime) -> str:
@@ -978,6 +1010,7 @@ class SQLiteStore:
         kind: GitHubItemKind | None = None,
         state: GitHubItemState | None = None,
         bundle_slug: str | None = None,
+        authored_only: bool = False,
     ) -> int:
         wheres: list[str] = []
         params: list[object] = []
@@ -993,6 +1026,10 @@ class SQLiteStore:
         if bundle_slug:
             wheres.append("bundle_slug = ?")
             params.append(bundle_slug)
+        if authored_only:
+            authored_sql, authored_params = _authored_predicate()
+            wheres.append(authored_sql)
+            params.extend(authored_params)
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         sql = f"SELECT COUNT(*) FROM github_items {where_clause}"
         with self._connect() as conn:
@@ -1149,6 +1186,34 @@ class SQLiteStore:
             "codenames": int(codenames),
             "repos": int(repos),
         }
+
+
+def _authored_predicate() -> tuple[str, list[object]]:
+    """Build a SQL fragment that matches agent-authored github_items.
+
+    A row is agent-authored when EITHER its ``labels_json`` contains the
+    ``agent:authored`` provenance label OR its ``head_ref`` starts with one of
+    the fleet's agent branch prefixes. Both columns are already populated by the
+    poller, so this is a pure read-side filter (an exact ``COUNT(*)`` predicate,
+    not bounded by the list 500-row cap).
+
+    ``labels_json`` is compact JSON of a sorted string list (see
+    ``_tags_to_json``), e.g. ``["agent:authored","bug"]`` with no spaces, so a
+    LIKE on the quoted label is a reliable membership test. The branch match is a
+    prefix LIKE per known agent prefix, each with ``ESCAPE '\\'`` so a literal
+    prefix is matched even in the unlikely case it contains a ``%`` or ``_``.
+    Returns ``(sql_fragment, params)`` to splice into a WHERE clause; the
+    fragment is fully parenthesized so it ANDs safely with other filters.
+    """
+    clauses: list[str] = ["labels_json LIKE ?"]
+    params: list[object] = [f'%"{AGENT_AUTHORED_LABEL}"%']
+    for prefix in AGENT_BRANCH_PREFIXES:
+        clauses.append("head_ref LIKE ? ESCAPE '\\'")
+        # Escape LIKE wildcards in the prefix so it is matched literally, then
+        # append a trailing wildcard for "starts with".
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        params.append(f"{escaped}%")
+    return "(" + " OR ".join(clauses) + ")", params
 
 
 def _tags_to_json(tags: list[str]) -> str:

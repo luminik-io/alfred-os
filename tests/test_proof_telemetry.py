@@ -31,21 +31,47 @@ import proof_telemetry as pt  # noqa: E402
 # Fakes
 # ---------------------------------------------------------------------------
 class FakePR:
-    def __init__(self, state: str) -> None:
+    """A cached github_items PR row.
+
+    By default a FakePR is AGENT-AUTHORED: it carries the ``agent:authored``
+    provenance label, so it is counted by the proof counter. Pass
+    ``authored=False`` to model an operator-/bot-opened PR (no agent label, no
+    agent branch prefix) that the poller cached but that must NOT be counted.
+    The authorship signal can also be supplied directly via ``labels`` or
+    ``head_ref`` to exercise the branch-prefix path.
+    """
+
+    def __init__(self, state: str, *, authored: bool = True, labels=None, head_ref=None) -> None:
         self.state = state
+        if labels is not None or head_ref is not None:
+            self.labels = list(labels or [])
+            self.head_ref = head_ref
+        elif authored:
+            self.labels = ["agent:authored"]
+            self.head_ref = None
+        else:
+            self.labels = []
+            self.head_ref = None
 
 
 class FakeTouch:
     pass
 
 
+def _authored(prs):
+    """Filter to the agent-authored subset the proof counter must count."""
+    return [p for p in prs if pt._row_is_agent_authored(p)]
+
+
 class FakeBrain:
     """Stand-in for FleetBrain exposing the two methods derive_counts calls.
 
     Honors the ``limit`` (returns at most ``limit`` rows, like the real brain's
-    top-N list) and the ``state`` filter on ``list_github_items`` so the
+    top-N list), the ``state`` filter on ``list_github_items``, so the
     state-based counting path is exercised. ``raise_on`` forces a failure for
-    fail-soft tests.
+    fail-soft tests. ``list_github_items`` returns ALL cached PRs (authored or
+    not); derive_counts applies the agent-authored filter itself via the
+    list-fallback (this brain exposes no count_* method).
     """
 
     def __init__(self, prs=None, touches=None, raise_on=None):
@@ -72,7 +98,8 @@ class NoStateBrain:
     """Older brain whose list_github_items has no ``state`` kwarg.
 
     Verifies derive_counts falls back to an in-memory tally without raising when
-    the state-filtered counting path is unavailable.
+    the state-filtered counting path is unavailable. The fallback still filters
+    to agent-authored rows.
     """
 
     def __init__(self, prs=None, touches=None):
@@ -89,11 +116,13 @@ class NoStateBrain:
 
 class ClampingBrain:
     """Brain that models the REAL FleetBrain: list_* clamps limit to 500, and
-    exact count_* methods exist (a SQL COUNT(*) that is NOT capped).
+    exact count_* methods exist (a SQL COUNT(*) that is NOT capped). The
+    ``count_github_items`` accepts ``authored_only`` and applies the
+    agent-authored filter in "SQL" (here, in-memory) exactly like the real store.
 
-    This is the regression guard for finding #4: the old code counted by raising
-    the list limit, which never works against a brain that re-clamps to 500. The
-    fix prefers count_* so a busy install (>500 rows) reports the true total.
+    Regression guard for finding #4: the old code counted by raising the list
+    limit, which never works against a brain that re-clamps to 500. The fix
+    prefers count_* so a busy install (>500 rows) reports the true total.
     """
 
     LIST_CAP = 500
@@ -111,11 +140,13 @@ class ClampingBrain:
         clamped = max(1, min(int(limit), self.LIST_CAP))
         return list(rows)[:clamped]
 
-    def count_github_items(self, *, kind=None, state=None):
+    def count_github_items(self, *, kind=None, state=None, authored_only=False):
         assert kind == "pr"
         rows = self._prs
         if state is not None:
             rows = [p for p in rows if getattr(p, "state", None) == state]
+        if authored_only:
+            rows = _authored(rows)
         return len(rows)  # exact COUNT(*), no cap
 
     def list_file_touches(self, *, limit=50):
@@ -174,11 +205,14 @@ class FailingBaseBrain:
         rows = [p for p in self._prs if getattr(p, "state", None) == state]
         return list(rows)[:limit]
 
-    def count_github_items(self, *, kind=None, state=None):
+    def count_github_items(self, *, kind=None, state=None, authored_only=False):
         assert kind == "pr"
         if state is None:
             raise RuntimeError("base PR count unavailable")
-        return len([p for p in self._prs if getattr(p, "state", None) == state])
+        rows = [p for p in self._prs if getattr(p, "state", None) == state]
+        if authored_only:
+            rows = _authored(rows)
+        return len(rows)
 
     def list_file_touches(self, *, limit=50):
         return list(self._touches)[:limit]
@@ -443,6 +477,95 @@ def test_derive_counts_falls_back_when_brain_has_no_state_kwarg():
 
 
 # ---------------------------------------------------------------------------
+# derive_counts: count ONLY Alfred-authored PRs (Codex finding #2)
+# ---------------------------------------------------------------------------
+def test_row_is_agent_authored_by_label_and_branch():
+    # The authorship predicate matches the agent:authored label OR an agent
+    # branch prefix on head_ref, and matches neither for an operator PR.
+    assert pt._row_is_agent_authored(FakePR("open")) is True  # default: authored label
+    assert pt._row_is_agent_authored(FakePR("open", authored=False)) is False
+    assert (
+        pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="lucius/fix-thing"))
+        is True
+    )
+    assert (
+        pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="feature/by-a-human"))
+        is False
+    )
+    assert (
+        pt._row_is_agent_authored(FakePR("merged", labels=["bug"], head_ref="batman/x")) is True
+    )
+
+
+def test_derive_counts_counts_only_authored_prs_real_brain():
+    # The poller caches EVERY PR (gh pr list), including operator- and bot-opened
+    # ones. The proof counter must count only agent-authored PRs. This brain
+    # models the REAL FleetBrain (count_github_items(authored_only=...) filters in
+    # SQL), so the totals must exclude the non-authored rows.
+    prs = (
+        [FakePR("merged")] * 3  # authored, merged
+        + [FakePR("closed")] * 2  # authored, closed
+        + [FakePR("open")] * 1  # authored, open
+        + [FakePR("merged", authored=False)] * 4  # NOT authored, must not count
+        + [FakePR("open", authored=False)] * 5  # NOT authored, must not count
+    )
+    brain = ClampingBrain(prs=prs, touches=[FakeTouch()] * 2)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 6, "only the 6 agent-authored PRs are counted"
+    assert counts.prs_merged == 3, "only authored+merged counted, not the 4 non-authored merged"
+    assert counts.prs_reviewed == 5, "authored terminal: 3 merged + 2 closed"
+    assert counts.loc_added == 2
+
+
+def test_derive_counts_counts_only_authored_prs_branch_signal():
+    # Authorship via the agent BRANCH PREFIX alone (no label), against the real
+    # brain. Rows on a human branch with no agent label must not be counted.
+    prs = [
+        FakePR("merged", labels=[], head_ref="lucius/a"),
+        FakePR("merged", labels=[], head_ref="robin/b"),
+        FakePR("open", labels=[], head_ref="rasalghul/c"),
+        FakePR("merged", labels=[], head_ref="feature/human-1"),  # not authored
+        FakePR("open", labels=[], head_ref=None),  # not authored
+    ]
+    brain = ClampingBrain(prs=prs, touches=[])
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 3
+    assert counts.prs_merged == 2
+    assert counts.prs_reviewed == 2  # 2 merged + 0 closed, all authored
+
+
+def test_derive_counts_counts_only_authored_prs_list_fallback():
+    # An older brain with NO count_* method: the list-fallback path must STILL
+    # filter to agent-authored rows, so a poller that cached operator PRs does not
+    # inflate the counter even on a brain that predates the SQL authored filter.
+    prs = (
+        [FakePR("open")] * 4  # authored
+        + [FakePR("open", authored=False)] * 6  # not authored
+    )
+    brain = ClampingNoCountBrain(prs=prs, touches=[FakeTouch()] * 3)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 4, "list fallback still excludes non-authored PRs"
+    assert counts.loc_added == 3
+
+
+def test_derive_counts_no_state_kwarg_brain_filters_authored():
+    # The no-state-kwarg in-memory tally fallback must also exclude non-authored
+    # PRs so prs_merged/prs_reviewed are subsets of the authored opened total.
+    prs = [
+        FakePR("merged"),  # authored
+        FakePR("closed"),  # authored
+        FakePR("open"),  # authored
+        FakePR("merged", authored=False),  # not authored
+        FakePR("closed", authored=False),  # not authored
+    ]
+    brain = NoStateBrain(prs=prs, touches=[FakeTouch()] * 2)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 3, "only authored PRs counted via the tally fallback"
+    assert counts.prs_merged == 1
+    assert counts.prs_reviewed == 2  # 1 merged + 1 closed, authored only
+
+
+# ---------------------------------------------------------------------------
 # current_period: stable lifetime bucket (no calendar dependence)
 # ---------------------------------------------------------------------------
 def test_current_period_is_stable_lifetime_bucket():
@@ -549,3 +672,68 @@ def test_install_id_is_not_derived_from_host(tmp_path):
     a = pt.load_or_create_install_id(tmp_path / "a")
     b = pt.load_or_create_install_id(tmp_path / "b")
     assert a != b
+
+
+# ---------------------------------------------------------------------------
+# persisted-only install id: skip reporting when the id cannot be persisted
+# (Codex finding #1: never report with an unpersisted, ephemeral id)
+# ---------------------------------------------------------------------------
+def test_persisted_install_id_returns_none_when_unwritable(tmp_path):
+    # When the install-id file cannot be read OR written, the persisted-only
+    # loader returns None rather than minting an ephemeral token.
+    unwritable_parent = tmp_path / "ro"
+    unwritable_parent.mkdir()
+    target = unwritable_parent / "telemetry-install-id"
+    unwritable_parent.chmod(0o500)  # read+execute, no write: mkdir/write fails
+    try:
+        result = pt.load_or_create_persisted_install_id(target)
+    finally:
+        unwritable_parent.chmod(0o700)  # restore so tmp cleanup works
+    assert result is None, "an unpersistable id must be None, not an ephemeral token"
+
+
+def test_persisted_install_id_reads_back_existing(tmp_path):
+    path = tmp_path / "state" / "telemetry-install-id"
+    first = pt.load_or_create_persisted_install_id(path)
+    assert first is not None and path.exists()
+    second = pt.load_or_create_persisted_install_id(path)
+    assert first == second, "a persisted id is stable across calls"
+
+
+def test_report_once_skips_when_install_id_cannot_persist(monkeypatch):
+    # The reporter must NOT POST when the install id cannot be persisted: an
+    # ephemeral id would look like a new install every run and inflate the
+    # distinct-install count. It returns status no_install_id and never calls the
+    # network.
+    monkeypatch.setattr(pt, "load_or_create_persisted_install_id", lambda *a, **k: None)
+    poster = RecordingPoster(ok=True)
+    brain = FakeBrain(prs=[FakePR("merged")], touches=[FakeTouch()])
+    env = {pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"}
+
+    result = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
+    assert result == {"status": "no_install_id", "sent": False}
+    assert poster.calls == [], "no POST when the install id is not persisted"
+
+
+def test_report_once_does_not_mint_fresh_id_per_call_on_persist_failure(tmp_path, monkeypatch):
+    # End-to-end against an unwritable state dir: the reporter must skip rather
+    # than mint a fresh id on each call. We assert no id file is created and no
+    # POST happens across repeated calls (the Worker would otherwise see N new
+    # installs from one host).
+    home = tmp_path / "home"
+    state = home / "state"
+    state.mkdir(parents=True)
+    state.chmod(0o500)  # writes into state/ fail
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    poster = RecordingPoster(ok=True)
+    brain = FakeBrain(prs=[FakePR("merged")], touches=[FakeTouch()])
+    env = {pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"}
+    try:
+        r1 = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
+        r2 = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
+    finally:
+        state.chmod(0o700)
+    assert r1["status"] == "no_install_id" and r1["sent"] is False
+    assert r2["status"] == "no_install_id" and r2["sent"] is False
+    assert poster.calls == [], "persist failure must never POST an ephemeral id"
+    assert not (state / "telemetry-install-id").exists()

@@ -34,6 +34,16 @@ ALLOWED_ORIGIN = "https://alfred.example.com"
 # bump against a single source spraying install_ids.
 # INGEST_RATE_LIMIT = "60"
 
+# Server-side salt for the per-IP rate-limit bucket key. The bucket key is an
+# HMAC-SHA-256 of the client IP under this salt (never the raw IP), so a KV
+# reader cannot brute-force the ~4 billion dotted-quad space back to the IP
+# without the salt. RECOMMENDED: set it as a Worker SECRET, not a plaintext var:
+#   wrangler secret put RATE_LIMIT_SALT   # paste a long random value
+# If unset, the Worker fails safe by generating a per-isolate ephemeral random
+# salt (the IP still cannot be recovered from the key), but buckets then reset
+# whenever the isolate recycles, so set this for stable rate-limit buckets.
+# RATE_LIMIT_SALT = "set-via-`wrangler secret put`-not-here"
+
 # Optional cache TTL (seconds) for the totals GET /stats derives by summing the
 # per-install records. Defaults to 30. A read optimization only: a higher value
 # cuts list cost on busy read bursts at the price of staleness; 0 disables the

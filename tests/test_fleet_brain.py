@@ -422,6 +422,65 @@ def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> N
     assert brain.count_github_items(kind="pr", state="closed") == 0
 
 
+def test_count_github_items_authored_only(brain: FleetBrain) -> None:
+    # The poller caches EVERY PR from `gh pr list`, including operator- and
+    # bot-opened ones. count_github_items(authored_only=True) must count only
+    # agent-authored rows: those carrying the agent:authored label OR pushed from
+    # an agent branch prefix. Regression guard for Codex finding #2 (the proof
+    # counter must not claim PRs Alfred did not open).
+    # 3 authored by label, 2 authored by branch prefix, 4 operator PRs.
+    for n in range(1, 4):
+        brain.upsert_github_item(
+            repo="org/api", number=n, kind="pr", state="merged",
+            labels=["agent:authored"], url=f"u/{n}",
+        )
+    for n in range(4, 6):
+        brain.upsert_github_item(
+            repo="org/api", number=n, kind="pr", state="merged",
+            head_ref="lucius/feature", url=f"u/{n}",
+        )
+    for n in range(6, 10):
+        brain.upsert_github_item(
+            repo="org/api", number=n, kind="pr", state="merged",
+            labels=["bug"], head_ref="feature/by-human", url=f"u/{n}",
+        )
+    assert brain.count_github_items(kind="pr") == 9, "all cached PRs"
+    assert brain.count_github_items(kind="pr", authored_only=True) == 5, (
+        "only the 3 label-authored + 2 branch-authored PRs"
+    )
+    assert (
+        brain.count_github_items(kind="pr", state="merged", authored_only=True) == 5
+    ), "state and authorship filters compose"
+    assert (
+        brain.count_github_items(kind="pr", state="open", authored_only=True) == 0
+    )
+
+
+def test_count_github_items_authored_only_past_500_cap(brain: FleetBrain) -> None:
+    # The authored filter is a SQL predicate, so it stays an exact COUNT(*) past
+    # the 500-row list cap: a busy install with thousands of authored PRs is
+    # counted honestly, and interleaved operator PRs are excluded.
+    authored = 520
+    operator = 300
+    n = 0
+    for _ in range(authored):
+        n += 1
+        brain.upsert_github_item(
+            repo="org/api", number=n, kind="pr", state="merged",
+            labels=["agent:authored"], url=f"u/{n}",
+        )
+    for _ in range(operator):
+        n += 1
+        brain.upsert_github_item(
+            repo="org/api", number=n, kind="pr", state="merged",
+            head_ref="feature/human", url=f"u/{n}",
+        )
+    assert brain.count_github_items(kind="pr") == authored + operator
+    assert brain.count_github_items(kind="pr", authored_only=True) == authored, (
+        "authored count exceeds the 500 list cap and excludes operator PRs"
+    )
+
+
 def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
     total = 555
     for n in range(total):

@@ -679,6 +679,7 @@ class FleetBrain:
         kind: GitHubItemKind | None = None,
         state: GitHubItemState | None = None,
         bundle_slug: str | None = None,
+        authored_only: bool = False,
     ) -> int:
         """Exact COUNT(*) of github_items, unbounded by the list 500-row cap.
 
@@ -686,9 +687,20 @@ class FleetBrain:
         true total (proof-telemetry's lifetime PR counts) must use this. Counting
         by paginating ``list_github_items`` can never exceed 500 because the list
         method re-clamps every request.
+
+        ``authored_only=True`` restricts the count to agent-authored PRs/issues:
+        rows carrying the ``agent:authored`` provenance label or pushed from an
+        agent branch prefix. The poller stores EVERY PR from ``gh pr list`` (not
+        just Alfred's), so proof-telemetry passes this to avoid claiming PRs the
+        fleet did not open. The filter is a SQL predicate on already-stored
+        columns, so it stays an exact COUNT(*).
         """
         return self.store.count_github_items(
-            repo=repo, kind=kind, state=state, bundle_slug=bundle_slug
+            repo=repo,
+            kind=kind,
+            state=state,
+            bundle_slug=bundle_slug,
+            authored_only=authored_only,
         )
 
     def list_bundle_items(

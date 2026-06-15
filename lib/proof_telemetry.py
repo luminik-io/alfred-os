@@ -167,14 +167,26 @@ def _install_id_path() -> Path:
     return root / "state" / _INSTALL_ID_FILENAME
 
 
-def load_or_create_install_id(path: Path | None = None) -> str:
-    """Return a stable random install id, creating one on first use.
+def load_or_create_persisted_install_id(path: Path | None = None) -> str | None:
+    """Return a STABLE, PERSISTED random install id, or ``None`` if it cannot
+    be persisted.
 
     The id is a 128-bit URL-safe random token. It is NOT derived from any host
     attribute (hostname, MAC, user). It exists solely so the server can
     de-duplicate re-sends and count distinct installs. Callers only reach this
     when telemetry is already enabled, so generating the file is itself an
     opt-in side effect.
+
+    Crucially, this returns an id ONLY when it is durable: an existing file is
+    read back, or a freshly minted id is successfully written to disk. If the
+    id can be neither read nor written (``$ALFRED_HOME/state`` is unwritable, a
+    read-only filesystem, a permissions problem), this returns ``None`` rather
+    than minting an ephemeral token. An ephemeral token would be different on
+    every run, and since the Worker de-duplicates on ``install_id`` alone, every
+    scheduled report from such a host would look like a brand-new install and
+    inflate the public install count. Returning ``None`` lets the caller skip
+    reporting entirely on that run, which keeps the distinct-install count
+    honest. See ``report_once``.
     """
     target = path or _install_id_path()
     try:
@@ -188,11 +200,31 @@ def load_or_create_install_id(path: Path | None = None) -> str:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(new_id + "\n", encoding="utf-8")
     except OSError as exc:
-        # Could not persist; still return the id so this run can report. Next
-        # run regenerates, which the server tolerates (it just looks like a new
-        # install). Better than crashing the firing.
-        logger.debug("telemetry: could not persist install id: %s", exc)
+        # Could not persist. Do NOT return an ephemeral id: a fresh token every
+        # run would make this host look like a new install on every report and
+        # inflate the install count. Signal the failure so the caller skips
+        # this run's report instead. Next run retries persistence.
+        logger.debug("telemetry: could not persist install id, skipping report: %s", exc)
+        return None
     return new_id
+
+
+def load_or_create_install_id(path: Path | None = None) -> str:
+    """Return a stable random install id, creating one on first use.
+
+    Best-effort variant of :func:`load_or_create_persisted_install_id` for
+    local, non-reporting callers (e.g. the ``--dry-run`` preview): if the id
+    cannot be persisted it still returns a fresh token so the operator can see a
+    sample payload. The REPORTING path must NOT use this; it uses
+    :func:`load_or_create_persisted_install_id` and skips reporting when the id
+    cannot be persisted, so an unpersisted ephemeral id is never POSTed.
+    """
+    persisted = load_or_create_persisted_install_id(path)
+    if persisted is not None:
+        return persisted
+    # Persistence failed; mint an ephemeral token for local display only. This
+    # is never sent (report_once uses the persisted-only path).
+    return secrets.token_urlsafe(16)
 
 
 def _count_rows(lister: Callable[[int], list[Any]]) -> int:
@@ -236,7 +268,47 @@ def _count_rows(lister: Callable[[int], list[Any]]) -> int:
         limit += _COUNT_PAGE
 
 
-def _count_github_items(brain: Any, **filters: Any) -> int:
+# Agent-authorship signals, mirrored from fleet_brain.store. The poller stores
+# EVERY PR from `gh pr list`, including operator- and bot-opened PRs, so the proof
+# counter must restrict the PR counts to agent-authored rows: those carrying the
+# ``agent:authored`` provenance label (set on PR open) OR pushed from an agent
+# branch prefix. These are used only by the LIST FALLBACK path here; the real
+# brain filters in SQL via count_github_items(authored_only=True).
+_AGENT_AUTHORED_LABEL = "agent:authored"
+_AGENT_BRANCH_PREFIXES = (
+    "alfred/",
+    "alfred-nightly/",
+    "automerge/",
+    "bane/",
+    "batman/",
+    "damian/",
+    "lucius/",
+    "nightwing/",
+    "rasalghul/",
+    "robin/",
+)
+
+
+def _row_is_agent_authored(row: Any) -> bool:
+    """True when a github_items row looks agent-authored.
+
+    Used only by the list-fallback path (brains/test-doubles without the SQL
+    ``authored_only`` count). Matches the framework provenance label
+    ``agent:authored`` in the row's labels, or an agent branch prefix on its head
+    ref. Conservative: a row with neither signal is NOT counted, so the public
+    counter never claims a PR Alfred did not open.
+    """
+    labels = getattr(row, "labels", None) or []
+    try:
+        if _AGENT_AUTHORED_LABEL in labels:
+            return True
+    except TypeError:
+        pass
+    head_ref = (getattr(row, "head_ref", None) or "").strip()
+    return any(head_ref.startswith(prefix) for prefix in _AGENT_BRANCH_PREFIXES)
+
+
+def _count_github_items(brain: Any, *, authored_only: bool = False, **filters: Any) -> int:
     """Exact count of github_items, preferring the brain's COUNT(*) method.
 
     Uses ``brain.count_github_items(**filters)`` when available (a SQL
@@ -245,11 +317,37 @@ def _count_github_items(brain: Any, **filters: Any) -> int:
     ``_count_rows`` over ``list_github_items`` only for brains/test-doubles that
     do not expose the count method. The result is bounded by ``_COUNT_HARD_LIMIT``
     so a runaway brain can never blow the field past the wire clamp.
+
+    When ``authored_only`` is set, the count is restricted to agent-authored
+    rows. The real brain does this in SQL (``count_github_items(authored_only=
+    True)``); brains/test-doubles that lack the flag are filtered row-by-row via
+    ``_row_is_agent_authored`` on the list-fallback path, so the public counter
+    never reports PRs the fleet did not open regardless of brain vintage.
     """
     counter = getattr(brain, "count_github_items", None)
     if callable(counter):
-        total = int(counter(**filters))
+        try:
+            total = int(counter(authored_only=authored_only, **filters))
+        except TypeError:
+            # Older brain whose count_github_items predates the authored_only
+            # flag. Fall through to the list-based, row-filtered fallback below
+            # rather than counting unauthored PRs.
+            if authored_only:
+                return _count_rows(
+                    lambda n: [
+                        r
+                        for r in brain.list_github_items(limit=n, **filters)
+                        if _row_is_agent_authored(r)
+                    ]
+                )
+            total = int(counter(**filters))
         return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+    if authored_only:
+        return _count_rows(
+            lambda n: [
+                r for r in brain.list_github_items(limit=n, **filters) if _row_is_agent_authored(r)
+            ]
+        )
     return _count_rows(lambda n: brain.list_github_items(limit=n, **filters))
 
 
@@ -282,8 +380,12 @@ def derive_counts(brain: Any) -> TelemetryCounts:
 
     Derivation, with an honest mapping to what the brain actually stores:
 
-      prs_opened   distinct PRs the brain has ever cached (github_items where
-                   kind == "pr").
+      prs_opened   distinct AGENT-AUTHORED PRs the brain has cached (github_items
+                   where kind == "pr" AND the row is agent-authored: it carries
+                   the ``agent:authored`` provenance label or an agent branch
+                   prefix). The poller caches EVERY PR from ``gh pr list``, not
+                   just Alfred's, so this filter is what keeps the public counter
+                   from claiming PRs the fleet did not open.
       prs_merged   that subset whose state == "merged" (counted with a server-
                    side state filter, so it never undercounts behind a page cap).
       prs_reviewed that subset whose state is terminal (merged or closed); a PR
@@ -314,7 +416,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     # merged/reviewed counts so we never report 0 opened with N merged.
     prs_opened_failed = False
     try:
-        prs_opened = _count_github_items(brain, kind="pr")
+        prs_opened = _count_github_items(brain, kind="pr", authored_only=True)
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         prs_opened_failed = True
         logger.debug("telemetry: PR-opened count derivation failed: %s", exc)
@@ -327,14 +429,23 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     # opened total.
     if not prs_opened_failed:
         try:
-            prs_merged = _count_github_items(brain, kind="pr", state="merged")
-            closed = _count_github_items(brain, kind="pr", state="closed")
+            prs_merged = _count_github_items(
+                brain, kind="pr", state="merged", authored_only=True
+            )
+            closed = _count_github_items(
+                brain, kind="pr", state="closed", authored_only=True
+            )
             prs_reviewed = prs_merged + closed
         except TypeError:
             # Brain's list/count github items has no `state` kwarg: derive from
-            # one page (bounded by the hard limit).
+            # one page (bounded by the hard limit), still restricted to
+            # agent-authored rows so the dependents match the opened total.
             try:
-                prs = brain.list_github_items(kind="pr", limit=_COUNT_HARD_LIMIT)
+                prs = [
+                    p
+                    for p in brain.list_github_items(kind="pr", limit=_COUNT_HARD_LIMIT)
+                    if _row_is_agent_authored(p)
+                ]
                 prs_merged = sum(1 for p in prs if getattr(p, "state", None) == "merged")
                 prs_reviewed = sum(
                     1 for p in prs if getattr(p, "state", None) in ("merged", "closed")
@@ -430,11 +541,14 @@ def report_once(
     only output; this function never raises and never prints.
 
     Status ``status`` values:
-      ``disabled``  the master switch is off (the default). Nothing happened.
-      ``no_url``    enabled but ``ALFRED_TELEMETRY_URL`` is unset. No-op.
-      ``sent``      payload posted and the server accepted it.
-      ``failed``    enabled and attempted, but the post did not succeed.
-      ``error``     an unexpected internal error, swallowed.
+      ``disabled``        the master switch is off (the default). Nothing happened.
+      ``no_url``          enabled but ``ALFRED_TELEMETRY_URL`` is unset. No-op.
+      ``no_install_id``   enabled, but the install id could not be persisted, so
+                          we skip the report rather than POST with an ephemeral
+                          id that would inflate the distinct-install count.
+      ``sent``            payload posted and the server accepted it.
+      ``failed``          enabled and attempted, but the post did not succeed.
+      ``error``           an unexpected internal error, swallowed.
 
     ``brain`` and ``poster`` are injectable for tests; in production they
     default to the real fleet-brain and a urllib POST.
@@ -453,7 +567,13 @@ def report_once(
             from fleet_brain import FleetBrain
 
             brain = FleetBrain.from_env()
-        install_id = load_or_create_install_id()
+        install_id = load_or_create_persisted_install_id()
+        if install_id is None:
+            # The install id is not durable (state dir unwritable, read-only FS,
+            # etc.). Reporting with an ephemeral id minted per run would make
+            # this host look like a new install on every report and inflate the
+            # public install count, so skip the report. Next run retries.
+            return {"status": "no_install_id", "sent": False}
         period = current_period(now)
         counts = derive_counts(brain)
         payload = build_payload(install_id, counts, period)

@@ -15,6 +15,7 @@ import worker, {
   normalizePayload,
   ingest,
   computeTotals,
+  hashIp,
 } from "../src/worker.js";
 
 // --------------------------------------------------------------------------
@@ -888,6 +889,84 @@ test("the rate limit is per-IP: a different IP is unaffected", async () => {
     env,
   );
   assert.equal(otherIp.status, 200, "a separate IP has its own window");
+});
+
+// --------------------------------------------------------------------------
+// Keyed rate-limit hash (Codex finding #3). The bucket key is derived with an
+// HMAC over the IP under a server-side salt, so a KV reader cannot brute-force
+// the dotted-quad space back to the IP without the salt. These tests assert the
+// keyed-hash properties directly via the exported hashIp.
+// --------------------------------------------------------------------------
+test("hashIp: two different IPs map to different buckets", async () => {
+  const env = { RATE_LIMIT_SALT: "server-side-secret" };
+  const a = await hashIp("203.0.113.7", env);
+  const b = await hashIp("203.0.113.8", env);
+  assert.notEqual(a, b, "distinct IPs must land in distinct buckets");
+});
+
+test("hashIp: the same IP under the same salt is stable", async () => {
+  const env = { RATE_LIMIT_SALT: "server-side-secret" };
+  const a = await hashIp("198.51.100.4", env);
+  const b = await hashIp("198.51.100.4", env);
+  assert.equal(a, b, "a stable salt buckets a source consistently within a window");
+});
+
+test("hashIp: the hash is keyed, so a different salt changes the bucket for the same IP", async () => {
+  // This is the property that makes the key non-reversible: the digest depends
+  // on the secret salt, not on the IP alone, so it cannot be precomputed/brute-
+  // forced from the public dotted-quad space without knowing the salt.
+  const ip = "192.0.2.55";
+  const h1 = await hashIp(ip, { RATE_LIMIT_SALT: "salt-one" });
+  const h2 = await hashIp(ip, { RATE_LIMIT_SALT: "salt-two" });
+  assert.notEqual(h1, h2, "the same IP under different salts must hash differently");
+});
+
+test("hashIp: the digest never contains or equals the raw IP", async () => {
+  const ip = "203.0.113.42";
+  const h = await hashIp(ip, { RATE_LIMIT_SALT: "server-side-secret" });
+  assert.ok(!h.includes(ip), "the bucket hash must not embed the raw IP");
+  assert.notEqual(h, ip);
+  assert.match(h, /^[0-9a-f]+$/, "hex-encoded HMAC truncation");
+});
+
+test("hashIp: an unset salt fails safe with a per-isolate ephemeral salt", async () => {
+  // With no RATE_LIMIT_SALT configured the Worker still produces a keyed hash
+  // (under a per-isolate random salt), so the IP is still not embedded in the
+  // key. Within one isolate the ephemeral salt is stable, so the bucket is
+  // consistent enough to rate-limit.
+  const ip = "198.51.100.9";
+  const h1 = await hashIp(ip, {});
+  const h2 = await hashIp(ip, {});
+  assert.ok(!h1.includes(ip), "even without a configured salt the IP is not in the key");
+  assert.match(h1, /^[0-9a-f]+$/);
+  assert.equal(h1, h2, "the per-isolate ephemeral salt is stable within the isolate");
+});
+
+test("the rate limit still enforces with a configured RATE_LIMIT_SALT", async () => {
+  // End-to-end: the keyed-hash path is wired through checkRateLimit and the
+  // bucket key written to KV is the rl:<hmac>:<window> form, never the raw IP.
+  const kv = makeKV();
+  const env = { TELEMETRY: kv, INGEST_RATE_LIMIT: "2", RATE_LIMIT_SALT: "deploy-secret" };
+  const ip = "203.0.113.200";
+  for (let i = 0; i < 2; i++) {
+    const ok = await worker.fetch(
+      ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: `install-salt${i}0000` }, ip),
+      env,
+    );
+    assert.equal(ok.status, 200);
+  }
+  const blocked = await worker.fetch(
+    ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: "install-saltblock" }, ip),
+    env,
+  );
+  assert.equal(blocked.status, 429, "the keyed-hash bucket still counts per source");
+
+  // The KV bucket key must not contain the raw IP.
+  const rlKeys = [...kv.store.keys()].filter((k) => k.startsWith("rl:"));
+  assert.ok(rlKeys.length >= 1, "a rate-limit bucket key was written");
+  for (const k of rlKeys) {
+    assert.ok(!k.includes(ip), "the rate-limit KV key must not embed the raw IP");
+  }
 });
 
 test("GET /stats on an empty store returns zeroed totals", async () => {

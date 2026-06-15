@@ -106,6 +106,12 @@ what it can and cannot guarantee. The controls, in layers:
    (only your hosts can write) and an open one.
 4. **Per-IP rate limit.** A coarse fixed-window counter (default 60/hour, set
    `INGEST_RATE_LIMIT`) slows a single source spraying distinct `install_id`s.
+   The bucket key never holds the raw IP: it is a **keyed** hash (HMAC-SHA-256 of
+   the IP under a server-side salt, `RATE_LIMIT_SALT`), so a KV reader cannot
+   brute-force the ~4 billion dotted-quad space back to the IP without the salt.
+   If `RATE_LIMIT_SALT` is unset the Worker fails safe with a per-isolate
+   ephemeral random salt (the IP is still unrecoverable from the key); set the
+   salt for stable buckets that survive isolate recycling.
 5. **Per-install count cap.** Each field is clamped to `[0, 100000]`, so a single
    forged `install_id` can move the total by at most that much, once.
 6. **Latest-wins idempotency.** Re-sends from the same `install_id` replace its
@@ -171,6 +177,15 @@ You need a Cloudflare account (the free plan is enough) and
 
    ```sh
    wrangler secret put INGEST_TOKEN   # paste a long random value
+   ```
+
+   **(Recommended) Set a rate-limit salt** so the per-IP rate-limit bucket keys
+   are keyed and the client IP cannot be recovered from KV. If you skip this the
+   Worker fails safe with a per-isolate ephemeral salt, but buckets then reset on
+   isolate recycle, so set it for stable rate limiting:
+
+   ```sh
+   wrangler secret put RATE_LIMIT_SALT   # paste a long random value
    ```
 
 4. **Deploy:**
@@ -250,6 +265,8 @@ invariant, the derived-stats cache (populate, serve-from-cache, invalidate on
 ingest, and `STATS_CACHE_TTL_SECONDS=0` disabling it), the simple-request
 rejection (text/plain and form bodies refused), the Origin allowlist on
 `/ingest`, the write gate (token accept/reject and open-write mode), the per-IP
-rate limit, the `/ingest` CORS lockdown, and the HTTP surface (ingest -> stats
-round-trip, scoped `/stats` CORS, 400/404). No network or real Cloudflare
+rate limit (including the keyed HMAC bucket hash: two IPs map to distinct
+buckets, the hash is salt-keyed and non-reversible, and the raw IP never appears
+in the KV key), the `/ingest` CORS lockdown, and the HTTP surface (ingest ->
+stats round-trip, scoped `/stats` CORS, 400/404). No network or real Cloudflare
 account is touched.

@@ -15,11 +15,14 @@ surface as a scheduler error or break anything else on the host.
 
 Sentinels (printed to stdout, picked up by log scrapers):
 
-    [PROOF-TELEMETRY-DISABLED]   master switch off (the default)
-    [PROOF-TELEMETRY-NO-URL]     enabled but ALFRED_TELEMETRY_URL unset
-    [PROOF-TELEMETRY-SENT]       payload posted and accepted
-    [PROOF-TELEMETRY-FAILED]     enabled and attempted, post did not succeed
-    [PROOF-TELEMETRY-ERROR]      unexpected internal error, swallowed
+    [PROOF-TELEMETRY-DISABLED]      master switch off (the default)
+    [PROOF-TELEMETRY-NO-URL]        enabled but ALFRED_TELEMETRY_URL unset
+    [PROOF-TELEMETRY-NO-INSTALL-ID] enabled but the install id could not be
+                                    persisted; report skipped so an ephemeral id
+                                    does not inflate the install count
+    [PROOF-TELEMETRY-SENT]          payload posted and accepted
+    [PROOF-TELEMETRY-FAILED]        enabled and attempted, post did not succeed
+    [PROOF-TELEMETRY-ERROR]         unexpected internal error, swallowed
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ for candidate in (HERE.parent / "lib", Path(os.environ.get("ALFRED_HOME", "")) /
 _SENTINELS = {
     "disabled": "[PROOF-TELEMETRY-DISABLED]",
     "no_url": "[PROOF-TELEMETRY-NO-URL]",
+    "no_install_id": "[PROOF-TELEMETRY-NO-INSTALL-ID]",
     "sent": "[PROOF-TELEMETRY-SENT]",
     "failed": "[PROOF-TELEMETRY-FAILED]",
     "error": "[PROOF-TELEMETRY-ERROR]",

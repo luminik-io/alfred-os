@@ -76,16 +76,20 @@
  *                         can never change the derived answer. It is NEVER a
  *                         write target of /ingest, so it cannot race ingests.
  *   key "rl:<h>:<win>" -> short-lived per-source ingest counter for the rate
- *                         limit. <h> is a non-reversible hash of the client IP,
+ *                         limit. <h> is a KEYED, non-reversible hash of the
+ *                         client IP (HMAC-SHA-256 under a server-side salt),
  *                         never the raw IP, and the bucket self-expires after
- *                         the rate-limit window.
+ *                         the rate-limit window. Because the hash is keyed, a KV
+ *                         reader cannot brute-force the dotted-quad space to
+ *                         recover the IP from the key without the salt.
  *
  * What is NEVER stored or logged: raw IP addresses, user agents, repo names,
  * file paths, code, commit text, Slack handles, or anything that identifies a
- * person or a machine. The rate-limit key holds only a one-way hash of the IP
- * with a short TTL, not the address itself. `install_id` is a random opaque
- * token the install generates for itself; the Worker treats it as a bare
- * grouping key and never resolves it to anything.
+ * person or a machine. The rate-limit key holds only a KEYED one-way hash of the
+ * IP with a short TTL, not the address itself, and without the server-side salt
+ * the IP cannot be recovered from it. `install_id` is a random opaque token the
+ * install generates for itself; the Worker treats it as a bare grouping key and
+ * never resolves it to anything.
  *
  * Concurrency: there is no cross-request read-modify-write to race. Each
  * /ingest writes only its own install:<id> key (an idempotent latest-wins
@@ -484,16 +488,62 @@ function rateLimitMax(env) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : RATE_LIMIT_MAX_PER_WINDOW;
 }
 
-// Non-reversible 32-bit FNV-1a hash, hex-encoded. Used so the rate-limit KV key
-// never contains the raw client IP, keeping the "no IP stored" promise intact
-// while still bucketing per source. A short window TTL drops it regardless.
-function hashIp(ip) {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < ip.length; i++) {
-    h ^= ip.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
+// Width (hex chars) of the truncated rate-limit bucket hash. 32 hex chars is
+// 128 bits, far more than enough to avoid bucket collisions across a realistic
+// number of source IPs while keeping the key short.
+const RL_HASH_HEX_WIDTH = 32;
+
+// Per-isolate ephemeral salt, generated lazily the FIRST time we need a keyed
+// hash WITHOUT a configured RATE_LIMIT_SALT. It lives only in this isolate's
+// memory and is never persisted, so even with it the IP cannot be recovered
+// from a KV key by anyone reading KV. The trade-off vs a configured secret: an
+// ephemeral salt rotates whenever the isolate recycles, so a source's bucket
+// can reset early (it under-counts, never over-counts) and two isolates bucket
+// the same IP differently. That is an acceptable fail-safe for a coarse speed
+// bump; an operator who wants stable buckets sets RATE_LIMIT_SALT.
+let _ephemeralSalt = null;
+function ephemeralSalt() {
+  if (_ephemeralSalt === null) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    _ephemeralSalt = bytes;
   }
-  return (h >>> 0).toString(16);
+  return _ephemeralSalt;
+}
+
+// Resolve the HMAC key material: the operator-configured RATE_LIMIT_SALT when
+// set (a Worker secret/var), else a per-isolate ephemeral random salt. Either
+// way the key material is server-side only and never written to KV, so the IP
+// cannot be brute-forced back out of the bucket key by a KV reader.
+function rateLimitSaltBytes(env) {
+  const configured = env && typeof env.RATE_LIMIT_SALT === "string" ? env.RATE_LIMIT_SALT : "";
+  if (configured) return new TextEncoder().encode(configured);
+  return ephemeralSalt();
+}
+
+// KEYED, non-reversible hash of the client IP for the rate-limit bucket key.
+// HMAC-SHA-256 over the IP using a server-side secret salt, hex-encoded and
+// truncated. Unlike the old unsalted 32-bit FNV-1a, the key cannot be reversed
+// by brute-forcing the ~4 billion dotted-quad space: without the secret salt an
+// attacker with KV read access cannot recompute the HMAC, so the IP stays
+// unrecoverable. The raw IP is never written to KV; only this keyed digest is,
+// and the window TTL drops the bucket regardless.
+export async function hashIp(ip, env) {
+  const keyBytes = rateLimitSaltBytes(env);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(ip));
+  const bytes = new Uint8Array(mac);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex.slice(0, RL_HASH_HEX_WIDTH);
 }
 
 async function checkRateLimit(kv, request, env, now = Date.now()) {
@@ -501,9 +551,10 @@ async function checkRateLimit(kv, request, env, now = Date.now()) {
   if (!ip) return { ok: true }; // no IP to key on; rely on the other guards
   const max = rateLimitMax(env);
   const window = Math.floor(now / 1000 / RATE_LIMIT_WINDOW_SECONDS);
-  // Key on a hash of the IP plus the window so it self-expires and the raw IP
-  // is never written to KV. The TTL drops the bucket after the window anyway.
-  const key = `rl:${hashIp(ip)}:${window}`;
+  // Key on a KEYED hash of the IP plus the window so it self-expires and the raw
+  // IP is never written to KV AND cannot be recovered from the key without the
+  // server-side salt. The TTL drops the bucket after the window anyway.
+  const key = `rl:${await hashIp(ip, env)}:${window}`;
   const current = Number(await kv.get(key)) || 0;
   if (current >= max) {
     return { ok: false, status: 429, error: "rate limit exceeded" };
