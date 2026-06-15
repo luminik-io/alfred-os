@@ -52,7 +52,7 @@ All state lives in one Workers KV namespace bound as `TELEMETRY`:
 | Key | Value | Why it exists |
 | --- | --- | --- |
 | `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It is the only source of truth: `/stats` sums these on read. Its presence is also the distinct-install marker (no separate key). |
-| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 30s). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
+| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 60s, the Cloudflare KV minimum). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
 
 **Never stored, never logged:** IP addresses, user agents, repo names, file
 paths, code, commit text, handles, or anything that identifies a person or
@@ -187,6 +187,14 @@ You need a Cloudflare account (the free plan is enough) and
    ```sh
    wrangler secret put RATE_LIMIT_SALT   # paste a long random value
    ```
+
+   **(Optional) Tune the stats cache.** `STATS_CACHE_TTL_SECONDS` controls how
+   long `GET /stats` caches the derived totals. It defaults to `60`, which is the
+   Cloudflare KV minimum for `expirationTtl`: KV rejects a cache write below 60
+   seconds, so a value of `1`-`59` is clamped UP to `60` (and logged) rather than
+   silently never caching. Set `0` to disable the cache and recompute on every
+   read. Higher values cut list cost on read bursts at the price of staleness;
+   the cache can never change the derived answer.
 
 4. **Deploy:**
 

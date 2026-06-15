@@ -574,6 +574,99 @@ test("STATS_CACHE_TTL_SECONDS=0 disables the cache (always recompute)", async ()
   assert.equal(kv.store.has("stats:cache"), false, "no cache key written when TTL is 0");
 });
 
+// --------------------------------------------------------------------------
+// Stats-cache TTL must honor the Cloudflare KV minimum (Codex finding #1).
+// Workers KV REJECTS put(..., { expirationTtl }) below 60 seconds. A sub-60 TTL
+// would make every cache write throw (swallowed in readStats), so the cache
+// would never populate and /stats would re-list all install keys on every read.
+// A KV stub that records the put TTL (and rejects < 60, like the real KV) lets
+// us assert the Worker never writes the cache below the floor.
+// --------------------------------------------------------------------------
+function makeTtlRecordingKV() {
+  const kv = makeKV();
+  kv.putTtls = [];
+  const innerPut = kv.put.bind(kv);
+  kv.put = async (key, value, opts) => {
+    const ttl = opts && opts.expirationTtl;
+    if (key === "stats:cache") {
+      kv.putTtls.push(ttl);
+      // Mirror Cloudflare KV: a TTL below 60 is rejected outright.
+      if (typeof ttl === "number" && ttl < 60) {
+        throw new Error(`KV PUT failed: expirationTtl of ${ttl} is below the 60s minimum`);
+      }
+    }
+    return innerPut(key, value, opts);
+  };
+  return kv;
+}
+
+test("stats cache write uses the default 60s TTL and is accepted by KV", async () => {
+  // Default (no STATS_CACHE_TTL_SECONDS): the put must use a TTL >= 60 so KV
+  // accepts it and the cache actually populates.
+  const kv = makeTtlRecordingKV();
+  const env = { TELEMETRY: kv };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-ttl00001", prs_opened: 5 }).value,
+    FIXED,
+  );
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  assert.equal((await res.json()).prs_opened, 5);
+  assert.ok(kv.store.has("stats:cache"), "cache populated under the default TTL");
+  assert.ok(kv.putTtls.length >= 1, "a cache put was attempted");
+  for (const ttl of kv.putTtls) {
+    assert.ok(ttl >= 60, `stats-cache TTL ${ttl} must be >= the 60s KV minimum`);
+  }
+});
+
+test("a sub-60 STATS_CACHE_TTL_SECONDS is clamped up to 60 (KV would reject below)", async () => {
+  // 1..59 cannot be honored: KV rejects the put. The Worker must clamp up to 60
+  // so the cache still populates rather than silently never caching.
+  for (const raw of ["1", "30", "59"]) {
+    const kv = makeTtlRecordingKV();
+    const env = { TELEMETRY: kv, STATS_CACHE_TTL_SECONDS: raw };
+    await ingest(
+      kv,
+      normalizePayload({ install_id: `install-ttlc${raw.padStart(4, "0")}`, prs_opened: 2 }).value,
+      FIXED,
+    );
+    const res = await worker.fetch(req("GET", "/stats"), env);
+    assert.equal((await res.json()).prs_opened, 2);
+    assert.ok(kv.store.has("stats:cache"), `cache populated for STATS_CACHE_TTL_SECONDS=${raw}`);
+    for (const ttl of kv.putTtls) {
+      assert.ok(ttl >= 60, `TTL ${ttl} (from ${raw}) must be clamped up to >= 60`);
+    }
+  }
+});
+
+test("a >=60 STATS_CACHE_TTL_SECONDS is used verbatim", async () => {
+  const kv = makeTtlRecordingKV();
+  const env = { TELEMETRY: kv, STATS_CACHE_TTL_SECONDS: "120" };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-ttl00120", prs_opened: 1 }).value,
+    FIXED,
+  );
+  await worker.fetch(req("GET", "/stats"), env);
+  assert.deepEqual(kv.putTtls, [120], "an above-floor TTL passes through unchanged");
+});
+
+test("STATS_CACHE_TTL_SECONDS=0 never attempts a cache put at all", async () => {
+  // The disable contract: with TTL 0 the Worker must not call put for the cache
+  // key, so there is nothing for KV to reject and no cache key is written.
+  const kv = makeTtlRecordingKV();
+  const env = { TELEMETRY: kv, STATS_CACHE_TTL_SECONDS: "0" };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-ttl00000", prs_opened: 7 }).value,
+    FIXED,
+  );
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  assert.equal((await res.json()).prs_opened, 7);
+  assert.equal(kv.putTtls.length, 0, "no cache put issued when the cache is disabled");
+  assert.equal(kv.store.has("stats:cache"), false, "no cache key written when TTL is 0");
+});
+
 test("GET /stats sums many installs derived-on-read (no incremented aggregate)", async () => {
   const kv = makeKV();
   const env = { TELEMETRY: kv };

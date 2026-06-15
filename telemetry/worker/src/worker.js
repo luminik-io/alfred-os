@@ -139,18 +139,49 @@ const INSTALL_PREFIX = "install:";
 // the public number is near-live; override with STATS_CACHE_TTL_SECONDS (0
 // disables caching entirely, always recomputing from the install records).
 const STATS_CACHE_KEY = "stats:cache";
-const DEFAULT_STATS_CACHE_TTL_SECONDS = 30;
 
+// Cloudflare Workers KV enforces a HARD MINIMUM of 60 seconds on
+// `put(..., { expirationTtl })`: a put with a TTL below 60 is REJECTED, so a
+// sub-60 cache write would throw, be swallowed, and the cache would never
+// populate, making every /stats recompute by listing all install keys. So the
+// usable TTL floor is 60. The default is the floor.
+const KV_MIN_EXPIRATION_TTL_SECONDS = 60;
+const DEFAULT_STATS_CACHE_TTL_SECONDS = KV_MIN_EXPIRATION_TTL_SECONDS;
+
+// Resolve the stats-cache TTL with the KV minimum enforced.
+//   unset / "" / malformed / negative -> the default (60, the KV floor)
+//   0                                  -> 0 (the documented "disable cache" path,
+//                                        preserved: we never call put at all)
+//   1..59                              -> CLAMPED UP to 60 (a sub-60 put would be
+//                                        rejected by KV and silently lose the
+//                                        cache); we log the clamp once per read
+//                                        so a misconfiguration is visible.
+//   >=60                               -> used as-is (floored to an integer)
+// Returning a value below 60 (other than the explicit 0 disable) is never valid
+// because KV would reject the put, so this function never does.
 function statsCacheTtl(env) {
   const raw = env && env.STATS_CACHE_TTL_SECONDS;
   if (raw === undefined || raw === null || raw === "") {
     return DEFAULT_STATS_CACHE_TTL_SECONDS;
   }
   const n = Number(raw);
-  // A non-negative integer; 0 disables the cache. Anything malformed falls back
-  // to the default rather than silently disabling caching.
+  // Malformed or negative: fall back to the default rather than silently
+  // disabling caching or emitting a TTL KV would reject.
   if (!Number.isFinite(n) || n < 0) return DEFAULT_STATS_CACHE_TTL_SECONDS;
-  return Math.floor(n);
+  const floored = Math.floor(n);
+  // 0 keeps its "disable the cache" meaning (no put is ever issued).
+  if (floored === 0) return 0;
+  // 1..59 cannot be honored: KV rejects an expirationTtl below 60, so the put
+  // would throw and the cache would never populate. Clamp up to the KV floor.
+  if (floored < KV_MIN_EXPIRATION_TTL_SECONDS) {
+    console.warn(
+      `STATS_CACHE_TTL_SECONDS=${floored} is below the Cloudflare KV minimum of ` +
+        `${KV_MIN_EXPIRATION_TTL_SECONDS}s; clamping up to ${KV_MIN_EXPIRATION_TTL_SECONDS}. ` +
+        `Set 0 to disable the cache, or a value >= ${KV_MIN_EXPIRATION_TTL_SECONDS}.`,
+    );
+    return KV_MIN_EXPIRATION_TTL_SECONDS;
+  }
+  return floored;
 }
 
 /**

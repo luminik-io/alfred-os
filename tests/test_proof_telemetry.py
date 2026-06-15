@@ -221,6 +221,33 @@ class FailingBaseBrain:
         return len(self._touches)
 
 
+class PagingNoCountBrain:
+    """Older brain with NO count_* method and NO list clamp: list_github_items
+    honors any ``limit`` and returns that many RAW rows from the top.
+
+    Models a brain whose stored PRs mix agent-authored and operator rows. The
+    list-fallback counter must page on the RAW row count, not the post-filter
+    authored count: a page can hold fewer AUTHORED matches than ``limit`` while
+    the brain still has more rows. Regression guard for Codex finding #3 (early
+    termination when a filtered lister returns a short page).
+    """
+
+    def __init__(self, prs=None, touches=None):
+        self._prs = prs or []
+        self._touches = touches or []
+
+    def list_github_items(self, *, kind=None, state=None, limit=50):
+        assert kind == "pr"
+        rows = self._prs
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        # No clamp: return exactly the requested top-N raw rows.
+        return list(rows)[:limit]
+
+    def list_file_touches(self, *, limit=50):
+        return list(self._touches)[:limit]
+
+
 class RecordingPoster:
     def __init__(self, ok: bool = True):
         self.ok = ok
@@ -560,6 +587,103 @@ def test_derive_counts_no_state_kwarg_brain_filters_authored():
     assert counts.prs_opened == 3, "only authored PRs counted via the tally fallback"
     assert counts.prs_merged == 1
     assert counts.prs_reviewed == 2  # 1 merged + 1 closed, authored only
+
+
+# ---------------------------------------------------------------------------
+# _count_rows pagination must not stop early on a filtered short page
+# (Codex finding #3)
+# ---------------------------------------------------------------------------
+def test_count_rows_keys_continuation_on_raw_page_not_filtered_matches():
+    # Direct test of _count_rows with a predicate. The lister returns a FULL page
+    # of raw rows but only HALF match the predicate, so the matched count on the
+    # first page (page/2) is far below `limit`. The old code stopped on the
+    # post-filter count and would undercount; the fix pages on the raw count.
+    page = pt._COUNT_PAGE
+    total_rows = page * 2 + 10  # spans 3 pages of raw fetches
+    # Alternate authored / not-authored, so every page is ~half matches.
+    rows = []
+    for i in range(total_rows):
+        rows.append(FakePR("open") if i % 2 == 0 else FakePR("open", authored=False))
+    expected_authored = sum(1 for r in rows if pt._row_is_agent_authored(r))
+
+    def lister(limit):
+        return rows[:limit]
+
+    counted = pt._count_rows(lister, pt._row_is_agent_authored)
+    assert counted == expected_authored, (
+        "must page on the raw fetch count, not the filtered match count, "
+        "so a half-filtered first page does not stop the count early"
+    )
+
+
+def test_derive_counts_no_early_stop_when_filter_removes_rows_list_fallback():
+    # End-to-end via derive_counts. A brain with NO count_* method holds more than
+    # one page of PRs, half authored and half operator-opened. The list fallback
+    # must count EVERY authored PR, not stop after the first under-full filtered
+    # page. Mirrors the finding's 1200-PR (600 authored / 600 operator) scenario,
+    # scaled to the page size so the test is fast.
+    page = pt._COUNT_PAGE
+    authored = [FakePR("merged")] * page  # one full page of authored, merged PRs
+    operator = [FakePR("merged", authored=False)] * page  # one page of operator PRs
+    # Interleave so neither a raw page nor a filtered page lines up with a clean
+    # boundary; the count must still reach every authored row.
+    prs = []
+    for a, o in zip(authored, operator, strict=True):
+        prs.append(a)
+        prs.append(o)
+    brain = PagingNoCountBrain(prs=prs, touches=[])
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == page, (
+        f"all {page} authored PRs counted; the operator rows must not cause an "
+        "early stop in the paginating list fallback"
+    )
+    assert counts.prs_merged == page, "authored+merged subset fully counted"
+    assert counts.prs_reviewed == page, "authored terminal subset fully counted"
+
+
+# ---------------------------------------------------------------------------
+# subset invariant holds even when prs_opened == 0 (Codex finding #2)
+# ---------------------------------------------------------------------------
+class OpenedZeroRaceBrain:
+    """Brain that races the GitHub poller: the base (authored, no-state) count
+    returns 0, yet the state-filtered counts still see merged/closed rows.
+
+    This reproduces the opened==0 / merged>0 window: the base count is taken
+    before the poller has written the open rows (or an older brain returns
+    state-filtered counts after the base came back 0), so prs_opened is a genuine
+    0 (the base query did NOT fail) while the dependents are non-zero. The subset
+    clamp must still pull merged/reviewed down to 0, never storing the impossible
+    prs_opened:0 with prs_merged:N.
+    """
+
+    def __init__(self, *, merged=0, closed=0):
+        self._merged = merged
+        self._closed = closed
+
+    def count_github_items(self, *, kind=None, state=None, authored_only=False):
+        assert kind == "pr"
+        if state is None:
+            return 0  # the base "all authored PRs" count races to 0
+        if state == "merged":
+            return self._merged
+        if state == "closed":
+            return self._closed
+        return 0
+
+    def count_file_touches(self):
+        return 0
+
+
+def test_derive_counts_clamps_dependents_to_zero_when_opened_is_zero():
+    # The base count is a real 0 (no failure), but a racing state-filtered count
+    # still returns merged/closed rows. The subset invariant (merged, reviewed <=
+    # opened) must be enforced EVEN at opened==0, so the payload never ships
+    # prs_opened:0 alongside prs_merged>0.
+    brain = OpenedZeroRaceBrain(merged=3, closed=2)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 0, "base count raced to zero (no failure)"
+    assert counts.prs_merged == 0, "merged must be clamped to opened even when opened is 0"
+    assert counts.prs_reviewed == 0, "reviewed must be clamped to opened even when opened is 0"
 
 
 # ---------------------------------------------------------------------------

@@ -227,44 +227,61 @@ def load_or_create_install_id(path: Path | None = None) -> str:
     return secrets.token_urlsafe(16)
 
 
-def _count_rows(lister: Callable[[int], list[Any]]) -> int:
+def _count_rows(
+    lister: Callable[[int], list[Any]],
+    predicate: Callable[[Any], bool] | None = None,
+) -> int:
     """Fallback row counter for a brain that exposes only a `list_*` method.
 
     The real ``FleetBrain`` exposes exact ``count_*`` methods (a SQL
     ``COUNT(*)``) which the callers below prefer; this paginating fallback is for
     brains/test-doubles that lack them. ``lister`` takes a ``limit`` and returns
-    up to that many rows from the top. We count by raising ``limit`` one
-    ``_COUNT_PAGE`` at a time and stopping when a fetch returns fewer rows than
-    we asked for (the end), the same count twice in a row (the brain hit an
-    internal cap), or the hard ceiling (a runaway brain).
+    up to that many RAW rows from the top (NOT pre-filtered). ``predicate``, when
+    given, selects which raw rows count toward the total (e.g. agent-authored
+    rows); when ``None`` every raw row counts.
+
+    Pagination decides continuation on the RAW fetched row count, never on the
+    post-filter match count. This is load-bearing: a ``predicate`` discards rows,
+    so a page can return fewer MATCHES than ``limit`` while the brain still has
+    more rows. Stopping on the filtered count would end early and undercount
+    (e.g. a brain with 1200 PRs, 600 authored + 600 operator, would stop on the
+    first page once the authored matches fell short of ``limit``). We raise
+    ``limit`` one ``_COUNT_PAGE`` at a time and stop only when the brain returns
+    fewer RAW rows than asked for (true end of data), the same RAW count twice in
+    a row (the brain hit an internal cap or list clamp), or the hard ceiling (a
+    runaway brain).
 
     IMPORTANT: if the underlying list method silently CLAMPS ``limit`` (the real
     ``FleetBrain`` clamps to 500), this fallback cannot count past that clamp:
-    raising ``limit`` does nothing once it is clamped, so ``got == last`` trips
-    and we stop at the clamp. That is exactly why the exact ``count_*`` path
+    raising ``limit`` does nothing once it is clamped, so the raw ``got == last``
+    trips and we stop at the clamp. That is exactly why the exact ``count_*`` path
     exists and is tried first; this fallback's honest stop at a clamp is strictly
     better than the old ``len(list(limit=500))`` that always froze at 500, but it
     is still bounded by whatever clamp the list method imposes.
 
-    Any total at or above the hard limit is reported as the limit; the field is
-    clamped to the same bound on the wire anyway, so fetching further is wasted.
+    Any match total at or above the hard limit is reported as the limit; the
+    field is clamped to the same bound on the wire anyway, so fetching further is
+    wasted.
     """
     limit = _COUNT_PAGE
-    last = 0
+    last_raw = 0
     while True:
         rows = lister(limit)
-        got = len(rows)
-        if got >= _COUNT_HARD_LIMIT:
+        got = len(rows)  # RAW rows fetched, BEFORE any predicate filtering.
+        matched = got if predicate is None else sum(1 for r in rows if predicate(r))
+        if matched >= _COUNT_HARD_LIMIT:
             return _COUNT_HARD_LIMIT
         if got < limit:
-            # A short page means we have reached the end of the rows.
-            return got
-        if got == last:
-            # The brain returned a full page but no new rows beyond the previous
-            # request: it has hit its own internal cap (or a list clamp). Honest
-            # stop. The exact count_* path avoids this; see the docstring.
-            return got
-        last = got
+            # Fewer RAW rows than requested means the brain is exhausted: this is
+            # the true end of data. Decided on the raw count so a predicate that
+            # discards rows cannot make a full page look short and stop us early.
+            return matched
+        if got == last_raw:
+            # The brain returned a full page but no new RAW rows beyond the
+            # previous request: it has hit its own internal cap (or a list clamp).
+            # Honest stop. The exact count_* path avoids this; see the docstring.
+            return matched
+        last_raw = got
         limit += _COUNT_PAGE
 
 
@@ -331,22 +348,24 @@ def _count_github_items(brain: Any, *, authored_only: bool = False, **filters: A
         except TypeError:
             # Older brain whose count_github_items predates the authored_only
             # flag. Fall through to the list-based, row-filtered fallback below
-            # rather than counting unauthored PRs.
+            # rather than counting unauthored PRs. The authored filter is passed
+            # as a PREDICATE so pagination keys on the RAW page size, never on the
+            # post-filter match count (which would stop early and undercount).
             if authored_only:
                 return _count_rows(
-                    lambda n: [
-                        r
-                        for r in brain.list_github_items(limit=n, **filters)
-                        if _row_is_agent_authored(r)
-                    ]
+                    lambda n: brain.list_github_items(limit=n, **filters),
+                    _row_is_agent_authored,
                 )
             total = int(counter(**filters))
         return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
     if authored_only:
+        # No SQL COUNT path on this brain: page the list and filter via the
+        # predicate. Continuation is decided on the raw fetched count, so the
+        # discarded operator rows cannot make a full page look short and stop the
+        # count before every authored row is seen.
         return _count_rows(
-            lambda n: [
-                r for r in brain.list_github_items(limit=n, **filters) if _row_is_agent_authored(r)
-            ]
+            lambda n: brain.list_github_items(limit=n, **filters),
+            _row_is_agent_authored,
         )
     return _count_rows(lambda n: brain.list_github_items(limit=n, **filters))
 
@@ -455,12 +474,18 @@ def derive_counts(brain: Any) -> TelemetryCounts:
             prs_merged = 0
             prs_reviewed = 0
 
-    # prs_reviewed is defined as a subset of opened, so never let the state-based
-    # tally exceed the opened total (e.g. if filters and the top-level count
-    # raced against a concurrent write).
-    if prs_opened and prs_reviewed > prs_opened:
+    # prs_merged and prs_reviewed are defined as SUBSETS of prs_opened, so neither
+    # may exceed it. Clamp unconditionally, INCLUDING when prs_opened == 0: a
+    # zero opened with a non-zero dependent is exactly the invariant violation we
+    # must not store. That state is reachable without the base query failing,
+    # e.g. the base count races a GitHub poller mid-write and returns 0 while the
+    # state-filtered counts still see rows, or an older brain returns
+    # state-filtered counts after the base count came back 0. A truthy
+    # `prs_opened` guard would skip the clamp precisely in that opened==0 case and
+    # let prs_opened:0 ship alongside prs_merged>0, so the guard is dropped.
+    if prs_reviewed > prs_opened:
         prs_reviewed = prs_opened
-    if prs_opened and prs_merged > prs_opened:
+    if prs_merged > prs_opened:
         prs_merged = prs_opened
 
     try:

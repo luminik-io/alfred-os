@@ -45,10 +45,13 @@ ALLOWED_ORIGIN = "https://alfred.example.com"
 # RATE_LIMIT_SALT = "set-via-`wrangler secret put`-not-here"
 
 # Optional cache TTL (seconds) for the totals GET /stats derives by summing the
-# per-install records. Defaults to 30. A read optimization only: a higher value
-# cuts list cost on busy read bursts at the price of staleness; 0 disables the
-# cache and recomputes on every read. It can never change the derived answer.
-# STATS_CACHE_TTL_SECONDS = "30"
+# per-install records. Defaults to 60, which is the Cloudflare KV minimum for an
+# expirationTtl: KV REJECTS a cache write below 60s, so a value of 1-59 is
+# clamped UP to 60 (and logged) rather than silently never caching. Set 0 to
+# disable the cache and recompute on every read. A read optimization only: a
+# higher value cuts list cost on busy read bursts at the price of staleness. It
+# can never change the derived answer.
+# STATS_CACHE_TTL_SECONDS = "60"
 
 # Workers KV namespace that holds the per-install records (and a short-lived
 # derived-stats cache). GET /stats sums the install records on read; there is no
