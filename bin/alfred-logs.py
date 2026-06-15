@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``alfred-logs`` — stream-JSON transcript inspector.
+"""``alfred-logs``: stream-JSON transcript inspector.
 
 Reads firing transcripts under
 ``$ALFRED_STATE_DIR/transcripts/<codename>/<YYYY-MM>/<firing_id>.jsonl``
@@ -17,9 +17,9 @@ Usage:
     alfred logs <codename> --json                machine-readable output
 
 Exit codes:
-  0 — success
-  1 — user error (unknown codename, missing firing id)
-  2 — system error (state dir missing)
+  0 success
+  1 user error (unknown codename, missing firing id)
+  2 system error (state dir missing)
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ def cmd_summary(state_dir: Path, codename: str, last: int, json_out: bool) -> in
         print(json.dumps({"codename": codename, "firings": rows}, default=str, indent=2))
         return 0
 
-    print(f"alfred-logs {codename} — last {len(rows)} firings")
+    print(f"alfred-logs {codename} - last {len(rows)} firings")
     print(f"transcripts: {transcripts_root(state_dir)}/{codename}/")
     print()
     header = (
@@ -169,7 +169,7 @@ def cmd_firing(
 
 
 def _print_firing_tool_calls(ref: FiringRef, s: TranscriptSummary) -> None:
-    print(f"firing {ref.firing_id} ({_fmt_ts(ref)}) — {_pretty_path(ref.path)}")
+    print(f"firing {ref.firing_id} ({_fmt_ts(ref)}): {_pretty_path(ref.path)}")
     print(f"total tool calls: {s.tool_calls_total}")
     for name, count in sorted(s.tool_calls_by_name.items(), key=lambda kv: -kv[1]):
         print(f"  {name:<16} x{count}")
@@ -230,7 +230,7 @@ def cmd_tools_recent(
         )
         return 0
 
-    print(f"alfred-logs {codename} --show-tool-calls — last {len(firings)} firings")
+    print(f"alfred-logs {codename} --show-tool-calls - last {len(firings)} firings")
     print()
     print("tool          calls")
     print("-" * 24)

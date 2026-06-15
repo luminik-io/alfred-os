@@ -49,16 +49,16 @@ when your existing layout doesn't match the default, and skip the symlink
 shim entirely:
 
 ```sh
-# Your repos live at ~/repos/{api,web}/ — drop the product/ segment:
+# Your repos live at ~/repos/{api,web}/ (drop the product/ segment):
 WORKSPACE_ROOT=~/repos
 WORKSPACE_SUBDIR=""
 
-# Your repos live at ~/code/src/{api,web}/ — rename the segment:
+# Your repos live at ~/code/src/{api,web}/ (rename the segment):
 WORKSPACE_ROOT=~/code
 WORKSPACE_SUBDIR=src
 
-# Your repos live at "~/Claude Workspace/<repo>/" — drop the segment:
-WORKSPACE_ROOT="~/Claude Workspace"
+# Your repos live at "~/work area/<repo>/" (drop the segment):
+WORKSPACE_ROOT="~/work area"
 WORKSPACE_SUBDIR=""
 ```
 

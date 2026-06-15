@@ -53,9 +53,9 @@ $ALFRED_HOME/state/slack-listener/seen/
 Roll up per-agent firings, cost, turns, tool-use, and Codex tokens across a
 window. Reads:
 
-- `<codename>/spend-YYYY-MM-DD.json` — per-day SpendState files
-- `transcripts/<codename>/<YYYY-MM>/*.jsonl` — stream-JSON firings
-- `codex/<codename>/<YYYY-MM>/*.stdout.txt` — Codex run stdout dumps
+- `<codename>/spend-YYYY-MM-DD.json`: per-day SpendState files
+- `transcripts/<codename>/<YYYY-MM>/*.jsonl`: stream-JSON firings
+- `codex/<codename>/<YYYY-MM>/*.stdout.txt`: Codex run stdout dumps
 
 ```sh
 alfred metrics                          # last 7 days, per-agent
@@ -72,7 +72,7 @@ alfred metrics --json                   # machine-readable
 ### Example output
 
 ```
-alfred-metrics — last 7 days @ 2026-05-23 12:17 UTC
+alfred-metrics - last 7 days @ 2026-05-23 12:17 UTC
 
 codename     firings  ok    fail  turns   codex  ctok   cost     tools  top tool       skills
 --------------------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ alfred logs <codename> --json                           # machine-readable
 ### Summary mode
 
 ```
-alfred-logs lucius — last 3 firings
+alfred-logs lucius - last 3 firings
 transcripts: ~/.alfred/state/transcripts/lucius/
 
 firing_id              when                   subtype        turns  cost    tools  edits  top tools
@@ -162,7 +162,7 @@ firing_id              when                   subtype        turns  cost    tool
 ### Tool-call rollup
 
 ```
-alfred-logs lucius --show-tool-calls — last 10 firings
+alfred-logs lucius --show-tool-calls - last 10 firings
 
 tool          calls
 ------------------------
@@ -245,5 +245,5 @@ for firing in list_firings(state, "lucius")[:5]:
     print(firing.firing_id, s.tool_calls_by_name)
 ```
 
-The CLIs intentionally render only what dataclasses expose — extend the
+The CLIs intentionally render only what dataclasses expose. Extend the
 dataclasses (or add new render formats) instead of growing the CLI code.

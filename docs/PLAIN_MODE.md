@@ -1,4 +1,4 @@
-# Plain Mode — the non-technical front door
+# Plain Mode: the non-technical front door
 
 Plain mode lets someone who does not write code direct the Alfred fleet in
 plain language. A teammate can describe a change the way they would say it
@@ -51,23 +51,23 @@ The variable only affects two things:
    >
    > OK to go ahead?
 
-Everything else — the structured `IssueDraft`, readiness scoring, the
+Everything else (the structured `IssueDraft`, readiness scoring, the
 GitHub-ready issue body, the development spec, and the whole downstream
-bridge and fleet — is identical in both modes. Plain mode is a thin strategy
+bridge and the agents) is identical in both modes. Plain mode is a thin strategy
 seam (`lib/intake_profiles.py`), not a separate code path.
 
 ## Where it fits
 
 Plain mode is the friendly entrance; the existing pieces do the rest.
 
-- **Slack listener** — a teammate sends a direct message describing what they
+- **Slack listener.** A teammate sends a direct message describing what they
   want. With `ALFRED_INTAKE_PROFILE=plain`, the assistant replies with plain
   questions and a plain plan instead of operator commands and readiness
   scores.
-- **Desktop client** — the Compose box becomes a plain-language intake. The
+- **Desktop client.** The Compose box becomes a plain-language intake. The
   person types a request, answers a question or two, and approves the plan.
-- **The fleet** — receives the exact same structured work it always has, and
-  keeps every gate (claim-lock, spend caps, review, approval) intact.
+- **Your agents.** They receive the exact same structured work they always have, and
+  keep every gate (claim-lock, spend caps, review, approval) intact.
 
 The non-technical user approves an *outcome* and later reviews a *preview*.
 They never touch code, specs, or GitHub.
