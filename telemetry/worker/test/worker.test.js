@@ -174,6 +174,34 @@ test("ingest applies only the delta when a period's cumulative count grows", asy
   assert.equal(agg.installs, 1);
 });
 
+test("lifetime contract: daily re-sends of a stable period never inflate the aggregate", async () => {
+  // The reporter sends cumulative lifetime counts into a single fixed period
+  // ("lifetime"). Re-sending the same totals every day must add nothing; only a
+  // genuine increase in the lifetime total moves the aggregate. This is the
+  // server side of the no-double-count contract.
+  const kv = makeKV();
+  const day = (opened, merged) =>
+    normalizePayload({
+      install_id: "install-lifetime0",
+      period: "lifetime",
+      prs_opened: opened,
+      prs_merged: merged,
+      prs_reviewed: 0,
+      loc_added: 0,
+    }).value;
+
+  await ingest(kv, day(40, 30), FIXED); // first report
+  await ingest(kv, day(40, 30), FIXED); // identical daily re-send: +0
+  let agg = await ingest(kv, day(40, 30), FIXED); // and again: still +0
+  assert.equal(agg.prs_opened, 40, "identical re-sends must not inflate");
+  assert.equal(agg.prs_merged, 30);
+
+  agg = await ingest(kv, day(42, 31), FIXED); // real growth: +2 / +1
+  assert.equal(agg.prs_opened, 42, "only the increase is folded in");
+  assert.equal(agg.prs_merged, 31);
+  assert.equal(agg.installs, 1, "still one install across all re-sends");
+});
+
 test("ingest counts distinct installs and sums across them", async () => {
   const kv = makeKV();
   const a = normalizePayload({
@@ -319,14 +347,160 @@ test("POST /ingest rejects malformed bodies with 400", async () => {
   assert.equal(badPayload.status, 400);
 });
 
-test("OPTIONS preflight returns CORS headers", async () => {
+test("OPTIONS preflight on /stats returns the scoped CORS origin", async () => {
   const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
-  const res = await worker.fetch(req("OPTIONS", "/ingest"), env);
+  const res = await worker.fetch(req("OPTIONS", "/stats"), env);
   assert.equal(res.status, 204);
   assert.equal(
     res.headers.get("Access-Control-Allow-Origin"),
     "https://alfred.example.com",
   );
+  // Only GET is advertised for the read endpoint; POST is not a browser caller.
+  assert.match(res.headers.get("Access-Control-Allow-Methods") || "", /GET/);
+  assert.doesNotMatch(res.headers.get("Access-Control-Allow-Methods") || "", /POST/);
+});
+
+test("OPTIONS preflight on /ingest carries NO allow-origin (browser POST blocked)", async () => {
+  // A browser preflight for a cross-origin POST to /ingest must fail: with no
+  // Access-Control-Allow-Origin the browser will not send the actual request,
+  // so a visitor's tab cannot inflate the public counter.
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(req("OPTIONS", "/ingest"), env);
+  assert.equal(res.status, 204);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), null);
+});
+
+test("POST /ingest response never carries an allow-origin, even with ALLOWED_ORIGIN set", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(
+    req("POST", "/ingest", {
+      install_id: "install-cors0001",
+      period: "lifetime",
+      prs_opened: 1,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      loc_added: 0,
+    }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), null);
+});
+
+test("GET /stats never advertises a wildcard origin", async () => {
+  // With ALLOWED_ORIGIN unset, /stats stays readable server-side but does not
+  // hand out "*"; only browser cross-origin reads are gated.
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  assert.equal(res.status, 200);
+  assert.notEqual(res.headers.get("Access-Control-Allow-Origin"), "*");
+});
+
+// --------------------------------------------------------------------------
+// /ingest write gate: optional shared token
+// --------------------------------------------------------------------------
+function ingestReq(body, token) {
+  const init = { method: "POST", body: JSON.stringify(body) };
+  init.headers = { "Content-Type": "application/json" };
+  if (token !== undefined) init.headers["X-Ingest-Token"] = token;
+  return new Request("https://telemetry.example.com/ingest", init);
+}
+
+const SAMPLE_PAYLOAD = {
+  install_id: "install-token001",
+  period: "lifetime",
+  prs_opened: 3,
+  prs_merged: 2,
+  prs_reviewed: 1,
+  loc_added: 50,
+};
+
+test("ingest accepts writes when no INGEST_TOKEN is configured (open-write mode)", async () => {
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD), env);
+  assert.equal(res.status, 200);
+});
+
+test("ingest rejects a missing token when INGEST_TOKEN is configured", async () => {
+  const env = { TELEMETRY: makeKV(), INGEST_TOKEN: "s3cr3t-token" };
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD), env);
+  assert.equal(res.status, 401);
+  const body = await res.json();
+  assert.match(body.error, /token/);
+});
+
+test("ingest rejects a wrong token when INGEST_TOKEN is configured", async () => {
+  const env = { TELEMETRY: makeKV(), INGEST_TOKEN: "s3cr3t-token" };
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, "wrong-token"), env);
+  assert.equal(res.status, 401);
+});
+
+test("ingest accepts the correct token when INGEST_TOKEN is configured", async () => {
+  const env = { TELEMETRY: makeKV(), INGEST_TOKEN: "s3cr3t-token" };
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, "s3cr3t-token"), env);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+});
+
+test("the token check runs before the body is parsed (no work for unauthorized callers)", async () => {
+  // A bad-token request with a garbage body still 401s, not 400: auth precedes
+  // parsing, so an unauthorized caller cannot probe the JSON validator.
+  const env = { TELEMETRY: makeKV(), INGEST_TOKEN: "s3cr3t-token" };
+  const badBody = new Request("https://telemetry.example.com/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Ingest-Token": "nope" },
+    body: "{not json",
+  });
+  const res = await worker.fetch(badBody, env);
+  assert.equal(res.status, 401);
+});
+
+// --------------------------------------------------------------------------
+// /ingest per-IP rate limit
+// --------------------------------------------------------------------------
+function ingestReqFromIp(body, ip) {
+  return new Request("https://telemetry.example.com/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": ip },
+    body: JSON.stringify(body),
+  });
+}
+
+test("ingest rate-limits a single IP after the configured maximum", async () => {
+  const env = { TELEMETRY: makeKV(), INGEST_RATE_LIMIT: "3" };
+  const ip = "203.0.113.7";
+  for (let i = 0; i < 3; i++) {
+    const ok = await worker.fetch(
+      ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: `install-rl${i}00000` }, ip),
+      env,
+    );
+    assert.equal(ok.status, 200, `request ${i} within the limit should pass`);
+  }
+  const blocked = await worker.fetch(
+    ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: "install-rlblocked" }, ip),
+    env,
+  );
+  assert.equal(blocked.status, 429, "the request over the limit should be rejected");
+});
+
+test("the rate limit is per-IP: a different IP is unaffected", async () => {
+  const env = { TELEMETRY: makeKV(), INGEST_RATE_LIMIT: "1" };
+  const first = await worker.fetch(
+    ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: "install-ipaaaaaa" }, "203.0.113.1"),
+    env,
+  );
+  assert.equal(first.status, 200);
+  const blockedSame = await worker.fetch(
+    ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: "install-ipaaaaab" }, "203.0.113.1"),
+    env,
+  );
+  assert.equal(blockedSame.status, 429);
+  const otherIp = await worker.fetch(
+    ingestReqFromIp({ ...SAMPLE_PAYLOAD, install_id: "install-ipbbbbbb" }, "203.0.113.2"),
+    env,
+  );
+  assert.equal(otherIp.status, 200, "a separate IP has its own window");
 });
 
 test("GET /stats on an empty store returns zeroed totals", async () => {

@@ -6,9 +6,18 @@
  *   POST /ingest   one install folds its per-period counts into the running
  *                  totals. Idempotent per {install_id, period}: re-sending the
  *                  same pair overwrites that pair's stored counts rather than
- *                  double-counting.
+ *                  double-counting. Server-to-server only: no browser CORS, an
+ *                  optional shared INGEST_TOKEN, and a per-IP rate limit.
  *   GET  /stats    returns the public aggregate totals plus a distinct-install
- *                  count. CORS-open for GET so the marketing site can read it.
+ *                  count. This is the only route with browser CORS, scoped to
+ *                  ALLOWED_ORIGIN so the marketing site can read it.
+ *
+ * Abuse posture: /ingest does not reflect arbitrary Origins and never falls back
+ * to "*", so a visitor's browser cannot POST to it cross-origin. If INGEST_TOKEN
+ * is set, writes also require a matching X-Ingest-Token. A coarse per-IP rate
+ * limit and the {install_id, period} idempotency cap how fast any single source
+ * can move the aggregate. With INGEST_TOKEN unset the counter is open to
+ * server-side writes by design; TELEMETRY.md documents that residual surface.
  *
  * Storage: a single Workers KV namespace, bound as `TELEMETRY` (see
  * wrangler.toml). No database, no per-install history beyond the last
@@ -24,12 +33,17 @@
  *                           seen_at }
  *   key "ic:<id>"      -> "1" marker, present once per distinct install_id, used
  *                         to maintain the distinct-install count.
+ *   key "rl:<h>:<win>" -> short-lived per-source ingest counter for the rate
+ *                         limit. <h> is a non-reversible hash of the client IP,
+ *                         never the raw IP, and the bucket self-expires after
+ *                         the rate-limit window.
  *
- * What is NEVER stored or logged: IP addresses, user agents, repo names, file
- * paths, code, commit text, Slack handles, or anything that identifies a
- * person or a machine. `install_id` is a random opaque token the install
- * generates for itself; the Worker treats it as a bare grouping key and never
- * resolves it to anything.
+ * What is NEVER stored or logged: raw IP addresses, user agents, repo names,
+ * file paths, code, commit text, Slack handles, or anything that identifies a
+ * person or a machine. The rate-limit key holds only a one-way hash of the IP
+ * with a short TTL, not the address itself. `install_id` is a random opaque
+ * token the install generates for itself; the Worker treats it as a bare
+ * grouping key and never resolves it to anything.
  *
  * The aggregate is maintained without a cross-request lock. Two installs
  * posting in the same instant could in principle interleave their
@@ -184,25 +198,111 @@ function publicView(agg) {
   };
 }
 
-function corsHeaders(env) {
-  const origin = (env && env.ALLOWED_ORIGIN) || "*";
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+// CORS is for the marketing site reading GET /stats from a browser. It is the
+// ONLY route a browser legitimately calls cross-origin, so it is the only route
+// that gets an Access-Control-Allow-Origin. POST /ingest has no browser caller
+// (the install reporter is server-side urllib, which CORS does not gate), so it
+// returns NO allow-origin header: a browser preflight or cross-origin POST from
+// a visitor's tab fails and cannot inflate the public counter. We never reflect
+// an arbitrary request Origin, and we never fall back to "*".
+function statsCorsHeaders(env) {
+  const origin = (env && env.ALLOWED_ORIGIN) || "";
+  const headers = {
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
   };
+  // Only advertise an allow-origin when the operator configured one. With it
+  // unset, /stats is still readable server-side; only browser cross-origin
+  // reads are gated, which is the safe default for a public read endpoint.
+  if (origin) headers["Access-Control-Allow-Origin"] = origin;
+  return headers;
 }
 
-function jsonResponse(body, status, env) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store",
-      ...corsHeaders(env),
-    },
-  });
+// jsonResponse(body, status, env, { cors }): `cors` is an explicit headers
+// object (e.g. statsCorsHeaders) for routes that should carry CORS, omitted for
+// routes (like /ingest) that must not.
+function jsonResponse(body, status, env, opts = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+  };
+  if (opts.cors) Object.assign(headers, opts.cors);
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+/**
+ * Constant-time-ish string compare. Avoids leaking the token length/contents
+ * via early-exit timing on the ingest auth path. Tokens are short and this runs
+ * at most once per request, so the cost is irrelevant.
+ */
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Ingest write gate. When INGEST_TOKEN is configured on the Worker, /ingest
+ * must present a matching `X-Ingest-Token` header (opted-in hosts send their
+ * ALFRED_TELEMETRY_TOKEN there). When INGEST_TOKEN is unset the counter is
+ * deliberately open to writes (CORS-lock, rate limit, and idempotency are the
+ * remaining guards); see TELEMETRY.md for the residual abuse surface.
+ *
+ * Returns { ok: true } or { ok: false, status, error }.
+ */
+function checkIngestToken(request, env) {
+  const expected = env && env.INGEST_TOKEN;
+  if (!expected) return { ok: true }; // open-write mode, by configuration
+  const provided = request.headers.get("X-Ingest-Token") || "";
+  if (!safeEqual(provided, expected)) {
+    return { ok: false, status: 401, error: "ingest token missing or invalid" };
+  }
+  return { ok: true };
+}
+
+// Per-IP rate limit on /ingest. A coarse fixed-window counter in KV keeps a
+// single source from hammering the endpoint to spray distinct install_ids. The
+// limit is intentionally generous (a legitimate host posts once a day) and only
+// engages when the platform gives us a client IP; it is a speed bump on top of
+// the token + idempotency, not the primary control.
+const RATE_LIMIT_WINDOW_SECONDS = 3600;
+const RATE_LIMIT_MAX_PER_WINDOW = 60;
+
+function rateLimitMax(env) {
+  const n = Number(env && env.INGEST_RATE_LIMIT);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : RATE_LIMIT_MAX_PER_WINDOW;
+}
+
+// Non-reversible 32-bit FNV-1a hash, hex-encoded. Used so the rate-limit KV key
+// never contains the raw client IP, keeping the "no IP stored" promise intact
+// while still bucketing per source. A short window TTL drops it regardless.
+function hashIp(ip) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < ip.length; i++) {
+    h ^= ip.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
+async function checkRateLimit(kv, request, env, now = Date.now()) {
+  const ip = request.headers.get("CF-Connecting-IP") || "";
+  if (!ip) return { ok: true }; // no IP to key on; rely on the other guards
+  const max = rateLimitMax(env);
+  const window = Math.floor(now / 1000 / RATE_LIMIT_WINDOW_SECONDS);
+  // Key on a hash of the IP plus the window so it self-expires and the raw IP
+  // is never written to KV. The TTL drops the bucket after the window anyway.
+  const key = `rl:${hashIp(ip)}:${window}`;
+  const current = Number(await kv.get(key)) || 0;
+  if (current >= max) {
+    return { ok: false, status: 429, error: "rate limit exceeded" };
+  }
+  await kv.put(key, String(current + 1), { expirationTtl: RATE_LIMIT_WINDOW_SECONDS });
+  return { ok: true };
 }
 
 export default {
@@ -210,20 +310,37 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
+    // CORS preflight: only /stats has a legitimate browser caller. We answer the
+    // preflight WITHOUT an allow-origin for any other path (including /ingest),
+    // so a browser cross-origin POST to /ingest fails its preflight and cannot
+    // inflate the counter from a visitor's tab.
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders(env) });
+      if (path === "/stats") {
+        return new Response(null, { status: 204, headers: statsCorsHeaders(env) });
+      }
+      // No CORS headers: the browser treats this as a failed preflight.
+      return new Response(null, { status: 204 });
     }
 
     const kv = env && env.TELEMETRY;
 
     if (path === "/stats" && request.method === "GET") {
-      if (!kv) return jsonResponse({ error: "telemetry store unavailable" }, 503, env);
+      const cors = statsCorsHeaders(env);
+      if (!kv) return jsonResponse({ error: "telemetry store unavailable" }, 503, env, { cors });
       const agg = await readAgg(kv);
-      return jsonResponse(publicView(agg), 200, env);
+      return jsonResponse(publicView(agg), 200, env, { cors });
     }
 
     if (path === "/ingest" && request.method === "POST") {
+      // No CORS headers on /ingest, ever: this is a server-to-server endpoint.
       if (!kv) return jsonResponse({ error: "telemetry store unavailable" }, 503, env);
+
+      const auth = checkIngestToken(request, env);
+      if (!auth.ok) return jsonResponse({ error: auth.error }, auth.status, env);
+
+      const limited = await checkRateLimit(kv, request, env);
+      if (!limited.ok) return jsonResponse({ error: limited.error }, limited.status, env);
+
       let raw;
       try {
         raw = await request.json();

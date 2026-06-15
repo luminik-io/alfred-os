@@ -174,6 +174,35 @@ def test_render_agents_conf_includes_batman(init_mod, tmp_path):
     )
 
 
+def test_render_agents_conf_omits_telemetry_row_by_default(init_mod, tmp_path):
+    # No opt-in: the generated agents.conf must NOT schedule proof-telemetry.
+    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
+    text = init_mod.render_agents_conf(state)
+    assert "proof-telemetry" not in text
+
+
+def test_render_agents_conf_omits_telemetry_row_without_url(init_mod, tmp_path):
+    # Flag set but no URL: still no scheduler row (the reporter would no-op).
+    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
+    state.telemetry_enabled = True
+    state.telemetry_url = ""
+    text = init_mod.render_agents_conf(state)
+    assert "proof-telemetry" not in text
+
+
+def test_render_agents_conf_schedules_telemetry_when_opted_in(init_mod, tmp_path):
+    # Regression for the Codex finding: opting in via alfred-init must actually
+    # schedule the proof-telemetry job, otherwise an opted-in host never reports.
+    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
+    state.telemetry_enabled = True
+    state.telemetry_url = "https://worker.example.com/ingest"
+    text = init_mod.render_agents_conf(state)
+    assert (
+        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tAnonymous proof-telemetry (opt-in)" in text
+    )
+
+
 # ---------------------------------------------------------------------------
 # env_assignments_for
 # ---------------------------------------------------------------------------
@@ -275,6 +304,47 @@ def test_config_override_telemetry_opt_in(init_mod, tmp_path):
     )
     assert state.telemetry_enabled is True
     assert state.telemetry_url == "https://w.example.com/ingest"
+
+
+def test_parse_consent_strict_truthy_only(init_mod):
+    # Explicit opt-in: real bool True or a recognized truthy string.
+    for value in [True, "1", "true", "TRUE", "Yes", " on ", "yes"]:
+        assert init_mod.parse_consent(value) is True, f"{value!r} should opt in"
+
+
+def test_parse_consent_rejects_string_false_and_friends(init_mod):
+    # The bug class: bool("false") is True. parse_consent must keep these OFF.
+    for value in ["false", "False", "0", "no", "off", "", "  ", "maybe", "2"]:
+        assert init_mod.parse_consent(value) is False, f"{value!r} must stay OFF"
+
+
+def test_parse_consent_rejects_non_string_non_bool(init_mod):
+    for value in [0, 1, None, [], {}, 1.0]:
+        assert init_mod.parse_consent(value) is False, f"{value!r} must stay OFF"
+
+
+def test_config_override_telemetry_quoted_false_stays_off(init_mod, tmp_path):
+    # Regression for the Greptile CRITICAL: a quoted "false" in config (common
+    # copy-paste) must NOT silently enable telemetry. Off-by-default is airtight.
+    state = _state_with(init_mod, tmp_path)
+    state.telemetry_enabled = False
+    init_mod.apply_config_overrides(state, {"telemetry_enabled": "false"})
+    assert state.telemetry_enabled is False
+    out = init_mod.env_assignments_for(state)
+    assert "ALFRED_TELEMETRY_ENABLED" not in out
+
+
+def test_config_override_telemetry_string_true_opts_in(init_mod, tmp_path):
+    # A quoted "true" is an explicit opt-in and normalizes to the wire "1".
+    state = _state_with(init_mod, tmp_path)
+    init_mod.apply_config_overrides(
+        state,
+        {"telemetry_enabled": "true", "telemetry_url": "https://w.example.com/ingest"},
+    )
+    assert state.telemetry_enabled is True
+    out = init_mod.env_assignments_for(state)
+    # The runtime switch is always the literal "1", regardless of config wording.
+    assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
 
 
 # ---------------------------------------------------------------------------

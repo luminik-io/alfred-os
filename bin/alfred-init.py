@@ -164,6 +164,31 @@ CODENAME_TO_ROLE: dict[str, str] = {
 STARTER_ROLES = ("planner", "feature_dev", "pr_review", "agent_cleanup")
 OPT_IN_ROLES = {"cross_repo_coordinator"}
 
+# The only strings that count as an explicit opt-in for a privacy-sensitive
+# consent flag. Anything else (including "false", "0", "no", "", or any other
+# string) is OFF. This is intentionally strict so a quoted "false" in a YAML or
+# JSON config never silently enables telemetry the way bool("false") would.
+_TRUTHY_CONSENT = {"1", "true", "yes", "on"}
+
+
+def parse_consent(value: object) -> bool:
+    """Interpret a config consent value as a strict opt-in.
+
+    True only for a real boolean ``True`` or a string in ``_TRUTHY_CONSENT``
+    (case-insensitive, whitespace-trimmed). Every other value, including the
+    string ``"false"``, ``"0"``, an int, ``None``, or an empty string, is OFF.
+
+    This avoids the ``bool("false") is True`` trap: a privacy-sensitive switch
+    must never default ON just because someone quoted the value in their config.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY_CONSENT
+    # Anything else (int, float, None, list, dict) is not an explicit opt-in.
+    return False
+
+
 PROMPT_TEMPLATE_BY_ROLE = {
     "feature_dev": "feature-dev.md",
     "planner": "planner.md",
@@ -282,6 +307,7 @@ class WizardState:
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
     telemetry_enabled: bool = False  # opt-in anonymous proof-telemetry; default OFF
     telemetry_url: str = ""  # ingest endpoint, only written when telemetry_enabled
+    telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
 
     def codename_for(self, role: str) -> str:
         return self.role_to_codename.get(role, AGENT_CATALOG[role][0])
@@ -596,6 +622,18 @@ def render_agents_conf(state: WizardState) -> str:
         label = f"alfred.{codename}"
         role_text = desc.split(" (", 1)[0]
         lines.append(f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}")
+    # Opt-in proof-telemetry is not an AGENT_CATALOG role, so it is not in
+    # enabled_roles. Emit its scheduler row here, and ONLY when the operator
+    # opted in with both a flag and a URL. Without this the generated
+    # agents.conf has no proof-telemetry line and deploy.sh schedules nothing,
+    # so an opted-in host would never actually report. The runner is still a
+    # hard no-op unless ALFRED_TELEMETRY_ENABLED=1 at run time, so this row is
+    # safe even if the operator later flips telemetry off.
+    if state.telemetry_enabled and state.telemetry_url:
+        lines.append(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous proof-telemetry (opt-in)"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -633,6 +671,10 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
     if state.telemetry_enabled and state.telemetry_url:
         out["ALFRED_TELEMETRY_ENABLED"] = "1"
         out["ALFRED_TELEMETRY_URL"] = state.telemetry_url
+        # Optional shared ingest token: only written when both opted in AND a
+        # token was provided. Matches the collector's INGEST_TOKEN.
+        if state.telemetry_token:
+            out["ALFRED_TELEMETRY_TOKEN"] = state.telemetry_token
     return out
 
 
@@ -1484,7 +1526,11 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
     - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): opt in to
       anonymous proof-telemetry non-interactively. Both must be set for
-      the reporter to do anything; default is OFF.
+      the reporter to do anything; default is OFF. ``telemetry_enabled``
+      is parsed strictly (see ``parse_consent``): a quoted ``"false"``
+      stays OFF.
+    - ``telemetry_token`` (str): optional shared ingest token sent as
+      ``X-Ingest-Token``; only written when telemetry is opted in.
     """
     if "gh_org" in cfg:
         state.gh_org = cfg["gh_org"]
@@ -1547,10 +1593,15 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                 continue
             state.role_to_schedule[role] = str(raw_schedule)
     # Opt-in telemetry. Both keys must be explicit; we never infer an opt-in.
+    # parse_consent is strict: a quoted "false"/"0"/"no" (or anything that is
+    # not a recognized truthy token) stays OFF, unlike bool("false") which is
+    # True. The off-by-default guarantee is load-bearing for a privacy switch.
     if "telemetry_enabled" in cfg:
-        state.telemetry_enabled = bool(cfg["telemetry_enabled"])
+        state.telemetry_enabled = parse_consent(cfg["telemetry_enabled"])
     if "telemetry_url" in cfg:
         state.telemetry_url = str(cfg["telemetry_url"])
+    if "telemetry_token" in cfg:
+        state.telemetry_token = str(cfg["telemetry_token"])
 
 
 def main(argv: Iterable[str] | None = None) -> int:

@@ -40,23 +40,51 @@ class FakeTouch:
 
 
 class FakeBrain:
-    """Minimal stand-in exposing only the two methods derive_counts calls."""
+    """Stand-in for FleetBrain exposing the two methods derive_counts calls.
+
+    Honors the ``limit`` (returns at most ``limit`` rows, like the real brain's
+    top-N list) and the ``state`` filter on ``list_github_items`` so the
+    state-based counting path is exercised. ``raise_on`` forces a failure for
+    fail-soft tests.
+    """
 
     def __init__(self, prs=None, touches=None, raise_on=None):
         self._prs = prs or []
         self._touches = touches or []
         self._raise_on = raise_on or set()
 
-    def list_github_items(self, *, kind=None, limit=50):
+    def list_github_items(self, *, kind=None, state=None, limit=50):
         if "prs" in self._raise_on:
             raise RuntimeError("brain unavailable")
         assert kind == "pr"
-        return list(self._prs)
+        rows = self._prs
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        return list(rows)[:limit]
 
     def list_file_touches(self, *, limit=50):
         if "touches" in self._raise_on:
             raise RuntimeError("brain unavailable")
-        return list(self._touches)
+        return list(self._touches)[:limit]
+
+
+class NoStateBrain:
+    """Older brain whose list_github_items has no ``state`` kwarg.
+
+    Verifies derive_counts falls back to an in-memory tally without raising when
+    the state-filtered counting path is unavailable.
+    """
+
+    def __init__(self, prs=None, touches=None):
+        self._prs = prs or []
+        self._touches = touches or []
+
+    def list_github_items(self, *, kind=None, limit=50):
+        assert kind == "pr"
+        return list(self._prs)[:limit]
+
+    def list_file_touches(self, *, limit=50):
+        return list(self._touches)[:limit]
 
 
 class RecordingPoster:
@@ -150,7 +178,9 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
         "prs_reviewed",
         "loc_added",
     }
-    assert payload["period"] == "2026-06"
+    # Period is the stable lifetime bucket, not a calendar month, so a calendar
+    # rollover never re-adds the cumulative total on the Worker.
+    assert payload["period"] == "lifetime"
     assert payload["prs_opened"] == 4
     assert payload["prs_merged"] == 2
     # reviewed = merged + closed (terminal), never exceeds opened.
@@ -221,10 +251,54 @@ def test_derive_counts_clamps_to_max():
     big = [FakePR("merged")] * (pt._MAX_PER_FIELD + 50)
     brain = FakeBrain(prs=big, touches=[])
     counts = pt.derive_counts(brain)
-    # The brain itself clamps list limits to 500, but derive_counts also clamps
-    # defensively; with 500 returned this stays well under the max. The point
-    # is that the clamp helper never lets a field exceed the bound.
+    # Counting paginates up to the hard limit and the clamp helper caps the
+    # field; a field never exceeds the bound no matter how many rows the brain
+    # holds.
     assert counts.prs_merged <= pt._MAX_PER_FIELD
+    assert counts.prs_opened == pt._MAX_PER_FIELD
+
+
+def test_derive_counts_does_not_silently_cap_at_500():
+    # A busy install with more than 500 PRs must report the true total, not 500.
+    # This is the regression guard for the old hard limit=500 that froze the
+    # lifetime aggregate at 500 on the Worker.
+    prs = [FakePR("merged")] * 700 + [FakePR("open")] * 200  # 900 total, 700 merged
+    touches = [FakeTouch()] * 612
+    brain = FakeBrain(prs=prs, touches=touches)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 900, "must count past the old 500 cap"
+    assert counts.prs_merged == 700
+    assert counts.prs_reviewed == 700  # 700 merged + 0 closed
+    assert counts.loc_added == 612
+
+
+def test_derive_counts_falls_back_when_brain_has_no_state_kwarg():
+    # An older brain whose list_github_items takes no `state` kwarg must still
+    # count correctly via the in-memory tally fallback, without raising.
+    prs = [
+        FakePR("open"),
+        FakePR("merged"),
+        FakePR("merged"),
+        FakePR("closed"),
+    ]
+    brain = NoStateBrain(prs=prs, touches=[FakeTouch()] * 3)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 4
+    assert counts.prs_merged == 2
+    assert counts.prs_reviewed == 3
+    assert counts.loc_added == 3
+
+
+# ---------------------------------------------------------------------------
+# current_period: stable lifetime bucket (no calendar dependence)
+# ---------------------------------------------------------------------------
+def test_current_period_is_stable_lifetime_bucket():
+    # The bucket never depends on the clock, so a calendar rollover cannot make
+    # the Worker treat the same cumulative total as a fresh bucket.
+    june = pt.current_period(datetime(2026, 6, 15, tzinfo=UTC))
+    july = pt.current_period(datetime(2026, 7, 1, tzinfo=UTC))
+    assert june == july == "lifetime"
+    assert pt.current_period() == "lifetime"
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +316,58 @@ def test_build_payload_clamps_negatives_and_caps():
     assert payload["prs_merged"] == 10
     assert payload["prs_reviewed"] == pt._MAX_PER_FIELD
     assert payload["loc_added"] == 0
+
+
+# ---------------------------------------------------------------------------
+# ingest token (optional shared write gate)
+# ---------------------------------------------------------------------------
+def test_telemetry_token_reads_env():
+    assert pt.telemetry_token({}) == ""
+    assert pt.telemetry_token({pt.TOKEN_ENV: " tok "}) == "tok"
+
+
+def test_post_sends_token_header_when_set(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["headers"] = dict(req.headers)
+        return FakeResp()
+
+    monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
+    ok = pt._post("https://w.example.com/ingest", {"x": 1}, token="s3cr3t")
+    assert ok is True
+    # urllib title-cases header keys.
+    assert captured["headers"].get("X-ingest-token") == "s3cr3t"
+
+
+def test_post_omits_token_header_when_unset(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["headers"] = dict(req.headers)
+        return FakeResp()
+
+    monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
+    pt._post("https://w.example.com/ingest", {"x": 1})
+    assert "X-ingest-token" not in captured["headers"]
 
 
 # ---------------------------------------------------------------------------

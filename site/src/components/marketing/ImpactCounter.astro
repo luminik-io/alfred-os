@@ -91,7 +91,14 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
 
     const fmt = (n: number) => n.toLocaleString("en-US");
 
-    fetch(url, { headers: { Accept: "application/json" } })
+    // Bound the request so a slow or hung /stats can never hold the connection
+    // open on a long-lived tab. On timeout the fetch aborts and we fall through
+    // to the .catch below, leaving the neutral fallback in place.
+    const controller = new AbortController();
+    const TIMEOUT_MS = 5000;
+    const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
       .then((data) => {
         const opened = Number(data?.prs_opened ?? 0);
@@ -118,8 +125,11 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
         live.hidden = false;
       })
       .catch(() => {
-        // Network/parse error: keep the neutral fallback, never show a broken
-        // or zeroed counter.
+        // Network error, parse error, or timeout abort: keep the neutral
+        // fallback, never show a broken or zeroed counter.
+      })
+      .finally(() => {
+        window.clearTimeout(timer);
       });
   }
 

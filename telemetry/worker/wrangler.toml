@@ -14,11 +14,25 @@ compatibility_date = "2024-11-01"
 # `wrangler whoami`. The value below is a placeholder, replace it.
 account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
 
-# Site origin allowed to read GET /stats via CORS. Set to your deployed site
-# origin (e.g. "https://alfred.example.com"). "*" works but is broader than
-# needed for a read-only public counter.
+# Site origin allowed to read GET /stats from a browser via CORS. Set it to your
+# deployed site origin (e.g. "https://alfred.example.com"). Leave it unset and
+# /stats is still readable server-side; only browser cross-origin reads are
+# gated. /ingest never carries CORS, so a visitor's browser cannot POST to it.
 [vars]
 ALLOWED_ORIGIN = "https://alfred.example.com"
+
+# Optional shared write gate for POST /ingest. When set, every ingest must send
+# a matching `X-Ingest-Token` header (opted-in hosts put their value in
+# ALFRED_TELEMETRY_TOKEN). Leave it UNSET for a fully open public counter; the
+# CORS lock, per-IP rate limit, and {install_id, period} idempotency still
+# apply. Prefer a Worker SECRET over a plaintext var here:
+#   wrangler secret put INGEST_TOKEN
+# INGEST_TOKEN = "set-via-`wrangler secret put`-not-here"
+
+# Optional per-IP ingest rate limit (requests per hour). Defaults to 60, which
+# is far above a legitimate once-a-day reporter. Lower it to tighten the speed
+# bump against a single source spraying install_ids.
+# INGEST_RATE_LIMIT = "60"
 
 # Workers KV namespace that holds the running aggregate. Create it with:
 #   wrangler kv namespace create TELEMETRY

@@ -37,7 +37,7 @@ URL in `ALFRED_TELEMETRY_URL`:
 ```json
 {
   "install_id": "a-random-opaque-token",
-  "period": "2026-06",
+  "period": "lifetime",
   "prs_opened": 42,
   "prs_merged": 31,
   "prs_reviewed": 18,
@@ -45,11 +45,17 @@ URL in `ALFRED_TELEMETRY_URL`:
 }
 ```
 
+The four counts are cumulative lifetime totals, everything the local brain has
+ever cached, not a per-day or per-month delta. The reporter always sends them
+into a single stable `period` bucket (`"lifetime"`), so the collector folds in
+only the increase and a re-send (every day, or after a calendar month turns
+over) never double counts. See [Honesty about the counts](#honesty-about-the-counts).
+
 | Field | What it is | Where it comes from |
 | --- | --- | --- |
 | `install_id` | A random URL-safe token generated locally on first opt-in and stored at `$ALFRED_HOME/state/telemetry-install-id`. Not derived from hostname, MAC, user, or email. | `secrets.token_urlsafe` |
-| `period` | The current month, UTC, e.g. `2026-06`. A coarse bucket so the server can de-duplicate re-sends. | the clock |
-| `prs_opened` | Count of PRs the local fleet-brain has cached. | `github_items` (kind = pr) |
+| `period` | The constant `lifetime`. A single stable bucket so the server folds only the increase in the cumulative total and re-sends never inflate. | fixed |
+| `prs_opened` | Count of PRs the local fleet-brain has cached. Counted by paginating, never silently capped at a page limit. | `github_items` (kind = pr) |
 | `prs_merged` | Of those, how many merged. | `github_items` state = merged |
 | `prs_reviewed` | Of those, how many reached a terminal state (merged or closed), which in Alfred's flow means they went through review. Never exceeds `prs_opened`. | `github_items` state in (merged, closed) |
 | `loc_added` | A file-delta count: one per repo file an agent added or modified. The brain does not store per-line LOC, so this is a file count carrying the wire name `loc_added` for forward compatibility. | `file_touches` rows |
@@ -81,10 +87,14 @@ is never resolved to anything.
    ```sh
    ALFRED_TELEMETRY_ENABLED=1
    ALFRED_TELEMETRY_URL=https://your-worker.example.com/ingest
+   # Optional: only if your collector sets INGEST_TOKEN (see below).
+   ALFRED_TELEMETRY_TOKEN=the-same-value-as-the-collector
    ```
 
    If `ALFRED_TELEMETRY_URL` is missing, the reporter no-ops even with the
-   switch on, it will not guess a host.
+   switch on, it will not guess a host. `ALFRED_TELEMETRY_TOKEN` is optional and
+   sent as the `X-Ingest-Token` header; set it only if your collector requires a
+   token.
 
 3. Uncomment the `proof-telemetry` line in `launchd/agents.conf` (copied from
    `agents.conf.example`) and re-run `deploy.sh` so the scheduler picks it up.
@@ -123,6 +133,30 @@ It stores only the aggregate, a last-seen snapshot per `{install_id, period}`
 (for idempotency), and a presence marker per install (for the distinct count).
 No IPs, no PII. The exact stored shape and the deploy steps are in
 [`telemetry/worker/README.md`](../telemetry/worker/README.md).
+
+### Write protection
+
+`POST /ingest` is a server-to-server endpoint and does not carry browser CORS,
+so a visitor's browser cannot post to it from a web page. The collector also
+supports an optional shared token: set `INGEST_TOKEN` on the Worker (and the
+matching `ALFRED_TELEMETRY_TOKEN` on each opted-in host) and only hosts with the
+token can write. A per-IP rate limit and `{install_id, period}` idempotency are
+always on.
+
+## Honesty about the counts
+
+This is a public vanity counter, so be clear-eyed about what it proves.
+
+- The counts are real aggregates from opted-in installs. They are not silently
+  capped: the reporter paginates its local counts rather than truncating at a
+  page limit, and re-sends fold in only the increase, so the public total tracks
+  genuine cumulative work.
+- With the collector's `INGEST_TOKEN` **unset**, the counter is open to
+  server-side writes. CORS does not gate `curl` or a script, so a determined
+  actor rotating IPs and `install_id`s could push the number up; the rate limit
+  and idempotency only raise the cost. If the counter's credibility matters, set
+  `INGEST_TOKEN` so only your own opted-in hosts can write. If you run it fully
+  open on purpose, present the numbers as best-effort and unverified.
 
 ## Reading list
 

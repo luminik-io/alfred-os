@@ -256,7 +256,7 @@ enable it and removing that one variable disables it completely.
 ```json
 {
   "install_id": "a-random-opaque-token",
-  "period": "2026-06",
+  "period": "lifetime",
   "prs_opened": 42,
   "prs_merged": 31,
   "prs_reviewed": 18,
@@ -267,7 +267,9 @@ enable it and removing that one variable disables it completely.
 - `install_id` is a random token generated locally on first opt-in. It is not
   derived from your hostname, MAC, user, or email. It lets the server
   de-duplicate re-sends and count distinct installs, nothing more.
-- The four numbers are anonymous aggregate counts from your local fleet-brain.
+- The four numbers are anonymous, cumulative lifetime counts from your local
+  fleet-brain, sent into one stable `period` bucket so daily re-sends never
+  double count.
 - `loc_added` is a file-delta count (one per repo file an agent touched); the
   brain does not store per-line LOC. See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
@@ -293,7 +295,10 @@ payload and sends nothing.
 
 You run your own collector. The server half is a self-hostable Cloudflare Worker
 under [`telemetry/worker/`](telemetry/worker/); Alfred does not phone home to any
-Luminik-operated endpoint. Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+Luminik-operated endpoint. The collector takes an optional `INGEST_TOKEN` so only
+your own opted-in hosts can write to the counter; `/ingest` has no browser CORS
+and a per-IP rate limit either way. Full contract:
+[`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## What's in here
 
