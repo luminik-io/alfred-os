@@ -17,11 +17,14 @@ works in the launchd server's bare PATH, not just the cron agents' fuller one.
 
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
 from shipped_board import _config_value, _gh_bin, _gh_subprocess_env
+
+logger = logging.getLogger(__name__)
 
 _ISSUE_URL_RE = re.compile(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/issues/(\d+)")
 _SLUG_NUM_RE = re.compile(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)[#\s]+(\d+)$")
@@ -117,8 +120,9 @@ def set_issue_pickup(repo: str, number: int, *, hold: bool) -> tuple[bool, str]:
                 timeout=30,
                 env=_gh_subprocess_env(),
             )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return False, f"{type(exc).__name__}: {exc}"
+        except (OSError, subprocess.SubprocessError):
+            logger.exception("gh issue edit failed to launch for %s#%s", repo, number)
+            return False, "could not run gh issue edit"
         if proc.returncode != 0:
             return False, (proc.stderr or proc.stdout or "gh issue edit failed").strip()
         return True, ""
@@ -190,8 +194,9 @@ def close_issue(repo: str, number: int) -> tuple[bool, str]:
             timeout=30,
             env=_gh_subprocess_env(),
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, f"{type(exc).__name__}: {exc}"
+    except (OSError, subprocess.SubprocessError):
+        logger.exception("gh issue close failed to launch for %s#%s", repo, number)
+        return False, "could not run gh issue close"
     if proc.returncode != 0:
         return False, (proc.stderr or "gh issue close failed").strip()
     return True, f"{repo}#{number} closed (marked done)"
