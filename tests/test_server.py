@@ -2382,3 +2382,133 @@ def test_decided_batman_plan_stays_decided_after_marker_is_consumed(
     after = reader.get_plan("13-plan")
     assert after is not None
     assert after.status == "approved"
+
+
+# Sentinel an exception carries through a handler's failure path. If it ever
+# shows up in an HTTP response body, the handler is leaking exception/stack
+# detail to the client (py/stack-trace-exposure).
+_SECRET_EXC_MARKER = "leaky-internal-/private/state/token-9f8a"
+
+
+def _assert_no_exc_leak(payload: object) -> None:
+    blob = json.dumps(payload)
+    assert _SECRET_EXC_MARKER not in blob
+    # Generic responses must not echo the exception class name either.
+    assert "RuntimeError" not in blob
+    assert "Traceback" not in blob
+
+
+def test_api_shipped_board_failure_returns_generic_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+
+    def _boom(*_a: object, **_kw: object) -> dict[str, object]:
+        raise RuntimeError(_SECRET_EXC_MARKER)
+
+    import shipped_board
+
+    monkeypatch.setattr(shipped_board, "build_board", _boom)
+    monkeypatch.setattr(shipped_board, "resolve_repos", lambda *_a, **_kw: [])
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.get("/api/shipped")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["error"] == "internal error"
+    assert body["columns"] == {"queued": [], "in_progress": [], "shipped": []}
+    _assert_no_exc_leak(body)
+
+
+def test_api_schedule_failure_returns_generic_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+
+    def _boom(*_a: object, **_kw: object) -> list[object]:
+        raise RuntimeError(_SECRET_EXC_MARKER)
+
+    import server.schedule as schedule_mod
+
+    monkeypatch.setattr(schedule_mod, "upcoming_runs", _boom)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.get("/api/schedule")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runs"] == []
+    assert body["error"] == "internal error"
+    _assert_no_exc_leak(body)
+
+
+def test_api_memory_candidates_failure_returns_generic_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+
+    class ExplodingBrain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def list_memory_candidates(self, **_kw: object) -> list[object]:
+            raise RuntimeError(_SECRET_EXC_MARKER)
+
+    monkeypatch.setattr(
+        server_views,
+        "_memory_brain",
+        lambda *_a, **_kw: (ExplodingBrain(), None),
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.get("/api/memory/candidates")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rows"] == []
+    assert body["error"] == "internal error"
+    _assert_no_exc_leak(body)
+
+
+def test_api_memory_brain_unavailable_returns_generic_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead fleet brain must not surface its exception text to the client."""
+    state = tmp_path / "state"
+
+    import fleet_brain
+
+    def _boom(*_a: object, **_kw: object) -> object:
+        raise RuntimeError(_SECRET_EXC_MARKER)
+
+    monkeypatch.setattr(fleet_brain.FleetBrain, "from_env", staticmethod(_boom))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.get("/api/memory/candidates")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rows"] == []
+    assert body["error"] == "internal error"
+    _assert_no_exc_leak(body)
+
+
+def test_plain_compose_title_redos_input_is_bounded() -> None:
+    """A whitespace-padded compose request must not hang the title heuristic.
+
+    Regression guard for py/polynomial-redos: the title regexes used to run on
+    raw request text with unbounded ``\\s+`` quantifiers. The handler now
+    collapses whitespace first, so even a pathological run of spaces parses in
+    linear time and yields a bounded title.
+    """
+    import time
+
+    hostile = "the " + " " * 5000 + "x is hard to scan at small window sizes"
+    start = time.perf_counter()
+    title = server_views._plain_compose_title(hostile)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 1.0
+    assert len(title) <= 93
+    assert isinstance(title, str) and title

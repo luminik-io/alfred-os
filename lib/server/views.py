@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -57,6 +58,15 @@ from server.plan_approvals import (
     write_decision,
 )
 from server.reader import PlanDraft
+
+logger = logging.getLogger(__name__)
+
+# Generic message returned to the client when a handler hits an unexpected
+# failure. The exception detail (type, message, traceback) is logged
+# server-side instead of being placed in the HTTP response body, so the
+# localhost API never leaks internals to a same-origin page. Operators read the
+# real cause in the runtime logs.
+_GENERIC_ERROR = "internal error"
 
 _MEMORY_ID_RE = re.compile(r"^[0-9]{1,18}$")
 _LOCAL_CLIENT_USER_ID = "ULOCALCLIENT"
@@ -383,8 +393,9 @@ def register_routes(app: FastAPI) -> None:
 
         try:
             runs = upcoming_runs()
-        except Exception as exc:  # never break the client on a parse failure
-            return JSONResponse({"runs": [], "error": f"{type(exc).__name__}: {exc}"})
+        except Exception:  # never break the client on a parse failure
+            logger.exception("api_schedule: failed to read upcoming runs")
+            return JSONResponse({"runs": [], "error": _GENERIC_ERROR})
         return JSONResponse(_jsonable({"runs": [run.to_dict() for run in runs]}))
 
     @app.get("/api/actions", response_class=JSONResponse)
@@ -436,7 +447,8 @@ def register_routes(app: FastAPI) -> None:
                 return build_board(resolve_repos(repo_list), days=days, include_demo=include_demo)
 
             board = await run_in_threadpool(_build)
-        except Exception as exc:  # never break the client on a board failure
+        except Exception:  # never break the client on a board failure
+            logger.exception("api_shipped: failed to build board")
             return JSONResponse(
                 _jsonable(
                     {
@@ -444,7 +456,7 @@ def register_routes(app: FastAPI) -> None:
                         "counts": {"queued": 0, "in_progress": 0, "shipped": 0},
                         "repos": repo_list or [],
                         "lookback_days": days,
-                        "error": f"{type(exc).__name__}: {exc}",
+                        "error": _GENERIC_ERROR,
                     }
                 )
             )
@@ -469,8 +481,9 @@ def register_routes(app: FastAPI) -> None:
 
         try:
             payload = await run_in_threadpool(build_usage)
-        except Exception as exc:  # never break the client on a usage failure
-            return JSONResponse(unavailable_usage_payload(f"{type(exc).__name__}: {exc}"))
+        except Exception:  # never break the client on a usage failure
+            logger.exception("api_usage: failed to build usage payload")
+            return JSONResponse(unavailable_usage_payload(_GENERIC_ERROR))
         return JSONResponse(_jsonable(payload))
 
     @app.get("/api/usage/providers", response_class=JSONResponse)
@@ -494,22 +507,22 @@ def register_routes(app: FastAPI) -> None:
 
         try:
             payload = await run_in_threadpool(build_provider_usage)
-        except Exception as exc:  # never break the client on a usage failure
-            err = f"{type(exc).__name__}: {exc}"
+        except Exception:  # never break the client on a usage failure
+            logger.exception("api_usage_providers: failed to build provider usage")
             payload = {
                 "available": False,
-                "error": err,
+                "error": _GENERIC_ERROR,
                 "claude": {
                     "available": False,
                     "five_hour": None,
                     "weekly": None,
-                    "unavailable_reason": err,
+                    "unavailable_reason": _GENERIC_ERROR,
                 },
                 "codex": {
                     "available": False,
                     "five_hour": None,
                     "weekly": None,
-                    "unavailable_reason": err,
+                    "unavailable_reason": _GENERIC_ERROR,
                 },
             }
         return JSONResponse(_jsonable(payload))
@@ -586,16 +599,17 @@ def register_routes(app: FastAPI) -> None:
 
         try:
             payload = await run_in_threadpool(setup_mod.bootstrap_status)
-        except Exception as exc:  # never break the client on a probe failure
+        except Exception:  # never break the client on a probe failure
+            logger.exception("api_setup_status: bootstrap probe failed")
             return JSONResponse(
                 {
-                    "github": {"ok": False, "account": None, "detail": str(exc)},
+                    "github": {"ok": False, "account": None, "detail": _GENERIC_ERROR},
                     "engines": [],
                     "engine_ready": False,
                     "repos": {"selected": [], "count": 0, "keys": []},
                     "demo": {"present": False},
                     "ready": False,
-                    "error": f"{type(exc).__name__}: {exc}",
+                    "error": _GENERIC_ERROR,
                 }
             )
         return JSONResponse(_jsonable(payload))
@@ -612,10 +626,9 @@ def register_routes(app: FastAPI) -> None:
             limit = 100
         try:
             payload = await run_in_threadpool(setup_mod.list_owner_repos, limit)
-        except Exception as exc:
-            return JSONResponse(
-                {"repos": [], "selected": [], "error": f"{type(exc).__name__}: {exc}"}
-            )
+        except Exception:
+            logger.exception("api_setup_repos: failed to list owner repos")
+            return JSONResponse({"repos": [], "selected": [], "error": _GENERIC_ERROR})
         return JSONResponse(_jsonable(payload))
 
     @app.post("/api/setup/repos", response_class=JSONResponse)
@@ -641,9 +654,10 @@ def register_routes(app: FastAPI) -> None:
 
         try:
             result = setup_mod.persist_selected_repos(raw_repos)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError):
+            logger.exception("api_setup_select_repos: failed to persist repo selection")
             return JSONResponse(
-                {"error": f"could not persist repo selection: {exc}"},
+                {"error": "could not persist repo selection"},
                 status_code=400,
             )
         result["ok"] = True
@@ -685,8 +699,9 @@ def register_routes(app: FastAPI) -> None:
 
         try:
             result = setup_mod.seed_demo(_state_root(request))
-        except OSError as exc:
-            return JSONResponse({"error": f"could not seed demo: {exc}"}, status_code=400)
+        except OSError:
+            logger.exception("api_setup_seed_demo: failed to seed demo cards")
+            return JSONResponse({"error": "could not seed demo"}, status_code=400)
         return JSONResponse(_jsonable(result))
 
     @app.post("/api/setup/demo/clear", response_class=JSONResponse)
@@ -805,8 +820,9 @@ def register_routes(app: FastAPI) -> None:
                 status=status_filter,
                 limit=min(max(1, limit), 200),
             )
-        except Exception as exc:  # pragma: no cover - local bridge can be down
-            return JSONResponse({"rows": [], "error": str(exc)})
+        except Exception:  # pragma: no cover - local bridge can be down
+            logger.exception("api_memory_candidates: failed to list candidates")
+            return JSONResponse({"rows": [], "error": _GENERIC_ERROR})
         return JSONResponse({"rows": [_candidate_to_api(row) for row in rows]})
 
     @app.post("/api/memory/candidates/{candidate_id}/promote", response_class=JSONResponse)
@@ -1008,11 +1024,20 @@ def register_routes(app: FastAPI) -> None:
             )
         except FileNotFoundError:
             return JSONResponse({"error": "plan not found"}, status_code=404)
-        except ValueError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
-        except Exception as exc:  # never let a gh/IO edge crash the server
+        except ValueError:
+            # ValueErrors here are rejection reasons (unsafe id, unreadable
+            # draft, failed conversion). Log the detail server-side and return a
+            # generic 400 so the response never carries exception text; the 400
+            # status (the client's "filing rejected" contract) is unchanged.
+            logger.exception("api_file_plan_issue: plan draft rejected")
             return JSONResponse(
-                {"error": f"{type(exc).__name__}: {exc}"},
+                {"error": "could not file plan issue from this draft"},
+                status_code=400,
+            )
+        except Exception:  # never let a gh/IO edge crash the server
+            logger.exception("api_file_plan_issue: failed to file plan issue")
+            return JSONResponse(
+                {"error": _GENERIC_ERROR},
                 status_code=500,
             )
         if not result.get("ok"):
@@ -1343,8 +1368,9 @@ def _memory_brain(
         if require_existing:
             brain.health()
         return brain, None
-    except Exception as exc:  # pragma: no cover - defensive local API path
-        return None, str(exc)
+    except Exception:  # pragma: no cover - defensive local API path
+        logger.exception("_memory_brain: fleet brain unavailable")
+        return None, _GENERIC_ERROR
 
 
 async def _api_memory_candidate_action(
@@ -1392,8 +1418,9 @@ async def _api_memory_candidate_action(
             if candidate is None:
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)
             return JSONResponse(_candidate_to_api(candidate))
-    except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=404)
+    except ValueError:
+        logger.exception("memory candidate %s action %r failed", candidate_id, action)
+        return JSONResponse({"error": _GENERIC_ERROR}, status_code=404)
     return JSONResponse({"error": "unknown memory action"}, status_code=400)
 
 
@@ -2207,13 +2234,19 @@ def _compact_plain_text(text: str) -> str:
 
 
 def _plain_compose_title(text: str) -> str:
+    # Collapse all whitespace runs to single spaces up front. Every regex below
+    # then matches single-space separators (" ") instead of unbounded "\s+", so
+    # a hostile request body padded with long whitespace runs cannot drive
+    # polynomial backtracking (py/polynomial-redos): the search space no longer
+    # contains repeated-whitespace input for the quantifiers to chew through.
+    text = _compact_plain_text(text)
     lowered = text.lower()
     if "plan work" in lowered and "github issue" in lowered:
         return "Plan work drafts reviewable GitHub issues"
     if "setup" in lowered and ("github" in lowered or "repo" in lowered):
         return "Improve Alfred setup flow"
     scan_match = re.search(
-        r"\bthe\s+(.+?)\s+is\s+hard\s+to\s+scan\s+at\s+small\s+window\s+sizes\b",
+        r"\bthe (.+?) is hard to scan at small window sizes\b",
         text,
         flags=re.IGNORECASE,
     )
@@ -2222,12 +2255,12 @@ def _plain_compose_title(text: str) -> str:
         if subject:
             return f"Make {subject} usable at small sizes"
     title = re.sub(
-        r"^(please\s+|can you\s+|could you\s+|i want\s+|we need\s+)",
+        r"^(please |can you |could you |i want |we need )",
         "",
         text,
         flags=re.IGNORECASE,
     ).strip()
-    title = re.split(r"\s+(?:so that|so|because)\s+", title, maxsplit=1, flags=re.IGNORECASE)[0]
+    title = re.split(r" (?:so that|so|because) ", title, maxsplit=1, flags=re.IGNORECASE)[0]
     if len(title) > 92:
         title = title[:92].rsplit(" ", 1)[0].rstrip(" ,.;:")
     return title[:1].upper() + title[1:] if title else "Plan Alfred work"

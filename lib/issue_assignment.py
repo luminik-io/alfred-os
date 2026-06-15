@@ -28,6 +28,7 @@ reuses the existing approval/queue mechanism rather than inventing a new path.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 from collections.abc import Callable
@@ -37,6 +38,8 @@ from typing import Any
 import labels as label_constants
 from issue_queue import allowed_queue_repos
 from shipped_board import _gh_bin, _gh_subprocess_env
+
+logger = logging.getLogger(__name__)
 
 ROUTE_LUCIUS = "lucius"
 ROUTE_BATMAN = "batman"
@@ -348,8 +351,9 @@ def assign_issue(
 
     try:
         issue = fetcher(repo, number)
-    except Exception as exc:
-        return _error_result(repo, number, str(exc), dry_run=dry_run)
+    except Exception:
+        logger.exception("could not fetch issue snapshot for %s#%s", repo, number)
+        return _error_result(repo, number, "could not fetch issue from GitHub", dry_run=dry_run)
 
     decision = decide_assignment(issue)
     # A blocked route never assigns. The operator-approval gate
