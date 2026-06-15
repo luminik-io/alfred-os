@@ -1,0 +1,29 @@
+# Cloudflare Worker config for the Alfred proof-telemetry endpoint.
+#
+# This file ships with PLACEHOLDER ids only. Nothing here is a real account.
+# Fill in your own values before `wrangler deploy` (see README.md in this dir).
+#
+# The Worker stores anonymous aggregate counts in one KV namespace. It never
+# stores IP addresses, repo names, code, or anything that identifies a person.
+
+name = "alfred-proof-telemetry"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# Your Cloudflare account id. Find it in the dashboard URL or via
+# `wrangler whoami`. The value below is a placeholder, replace it.
+account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
+
+# Site origin allowed to read GET /stats via CORS. Set to your deployed site
+# origin (e.g. "https://alfred.example.com"). "*" works but is broader than
+# needed for a read-only public counter.
+[vars]
+ALLOWED_ORIGIN = "https://alfred.example.com"
+
+# Workers KV namespace that holds the running aggregate. Create it with:
+#   wrangler kv namespace create TELEMETRY
+# then paste the returned id below (and the preview id for `wrangler dev`).
+[[kv_namespaces]]
+binding = "TELEMETRY"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_YOUR_PREVIEW_KV_NAMESPACE_ID"

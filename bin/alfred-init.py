@@ -280,6 +280,8 @@ class WizardState:
     role_to_repos: dict[str, list[str]] = field(default_factory=dict)  # role -> [org/repo]
     role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
+    telemetry_enabled: bool = False  # opt-in anonymous proof-telemetry; default OFF
+    telemetry_url: str = ""  # ingest endpoint, only written when telemetry_enabled
 
     def codename_for(self, role: str) -> str:
         return self.role_to_codename.get(role, AGENT_CATALOG[role][0])
@@ -624,6 +626,13 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
             out[f"ALFRED_{default_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
+    # Anonymous proof-telemetry is opt-in. We only ever write the enable var
+    # when the operator explicitly said yes; leaving it unset is the default
+    # and the only OFF state the runtime needs (the reporter treats anything
+    # other than "1" as off). So a "no" answer writes nothing here.
+    if state.telemetry_enabled and state.telemetry_url:
+        out["ALFRED_TELEMETRY_ENABLED"] = "1"
+        out["ALFRED_TELEMETRY_URL"] = state.telemetry_url
     return out
 
 
@@ -1196,6 +1205,47 @@ def step_8_schedule(state: WizardState, *, non_interactive: bool) -> None:
         state.role_to_schedule[role] = new
 
 
+def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
+    """Opt-in prompt for anonymous proof-telemetry. Default is NO.
+
+    Non-interactive runs never opt in (the default stays OFF). A ``yes`` here
+    still does nothing until an ingest URL is provided; with no URL the reporter
+    is a no-op, so we only flip the enable var when both are present.
+    """
+    step("Anonymous usage telemetry (opt-in)")
+    note(
+        "Alfred can send ANONYMOUS, AGGREGATE counts (PRs opened/merged/reviewed, "
+        "file deltas) to a counter endpoint you run. Default is OFF."
+    )
+    note("Never sent: repo names, code, file paths, hostnames, IP, or any PII.")
+    note("One switch turns it off again any time: ALFRED_TELEMETRY_ENABLED. See docs/TELEMETRY.md.")
+    if non_interactive:
+        ok("Telemetry left OFF (default).")
+        return
+    # apply_config_overrides may have pre-set telemetry_enabled from --config;
+    # respect an explicit config opt-in, otherwise ask with default No.
+    opt_in = state.telemetry_enabled or ask_yes_no(
+        "Send anonymous aggregate telemetry?", default=False
+    )
+    if not opt_in:
+        state.telemetry_enabled = False
+        state.telemetry_url = ""
+        ok("Telemetry left OFF.")
+        return
+    url = (
+        state.telemetry_url
+        or ask("Telemetry ingest URL (blank to skip)", state.telemetry_url).strip()
+    )
+    if not url:
+        state.telemetry_enabled = False
+        state.telemetry_url = ""
+        warn("No URL given; telemetry stays OFF.")
+        return
+    state.telemetry_enabled = True
+    state.telemetry_url = url
+    ok("Telemetry opted IN. Disable any time by removing ALFRED_TELEMETRY_ENABLED.")
+
+
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     step("Generate config")
     conf = render_agents_conf(state)
@@ -1432,6 +1482,9 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       schedule for an agent. Key resolves the same way as
       ``role_codename``; value is in ``agents.conf`` schedule format
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
+    - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): opt in to
+      anonymous proof-telemetry non-interactively. Both must be set for
+      the reporter to do anything; default is OFF.
     """
     if "gh_org" in cfg:
         state.gh_org = cfg["gh_org"]
@@ -1493,6 +1546,11 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                 warn(f"--config role_schedule: unknown agent {raw_key!r}; ignored")
                 continue
             state.role_to_schedule[role] = str(raw_schedule)
+    # Opt-in telemetry. Both keys must be explicit; we never infer an opt-in.
+    if "telemetry_enabled" in cfg:
+        state.telemetry_enabled = bool(cfg["telemetry_enabled"])
+    if "telemetry_url" in cfg:
+        state.telemetry_url = str(cfg["telemetry_url"])
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -1531,6 +1589,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         config_repos = ",".join(state.role_to_repos.pop("__all__"))
     step_7_repos(state, repos_arg=args.repos or config_repos, non_interactive=non_interactive)
     step_8_schedule(state, non_interactive=non_interactive)
+    step_8b_telemetry(state, non_interactive=non_interactive)
     step_9_generate(state, non_interactive=non_interactive)
     step_10_labels(state, skip=args.skip_label_setup)
     step_10_deploy(state)

@@ -1,0 +1,193 @@
+---
+/**
+ * ImpactCounter.astro
+ *
+ * Live proof counter fed by the opt-in telemetry Worker's GET /stats endpoint.
+ * Renders an aggregate like "Alfred has opened N pull requests and merged M
+ * across K installs", from anonymous counts that installs opt in to send.
+ *
+ * Deliberately NOT on the homepage: at launch the totals are low or zero, and a
+ * low number is anti-proof. This component lives on /impact and is built to be
+ * honest about an empty start:
+ *
+ *   - The endpoint comes from PUBLIC_ALFRED_TELEMETRY_STATS_URL. The safe
+ *     default is empty, so a fork that does not run a collector simply shows the
+ *     neutral fallback and never points at a Luminik-operated host.
+ *   - Numbers are fetched CLIENT-SIDE, so the static build never depends on a
+ *     live endpoint and never bakes a stale number into HTML.
+ *   - Below a small threshold (or with no endpoint, or on any fetch error) it
+ *     shows a neutral "counter warming up" line instead of an unconvincing
+ *     small number.
+ *
+ * No PII is involved: /stats returns only aggregate totals.
+ */
+
+interface Props {
+  /** Hide the live numbers until the PR-opened total reaches this floor. */
+  threshold?: number;
+}
+
+const { threshold = 50 } = Astro.props;
+
+// Build-time public env var. Empty default keeps forks safe and offline.
+const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim();
+---
+
+<section
+  class="impact m-reveal"
+  data-stats-url={statsUrl}
+  data-threshold={String(threshold)}
+  aria-label="Aggregate proof counter from opted-in Alfred installs"
+>
+  {/* Neutral fallback, shown until client-side fetch confirms numbers above the
+      threshold. This is the SSR/initial state, so no-JS and pre-fetch both land
+      here rather than on a zero. */}
+  <div class="impact__fallback" data-impact-fallback>
+    <p class="impact__warming m-mono">Counter warming up.</p>
+    <p class="impact__sub">
+      The live proof counter turns on once enough opted-in installs are
+      reporting. The numbers below are anonymous and aggregate only.
+    </p>
+  </div>
+
+  {/* Live panel, revealed by the script only when totals clear the threshold. */}
+  <div class="impact__live" data-impact-live hidden>
+    <p class="impact__line">
+      Alfred has opened
+      <span class="impact__num" data-field="prs_opened">0</span> pull requests
+      and merged
+      <span class="impact__num" data-field="prs_merged">0</span>
+      across
+      <span class="impact__num" data-field="installs">0</span> installs.
+    </p>
+    <div class="impact__grid" role="list">
+      <div class="impact__cell" role="listitem">
+        <span class="impact__cellnum" data-field="prs_reviewed">0</span>
+        <span class="impact__celllbl">PRs reviewed</span>
+      </div>
+      <div class="impact__cell" role="listitem">
+        <span class="impact__cellnum" data-field="loc_added">0</span>
+        <span class="impact__celllbl">file deltas</span>
+      </div>
+    </div>
+    <p class="impact__foot m-mono m-mute" data-impact-updated></p>
+  </div>
+</section>
+
+<script>
+  // Reveal the live numbers only when the endpoint is set AND the totals clear
+  // the threshold. Any failure leaves the neutral fallback in place.
+  function initImpactCounter() {
+    const root = document.querySelector<HTMLElement>(".impact");
+    if (!root) return;
+
+    const url = (root.dataset.statsUrl || "").trim();
+    const threshold = Number(root.dataset.threshold || "50");
+    if (!url) return; // no collector configured; keep the fallback
+
+    const fallback = root.querySelector<HTMLElement>("[data-impact-fallback]");
+    const live = root.querySelector<HTMLElement>("[data-impact-live]");
+    if (!fallback || !live) return;
+
+    const fmt = (n: number) => n.toLocaleString("en-US");
+
+    fetch(url, { headers: { Accept: "application/json" } })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((data) => {
+        const opened = Number(data?.prs_opened ?? 0);
+        if (!Number.isFinite(opened) || opened < threshold) {
+          return; // below the proof floor; stay neutral
+        }
+        const fields = ["prs_opened", "prs_merged", "prs_reviewed", "loc_added", "installs"];
+        for (const field of fields) {
+          const value = Number(data?.[field] ?? 0);
+          root
+            .querySelectorAll<HTMLElement>(`[data-field="${field}"]`)
+            .forEach((el) => {
+              el.textContent = fmt(Number.isFinite(value) ? value : 0);
+            });
+        }
+        const updated = root.querySelector<HTMLElement>("[data-impact-updated]");
+        if (updated && typeof data?.updated_at === "string") {
+          const when = new Date(data.updated_at);
+          if (!Number.isNaN(when.getTime())) {
+            updated.textContent = `Updated ${when.toISOString().slice(0, 10)}`;
+          }
+        }
+        fallback.hidden = true;
+        live.hidden = false;
+      })
+      .catch(() => {
+        // Network/parse error: keep the neutral fallback, never show a broken
+        // or zeroed counter.
+      });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initImpactCounter);
+  } else {
+    initImpactCounter();
+  }
+</script>
+
+<style>
+  .impact {
+    border: 1px solid var(--alfred-border);
+    border-radius: 14px;
+    background: var(--alfred-surface);
+    padding: 32px 28px;
+    text-align: center;
+  }
+  .impact__warming {
+    color: var(--alfred-text);
+    font-size: 15px;
+    margin: 0 0 8px;
+  }
+  .impact__sub,
+  .impact__foot {
+    color: var(--alfred-mute);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  .impact__line {
+    color: var(--alfred-text-bright);
+    font-size: clamp(20px, 3vw, 28px);
+    line-height: 1.4;
+    margin: 0 0 24px;
+  }
+  .impact__num {
+    color: var(--alfred-accent);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .impact__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    max-width: 420px;
+    margin: 0 auto 18px;
+  }
+  .impact__cell {
+    border: 1px solid var(--alfred-border);
+    border-radius: 10px;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .impact__cellnum {
+    color: var(--alfred-text-bright);
+    font-size: 24px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .impact__celllbl {
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+  .impact__foot {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+</style>

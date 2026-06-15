@@ -231,6 +231,53 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# telemetry opt-in (off by default)
+# ---------------------------------------------------------------------------
+
+
+def test_env_assignments_telemetry_off_by_default(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path)
+    out = init_mod.env_assignments_for(state)
+    assert "ALFRED_TELEMETRY_ENABLED" not in out
+    assert "ALFRED_TELEMETRY_URL" not in out
+
+
+def test_env_assignments_telemetry_needs_both_flag_and_url(init_mod, tmp_path):
+    # Opt-in flag set but no URL: still nothing written (reporter would no-op).
+    state = _state_with(init_mod, tmp_path)
+    state.telemetry_enabled = True
+    state.telemetry_url = ""
+    out = init_mod.env_assignments_for(state)
+    assert "ALFRED_TELEMETRY_ENABLED" not in out
+
+
+def test_env_assignments_telemetry_written_when_opted_in(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path)
+    state.telemetry_enabled = True
+    state.telemetry_url = "https://worker.example.com/ingest"
+    out = init_mod.env_assignments_for(state)
+    assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
+    assert out["ALFRED_TELEMETRY_URL"] == "https://worker.example.com/ingest"
+
+
+def test_telemetry_step_non_interactive_stays_off(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path)
+    init_mod.step_8b_telemetry(state, non_interactive=True)
+    assert state.telemetry_enabled is False
+    assert state.telemetry_url == ""
+
+
+def test_config_override_telemetry_opt_in(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path)
+    init_mod.apply_config_overrides(
+        state,
+        {"telemetry_enabled": True, "telemetry_url": "https://w.example.com/ingest"},
+    )
+    assert state.telemetry_enabled is True
+    assert state.telemetry_url == "https://w.example.com/ingest"
+
+
+# ---------------------------------------------------------------------------
 # alfredrc IO
 # ---------------------------------------------------------------------------
 
