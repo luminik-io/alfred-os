@@ -429,12 +429,8 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     # opened total.
     if not prs_opened_failed:
         try:
-            prs_merged = _count_github_items(
-                brain, kind="pr", state="merged", authored_only=True
-            )
-            closed = _count_github_items(
-                brain, kind="pr", state="closed", authored_only=True
-            )
+            prs_merged = _count_github_items(brain, kind="pr", state="merged", authored_only=True)
+            closed = _count_github_items(brain, kind="pr", state="closed", authored_only=True)
             prs_reviewed = prs_merged + closed
         except TypeError:
             # Brain's list/count github items has no `state` kwarg: derive from

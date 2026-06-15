@@ -485,16 +485,13 @@ def test_row_is_agent_authored_by_label_and_branch():
     assert pt._row_is_agent_authored(FakePR("open")) is True  # default: authored label
     assert pt._row_is_agent_authored(FakePR("open", authored=False)) is False
     assert (
-        pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="lucius/fix-thing"))
-        is True
+        pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="lucius/fix-thing")) is True
     )
     assert (
         pt._row_is_agent_authored(FakePR("merged", labels=[], head_ref="feature/by-a-human"))
         is False
     )
-    assert (
-        pt._row_is_agent_authored(FakePR("merged", labels=["bug"], head_ref="batman/x")) is True
-    )
+    assert pt._row_is_agent_authored(FakePR("merged", labels=["bug"], head_ref="batman/x")) is True
 
 
 def test_derive_counts_counts_only_authored_prs_real_brain():

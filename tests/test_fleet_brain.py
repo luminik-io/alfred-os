@@ -431,29 +431,40 @@ def test_count_github_items_authored_only(brain: FleetBrain) -> None:
     # 3 authored by label, 2 authored by branch prefix, 4 operator PRs.
     for n in range(1, 4):
         brain.upsert_github_item(
-            repo="org/api", number=n, kind="pr", state="merged",
-            labels=["agent:authored"], url=f"u/{n}",
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            labels=["agent:authored"],
+            url=f"u/{n}",
         )
     for n in range(4, 6):
         brain.upsert_github_item(
-            repo="org/api", number=n, kind="pr", state="merged",
-            head_ref="lucius/feature", url=f"u/{n}",
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            head_ref="lucius/feature",
+            url=f"u/{n}",
         )
     for n in range(6, 10):
         brain.upsert_github_item(
-            repo="org/api", number=n, kind="pr", state="merged",
-            labels=["bug"], head_ref="feature/by-human", url=f"u/{n}",
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            labels=["bug"],
+            head_ref="feature/by-human",
+            url=f"u/{n}",
         )
     assert brain.count_github_items(kind="pr") == 9, "all cached PRs"
     assert brain.count_github_items(kind="pr", authored_only=True) == 5, (
         "only the 3 label-authored + 2 branch-authored PRs"
     )
-    assert (
-        brain.count_github_items(kind="pr", state="merged", authored_only=True) == 5
-    ), "state and authorship filters compose"
-    assert (
-        brain.count_github_items(kind="pr", state="open", authored_only=True) == 0
+    assert brain.count_github_items(kind="pr", state="merged", authored_only=True) == 5, (
+        "state and authorship filters compose"
     )
+    assert brain.count_github_items(kind="pr", state="open", authored_only=True) == 0
 
 
 def test_count_github_items_authored_only_past_500_cap(brain: FleetBrain) -> None:
@@ -466,14 +477,22 @@ def test_count_github_items_authored_only_past_500_cap(brain: FleetBrain) -> Non
     for _ in range(authored):
         n += 1
         brain.upsert_github_item(
-            repo="org/api", number=n, kind="pr", state="merged",
-            labels=["agent:authored"], url=f"u/{n}",
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            labels=["agent:authored"],
+            url=f"u/{n}",
         )
     for _ in range(operator):
         n += 1
         brain.upsert_github_item(
-            repo="org/api", number=n, kind="pr", state="merged",
-            head_ref="feature/human", url=f"u/{n}",
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            head_ref="feature/human",
+            url=f"u/{n}",
         )
     assert brain.count_github_items(kind="pr") == authored + operator
     assert brain.count_github_items(kind="pr", authored_only=True) == authored, (
