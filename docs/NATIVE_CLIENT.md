@@ -158,9 +158,9 @@ smallest next step.
 
 Use the Alfred site design system:
 
-- primary display font: Space Grotesk
+- primary display font: Instrument Sans
 - secondary UI font: Quicksand
-- mono for IDs, command previews, and logs only
+- mono (Fragment Mono) for IDs, command previews, and logs only
 - dark-first, high contrast, no decorative gradients
 - compact cards for repeated items, not nested card stacks
 - stable table-to-card responsive layouts

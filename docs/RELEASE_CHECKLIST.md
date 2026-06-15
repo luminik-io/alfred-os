@@ -46,13 +46,19 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
    git push origin main --tags
    ```
 
-3. Watch the `Release` workflow. It verifies `VERSION`, extracts notes from `CHANGELOG.md`, creates the GitHub Release, and prints the source tarball sha256 for Homebrew.
-4. Update `Formula/alfred-os.rb` with the printed sha256 before publishing the tap update.
-5. Re-run the `Site` workflow and verify the live docs page:
+3. Watch the `Release` workflow. It verifies `VERSION`, extracts notes from `CHANGELOG.md`, creates the GitHub Release as a **draft**, and prints the source tarball sha256 for Homebrew. The draft is not public yet, by design.
+4. Run the signed desktop release workflow against the tag so the signed `.dmg` / `.AppImage` / `.deb` assets attach to the draft release. The release body claims a signed download, so the assets must be attached before anyone can read that claim.
+5. Open the draft release, confirm the body and the attached assets, then press Publish. Publishing marks it as the latest release.
+6. Update `Formula/alfred-os.rb` with the printed sha256 before publishing the tap update.
+7. Re-run the `Site` workflow and verify the live docs page:
 
    ```sh
    gh workflow run site.yml --repo luminik-io/alfred-os --ref main
    curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred|Starlight'
    ```
 
-6. Smoke-test the published install path from a fresh directory.
+8. Flip the site download links to the published release assets.
+9. Smoke-test the published install path from a fresh directory.
+
+The full tag-to-publish flow, and why the draft gate keeps the download claim
+honest, is in [`RELEASING.md`](RELEASING.md).

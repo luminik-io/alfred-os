@@ -29,7 +29,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
 - [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): the desktop client tab by tab, the `alfred serve` seam and native allowlist, and building native installers.
-- [`DESIGN.md`](DESIGN.md): the visual language for the native app and the site. Color tokens, the Space Grotesk plus Quicksand plus JetBrains Mono type stack, glass surfaces, motion and `prefers-reduced-motion`, and accessibility.
+- [`DESIGN.md`](DESIGN.md): the visual language for the native app and the site. Color tokens, the Instrument Sans plus Quicksand plus Fragment Mono type stack, glass surfaces, motion and `prefers-reduced-motion`, and accessibility.
 - [`GOALS.md`](GOALS.md): durable goal contract for Slack, CLI, client, planning readiness, evaluator, and memory integration.
 - [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, or hybrid routing; precedence chain; default matrix; multi-engine roadmap.
@@ -64,6 +64,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`../SECURITY.md`](../SECURITY.md)
 - [`../SUPPORT.md`](../SUPPORT.md)
 - [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)
+- [`RELEASING.md`](RELEASING.md): the tag-to-publish release process, including the draft-release gate for signed desktop assets.
 
 ## Tests
 

@@ -58,22 +58,30 @@ jobs:
           fi
           echo "notes_file=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create or update DRAFT GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.tag.outputs.tag }}"
+          # Create the release as a DRAFT. The release body is the changelog
+          # Highlights, which claim a signed native desktop download. Those
+          # signed .dmg/.AppImage/.deb assets are attached LATER by the internal
+          # signed-desktop-release workflow run against this tag. Keeping the
+          # release a draft means the download claim is never public until a
+          # human has attached the signed assets and pressed Publish. Do NOT add
+          # --latest here: --latest publishes, which defeats the draft gate.
           if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release edit "$tag" \
               --repo "${{ github.repository }}" \
               --title "$tag" \
               --notes-file "${{ steps.notes.outputs.notes_file }}" \
-              --latest
+              --draft
           else
             gh release create "$tag" \
               --repo "${{ github.repository }}" \
               --title "$tag" \
               --notes-file "${{ steps.notes.outputs.notes_file }}" \
+              --draft \
               --verify-tag
           fi
 
