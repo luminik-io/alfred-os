@@ -283,8 +283,9 @@ no per-token dollar figure (that number is meaningless under a Max or Pro
 subscription). A window the local state cannot confirm reads as not synced
 rather than a fabricated number.
 
-`GET /api/usage/providers` and the `alfred usage` CLI ship in an upcoming
-release; the per-provider endpoint is not served by `alfred serve` yet.
+`GET /api/usage/providers` is also served by `alfred serve` (a flat per-engine
+re-projection of `/api/usage`), and the same usage numbers are available from
+the command line with `alfred usage`.
 
 The native client also has a narrow local command allowlist:
 
