@@ -69,11 +69,25 @@ test("normalizePayload rejects non-objects and bad ids", () => {
   assert.equal(normalizePayload("x").ok, false);
   assert.equal(normalizePayload({ period: "2026-06" }).ok, false); // no id
   assert.equal(normalizePayload({ install_id: "short", period: "2026-06" }).ok, false);
-  assert.equal(normalizePayload({ install_id: "a".repeat(8) }).ok, false); // no period
   assert.equal(
     normalizePayload({ install_id: "with space!", period: "2026-06" }).ok,
     false,
   );
+});
+
+test("normalizePayload defaults a missing or malformed period to 'lifetime'", () => {
+  // period is advisory metadata only (never a storage key under the
+  // install-keyed model), so its absence is fine: it defaults to "lifetime".
+  const noPeriod = normalizePayload({ install_id: "a".repeat(8) });
+  assert.equal(noPeriod.ok, true);
+  assert.equal(noPeriod.value.period, "lifetime");
+
+  const badPeriod = normalizePayload({ install_id: "a".repeat(8), period: "has space!" });
+  assert.equal(badPeriod.ok, true);
+  assert.equal(badPeriod.value.period, "lifetime");
+
+  const goodPeriod = normalizePayload({ install_id: "a".repeat(8), period: "lifetime" });
+  assert.equal(goodPeriod.value.period, "lifetime");
 });
 
 test("normalizePayload clamps all count fields and keeps id/period", () => {
@@ -231,31 +245,61 @@ test("ingest counts distinct installs and sums across them", async () => {
   assert.equal(agg.installs, 2, "two distinct installs counted");
 });
 
-test("ingest counts one install across multiple periods only once", async () => {
+test("install-keyed model: a changed period does not re-add a constant lifetime total", async () => {
+  // The storage key is install_id ONLY; period is advisory metadata. Even if
+  // the period label changes between reports (it never does in practice, the
+  // client always sends "lifetime"), the same install's cumulative total must
+  // be treated latest-wins, not summed into a fresh bucket. This is the core
+  // no-double-count guard: only the install's record drives the aggregate.
   const kv = makeKV();
-  const june = normalizePayload({
-    install_id: "install-ffffffff",
-    period: "2026-06",
-    prs_opened: 3,
-    prs_merged: 1,
-    prs_reviewed: 0,
-    loc_added: 10,
-  }).value;
-  const july = normalizePayload({
-    install_id: "install-ffffffff",
-    period: "2026-07",
-    prs_opened: 5,
-    prs_merged: 2,
-    prs_reviewed: 1,
-    loc_added: 20,
-  }).value;
+  const report = (period, opened, merged) =>
+    normalizePayload({
+      install_id: "install-ffffffff",
+      period,
+      prs_opened: opened,
+      prs_merged: merged,
+      prs_reviewed: 0,
+      loc_added: 0,
+    }).value;
 
-  await ingest(kv, june, FIXED);
-  const agg = await ingest(kv, july, FIXED);
+  await ingest(kv, report("2026-06", 8, 3), FIXED);
+  // A different period label carrying the SAME cumulative total must add zero.
+  const agg = await ingest(kv, report("2026-07", 8, 3), FIXED);
 
-  assert.equal(agg.prs_opened, 8, "both periods sum");
+  assert.equal(agg.prs_opened, 8, "a new period label must not re-add the lifetime total");
   assert.equal(agg.prs_merged, 3);
-  assert.equal(agg.installs, 1, "same install across two periods still one install");
+  assert.equal(agg.installs, 1, "the same install is still one install");
+
+  // Only the per-install record exists, keyed by install_id (no per-period key).
+  assert.ok(kv.store.has("install:install-ffffffff"), "one record per install");
+  assert.equal(
+    [...kv.store.keys()].filter((k) => k.startsWith("i:")).length,
+    0,
+    "no per-period pair keys remain",
+  );
+});
+
+test("install-keyed model: the per-install record is replaced, not appended", async () => {
+  const kv = makeKV();
+  const report = (opened) =>
+    normalizePayload({
+      install_id: "install-replace0",
+      period: "lifetime",
+      prs_opened: opened,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      loc_added: 0,
+    }).value;
+
+  await ingest(kv, report(5), FIXED);
+  await ingest(kv, report(9), FIXED);
+  await ingest(kv, report(12), FIXED);
+
+  // Exactly one record for this install, holding the latest total.
+  const installRecords = [...kv.store.keys()].filter((k) => k === "install:install-replace0");
+  assert.equal(installRecords.length, 1, "exactly one record per install");
+  const snapshot = JSON.parse(kv.store.get("install:install-replace0"));
+  assert.equal(snapshot.prs_opened, 12, "the record holds the latest cumulative total");
 });
 
 test("ingest never pushes a total negative on a downward correction", async () => {
@@ -394,6 +438,83 @@ test("GET /stats never advertises a wildcard origin", async () => {
   const res = await worker.fetch(req("GET", "/stats"), env);
   assert.equal(res.status, 200);
   assert.notEqual(res.headers.get("Access-Control-Allow-Origin"), "*");
+});
+
+// --------------------------------------------------------------------------
+// /ingest simple-request rejection (Content-Type gate)
+// --------------------------------------------------------------------------
+function ingestReqWithCtype(body, contentType) {
+  const init = { method: "POST", body: JSON.stringify(body) };
+  init.headers = contentType === undefined ? {} : { "Content-Type": contentType };
+  return new Request("https://telemetry.example.com/ingest", init);
+}
+
+test("ingest rejects a text/plain body (simple POST bypass blocked)", async () => {
+  // A cross-origin browser can fire a text/plain POST with NO preflight; the
+  // Worker must refuse it so a hidden browser write cannot reach KV.
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(ingestReqWithCtype(SAMPLE_PAYLOAD, "text/plain"), env);
+  assert.equal(res.status, 415);
+  const body = await res.json();
+  assert.match(body.error, /application\/json/);
+});
+
+test("ingest rejects a form-encoded body (another simple Content-Type)", async () => {
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(
+    ingestReqWithCtype(SAMPLE_PAYLOAD, "application/x-www-form-urlencoded"),
+    env,
+  );
+  assert.equal(res.status, 415);
+});
+
+test("ingest rejects a missing Content-Type", async () => {
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(ingestReqWithCtype(SAMPLE_PAYLOAD, undefined), env);
+  assert.equal(res.status, 415);
+});
+
+test("ingest accepts application/json with a charset parameter", async () => {
+  // A real server-side client may append "; charset=utf-8"; that is still JSON.
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(
+    ingestReqWithCtype(SAMPLE_PAYLOAD, "application/json; charset=utf-8"),
+    env,
+  );
+  assert.equal(res.status, 200);
+});
+
+// --------------------------------------------------------------------------
+// /ingest Origin allowlist (browser-origin requests are gated)
+// --------------------------------------------------------------------------
+test("ingest rejects a browser Origin that does not match ALLOWED_ORIGIN", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const req = new Request("https://telemetry.example.com/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://evil.example.com" },
+    body: JSON.stringify(SAMPLE_PAYLOAD),
+  });
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 403);
+  const body = await res.json();
+  assert.match(body.error, /origin/);
+});
+
+test("ingest allows a browser Origin that matches ALLOWED_ORIGIN", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const req = new Request("https://telemetry.example.com/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://alfred.example.com" },
+    body: JSON.stringify(SAMPLE_PAYLOAD),
+  });
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 200);
+});
+
+test("ingest allows a server-side caller (no Origin header) regardless of ALLOWED_ORIGIN", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD), env);
+  assert.equal(res.status, 200, "urllib sends no Origin and must pass");
 });
 
 // --------------------------------------------------------------------------

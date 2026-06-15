@@ -46,16 +46,17 @@ URL in `ALFRED_TELEMETRY_URL`:
 ```
 
 The four counts are cumulative lifetime totals, everything the local brain has
-ever cached, not a per-day or per-month delta. The reporter always sends them
-into a single stable `period` bucket (`"lifetime"`), so the collector folds in
-only the increase and a re-send (every day, or after a calendar month turns
-over) never double counts. See [Honesty about the counts](#honesty-about-the-counts).
+ever cached, not a per-day or per-month delta. The collector keeps exactly one
+record per `install_id` (latest-wins) and the public aggregate is the sum of
+every install's latest counts, so a re-send (every day, or after a calendar
+month turns over) never double counts. See
+[Honesty about the counts](#honesty-about-the-counts).
 
 | Field | What it is | Where it comes from |
 | --- | --- | --- |
-| `install_id` | A random URL-safe token generated locally on first opt-in and stored at `$ALFRED_HOME/state/telemetry-install-id`. Not derived from hostname, MAC, user, or email. | `secrets.token_urlsafe` |
-| `period` | The constant `lifetime`. A single stable bucket so the server folds only the increase in the cumulative total and re-sends never inflate. | fixed |
-| `prs_opened` | Count of PRs the local fleet-brain has cached. Counted by paginating, never silently capped at a page limit. | `github_items` (kind = pr) |
+| `install_id` | A random URL-safe token generated locally on first opt-in and stored at `$ALFRED_HOME/state/telemetry-install-id`. Not derived from hostname, MAC, user, or email. The collector keys its single per-install record on this. | `secrets.token_urlsafe` |
+| `period` | The constant `lifetime`. Advisory metadata only: the collector de-duplicates on `install_id` alone, never on this label, so a calendar rollover cannot re-add a constant total. | fixed |
+| `prs_opened` | Count of PRs the local fleet-brain has cached. Counted with an exact `COUNT(*)`, never silently capped at the 500-row list limit. | `github_items` (kind = pr) |
 | `prs_merged` | Of those, how many merged. | `github_items` state = merged |
 | `prs_reviewed` | Of those, how many reached a terminal state (merged or closed), which in Alfred's flow means they went through review. Never exceeds `prs_opened`. | `github_items` state in (merged, closed) |
 | `loc_added` | A file-delta count: one per repo file an agent added or modified. The brain does not store per-line LOC, so this is a file count carrying the wire name `loc_added` for forward compatibility. | `file_touches` rows |
@@ -125,23 +126,26 @@ Alfred does not operate a telemetry endpoint, and nothing in a default install
 phones home. The server half is a self-hostable Cloudflare Worker in
 [`telemetry/worker/`](../telemetry/worker/):
 
-- `POST /ingest` folds one install's per-period counts into running aggregates,
-  idempotently per `{install_id, period}`.
+- `POST /ingest` upserts one install's cumulative counts (latest-wins, keyed by
+  `install_id`) and maintains the running aggregate as the sum of every install's
+  latest counts.
 - `GET /stats` returns the public aggregate totals (CORS for your site origin).
 
-It stores only the aggregate, a last-seen snapshot per `{install_id, period}`
-(for idempotency), and a presence marker per install (for the distinct count).
+It stores only the aggregate plus one latest snapshot per `install_id` (which
+both drives the latest-wins upsert and serves as the distinct-install marker).
 No IPs, no PII. The exact stored shape and the deploy steps are in
 [`telemetry/worker/README.md`](../telemetry/worker/README.md).
 
 ### Write protection
 
-`POST /ingest` is a server-to-server endpoint and does not carry browser CORS,
-so a visitor's browser cannot post to it from a web page. The collector also
-supports an optional shared token: set `INGEST_TOKEN` on the Worker (and the
-matching `ALFRED_TELEMETRY_TOKEN` on each opted-in host) and only hosts with the
-token can write. A per-IP rate limit and `{install_id, period}` idempotency are
-always on.
+`POST /ingest` is a server-to-server endpoint. It requires
+`Content-Type: application/json` (so a no-preflight cross-origin browser POST is
+refused), carries no browser CORS, and refuses any request whose `Origin` header
+does not match your `ALLOWED_ORIGIN`, so a visitor's browser cannot post to it
+from a web page. The collector also supports an optional shared token: set
+`INGEST_TOKEN` on the Worker (and the matching `ALFRED_TELEMETRY_TOKEN` on each
+opted-in host) and only hosts with the token can write. A per-IP rate limit, a
+per-install count cap, and the latest-wins idempotency are always on.
 
 ## Honesty about the counts
 

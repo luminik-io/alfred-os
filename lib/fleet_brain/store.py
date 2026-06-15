@@ -289,6 +289,13 @@ class Store(Protocol):
         limit: int = 50,
     ) -> list[FileTouch]: ...
 
+    def count_file_touches(
+        self,
+        repo: str | None = None,
+        codename: str | None = None,
+        path: str | None = None,
+    ) -> int: ...
+
     def insert_memory_candidate(self, candidate: MemoryCandidate) -> MemoryCandidate: ...
 
     def get_memory_candidate(self, candidate_id: str) -> MemoryCandidate | None: ...
@@ -323,6 +330,14 @@ class Store(Protocol):
         bundle_slug: str | None = None,
         limit: int = 50,
     ) -> list[GitHubItem]: ...
+
+    def count_github_items(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+    ) -> int: ...
 
     def upsert_bundle_item(self, item: BundleItem) -> BundleItem: ...
 
@@ -705,6 +720,29 @@ class SQLiteStore:
                 for r in rows
             ]
 
+    def count_file_touches(
+        self,
+        repo: str | None = None,
+        codename: str | None = None,
+        path: str | None = None,
+    ) -> int:
+        wheres: list[str] = []
+        params: list[object] = []
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if codename:
+            wheres.append("codename = ?")
+            params.append(codename)
+        if path:
+            wheres.append("path = ?")
+            params.append(path)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = f"SELECT COUNT(*) FROM file_touches {where_clause}"
+        with self._connect() as conn:
+            (total,) = conn.execute(sql, params).fetchone()
+            return int(total)
+
     # ----- memory candidates -------------------------------------------
 
     def insert_memory_candidate(self, candidate: MemoryCandidate) -> MemoryCandidate:
@@ -933,6 +971,33 @@ class SQLiteStore:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
             return [_row_to_github_item(r) for r in rows]
+
+    def count_github_items(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+    ) -> int:
+        wheres: list[str] = []
+        params: list[object] = []
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if kind:
+            wheres.append("kind = ?")
+            params.append(kind)
+        if state:
+            wheres.append("state = ?")
+            params.append(state)
+        if bundle_slug:
+            wheres.append("bundle_slug = ?")
+            params.append(bundle_slug)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = f"SELECT COUNT(*) FROM github_items {where_clause}"
+        with self._connect() as conn:
+            (total,) = conn.execute(sql, params).fetchone()
+            return int(total)
 
     # ----- bundle items -------------------------------------------------
 

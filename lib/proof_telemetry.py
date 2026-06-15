@@ -24,13 +24,15 @@ What is sent (the entire payload)::
     }
 
 The four counts are CUMULATIVE LIFETIME totals (everything the local brain has
-ever cached), not a per-run or per-month delta. ``period`` is the constant
-``"lifetime"`` so that an install always reports into the same
-``{install_id, period}`` bucket on the Worker. The Worker stores the last counts
-it saw for that bucket and folds only the *increase* into the public aggregate,
-so re-sending every day, and re-sending after a calendar month rolls over, never
-double-counts. This agent/worker contract is the whole reason the public counter
-stays honest.
+ever cached), not a per-run or per-month delta. The agent/worker contract is
+"latest-wins per install": the Worker keys exactly ONE record on ``install_id``
+and replaces it on every report, then maintains the public aggregate as
+``aggregate += new - previous_for_that_install``. Re-sending the same lifetime
+total for the same install therefore adds zero, forever, no matter how often or
+for how long an install reports. ``period`` is advisory metadata only (always
+the constant ``"lifetime"`` here); the Worker does NOT use it as part of the
+storage key, so a calendar rollover can never re-add a constant lifetime total.
+This contract is the whole reason the public counter stays honest.
 
 What is NEVER sent: repo names, file paths, code, commit text, branch names,
 hostnames, IP addresses, Slack handles, codenames, or anything that identifies
@@ -134,25 +136,26 @@ def _clamp(value: int) -> int:
     return value if value <= _MAX_PER_FIELD else _MAX_PER_FIELD
 
 
-# The reporter sends LIFETIME-cumulative counts, so the period must be a single
-# stable bucket per install. A calendar bucket (e.g. "2026-06") would break the
-# contract: when the month rolls over, the Worker's {install_id, period}
-# idempotency key changes, prior becomes 0, and the full lifetime total gets
-# re-added (double-counting on every busy install). With one fixed bucket the
-# Worker always applies only the increase in the cumulative total, no matter how
-# often (daily) or how long (across months) an install reports.
+# The reporter sends LIFETIME-cumulative counts. Under the install-keyed
+# latest-wins model the Worker de-duplicates on install_id alone, so this label
+# is advisory metadata, not an idempotency key. We still send a single stable
+# value ("lifetime") so the wire payload is self-describing and so the contract
+# reads clearly: the counts are an install's whole-life cumulative total, never
+# a per-month delta. A calendar label here would be misleading (and, were the
+# Worker ever to key on it, would re-add the constant total on rollover), so the
+# value is intentionally clock-independent.
 _LIFETIME_PERIOD = "lifetime"
 
 
 def current_period(now: datetime | None = None) -> str:
-    """Stable lifetime bucket for an install's cumulative counts.
+    """Stable lifetime label for an install's cumulative counts.
 
     Returns the constant ``"lifetime"``. The counts this module reports are
-    cumulative lifetime totals, not per-month deltas, so they must always land
-    in the same ``{install_id, period}`` bucket on the Worker. The ``now``
-    argument is accepted for signature stability (some callers and tests pass a
-    fixed clock) but is intentionally ignored: the bucket never depends on the
-    calendar.
+    cumulative lifetime totals, not per-month deltas. The Worker keys its single
+    per-install record on ``install_id`` alone (latest-wins), so this label is
+    advisory metadata rather than an idempotency key. The ``now`` argument is
+    accepted for signature stability (some callers and tests pass a fixed clock)
+    but is intentionally ignored: the label never depends on the calendar.
     """
     return _LIFETIME_PERIOD
 
@@ -192,15 +195,23 @@ def load_or_create_install_id(path: Path | None = None) -> str:
 
 
 def _count_rows(lister: Callable[[int], list[Any]]) -> int:
-    """Count rows from a brain `list_*` method without a silent low cap.
+    """Fallback row counter for a brain that exposes only a `list_*` method.
 
-    ``lister`` takes a ``limit`` and returns up to that many rows from the top.
-    The brain has no offset/cursor, so we count by raising ``limit`` one
+    The real ``FleetBrain`` exposes exact ``count_*`` methods (a SQL
+    ``COUNT(*)``) which the callers below prefer; this paginating fallback is for
+    brains/test-doubles that lack them. ``lister`` takes a ``limit`` and returns
+    up to that many rows from the top. We count by raising ``limit`` one
     ``_COUNT_PAGE`` at a time and stopping when a fetch returns fewer rows than
-    we asked for, which proves there were no more rows beyond it. This turns the
-    old hard ``limit=500`` (which silently froze any total at 500) into an
-    honest count, while ``_COUNT_HARD_LIMIT`` keeps it bounded so a runaway
-    brain can never make us allocate without end.
+    we asked for (the end), the same count twice in a row (the brain hit an
+    internal cap), or the hard ceiling (a runaway brain).
+
+    IMPORTANT: if the underlying list method silently CLAMPS ``limit`` (the real
+    ``FleetBrain`` clamps to 500), this fallback cannot count past that clamp:
+    raising ``limit`` does nothing once it is clamped, so ``got == last`` trips
+    and we stop at the clamp. That is exactly why the exact ``count_*`` path
+    exists and is tried first; this fallback's honest stop at a clamp is strictly
+    better than the old ``len(list(limit=500))`` that always froze at 500, but it
+    is still bounded by whatever clamp the list method imposes.
 
     Any total at or above the hard limit is reported as the limit; the field is
     clamped to the same bound on the wire anyway, so fetching further is wasted.
@@ -217,21 +228,56 @@ def _count_rows(lister: Callable[[int], list[Any]]) -> int:
             return got
         if got == last:
             # The brain returned a full page but no new rows beyond the previous
-            # request: it has hit its own internal cap. Honest stop.
+            # request: it has hit its own internal cap (or a list clamp). Honest
+            # stop. The exact count_* path avoids this; see the docstring.
             return got
         last = got
         limit += _COUNT_PAGE
+
+
+def _count_github_items(brain: Any, **filters: Any) -> int:
+    """Exact count of github_items, preferring the brain's COUNT(*) method.
+
+    Uses ``brain.count_github_items(**filters)`` when available (a SQL
+    ``COUNT(*)`` that is NOT bounded by the list 500-row clamp, so a busy install
+    with thousands of PRs is counted honestly). Falls back to the paginating
+    ``_count_rows`` over ``list_github_items`` only for brains/test-doubles that
+    do not expose the count method. The result is bounded by ``_COUNT_HARD_LIMIT``
+    so a runaway brain can never blow the field past the wire clamp.
+    """
+    counter = getattr(brain, "count_github_items", None)
+    if callable(counter):
+        total = int(counter(**filters))
+        return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+    return _count_rows(lambda n: brain.list_github_items(limit=n, **filters))
+
+
+def _count_file_touches(brain: Any, **filters: Any) -> int:
+    """Exact count of file_touches, preferring the brain's COUNT(*) method.
+
+    Same contract as ``_count_github_items``: prefer ``count_file_touches`` (a
+    SQL ``COUNT(*)`` unbounded by the list cap), fall back to pagination for
+    brains that lack it, bounded by ``_COUNT_HARD_LIMIT``.
+    """
+    counter = getattr(brain, "count_file_touches", None)
+    if callable(counter):
+        total = int(counter(**filters))
+        return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+    return _count_rows(lambda n: brain.list_file_touches(limit=n, **filters))
 
 
 def derive_counts(brain: Any) -> TelemetryCounts:
     """Roll the local fleet-brain rows up into the four anonymous counts.
 
     Pure read: queries the brain, returns counts, touches nothing else. Counts
-    are CUMULATIVE LIFETIME totals (the Worker treats them as such and folds in
-    only the increase, see the module docstring), so they must reflect every row
-    the brain holds, not a truncated page. Counting paginates via ``_count_rows``
-    rather than taking ``len()`` of a single capped ``limit=500`` fetch, which
-    would silently freeze any total at 500 on a busy install.
+    are CUMULATIVE LIFETIME totals (the Worker treats them as such, latest-wins
+    per install, see the module docstring), so they must reflect every row the
+    brain holds, not a truncated page. Counting uses the brain's exact
+    ``count_*`` methods (a SQL ``COUNT(*)``) via ``_count_github_items`` /
+    ``_count_file_touches`` rather than ``len()`` of a ``list_*`` fetch: the list
+    methods CLAMP ``limit`` to 500, so a busy install with thousands of PRs would
+    otherwise freeze every total at 500. Brains that predate the count methods
+    fall back to paginating ``list_*`` (honest up to the list clamp).
 
     Derivation, with an honest mapping to what the brain actually stores:
 
@@ -249,36 +295,57 @@ def derive_counts(brain: Any) -> TelemetryCounts:
                    ``loc_added`` for forward compatibility.
 
     Any query failure yields zeroes for the affected fields rather than raising.
+    The base ``prs_opened`` query is load-bearing: ``prs_merged`` and
+    ``prs_reviewed`` are defined as subsets of it, so a FAILED base query (which
+    leaves ``prs_opened`` at 0) must suppress the dependent counts. Otherwise the
+    state-filtered queries, which can still succeed, would yield the impossible
+    ``prs_opened:0, prs_merged:N``. We track that failure explicitly (a real zero
+    is "the brain holds no PRs"; a failure is "we could not read PRs at all") and
+    zero the dependents on failure rather than emitting contradictory data.
     """
     prs_opened = 0
     prs_merged = 0
     prs_reviewed = 0
     loc_added = 0
 
+    # Distinguish "the brain genuinely has 0 PRs" from "the base PR query
+    # failed". On failure, prs_opened stays 0 AND we suppress the dependent
+    # merged/reviewed counts so we never report 0 opened with N merged.
+    prs_opened_failed = False
     try:
-        prs_opened = _count_rows(lambda n: brain.list_github_items(kind="pr", limit=n))
+        prs_opened = _count_github_items(brain, kind="pr")
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
+        prs_opened_failed = True
         logger.debug("telemetry: PR-opened count derivation failed: %s", exc)
 
     # Count merged and terminal (merged|closed) PRs with a state filter so each
-    # is an accurate total rather than a sample of the first page. Fall back to
-    # an in-memory tally of a single page if the brain does not accept `state`.
-    try:
-        prs_merged = _count_rows(
-            lambda n: brain.list_github_items(kind="pr", state="merged", limit=n)
-        )
-        closed = _count_rows(lambda n: brain.list_github_items(kind="pr", state="closed", limit=n))
-        prs_reviewed = prs_merged + closed
-    except TypeError:
-        # Brain's list_github_items has no `state` kwarg: derive from one page.
+    # is an accurate total (an exact COUNT(*) past the 500-row list cap) rather
+    # than a sample of the first page. Fall back to an in-memory tally of a
+    # single page if the brain does not accept `state`. Skipped entirely when the
+    # base query failed: dependent counts are meaningless without a trustworthy
+    # opened total.
+    if not prs_opened_failed:
         try:
-            prs = brain.list_github_items(kind="pr", limit=_COUNT_HARD_LIMIT)
-            prs_merged = sum(1 for p in prs if getattr(p, "state", None) == "merged")
-            prs_reviewed = sum(1 for p in prs if getattr(p, "state", None) in ("merged", "closed"))
-        except Exception as exc:  # fail-soft by contract
+            prs_merged = _count_github_items(brain, kind="pr", state="merged")
+            closed = _count_github_items(brain, kind="pr", state="closed")
+            prs_reviewed = prs_merged + closed
+        except TypeError:
+            # Brain's list/count github items has no `state` kwarg: derive from
+            # one page (bounded by the hard limit).
+            try:
+                prs = brain.list_github_items(kind="pr", limit=_COUNT_HARD_LIMIT)
+                prs_merged = sum(1 for p in prs if getattr(p, "state", None) == "merged")
+                prs_reviewed = sum(
+                    1 for p in prs if getattr(p, "state", None) in ("merged", "closed")
+                )
+            except Exception as exc:  # fail-soft by contract
+                logger.debug("telemetry: PR-state count derivation failed: %s", exc)
+                prs_merged = 0
+                prs_reviewed = 0
+        except Exception as exc:  # fail-soft by contract: never raise on a bad read
             logger.debug("telemetry: PR-state count derivation failed: %s", exc)
-    except Exception as exc:  # fail-soft by contract: never raise on a bad read
-        logger.debug("telemetry: PR-state count derivation failed: %s", exc)
+            prs_merged = 0
+            prs_reviewed = 0
 
     # prs_reviewed is defined as a subset of opened, so never let the state-based
     # tally exceed the opened total (e.g. if filters and the top-level count
@@ -289,7 +356,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         prs_merged = prs_opened
 
     try:
-        loc_added = _count_rows(lambda n: brain.list_file_touches(limit=n))
+        loc_added = _count_file_touches(brain)
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         logger.debug("telemetry: file-touch count derivation failed: %s", exc)
 

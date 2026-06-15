@@ -87,6 +87,106 @@ class NoStateBrain:
         return list(self._touches)[:limit]
 
 
+class ClampingBrain:
+    """Brain that models the REAL FleetBrain: list_* clamps limit to 500, and
+    exact count_* methods exist (a SQL COUNT(*) that is NOT capped).
+
+    This is the regression guard for finding #4: the old code counted by raising
+    the list limit, which never works against a brain that re-clamps to 500. The
+    fix prefers count_* so a busy install (>500 rows) reports the true total.
+    """
+
+    LIST_CAP = 500
+
+    def __init__(self, prs=None, touches=None):
+        self._prs = prs or []
+        self._touches = touches or []
+
+    def list_github_items(self, *, kind=None, state=None, limit=50):
+        assert kind == "pr"
+        rows = self._prs
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        # Mirror FleetBrain.list_github_items: clamp the effective limit to 500.
+        clamped = max(1, min(int(limit), self.LIST_CAP))
+        return list(rows)[:clamped]
+
+    def count_github_items(self, *, kind=None, state=None):
+        assert kind == "pr"
+        rows = self._prs
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        return len(rows)  # exact COUNT(*), no cap
+
+    def list_file_touches(self, *, limit=50):
+        clamped = max(1, min(int(limit), self.LIST_CAP))
+        return list(self._touches)[:clamped]
+
+    def count_file_touches(self):
+        return len(self._touches)  # exact COUNT(*), no cap
+
+
+class ClampingNoCountBrain:
+    """Older brain: list_* clamps to 500 and there is NO count_* method.
+
+    Verifies the paginating fallback degrades HONESTLY: it stops at the list
+    clamp (the true max it can observe) rather than silently misreporting or
+    looping forever. The total is the clamp, not a fabricated number.
+    """
+
+    LIST_CAP = 500
+
+    def __init__(self, prs=None, touches=None):
+        self._prs = prs or []
+        self._touches = touches or []
+
+    def list_github_items(self, *, kind=None, state=None, limit=50):
+        assert kind == "pr"
+        rows = self._prs
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        clamped = max(1, min(int(limit), self.LIST_CAP))
+        return list(rows)[:clamped]
+
+    def list_file_touches(self, *, limit=50):
+        clamped = max(1, min(int(limit), self.LIST_CAP))
+        return list(self._touches)[:clamped]
+
+
+class FailingBaseBrain:
+    """Brain whose base (no-state) PR query RAISES, but state-filtered queries
+    would succeed and return non-zero.
+
+    Regression guard for the Greptile finding (#5): a failed base prs_opened
+    query must suppress prs_merged/prs_reviewed, never emit prs_opened:0 with
+    prs_merged:N.
+    """
+
+    def __init__(self, prs=None, touches=None):
+        self._prs = prs or []
+        self._touches = touches or []
+
+    def list_github_items(self, *, kind=None, state=None, limit=50):
+        assert kind == "pr"
+        if state is None:
+            # The base "all PRs" query is the one that fails.
+            raise RuntimeError("base PR query unavailable")
+        rows = [p for p in self._prs if getattr(p, "state", None) == state]
+        return list(rows)[:limit]
+
+    def count_github_items(self, *, kind=None, state=None):
+        assert kind == "pr"
+        if state is None:
+            raise RuntimeError("base PR count unavailable")
+        return len([p for p in self._prs if getattr(p, "state", None) == state])
+
+    def list_file_touches(self, *, limit=50):
+        return list(self._touches)[:limit]
+
+    def count_file_touches(self):
+        return len(self._touches)
+
+
 class RecordingPoster:
     def __init__(self, ok: bool = True):
         self.ok = ok
@@ -260,16 +360,69 @@ def test_derive_counts_clamps_to_max():
 
 def test_derive_counts_does_not_silently_cap_at_500():
     # A busy install with more than 500 PRs must report the true total, not 500.
-    # This is the regression guard for the old hard limit=500 that froze the
-    # lifetime aggregate at 500 on the Worker.
+    # This is the regression guard for finding #4: the brain models the REAL
+    # FleetBrain (list_* CLAMPS to 500), and derive_counts must still report the
+    # true total by using the exact count_* path. The old paginate-the-list
+    # approach would have frozen every total at 500 here.
     prs = [FakePR("merged")] * 700 + [FakePR("open")] * 200  # 900 total, 700 merged
     touches = [FakeTouch()] * 612
-    brain = FakeBrain(prs=prs, touches=touches)
+    brain = ClampingBrain(prs=prs, touches=touches)
     counts = pt.derive_counts(brain)
-    assert counts.prs_opened == 900, "must count past the old 500 cap"
+    assert counts.prs_opened == 900, "must count past the real 500 list cap via count_*"
     assert counts.prs_merged == 700
     assert counts.prs_reviewed == 700  # 700 merged + 0 closed
     assert counts.loc_added == 612
+
+
+def test_derive_counts_uses_exact_count_methods_over_list():
+    # Prove count_* (not list_*) is the source of truth: if the list were used it
+    # would clamp at 500, but count_github_items returns the exact total.
+    prs = [FakePR("open")] * 1234
+    touches = [FakeTouch()] * 999
+    brain = ClampingBrain(prs=prs, touches=touches)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 1234
+    assert counts.loc_added == 999
+
+
+def test_derive_counts_fallback_stops_honestly_at_list_clamp():
+    # An older brain with NO count_* method and a list that clamps at 500: the
+    # paginating fallback cannot see past the clamp, so it reports the clamp (500)
+    # rather than looping forever or fabricating a number. This documents the true
+    # max for brains that predate the exact-count methods.
+    prs = [FakePR("open")] * 900
+    touches = [FakeTouch()] * 700
+    brain = ClampingNoCountBrain(prs=prs, touches=touches)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == ClampingNoCountBrain.LIST_CAP
+    assert counts.loc_added == ClampingNoCountBrain.LIST_CAP
+
+
+def test_derive_counts_suppresses_dependents_when_base_query_fails():
+    # Greptile finding #5: when the base (no-state) PR query raises, prs_opened
+    # is 0 AND the dependent merged/reviewed counts MUST be suppressed, even
+    # though the state-filtered queries would succeed. We must never emit the
+    # impossible prs_opened:0 with prs_merged:N.
+    prs = [FakePR("merged")] * 5 + [FakePR("closed")] * 3 + [FakePR("open")] * 2
+    brain = FailingBaseBrain(prs=prs, touches=[FakeTouch()] * 4)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 0, "base query failed, so opened is 0"
+    assert counts.prs_merged == 0, "dependent count must be suppressed on base failure"
+    assert counts.prs_reviewed == 0, "dependent count must be suppressed on base failure"
+    # An independent field (file touches) is unaffected by the PR failure.
+    assert counts.loc_added == 4
+
+
+def test_derive_counts_real_zero_is_distinct_from_failure():
+    # A brain that genuinely holds zero PRs reports all-zero WITHOUT the failure
+    # path: the distinction matters only so a FAILED base query suppresses
+    # dependents; a real zero already yields zero dependents naturally.
+    brain = ClampingBrain(prs=[], touches=[FakeTouch()] * 2)
+    counts = pt.derive_counts(brain)
+    assert counts.prs_opened == 0
+    assert counts.prs_merged == 0
+    assert counts.prs_reviewed == 0
+    assert counts.loc_added == 2
 
 
 def test_derive_counts_falls_back_when_brain_has_no_state_kwarg():

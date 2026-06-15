@@ -17,7 +17,7 @@ phones home to a Luminik-operated endpoint.
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/ingest` | `POST` | One install folds its cumulative counts into the running totals. Server-to-server only: no browser CORS, optional shared token, per-IP rate limit. |
+| `/ingest` | `POST` | One install reports its cumulative lifetime counts. The Worker keeps exactly one record per install (latest-wins) and the aggregate is the sum of every install's latest counts. Server-to-server only: requires `application/json`, no browser CORS, Origin allowlist, optional shared token, per-IP rate limit. |
 | `/stats` | `GET` | Returns the public aggregate totals. The only route with browser CORS, scoped to your site origin. |
 | `/` | `GET` | A small JSON service descriptor. |
 
@@ -36,11 +36,14 @@ phones home to a Luminik-operated endpoint.
 
 - `install_id`: a random token the install generates once and persists. It is
   not derived from a hostname, MAC, email, or anything identifying. The Worker
-  treats it purely as a grouping key and never resolves it to anything.
-- `period`: a stable lifetime bucket label (the reporter sends `"lifetime"`).
-  Counts are the install's cumulative total for that bucket, not an increment.
-- The four count fields are non-negative integers. The Worker clamps each to
-  `[0, 100000]` and ignores any other field in the body.
+  treats it as the unit of de-duplication (one stored record per install) and
+  never resolves it to anything.
+- `period`: advisory metadata only. The reporter sends `"lifetime"`. It is NOT
+  part of any storage key, so a calendar rollover can never re-add a constant
+  total. A missing or malformed value defaults to `"lifetime"`.
+- The four count fields are non-negative integers, the install's cumulative
+  lifetime total (not an increment). The Worker clamps each to `[0, 100000]`
+  (the per-install cap) and ignores any other field in the body.
 
 ### What the Worker stores (the entire stored shape)
 
@@ -49,56 +52,78 @@ All state lives in one Workers KV namespace bound as `TELEMETRY`:
 | Key | Value | Why it exists |
 | --- | --- | --- |
 | `agg` | `{prs_opened, prs_merged, prs_reviewed, loc_added, installs, updated_at}` | The public aggregate. The only thing `/stats` reads. |
-| `i:<install_id>:<period>` | `{prs_opened, prs_merged, prs_reviewed, loc_added, seen_at}` | Last-seen snapshot for one `{install_id, period}` pair, used only to make re-sends idempotent. |
-| `ic:<install_id>` | `"1"` | A presence marker, one per distinct install, used to maintain the distinct-install count. |
+| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It drives the latest-wins upsert, and its presence is also the distinct-install marker (no separate key). |
 
 **Never stored, never logged:** IP addresses, user agents, repo names, file
 paths, code, commit text, handles, or anything that identifies a person or
 machine.
 
-### Idempotency
+### Data model: latest-wins per install (no double count)
 
-Re-sending the same `{install_id, period}` does **not** double count. The Worker
-stores the last counts it saw for that pair and applies only the delta on the
-next send. A re-send of identical numbers adds zero; a re-send with higher
-numbers adds only the difference. The reporter sends a stable `period`
-(`"lifetime"`) carrying cumulative totals, so a daily re-send, and a re-send
-after a calendar month rolls over, both add nothing unless the lifetime total
-actually grew. This is what lets an install safely post every day.
+The Worker stores **one record per install**, keyed by `install_id`, and
+replaces it on every report. The public aggregate is the sum over all installs
+of each install's latest counts, maintained incrementally as
+`aggregate += new - previous_for_that_install`. So:
+
+- The first report from an install adds its full counts.
+- A re-send of the same lifetime total adds zero, forever, no matter how often
+  or for how long the install reports.
+- A re-send with higher numbers adds only the difference.
+- A downward correction subtracts, and the aggregate never goes negative.
+
+Because the key is the `install_id` alone (never a per-period bucket), a calendar
+rollover cannot re-add a constant lifetime total. This is the core no-double-count
+guarantee and what lets an install safely post every day.
 
 ### Write protection and the abuse surface
 
 This Worker backs a *public vanity counter*, so be honest with yourself about
 what it can and cannot guarantee. The controls, in layers:
 
-1. **No browser CORS on `/ingest`.** The endpoint never reflects a request
-   Origin and never falls back to `*`, so a visitor's browser cannot POST to it
-   cross-origin. CORS is scoped to `ALLOWED_ORIGIN` on `GET /stats` only.
-2. **Optional shared token.** Set `INGEST_TOKEN` (prefer
+1. **No "simple" requests.** `/ingest` requires `Content-Type: application/json`
+   and rejects `text/plain` and form content types with `415`. A cross-origin
+   browser can fire a `text/plain` POST WITHOUT a CORS preflight (it only hides
+   the response), so requiring JSON forces any browser caller into a preflight,
+   which closes that silent-write bypass. Server-side clients already send JSON,
+   so this costs them nothing.
+2. **No browser CORS on `/ingest`, plus an Origin allowlist.** The endpoint
+   never reflects a request Origin and never falls back to `*`. Any request that
+   carries an `Origin` header (i.e. a browser) must match `ALLOWED_ORIGIN` or it
+   is refused with `403`. Server-side callers send no Origin and pass through.
+   CORS is scoped to `ALLOWED_ORIGIN` on `GET /stats` only.
+3. **Optional shared token.** Set `INGEST_TOKEN` (prefer
    `wrangler secret put INGEST_TOKEN`) and every ingest must send a matching
    `X-Ingest-Token` header. Opted-in hosts put their value in
    `ALFRED_TELEMETRY_TOKEN`. This is the difference between a private counter
    (only your hosts can write) and an open one.
-3. **Per-IP rate limit.** A coarse fixed-window counter (default 60/hour, set
+4. **Per-IP rate limit.** A coarse fixed-window counter (default 60/hour, set
    `INGEST_RATE_LIMIT`) slows a single source spraying distinct `install_id`s.
-4. **Idempotency.** Re-sends of the same `{install_id, period}` cannot inflate.
+5. **Per-install count cap.** Each field is clamped to `[0, 100000]`, so a single
+   forged `install_id` can move the aggregate by at most that much, once.
+6. **Latest-wins idempotency.** Re-sends from the same `install_id` replace its
+   record rather than adding, so they cannot inflate the total.
 
-**Residual surface, stated plainly:** with `INGEST_TOKEN` unset the counter is
-open to server-side writes. CORS does not gate `curl`/`python`, so a determined
-actor who rotates IPs and generates fresh `install_id`s can still push numbers
-up; the rate limit and idempotency only raise the cost. If the counter's
-credibility matters, **set `INGEST_TOKEN`** so only your opted-in hosts can
-write. If you intentionally run it fully open, present the numbers as
+**Residual surface, stated plainly:** with `INGEST_TOKEN` unset the counter is a
+fully public community counter, open to server-side writes by design. The
+content-type gate and Origin allowlist stop browsers, but they do not gate
+`curl`/`python`: a determined actor who rotates IPs and generates fresh
+`install_id`s can still push numbers up, bounded by the per-install count cap and
+the rate limit each step. The per-install idempotent upsert, the IP rate limit,
+the count caps, and the site's display threshold together bound inflation, but
+they make the open counter best-effort, not verified. If the counter's
+credibility matters, **set `INGEST_TOKEN`** so only your opted-in hosts can write
+(the hard gate). If you intentionally run it fully open, present the numbers as
 best-effort and unverified.
 
 ### Concurrency note
 
 The aggregate is maintained with a read-modify-write on KV without a
 cross-request lock. For a low-frequency proof counter (each install posts at
-most once a day) the practical risk of a lost update is negligible, and the
-per-pair snapshots self-heal a dropped delta on the next send. If you need
-exactness, port the aggregate to a Durable Object or D1 transaction; the
-endpoint contract stays the same.
+most once a day) the practical risk of a lost update is negligible, and because
+each install's stored record is its full current truth, that install's next
+report self-heals any single dropped delta. If you need exactness, port the
+aggregate to a Durable Object or D1 transaction; the endpoint contract stays the
+same.
 
 ## Deploy steps (operator)
 
@@ -170,8 +195,9 @@ curl -sX POST https://<your-worker-url>/ingest \
 curl -s https://<your-worker-url>/stats
 ```
 
-To clear the smoke-test data, delete the three keys from the KV namespace in
-the dashboard, or `wrangler kv key delete --binding TELEMETRY agg` and friends.
+To clear the smoke-test data, delete the `agg` key and the
+`install:<your-install-id>` record from the KV namespace in the dashboard, or
+`wrangler kv key delete --binding TELEMETRY agg` and friends.
 
 ## Local development
 
@@ -184,8 +210,11 @@ wrangler dev      # local Worker against the preview KV namespace
 ## Tests
 
 `npm test` runs `node --test` over `test/`. It covers input clamping, payload
-validation, idempotent re-sends, the lifetime no-double-count contract,
-distinct-install counting, summing across installs, the write gate (token
-accept/reject and open-write mode), the per-IP rate limit, the `/ingest` CORS
-lockdown, and the HTTP surface (ingest -> stats round-trip, scoped `/stats`
-CORS, 400/404). No network or real Cloudflare account is touched.
+validation, the latest-wins-per-install upsert and its idempotent re-sends, the
+lifetime no-double-count contract (including a changed period label not
+re-adding a constant total), distinct-install counting, summing across installs,
+the simple-request rejection (text/plain and form bodies refused), the Origin
+allowlist on `/ingest`, the write gate (token accept/reject and open-write
+mode), the per-IP rate limit, the `/ingest` CORS lockdown, and the HTTP surface
+(ingest -> stats round-trip, scoped `/stats` CORS, 400/404). No network or real
+Cloudflare account is touched.

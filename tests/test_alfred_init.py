@@ -203,6 +203,47 @@ def test_render_agents_conf_schedules_telemetry_when_opted_in(init_mod, tmp_path
     )
 
 
+def test_render_agents_conf_telemetry_row_is_a_valid_schedule_record(init_mod, tmp_path):
+    # The scheduled row must be a well-formed agents.conf record deploy.sh can
+    # parse: 6 tab-separated fields with a recognised schedule token. This guards
+    # the Codex finding end to end (a row that deploy.sh cannot schedule is no
+    # better than no row).
+    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
+    state.telemetry_enabled = True
+    state.telemetry_url = "https://worker.example.com/ingest"
+    text = init_mod.render_agents_conf(state)
+    row = next(line for line in text.splitlines() if line.startswith("alfred.proof-telemetry\t"))
+    fields = row.split("\t")
+    assert len(fields) == 6, f"expected 6 tab-separated fields, got {len(fields)}: {fields!r}"
+    label, script, schedule, needs_java, log_stem, role = fields
+    assert label == "alfred.proof-telemetry"
+    assert script == "proof-telemetry.py"
+    # cron:HH:MM is the daily schedule grammar deploy.sh understands.
+    assert schedule == "cron:9:10"
+    assert needs_java == "no"
+    assert log_stem == "alfred.proof-telemetry"
+    assert role  # a non-empty operational descriptor
+
+
+def test_opt_in_produces_both_schedule_and_env(init_mod, tmp_path):
+    # Full opt-in contract: after the operator opts in, the generated config must
+    # carry BOTH the launchd schedule row (so the job actually runs) AND the
+    # runtime env vars (so the running job is enabled and knows where to post).
+    # Either one alone is a silent no-op.
+    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
+    state.telemetry_enabled = True
+    state.telemetry_url = "https://worker.example.com/ingest"
+    state.telemetry_token = "shared-secret"
+
+    conf = init_mod.render_agents_conf(state)
+    env = init_mod.env_assignments_for(state)
+
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10" in conf
+    assert env["ALFRED_TELEMETRY_ENABLED"] == "1"
+    assert env["ALFRED_TELEMETRY_URL"] == "https://worker.example.com/ingest"
+    assert env["ALFRED_TELEMETRY_TOKEN"] == "shared-secret"
+
+
 # ---------------------------------------------------------------------------
 # env_assignments_for
 # ---------------------------------------------------------------------------

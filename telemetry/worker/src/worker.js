@@ -3,36 +3,61 @@
  *
  * Two endpoints, both anonymous and aggregate-only:
  *
- *   POST /ingest   one install folds its per-period counts into the running
- *                  totals. Idempotent per {install_id, period}: re-sending the
- *                  same pair overwrites that pair's stored counts rather than
- *                  double-counting. Server-to-server only: no browser CORS, an
- *                  optional shared INGEST_TOKEN, and a per-IP rate limit.
+ *   POST /ingest   one install reports its CUMULATIVE LIFETIME counts. The
+ *                  Worker stores exactly ONE record per install (keyed by
+ *                  install_id) and replaces it on every report (latest-wins
+ *                  upsert). The public aggregate is the sum over all installs
+ *                  of each install's latest counts, maintained incrementally as
+ *                  aggregate += new - previous_for_this_install. Re-sending the
+ *                  same lifetime total is therefore idempotent: it adds zero,
+ *                  forever, no matter how many times or for how long an install
+ *                  reports. Browser-hostile by design: simple requests are
+ *                  rejected, cross-origin browser writes are blocked, an
+ *                  optional shared INGEST_TOKEN hardens it, and a per-IP rate
+ *                  limit plus a per-install count cap bound forged-id abuse.
  *   GET  /stats    returns the public aggregate totals plus a distinct-install
  *                  count. This is the only route with browser CORS, scoped to
  *                  ALLOWED_ORIGIN so the marketing site can read it.
  *
- * Abuse posture: /ingest does not reflect arbitrary Origins and never falls back
- * to "*", so a visitor's browser cannot POST to it cross-origin. If INGEST_TOKEN
- * is set, writes also require a matching X-Ingest-Token. A coarse per-IP rate
- * limit and the {install_id, period} idempotency cap how fast any single source
- * can move the aggregate. With INGEST_TOKEN unset the counter is open to
- * server-side writes by design; TELEMETRY.md documents that residual surface.
+ * The contract with the agent client (lib/proof_telemetry.py) is
+ * "latest-wins per install", not "accumulate per period". The client reports a
+ * single cumulative lifetime total; the Worker treats install_id as the unit of
+ * de-duplication and the stored counts as that install's current truth, never
+ * an increment. The `period` field on the payload is advisory metadata only
+ * (the client always sends "lifetime"); it is NOT part of the storage key, so a
+ * calendar rollover can never re-add a constant lifetime total.
+ *
+ * Abuse posture (be honest about a public community counter). /ingest:
+ *   - Rejects "simple" requests: the body MUST be Content-Type application/json.
+ *     A text/plain or form POST (which a browser can send cross-origin WITHOUT a
+ *     CORS preflight) is refused, so a hidden cross-origin browser POST cannot
+ *     silently write. This forces a real preflight for any browser caller.
+ *   - Never reflects an arbitrary Origin and never falls back to "*", and when a
+ *     browser Origin header is present it must match ALLOWED_ORIGIN. A visitor's
+ *     tab on another site cannot POST here.
+ *   - When INGEST_TOKEN is set, writes also require a matching X-Ingest-Token.
+ *     This is the difference between a private counter and an open one.
+ *   - A coarse per-IP rate limit and a per-install count cap (MAX_PER_FIELD)
+ *     bound how far a single source, or a flood of forged install_ids, can move
+ *     the aggregate. The latest-wins idempotency means a re-send never inflates.
+ *   With INGEST_TOKEN unset the counter is open to server-side writes by design
+ *   (CORS does not gate curl/python); see README.md for the residual surface and
+ *   why the display threshold + caps keep it best-effort-honest. Operators who
+ *   want a hard gate set INGEST_TOKEN.
  *
  * Storage: a single Workers KV namespace, bound as `TELEMETRY` (see
- * wrangler.toml). No database, no per-install history beyond the last
- * snapshot needed for idempotency.
+ * wrangler.toml). No database, no per-install history beyond the one current
+ * snapshot needed for the latest-wins upsert.
  *
  * What is stored (the ENTIRE stored shape):
  *   key "agg"          -> JSON aggregate, the only thing /stats reads:
  *                         { prs_opened, prs_merged, prs_reviewed, loc_added,
  *                           installs, updated_at }
- *   key "i:<id>:<per>" -> JSON last-seen snapshot for one {install_id, period}
- *                         pair, used only to make re-sends idempotent:
+ *   key "install:<id>" -> JSON latest snapshot for one install, the single
+ *                         record per install. Replaced on every report:
  *                         { prs_opened, prs_merged, prs_reviewed, loc_added,
- *                           seen_at }
- *   key "ic:<id>"      -> "1" marker, present once per distinct install_id, used
- *                         to maintain the distinct-install count.
+ *                           seen_at }. Its presence also IS the distinct-install
+ *                         marker, so there is no separate "known install" key.
  *   key "rl:<h>:<win>" -> short-lived per-source ingest counter for the rate
  *                         limit. <h> is a non-reversible hash of the client IP,
  *                         never the raw IP, and the bucket self-expires after
@@ -48,23 +73,24 @@
  * The aggregate is maintained without a cross-request lock. Two installs
  * posting in the same instant could in principle interleave their
  * read-modify-write of "agg"; for a low-frequency proof counter (each install
- * posts at most once a day) the practical loss is negligible, and the stored
- * per-pair snapshots mean a later re-send self-heals any single dropped delta.
- * If exactness ever matters, swap KV for a Durable Object or D1 transaction;
- * see the README.
+ * posts at most once a day) the practical loss is negligible, and because each
+ * install's record is the full current truth, the very next report from that
+ * install self-heals any single dropped delta. If exactness ever matters, swap
+ * KV for a Durable Object or D1 transaction; see the README.
  */
 
-// Hard caps. A single install's per-period count above these is almost
-// certainly a bug or abuse, so we clamp rather than trust it. Tuned well
-// above any believable single-host daily output.
+// Hard caps. A single install's cumulative count above these is almost
+// certainly a bug or abuse, so we clamp rather than trust it. This per-install
+// cap is also the primary bound on how much one forged install_id can inflate
+// the aggregate. Tuned well above any believable single-host lifetime output.
 const MAX_PER_FIELD = 100000;
 const COUNT_FIELDS = ["prs_opened", "prs_merged", "prs_reviewed", "loc_added"];
 
 // install_id is operator-generated and opaque. Bound its length and charset so
 // a malformed or hostile value cannot blow up a KV key.
 const INSTALL_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
-// period is a coarse bucket label the install picks, e.g. "2026-06" or
-// "2026-06-15". Same defensive bounding.
+// period is advisory metadata only (the client sends "lifetime"); it is never
+// part of a storage key, but we still bound it defensively.
 const PERIOD_RE = /^[A-Za-z0-9_-]{1,32}$/;
 
 const EMPTY_AGG = {
@@ -100,10 +126,10 @@ export function normalizePayload(raw) {
   if (!INSTALL_ID_RE.test(installId)) {
     return { ok: false, error: "install_id missing or malformed" };
   }
-  const period = typeof raw.period === "string" ? raw.period : "";
-  if (!PERIOD_RE.test(period)) {
-    return { ok: false, error: "period missing or malformed" };
-  }
+  // period is advisory metadata only. Accept it when present and well-formed,
+  // default to "lifetime" otherwise; it never becomes part of a storage key.
+  const rawPeriod = typeof raw.period === "string" ? raw.period : "";
+  const period = PERIOD_RE.test(rawPeriod) ? rawPeriod : "lifetime";
   const counts = {};
   for (const field of COUNT_FIELDS) {
     counts[field] = clampCount(raw[field]);
@@ -114,11 +140,10 @@ export function normalizePayload(raw) {
 function aggKey() {
   return "agg";
 }
-function pairKey(installId, period) {
-  return `i:${installId}:${period}`;
-}
+// One record per install, keyed by install_id. Replaced on every report
+// (latest-wins). Its presence is also the distinct-install marker.
 function installKey(installId) {
-  return `ic:${installId}`;
+  return `install:${installId}`;
 }
 
 async function readAgg(kv) {
@@ -140,28 +165,29 @@ async function readAgg(kv) {
 /**
  * Fold one normalized payload into the running aggregate, idempotently.
  *
- * The delta applied is (new counts - previously stored counts for this exact
- * {install_id, period}). So the first send adds the full counts; a re-send of
- * the same period with the same numbers adds zero; a re-send with higher
- * numbers adds only the difference. Counts are treated as the install's
- * cumulative total for that period, never as an increment, which is what makes
- * re-sends safe.
+ * Latest-wins per install. The delta applied is
+ * (new counts - the counts currently stored for THIS install_id). So the first
+ * report from an install adds its full counts; a re-send of the same lifetime
+ * total adds zero; a re-send with higher numbers adds only the difference; a
+ * downward correction subtracts. Counts are the install's cumulative lifetime
+ * total, never an increment, which is what makes every re-send safe regardless
+ * of how often or for how long the install reports. The stored record is keyed
+ * only by install_id, so no calendar bucket can ever re-add a constant total.
  *
  * Pure-ish: all KV effects go through the passed `kv`. Returns the updated
  * aggregate (without the bookkeeping keys).
  */
 export async function ingest(kv, payload, now = new Date()) {
-  const { install_id: installId, period, counts } = payload;
+  const { install_id: installId, counts } = payload;
 
-  const prior = (await kv.get(pairKey(installId, period), { type: "json" })) || null;
+  const prior = (await kv.get(installKey(installId), { type: "json" })) || null;
   const agg = await readAgg(kv);
 
-  // Distinct-install accounting: only the first period we ever see from an
-  // install increments the install count.
-  const isKnownInstall = (await kv.get(installKey(installId))) !== null;
-  if (!isKnownInstall) {
+  // Distinct-install accounting: the per-install record's presence IS the
+  // marker, so the first time we see an install (no prior record) is the only
+  // time we increment.
+  if (!prior) {
     agg.installs += 1;
-    await kv.put(installKey(installId), "1");
   }
 
   for (const field of COUNT_FIELDS) {
@@ -176,12 +202,12 @@ export async function ingest(kv, payload, now = new Date()) {
   const iso = now.toISOString();
   agg.updated_at = iso;
 
-  // Persist the per-pair snapshot (for next-time idempotency) and the new
-  // aggregate. Order: snapshot first, then aggregate, so a crash between the
-  // two leaves the aggregate trailing (recoverable on next send) rather than
-  // ahead (would double count).
+  // Persist the install's new latest snapshot (for next-time idempotency) and
+  // the new aggregate. Order: snapshot first, then aggregate, so a crash
+  // between the two leaves the aggregate trailing (recoverable on the install's
+  // next report) rather than ahead (which would double count).
   const snapshot = { ...counts, seen_at: iso };
-  await kv.put(pairKey(installId, period), JSON.stringify(snapshot));
+  await kv.put(installKey(installId), JSON.stringify(snapshot));
   await kv.put(aggKey(), JSON.stringify(agg));
 
   return agg;
@@ -246,11 +272,60 @@ function safeEqual(a, b) {
 }
 
 /**
+ * Reject "simple" requests on /ingest.
+ *
+ * A cross-origin browser POST with a "simple" Content-Type
+ * (text/plain, application/x-www-form-urlencoded, multipart/form-data) does NOT
+ * trigger a CORS preflight, so the browser fires it and only hides the
+ * RESPONSE; the Worker would still parse the body and write KV. By REQUIRING
+ * Content-Type: application/json we force any cross-origin browser caller into a
+ * preflight (which /ingest fails, see the OPTIONS handler), closing the
+ * simple-POST write bypass. Server-side clients (urllib) already send JSON, so
+ * this costs them nothing.
+ *
+ * Returns { ok: true } or { ok: false, status, error }.
+ */
+function checkContentType(request) {
+  const raw = request.headers.get("Content-Type") || "";
+  // Strip any "; charset=..." parameter and compare case-insensitively.
+  const mediaType = raw.split(";", 1)[0].trim().toLowerCase();
+  if (mediaType !== "application/json") {
+    return {
+      ok: false,
+      status: 415,
+      error: "Content-Type must be application/json",
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Enforce the Origin allowlist for any request that carries an Origin header.
+ *
+ * Server-side clients (urllib) send no Origin, so they are unaffected. A browser
+ * always sets Origin on a cross-origin request; if one reaches /ingest its
+ * Origin must equal ALLOWED_ORIGIN (and even then the request already had to be
+ * application/json, which forced a preflight that /ingest fails). This is a
+ * defence-in-depth check on top of the no-preflight-CORS lockdown: an Origin
+ * that is present and does NOT match is refused outright.
+ *
+ * Returns { ok: true } or { ok: false, status, error }.
+ */
+function checkOrigin(request, env) {
+  const origin = request.headers.get("Origin");
+  if (!origin) return { ok: true }; // no Origin: a server-side (non-browser) caller
+  const allowed = (env && env.ALLOWED_ORIGIN) || "";
+  if (allowed && origin === allowed) return { ok: true };
+  return { ok: false, status: 403, error: "origin not allowed" };
+}
+
+/**
  * Ingest write gate. When INGEST_TOKEN is configured on the Worker, /ingest
  * must present a matching `X-Ingest-Token` header (opted-in hosts send their
  * ALFRED_TELEMETRY_TOKEN there). When INGEST_TOKEN is unset the counter is
- * deliberately open to writes (CORS-lock, rate limit, and idempotency are the
- * remaining guards); see TELEMETRY.md for the residual abuse surface.
+ * deliberately open to server-side writes (the application/json + Origin lock,
+ * rate limit, per-install count cap, and latest-wins idempotency are the
+ * remaining guards); see README.md for the residual abuse surface.
  *
  * Returns { ok: true } or { ok: false, status, error }.
  */
@@ -268,7 +343,7 @@ function checkIngestToken(request, env) {
 // single source from hammering the endpoint to spray distinct install_ids. The
 // limit is intentionally generous (a legitimate host posts once a day) and only
 // engages when the platform gives us a client IP; it is a speed bump on top of
-// the token + idempotency, not the primary control.
+// the token + count cap + idempotency, not the primary control.
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
 const RATE_LIMIT_MAX_PER_WINDOW = 60;
 
@@ -313,7 +388,9 @@ export default {
     // CORS preflight: only /stats has a legitimate browser caller. We answer the
     // preflight WITHOUT an allow-origin for any other path (including /ingest),
     // so a browser cross-origin POST to /ingest fails its preflight and cannot
-    // inflate the counter from a visitor's tab.
+    // inflate the counter from a visitor's tab. Because /ingest requires
+    // application/json (a non-simple Content-Type), any cross-origin browser
+    // POST MUST preflight first, and that preflight gets no allow-origin here.
     if (request.method === "OPTIONS") {
       if (path === "/stats") {
         return new Response(null, { status: 204, headers: statsCorsHeaders(env) });
@@ -334,6 +411,16 @@ export default {
     if (path === "/ingest" && request.method === "POST") {
       // No CORS headers on /ingest, ever: this is a server-to-server endpoint.
       if (!kv) return jsonResponse({ error: "telemetry store unavailable" }, 503, env);
+
+      // Reject "simple" requests so a no-preflight cross-origin browser POST
+      // cannot silently write. Server-side clients send application/json.
+      const ctype = checkContentType(request);
+      if (!ctype.ok) return jsonResponse({ error: ctype.error }, ctype.status, env);
+
+      // Any caller that DOES present an Origin (i.e. a browser) must match the
+      // allowlist. Server-side callers send no Origin and pass through.
+      const origin = checkOrigin(request, env);
+      if (!origin.ok) return jsonResponse({ error: origin.error }, origin.status, env);
 
       const auth = checkIngestToken(request, env);
       if (!auth.ok) return jsonResponse({ error: auth.error }, auth.status, env);

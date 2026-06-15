@@ -397,6 +397,47 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
     assert bundle_items[0].item_kind == "pr"
 
 
+def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
+    # list_github_items clamps limit to 500, so len(list(...)) freezes at 500 on
+    # a busy brain. count_github_items does an exact SQL COUNT(*) and must report
+    # the true total. Regression guard for the proof-telemetry under-count
+    # (finding #4): seed >500 PRs and assert the count exceeds the list cap.
+    total = 612
+    merged = 400
+    for n in range(1, total + 1):
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged" if n <= merged else "open",
+            title=f"pr {n}",
+            url=f"https://github.com/org/api/pull/{n}",
+        )
+    # The list method tops out at its 500-row clamp ...
+    assert len(brain.list_github_items(kind="pr", limit=10_000)) == 500
+    # ... but the exact count sees them all.
+    assert brain.count_github_items(kind="pr") == total
+    assert brain.count_github_items(kind="pr", state="merged") == merged
+    assert brain.count_github_items(kind="pr", state="open") == total - merged
+    assert brain.count_github_items(kind="pr", state="closed") == 0
+
+
+def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
+    total = 555
+    for n in range(total):
+        brain.record_file_touch(
+            repo="org/api",
+            path=f"src/file_{n}.py",
+            codename="lucius",
+            firing_id=f"fid-{n}",
+            change_type="modified",
+        )
+    assert len(brain.list_file_touches(limit=10_000)) == 500
+    assert brain.count_file_touches() == total
+    assert brain.count_file_touches(repo="org/api") == total
+    assert brain.count_file_touches(repo="missing") == 0
+
+
 def test_worker_heartbeat_and_stale_detection(brain: FleetBrain) -> None:
     now = datetime.now(UTC)
     fresh = brain.upsert_worker_heartbeat(
