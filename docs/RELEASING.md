@@ -46,8 +46,12 @@ are actually attached. A human attaches the assets and presses Publish.
 4. **Run the signed desktop release workflow against the tag.** This is the
    separate signing pipeline. It builds the signed macOS `.dmg` and the Linux
    `.AppImage` / `.deb` from the tagged source and uploads them to the draft
-   release created in step 3. Confirm every expected asset is attached before
-   moving on.
+   release created in step 3. The desktop bundle version is already aligned to
+   the release in the prep step (`clients/desktop/package.json` and
+   `src-tauri/Cargo.toml` are set to the release number, and `tauri.conf.json`
+   reads the version from `package.json`), so the signed installers carry the
+   release version with no separate manual bump here. Confirm every expected
+   asset is attached before moving on.
 
 5. **Publish the release.** Once the signed assets are attached, a human opens
    the draft release, checks the body and the asset list, and presses Publish.
