@@ -1,0 +1,64 @@
+# Cloudflare Worker config for the Alfred proof-telemetry endpoint.
+#
+# This file ships with PLACEHOLDER ids only. Nothing here is a real account.
+# Fill in your own values before `wrangler deploy` (see README.md in this dir).
+#
+# The Worker stores anonymous aggregate counts in one KV namespace. It never
+# stores IP addresses, repo names, code, or anything that identifies a person.
+
+name = "alfred-proof-telemetry"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# Your Cloudflare account id. Find it in the dashboard URL or via
+# `wrangler whoami`. The value below is a placeholder, replace it.
+account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
+
+# Site origin allowed to read GET /stats from a browser via CORS. Set it to your
+# deployed site origin (e.g. "https://alfred.example.com"). Leave it unset and
+# /stats is still readable server-side; only browser cross-origin reads are
+# gated. /ingest never carries CORS, so a visitor's browser cannot POST to it.
+[vars]
+ALLOWED_ORIGIN = "https://alfred.example.com"
+
+# Optional shared write gate for POST /ingest. When set, every ingest must send
+# a matching `X-Ingest-Token` header (opted-in hosts put their value in
+# ALFRED_TELEMETRY_TOKEN). Leave it UNSET for a fully open public counter; the
+# CORS lock, per-IP rate limit, and per-install latest-wins idempotency still
+# apply. Prefer a Worker SECRET over a plaintext var here:
+#   wrangler secret put INGEST_TOKEN
+# INGEST_TOKEN = "set-via-`wrangler secret put`-not-here"
+
+# Optional per-IP ingest rate limit (requests per hour). Defaults to 60, which
+# is far above a legitimate once-a-day reporter. Lower it to tighten the speed
+# bump against a single source spraying install_ids.
+# INGEST_RATE_LIMIT = "60"
+
+# Server-side salt for the per-IP rate-limit bucket key. The bucket key is an
+# HMAC-SHA-256 of the client IP under this salt (never the raw IP), so a KV
+# reader cannot brute-force the ~4 billion dotted-quad space back to the IP
+# without the salt. RECOMMENDED: set it as a Worker SECRET, not a plaintext var:
+#   wrangler secret put RATE_LIMIT_SALT   # paste a long random value
+# If unset, the Worker fails safe by generating a per-isolate ephemeral random
+# salt (the IP still cannot be recovered from the key), but buckets then reset
+# whenever the isolate recycles, so set this for stable rate-limit buckets.
+# RATE_LIMIT_SALT = "set-via-`wrangler secret put`-not-here"
+
+# Optional cache TTL (seconds) for the totals GET /stats derives by summing the
+# per-install records. Defaults to 60, which is the Cloudflare KV minimum for an
+# expirationTtl: KV REJECTS a cache write below 60s, so a value of 1-59 is
+# clamped UP to 60 (and logged) rather than silently never caching. Set 0 to
+# disable the cache and recompute on every read. A read optimization only: a
+# higher value cuts list cost on busy read bursts at the price of staleness. It
+# can never change the derived answer.
+# STATS_CACHE_TTL_SECONDS = "60"
+
+# Workers KV namespace that holds the per-install records (and a short-lived
+# derived-stats cache). GET /stats sums the install records on read; there is no
+# incremented running aggregate. Create it with:
+#   wrangler kv namespace create TELEMETRY
+# then paste the returned id below (and the preview id for `wrangler dev`).
+[[kv_namespaces]]
+binding = "TELEMETRY"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_YOUR_PREVIEW_KV_NAMESPACE_ID"

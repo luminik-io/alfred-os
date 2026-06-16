@@ -45,10 +45,12 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -164,6 +166,31 @@ CODENAME_TO_ROLE: dict[str, str] = {
 STARTER_ROLES = ("planner", "feature_dev", "pr_review", "agent_cleanup")
 OPT_IN_ROLES = {"cross_repo_coordinator"}
 
+# The only strings that count as an explicit opt-in for a privacy-sensitive
+# consent flag. Anything else (including "false", "0", "no", "", or any other
+# string) is OFF. This is intentionally strict so a quoted "false" in a YAML or
+# JSON config never silently enables telemetry the way bool("false") would.
+_TRUTHY_CONSENT = {"1", "true", "yes", "on"}
+
+
+def parse_consent(value: object) -> bool:
+    """Interpret a config consent value as a strict opt-in.
+
+    True only for a real boolean ``True`` or a string in ``_TRUTHY_CONSENT``
+    (case-insensitive, whitespace-trimmed). Every other value, including the
+    string ``"false"``, ``"0"``, an int, ``None``, or an empty string, is OFF.
+
+    This avoids the ``bool("false") is True`` trap: a privacy-sensitive switch
+    must never default ON just because someone quoted the value in their config.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in _TRUTHY_CONSENT
+    # Anything else (int, float, None, list, dict) is not an explicit opt-in.
+    return False
+
+
 PROMPT_TEMPLATE_BY_ROLE = {
     "feature_dev": "feature-dev.md",
     "planner": "planner.md",
@@ -257,6 +284,47 @@ def note(msg: str) -> None:
     print(f"{STYLE.DIM}     {msg}{STYLE.OFF}")
 
 
+def telemetry_endpoint_label(url: str) -> str:
+    """A token-safe label for a telemetry ingest URL, for status output.
+
+    Shows scheme://host/path only. Any query string or userinfo is dropped so a
+    pasted shared secret (e.g. ``?token=...`` or ``user:secret@host``) never
+    lands in provisioning logs. Falls back to the host, then the raw URL, if the
+    URL does not parse into a usable form.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return telemetry_url_fallback_label(url)
+    host = parts.hostname or ""
+    if parts.scheme and host:
+        try:
+            parsed_port = parts.port
+        except ValueError:
+            parsed_port = None
+        port = f":{parsed_port}" if parsed_port else ""
+        return f"{parts.scheme}://{host}{port}{parts.path}"
+    return host or telemetry_url_fallback_label(url)
+
+
+def telemetry_url_fallback_label(url: str) -> str:
+    """Best-effort token-safe label when a telemetry URL is malformed.
+
+    ``urlsplit`` can fail or parse without a hostname for malformed operator
+    input. The status line still must not echo shared secrets, so strip query,
+    fragment, and userinfo with simple delimiter rules that do not re-parse the
+    bad URL.
+    """
+    label = url.split("?", 1)[0].split("#", 1)[0]
+    if "@" not in label:
+        return label
+    before, after = label.rsplit("@", 1)
+    if "://" in before:
+        scheme = before.split("://", 1)[0]
+        return f"{scheme}://{after}"
+    return after
+
+
 # ---------------------------------------------------------------------------
 # Config dataclass, single source of truth for what the wizard collects.
 # ---------------------------------------------------------------------------
@@ -280,6 +348,9 @@ class WizardState:
     role_to_repos: dict[str, list[str]] = field(default_factory=dict)  # role -> [org/repo]
     role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
+    telemetry_enabled: bool = False  # opt-in anonymous proof-telemetry; default OFF
+    telemetry_url: str = ""  # ingest endpoint, only written when telemetry_enabled
+    telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
 
     def codename_for(self, role: str) -> str:
         return self.role_to_codename.get(role, AGENT_CATALOG[role][0])
@@ -359,10 +430,25 @@ def read_alfredrc(path: Path) -> dict[str, str]:
             continue
         k, _, v = line.partition("=")
         k = k.strip()
-        v = v.strip().strip("'").strip('"')
+        v = v.strip()
+        try:
+            parsed = shlex.split(v)
+        except ValueError:
+            parsed = []
+        if len(parsed) == 1:
+            v = parsed[0]
+        else:
+            v = v.strip("'").strip('"')
         if k:
             out[k] = v
     return out
+
+
+def quote_alfredrc_value(value: str) -> str:
+    """Return a shell-safe scalar for a generated ~/.alfredrc assignment."""
+    if "\x00" in value or "\n" in value or "\r" in value:
+        raise ValueError("alfredrc values must be single-line strings")
+    return shlex.quote(value)
 
 
 def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
@@ -381,7 +467,7 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
         existing = existing[: prior.start()].rstrip() + "\n"
     block = [ALFREDRC_BANNER]
     for k, v in kvs.items():
-        block.append(f"{k}={v}")
+        block.append(f"{k}={quote_alfredrc_value(v)}")
     new = existing.rstrip() + "\n\n" + "\n".join(block) + "\n"
     path.write_text(new)
     with contextlib.suppress(OSError):
@@ -594,6 +680,18 @@ def render_agents_conf(state: WizardState) -> str:
         label = f"alfred.{codename}"
         role_text = desc.split(" (", 1)[0]
         lines.append(f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}")
+    # Opt-in proof-telemetry is not an AGENT_CATALOG role, so it is not in
+    # enabled_roles. Emit its scheduler row here, and ONLY when the operator
+    # opted in with both a flag and a URL. Without this the generated
+    # agents.conf has no proof-telemetry line and deploy.sh schedules nothing,
+    # so an opted-in host would never actually report. The runner is still a
+    # hard no-op unless ALFRED_TELEMETRY_ENABLED=1 at run time, so this row is
+    # safe even if the operator later flips telemetry off.
+    if state.telemetry_enabled and state.telemetry_url:
+        lines.append(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous proof-telemetry (opt-in)"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -624,6 +722,17 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
             out[f"ALFRED_{default_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
+    # Anonymous proof-telemetry is opt-in. We only ever write the enable var
+    # when the operator explicitly said yes; leaving it unset is the default
+    # and the only OFF state the runtime needs (the reporter treats anything
+    # other than "1" as off). So a "no" answer writes nothing here.
+    if state.telemetry_enabled and state.telemetry_url:
+        out["ALFRED_TELEMETRY_ENABLED"] = "1"
+        out["ALFRED_TELEMETRY_URL"] = state.telemetry_url
+        # Optional shared ingest token: only written when both opted in AND a
+        # token was provided. Matches the collector's INGEST_TOKEN.
+        if state.telemetry_token:
+            out["ALFRED_TELEMETRY_TOKEN"] = state.telemetry_token
     return out
 
 
@@ -1196,6 +1305,74 @@ def step_8_schedule(state: WizardState, *, non_interactive: bool) -> None:
         state.role_to_schedule[role] = new
 
 
+def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
+    """Opt-in prompt for anonymous proof-telemetry. Default is NO.
+
+    Non-interactive runs never opt in (the default stays OFF). A ``yes`` here
+    still does nothing until an ingest URL is provided; with no URL the reporter
+    is a no-op, so we only flip the enable var when both are present.
+    """
+    step("Anonymous usage telemetry (opt-in)")
+    note(
+        "Alfred can send ANONYMOUS, AGGREGATE counts (PRs opened/merged/reviewed, "
+        "file deltas) to a counter endpoint you run. Default is OFF."
+    )
+    note("Never sent: repo names, code, file paths, hostnames, IP, or any PII.")
+    note("One switch turns it off again any time: ALFRED_TELEMETRY_ENABLED. See docs/TELEMETRY.md.")
+    if non_interactive:
+        # apply_config_overrides may have already opted telemetry IN from a
+        # --config (telemetry_enabled + telemetry_url). The generated config
+        # (render_agents_conf / env_assignments_for) writes ALFRED_TELEMETRY_ENABLED=1
+        # and schedules proof-telemetry on EXACTLY this same condition, so the
+        # status we print here must mirror it, never a flat "left OFF".
+        if state.telemetry_enabled and state.telemetry_url:
+            ok(
+                "Telemetry opted IN via --config; sending to "
+                f"{telemetry_endpoint_label(state.telemetry_url)}. "
+                "Disable any time by removing ALFRED_TELEMETRY_ENABLED."
+            )
+        elif state.telemetry_enabled and not state.telemetry_url:
+            # Flag set without a URL: the reporter is a no-op and the generated
+            # config writes nothing, so telemetry is effectively OFF. Say so, and
+            # say why, instead of claiming a clean default.
+            warn("Telemetry flag set but no telemetry_url in --config; telemetry stays OFF.")
+        else:
+            ok("Telemetry left OFF (default).")
+        return
+    # apply_config_overrides may have pre-set telemetry_enabled from --config;
+    # respect an explicit config opt-in, otherwise ask with default No.
+    opt_in = state.telemetry_enabled or ask_yes_no(
+        "Send anonymous aggregate telemetry?", default=False
+    )
+    if not opt_in:
+        state.telemetry_enabled = False
+        state.telemetry_url = ""
+        ok("Telemetry left OFF.")
+        return
+    url = (
+        state.telemetry_url
+        or ask("Telemetry ingest URL (blank to skip)", state.telemetry_url).strip()
+    )
+    if not url:
+        state.telemetry_enabled = False
+        state.telemetry_url = ""
+        warn("No URL given; telemetry stays OFF.")
+        return
+    # Optional shared ingest token. The default public Worker has no write gate,
+    # so this is skippable (press enter). Only matters when the operator's Worker
+    # is configured with an INGEST_TOKEN; then reports without the matching token
+    # are rejected. A config-supplied token (state.telemetry_token) is respected.
+    note("If your collector sets an INGEST_TOKEN write gate, paste it here. Otherwise press enter.")
+    token = (
+        state.telemetry_token
+        or ask("Telemetry ingest token (optional, blank to skip)", state.telemetry_token).strip()
+    )
+    state.telemetry_enabled = True
+    state.telemetry_url = url
+    state.telemetry_token = token
+    ok("Telemetry opted IN. Disable any time by removing ALFRED_TELEMETRY_ENABLED.")
+
+
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     step("Generate config")
     conf = render_agents_conf(state)
@@ -1432,6 +1609,13 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       schedule for an agent. Key resolves the same way as
       ``role_codename``; value is in ``agents.conf`` schedule format
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
+    - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): opt in to
+      anonymous proof-telemetry non-interactively. Both must be set for
+      the reporter to do anything; default is OFF. ``telemetry_enabled``
+      is parsed strictly (see ``parse_consent``): a quoted ``"false"``
+      stays OFF.
+    - ``telemetry_token`` (str): optional shared ingest token sent as
+      ``X-Ingest-Token``; only written when telemetry is opted in.
     """
     if "gh_org" in cfg:
         state.gh_org = cfg["gh_org"]
@@ -1493,6 +1677,16 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                 warn(f"--config role_schedule: unknown agent {raw_key!r}; ignored")
                 continue
             state.role_to_schedule[role] = str(raw_schedule)
+    # Opt-in telemetry. Both keys must be explicit; we never infer an opt-in.
+    # parse_consent is strict: a quoted "false"/"0"/"no" (or anything that is
+    # not a recognized truthy token) stays OFF, unlike bool("false") which is
+    # True. The off-by-default guarantee is load-bearing for a privacy switch.
+    if "telemetry_enabled" in cfg:
+        state.telemetry_enabled = parse_consent(cfg["telemetry_enabled"])
+    if "telemetry_url" in cfg:
+        state.telemetry_url = str(cfg["telemetry_url"])
+    if "telemetry_token" in cfg:
+        state.telemetry_token = str(cfg["telemetry_token"])
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -1531,6 +1725,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         config_repos = ",".join(state.role_to_repos.pop("__all__"))
     step_7_repos(state, repos_arg=args.repos or config_repos, non_interactive=non_interactive)
     step_8_schedule(state, non_interactive=non_interactive)
+    step_8b_telemetry(state, non_interactive=non_interactive)
     step_9_generate(state, non_interactive=non_interactive)
     step_10_labels(state, skip=args.skip_label_setup)
     step_10_deploy(state)

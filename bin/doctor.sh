@@ -45,8 +45,31 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 load_env_file() {
-  local file="$1" line key value
+  local file="$1" line key value quote_style
   [ -f "$file" ] || return 0
+  env_value_quote_style() {
+    case "$1" in
+      \'*\') printf '%s' single ;;
+      \"*\") printf '%s' double ;;
+      *) printf '%s' none ;;
+    esac
+  }
+  decode_env_value() {
+    local value="$1" sq="'" dq='"' splice
+    splice="${sq}${dq}${sq}${dq}${sq}"
+    case "$value" in
+      \'*\')
+        value="${value#\'}"
+        value="${value%\'}"
+        value="${value//$splice/$sq}"
+        ;;
+      \"*\")
+        value="${value#\"}"
+        value="${value%\"}"
+        ;;
+    esac
+    printf '%s' "$value"
+  }
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       ''|\#*) continue ;;
@@ -61,12 +84,12 @@ load_env_file() {
         continue
         ;;
     esac
-    case "$value" in
-      \"*\") value="${value#\"}"; value="${value%\"}" ;;
-      \'*\') value="${value#\'}"; value="${value%\'}" ;;
-    esac
-    value="${value//\$\{HOME\}/$HOME}"
-    value="${value//\$HOME/$HOME}"
+    quote_style="$(env_value_quote_style "$value")"
+    value="$(decode_env_value "$value")"
+    if [ "$quote_style" != "single" ]; then
+      value="${value//\$\{HOME\}/$HOME}"
+      value="${value//\$HOME/$HOME}"
+    fi
     export "$key=$value"
   done < "$file"
 }

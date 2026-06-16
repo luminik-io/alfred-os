@@ -397,6 +397,155 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
     assert bundle_items[0].item_kind == "pr"
 
 
+def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
+    # list_github_items clamps limit to 500, so len(list(...)) freezes at 500 on
+    # a busy brain. count_github_items does an exact SQL COUNT(*) and must report
+    # the true total. Regression guard for the proof-telemetry under-count
+    # (finding #4): seed >500 PRs and assert the count exceeds the list cap.
+    total = 612
+    merged = 400
+    for n in range(1, total + 1):
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged" if n <= merged else "open",
+            title=f"pr {n}",
+            url=f"https://github.com/org/api/pull/{n}",
+        )
+    # The list method tops out at its 500-row clamp ...
+    assert len(brain.list_github_items(kind="pr", limit=10_000)) == 500
+    # ... but the exact count sees them all.
+    assert brain.count_github_items(kind="pr") == total
+    assert brain.count_github_items(kind="pr", state="merged") == merged
+    assert brain.count_github_items(kind="pr", state="open") == total - merged
+    assert brain.count_github_items(kind="pr", state="closed") == 0
+
+
+def test_count_github_items_authored_only(brain: FleetBrain) -> None:
+    # The poller caches EVERY PR from `gh pr list`, including operator- and
+    # bot-opened ones. count_github_items(authored_only=True) must count only
+    # agent-authored rows: those carrying the agent:authored label OR pushed from
+    # an agent branch prefix. Regression guard for Codex finding #2 (the proof
+    # counter must not claim PRs Alfred did not open).
+    # 3 authored by label, 2 authored by branch prefix, 4 operator PRs.
+    for n in range(1, 4):
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            labels=["agent:authored"],
+            url=f"u/{n}",
+        )
+    for n in range(4, 6):
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            head_ref="lucius/feature",
+            url=f"u/{n}",
+        )
+    for n in range(6, 10):
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            labels=["bug"],
+            head_ref="feature/by-human",
+            url=f"u/{n}",
+        )
+    assert brain.count_github_items(kind="pr") == 9, "all cached PRs"
+    assert brain.count_github_items(kind="pr", authored_only=True) == 5, (
+        "only the 3 label-authored + 2 branch-authored PRs"
+    )
+    assert brain.count_github_items(kind="pr", state="merged", authored_only=True) == 5, (
+        "state and authorship filters compose"
+    )
+    assert brain.count_github_items(kind="pr", state="open", authored_only=True) == 0
+
+
+def test_count_github_items_authored_branch_prefix_is_case_sensitive(
+    brain: FleetBrain,
+) -> None:
+    # The branch-prefix authorship match must be case-SENSITIVE so an operator PR
+    # on a differently-cased branch (e.g. "Lucius/fix" with a capital L) is NOT
+    # miscounted as Alfred-authored. SQLite's default LIKE is case-insensitive for
+    # ASCII (and COLLATE does not change that), so the SQL predicate uses GLOB to
+    # match the case-sensitive Python fallback head_ref.startswith(prefix).
+    brain.upsert_github_item(
+        repo="org/api",
+        number=1,
+        kind="pr",
+        state="merged",
+        head_ref="lucius/fix",
+        url="u/1",
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=2,
+        kind="pr",
+        state="merged",
+        head_ref="Lucius/fix",
+        url="u/2",
+    )
+    assert brain.count_github_items(kind="pr") == 2, "both PRs cached"
+    assert brain.count_github_items(kind="pr", authored_only=True) == 1, (
+        "lucius/fix IS authored; Lucius/fix (capital L) is NOT"
+    )
+
+
+def test_count_github_items_authored_only_past_500_cap(brain: FleetBrain) -> None:
+    # The authored filter is a SQL predicate, so it stays an exact COUNT(*) past
+    # the 500-row list cap: a busy install with thousands of authored PRs is
+    # counted honestly, and interleaved operator PRs are excluded.
+    authored = 520
+    operator = 300
+    n = 0
+    for _ in range(authored):
+        n += 1
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            labels=["agent:authored"],
+            url=f"u/{n}",
+        )
+    for _ in range(operator):
+        n += 1
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="pr",
+            state="merged",
+            head_ref="feature/human",
+            url=f"u/{n}",
+        )
+    assert brain.count_github_items(kind="pr") == authored + operator
+    assert brain.count_github_items(kind="pr", authored_only=True) == authored, (
+        "authored count exceeds the 500 list cap and excludes operator PRs"
+    )
+
+
+def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
+    total = 555
+    for n in range(total):
+        brain.record_file_touch(
+            repo="org/api",
+            path=f"src/file_{n}.py",
+            codename="lucius",
+            firing_id=f"fid-{n}",
+            change_type="modified",
+        )
+    assert len(brain.list_file_touches(limit=10_000)) == 500
+    assert brain.count_file_touches() == total
+    assert brain.count_file_touches(repo="org/api") == total
+    assert brain.count_file_touches(repo="missing") == 0
+
+
 def test_worker_heartbeat_and_stale_detection(brain: FleetBrain) -> None:
     now = datetime.now(UTC)
     fresh = brain.upsert_worker_heartbeat(

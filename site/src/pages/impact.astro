@@ -1,0 +1,69 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import SectionHeader from "../components/marketing/SectionHeader.astro";
+import ImpactCounter from "../components/marketing/ImpactCounter.astro";
+---
+
+<MarketingLayout
+  title="Impact | Alfred"
+  description="A live, anonymous, aggregate proof counter from Alfred installs that opt in to be counted. No PII, no repo names, off by default."
+  path="/impact/"
+>
+  <section class="m-section">
+    <div class="m-container m-narrow">
+      <SectionHeader
+        eyebrow="IMPACT"
+        title="What Alfred installs have shipped, in aggregate."
+        lede="Anonymous, opt-in counts from installs that chose to be counted. No repo names, no code, no identifiers. Off by default; one environment variable turns it on or off."
+      />
+
+      <ImpactCounter threshold={50} />
+
+      <div class="m-prose">
+        <h3 class="m-h3">How this counter works</h3>
+        <p>
+          Installs that set <code>ALFRED_TELEMETRY_ENABLED=1</code> send a small
+          daily payload with four aggregate numbers and a random install token.
+          We sum those across installs and show the totals here. Nothing on this
+          page identifies a person, a company, or a machine.
+        </p>
+        <p>
+          The full contract, including exactly what is and is not sent and the
+          single switch that controls it, is in the
+          <a href="https://github.com/luminik-io/alfred-os/blob/main/docs/TELEMETRY.md">telemetry docs</a>.
+          The collector is a self-hostable Cloudflare Worker, so you can run your
+          own counter for your own fleet.
+        </p>
+      </div>
+    </div>
+  </section>
+</MarketingLayout>
+
+<style>
+  .m-narrow {
+    max-width: 760px;
+  }
+  .m-prose {
+    margin-top: 36px;
+    color: var(--alfred-text);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .m-prose h3 {
+    margin-bottom: 10px;
+  }
+  .m-prose p {
+    margin: 0 0 14px;
+  }
+  .m-prose code {
+    color: var(--alfred-text-bright);
+    background: var(--alfred-black, var(--alfred-surface-2));
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .m-prose a {
+    color: var(--alfred-accent);
+  }
+</style>

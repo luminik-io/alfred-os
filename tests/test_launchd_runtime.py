@@ -18,12 +18,17 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     home.mkdir()
     bin_dir.mkdir(parents=True)
     capture = tmp_path / "capture.json"
+    marker = tmp_path / "command-substitution-ran"
+    telemetry_token = f"tok$(touch {marker})&still"
     (home / ".alfredrc").write_text(
         "\n".join(
             [
                 "WORKSPACE_ROOT=$HOME/work space",
                 "OPERATOR_NAME=Example Operator",
                 "export GH_ORG=acme",
+                f"ALFRED_TELEMETRY_TOKEN='{telemetry_token}'",
+                "QUOTE_TOKEN='can'\"'\"'quote'",
+                "HOME_LITERAL='abc$HOMEdef-${HOME}'",
                 "",
             ]
         )
@@ -36,6 +41,9 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "  'workspace': os.environ.get('WORKSPACE_ROOT'),\n"
         "  'operator': os.environ.get('OPERATOR_NAME'),\n"
         "  'gh_org': os.environ.get('GH_ORG'),\n"
+        "  'telemetry_token': os.environ.get('ALFRED_TELEMETRY_TOKEN'),\n"
+        "  'quote_token': os.environ.get('QUOTE_TOKEN'),\n"
+        "  'home_literal': os.environ.get('HOME_LITERAL'),\n"
         "}))\n"
     )
     target.chmod(0o755)
@@ -53,6 +61,52 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "workspace": f"{home}/work space",
         "operator": "Example Operator",
         "gh_org": "acme",
+        "telemetry_token": telemetry_token,
+        "quote_token": "can'quote",
+        "home_literal": "abc$HOMEdef-${HOME}",
+    }
+    assert not marker.exists()
+
+
+def test_agent_launch_expands_double_quoted_home_path_values(tmp_path):
+    home = tmp_path / "home"
+    alfred = home / ".alfred"
+    bin_dir = alfred / "bin"
+    home.mkdir()
+    bin_dir.mkdir(parents=True)
+    capture = tmp_path / "capture.json"
+    (home / ".alfredrc").write_text(
+        "\n".join(
+            [
+                'ALFRED_HOME="$HOME/.alfred"',
+                'WORKSPACE_ROOT="$HOME/code space"',
+                "",
+            ]
+        )
+    )
+    target = bin_dir / "probe"
+    target.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os\n"
+        f"open({str(capture)!r}, 'w').write(json.dumps({{\n"
+        "  'alfred_home': os.environ.get('ALFRED_HOME'),\n"
+        "  'workspace': os.environ.get('WORKSPACE_ROOT'),\n"
+        "}))\n"
+    )
+    target.chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
+        env={**os.environ, "HOME": str(home)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert res.returncode == 0, res.stderr
+    data = json.loads(capture.read_text())
+    assert data == {
+        "alfred_home": str(alfred),
+        "workspace": f"{home}/code space",
     }
 
 

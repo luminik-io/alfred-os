@@ -612,6 +612,20 @@ class FleetBrain:
             limit=clamped,
         )
 
+    def count_file_touches(
+        self,
+        repo: str | None = None,
+        codename: str | None = None,
+        path: str | None = None,
+    ) -> int:
+        """Exact COUNT(*) of file_touches, unbounded by the list 500-row cap.
+
+        ``list_file_touches`` clamps ``limit`` to 500, so callers that need a
+        true total (e.g. proof-telemetry's lifetime counts) must use this rather
+        than ``len(list_...())``, which silently freezes at 500 on a busy brain.
+        """
+        return self.store.count_file_touches(repo=repo, codename=codename, path=path)
+
     def list_memory_candidates(
         self,
         status: MemoryCandidateStatus | None = "candidate",
@@ -657,6 +671,36 @@ class FleetBrain:
             state=state,
             bundle_slug=bundle_slug,
             limit=clamped,
+        )
+
+    def count_github_items(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+    ) -> int:
+        """Exact COUNT(*) of github_items, unbounded by the list 500-row cap.
+
+        ``list_github_items`` clamps ``limit`` to 500, so any caller needing a
+        true total (proof-telemetry's lifetime PR counts) must use this. Counting
+        by paginating ``list_github_items`` can never exceed 500 because the list
+        method re-clamps every request.
+
+        ``authored_only=True`` restricts the count to agent-authored PRs/issues:
+        rows carrying the ``agent:authored`` provenance label or pushed from an
+        agent branch prefix. The poller stores EVERY PR from ``gh pr list`` (not
+        just Alfred's), so proof-telemetry passes this to avoid claiming PRs the
+        fleet did not open. The filter is a SQL predicate on already-stored
+        columns, so it stays an exact COUNT(*).
+        """
+        return self.store.count_github_items(
+            repo=repo,
+            kind=kind,
+            state=state,
+            bundle_slug=bundle_slug,
+            authored_only=authored_only,
         )
 
     def list_bundle_items(

@@ -238,6 +238,68 @@ not be required for a clean OSS install. See
 
 Alfred is also not a hosted model gateway. It owns the repeatable local fleet pattern: schedules, worktrees, issue claims, PR loops, Slack reporting, and failure guards. Today Alfred supports Claude Code CLI and Codex CLI adapters. Other engines require a wrapper binary or new adapter code.
 
+## Anonymous usage telemetry (opt-in)
+
+Alfred ships a small, **opt-in, off-by-default** telemetry reporter. It exists
+for one purpose: a public "Alfred has opened N pull requests and merged M across
+K installs" proof counter. It is off until you turn it on, and one environment
+variable turns it off again.
+
+**Default state: OFF.** Nothing is sent, no `install_id` is generated, and no
+network call is made unless you set `ALFRED_TELEMETRY_ENABLED=1`. Any other
+value (including a typo like `true`) leaves it off. There is exactly one way to
+enable it and removing that one variable disables it completely.
+
+**Exactly what is sent**, once a day when enabled, to the endpoint you set in
+`ALFRED_TELEMETRY_URL`:
+
+```json
+{
+  "install_id": "a-random-opaque-token",
+  "period": "lifetime",
+  "prs_opened": 42,
+  "prs_merged": 31,
+  "prs_reviewed": 18,
+  "loc_added": 12873
+}
+```
+
+- `install_id` is a random token generated locally on first opt-in. It is not
+  derived from your hostname, MAC, user, or email. It lets the server
+  de-duplicate re-sends and count distinct installs, nothing more.
+- The four numbers are anonymous, cumulative lifetime counts from your local
+  fleet-brain, sent into one stable `period` bucket so daily re-sends never
+  double count.
+- `loc_added` is a file-delta count (one per repo file an agent touched); the
+  brain does not store per-line LOC. See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+
+**What is never sent:** repo names, file paths, code, commit text, branch names,
+hostnames, IP addresses, Slack handles, codenames, or anything that identifies a
+person or machine. The reporter is fail-soft: a network error never breaks a
+firing.
+
+**To enable:** set both variables in `~/.alfredrc` and uncomment the
+`proof-telemetry` line in `launchd/agents.conf`:
+
+```sh
+ALFRED_TELEMETRY_ENABLED=1
+ALFRED_TELEMETRY_URL=https://your-worker.example.com/ingest
+```
+
+**To disable:** remove `ALFRED_TELEMETRY_ENABLED` (or set it to anything but
+`1`). The reporter immediately becomes a no-op.
+
+**To see exactly what would be sent before opting in:**
+`ALFRED_TELEMETRY_ENABLED=1 python3 bin/proof-telemetry.py --dry-run` prints the
+payload and sends nothing.
+
+You run your own collector. The server half is a self-hostable Cloudflare Worker
+under [`telemetry/worker/`](telemetry/worker/); Alfred does not phone home to any
+Luminik-operated endpoint. The collector takes an optional `INGEST_TOKEN` so only
+your own opted-in hosts can write to the counter; `/ingest` has no browser CORS
+and a per-IP rate limit either way. Full contract:
+[`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+
 ## What's in here
 
 | Path | What it is |
@@ -254,6 +316,8 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 | [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
+| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Opt-in, off-by-default anonymous proof-telemetry reporter. Hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`. Posts only aggregate counts (PRs opened/merged/reviewed, file deltas) to your configured endpoint; fail-soft. |
+| [`telemetry/worker/`](telemetry/worker/) | Self-hostable Cloudflare Worker that ingests the anonymous aggregate and serves the public totals for the site counter. Ships with placeholder ids; deploy under your own account. |
 | [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
 | [`systemd/`](systemd/) | `_template.service` + `_template.timer` + `render.sh` (TSV → `systemd --user` units) for the Linux path. |
@@ -293,6 +357,7 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token, planning listener, trusted control commands, the off-by-default issue bridge, and in-thread fleet-progress thread-sync.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
+- [Telemetry](docs/TELEMETRY.md): the opt-in, off-by-default anonymous proof-counter. Exactly what is sent, what is never sent, the single on/off switch, and how to self-host the collector.
 - [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
 - [Hermes integration](docs/HERMES.md): optional operator-layer recipe for teams already using Hermes.
 - [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers. Install, deploy, and operate.
