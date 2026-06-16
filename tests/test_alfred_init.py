@@ -439,6 +439,14 @@ def test_telemetry_endpoint_label_strips_secrets(init_mod):
     assert "topsecret" not in label
 
 
+def test_telemetry_endpoint_label_handles_malformed_port(init_mod):
+    label = init_mod.telemetry_endpoint_label(
+        "https://worker.example.com:bad/ingest?token=topsecret"
+    )
+    assert label == "https://worker.example.com/ingest"
+    assert "topsecret" not in label
+
+
 def test_config_override_telemetry_opt_in(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path)
     init_mod.apply_config_overrides(

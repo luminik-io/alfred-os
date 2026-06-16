@@ -298,7 +298,11 @@ def telemetry_endpoint_label(url: str) -> str:
         return url
     host = parts.hostname or ""
     if parts.scheme and host:
-        port = f":{parts.port}" if parts.port else ""
+        try:
+            parsed_port = parts.port
+        except ValueError:
+            parsed_port = None
+        port = f":{parsed_port}" if parsed_port else ""
         return f"{parts.scheme}://{host}{port}{parts.path}"
     return host or url
 

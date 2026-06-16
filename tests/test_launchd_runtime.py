@@ -28,6 +28,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
                 "export GH_ORG=acme",
                 f"ALFRED_TELEMETRY_TOKEN='{telemetry_token}'",
                 "QUOTE_TOKEN='can'\"'\"'quote'",
+                "HOME_LITERAL='abc$HOMEdef-${HOME}'",
                 "",
             ]
         )
@@ -42,6 +43,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "  'gh_org': os.environ.get('GH_ORG'),\n"
         "  'telemetry_token': os.environ.get('ALFRED_TELEMETRY_TOKEN'),\n"
         "  'quote_token': os.environ.get('QUOTE_TOKEN'),\n"
+        "  'home_literal': os.environ.get('HOME_LITERAL'),\n"
         "}))\n"
     )
     target.chmod(0o755)
@@ -61,6 +63,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "gh_org": "acme",
         "telemetry_token": telemetry_token,
         "quote_token": "can'quote",
+        "home_literal": "abc$HOMEdef-${HOME}",
     }
     assert not marker.exists()
 

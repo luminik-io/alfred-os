@@ -18,8 +18,14 @@ SCRIPT="$1"
 shift
 
 load_env_file() {
-  local file="$1" line key value
+  local file="$1" line key value quoted
   [ -f "$file" ] || return 0
+  is_quoted_env_value() {
+    case "$1" in
+      \'*\'|\"*\") return 0 ;;
+      *) return 1 ;;
+    esac
+  }
   decode_env_value() {
     local value="$1" sq="'" dq='"' splice
     splice="${sq}${dq}${sq}${dq}${sq}"
@@ -50,9 +56,15 @@ load_env_file() {
         continue
         ;;
     esac
+    quoted=0
+    if is_quoted_env_value "$value"; then
+      quoted=1
+    fi
     value="$(decode_env_value "$value")"
-    value="${value//\$\{HOME\}/$HOME}"
-    value="${value//\$HOME/$HOME}"
+    if [ "$quoted" -eq 0 ]; then
+      value="${value//\$\{HOME\}/$HOME}"
+      value="${value//\$HOME/$HOME}"
+    fi
     export "$key=$value"
   done < "$file"
 }
