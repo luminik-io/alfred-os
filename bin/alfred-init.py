@@ -45,6 +45,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -407,10 +408,25 @@ def read_alfredrc(path: Path) -> dict[str, str]:
             continue
         k, _, v = line.partition("=")
         k = k.strip()
-        v = v.strip().strip("'").strip('"')
+        v = v.strip()
+        try:
+            parsed = shlex.split(v)
+        except ValueError:
+            parsed = []
+        if len(parsed) == 1:
+            v = parsed[0]
+        else:
+            v = v.strip("'").strip('"')
         if k:
             out[k] = v
     return out
+
+
+def quote_alfredrc_value(value: str) -> str:
+    """Return a shell-safe scalar for a generated ~/.alfredrc assignment."""
+    if "\x00" in value or "\n" in value or "\r" in value:
+        raise ValueError("alfredrc values must be single-line strings")
+    return shlex.quote(value)
 
 
 def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
@@ -429,7 +445,7 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
         existing = existing[: prior.start()].rstrip() + "\n"
     block = [ALFREDRC_BANNER]
     for k, v in kvs.items():
-        block.append(f"{k}={v}")
+        block.append(f"{k}={quote_alfredrc_value(v)}")
     new = existing.rstrip() + "\n\n" + "\n".join(block) + "\n"
     path.write_text(new)
     with contextlib.suppress(OSError):

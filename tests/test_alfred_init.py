@@ -566,6 +566,51 @@ def test_upsert_alfredrc_updates_values(tmp_path, init_mod):
     assert "FOO=2" in text
 
 
+def test_upsert_alfredrc_quotes_shell_metacharacters(tmp_path, init_mod):
+    rc = tmp_path / ".alfredrc"
+    marker = tmp_path / "command-substitution-ran"
+    url = f"https://worker.example.com/ingest?token=a&x=$(touch {marker})"
+    token = f"tok$(touch {marker})&still"
+    quote_token = "can'quote"
+
+    init_mod.upsert_alfredrc(
+        rc,
+        {
+            "ALFRED_TELEMETRY_URL": url,
+            "ALFRED_TELEMETRY_TOKEN": token,
+            "QUOTE_TOKEN": quote_token,
+        },
+    )
+
+    text = rc.read_text()
+    assert f"ALFRED_TELEMETRY_URL={url}" not in text
+    assert f"ALFRED_TELEMETRY_TOKEN={token}" not in text
+    parsed = init_mod.read_alfredrc(rc)
+    assert parsed["ALFRED_TELEMETRY_URL"] == url
+    assert parsed["ALFRED_TELEMETRY_TOKEN"] == token
+    assert parsed["QUOTE_TOKEN"] == quote_token
+
+    res = subprocess.run(
+        [
+            "bash",
+            "-c",
+            (
+                'source "$1"; '
+                'printf "%s\\n%s\\n%s\\n" '
+                '"$ALFRED_TELEMETRY_URL" "$ALFRED_TELEMETRY_TOKEN" "$QUOTE_TOKEN"'
+            ),
+            "bash",
+            str(rc),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.splitlines() == [url, token, quote_token]
+    assert not marker.exists()
+
+
 # ---------------------------------------------------------------------------
 # _resolve_repo_selection
 # ---------------------------------------------------------------------------

@@ -18,12 +18,16 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     home.mkdir()
     bin_dir.mkdir(parents=True)
     capture = tmp_path / "capture.json"
+    marker = tmp_path / "command-substitution-ran"
+    telemetry_token = f"tok$(touch {marker})&still"
     (home / ".alfredrc").write_text(
         "\n".join(
             [
                 "WORKSPACE_ROOT=$HOME/work space",
                 "OPERATOR_NAME=Example Operator",
                 "export GH_ORG=acme",
+                f"ALFRED_TELEMETRY_TOKEN='{telemetry_token}'",
+                "QUOTE_TOKEN='can'\"'\"'quote'",
                 "",
             ]
         )
@@ -36,6 +40,8 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "  'workspace': os.environ.get('WORKSPACE_ROOT'),\n"
         "  'operator': os.environ.get('OPERATOR_NAME'),\n"
         "  'gh_org': os.environ.get('GH_ORG'),\n"
+        "  'telemetry_token': os.environ.get('ALFRED_TELEMETRY_TOKEN'),\n"
+        "  'quote_token': os.environ.get('QUOTE_TOKEN'),\n"
         "}))\n"
     )
     target.chmod(0o755)
@@ -53,7 +59,10 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "workspace": f"{home}/work space",
         "operator": "Example Operator",
         "gh_org": "acme",
+        "telemetry_token": telemetry_token,
+        "quote_token": "can'quote",
     }
+    assert not marker.exists()
 
 
 def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
