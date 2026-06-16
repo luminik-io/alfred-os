@@ -5,7 +5,7 @@
  * Links and tracking only. Deliberately shows no download count or numbers:
  * low or zero counts at launch read as weak proof, so we never render them.
  *
- * Release links point at the v0.5.0 assets attached to GitHub Releases.
+ * Release links point at stable assets on the latest GitHub Release.
  * Each package button carries data-download-os and data-download-source so the
  * inline tracker below can send one GA4 "download" event per real asset click,
  * gated on the same cookie-consent decision the rest of the site uses.
@@ -18,14 +18,12 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
 import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 
 const REPO = "https://github.com/luminik-io/alfred-os";
-const RELEASE_TAG = "v0.5.0";
-const RELEASE_VERSION = RELEASE_TAG.replace(/^v/, "");
-const RELEASE = `${REPO}/releases/tag/${RELEASE_TAG}`;
-const RELEASE_DOWNLOADS = `${REPO}/releases/download/${RELEASE_TAG}`;
+const RELEASE = `${REPO}/releases/latest`;
+const RELEASE_DOWNLOADS = `${REPO}/releases/latest/download`;
 const MAC_DMG = `${RELEASE_DOWNLOADS}/Alfred.dmg`;
 const MAC_APP_ZIP = `${RELEASE_DOWNLOADS}/Alfred.app.zip`;
-const LINUX_APPIMAGE = `${RELEASE_DOWNLOADS}/Alfred_${RELEASE_VERSION}_amd64.AppImage`;
-const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred_${RELEASE_VERSION}_amd64.deb`;
+const LINUX_APPIMAGE = `${RELEASE_DOWNLOADS}/Alfred.AppImage`;
+const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
 ---
 
 <MarketingLayout

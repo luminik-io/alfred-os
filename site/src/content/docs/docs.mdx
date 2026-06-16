@@ -157,11 +157,14 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.4.0. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, and isolated worktree execution. The next unreleased v0.4.1 line adds fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, a mobile-friendly local cockpit with saved Alfred plans, and a Tauri Mac/Linux client. See the [changelog](/about/changelog/) and [roadmap](/about/roadmap/) for the full ledger.
+Latest release: v0.5.0. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a native Mac/Linux client.
 
-Additional unreleased work adds explicit Redis AMS memory sync, Planning intake
-in the local cockpit, and a first-class Memory tab in the native client.
-
-The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
+The native client is packaged as a signed and notarized macOS app plus Linux
+AppImage and Debian artifacts. The design boundary is stable: one operator, one
+local host, local CLIs, isolated worktrees, GitHub as the coordination layer.
+PRs are welcome when they strengthen that shape: reliability, setup, docs,
+tests, new codenames with clear scope, or optional integrations that fail
+cleanly. Bigger shifts, such as a new department or runtime change, should
+start as a discussion.
 
 License: [MIT](https://github.com/luminik-io/alfred-os/blob/main/LICENSE).

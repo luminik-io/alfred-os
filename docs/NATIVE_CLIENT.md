@@ -335,7 +335,7 @@ Distribution sequence:
    failure-pattern harvest, and dry-run launch. Done.
 3. Guided install, signed update flow, and broader safe write actions with
    dry-run previews.
-4. Signed Mac builds and Linux AppImage/deb artifacts.
+4. Signed Mac builds and Linux AppImage/deb artifacts. Done.
 
 ## Inspiration
 
