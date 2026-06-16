@@ -337,6 +337,88 @@ def test_telemetry_step_non_interactive_stays_off(init_mod, tmp_path):
     assert state.telemetry_url == ""
 
 
+def test_telemetry_step_non_interactive_default_prints_off(init_mod, tmp_path, capsys):
+    # The genuine default (no --config, no opt-in) must still print OFF.
+    state = _state_with(init_mod, tmp_path)
+    init_mod.step_8b_telemetry(state, non_interactive=True)
+    out = capsys.readouterr().out
+    assert "Telemetry left OFF (default)." in out
+
+
+def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_path, capsys):
+    # Regression: when --config pre-opted telemetry IN (telemetry_enabled +
+    # telemetry_url already applied by apply_config_overrides), the non-interactive
+    # status line must say telemetry is ON, NOT "left OFF". The printed status must
+    # match what the generated config actually writes (ALFRED_TELEMETRY_ENABLED=1 +
+    # scheduled proof-telemetry).
+    state = _state_with(init_mod, tmp_path)
+    init_mod.apply_config_overrides(
+        state,
+        {"telemetry_enabled": True, "telemetry_url": "https://worker.example.com/ingest"},
+    )
+    init_mod.step_8b_telemetry(state, non_interactive=True)
+    out = capsys.readouterr().out
+    # Honest status: the status line says opted IN and names the endpoint host,
+    # and NEVER claims telemetry was left off. (The standing notes legitimately
+    # mention the default being OFF, so we assert on the status wording.)
+    assert "opted IN" in out
+    assert "worker.example.com" in out
+    assert "left OFF" not in out
+    assert "stays OFF" not in out
+    # And the status is consistent with the generated config: enable var set and
+    # the proof-telemetry job is scheduled.
+    env = init_mod.env_assignments_for(state)
+    conf = init_mod.render_agents_conf(state)
+    assert env["ALFRED_TELEMETRY_ENABLED"] == "1"
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10" in conf
+
+
+def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_path, capsys):
+    # The printed endpoint label must not leak a shared ingest secret even if a
+    # tokenized URL is pasted into telemetry_url (query string or userinfo).
+    state = _state_with(init_mod, tmp_path)
+    init_mod.apply_config_overrides(
+        state,
+        {
+            "telemetry_enabled": True,
+            "telemetry_url": "https://user:s3cret@worker.example.com/ingest?token=topsecret",
+        },
+    )
+    init_mod.step_8b_telemetry(state, non_interactive=True)
+    out = capsys.readouterr().out
+    assert "opted IN" in out
+    assert "worker.example.com" in out
+    assert "topsecret" not in out
+    assert "s3cret" not in out
+
+
+def test_telemetry_step_non_interactive_flag_without_url_prints_off(init_mod, tmp_path, capsys):
+    # telemetry_enabled set but no URL: generated config writes nothing and the
+    # reporter no-ops, so the status must say OFF (with the reason), not opted IN.
+    state = _state_with(init_mod, tmp_path)
+    state.telemetry_enabled = True
+    state.telemetry_url = ""
+    init_mod.step_8b_telemetry(state, non_interactive=True)
+    captured = capsys.readouterr()
+    combined = captured.out + captured.err
+    assert "OFF" in combined
+    assert "opted IN" not in combined
+    # Consistent with the generated config: nothing is written or scheduled.
+    env = init_mod.env_assignments_for(state)
+    assert "ALFRED_TELEMETRY_ENABLED" not in env
+    assert "proof-telemetry" not in init_mod.render_agents_conf(state)
+
+
+def test_telemetry_endpoint_label_strips_secrets(init_mod):
+    # Helper used for the status line keeps only scheme://host[:port]/path.
+    label = init_mod.telemetry_endpoint_label(
+        "https://user:s3cret@worker.example.com:8443/ingest?token=topsecret#frag"
+    )
+    assert label == "https://worker.example.com:8443/ingest"
+    assert "s3cret" not in label
+    assert "topsecret" not in label
+
+
 def test_config_override_telemetry_opt_in(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path)
     init_mod.apply_config_overrides(

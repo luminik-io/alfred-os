@@ -49,6 +49,7 @@ import shutil
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -280,6 +281,25 @@ def fail(msg: str) -> None:
 
 def note(msg: str) -> None:
     print(f"{STYLE.DIM}     {msg}{STYLE.OFF}")
+
+
+def telemetry_endpoint_label(url: str) -> str:
+    """A token-safe label for a telemetry ingest URL, for status output.
+
+    Shows scheme://host/path only. Any query string or userinfo is dropped so a
+    pasted shared secret (e.g. ``?token=...`` or ``user:secret@host``) never
+    lands in provisioning logs. Falls back to the host, then the raw URL, if the
+    URL does not parse into a usable form.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return url
+    host = parts.hostname or ""
+    if parts.scheme and host:
+        port = f":{parts.port}" if parts.port else ""
+        return f"{parts.scheme}://{host}{port}{parts.path}"
+    return host or url
 
 
 # ---------------------------------------------------------------------------
@@ -1262,7 +1282,24 @@ def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
     note("Never sent: repo names, code, file paths, hostnames, IP, or any PII.")
     note("One switch turns it off again any time: ALFRED_TELEMETRY_ENABLED. See docs/TELEMETRY.md.")
     if non_interactive:
-        ok("Telemetry left OFF (default).")
+        # apply_config_overrides may have already opted telemetry IN from a
+        # --config (telemetry_enabled + telemetry_url). The generated config
+        # (render_agents_conf / env_assignments_for) writes ALFRED_TELEMETRY_ENABLED=1
+        # and schedules proof-telemetry on EXACTLY this same condition, so the
+        # status we print here must mirror it, never a flat "left OFF".
+        if state.telemetry_enabled and state.telemetry_url:
+            ok(
+                "Telemetry opted IN via --config; sending to "
+                f"{telemetry_endpoint_label(state.telemetry_url)}. "
+                "Disable any time by removing ALFRED_TELEMETRY_ENABLED."
+            )
+        elif state.telemetry_enabled and not state.telemetry_url:
+            # Flag set without a URL: the reporter is a no-op and the generated
+            # config writes nothing, so telemetry is effectively OFF. Say so, and
+            # say why, instead of claiming a clean default.
+            warn("Telemetry flag set but no telemetry_url in --config; telemetry stays OFF.")
+        else:
+            ok("Telemetry left OFF (default).")
         return
     # apply_config_overrides may have pre-set telemetry_enabled from --config;
     # respect an explicit config opt-in, otherwise ask with default No.
