@@ -68,6 +68,48 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     assert not marker.exists()
 
 
+def test_agent_launch_expands_double_quoted_home_path_values(tmp_path):
+    home = tmp_path / "home"
+    alfred = home / ".alfred"
+    bin_dir = alfred / "bin"
+    home.mkdir()
+    bin_dir.mkdir(parents=True)
+    capture = tmp_path / "capture.json"
+    (home / ".alfredrc").write_text(
+        "\n".join(
+            [
+                'ALFRED_HOME="$HOME/.alfred"',
+                'WORKSPACE_ROOT="$HOME/code space"',
+                "",
+            ]
+        )
+    )
+    target = bin_dir / "probe"
+    target.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os\n"
+        f"open({str(capture)!r}, 'w').write(json.dumps({{\n"
+        "  'alfred_home': os.environ.get('ALFRED_HOME'),\n"
+        "  'workspace': os.environ.get('WORKSPACE_ROOT'),\n"
+        "}))\n"
+    )
+    target.chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
+        env={**os.environ, "HOME": str(home)},
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert res.returncode == 0, res.stderr
+    data = json.loads(capture.read_text())
+    assert data == {
+        "alfred_home": str(alfred),
+        "workspace": f"{home}/code space",
+    }
+
+
 def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     home = tmp_path / "home"
     alfred = tmp_path / "alfred"

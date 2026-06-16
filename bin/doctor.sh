@@ -45,12 +45,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 load_env_file() {
-  local file="$1" line key value quoted
+  local file="$1" line key value quote_style
   [ -f "$file" ] || return 0
-  is_quoted_env_value() {
+  env_value_quote_style() {
     case "$1" in
-      \'*\'|\"*\") return 0 ;;
-      *) return 1 ;;
+      \'*\') printf '%s' single ;;
+      \"*\") printf '%s' double ;;
+      *) printf '%s' none ;;
     esac
   }
   decode_env_value() {
@@ -83,12 +84,9 @@ load_env_file() {
         continue
         ;;
     esac
-    quoted=0
-    if is_quoted_env_value "$value"; then
-      quoted=1
-    fi
+    quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
-    if [ "$quoted" -eq 0 ]; then
+    if [ "$quote_style" != "single" ]; then
       value="${value//\$\{HOME\}/$HOME}"
       value="${value//\$HOME/$HOME}"
     fi
