@@ -467,6 +467,36 @@ def test_count_github_items_authored_only(brain: FleetBrain) -> None:
     assert brain.count_github_items(kind="pr", state="open", authored_only=True) == 0
 
 
+def test_count_github_items_authored_branch_prefix_is_case_sensitive(
+    brain: FleetBrain,
+) -> None:
+    # The branch-prefix authorship match must be case-SENSITIVE so an operator PR
+    # on a differently-cased branch (e.g. "Lucius/fix" with a capital L) is NOT
+    # miscounted as Alfred-authored. SQLite's default LIKE is case-insensitive for
+    # ASCII (and COLLATE does not change that), so the SQL predicate uses GLOB to
+    # match the case-sensitive Python fallback head_ref.startswith(prefix).
+    brain.upsert_github_item(
+        repo="org/api",
+        number=1,
+        kind="pr",
+        state="merged",
+        head_ref="lucius/fix",
+        url="u/1",
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=2,
+        kind="pr",
+        state="merged",
+        head_ref="Lucius/fix",
+        url="u/2",
+    )
+    assert brain.count_github_items(kind="pr") == 2, "both PRs cached"
+    assert brain.count_github_items(kind="pr", authored_only=True) == 1, (
+        "lucius/fix IS authored; Lucius/fix (capital L) is NOT"
+    )
+
+
 def test_count_github_items_authored_only_past_500_cap(brain: FleetBrain) -> None:
     # The authored filter is a SQL predicate, so it stays an exact COUNT(*) past
     # the 500-row list cap: a busy install with thousands of authored PRs is

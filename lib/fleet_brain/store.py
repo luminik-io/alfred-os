@@ -1199,21 +1199,52 @@ def _authored_predicate() -> tuple[str, list[object]]:
 
     ``labels_json`` is compact JSON of a sorted string list (see
     ``_tags_to_json``), e.g. ``["agent:authored","bug"]`` with no spaces, so a
-    LIKE on the quoted label is a reliable membership test. The branch match is a
-    prefix LIKE per known agent prefix, each with ``ESCAPE '\\'`` so a literal
-    prefix is matched even in the unlikely case it contains a ``%`` or ``_``.
-    Returns ``(sql_fragment, params)`` to splice into a WHERE clause; the
-    fragment is fully parenthesized so it ANDs safely with other filters.
+    membership test on the quoted label is reliable. The branch match is a prefix
+    test per known agent prefix.
+
+    Both tests use ``GLOB`` rather than ``LIKE`` because SQLite's ``LIKE`` is
+    case-INSENSITIVE for ASCII and -- crucially -- a ``COLLATE`` clause does NOT
+    change that (``LIKE`` ignores collation for case folding; only ``GLOB`` or the
+    connection-wide ``PRAGMA case_sensitive_like`` is case-sensitive). ``GLOB`` is
+    natively case-SENSITIVE and locally scoped to this fragment. Without it an
+    operator branch like ``Lucius/fix`` (capital L) would satisfy a ``lucius/``
+    prefix and that PR would be miscounted as Alfred-authored, inflating the
+    authored count. Case-sensitivity mirrors the list-fallback predicate
+    ``proof_telemetry._row_is_agent_authored`` (exact ``label in labels`` and
+    case-sensitive ``head_ref.startswith(prefix)``) so the SQL and Python paths
+    agree.
+
+    ``GLOB`` treats ``*``, ``?`` and ``[`` as metacharacters (it has no LIKE-style
+    ``ESCAPE`` clause), so each literal segment is escaped via single-char
+    ``[x]`` brackets before the trailing ``*`` prefix wildcard. Returns
+    ``(sql_fragment, params)`` to splice into a WHERE clause; the fragment is
+    fully parenthesized so it ANDs safely with other filters.
     """
-    clauses: list[str] = ["labels_json LIKE ?"]
-    params: list[object] = [f'%"{AGENT_AUTHORED_LABEL}"%']
+    clauses: list[str] = ["labels_json GLOB ?"]
+    params: list[object] = [f'*"{_glob_escape(AGENT_AUTHORED_LABEL)}"*']
     for prefix in AGENT_BRANCH_PREFIXES:
-        clauses.append("head_ref LIKE ? ESCAPE '\\'")
-        # Escape LIKE wildcards in the prefix so it is matched literally, then
-        # append a trailing wildcard for "starts with".
-        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        params.append(f"{escaped}%")
+        clauses.append("head_ref GLOB ?")
+        # Escape GLOB metacharacters in the prefix so it is matched literally,
+        # then append a trailing wildcard for "starts with".
+        params.append(f"{_glob_escape(prefix)}*")
     return "(" + " OR ".join(clauses) + ")", params
+
+
+def _glob_escape(text: str) -> str:
+    """Escape GLOB metacharacters (``*``, ``?``, ``[``) for a literal match.
+
+    GLOB has no ``ESCAPE`` clause, so a metacharacter is matched literally by
+    wrapping it in a single-character class ``[x]`` (``[[]`` for ``[``). The known
+    agent prefixes and label contain none of these today; this keeps the predicate
+    correct if one is ever added.
+    """
+    out: list[str] = []
+    for ch in text:
+        if ch in "*?[":
+            out.append(f"[{ch}]")
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def _tags_to_json(tags: list[str]) -> str:
