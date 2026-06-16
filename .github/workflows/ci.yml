@@ -146,6 +146,10 @@ jobs:
         working-directory: clients/desktop
         run: npm run typecheck
 
+      - name: Test frontend (vitest guards)
+        working-directory: clients/desktop
+        run: npm run test
+
       - name: Build frontend
         working-directory: clients/desktop
         run: npm run build

@@ -72,7 +72,7 @@ Rules:
 - Use the starter fleet only: Drake, Lucius, Ras al Ghul, and agent-cleanup.
 - Batman handling for first install:
   - If I set `ADD_BATMAN=true`, add Batman.
-  - Otherwise, if the parsed `REPOS` list has 2 or more entries under the same `GH_ORG` (the common case where cross-repo coordination is likely), do not add Batman silently — instead pause and ask me: "I see N repos under your org. Batman coordinates `agent:large-feature` issues across repos (single issue fans out to N coordinated PRs after a Slack approval gate). Add Batman now? [y/N]". Add Batman only if I answer yes. Default no preserves the previous behaviour for single-repo fleets.
+  - Otherwise, if the parsed `REPOS` list has 2 or more entries under the same `GH_ORG` (the common case where cross-repo coordination is likely), do not add Batman silently. Instead pause and ask me: "I see N repos under your org. Batman coordinates `agent:large-feature` issues across repos (single issue fans out to N coordinated PRs after a Slack approval gate). Add Batman now? [y/N]". Add Batman only if I answer yes. Default no preserves the previous behaviour for single-repo fleets.
   - For a single-repo fleet, do not bring Batman up; it adds no value when there is nothing to coordinate.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.

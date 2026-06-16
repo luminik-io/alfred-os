@@ -34,10 +34,6 @@ When run in a plain browser (development preview), the app stays read-only: nati
 
 ## Usage on the capacity rail
 
-> **Note:** `GET /api/usage` is served by `alfred serve` today and backs the
-> capacity rail. The `alfred usage` CLI described here ships in an upcoming
-> release; that command is not available in this version yet.
-
 The Home Inbox capacity rail shows real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows. The figures come from `GET /api/usage`, which reads the engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through their local subscription CLIs rather than API keys, so there is no billing API to query and no per-token dollar figure (it is meaningless under a Max or Pro subscription). A window the local state cannot confirm reads as not synced rather than a fabricated number. The same numbers are available from the command line with `alfred usage`. See [`SERVE.md`](SERVE.md) for the endpoint and [`CLI.md`](CLI.md) for the CLI.
 
 ## Run it locally

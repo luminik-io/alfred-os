@@ -1,10 +1,6 @@
-@import "@fontsource-variable/space-grotesk";
-@import "@fontsource/quicksand/400.css";
-@import "@fontsource/quicksand/500.css";
-@import "@fontsource/quicksand/600.css";
-@import "@fontsource/quicksand/700.css";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource-variable/quicksand";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource/fragment-mono";
 
 /* Token-driven native glass system. Dark is default; light keeps the same
    structure with a cool paper base. */
@@ -34,9 +30,12 @@
   --radius: 7px;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
   --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.22);
-  --font-body: "Quicksand", ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-display: "Space Grotesk Variable", "Quicksand", ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* OPERATOR DIRECTIVE 2026-06-13 (do not revert): Alfred uses Instrument Sans
+     for headings, Quicksand for interface/body copy, and Fragment Mono for
+     transcripts, ids, and code. */
+  --font-body: "Quicksand Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: "Instrument Sans Variable", "Quicksand Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--text);
   background: var(--black);
   font-family: var(--font-body);

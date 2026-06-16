@@ -1,7 +1,7 @@
 {
   "name": "alfred-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,9 +14,9 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@fontsource-variable/space-grotesk": "^5.2.10",
-    "@fontsource/jetbrains-mono": "^5.2.8",
-    "@fontsource/quicksand": "^5.2.10",
+    "@fontsource-variable/instrument-sans": "^5.2.8",
+    "@fontsource-variable/quicksand": "^5.2.10",
+    "@fontsource/fragment-mono": "^5.2.8",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-switch": "^1.2.6",

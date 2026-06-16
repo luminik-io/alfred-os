@@ -1,10 +1,10 @@
 # Batman Parent Issue Template
 
-The body shape Batman's lifecycle parser (`parse_parent_issue` in `lib/batman.py`) expects when you file an `agent:large-feature` issue in `BATMAN_PARENT_REPO`. Mismatching the shape causes the parser to return `children=0 repos=0` silently — Batman drafts a useless plan, posts it to Slack, and the operator spends a polling cycle figuring out what went wrong (see #107 for the silent-zero behaviour).
+The body shape Batman's lifecycle parser (`parse_parent_issue` in `lib/batman.py`) expects when you file an `agent:large-feature` issue in `BATMAN_PARENT_REPO`. Mismatching the shape causes the parser to return `children=0 repos=0` silently: Batman drafts a useless plan, posts it to Slack, and the operator spends a polling cycle figuring out what went wrong (see #107 for the silent-zero behaviour).
 
 This doc gives the validated minimal shape, lists the gotchas the parser doesn't surface, and provides a copy-paste template.
 
-## TL;DR — copy this
+## TL;DR (copy this)
 
 ```markdown
 Bundle: <short-slug-no-spaces>
@@ -42,7 +42,7 @@ Repos:
 - frontend               ← SILENTLY DROPPED
 ```
 
-The lifecycle parser (`_parse_repo_lines`) skips any line without `/`. The legacy `parse_plan_from_issue` accepts bare names; the new lifecycle one doesn't. There's no warning when entries are dropped — the resulting plan has `children=0 repos=0`.
+The lifecycle parser (`_parse_repo_lines`) skips any line without `/`. The legacy `parse_plan_from_issue` accepts bare names; the new lifecycle one doesn't. There's no warning when entries are dropped: the resulting plan has `children=0 repos=0`.
 
 ### `Children:` entries use bare repo names (short form)
 
@@ -75,7 +75,7 @@ Two gotchas:
 
 ## Optional sections (parser ignores unknown sections gracefully)
 
-You can add markdown anywhere outside the four required sections — `## Vision`, `## Out of scope`, `## References`, etc. The parser only reads the four lines that start with `Repos:`, `Children:`, `Rollout order:`, `Done when:` (case-insensitive).
+You can add markdown anywhere outside the four required sections (`## Vision`, `## Out of scope`, `## References`, etc.). The parser only reads the four lines that start with `Repos:`, `Children:`, `Rollout order:`, `Done when:` (case-insensitive).
 
 ```markdown
 ## Vision
@@ -186,7 +186,7 @@ for c in plan.children:
 PY
 ```
 
-If `children: 0`, the body shape doesn't match — fix and re-run before filing the GitHub issue.
+If `children: 0`, the body shape doesn't match: fix and re-run before filing the GitHub issue.
 
 `bin/doctor.sh --lifecycle` runs this same parser validation with a synthetic parent issue, then checks the Slack approval surface and Claude OAuth token.
 

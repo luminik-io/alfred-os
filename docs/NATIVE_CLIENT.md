@@ -158,9 +158,9 @@ smallest next step.
 
 Use the Alfred site design system:
 
-- primary display font: Space Grotesk
+- primary display font: Instrument Sans
 - secondary UI font: Quicksand
-- mono for IDs, command previews, and logs only
+- mono (Fragment Mono) for IDs, command previews, and logs only
 - dark-first, high contrast, no decorative gradients
 - compact cards for repeated items, not nested card stacks
 - stable table-to-card responsive layouts
@@ -260,7 +260,7 @@ The client uses these local API contracts today:
 GET  /api/status
 GET  /api/actions
 GET  /api/usage             # served; backs the capacity rail
-GET  /api/usage/providers   # ships in an upcoming release; not served yet
+GET  /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET  /api/firings
 GET  /api/firings/{firing_id}
 GET  /api/plans
@@ -283,8 +283,9 @@ no per-token dollar figure (that number is meaningless under a Max or Pro
 subscription). A window the local state cannot confirm reads as not synced
 rather than a fabricated number.
 
-`GET /api/usage/providers` and the `alfred usage` CLI ship in an upcoming
-release; the per-provider endpoint is not served by `alfred serve` yet.
+`GET /api/usage/providers` is also served by `alfred serve` (a flat per-engine
+re-projection of `/api/usage`), and the same usage numbers are available from
+the command line with `alfred usage`.
 
 The native client also has a narrow local command allowlist:
 

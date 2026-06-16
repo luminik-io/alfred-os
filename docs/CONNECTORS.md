@@ -2,8 +2,8 @@
 
 Alfred's engineering fleet runs off a GitHub issue queue: any issue
 labeled `agent:implement` is fair game. **Connectors** let you feed that
-queue from non-GitHub sources — Linear tickets, Sentry alerts, and
-future systems — without changing how the agents themselves work.
+queue from non-GitHub sources (Linear tickets, Sentry alerts, and
+future systems) without changing how the agents themselves work.
 
 ## Mental model
 
@@ -31,12 +31,12 @@ Webhook **push-mode** is deferred to v2:
 
 | Dimension              | Pull (today)                         | Push (v2)                                     |
 | ---------------------- | ------------------------------------ | --------------------------------------------- |
-| Operator infra         | None — `connector-sync` on a timer   | Public HTTPS endpoint + signature verification |
+| Operator infra         | None, `connector-sync` on a timer    | Public HTTPS endpoint + signature verification |
 | Latency                | Up to one polling interval           | Seconds                                       |
 | Volume                 | Bounded by `page_size` per poll      | Unbounded; needs back-pressure                |
 | Failure mode           | Retry on next tick, idempotent       | Webhook receiver must dedup + retry           |
 | Setup friction         | Drop a YAML entry, set env var       | Each source's webhook config + HMAC secret    |
-| Fits single-operator   | Yes — local box can poll on a timer  | Needs a publicly reachable address            |
+| Fits single-operator   | Yes, local box can poll on a timer   | Needs a publicly reachable address            |
 
 The pull-mode design ships value today on a single box. Push-mode is on
 the roadmap once Alfred has a daemon worth pointing webhooks at.
@@ -123,7 +123,7 @@ export SENTRY_AUTH_TOKEN=sntrys_xxxxxxxxxxxxxxxxxxxxxxxx
 ### Run
 
 ```sh
-# Dry-run the full pipe — narrates would-be `gh issue create` calls,
+# Dry-run the full pipe (narrates would-be `gh issue create` calls),
 # updates the seen-cache so a subsequent live run won't re-fire.
 ./bin/connector-sync.py --dry-run
 
@@ -190,7 +190,7 @@ parent-issue traversal, or richer routing, write a separate
 - **API keys are env-only**. No file storage. Connectors refuse to load
   an inline value.
 - **Zero new third-party deps**. The reference connectors use stdlib
-  `urllib.request`. PyYAML is *optional* — `connector-sync` falls back
+  `urllib.request`. PyYAML is *optional*: `connector-sync` falls back
   to a small handwritten YAML subset when it is not installed.
 - **Dedup is per-connector** on `source_id`. The runner skips already-seen
   drafts before any `gh` call.

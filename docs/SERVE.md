@@ -214,7 +214,7 @@ through JSON endpoints:
 GET /api/status
 GET /api/actions
 GET /api/usage             # served; backs the desktop capacity rail
-GET /api/usage/providers   # ships in an upcoming release; not served yet
+GET /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
 GET /api/plans?limit=50
@@ -244,10 +244,9 @@ subscription). A provider whose local state cannot be read degrades to
 CLI does not persist reads as not synced rather than a fabricated number. Reads
 run in a worker thread so filesystem work never stalls the event loop.
 
-`GET /api/usage/providers` and the `alfred usage` CLI ship in an upcoming
-release; the per-provider endpoint is not served by `alfred serve` yet. The same
-usage numbers will also be available from the command line with `alfred usage`
-(see [`CLI.md`](CLI.md)).
+`GET /api/usage/providers` is served by `alfred serve` (a flat per-engine
+re-projection of `/api/usage`), and the same usage numbers are available from the
+command line with `alfred usage` (see [`CLI.md`](CLI.md)).
 
 The follow-up action
 endpoints are local-file actions only: they convert captured feedback into a

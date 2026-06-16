@@ -61,8 +61,8 @@ while still giving the native client a clean draft inbox.
 
 ## Design direction
 
-Use the Alfred brand system: Space Grotesk for display, Quicksand for UI text,
-mono only for ids and commands. The interface should feel like a calm local
+Use the Alfred brand system: Instrument Sans for display, Quicksand for UI text,
+Fragment Mono only for ids and commands. The interface should feel like a calm local
 cockpit: compact, direct, high contrast, and friendly enough for a user who
 does not want to tail logs.
 

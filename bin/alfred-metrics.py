@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""``alfred-metrics`` — weekly per-agent firings/cost/turns/tool-use roll-up.
+"""``alfred-metrics``: weekly per-agent firings/cost/turns/tool-use roll-up.
 
 Reads three on-disk state directories under ``$ALFRED_STATE_DIR``
 (default ``$ALFRED_HOME/state``, default ``~/.alfred/state``):
 
-* ``<codename>/spend-YYYY-MM-DD.json`` — per-day SpendState files
-* ``transcripts/<codename>/<YYYY-MM>/*.jsonl`` — stream-JSON firings
-* ``codex/<codename>/<YYYY-MM>/*.stdout.txt`` — Codex run stdout dumps
+* ``<codename>/spend-YYYY-MM-DD.json``: per-day SpendState files
+* ``transcripts/<codename>/<YYYY-MM>/*.jsonl``: stream-JSON firings
+* ``codex/<codename>/<YYYY-MM>/*.stdout.txt``: Codex run stdout dumps
 
 Answers the operator's recurring questions:
 
@@ -16,9 +16,9 @@ Answers the operator's recurring questions:
 * Which tools get spammed (pointing at prompt-tightening opportunities)?
 
 Exit codes:
-  0 — success
-  1 — user error (bad ``--since``, unknown codename)
-  2 — system error (state dir missing or unreadable)
+  0 success
+  1 user error (bad ``--since``, unknown codename)
+  2 system error (state dir missing or unreadable)
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ logger = logging.getLogger("alfred-metrics")
 def render_table(report: FleetReport) -> str:
     lines: list[str] = []
     ts = report.generated_at.strftime("%Y-%m-%d %H:%M UTC")
-    lines.append(f"alfred-metrics — last {report.days} days @ {ts}")
+    lines.append(f"alfred-metrics - last {report.days} days @ {ts}")
     lines.append("")
     header = (
         f"{'codename':<22} {'firings':<8} {'ok':<5} {'fail':<5} {'turns':<7} "
@@ -180,7 +180,7 @@ def render_by_day(report: FleetReport, state_dir: Path) -> str:
                 days_map[key]["cost"] += float(data.get("cost_usd_today") or 0)
 
     lines = [
-        f"alfred-metrics --by-day — last {report.days} days",
+        f"alfred-metrics --by-day - last {report.days} days",
         "",
         f"{'date':<12} {'firings':<8} {'ok':<5} {'fail':<5} {'turns':<7} {'cost':<8}",
         "-" * 50,
@@ -199,7 +199,7 @@ def render_by_day(report: FleetReport, state_dir: Path) -> str:
 
 def render_json(report: FleetReport) -> str:
     payload = report.to_dict()
-    # Drop empty rows in JSON too — matches the table behaviour.
+    # Drop empty rows in JSON too, matching the table behaviour.
     payload["metrics"] = [
         m for m in payload["metrics"] if m["spend"]["firings"] or m["tool_calls_total"]
     ]
@@ -282,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         known = set(discover_codenames(state_dir))
         unknown = [c for c in args.codename if c not in known]
         if unknown and not known:
-            # State dir has nothing yet; still try — empty rows will surface.
+            # State dir has nothing yet; still try, empty rows will surface.
             logger.debug("no codenames discovered under %s", state_dir)
         elif unknown:
             print(
