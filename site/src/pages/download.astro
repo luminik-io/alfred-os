@@ -19,12 +19,13 @@ import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 
 const REPO = "https://github.com/luminik-io/alfred-os";
 const RELEASE_TAG = "v0.5.0";
+const RELEASE_VERSION = RELEASE_TAG.replace(/^v/, "");
 const RELEASE = `${REPO}/releases/tag/${RELEASE_TAG}`;
 const RELEASE_DOWNLOADS = `${REPO}/releases/download/${RELEASE_TAG}`;
 const MAC_DMG = `${RELEASE_DOWNLOADS}/Alfred.dmg`;
 const MAC_APP_ZIP = `${RELEASE_DOWNLOADS}/Alfred.app.zip`;
-const LINUX_APPIMAGE = `${RELEASE_DOWNLOADS}/Alfred_0.5.0_amd64.AppImage`;
-const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred_0.5.0_amd64.deb`;
+const LINUX_APPIMAGE = `${RELEASE_DOWNLOADS}/Alfred_${RELEASE_VERSION}_amd64.AppImage`;
+const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred_${RELEASE_VERSION}_amd64.deb`;
 ---
 
 <MarketingLayout
