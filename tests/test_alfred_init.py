@@ -20,6 +20,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -362,7 +363,13 @@ def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_pat
     # and NEVER claims telemetry was left off. (The standing notes legitimately
     # mention the default being OFF, so we assert on the status wording.)
     assert "opted IN" in out
-    assert "worker.example.com" in out
+    # The printed endpoint label is the exact, token-safe scheme://host/path. We
+    # assert the full label string (not a bare-host substring) and confirm its
+    # parsed host so the check is structural, never URL-substring sanitization.
+    expected_label = init_mod.telemetry_endpoint_label("https://worker.example.com/ingest")
+    assert expected_label == "https://worker.example.com/ingest"
+    assert expected_label in out
+    assert urllib.parse.urlsplit(expected_label).hostname == "worker.example.com"
     assert "left OFF" not in out
     assert "stays OFF" not in out
     # And the status is consistent with the generated config: enable var set and
@@ -387,7 +394,20 @@ def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_p
     init_mod.step_8b_telemetry(state, non_interactive=True)
     out = capsys.readouterr().out
     assert "opted IN" in out
-    assert "worker.example.com" in out
+    # The label must keep the host but strip every secret. Assert structurally on
+    # the parsed label (host present, no userinfo, empty query) rather than a
+    # bare-host substring check, and confirm the label appears verbatim in the
+    # status. Then assert the raw secrets are absent from the whole output.
+    label = init_mod.telemetry_endpoint_label(
+        "https://user:s3cret@worker.example.com/ingest?token=topsecret"
+    )
+    parsed = urllib.parse.urlsplit(label)
+    assert parsed.hostname == "worker.example.com"
+    assert parsed.username is None
+    assert parsed.password is None
+    assert parsed.query == ""
+    assert label == "https://worker.example.com/ingest"
+    assert label in out
     assert "topsecret" not in out
     assert "s3cret" not in out
 
