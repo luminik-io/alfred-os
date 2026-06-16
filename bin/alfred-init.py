@@ -295,7 +295,7 @@ def telemetry_endpoint_label(url: str) -> str:
     try:
         parts = urllib.parse.urlsplit(url)
     except ValueError:
-        return url
+        return telemetry_url_fallback_label(url)
     host = parts.hostname or ""
     if parts.scheme and host:
         try:
@@ -304,7 +304,25 @@ def telemetry_endpoint_label(url: str) -> str:
             parsed_port = None
         port = f":{parsed_port}" if parsed_port else ""
         return f"{parts.scheme}://{host}{port}{parts.path}"
-    return host or url
+    return host or telemetry_url_fallback_label(url)
+
+
+def telemetry_url_fallback_label(url: str) -> str:
+    """Best-effort token-safe label when a telemetry URL is malformed.
+
+    ``urlsplit`` can fail or parse without a hostname for malformed operator
+    input. The status line still must not echo shared secrets, so strip query,
+    fragment, and userinfo with simple delimiter rules that do not re-parse the
+    bad URL.
+    """
+    label = url.split("?", 1)[0].split("#", 1)[0]
+    if "@" not in label:
+        return label
+    before, after = label.rsplit("@", 1)
+    if "://" in before:
+        scheme = before.split("://", 1)[0]
+        return f"{scheme}://{after}"
+    return after
 
 
 # ---------------------------------------------------------------------------
