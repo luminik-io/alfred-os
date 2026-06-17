@@ -49,11 +49,11 @@ The core tabs are:
 
 | Tab | Job |
 |---|---|
-| Home | See the decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent runs, and fleet-wide pause/resume actions. |
-| Compose | Draft or refine work, open Slack thread context, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
-| Fleet | Inspect status, run safe dry-runs, pause, resume, and run agents once. |
-| Logs | Read notifications and firing timelines, including summaries, engine context, worktree path, issue links, and PR links. |
-| Setup gear | Start the local runtime and run fleet/auth/agent/memory/Redis checks in the command console. |
+| Inbox | See the decision queue, repeated failures, blocked plans, follow-ups, memory candidates, recent runs, shipped work, and capacity rail. |
+| Ask | Draft or refine work, open Slack thread context, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
+| Work | Manage queued work, active work, shipped cards, saved plans, and issue queue controls. |
+| Agents | Inspect roster state, activity, latest runs, memory candidates, safe dry-runs, pause, resume, and run-once actions. |
+| Setup | Start the local runtime and run fleet/auth/agent/memory/Slack checks in the command console. |
 
 Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail

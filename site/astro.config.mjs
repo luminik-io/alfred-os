@@ -267,6 +267,7 @@ export default defineConfig({
     mermaid({
       theme: "default",
       autoTheme: true,
+      enableLog: false,
       // astro-mermaid swaps only the `theme` name (default/dark) on the
       // light/dark toggle; any themeVariables here apply to BOTH themes.
       // Keep only theme-neutral values: lineColor reads fine on light and

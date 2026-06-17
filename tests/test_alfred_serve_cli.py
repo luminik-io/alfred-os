@@ -18,6 +18,28 @@ def load_cli_module():
     return module
 
 
+def load_serve_module():
+    loader = importlib.machinery.SourceFileLoader(
+        "alfred_serve_for_test",
+        str(ROOT / "bin/alfred-serve.py"),
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def test_serve_parser_defaults_to_desktop_port():
+    serve = load_serve_module()
+
+    args = serve._build_parser().parse_args(["--no-browser"])
+
+    assert args.host == "127.0.0.1"
+    assert args.port == 7010
+    assert args.no_browser is True
+
+
 def test_serve_forwards_supported_server_args(monkeypatch):
     cli = load_cli_module()
     calls = []

@@ -243,8 +243,8 @@ Runs the localhost dashboard over fleet state, reliability governor actions,
 recent firings, saved Alfred plans, and local Planning drafts.
 
 ```sh
-alfred serve --port 7000
-alfred serve --port 7000 --no-browser
+alfred serve --port 7010
+alfred serve --port 7010 --no-browser
 ```
 
 ## `alfred labels`

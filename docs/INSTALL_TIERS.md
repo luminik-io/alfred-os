@@ -36,10 +36,14 @@ claude
 
 ```sh
 pip install 'alfred-os[serve]'   # FastAPI + uvicorn + jinja2
-alfred serve --no-browser        # listens on http://127.0.0.1:7000
+alfred serve --no-browser        # listens on http://127.0.0.1:7010
 ```
 
-If port 7000 is taken, use `alfred serve --port 7010 --no-browser`. Binding to `0.0.0.0` is allowed but discouraged: the dashboard exposes paths and event payloads that may carry repo URLs or other operator context. The fleet runs fine without `serve` ever starting; it is only needed when you want the dashboard or the desktop client.
+If port 7010 is taken, use another localhost port and point the desktop client
+at it from Setup. Binding to `0.0.0.0` is allowed but discouraged: the dashboard
+exposes paths and event payloads that may carry repo URLs or other operator
+context. The fleet runs fine without `serve` ever starting; it is only needed
+when you want the dashboard or the desktop client.
 
 ## `client`: the desktop control plane
 
@@ -48,13 +52,13 @@ The desktop client is an optional Tauri app under `clients/desktop`. It is a thi
 It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. You can run Alfred entirely without it.
 
 ```sh
-alfred serve --no-browser       # or let the Setup gear start it for you
+alfred serve --port 7010 --no-browser       # or let Setup start it for you
 cd clients/desktop
 npm install
 npm run tauri dev
 ```
 
-Home opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Fleet defaults to a cinematic agent roster with a list toggle. The Setup gear can start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, and dry-run an agent through a narrow allowlist. Fleet controls handle pause, resume, and run-once actions through the same native boundary. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
+Inbox opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Agents defaults to a cinematic roster with a list toggle. Setup can start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, and dry-run an agent through a narrow allowlist. Agents controls handle pause, resume, and run-once actions through the same native boundary. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
 
 ## `slack`: the planning surface
 

@@ -245,31 +245,32 @@ function FleetStatus({
 }) {
   const offline = Boolean(error);
   const health = snapshot?.status.reliability.status || "checking";
-  const text = offline ? "Offline" : health === "ok" ? "Live" : titleCase(health);
+  const text = offline ? "Offline" : health === "ok" ? "Live" : health === "checking" ? "Checking" : "Needs attention";
+  const title =
+    offline
+      ? "Alfred serve offline"
+      : health === "ok"
+        ? "Agents live"
+        : health === "checking"
+          ? "Agents checking"
+          : "Agents need attention";
   const variant = offline ? "destructive" : health === "ok" ? "secondary" : "outline";
+  const dot =
+    offline
+      ? "bg-destructive"
+      : health === "ok"
+        ? "bg-primary"
+        : health === "checking"
+          ? "bg-muted-foreground"
+          : "bg-[var(--warn)]";
   return (
     <Badge
       variant={variant}
       className={compact ? "h-6 gap-1.5 px-2" : "h-7 gap-1.5 px-2"}
-      title={offline ? "Alfred serve offline" : `Agents ${text.toLowerCase()}`}
+      title={title}
     >
-      <span
-        className={
-          offline
-            ? "size-1.5 rounded-full bg-destructive"
-            : "size-1.5 rounded-full bg-emerald-500"
-        }
-        aria-hidden="true"
-      />
+      <span className={`size-1.5 rounded-full ${dot}`} aria-hidden="true" />
       {text}
     </Badge>
   );
-}
-
-function titleCase(value: string): string {
-  return value
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
 }

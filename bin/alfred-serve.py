@@ -8,7 +8,7 @@ ships fleet, firing, plan, and planning views.
 Usage::
 
     python bin/alfred-serve.py
-    python bin/alfred-serve.py --port 7000
+    python bin/alfred-serve.py --port 7010
     python bin/alfred-serve.py --host 0.0.0.0 --port 9000 --no-browser
 
 Fleet views are read-only. The planning helper can save draft issue/spec
@@ -53,8 +53,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--port",
         type=int,
-        default=7000,
-        help="bind port (default: 7000)",
+        default=7010,
+        help="bind port (default: 7010)",
     )
     p.add_argument(
         "--no-browser",

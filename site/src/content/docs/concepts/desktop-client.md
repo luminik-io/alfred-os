@@ -20,7 +20,7 @@ Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/lumi
 ```mermaid
 flowchart TB
     subgraph client["desktop client (clients/desktop, Tauri)"]
-        ui["React UI tabs:<br/>Home / Compose / Plans / Memory / Fleet / Logs<br/>Setup gear"]
+        ui["React UI tabs:<br/>Inbox / Ask / Work / Agents / Setup"]
         native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, memory, redis,<br/>safe dry-run"]
     end
 
@@ -47,13 +47,11 @@ flowchart TB
 
 | Tab | Job |
 |---|---|
-| Home | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent plans, recent runs, and fleet-wide pause/resume actions. |
-| Compose | Plain-language planning intake backed by the same readiness engine as Slack. |
-| Plans | Saved Batman plans, Slack drafts, local compose drafts, captured follow-ups, and an in-app inspector for saved plan detail. |
-| Memory | Reviewable memory candidates, promotion suggestions, memory errors, Redis status, Redis sync preview, and failure-pattern harvest. |
-| Fleet | Per-agent service state, safe dry-runs, pause, resume, and run-once actions. |
-| Logs | Notifications and firing timelines, including engine context, worktree path, issue links, PR links, and in-app firing traces. |
-| Setup gear | Start or reconnect to the local runtime and run fleet/auth/agent/memory/Redis checks in-app. |
+| Inbox | The decision queue: repeated failures, blocked plans, follow-ups, memory candidates, recent runs, shipped work, and the Claude/Codex capacity rail. |
+| Ask | Plain-language planning intake backed by the same readiness engine as Slack. |
+| Work | Kanban board, saved plans, Slack follow-ups, local draft actions, and issue queue controls. |
+| Agents | Roster, activity feed, latest-run inspector, memory learning queue, and safe per-agent controls. |
+| Setup | Start or reconnect to the local runtime and run fleet/auth/agent/memory/Slack checks in-app. |
 
 ## Boundary
 
@@ -80,8 +78,9 @@ npm install
 npm run tauri dev
 ```
 
-The app probes `7010` first and falls back to `7000` for older local runtimes;
-Setup lets you enter a custom localhost URL when needed.
+The app uses `7010` because macOS can reserve `7000` for Control Center.
+Legacy saved `7000` URLs are treated as stale local configuration and rewritten
+to 7010. Setup lets you enter a custom localhost URL when needed.
 
 ## Native installers
 

@@ -36,7 +36,6 @@ import type {
 } from "./types";
 
 export const DEFAULT_BASE_URL = "http://127.0.0.1:7010";
-export const FALLBACK_BASE_URL = "http://127.0.0.1:7000";
 const BASE_URL_KEY = "alfred-desktop.base-url";
 const DEV_BASE_URL = import.meta.env.VITE_ALFRED_BASE_URL?.trim();
 
@@ -141,6 +140,9 @@ function humanizeTransportError(err: unknown): string {
 
 export function clientBaseUrl(value?: string | null): string {
   const trimmed = value?.trim() || DEFAULT_BASE_URL;
+  if (isLegacyAirPlayPort(trimmed)) {
+    return DEFAULT_BASE_URL;
+  }
   if (shouldNormalizeDevPreviewBaseUrl(trimmed)) {
     return DEFAULT_BASE_URL;
   }
@@ -159,10 +161,7 @@ export function alternateDefaultBaseUrl(value: string): string | null {
   try {
     const normalized = normalizedBaseUrl(value);
     if (normalized === `${DEFAULT_BASE_URL}/`) {
-      return FALLBACK_BASE_URL;
-    }
-    if (normalized === `${FALLBACK_BASE_URL}/`) {
-      return DEFAULT_BASE_URL;
+      return null;
     }
     const parsed = new URL(normalized);
     if (["127.0.0.1", "localhost", "::1"].includes(parsed.hostname)) {
@@ -171,8 +170,7 @@ export function alternateDefaultBaseUrl(value: string): string | null {
     return null;
   } catch {
     const trimmed = value.trim();
-    if (trimmed === DEFAULT_BASE_URL) return FALLBACK_BASE_URL;
-    if (trimmed === FALLBACK_BASE_URL) return DEFAULT_BASE_URL;
+    if (trimmed === DEFAULT_BASE_URL) return null;
     if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/?$/i.test(trimmed)) {
       return DEFAULT_BASE_URL;
     }
@@ -784,9 +782,10 @@ export async function setTrayStatus(
 }
 
 async function readAlfredJson<T>(baseUrl: string, path: string): Promise<T> {
+  const resolvedBaseUrl = clientBaseUrl(baseUrl);
   const text = isTauri()
-    ? await invokeAlfredJson("fetch_alfred_json", { baseUrl, path })
-    : await browserFetch(baseUrl, path, "GET");
+    ? await invokeAlfredJson("fetch_alfred_json", { baseUrl: resolvedBaseUrl, path })
+    : await browserFetch(resolvedBaseUrl, path, "GET");
   return JSON.parse(text) as T;
 }
 
@@ -803,10 +802,11 @@ async function writeAlfredJson<T>(
   if (signal?.aborted) {
     throw new DOMException("Aborted", "AbortError");
   }
+  const resolvedBaseUrl = clientBaseUrl(baseUrl);
   const payload = body === undefined ? undefined : JSON.stringify(body);
   const text = isTauri()
-    ? await invokeAlfredJson("post_alfred_json", { baseUrl, path, body: payload })
-    : await browserFetch(baseUrl, path, "POST", payload, signal);
+    ? await invokeAlfredJson("post_alfred_json", { baseUrl: resolvedBaseUrl, path, body: payload })
+    : await browserFetch(resolvedBaseUrl, path, "POST", payload, signal);
   return JSON.parse(text) as T;
 }
 
@@ -859,7 +859,7 @@ async function browserFetch(
 }
 
 function normalizedBaseUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
+  const url = new URL(isLegacyAirPlayPort(baseUrl) ? DEFAULT_BASE_URL : baseUrl);
   url.pathname = "/";
   url.search = "";
   url.hash = "";
@@ -885,6 +885,15 @@ function shouldNormalizeDevPreviewBaseUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return isLocalAlfredUrl(url);
+  } catch {
+    return false;
+  }
+}
+
+function isLegacyAirPlayPort(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return isLocalAlfredUrl(url) && url.port === "7000";
   } catch {
     return false;
   }

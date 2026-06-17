@@ -39,9 +39,9 @@ Alfred with or without the client.
 
 ## Information Architecture
 
-### Home
+### Inbox
 
-The first screen is a decision queue and local command center:
+Inbox is the first screen: a decision queue and local command center.
 
 - fleet health
 - Claude and Codex subscription headroom on the Inbox capacity rail (backed by
@@ -58,9 +58,9 @@ The first screen is a decision queue and local command center:
 The top row should feel like an operations status strip, not a dashboard full
 of vanity metrics.
 
-### Compose
+### Ask
 
-Compose owns plain-language intake and the planning inbox. Plan cards show:
+Ask owns plain-language intake and the planning inbox. Plan cards show:
 
 - parent issue and Slack thread
 - readiness verdict
@@ -81,9 +81,9 @@ approval thread. A planned single-repo issue lands behind an operator-approval
 gate (`agent:plan-pending-approval`) and is held from autonomous pickup until
 the operator approves it, so nothing single-repo ships without a go-ahead.
 
-### Fleet
+### Agents
 
-Fleet controls are the operational surface. The agent roster is the default
+Agents is the operational surface. The agent roster is the default
 view: a cinematic deck of themed agent cards, each carrying the agent's accent,
 status, cadence, runs-today, latest signal, and a monogram. A Cinematic / List
 toggle (persisted to local storage) switches to a dense list when you want
@@ -189,7 +189,7 @@ Local fleet healthy · 15 agents · 4 approvals waiting
 [Needs repair]   Huntress browser     Pause Huntress
 [Memory]         3 candidates         Run memory check
 
-Tabs: Home · Compose · Fleet · Logs · Setup gear
+Tabs: Inbox · Ask · Work · Agents · Setup
 ```
 
 Interaction rules:
@@ -217,19 +217,18 @@ The shipped client lives at `clients/desktop`:
   `/api/firings`, `/api/plans`, compose-draft, and follow-up action contracts.
 - Local plan and firing details stay in native inspector panes; only explicit
   Slack and GitHub links open outside the app.
-- The app opens to Home and has Home, Compose, Plans, Memory, Fleet, and Logs
-  tabs, with Setup behind the gear.
+- The app opens to Inbox and has Inbox, Ask, Work, Agents, and Setup surfaces.
 - Releases publish a signed and notarized macOS DMG plus app zip, and Linux
   AppImage and Debian artifacts. Local `npm run tauri -- build` still produces
   host-native bundles for inspection.
-- Home shows the decision queue, the Claude and Codex capacity rail (backed by
+- Inbox shows the decision queue, the Claude and Codex capacity rail (backed by
   the live `GET /api/usage` endpoint), recent plans, recent runs,
   memory candidates, and fleet-wide pause/resume actions.
-- Fleet defaults to the cinematic agent roster with a Cinematic / List toggle
+- Agents defaults to the cinematic agent roster with a Cinematic / List toggle
   persisted to local storage.
-- Compose combines plain-language planning intake with saved plans and
+- Ask combines plain-language planning intake with saved plans and
   follow-ups.
-- Logs combines in-app notifications and firing timelines.
+- Agents Activity combines in-app notifications and firing timelines.
 - Follow-up plan cards can call the local `Plan next pass` and `Mark handled`
   endpoints. These actions only move local follow-up files or create local
   planning drafts.
@@ -253,8 +252,8 @@ npm run tauri dev
 ```
 
 The Setup gear can start `alfred serve --port 7010 --no-browser` for you. The
-app prefers 7010 because macOS can reserve 7000 for Control Center; if you
-manually run the CLI default on 7000, the app probes that as a fallback.
+app uses 7010 because macOS can reserve 7000 for Control Center. Legacy saved
+`7000` URLs are treated as stale local configuration and rewritten to 7010.
 
 ## API Shape To Stabilize Next
 
@@ -333,7 +332,7 @@ Distribution sequence:
 
 1. `alfred serve` read APIs plus local follow-up action contracts with tests.
    Done.
-2. Tauri shell with Home, Compose, Plans, Memory, Fleet, Logs, Setup, safe
+2. Tauri shell with Inbox, Ask, Work, Agents, Setup, safe
    local follow-up actions, runtime launch, status, pause/resume/run controls,
    memory checks, candidate promote/reject, Redis status, Redis sync preview,
    failure-pattern harvest, and dry-run launch. Done.

@@ -55,11 +55,11 @@ Reliability, first-run trust polish, and the first packaged native client.
   remains operator-only.
 - Native local client: `clients/desktop` ships a Tauri Mac/Linux shell
   over the local Alfred runtime. It opens to "what needs attention?", shows
-  Home, Compose, Plans, Memory, Fleet, Logs, and Setup gear surfaces, keeps
-  local plan/run details inside native inspector panes, uses responsive
-  icon/tab navigation instead of horizontal menu scrolling, opens only explicit
-  Slack/GitHub links outside the app, can start or reconnect to the local
-  runtime, run safe dry-runs and memory checks, pause/resume/run agents through
+  Inbox, Ask, Work, Agents, and Setup surfaces, keeps local plan/run details
+  inside native inspector panes, uses responsive icon/tab navigation instead of
+  horizontal menu scrolling, opens only explicit Slack/GitHub links outside the
+  app, can start or reconnect to the local runtime, run safe dry-runs and memory
+  checks, pause/resume/run agents through
   the native allowlist, promote or reject local memory candidates through
   `alfred serve`, preview Redis AMS sync, queue failure-pattern memories, and
   can convert trusted follow-ups into planning drafts or mark them handled

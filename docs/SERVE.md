@@ -42,7 +42,7 @@ Defaults:
 | flag           | default       | meaning                                                       |
 | -------------- | ------------- | ------------------------------------------------------------- |
 | `--host`       | `127.0.0.1`   | bind address. Use `0.0.0.0` only on a trusted LAN.            |
-| `--port`       | `7000`        | bind port.                                                    |
+| `--port`       | `7010`        | bind port.                                                    |
 | `--no-browser` | off           | skip the auto-open browser tab on localhost binds.            |
 | `--log-level`  | `info`        | uvicorn log level (`debug` / `info` / `warning` / `error`).   |
 
