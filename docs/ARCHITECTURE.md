@@ -195,7 +195,7 @@ Code: `clients/desktop/src/` (React UI, `api.ts`, `types.ts`), `clients/desktop/
 ```mermaid
 flowchart TB
     subgraph client["desktop client (clients/desktop, Tauri)"]
-        ui["React UI tabs:<br/>Home / Compose / Fleet / Logs<br/>Setup gear"]
+        ui["React UI tabs:<br/>Inbox / Ask / Work / Agents / Setup"]
         native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, brain doctor, redis,<br/>safe dry-run"]
     end
 

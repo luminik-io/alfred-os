@@ -15,7 +15,7 @@ import type {
 // vi.mock is hoisted above module init, so the mocks and constants the factory
 // needs are declared via vi.hoisted.
 const DEFAULT_BASE_URL = "http://127.0.0.1:7010";
-const FALLBACK_BASE_URL = "http://127.0.0.1:7000";
+const LEGACY_AIRPLAY_BASE_URL = "http://127.0.0.1:7000";
 
 const hooks = vi.hoisted(() => ({
   loadSnapshotMock: vi.fn(),
@@ -26,7 +26,7 @@ const hooks = vi.hoisted(() => ({
   decidePlanMock: vi.fn(),
   filePlanIssueMock: vi.fn(),
   DEFAULT_BASE_URL: "http://127.0.0.1:7010",
-  FALLBACK_BASE_URL: "http://127.0.0.1:7000",
+  LEGACY_AIRPLAY_BASE_URL: "http://127.0.0.1:7000",
 }));
 
 const loadSnapshotMock = hooks.loadSnapshotMock as ReturnType<
@@ -44,13 +44,15 @@ const runNativeActionMock = hooks.runNativeActionMock as ReturnType<
 const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
 
 vi.mock("../api", () => ({
-  FALLBACK_BASE_URL: hooks.FALLBACK_BASE_URL,
   initialBaseUrl: () => hooks.DEFAULT_BASE_URL,
-  clientBaseUrl: (value?: string | null) => value?.trim() || hooks.DEFAULT_BASE_URL,
+  clientBaseUrl: (value?: string | null) => {
+    const normalized = (value?.trim() || hooks.DEFAULT_BASE_URL).replace(/\/$/, "");
+    return normalized === hooks.LEGACY_AIRPLAY_BASE_URL ? hooks.DEFAULT_BASE_URL : normalized;
+  },
   alternateDefaultBaseUrl: (value: string) => {
     const normalized = value.trim().replace(/\/$/, "");
-    if (normalized === hooks.DEFAULT_BASE_URL) return hooks.FALLBACK_BASE_URL;
-    if (normalized === hooks.FALLBACK_BASE_URL) return hooks.DEFAULT_BASE_URL;
+    if (normalized === hooks.DEFAULT_BASE_URL) return null;
+    if (normalized === hooks.LEGACY_AIRPLAY_BASE_URL) return null;
     if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(normalized)) {
       return hooks.DEFAULT_BASE_URL;
     }
@@ -207,46 +209,37 @@ describe("useAlfred refresh race", () => {
   });
 });
 
-describe("useAlfred fallback port", () => {
-  it("retries on 7000 when the preferred 7010 endpoint fails", async () => {
-    // Initial mount refresh: default rejects, fallback resolves.
-    loadSnapshotMock.mockImplementation(async (baseUrl: string) => {
-      if (baseUrl === DEFAULT_BASE_URL) {
-        throw new Error("connection refused");
-      }
-      return snapshot([agent("bane")]);
-    });
+describe("useAlfred legacy local port", () => {
+  it("does not retry on 7000 when the preferred 7010 endpoint fails", async () => {
+    loadSnapshotMock.mockRejectedValue(new Error("connection refused"));
 
     const { result } = renderHook(() => useAlfred());
 
-    await waitFor(() => expect(result.current.baseUrl).toBe(FALLBACK_BASE_URL));
-    expect(result.current.error).toBeNull();
+    await waitFor(() => expect(result.current.error).toMatch(/connection refused/i));
+    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
-    expect(loadSnapshotMock).toHaveBeenCalledWith(FALLBACK_BASE_URL);
-    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(FALLBACK_BASE_URL);
+    expect(loadSnapshotMock).not.toHaveBeenCalledWith(LEGACY_AIRPLAY_BASE_URL);
+    expect(rememberBaseUrlMock).not.toHaveBeenCalledWith(LEGACY_AIRPLAY_BASE_URL);
   });
 
-  it("tries preferred 7010 when a saved legacy 7000 endpoint fails", async () => {
+  it("normalizes a saved legacy 7000 endpoint before fetching", async () => {
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
 
     const { result } = renderHook(() => useAlfred());
     await waitFor(() => expect(result.current.snapshot).not.toBeNull());
 
-    loadSnapshotMock.mockImplementation(async (baseUrl: string) => {
-      if (baseUrl === FALLBACK_BASE_URL) {
-        throw new Error("connection refused");
-      }
-      return snapshot([agent("lucius")]);
-    });
+    loadSnapshotMock.mockClear();
+    rememberBaseUrlMock.mockClear();
+    loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("lucius")]));
 
     await act(async () => {
-      await result.current.refresh(FALLBACK_BASE_URL);
+      await result.current.refresh(LEGACY_AIRPLAY_BASE_URL);
     });
 
     expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(result.current.error).toBeNull();
-    expect(loadSnapshotMock).toHaveBeenCalledWith(FALLBACK_BASE_URL);
     expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
+    expect(loadSnapshotMock).not.toHaveBeenCalledWith(LEGACY_AIRPLAY_BASE_URL);
     expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
   });
 

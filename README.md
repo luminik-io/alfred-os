@@ -406,12 +406,13 @@ labeled GitHub issue, fleet-brain reliability and memory tooling, one-command
 setup-token bootstrap, and SEO plus consent-gated analytics on the site. See
 [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
-The native app has Home, Compose, Plans, Memory, Fleet, Logs, and Setup surfaces
-for local trust and repair. Its Home view carries a Claude and Codex usage rail
+The native app has Inbox, Ask, Work, Agents, and Setup surfaces
+for local trust and repair. Its Inbox view carries a Claude and Codex usage rail
 (real subscription usage, read from the engines' own local CLI state with no
 billing API, backed by the live `GET /api/usage` endpoint, with the same data
-also available from the `alfred usage` CLI) and a cinematic agent roster with a list
-toggle. Runs emit step-level events so the timeline shows real progress, and any
+also available from the `alfred usage` CLI). Its Agents view has a cinematic
+roster with a list toggle. Runs emit step-level events so the timeline shows
+real progress, and any
 issue carrying the operator-approval gate label (`agent:plan-pending-approval`)
 is held from autonomous pickup until the operator approves it and the label
 clears. Slack remains the primary collaboration surface.

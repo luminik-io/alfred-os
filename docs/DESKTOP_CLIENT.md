@@ -8,17 +8,15 @@ For the design rationale and the Slack boundary, see [`NATIVE_CLIENT.md`](NATIVE
 
 ## The control surface
 
-The app is a Tauri shell around a React UI. It opens on Home and keeps primary navigation to the everyday work surfaces. Setup lives behind the gear because it is a repair surface, not an everyday tab:
+The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary navigation to five everyday work surfaces:
 
 | Tab | What it shows | What it can do |
 |---|---|---|
-| **Home** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the Inbox capacity rail for Claude and Codex subscription headroom (backed by the live `GET /api/usage` endpoint). | Draft work, refresh state, pause or resume all scheduled firings through the native allowlist, and jump to the right surface. |
-| **Compose** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
-| **Plans** | Saved Batman plans, Slack drafts, local compose drafts, and captured follow-ups. | Convert a follow-up into a planning draft, mark it handled, or inspect the saved detail in-app. |
-| **Memory** | Reviewable memory candidates, promotion suggestions, memory errors, Redis status, Redis sync preview, and failure-pattern harvest. | Promote or reject candidates, run the memory doctor, check Redis AMS, preview sync, and queue repeated-failure lessons. |
-| **Fleet** | The agent roster (cinematic deck by default, with a Cinematic / List toggle persisted to local storage), service state, and per-agent controls. | Pause, resume, run once, or dry-run a codename through the native allowlist. |
-| **Logs** | Notifications and firing timelines in one readable stream. | Mark activity seen, inspect firing traces in-app, and open explicit Slack or GitHub links outside the app. |
-| **Setup gear** | A command console for fleet, auth, agent, memory, Redis, runtime, and Slack collaborator checks. | Start the local runtime, run curated checks in-app, and add or remove local trusted Slack collaborators. |
+| **Inbox** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the capacity rail for Claude and Codex subscription headroom (backed by the live `GET /api/usage` endpoint). | Draft work, refresh state, pause or resume scheduled firings through the native allowlist, and jump to the right surface. |
+| **Ask** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
+| **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
+| **Agents** | The agent roster, activity feed, latest-run inspector, and memory learning queue. | Pause, resume, run once, dry-run a codename, promote or reject memory candidates, and inspect firing traces. |
+| **Setup** | Guided repair and onboarding: runtime, auth, repos, labels, engine checks, Slack collaborators, and demo data. | Start the local runtime, run curated checks in-app, and add or remove local trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -44,14 +42,10 @@ Start the runtime from the Setup gear, or run the same port manually:
 alfred serve --port 7010 --no-browser
 ```
 
-The app probes `7010` first because macOS can reserve `7000` for Control Center.
-If you already have an older `alfred serve` running on `7000`, the app probes
-that as the legacy fallback and the Setup gear lets you point the client at a
-custom local URL.
-
-```sh
-alfred serve --no-browser
-```
+The app uses `7010` because macOS can reserve `7000` for Control Center.
+Legacy saved `7000` URLs are treated as stale local configuration and rewritten
+to 7010. Setup still lets you point the client at a custom localhost URL when
+needed.
 
 Then run the desktop shell:
 
@@ -61,7 +55,7 @@ npm install
 npm run tauri dev
 ```
 
-The client defaults to `http://127.0.0.1:7010` and falls back to `7000`.
+The client defaults to `http://127.0.0.1:7010`.
 
 ## Build native installers
 

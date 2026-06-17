@@ -58,12 +58,12 @@ It binds to `127.0.0.1` by default. Binding to `0.0.0.0` is allowed but discoura
 
 ## client: the desktop control plane
 
-The optional desktop client (Tauri, under `clients/desktop`) is a thin local control plane, not a second runtime. It is for trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet. Home shows the decision queue, Compose holds planning intake, Plans handles saved drafts and follow-ups, Memory reviews candidates, Fleet controls services, Logs collects activity, and the Setup gear handles repair checks.
+The optional desktop client (Tauri, under `clients/desktop`) is a thin local control plane, not a second runtime. It is for trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet. Inbox shows the decision queue, Ask holds planning intake, Work manages the queue and shipped board, Agents handles roster/activity/memory, and Setup handles repair checks.
 
 The client talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. No public port, no relay, no shadow database. You can run Alfred entirely without it.
 
 ```sh
-alfred serve --port 7010 --no-browser   # or let the Setup gear start it
+alfred serve --port 7010 --no-browser   # or let Setup start it
 cd clients/desktop
 npm install
 npm run tauri dev

@@ -89,7 +89,7 @@ stateDiagram-v2
 
 - The native client should favor in-app inspectors, queues, and action panes over
   links to local `alfred serve` pages.
-- The Home view should summarize decisions, not list every raw event.
+- The Inbox view should summarize decisions, not list every raw event.
 - Plans, runs, and memory candidates should be inspectable in-place.
 - External links should be explicit: GitHub, Slack, docs, or browser-only
   resources.

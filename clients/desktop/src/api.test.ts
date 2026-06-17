@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import {
   ApiError,
+  DEFAULT_BASE_URL,
   addTrustedSlackUser,
   alternateDefaultBaseUrl,
   clientBaseUrl,
@@ -41,6 +42,11 @@ const ENDPOINTS = {
 describe("base URL fallback", () => {
   afterEach(() => {
     window.localStorage.clear();
+  });
+
+  it("does not probe the legacy AirPlay port after the preferred port fails", () => {
+    expect(alternateDefaultBaseUrl("http://127.0.0.1:7010")).toBeNull();
+    expect(alternateDefaultBaseUrl("http://127.0.0.1:7000")).toBeNull();
   });
 
   it("recovers from stale localhost ports by trying the preferred Alfred serve port", () => {
@@ -200,6 +206,22 @@ afterEach(() => {
 });
 
 describe("loadSnapshot degradation", () => {
+  it("normalizes a legacy AirPlay port before native bridge requests", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    invokeMock.mockImplementation(async (_command: string, args: { baseUrl: string; path: string }) => {
+      expect(args.baseUrl).toBe(DEFAULT_BASE_URL);
+      return JSON.stringify(jsonFor(args.path));
+    });
+
+    const snap = await loadSnapshot("http://127.0.0.1:7000");
+
+    expect(snap.status.agents).toHaveLength(1);
+    expect(invokeMock).toHaveBeenCalledWith(
+      "fetch_alfred_json",
+      expect.objectContaining({ baseUrl: DEFAULT_BASE_URL, path: "/api/status" }),
+    );
+  });
+
   it("renders every section when all endpoints resolve", async () => {
     const snap = await loadSnapshot("http://127.0.0.1:7000");
     expect(snap.status.agents).toHaveLength(1);
