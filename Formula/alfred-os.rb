@@ -1,8 +1,8 @@
 class AlfredOs < Formula
   desc "Local agent OS for solo builders"
   homepage "https://alfred.luminik.io"
-  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.4.0.tar.gz"
-  sha256 "bc26a3f92bf3c167d994bad2c6e076c33a3f47cd6079017491bbd5bebfb393fd"
+  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.5.0.tar.gz"
+  sha256 "21f1af84121cf097e04806221a5934527001d4db6000457bdde65cc8ae8b88d2"
   license "MIT"
   head "https://github.com/luminik-io/alfred-os.git", branch: "main"
 

@@ -16,43 +16,62 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 ## Shipped
 
-### v0.4.1: unreleased
+### v0.5.0: 2026-06-17
 
-Reliability and first-run trust polish.
+Reliability, first-run trust polish, and the first packaged native client.
 
 - `alfred dry-run <codename>`: scheduler-free dry-run resolution for every shipped codename. Native dry-run runners execute with side effects stubbed; every other codename gets a safe no-side-effect simulation.
 - `fleet-github-poll.py` and `alfred github-poll`: local GitHub issue/PR polling into fleet-brain.
 - Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.
 - Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
 - Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
-- Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions.
+- Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions; `alfred brain harvest` turns those patterns into reviewable lesson candidates when the operator applies it.
 - Optional Redis AMS provider and sync: `ALFRED_MEMORY_PROVIDERS=fleet,redis` lets advanced operators test external semantic memory without changing the default local install; `alfred brain redis-status` and `alfred brain redis-sync` make the bridge inspectable and explicit.
-- Slack memory curation: `memory` reviews pending candidates and promotion
-  suggestions, `remember [repo:] <lesson>` and `memory remember ...` queue
-  candidates from conversation, and operator-only `memory promote <id>` /
-  `memory reject <id>` decide what enters future recall. `memory redis` and
-  `memory sync` keep Redis AMS explicit.
+- Slack memory curation: trusted users can run `memory` from Slack to review
+  pending candidates and promotion suggestions, `remember [repo:] <lesson>` to
+  stage a reviewable candidate from conversation, and operator-only
+  `memory promote <id>` / `memory reject <id>` to decide what enters recall.
+  `memory harvest` / `memory harvest now` handle repeated-failure candidates,
+  while `memory redis` and `memory sync` keep Redis AMS explicit rather than ambient.
 - Scheduled memory harvest: optional `memory-harvest.py` can run from
   launchd/systemd, queue repeated-failure candidates automatically, and notify
   Slack only when the operator has something to review.
 - Planning memory loop: the Planning tab recalls promoted repo lessons while drafting, embeds prompt-safe hints into saved specs, and proposes reviewable spec-to-issue memory candidates when a spec is saved.
 - `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.
-- Slack planning assistant: Batman approval threads and the local Planning tab now share `acceptance:`, `test:`, `add repo:`, `remove repo:`, and `question:` commands so operators can adjust plans before implementation. Repo add/remove replies are applied to execution scope before child issues or worktrees are created.
-- Slack follow-up loop: trusted replies after Batman reports or PR links are classified and carried as context for the next plan or PR pass without silently approving, merging, or changing code.
-- Slack planning listener: optional Socket Mode intake for trusted DMs, app
-  mentions, and registered Alfred threads. It writes local drafts and feedback
-  context without making chat text an approval mechanism.
-- Native local client preview: `clients/desktop` ships a Tauri Mac/Linux shell
-  over `alfred serve` JSON APIs. It opens to "what needs attention?", shows
+- Slack planning assistant: Batman approval threads and the local Planning tab now share `acceptance:`, `test:`, `add repo:`, `remove repo:`, and `question:` commands so operators can adjust plans before implementation. Repo add/remove replies are applied to execution scope before child issues or worktrees are created. Trusted Slack feedback users can shape plans without being able to approve them, and explicit `question:` feedback blocks execution until the plan is resolved. Registered plan-thread replies are also saved under `$ALFRED_HOME/state/plan-revisions/`, update the thread registry as `revised` or `needs_resolution`, and acknowledge the execution scope if approved now.
+- Slack follow-up loop: trusted replies after Batman reports or PR links are classified as `change`, `fix`, `test`, `question`, `scope`, or notes, acknowledged in-thread, saved under `$ALFRED_HOME/state/followups`, surfaced in Plans as `needs follow-up`, and can be converted into a local planning draft or marked handled without silently approving, merging, or changing code.
+- Slack planning inbox commands: trusted users can run `plans` and `plan <id>`
+  from Slack to inspect saved plans, drafts, and follow-ups. `draft <id>`
+  converts a captured follow-up into a local planning draft with readiness and
+  memory recall, while `handled <id>` archives it. Both remain local and never
+  approve execution.
+- Slack planning listener: optional Socket Mode listener for trusted DMs, app
+  mentions, and registered plan/report threads. It writes local planning drafts
+  and feedback context without making chat text an approval mechanism.
+- Slack trusted collaborators: operators can add or remove local Slack users
+  with `trust <@user>` / `untrust <@user>` or the desktop Setup gear. Trusted
+  collaborators can discuss plans and create drafts, while execution approval
+  remains operator-only.
+- Native local client: `clients/desktop` ships a Tauri Mac/Linux shell
+  over the local Alfred runtime. It opens to "what needs attention?", shows
   Home, Compose, Plans, Memory, Fleet, Logs, and Setup gear surfaces, keeps
-  local plan/run detail in native inspector panes, opens only explicit
-  Slack/GitHub links outside the app, supports responsive primary navigation,
-  and keeps Slack as the collaboration surface.
-- Goal contract design: Alfred-owned goals define outcome, verification,
-  constraints, gates, evidence, and blocked state across Slack, CLI, native
-  client, planner, evaluator, and memory. Engine-native goal modes are execution
-  hints, not the source of truth.
+  local plan/run details inside native inspector panes, uses responsive
+  icon/tab navigation instead of horizontal menu scrolling, opens only explicit
+  Slack/GitHub links outside the app, can start or reconnect to the local
+  runtime, run safe dry-runs and memory checks, pause/resume/run agents through
+  the native allowlist, promote or reject local memory candidates through
+  `alfred serve`, preview Redis AMS sync, queue failure-pattern memories, and
+  can convert trusted follow-ups into planning drafts or mark them handled
+  without bypassing Slack approval.
+- Signed desktop packages: the release pipeline publishes a signed and
+  notarized macOS DMG plus app zip, and Linux AppImage and Debian artifacts
+  under stable release asset names.
+- Goal contract design: `docs/GOALS.md` defines Alfred-owned durable goals
+  across Slack, CLI, native client, planner, evaluator, and memory. Engine
+  native goal modes can be used as execution hints, but Slack threads,
+  operator gates, and the evidence ledger remain Alfred-owned.
+- Plain intake mode: `ALFRED_INTAKE_PROFILE=plain` turns the planning assistant into a non-technical front door. A teammate can describe work in plain language; the assistant asks at most one or two plain questions, hides specs, scope, readiness scores, and PRs, and renders a "Here's what I'll do ... OK to go ahead?" plan framed around reviewing a preview. The same structured draft is built invisibly, so the downstream bridge and fleet are unchanged. Default (unset) stays technical. See [`docs/PLAIN_MODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/PLAIN_MODE.md).
 
 ### v0.4.0: 2026-05-23
 
@@ -87,7 +106,7 @@ Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Local client v2.** Keep Slack as the collaboration surface and build on the preview Tauri shell with signed Mac builds, Linux artifacts, setup checks, credentials, safe pause/resume, dry-run launch, doctor execution, memory promotion actions, and a first-class Goals inbox/evidence inspector. No extra gateway, no local mirror, no second source of truth. IC: core. Effort: M. Issue: TBD.
+- **Local client v2.** Keep Slack as the collaboration surface and build on the packaged Tauri shell with deeper setup checks, credential repair, safe pause/resume, dry-run launch, doctor execution, safer command previews, memory promotion actions, and a first-class Goals inbox/evidence inspector. No extra gateway, no local mirror, no second source of truth. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so local clients can read fleet memory. IC: core. Effort: L. Issue: TBD.
 - **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
 

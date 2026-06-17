@@ -51,7 +51,14 @@ are actually attached. A human attaches the assets and presses Publish.
    `src-tauri/Cargo.toml` are set to the release number, and `tauri.conf.json`
    reads the version from `package.json`), so the signed installers carry the
    release version with no separate manual bump here. Confirm every expected
-   asset is attached before moving on.
+   asset is attached before moving on. The public download page uses
+   `/releases/latest/download/...`, so the draft release must include these
+   stable asset names before it is published:
+
+   - `Alfred.dmg`
+   - `Alfred.app.zip`
+   - `Alfred.AppImage`
+   - `Alfred.deb`
 
 5. **Publish the release.** Once the signed assets are attached, a human opens
    the draft release, checks the body and the asset list, and presses Publish.
@@ -61,9 +68,9 @@ are actually attached. A human attaches the assets and presses Publish.
 6. **Update the Homebrew formula.** Put the `sha256` from step 3 into
    `Formula/alfred-os.rb` and push it to the tap.
 
-7. **Flip the download page links.** Point the site download links at the
-   published release assets, then re-run the `Site` workflow and verify the live
-   page.
+7. **Verify the download page.** Re-run the `Site` workflow and verify the live
+   page. The page points at the latest release's stable asset names, so no site
+   code change is needed when those names are present.
 
 ## Order that keeps the claim honest
 

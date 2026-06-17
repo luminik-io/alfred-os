@@ -28,6 +28,7 @@ import FleetStatus from "../components/marketing/FleetStatus.astro";
 import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
 import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 import NativeClientShowcase from "../components/marketing/NativeClientShowcase.astro";
+import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 
 type JobState = "live" | "warn" | "idle" | "info";
 
@@ -113,8 +114,9 @@ const why = [
     eyebrow="FOR SOLO BUILDERS AND SMALL TEAMS"
     headline="Coding agents that build your software while you're away."
     sub="Alfred runs Claude Code and Codex on your own GitHub repos, using the subscriptions you already pay for. It picks up a task, writes the code, opens a pull request, has a second agent review it, and messages you on Slack. You review and merge."
-    primaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
-    secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
+    primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
+    secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
+    tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
     <div slot="panel" class="hero-panel">
       <div class="hero-panel__head">
@@ -374,6 +376,8 @@ const why = [
       </div>
     </div>
   </section>
+
+  <DownloadTracker />
 </MarketingLayout>
 
 <style>

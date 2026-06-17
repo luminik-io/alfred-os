@@ -5,11 +5,11 @@ plans, the local fleet brain, and local planning drafts. It is read-only for
 runtime state and can write issue/spec drafts under `$ALFRED_HOME/planning-drafts`.
 The operator's pane of glass for "what is the fleet doing right now".
 
-Status: v0.4.0 shipped the first dashboard. v0.4.1 adds reliability-governor
-cards, human-readable timestamps, responsive table shells, mobile card
-layouts, a sticky header, a saved-plan inbox, a Planning intake page, external
-issue/PR links that open in a separate tab, and action summaries as a
-cross-platform precursor to the Tauri client under `clients/desktop`.
+Status: v0.5.0 ships the local cockpit used by the desktop client. It includes
+reliability-governor cards, human-readable timestamps, responsive table shells,
+mobile card layouts, a sticky header, a saved-plan inbox, a Planning intake
+page, setup endpoints, usage headroom, queue controls, streaming logs, and
+token-gated local mutations for the Tauri client under `clients/desktop`.
 
 ## Install
 
@@ -212,15 +212,33 @@ through JSON endpoints:
 
 ```text
 GET /api/status
+GET /api/schedule
 GET /api/actions
+GET /api/shipped?days=14
 GET /api/usage             # served; backs the desktop capacity rail
 GET /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
+GET /api/firings/{firing_id}/tail
 GET /api/plans?limit=50
+GET /api/plans/drafts
 GET /api/plans/{plan_id}
+POST /api/queue
+GET /api/setup/status
+GET /api/setup/repos
+POST /api/setup/repos
+GET /api/setup/playbooks
+POST /api/setup/playbook
+POST /api/setup/demo
+POST /api/setup/demo/clear
 POST /api/plans/{plan_id}/convert-followup
 POST /api/plans/{plan_id}/mark-handled
+POST /api/plans/{plan_id}/decision
+POST /api/plans/{plan_id}/file-issue
+POST /api/plans/draft
+POST /api/conversation/control
+POST /api/compose/converse
+POST /api/compose/converse/stream
 GET /api/memory/candidates?status=candidate&limit=50
 POST /api/memory/candidates/{candidate_id}/promote
 POST /api/memory/candidates/{candidate_id}/reject

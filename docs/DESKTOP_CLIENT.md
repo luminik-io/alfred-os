@@ -84,7 +84,9 @@ Continuous integration builds the client with `--no-bundle` to prove the native 
 npm run tauri -- build --no-bundle --ci
 ```
 
-Signed Mac builds and published Linux artifacts are on the roadmap; today you build the installer locally from the tagged source.
+The release pipeline publishes a signed and notarized macOS DMG and app zip,
+plus Linux AppImage and Debian artifacts. Local `tauri build` still works when
+you need to inspect or test the installer output yourself.
 
 ## Checks
 

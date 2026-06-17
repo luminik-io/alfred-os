@@ -98,6 +98,5 @@ npm run tauri -- build
 | Linux | `.AppImage` and `.deb` |
 
 Continuous integration builds with `--no-bundle` to prove the binary compiles
-without code signing or packaging. Signed Mac builds and published Linux
-artifacts are on the roadmap; today you build the installer locally from the
-tagged source.
+without code signing or packaging. The release pipeline publishes a signed and
+notarized macOS DMG and app zip, plus Linux AppImage and Debian artifacts.

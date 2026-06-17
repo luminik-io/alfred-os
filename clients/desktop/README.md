@@ -132,44 +132,45 @@ Linux builds need the WebKitGTK system libraries
 `patchelf`, plus `build-essential` and `file`). The release workflow installs
 them; install them yourself for a local Linux build.
 
-## Unsigned app: first-launch note
+## First launch and install
 
-The current artifacts are **unsigned**. macOS Gatekeeper blocks unsigned apps on
-a normal double-click. On first launch:
+Release artifacts use stable public asset names so the download page can point
+at the latest release without a site change for every version:
 
-- **macOS:** right-click (or Control-click) the app and choose **Open**, then
-  confirm in the dialog. After the first approved launch it opens normally. If
-  the `.dmg`/`.app` was downloaded (and so carries the quarantine flag), you can
-  also clear it with `xattr -dr com.apple.quarantine "/Applications/Alfred.app"`.
+- `Alfred.dmg`
+- `Alfred.app.zip`
+- `Alfred.AppImage`
+- `Alfred.deb`
+
+On first launch:
+
+- **macOS:** the release `.dmg` and `.app.zip` are Developer ID signed,
+  notarized, and stapled. Open the DMG, drag Alfred to Applications, and launch
+  it normally. If you build an unsigned app locally, right-click (or
+  Control-click) the app and choose **Open** once.
 - **Linux:** the `.AppImage` needs the executable bit
-  (`chmod +x Alfred_*.AppImage`); the `.deb` installs normally with
-  `sudo dpkg -i alfred-desktop_*.deb` (or `sudo apt install ./alfred-desktop_*.deb`).
-
-Code signing and notarization (a smoother, no-right-click first launch on macOS)
-require an Apple Developer ID and are a planned follow-up. See
-[Releases](#releases).
+  (`chmod +x Alfred.AppImage`); the `.deb` installs normally with
+  `sudo dpkg -i Alfred.deb` (or `sudo apt install ./Alfred.deb`).
 
 ## Releases
 
-Releases are cut by the `desktop-release` GitHub Actions workflow
-(`.github/workflows/desktop-release.yml`).
+Releases start in the public `Release` workflow
+(`.github/workflows/release.yml`) and finish after the signed desktop assets are
+attached to that draft release.
 
-- **Tag a release:** push a tag matching `desktop-v*`, e.g.
-  `git tag desktop-v0.1.0 && git push origin desktop-v0.1.0`. The workflow builds
-  on macOS and Linux runners and attaches the `.dmg`, zipped `.app`, `.AppImage`,
-  and `.deb` to a **draft** GitHub Release for review before it is published.
-- **Dry run:** trigger the workflow manually (`workflow_dispatch`) to build the
-  artifacts and upload them to the workflow run without publishing a release.
+- **Tag a release:** push a tag matching `v*.*.*`, e.g.
+  `git tag v0.5.0 && git push origin v0.5.0`. The public workflow creates or
+  updates a **draft** GitHub Release and prints the source tarball checksum for
+  the Homebrew formula.
+- **Attach desktop assets:** run the signed desktop release pipeline for the
+  same tag and confirm `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and
+  `Alfred.deb` are present on the draft before publishing it.
+- **Dry run:** trigger the public release workflow manually
+  (`workflow_dispatch`) to update release notes or recompute the source tarball
+  checksum without publishing a release.
 
 Keep `package.json`'s `version` in step with the tag (the tag does not set the
 in-app version; `package.json` does).
-
-### Deferred: macOS signing + notarization
-
-The macOS artifacts ship unsigned for now, which is why first launch needs the
-right-click -> Open step above. Adding an Apple Developer ID (signing identity +
-notarization credentials) to the release workflow is a follow-up that will let
-the app launch without that step. Linux artifacts are unaffected.
 
 ## Security boundary
 
