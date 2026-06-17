@@ -39,7 +39,7 @@
  * serves `.md` with the correct Content-Type from its built-in MIME map.
  */
 
-import { readdir, readFile, writeFile, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AstroIntegration } from "astro";

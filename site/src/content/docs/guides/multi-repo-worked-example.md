@@ -4,14 +4,13 @@ description: One feature shipped across backend, frontend, and mobile using the 
 ---
 
 This walkthrough shows one feature shipped across three repos using the
-default Alfred fleet plus Batman. The example is "add an organisation slug
-to every account-scoped URL" because it is the smallest feature I have shipped
-that genuinely required coordinated edits to backend, frontend, and mobile.
+default Alfred fleet plus Batman. The example is "add an organization slug
+to every account-scoped URL" because it is a small realistic change that
+requires coordinated edits to backend, frontend, and mobile.
 
 This page mirrors [`docs/MULTI_REPO_WORKED_EXAMPLE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MULTI_REPO_WORKED_EXAMPLE.md).
 
-The repos referenced below are real names from the workspace this example
-is drawn from:
+The repos referenced below are placeholders. Replace them with your own fleet:
 
 - `your-org/your-specs` (specs repo, planning context)
 - `your-org/your-backend` (Kotlin API)
@@ -48,7 +47,7 @@ addition to the numeric id, so:
     GET /api/v1/accounts/4711/projects
   - https://app.example.com/acme/projects works alongside
     https://app.example.com/accounts/4711/projects
-  - The mobile deep link luminik://acme/projects resolves to the same place.
+  - The mobile deep link exampleapp://acme/projects resolves to the same place.
 
 Numeric routes keep working. The slug is the new preferred form for new
 links shared by the product.
@@ -114,23 +113,22 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-This is plan-only. To proceed, the operator labels each child issue
-`agent:implement`.
+To proceed, the operator approves the plan in the configured approval surface.
+After approval, Batman files one scoped child issue per repo and labels each
+issue for the normal fleet pickup path.
 ```
 
-OSS Batman stops here. It does not file the child issues automatically.
-That stop is intentional: the operator approves the plan and decides which
-repos get autonomous execution.
+Batman does not bypass the operator. It waits for the approval gate, then files
+child issues rather than opening worktrees directly. Lucius claims those issues
+through the same label, lock, spend, review, and merge gates as any other work.
 
-## Step 3: operator (or a custom Batman extension) files the child issues
+## Step 3: Batman files the child issues after approval
 
-In the public package, the operator files the three child issues. Each
-inherits `agent:bundle:add-org-slug` so the bundle stays trackable, and
-each is labelled `agent:implement` so Lucius will claim it.
-
-If you want this automated, the hook point is to layer a private extension
-on top of Batman that calls `gh issue create` after the plan is approved.
-The OSS package keeps that step explicit.
+In the public package, approved Batman plans can file the three child issues.
+Each inherits `agent:bundle:add-org-slug` so the bundle stays trackable, and
+each is labelled `agent:implement` so Lucius can claim it. Operators who prefer
+a stricter manual process can keep Batman in plan-only mode and file the same
+children by hand.
 
 ### Child issue 1 (backend)
 
@@ -146,9 +144,9 @@ slug-resolver endpoint. Numeric routes continue to work.
 
 ## Files in scope
 - src/main/resources/db/migration/V20260601__add_account_slug.sql
-- src/main/kotlin/io/luminik/account/AccountController.kt
-- src/main/kotlin/io/luminik/account/AccountService.kt
-- src/test/kotlin/io/luminik/account/AccountControllerTest.kt
+- src/main/kotlin/com/example/account/AccountController.kt
+- src/main/kotlin/com/example/account/AccountService.kt
+- src/test/kotlin/com/example/account/AccountControllerTest.kt
 
 ## Acceptance criteria
 - [ ] Migration adds `slug VARCHAR(64) NOT NULL UNIQUE` with a lower-snake-case
@@ -206,17 +204,17 @@ Title: Accept `<slug>` in deep links
 Labels: agent:implement, agent:bundle:add-org-slug
 
 ## Goal
-Mobile deep-link handler must accept `luminik://<slug>/...` in addition to
-`luminik://accounts/<id>/...`.
+Mobile deep-link handler must accept `exampleapp://<slug>/...` in addition to
+`exampleapp://accounts/<id>/...`.
 
 ## Files in scope
 - src/navigation/linking.ts
 - src/navigation/linking.test.ts
 
 ## Acceptance criteria
-- [ ] `luminik://acme/projects` resolves to the Projects screen for the
+- [ ] `exampleapp://acme/projects` resolves to the Projects screen for the
       `acme` account.
-- [ ] `luminik://accounts/4711/projects` continues to resolve.
+- [ ] `exampleapp://accounts/4711/projects` continues to resolve.
 - [ ] One test per deep-link form.
 
 ## Out of scope

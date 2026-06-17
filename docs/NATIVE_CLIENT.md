@@ -1,6 +1,7 @@
 # Native local client
 
-Status: native preview shipped under `clients/desktop`. Slack is still the
+Status: native client shipped under `clients/desktop` with signed macOS
+packages and Linux artifacts. Slack is still the
 primary collaboration surface, the desktop app is the guided local control
 center, and the CLI remains the durable power-user and automation surface.
 
@@ -204,9 +205,9 @@ Interaction rules:
 - The app never hides the local source of truth: every run links to its event
   file or transcript when available.
 
-## Current Tauri Preview
+## Current Tauri Client
 
-The first client lives at `clients/desktop`:
+The shipped client lives at `clients/desktop`:
 
 - Tauri v2 + React + Vite + TypeScript.
 - Brand fonts and logo from the Alfred site system.
@@ -218,6 +219,9 @@ The first client lives at `clients/desktop`:
   Slack and GitHub links open outside the app.
 - The app opens to Home and has Home, Compose, Plans, Memory, Fleet, and Logs
   tabs, with Setup behind the gear.
+- Releases publish a signed and notarized macOS DMG plus app zip, and Linux
+  AppImage and Debian artifacts. Local `npm run tauri -- build` still produces
+  host-native bundles for inspection.
 - Home shows the decision queue, the Claude and Codex capacity rail (backed by
   the live `GET /api/usage` endpoint), recent plans, recent runs,
   memory candidates, and fleet-wide pause/resume actions.

@@ -17,8 +17,8 @@ Operators inspect and steer the fleet through the operator CLI (`bin/alfred`),
 the optional `alfred serve` JSON API, the optional Tauri desktop client under
 `clients/desktop`, and Slack. The desktop client has a Claude + Codex
 subscription-headroom rail (backed by the live `GET /api/usage` endpoint, read
-from local CLI state with no billing API; the `alfred usage` CLI front end ships
-in an upcoming release) and a cinematic agent roster. Any issue carrying the
+from local CLI state with no billing API; the same data is available from
+`alfred usage`) and a cinematic agent roster. Any issue carrying the
 operator-approval gate label (`agent:plan-pending-approval`) is held from
 autonomous pickup until the operator approves it and the label clears; firings
 emit step-level run events so the run
