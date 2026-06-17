@@ -394,16 +394,17 @@ content, sales, and ops departments are the next larger surface area:
 
 ## Status
 
-**Latest release: v0.5.0.** Alfred ships a local engineering-agent team for solo
+**Latest release: v0.5.1.** Alfred ships a local engineering-agent team for solo
 builders: install, starter setup, prompt seeding, GitHub label setup, specs-led
 workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling,
 Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
-v0.5.0 adds the first signed native Mac and Linux desktop app (built with Tauri),
+v0.5.1 carries the first signed native Mac and Linux desktop app (built with Tauri),
 live Claude and Codex subscription usage in that app, a single-repo
 operator-approval gate, a disk guardian that pauses your agents cleanly when the
 disk is nearly full, a Slack planning path that turns an approved draft into a
 labeled GitHub issue, fleet-brain reliability and memory tooling, one-command
-setup-token bootstrap, and SEO plus consent-gated analytics on the site. See
+setup-token bootstrap, a public download page, and SEO plus consent-gated
+analytics on the site. See
 [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
 
 The native app has Inbox, Ask, Work, Agents, and Setup surfaces

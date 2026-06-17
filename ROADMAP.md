@@ -15,10 +15,22 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
-### v0.5.0: 2026-06-17
+### v0.5.1: 2026-06-17
 
-Reliability, first-run trust polish, and the first packaged native client.
+Reliability, first-run trust polish, the first packaged native client, and the
+public download path for signed desktop artifacts.
 
+- Public download page: `/download/` links to stable latest-release assets for
+  `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
+- Native runtime alignment: `alfred serve` defaults to 7010, the desktop client
+  stops probing legacy 7000 after a 7010 failure, and stale saved 7000 URLs are
+  normalized before any browser or Tauri request.
+- Launch polish: the docs/site describe signed macOS and Linux artifacts, the
+  current Inbox / Ask / Work / Agents / Setup app IA, and the desktop health
+  pill now says "Needs attention" consistently.
+- Audit cleanup: high-severity frontend audit findings were cleared across the
+  desktop and site lockfiles, and diagram-free docs pages no longer log
+  `astro-mermaid` noise in the browser console.
 - `alfred dry-run <codename>`: scheduler-free dry-run resolution for every shipped codename. Native dry-run runners execute with side effects stubbed; every other codename gets a safe no-side-effect simulation.
 - `fleet-github-poll.py` and `alfred github-poll`: local GitHub issue/PR polling into fleet-brain.
 - Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.

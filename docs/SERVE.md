@@ -5,7 +5,7 @@ plans, the local fleet brain, and local planning drafts. It is read-only for
 runtime state and can write issue/spec drafts under `$ALFRED_HOME/planning-drafts`.
 The operator's pane of glass for "what is the fleet doing right now".
 
-Status: v0.5.0 ships the local cockpit used by the desktop client. It includes
+Status: v0.5.1 ships the local cockpit used by the desktop client. It includes
 reliability-governor cards, human-readable timestamps, responsive table shells,
 mobile card layouts, a sticky header, a saved-plan inbox, a Planning intake
 page, setup endpoints, usage headroom, queue controls, streaming logs, and

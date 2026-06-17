@@ -10,6 +10,31 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Fixed
 
+## [0.5.1] - 2026-06-17
+
+### Highlights
+
+- Alfred's signed desktop app is now easy to find from the public site. The new download page links to stable latest-release asset names for macOS and Linux, and the homepage points users there directly.
+- The native client and `alfred serve` now agree on port 7010 by default, avoiding macOS Control Center's use of port 7000 while still migrating stale saved 7000 URLs safely.
+- The public docs and site now match the shipped native-client status: signed and notarized macOS artifacts, Linux AppImage/deb artifacts, and current Inbox / Ask / Work / Agents / Setup navigation.
+
+### Added
+
+- Public `/download/` page with signed desktop artifact links for `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`, plus homepage download calls to action.
+- Opt-in, off-by-default proof telemetry plumbing for public aggregate install/use counters. The worker is self-hostable and the runtime remains quiet unless the operator enables telemetry.
+
+### Changed
+
+- `alfred serve` now defaults to `127.0.0.1:7010`; the desktop app no longer probes the legacy 7000 endpoint after a 7010 failure.
+- Saved localhost URLs on port 7000 are treated as stale local config and normalized to 7010 before browser or Tauri requests.
+- The desktop status pill and tooltip now use the human label "Needs attention" for non-ok fleet reliability states instead of surfacing raw enum text.
+- README, install-tier docs, native-client docs, desktop-client docs, release docs, and the docs site were refreshed for the signed desktop package, stable latest asset names, and the current five-tab app IA.
+
+### Fixed
+
+- Cleared high-severity frontend audit findings by updating affected transitive packages across the desktop and site lockfiles.
+- Silenced `astro-mermaid` browser console noise on pages without diagrams.
+
 ## [0.5.0] - 2026-06-15
 
 ### Highlights
@@ -336,7 +361,8 @@ Initial public framework extraction.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Next]: https://github.com/luminik-io/alfred-os/compare/v0.5.0...HEAD
+[Next]: https://github.com/luminik-io/alfred-os/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/luminik-io/alfred-os/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/luminik-io/alfred-os/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/luminik-io/alfred-os/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/luminik-io/alfred-os/compare/v0.2.1...v0.3.0
