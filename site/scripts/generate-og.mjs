@@ -11,17 +11,19 @@ const root = resolve(import.meta.dirname, "..");
 const logoPath = resolve(root, "src/assets/alfred-logo-transparent.png");
 const outPath = resolve(root, "public/brand/alfred-og.png");
 
-// OG redesign uses Space Grotesk (display) + JetBrains Mono (status lines)
-// instead of Quicksand alone, to match the marketing site design system
-// (see site/DESIGN.md). Fonts are inlined as base64 woff2 so the Chrome
-// headless render does not depend on network.
-const grotesk700 = resolve(
+// Fonts are inlined as base64 woff2 so the Chrome headless render does not
+// depend on network access.
+const instrumentSans = resolve(
   root,
-  "node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2",
+  "node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2",
 );
-const mono500 = resolve(
+const quicksand = resolve(
   root,
-  "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+  "node_modules/@fontsource-variable/quicksand/files/quicksand-latin-wght-normal.woff2",
+);
+const fragmentMono = resolve(
+  root,
+  "node_modules/@fontsource/fragment-mono/files/fragment-mono-latin-400-normal.woff2",
 );
 
 async function fontFace(family, weight, file, opts = {}) {
@@ -75,7 +77,7 @@ function html({ fontCss, logoData }) {
       overflow: hidden;
       background: #0A0E14;
       color: #C5D0E0;
-      font-family: "Space Grotesk Var", "Inter", Arial, sans-serif;
+      font-family: "Instrument Sans Var", "Quicksand Var", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
     }
@@ -130,7 +132,7 @@ function html({ fontCss, logoData }) {
       color: #F2F6FF;
     }
     .meta {
-      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-family: "Fragment Mono", ui-monospace, monospace;
       font-size: 14px;
       font-weight: 500;
       letter-spacing: 0.14em;
@@ -147,7 +149,7 @@ function html({ fontCss, logoData }) {
       max-width: 940px;
     }
     .eyebrow {
-      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-family: "Fragment Mono", ui-monospace, monospace;
       font-size: 13px;
       font-weight: 600;
       letter-spacing: 0.20em;
@@ -170,6 +172,7 @@ function html({ fontCss, logoData }) {
       margin: 26px 0 0;
       max-width: 840px;
       color: #B6C7EE;
+      font-family: "Quicksand Var", "Instrument Sans Var", Arial, sans-serif;
       font-size: 22px;
       line-height: 1.4;
       font-weight: 500;
@@ -180,7 +183,7 @@ function html({ fontCss, logoData }) {
       align-items: center;
       gap: 18px;
       padding-top: 22px;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-family: "Fragment Mono", ui-monospace, monospace;
       font-size: 13px;
       color: #6B7A8F;
       letter-spacing: 0.04em;
@@ -194,7 +197,7 @@ function html({ fontCss, logoData }) {
       justify-content: space-between;
       gap: 24px;
       color: #6B7A8F;
-      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-family: "Fragment Mono", ui-monospace, monospace;
       font-size: 14px;
       letter-spacing: 0.04em;
     }
@@ -285,8 +288,9 @@ async function renderWithSharp(htmlText) {
 }
 
 const fontCss = [
-  await fontFace('"Space Grotesk Var"', 700, grotesk700, { variation: true }),
-  await fontFace('"JetBrains Mono"', 500, mono500),
+  await fontFace('"Instrument Sans Var"', 700, instrumentSans, { variation: true }),
+  await fontFace('"Quicksand Var"', 500, quicksand, { variation: true }),
+  await fontFace('"Fragment Mono"', "100 900", fragmentMono),
 ].join("");
 const logoData = await imageData(logoPath);
 const htmlText = html({ fontCss, logoData });

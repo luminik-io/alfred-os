@@ -88,26 +88,28 @@ themes stay covered.
 
 ## Typography
 
-The desktop client and the site share one body face (Quicksand) but have their
-own display and mono faces. Each surface owns its own font tokens; they are not a
-single shared stack. Both bundle their fonts locally through `@fontsource` (no
-runtime call to a font CDN).
+The desktop client, marketing site, docs, server/static UI, and generated OG
+image share one Alfred type system. The app and site bundle fonts locally
+through `@fontsource`; the server/static UI serves the same local WOFF files.
+There is no runtime call to a font CDN.
 
-### Desktop client typography
-
-One display face, one body face, one mono face, defined in
-`clients/desktop/src/index.css`:
+One display face, one body face, one mono face:
 
 | Use | Family | Where |
 |---|---|---|
-| Display / headings | **Instrument Sans** (variable) | `--font-heading`, `--font-display` |
-| Body / UI | **Quicksand** (variable, 400 to 700) | `--font-sans`, `--font-body` |
+| Display / headings | **Instrument Sans** (variable) | `--font-heading`, `--font-display`, docs headings |
+| Body / UI | **Quicksand** (variable, 400 to 700) | `--font-sans`, `--font-body`, `--sl-font` |
 | Mono / code / labels | **Fragment Mono** | `--font-mono` |
 
-This is the operator font directive of 2026-06-13 and it must not be reverted.
-A guard test (`clients/desktop/src/test/directive-guards.test.ts`) reads
-`index.css` and fails if these tokens drift, so the directive holds for the
-client only. The full stacks, straight from the code:
+This is the operator font directive of 2026-06-18 and it must not be reverted.
+The native client has a guard test
+(`clients/desktop/src/test/directive-guards.test.ts`) that reads `index.css` and
+fails if the client drifts back to Space Grotesk or JetBrains. The site mirrors
+the same choices in `site/src/styles/marketing.css`,
+`site/src/styles/custom.css`, `site/scripts/generate-og.mjs`, and the public
+server/static stylesheet at `lib/server/static/style.css`.
+
+The full stacks:
 
 - `--font-display` / `--font-heading`: `"Instrument Sans Variable",
   ui-sans-serif, system-ui, sans-serif`
@@ -125,25 +127,9 @@ How they are used in practice:
   friendly base that keeps the dense dashboards readable.
 - Fragment Mono is for code, log lines, agent codenames, timestamps, and small
   uppercase labels where a fixed width and a technical feel help.
-
-### Site typography
-
-The site does not use the client's Instrument Sans or Fragment Mono. It has its
-own tokens in `site/src/styles/marketing.css`, and the Starlight docs theme
-(`site/src/styles/custom.css`) sets `--sl-font` to Quicksand. Quicksand is the
-only face the two surfaces share. The marketing stacks, straight from the code:
-
-- `--font-display`: `"Space Grotesk Variable", "Quicksand", system-ui,
-  sans-serif`
-- `--font-body`: `"Quicksand", system-ui, sans-serif`
-- `--font-mono`: `"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace`
-
-In practice Space Grotesk carries the marketing headlines and display numbers,
-Quicksand carries body copy and the docs UI, and JetBrains Mono carries the
-log-style status strips, metric rows, and code blocks. The marketing display
-sizes are tokenized and scale down on narrow screens: `--text-display-xl` is
-72px on desktop and steps to 44px then 34px at the small breakpoints, so
-headlines never overflow.
+The marketing display sizes are tokenized and scale down on narrow screens:
+`--text-display-xl` is 72px on desktop and steps to 44px then 34px at the small
+breakpoints, so headlines never overflow.
 
 ## Glass and surfaces
 
@@ -221,9 +207,8 @@ layout.
 
 1. Use the token colors (`index.css` for the app, `custom.css` /
    `marketing.css` for the site). Define new tokens in both light and dark.
-2. Use the surface's own font tokens, never a hard-coded family. On the desktop
-   client that is Instrument Sans headings, Quicksand body, Fragment Mono code;
-   on the site it is Space Grotesk display, Quicksand body, JetBrains Mono code.
+2. Use the shared Alfred font roles: Instrument Sans headings, Quicksand body,
+   Fragment Mono code and literal machine values.
 3. Build panels from the glass system and reuse the radius token.
 4. Keep transitions short (120 to 200ms) and add a `prefers-reduced-motion`
    guard.

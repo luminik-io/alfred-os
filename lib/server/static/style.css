@@ -1,31 +1,23 @@
 @font-face {
-  font-family: "Space Grotesk Variable";
-  src: url("/static/fonts/space-grotesk-latin-wght-normal.woff2") format("woff2");
-  font-weight: 300 700;
+  font-family: "Instrument Sans Variable";
+  src: url("/static/fonts/instrument-sans-latin-wght-normal.woff2") format("woff2");
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Quicksand";
-  src: url("/static/fonts/quicksand-latin-500.woff2") format("woff2");
-  font-weight: 500;
+  font-family: "Quicksand Variable";
+  src: url("/static/fonts/quicksand-latin-wght-normal.woff2") format("woff2");
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Quicksand";
-  src: url("/static/fonts/quicksand-latin-600.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Quicksand";
-  src: url("/static/fonts/quicksand-latin-700.woff2") format("woff2");
-  font-weight: 700;
+  font-family: "Fragment Mono";
+  src: url("/static/fonts/fragment-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
@@ -44,9 +36,9 @@
   --ops-line: #243148;
   --ops-line-soft: rgba(198, 208, 224, 0.12);
   --ops-focus: rgba(17, 215, 191, 0.42);
-  --ops-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
-  --ops-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --ops-sans: "Quicksand", ui-rounded, "Avenir Next", system-ui, sans-serif;
+  --ops-display: "Instrument Sans Variable", "Quicksand Variable", system-ui, sans-serif;
+  --ops-mono: "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ops-sans: "Quicksand Variable", "Instrument Sans Variable", system-ui, sans-serif;
   --ops-header-offset: 5.25rem;
 }
 

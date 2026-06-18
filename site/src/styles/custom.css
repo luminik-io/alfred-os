@@ -1,7 +1,6 @@
-@import "@fontsource/quicksand/400.css";
-@import "@fontsource/quicksand/500.css";
-@import "@fontsource/quicksand/600.css";
-@import "@fontsource/quicksand/700.css";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/quicksand";
+@import "@fontsource/fragment-mono";
 
 /* Alfred site overrides on top of Starlight defaults.
    Design system: logo-derived navy + brightened brand accent, restrained
@@ -45,8 +44,8 @@
   --alfred-alert: #ff5d6c;
   --alfred-ok: #2dd4a7;
 
-  --sl-font: "Quicksand", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --sl-font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sl-font: "Quicksand Variable", "Instrument Sans Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --sl-font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 /* ------------------------------------------------------------------ */
@@ -222,12 +221,14 @@ mobile-starlight-toc nav {
 
 .sl-markdown-content h1,
 .content-panel h1 {
+  font-family: "Instrument Sans Variable", var(--sl-font);
   font-size: 2.25rem;
   font-weight: 700;
   letter-spacing: 0;
 }
 
 .sl-markdown-content h2 {
+  font-family: "Instrument Sans Variable", var(--sl-font);
   font-size: 1.625rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -237,6 +238,7 @@ mobile-starlight-toc nav {
 }
 
 .sl-markdown-content h3 {
+  font-family: "Instrument Sans Variable", var(--sl-font);
   font-size: 1.25rem;
   font-weight: 600;
 }

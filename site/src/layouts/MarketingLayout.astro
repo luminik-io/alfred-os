@@ -144,12 +144,10 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    {/* Quicksand is bundled via @fontsource (see marketing.css). We used
-        to ship a Google Fonts CDN <link> as a belt-and-braces fallback,
-        but it caused duplicate @font-face declarations and a noisy
-        document.fonts.check() false-positive in QA. The @fontsource
-        package is self-hostable and reliable enough on its own. If it
-        ever fails to load, system-ui is an acceptable fallback. */}
+    {/* Alfred fonts are bundled via @fontsource (see marketing.css). The
+        previous Google Fonts fallback caused duplicate @font-face rules and
+        noisy document.fonts.check() results in QA. If the local files fail to
+        load, system-ui is an acceptable fallback. */}
 
     {/* Open Graph */}
     <meta property="og:title" content={title} />

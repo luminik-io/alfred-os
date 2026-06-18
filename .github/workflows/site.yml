@@ -4,11 +4,13 @@ on:
   push:
     branches: [main]
     paths:
+      - "lib/server/static/**"
       - "site/**"
       - ".github/workflows/site.yml"
   pull_request:
     branches: [main]
     paths:
+      - "lib/server/static/**"
       - "site/**"
       - ".github/workflows/site.yml"
   workflow_dispatch:

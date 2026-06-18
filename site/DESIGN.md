@@ -2,7 +2,7 @@
 
 Single source of truth for typography, color, layout, and motif on alfred.luminik.io. The site is a quiet control surface for an autonomous engineering fleet, not a marketing brochure. Every decision below points at one of three goals:
 
-1. Distinct from the default "dark navy + Quicksand + blue accent" template every dev tool ships.
+1. Distinct from the default dark navy developer-tool template.
 2. Reinforces Alfred's promise: the fleet ships while you are not at the keyboard.
 3. Honors the Luminik voice rules (no em-dashes, no banned vocabulary, specific over vague, ≤30-word subheads).
 
@@ -37,10 +37,16 @@ Light-mode variant is deferred. The site is dark-first by intent.
 ## Typography
 
 ```css
---font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
---font-body:    "Inter", "Quicksand", system-ui, sans-serif;
---font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+--font-display: "Instrument Sans Variable", "Quicksand Variable", system-ui, sans-serif;
+--font-body:    "Quicksand Variable", "Instrument Sans Variable", system-ui, sans-serif;
+--font-mono:    "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 ```
+
+This stack is shared with the native client, docs, generated OG image, and the
+server/static UI. Instrument Sans carries headings and display numbers.
+Quicksand carries body/UI text so Alfred still keeps a little Luminik warmth.
+Fragment Mono is only for code, ids, timestamps, status strips, and command
+samples.
 
 Scale (display 1.25 step, body 1.125 step):
 
@@ -116,11 +122,11 @@ No carousels, no parallax. The only motion permitted: a 0.6s ease-in fade on the
 
 ## Component patterns
 
-- `<Hero>` — eyebrow + display-xl headline + body-lg sub + primary CTA + secondary text-link CTA.
-- `<MetricStrip>` — 3-5 mono-aligned metric rows in a single card.
-- `<JobStory>` — card showing one buyer-side outcome ("a Drake firing files four scoped issues") with a tiny log excerpt under it.
-- `<CodeBlock>` — JetBrains Mono, scrollable, prompt prefix `$` rendered in `--alfred-accent`.
-- `<StatusStrip>` — fixed-width log-style strip footer-adjacent.
+- `<Hero>`: eyebrow + display-xl headline + body-lg sub + primary CTA + secondary text-link CTA.
+- `<MetricStrip>`: 3-5 mono-aligned metric rows in a single card.
+- `<JobStory>`: card showing one buyer-side outcome ("a Drake firing files four scoped issues") with a tiny log excerpt under it.
+- `<CodeBlock>`: Fragment Mono, scrollable, prompt prefix `$` rendered in `--alfred-accent`.
+- `<StatusStrip>`: fixed-width log-style strip footer-adjacent.
 
 ## Voice on the site (binding)
 

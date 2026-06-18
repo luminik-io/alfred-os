@@ -6,14 +6,9 @@
    below are direct ports of that spec. Dark-first by intent; no light
    variant on marketing pages. */
 
-@import "@fontsource-variable/space-grotesk";
-@import "@fontsource/quicksand/400.css";
-@import "@fontsource/quicksand/500.css";
-@import "@fontsource/quicksand/600.css";
-@import "@fontsource/quicksand/700.css";
-@import "@fontsource/jetbrains-mono/400.css";
-@import "@fontsource/jetbrains-mono/500.css";
-@import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/quicksand";
+@import "@fontsource/fragment-mono";
 
 /* ───────────────────────────────────────────────────────────────────
    Theme tokens. Dark is the default Operations Room palette.
@@ -66,9 +61,9 @@
 /* Static design tokens (typography, spacing) live on :root and are
    independent of theme. */
 :root {
-  --font-display: "Space Grotesk Variable", "Quicksand", system-ui, sans-serif;
-  --font-body: "Quicksand", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: "Instrument Sans Variable", "Quicksand Variable", system-ui, sans-serif;
+  --font-body: "Quicksand Variable", "Instrument Sans Variable", system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --text-display-xl: 72px;
   --text-display-lg: 56px;
