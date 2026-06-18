@@ -8,7 +8,7 @@ const lifecycle = [
   {
     n: "01",
     title: "A timer starts the run",
-    body: "A built-in scheduler (launchd on macOS, systemd on Linux) starts the agent on a fixed schedule, every 20 minutes by default. It keeps running across reboots.",
+    body: "A built-in scheduler (launchd on macOS, systemd on Linux) starts each agent on its configured cadence. Lucius checks for implementation work every 20 minutes by default, and the fleet keeps running across reboots.",
     log: "[12:00:00] launchd → ~/.alfred/bin/lucius.py",
   },
   {

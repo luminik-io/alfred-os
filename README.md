@@ -7,11 +7,11 @@
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
 [![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![macOS](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
+![macOS](https://img.shields.io/badge/macOS-10.15%2B-black?logo=apple)
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**An autonomous engineering team that ships while you are away.**
+**A local coding-agent runtime that opens reviewed pull requests.**
 
 Alfred plans across your repos or monorepo packages, implements with the
 Claude Code and Codex subscriptions you already pay for, and reports to
@@ -241,9 +241,9 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 ## Anonymous usage telemetry (opt-in)
 
 Alfred ships a small, **opt-in, off-by-default** telemetry reporter. It exists
-for one purpose: a public "Alfred has opened N pull requests and merged M across
-K installs" proof counter. It is off until you turn it on, and one environment
-variable turns it off again.
+for one purpose: the public impact page can show how many pull requests opted-in
+installs have opened, reviewed, and merged. It is off until you turn it on, and
+one environment variable turns it off again.
 
 **Default state: OFF.** Nothing is sent, no `install_id` is generated, and no
 network call is made unless you set `ALFRED_TELEMETRY_ENABLED=1`. Any other
@@ -278,16 +278,35 @@ hostnames, IP addresses, Slack handles, codenames, or anything that identifies a
 person or machine. The reporter is fail-soft: a network error never breaks a
 firing.
 
-**To enable:** set both variables in `~/.alfredrc` and uncomment the
-`proof-telemetry` line in `launchd/agents.conf`:
+**To enable:** choose your collector endpoint, then run:
 
 ```sh
-ALFRED_TELEMETRY_ENABLED=1
-ALFRED_TELEMETRY_URL=https://your-worker.example.com/ingest
+alfred telemetry on --url https://your-worker.example.com/ingest
 ```
 
-**To disable:** remove `ALFRED_TELEMETRY_ENABLED` (or set it to anything but
-`1`). The reporter immediately becomes a no-op.
+If your collector uses an ingest token, pass it when enabling:
+
+```sh
+alfred telemetry on \
+  --url https://your-worker.example.com/ingest \
+  --token the-same-value-as-the-collector
+```
+
+Then run `bash deploy.sh` from the source checkout so launchd or systemd
+installs the scheduler change.
+
+**To disable:**
+
+```sh
+alfred telemetry off
+```
+
+**To inspect local state:**
+
+```sh
+alfred telemetry status
+alfred telemetry status --json
+```
 
 **To see exactly what would be sent before opting in:**
 `ALFRED_TELEMETRY_ENABLED=1 python3 bin/proof-telemetry.py --dry-run` prints the
@@ -309,14 +328,14 @@ and a per-IP rate limit either way. Full contract:
 | [`lib/batman.py`](lib/batman.py) | Bundle primitives for the multi-repo coordinator: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
-| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
+| [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
 | [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
-| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Opt-in, off-by-default anonymous proof-telemetry reporter. Hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`. Posts only aggregate counts (PRs opened/merged/reviewed, file deltas) to your configured endpoint; fail-soft. |
+| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Opt-in, off-by-default anonymous usage reporter. Hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`. Posts only aggregate counts (PRs opened/merged/reviewed, file deltas) to your configured endpoint; fail-soft. |
 | [`telemetry/worker/`](telemetry/worker/) | Self-hostable Cloudflare Worker that ingests the anonymous aggregate and serves the public totals for the site counter. Ships with placeholder ids; deploy under your own account. |
 | [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |

@@ -104,7 +104,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
 - Batman execute-after-approval: once a bundle plan is approved, Batman now executes the per-repo PR sequence rather than stopping at the plan.
 - `alfred serve` v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
-- `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` that operators can publish on their own site if they want a public proof page. The canonical alfred-os site does not host a live rendering; operators decide whether to publish.
+- `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` that operators can publish on their own site. The canonical site also has `/impact/`, a separate opt-in usage counter backed by the telemetry collector.
 - Three new concept pages on the docs site covering the memory protocol, the connector protocol, and the approval gate.
 
 ### v0.3.0 and earlier
@@ -116,7 +116,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full ledger.
 Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
-- **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public proof page can render this on their own site. IC: core. Effort: S. Issue: TBD.
+- **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public usage page can render this on their own site. IC: core. Effort: S. Issue: TBD.
 - **Native local client v2.** Slack remains the primary planning and collaboration UI. Build on the packaged client with deeper guided install, credential repair, richer health checks, lock clearing, recovery, safer command previews, memory promotion actions, and a first-class Goals inbox/evidence inspector. Favor a direct-host model inspired by Hermes Desktop: no extra gateway, no local mirror, no second source of truth. Borrow Ivy Tendril's plan lifecycle clarity, project verification profiles, plan-health doctor, and recommendations inbox without adopting a second scheduler or source-of-truth database. Keep `alfred serve` JSON APIs stable so the Tauri shell stays thin rather than becoming a second runtime. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so other Claude Code consumers can read fleet memory. IC: core. Effort: L. Issue: TBD.
 - **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.

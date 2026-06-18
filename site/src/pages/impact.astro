@@ -1,69 +1,159 @@
 ---
 import MarketingLayout from "../layouts/MarketingLayout.astro";
+import Hero from "../components/marketing/Hero.astro";
 import SectionHeader from "../components/marketing/SectionHeader.astro";
 import ImpactCounter from "../components/marketing/ImpactCounter.astro";
+import CodeBlock from "../components/marketing/CodeBlock.astro";
 ---
 
 <MarketingLayout
   title="Impact | Alfred"
-  description="A live, anonymous, aggregate proof counter from Alfred installs that opt in to be counted. No PII, no repo names, off by default."
+  description="Anonymous, opt-in Alfred usage counts. See pull requests opened, reviewed, and merged without repo names, code, or personal data."
   path="/impact/"
 >
-  <section class="m-section">
-    <div class="m-container m-narrow">
-      <SectionHeader
-        eyebrow="IMPACT"
-        title="What Alfred installs have shipped, in aggregate."
-        lede="Anonymous, opt-in counts from installs that chose to be counted. No repo names, no code, no identifiers. Off by default; one environment variable turns it on or off."
-      />
-
-      <ImpactCounter threshold={50} />
-
-      <div class="m-prose">
-        <h3 class="m-h3">How this counter works</h3>
-        <p>
-          Installs that set <code>ALFRED_TELEMETRY_ENABLED=1</code> send a small
-          daily payload with four aggregate numbers and a random install token.
-          We sum those across installs and show the totals here. Nothing on this
-          page identifies a person, a company, or a machine.
-        </p>
-        <p>
-          The full contract, including exactly what is and is not sent and the
-          single switch that controls it, is in the
-          <a href="https://github.com/luminik-io/alfred-os/blob/main/docs/TELEMETRY.md">telemetry docs</a>.
-          The collector is a self-hostable Cloudflare Worker, so you can run your
-          own counter for your own fleet.
-        </p>
+  <Hero
+    eyebrow="PUBLIC PROOF"
+    headline="See what Alfred users are shipping."
+    sub="Operators can opt in to share anonymous daily counts: pull requests opened, pull requests reviewed, pull requests merged, and file deltas. No repo names, no code, no personal data."
+    headlineSize="lg"
+    primaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
+    secondaryCta={{ label: "Download Alfred", href: "/download/" }}
+  >
+    <div slot="panel" class="impact-panel">
+      <div class="impact-panel__head">
+        <span class="m-eyebrow">LIVE COUNTER</span>
+        <span class="m-mono m-mute">opt-in only</span>
       </div>
+      <ImpactCounter threshold={50} variant="plain" />
+    </div>
+  </Hero>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
+        eyebrow="WHAT GETS COUNTED"
+        title="Only counts. Nothing from the work itself."
+        lede="The telemetry payload is intentionally small. It shows that Alfred is being used without exposing what the operator is building."
+      />
+      <div class="proof-grid">
+        <article class="m-card">
+          <span class="m-mono proof-grid__num">01</span>
+          <h3 class="m-h3">Pull requests opened</h3>
+          <p>How many PRs opted-in installs created through the Alfred runner.</p>
+        </article>
+        <article class="m-card">
+          <span class="m-mono proof-grid__num">02</span>
+          <h3 class="m-h3">Pull requests reviewed</h3>
+          <p>How many PRs a review agent inspected and reported on.</p>
+        </article>
+        <article class="m-card">
+          <span class="m-mono proof-grid__num">03</span>
+          <h3 class="m-h3">Pull requests merged</h3>
+          <p>How many PRs reached the shipped state after the operator's process.</p>
+        </article>
+        <article class="m-card">
+          <span class="m-mono proof-grid__num">04</span>
+          <h3 class="m-h3">File deltas</h3>
+          <p>A coarse count of changed files, reported as an aggregate number only.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="m-section m-section--soft">
+    <div class="m-container operator-grid">
+      <div>
+        <SectionHeader
+          eyebrow="OPERATOR CONTROL"
+          title="Off by default. One command to turn on."
+          lede="The operator chooses the endpoint, can self-host the collector, and can turn reporting off without touching the rest of Alfred."
+        />
+        <div class="control-points">
+          <p><strong>No repo names.</strong> Alfred does not send the repository, organization, branch, issue title, PR title, or source code.</p>
+          <p><strong>No personal data.</strong> The install token is random and exists only to cap duplicate reports from the same install.</p>
+          <p><strong>No hidden dependency.</strong> Alfred runs the same way with telemetry off.</p>
+        </div>
+      </div>
+      <CodeBlock
+        title="telemetry"
+        lines={[
+          "$ alfred telemetry status",
+          "telemetry: off",
+          "endpoint: (unset)",
+          "token: unset",
+          "scheduler row: absent (~/code/alfred-os/launchd/agents.conf)",
+          "public page: https://alfred.luminik.io/impact/",
+          "",
+          "$ alfred telemetry on --url https://your-worker.example/ingest",
+          "alfred: telemetry enabled",
+          "alfred: wrote ~/.alfredrc",
+          "alfred: scheduled alfred.proof-telemetry in ~/code/alfred-os/launchd/agents.conf",
+          "alfred: run `bash ~/code/alfred-os/deploy.sh` to install the scheduler change",
+          "",
+          "$ alfred telemetry off",
+          "alfred: telemetry disabled",
+          "alfred: removed scheduler row at ~/code/alfred-os/launchd/agents.conf",
+          "alfred: run `bash ~/code/alfred-os/deploy.sh` to install the scheduler change",
+        ]}
+      />
     </div>
   </section>
 </MarketingLayout>
 
 <style>
-  .m-narrow {
-    max-width: 760px;
+  .impact-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
   }
-  .m-prose {
-    margin-top: 36px;
+  .impact-panel__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--alfred-border);
+  }
+  .proof-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+  }
+  .proof-grid__num {
+    display: block;
+    color: var(--alfred-accent);
+    margin-bottom: 14px;
+  }
+  .proof-grid p,
+  .control-points p {
+    margin-top: 10px;
     color: var(--alfred-text);
     font-size: 15px;
-    line-height: 1.7;
+    line-height: 1.6;
   }
-  .m-prose h3 {
-    margin-bottom: 10px;
+  .operator-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    gap: 48px;
+    align-items: start;
   }
-  .m-prose p {
-    margin: 0 0 14px;
+  .control-points {
+    display: grid;
+    gap: 16px;
   }
-  .m-prose code {
+  .control-points strong {
     color: var(--alfred-text-bright);
-    background: var(--alfred-black, var(--alfred-surface-2));
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 13px;
   }
-  .m-prose a {
-    color: var(--alfred-accent);
+  @media (max-width: 980px) {
+    .proof-grid,
+    .operator-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 520px) {
+    .impact-panel__head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
   }
 </style>

@@ -45,6 +45,7 @@ jobs:
         env:
           ALFRED_OS_SITE_URL: ${{ vars.ALFRED_OS_SITE_URL || 'https://alfred.luminik.io' }}
           ALFRED_OS_SITE_BASE: ${{ vars.ALFRED_OS_SITE_BASE || '/' }}
+          PUBLIC_ALFRED_TELEMETRY_STATS_URL: ${{ vars.PUBLIC_ALFRED_TELEMETRY_STATS_URL || '' }}
         run: npm run build
 
       # Publishing is gated so forks and private prep branches can build docs

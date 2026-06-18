@@ -51,10 +51,10 @@
 # promotes lessons by itself.
 #   my.fleet.memory-harvest	memory-harvest.py	cron:8:05	no		Memory candidate harvester
 
-# Opt-in: anonymous proof-telemetry reporter. OFF by default twice over: this
+# Opt-in: anonymous usage telemetry reporter. OFF by default twice over: this
 # line stays commented, AND the script is a hard no-op unless you also set
 # ALFRED_TELEMETRY_ENABLED=1 and ALFRED_TELEMETRY_URL in ~/.alfredrc. It posts
 # only anonymous aggregate counts (PRs opened/merged/reviewed, file deltas) to
 # the endpoint you configure. No repo names, no code, no PII. See
 # docs/TELEMETRY.md before enabling.
-#   my.fleet.proof-telemetry	proof-telemetry.py	cron:9:10	no		Anonymous proof-telemetry (opt-in)
+#   my.fleet.proof-telemetry	proof-telemetry.py	cron:9:10	no		Anonymous usage telemetry (opt-in)

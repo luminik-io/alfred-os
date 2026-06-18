@@ -149,6 +149,9 @@ alfred claude probe
 alfred codex status
 alfred codex probe
 alfred auth status
+alfred telemetry status
+alfred telemetry on --url https://your-worker.example.com/ingest
+alfred telemetry off
 alfred labels bootstrap <repo>|--all [--check] [--force]
 alfred labels check <repo>|--all
 alfred batman setup [--check-only]
@@ -173,7 +176,11 @@ and Batman approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
 directories and refuses to clear live holders or matching dirty worktrees
 unless `--force` is passed. `labels` creates or checks the
 canonical GitHub labels needed by the lifecycle state machine, Batman planning,
-and operator overrides. `shipped` reports merged PRs, issues, LOC, and
+and operator overrides. `telemetry` controls the opt-in public usage counter:
+`status` shows local state, `on` writes the managed `.alfredrc` block and
+scheduler row in the source checkout, and `off` disables reporting and removes
+the scheduler row.
+`shipped` reports merged PRs, issues, LOC, and
 model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
 values.
 
