@@ -197,7 +197,7 @@ until explicitly answered or accepted as risk.
 ### `GET /firings/{firing_id}` - Single firing detail
 
 - meta (start, end, status, summary, events file path, transcript path if present)
-- raw event stream rendered as JSON lines in a JetBrains Mono log strip
+- raw event stream rendered as JSON lines in a Fragment Mono log strip
 
 Returns 404 for unknown firing ids. The id is validated against path traversal before the reader touches disk.
 
