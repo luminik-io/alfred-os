@@ -1,6 +1,6 @@
 # The `alfred-shipped-public` emitter
 
-`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical `alfred-os` site does not host a live rendering of this feed; operators who want a public proof page on their own site can render the JSON however they prefer.
+`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical `alfred-os` site does not host a live rendering of this feed; operators who want a public usage page on their own site can render the JSON however they prefer.
 
 This document explains the schema, the scrub rules, and the emit command.
 

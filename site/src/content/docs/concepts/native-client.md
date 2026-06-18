@@ -8,7 +8,7 @@ Slack remains the primary collaboration UI: plans, replies, approvals, and
 post-PR follow-up belong in Slack threads.
 
 The Tauri client lives under `clients/desktop` and wraps the local
-Alfred runtime: Home, Compose, Fleet, Logs, Setup, health signals, plans,
+Alfred runtime: Inbox, Ask, Work, Agents, Setup, health signals, plans,
 firings, memory review, safe next actions, native runtime launch, and local
 follow-up handling.
 

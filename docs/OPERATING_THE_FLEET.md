@@ -44,7 +44,7 @@ alfred run <codename> --force  # ignore the pause marker for this kick
 The two recipes you will use most:
 
 - **"Did anything ship today?"** `alfred shipped` and (if you want more detail) `alfred shipped --period weekly`.
-- **"Why is Lucius quiet?"** `alfred status` first. If it shows Lucius as paused, `alfred resume lucius`. If it shows a lock, `alfred agents` tells you whether the unit is loaded. If both look fine, the agent simply had no `agent:implement` issue to claim and exited silently.
+- **"Why is Lucius quiet?"** `alfred status` first. If it shows Lucius as paused, `alfred resume lucius`. If it shows a lock, `alfred agents` tells you whether the unit is loaded. If both look fine, the agent had no `agent:implement` issue to claim and exited silently.
 
 ## Logs
 
@@ -86,7 +86,7 @@ Anything ending in `-BLOCKED`, `-FAILED`, or `-NO-COMMIT` is the operator's conc
 
 `alfred run <codename>` kicks a one-shot firing now. Use it when:
 
-- You just filed an `agent:implement` issue and want to see it picked up before the next 20-minute cycle.
+- You filed an `agent:implement` issue and want to see it picked up before the next 20-minute cycle.
 - You changed a prompt template and want to verify the change end-to-end.
 - You resumed an agent after a pause and want to confirm it is alive.
 
@@ -97,7 +97,7 @@ Anything ending in `-BLOCKED`, `-FAILED`, or `-NO-COMMIT` is the operator's conc
 
 Do **not** use `--force`:
 
-- During a global rate-limit block. The block is the fleet's way of waiting out a wall. Forcing more firings just burns turns to re-confirm the wall.
+- During a global rate-limit block. The block is the fleet's way of waiting out a wall. Forcing more firings burns turns to re-confirm the wall.
 - When `alfred status` shows the agent is already locked. Two firings of the same codename at once is exactly what `with_lock` exists to prevent.
 - When the underlying issue is "the agent ran out of spend for the day". Wait for midnight, or raise the cap deliberately.
 

@@ -78,8 +78,8 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
 
 const why = [
   {
-    title: "Works while you are away",
-    body: "Every 20 minutes, around the clock, your agents check for new tasks, write the code, open pull requests, and post a short summary to Slack. You read the result in the morning.",
+    title: "Runs when you step away",
+    body: "On configured schedules, your agents check for new tasks, write the code, open pull requests, and post a short summary to Slack. Use an awake host for overnight work.",
   },
   {
     title: "Runs on a machine you already own",
@@ -99,33 +99,33 @@ const why = [
   },
   {
     title: "Open source, MIT licensed",
-    body: "Every line is on GitHub at github.com/luminik-io/alfred-os. Fork it, read it, run it offline. No lock-in, no tracking, no service you have to stay signed up for.",
+    body: "Every line is on GitHub at github.com/luminik-io/alfred-os. Fork it, read it, run it offline. No lock-in, no hosted runtime, and no product telemetry unless you opt in.",
   },
 ];
 
 ---
 
 <MarketingLayout
-  title="Alfred | AI coding agents that build your software while you're away"
-  description="Alfred runs Claude Code and Codex on your own GitHub repos, on the subscriptions you already pay for. It picks up a task, writes the code, opens a pull request, has another agent review it, and tells you on Slack. You review and merge."
+  title="Alfred | Local coding-agent runtime for reviewed PRs"
+  description="Alfred runs Claude Code and Codex on your GitHub repos, using the subscriptions you already pay for. It picks up approved work, opens pull requests, routes review, and reports to Slack."
   path="/"
 >
   <Hero
     eyebrow="FOR SOLO BUILDERS AND SMALL TEAMS"
-    headline="Coding agents that build your software while you're away."
-    sub="Alfred runs Claude Code and Codex on your own GitHub repos, using the subscriptions you already pay for. It picks up a task, writes the code, opens a pull request, has a second agent review it, and messages you on Slack. You review and merge."
+    headline="A local runtime for coding agents that open reviewed PRs."
+    sub="Alfred runs Claude Code and Codex on your GitHub repos, using the subscriptions you already pay for. It picks up approved work, opens pull requests, routes review, and reports to Slack."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
     <div slot="panel" class="hero-panel">
       <div class="hero-panel__head">
-        <span class="m-eyebrow">LIVE STATUS</span>
-        <span class="m-mono m-mute">~/.alfred/state</span>
+        <span class="m-eyebrow">EXAMPLE STATUS</span>
+        <span class="m-mono m-mute">local runtime</span>
       </div>
       <MetricRow label="agents" value="21" countTo={21} state="live" />
       <MetricRow label="repos" value="9" countTo={9} state="live" />
-      <MetricRow label="last run" value="18m ago" glyph="arrow" state="info" />
+      <MetricRow label="last run" value="recent" glyph="arrow" state="info" />
       <MetricRow label="open PRs" value="4" countTo={4} state="warn" />
       <MetricRow label="errors" value="0" state="live" />
     </div>
@@ -166,8 +166,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WHY ALFRED IS DIFFERENT"
-        title="It keeps working after you close the laptop."
-        lede="Chat-first coding tools wait for a prompt. Alfred picks up approved GitHub work, runs locally, and reports back when it needs a decision."
+        title="It keeps working when you step away."
+        lede="Chat-first coding tools wait for a prompt. Alfred runs approved GitHub work from a Mac, Linux box, or server you control, then reports back when it needs a decision."
       />
       <div class="why-grid">
         {why.map((w, i) => (
@@ -276,7 +276,7 @@ const why = [
       <SectionHeader
         eyebrow="HOW IT WORKS"
         title="One run, from start to finish."
-        lede="From the moment a run starts to the pull request it opens. The same five stages happen every time, every 20 minutes."
+        lede="From the moment a run starts to the pull request it opens. The same five stages happen every time an agent fires."
       />
       <FiringLifecycle />
       <p style="margin-top:32px;">
@@ -289,7 +289,7 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="REAL OUTPUT"
-        title="What lands in Slack while you are away."
+        title="What lands in Slack after each run."
         lede="The two Slack posts below are real, captured from one builder's own setup: a Batman plan waiting for approval, and a summary of a day's work. Your own numbers will depend on how many agents you run, how big your repos are, and how much you let the agents do on their own."
       />
 

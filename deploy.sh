@@ -61,6 +61,9 @@ mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_PROMPTS" "$L
 
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
+printf '%s\n' "$REPO_DIR" > "$RUNTIME_LAUNCHD/source-repo.txt"
+chmod 644 "$RUNTIME_LAUNCHD/source-repo.txt"
+
 echo "[alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackages)"
 # v0.4.0 introduced subpackages (agent_runner/, connectors/,
 # fleet_brain/, memory/, server/). The original `cp lib/*.py` only matched

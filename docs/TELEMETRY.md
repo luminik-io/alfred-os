@@ -21,10 +21,10 @@ no separate "disable" step and no cached state that keeps it running.
 
 ## Why it exists
 
-One reason: a public proof counter. The marketing site shows an aggregate like
-"Alfred has opened N pull requests and merged M across K installs." That number
-is only credible if it comes from real installs, so installs that want to be
-counted can opt in to contribute their anonymous totals.
+One reason: the public impact page. It can show how many pull requests opted-in
+Alfred installs have opened, reviewed, and merged. Those numbers are useful only
+if they come from real installs, so operators can opt in to contribute their
+anonymous totals.
 
 It is not analytics, not crash reporting, not feature tracking, and not tied to
 any account. It is a counter.
@@ -83,32 +83,51 @@ is never resolved to anything.
 1. Decide where the counts go. Either deploy the bundled collector
    (see below) or point at any endpoint that accepts the payload above.
 
-2. Add both variables to `~/.alfredrc`:
+2. Enable telemetry from the operator CLI:
 
    ```sh
-   ALFRED_TELEMETRY_ENABLED=1
-   ALFRED_TELEMETRY_URL=https://your-worker.example.com/ingest
-   # Optional: only if your collector sets INGEST_TOKEN (see below).
-   ALFRED_TELEMETRY_TOKEN=the-same-value-as-the-collector
+   alfred telemetry on --url https://your-worker.example.com/ingest
    ```
 
-   If `ALFRED_TELEMETRY_URL` is missing, the reporter no-ops even with the
-   switch on, it will not guess a host. `ALFRED_TELEMETRY_TOKEN` is optional and
-   sent as the `X-Ingest-Token` header; set it only if your collector requires a
-   token.
+   If your collector sets `INGEST_TOKEN`, pass the matching token:
 
-3. Uncomment the `proof-telemetry` line in `launchd/agents.conf` (copied from
-   `agents.conf.example`) and re-run `deploy.sh` so the scheduler picks it up.
+   ```sh
+   alfred telemetry on \
+     --url https://your-worker.example.com/ingest \
+     --token the-same-value-as-the-collector
+   ```
+
+   The command writes a managed telemetry block to `~/.alfredrc` and adds the
+   `alfred.proof-telemetry` scheduler row to the source checkout's
+   `launchd/agents.conf` when Alfred can identify it. Telemetry remains off by
+   default; this command is the opt-in action. HTTPS is required for non-local
+   endpoints; `http://localhost` is allowed for local Worker tests.
+
+3. Re-run `deploy.sh` so launchd or systemd picks up the scheduler change.
    `alfred-init` also offers this as an opt-in prompt (default No).
 
 ## Turning it off
 
-Remove `ALFRED_TELEMETRY_ENABLED` from `~/.alfredrc` (or set it to anything but
-`1`). The next scheduled run is a no-op. Optionally re-comment the
-`proof-telemetry` line in `agents.conf` so the job is not even loaded.
+```sh
+alfred telemetry off
+```
 
-To also forget the local id, delete
-`$ALFRED_HOME/state/telemetry-install-id`.
+This writes `ALFRED_TELEMETRY_ENABLED=0`, removes the telemetry scheduler row,
+and removes the ingest token from the managed telemetry block. The next
+scheduled run is a no-op even if an older scheduler row is still loaded.
+
+To also forget the local id:
+
+```sh
+alfred telemetry off --delete-install-id
+```
+
+Check the current state any time with:
+
+```sh
+alfred telemetry status
+alfred telemetry status --json
+```
 
 ## See what would be sent, without sending
 
@@ -150,7 +169,7 @@ per-install count cap, and the latest-wins idempotency are always on.
 
 ## Honesty about the counts
 
-This is a public vanity counter, so be clear-eyed about what it proves.
+This is a public usage counter, so be clear-eyed about what it proves.
 
 - The counts are real aggregates from opted-in installs. They are not silently
   capped: the reporter paginates its local counts rather than truncating at a

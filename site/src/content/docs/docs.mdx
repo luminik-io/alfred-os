@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: An autonomous engineering team that ships while you are away. Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else.
+description: A local coding-agent runtime that opens reviewed pull requests. Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack.
 template: splash
 head:
   - tag: title
     content: "Alfred: an autonomous engineering team for Claude Code and Codex"
 hero:
-  tagline: "A team of coding agents that ships while you are away. Alfred plans across your repos or monorepo packages, implements with your Claude Code and Codex subscriptions, and reports to Slack."
+  tagline: "A local runtime for coding agents that open reviewed PRs. Alfred plans across your repos or monorepo packages, implements with your Claude Code and Codex subscriptions, and reports to Slack."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -25,7 +25,7 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 ## Why Alfred exists
 
-Interactive coding agents finish a prompt while you sit at the keyboard. The job Alfred is built for is the work that keeps coming after the keyboard closes: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
+Interactive coding agents finish a prompt while you sit at the keyboard. Alfred is built for queued engineering work that does not need you at the keyboard: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
 
 That work needs durable coordination, not another chat window. Alfred supplies the runtime: scoped intake from GitHub issues and specs, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
 

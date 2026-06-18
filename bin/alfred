@@ -68,6 +68,8 @@ Subcommands today:
                               posts only the delta since the last sweep.
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
+  alfred telemetry ...        Inspect or change the opt-in usage
+                              telemetry reporter.
 
 The runner-level fleet gate file lives at
 ``$ALFRED_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
@@ -83,8 +85,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -92,6 +96,7 @@ import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Resolve lib/ relative to the script regardless of how it was invoked.
 # In the fleet layout the script lives in ``$ALFRED_HOME/bin/`` and the
@@ -115,6 +120,26 @@ ENGINE_SCRIPTS = tuple(f"{agent}.py" for agent in ENGINE_AGENTS)
 NATIVE_DRY_RUN_SCRIPTS = {"lucius.py", "hello.py", "echo_summarise.py"}
 PRIMARY_CLAUDE_DIR = Path.home() / ".claude"
 SECONDARY_CLAUDE_DIR = Path.home() / ".claude-secondary"
+TELEMETRY_LABEL = "alfred.proof-telemetry"
+TELEMETRY_ROW = (
+    f"{TELEMETRY_LABEL}\tproof-telemetry.py\tcron:9:10\tno\t"
+    "alfred.proof-telemetry\tAnonymous usage telemetry (opt-in)"
+)
+TELEMETRY_ENV_KEYS = (
+    "ALFRED_TELEMETRY_ENABLED",
+    "ALFRED_TELEMETRY_URL",
+    "ALFRED_TELEMETRY_TOKEN",
+)
+TELEMETRY_RC_BANNER = "# alfred telemetry, generated below this line. Safe to re-run."
+TELEMETRY_RC_BANNER_RE = re.compile(
+    r"(?:\n{0,2})# alfred telemetry, generated below this line\. Safe to re-run\.\n"
+    r"(?:ALFRED_TELEMETRY_(?:ENABLED|URL|TOKEN)=.*(?:\n|$))*",
+    re.MULTILINE,
+)
+TELEMETRY_SOURCE_MARKER = "source-repo.txt"
+ALFRED_INIT_BANNER_RE = re.compile(
+    r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
+)
 
 DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
     "lucius": {"script": "lucius.py", "schedule": "interval:1200", "role": "feature dev"},
@@ -123,11 +148,23 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
     "rasalghul": {"script": "rasalghul.py", "schedule": "interval:1800", "role": "PR review"},
     "nightwing": {"script": "nightwing.py", "schedule": "interval:2700", "role": "CI repair"},
     "robin": {"script": "robin.py", "schedule": "interval:10800", "role": "bug triage"},
-    "batman": {"script": "batman.py", "schedule": "interval:3600", "role": "cross-repo coordinator"},
-    "huntress": {"script": "huntress.py", "schedule": "interval:1800", "role": "staging smoke runner"},
+    "batman": {
+        "script": "batman.py",
+        "schedule": "interval:3600",
+        "role": "cross-repo coordinator",
+    },
+    "huntress": {
+        "script": "huntress.py",
+        "schedule": "interval:1800",
+        "role": "staging smoke runner",
+    },
     "gordon": {"script": "gordon.py", "schedule": "cron:8:00", "role": "ops morning"},
     "automerge": {"script": "automerge.py", "schedule": "interval:900", "role": "PR automerge"},
-    "agent-cleanup": {"script": "agent-cleanup.py", "schedule": "cron:3:00", "role": "agent cleanup"},
+    "agent-cleanup": {
+        "script": "agent-cleanup.py",
+        "schedule": "cron:3:00",
+        "role": "agent cleanup",
+    },
     "cleanup": {"script": "agent-cleanup.py", "schedule": "cron:3:00", "role": "agent cleanup"},
     "code-map-refresh": {
         "script": "code-map-refresh.py",
@@ -315,6 +352,351 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
         return 0
     for c in enabled:
         print(c)
+    return 0
+
+
+# ----- opt-in usage telemetry -----
+
+
+def _alfredrc_path(raw: str | None = None) -> Path:
+    return Path(raw or os.environ.get("ALFREDRC") or (Path.home() / ".alfredrc")).expanduser()
+
+
+def _read_alfredrc_values(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not path.exists():
+        return out
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :]
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip()
+        try:
+            parsed = shlex.split(value)
+        except ValueError:
+            parsed = []
+        out[key] = parsed[0] if len(parsed) == 1 else value.strip("'").strip('"')
+    return out
+
+
+def _telemetry_values(alfredrc: Path) -> dict[str, str]:
+    values = _read_alfredrc_values(alfredrc)
+    for key in TELEMETRY_ENV_KEYS:
+        if key in os.environ:
+            values[key] = os.environ[key]
+    return values
+
+
+def _quote_env_value(value: str) -> str:
+    if "\x00" in value or "\n" in value or "\r" in value:
+        raise ValueError("telemetry values must be single-line strings")
+    return shlex.quote(value)
+
+
+def _write_telemetry_rc_block(path: Path, values: dict[str, str]) -> None:
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    existing = TELEMETRY_RC_BANNER_RE.sub("", existing).strip()
+    existing = _strip_telemetry_env_lines(existing).strip()
+    block = [TELEMETRY_RC_BANNER]
+    for key in TELEMETRY_ENV_KEYS:
+        if key in values and values[key] != "":
+            block.append(f"{key}={_quote_env_value(values[key])}")
+    block_text = "\n".join(block)
+
+    init_match = ALFRED_INIT_BANNER_RE.search(existing)
+    if init_match:
+        prefix = existing[: init_match.start()].rstrip()
+        suffix = existing[init_match.start() :].lstrip()
+        parts = [part for part in (prefix, block_text, suffix) if part]
+        new_text = "\n\n".join(parts) + "\n"
+    else:
+        parts = [part for part in (existing, block_text) if part]
+        new_text = "\n\n".join(parts) + "\n"
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(new_text, encoding="utf-8")
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+
+
+def _strip_telemetry_env_lines(text: str) -> str:
+    kept: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key = line.partition("=")[0].strip()
+        if key in TELEMETRY_ENV_KEYS:
+            continue
+        kept.append(raw)
+    return "\n".join(kept)
+
+
+def _alfred_home_path() -> Path:
+    return Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred")).expanduser()
+
+
+def _source_agents_conf_for_root(root: Path) -> Path | None:
+    if not (root / "deploy.sh").exists():
+        return None
+    launchd_dir = root / "launchd"
+    if not launchd_dir.exists():
+        return None
+    return launchd_dir / "agents.conf"
+
+
+def _telemetry_source_agents_conf_path(alfred_home: Path) -> Path | None:
+    """Return the deploy-source ``agents.conf`` when it can be identified."""
+    candidates: list[str] = []
+    for env_name in ("ALFRED_REPO", "ALFRED_SOURCE_DIR"):
+        raw = os.environ.get(env_name, "").strip()
+        if raw:
+            candidates.append(raw)
+
+    source_marker = alfred_home / "launchd" / TELEMETRY_SOURCE_MARKER
+    with contextlib.suppress(OSError):
+        raw_marker = source_marker.read_text(encoding="utf-8").strip()
+        if raw_marker:
+            candidates.append(raw_marker)
+
+    candidates.append(str(_HERE.parent))
+    seen: set[str] = set()
+    for raw in candidates:
+        expanded = os.path.expandvars(raw).strip()
+        if not expanded:
+            continue
+        root = Path(expanded).expanduser()
+        try:
+            key = str(root.resolve())
+        except OSError:
+            key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        conf = _source_agents_conf_for_root(root)
+        if conf is not None:
+            return conf
+    return None
+
+
+def _telemetry_agents_conf_path(raw: str | None = None) -> Path:
+    if raw:
+        return Path(raw).expanduser()
+    alfred_home = _alfred_home_path()
+    source = _telemetry_source_agents_conf_path(alfred_home)
+    if source is not None:
+        return source
+    runtime = alfred_home / "launchd" / "agents.conf"
+    if runtime.exists():
+        return runtime
+    checkout = _HERE.parent / "launchd" / "agents.conf"
+    if checkout.exists():
+        return checkout
+    return runtime
+
+
+def _telemetry_row_state(path: Path) -> str:
+    if not path.exists():
+        return "missing"
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        stripped = raw.lstrip()
+        if stripped.startswith("#"):
+            candidate = stripped.lstrip("#").lstrip()
+            if candidate.startswith(f"{TELEMETRY_LABEL}\t"):
+                return "commented"
+        elif stripped.startswith(f"{TELEMETRY_LABEL}\t"):
+            return "present"
+    return "absent"
+
+
+def _ensure_telemetry_scheduler_row(path: Path, schedule: str) -> bool:
+    row = TELEMETRY_ROW
+    if schedule != "cron:9:10":
+        row = row.replace("\tcron:9:10\t", f"\t{schedule}\t", 1)
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    lines: list[str] = []
+    inserted = False
+    changed = not path.exists()
+    for raw in existing.splitlines():
+        candidate = raw.lstrip().lstrip("#").lstrip()
+        if candidate.startswith(f"{TELEMETRY_LABEL}\t"):
+            if not inserted:
+                lines.append(row)
+                inserted = True
+            changed = True
+            continue
+        lines.append(raw)
+    if not inserted:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(row)
+        changed = True
+    if changed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return changed
+
+
+def _remove_telemetry_scheduler_row(path: Path) -> bool:
+    if not path.exists():
+        return False
+    lines = path.read_text(encoding="utf-8").splitlines()
+    kept = [
+        raw
+        for raw in lines
+        if not raw.lstrip().lstrip("#").lstrip().startswith(f"{TELEMETRY_LABEL}\t")
+    ]
+    if kept == lines:
+        return False
+    path.write_text("\n".join(kept).rstrip() + "\n", encoding="utf-8")
+    return True
+
+
+def _telemetry_deploy_hint(conf: Path) -> str:
+    deploy_sh = conf.parent.parent / "deploy.sh"
+    if deploy_sh.exists():
+        return f"alfred: run `bash {deploy_sh}` to install the scheduler change"
+    return "alfred: run `bash deploy.sh` from the source checkout to install the scheduler change"
+
+
+def _telemetry_url_error(raw_url: str) -> str | None:
+    parsed = urlparse(raw_url)
+    if parsed.scheme == "https" and parsed.netloc:
+        return None
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "http" and host in {"localhost", "127.0.0.1", "::1"}:
+        return None
+    return "telemetry endpoint must be HTTPS; localhost HTTP is allowed for local worker tests"
+
+
+def _telemetry_schedule_error(schedule: str) -> str | None:
+    if not schedule:
+        return "schedule must not be empty"
+    if any(ch in schedule for ch in "\t\r\n"):
+        return "schedule must not contain tabs or newlines"
+    if schedule.startswith("interval:"):
+        raw_seconds = schedule.removeprefix("interval:")
+        if raw_seconds.isdigit() and int(raw_seconds) > 0:
+            return None
+        return "interval schedule must look like interval:1200"
+    if schedule.startswith("cron:"):
+        raw_parts = schedule.removeprefix("cron:").split(":")
+        if len(raw_parts) == 2:
+            raw_hour, raw_minute = raw_parts
+        elif len(raw_parts) == 3:
+            raw_weekday, raw_hour, raw_minute = raw_parts
+            if not raw_weekday.isdigit() or not 0 <= int(raw_weekday) <= 6:
+                return "weekly cron schedule must use weekday 0-6"
+        else:
+            return "cron schedule must look like cron:9:10 or cron:0:22:00"
+        if not raw_hour.isdigit() or not 0 <= int(raw_hour) <= 23:
+            return "cron schedule hour must be 0-23"
+        if not raw_minute.isdigit() or not 0 <= int(raw_minute) <= 59:
+            return "cron schedule minute must be 0-59"
+        return None
+    return "schedule must start with interval: or cron:"
+
+
+def cmd_telemetry_status(args: argparse.Namespace) -> int:
+    alfredrc = _alfredrc_path(args.alfredrc)
+    conf = _telemetry_agents_conf_path(args.agents_conf)
+    values = _telemetry_values(alfredrc)
+    enabled = values.get("ALFRED_TELEMETRY_ENABLED", "").strip() == "1"
+    url = values.get("ALFRED_TELEMETRY_URL", "").strip()
+    token = values.get("ALFRED_TELEMETRY_TOKEN", "").strip()
+    install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
+    payload = {
+        "enabled": enabled,
+        "endpoint": url,
+        "token_configured": bool(token),
+        "alfredrc": str(alfredrc),
+        "agents_conf": str(conf),
+        "scheduler_row": _telemetry_row_state(conf),
+        "install_id_path": str(install_id_path),
+        "install_id_exists": install_id_path.exists(),
+        "impact_page": "https://alfred.luminik.io/impact/",
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    print(f"telemetry: {'on' if enabled else 'off'}")
+    print(f"endpoint: {url or '(unset)'}")
+    print(f"token: {'set' if token else 'unset'}")
+    print(f"scheduler row: {payload['scheduler_row']} ({conf})")
+    print(
+        f"install id: {'present' if install_id_path.exists() else 'not created'} ({install_id_path})"
+    )
+    print("public page: https://alfred.luminik.io/impact/")
+    if enabled and not url:
+        print("warning: telemetry is enabled but ALFRED_TELEMETRY_URL is unset", file=sys.stderr)
+    if enabled and payload["scheduler_row"] != "present":
+        print(
+            "warning: usage telemetry is not scheduled; run `alfred telemetry on --url ...`",
+            file=sys.stderr,
+        )
+    return 0
+
+
+def cmd_telemetry_on(args: argparse.Namespace) -> int:
+    alfredrc = _alfredrc_path(args.alfredrc)
+    conf = _telemetry_agents_conf_path(args.agents_conf)
+    current = _telemetry_values(alfredrc)
+    url = (args.url or current.get("ALFRED_TELEMETRY_URL") or "").strip()
+    if not url:
+        print("alfred telemetry on: pass --url https://.../ingest", file=sys.stderr)
+        return 2
+    url_error = _telemetry_url_error(url)
+    if url_error:
+        print(f"alfred telemetry on: {url_error}", file=sys.stderr)
+        return 2
+    schedule_error = _telemetry_schedule_error(args.schedule)
+    if schedule_error:
+        print(f"alfred telemetry on: {schedule_error}", file=sys.stderr)
+        return 2
+    values = {
+        "ALFRED_TELEMETRY_ENABLED": "1",
+        "ALFRED_TELEMETRY_URL": url,
+    }
+    token = (args.token or current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
+    if token and not args.clear_token:
+        values["ALFRED_TELEMETRY_TOKEN"] = token
+    _write_telemetry_rc_block(alfredrc, values)
+    _ensure_telemetry_scheduler_row(conf, args.schedule)
+    print("alfred: telemetry enabled")
+    print(f"alfred: wrote {alfredrc}")
+    print(f"alfred: scheduled {TELEMETRY_LABEL} in {conf}")
+    print(_telemetry_deploy_hint(conf))
+    return 0
+
+
+def cmd_telemetry_off(args: argparse.Namespace) -> int:
+    alfredrc = _alfredrc_path(args.alfredrc)
+    conf = _telemetry_agents_conf_path(args.agents_conf)
+    current = _telemetry_values(alfredrc)
+    values = {"ALFRED_TELEMETRY_ENABLED": "0"}
+    if not args.forget_endpoint and current.get("ALFRED_TELEMETRY_URL"):
+        values["ALFRED_TELEMETRY_URL"] = current["ALFRED_TELEMETRY_URL"]
+    if args.keep_token and current.get("ALFRED_TELEMETRY_TOKEN"):
+        values["ALFRED_TELEMETRY_TOKEN"] = current["ALFRED_TELEMETRY_TOKEN"]
+    _write_telemetry_rc_block(alfredrc, values)
+    removed = _remove_telemetry_scheduler_row(conf)
+    install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
+    if args.delete_install_id and install_id_path.exists():
+        install_id_path.unlink()
+    print("alfred: telemetry disabled")
+    print(f"alfred: wrote {alfredrc}")
+    print(f"alfred: {'removed' if removed else 'no'} scheduler row at {conf}")
+    print(_telemetry_deploy_hint(conf))
+    if args.delete_install_id:
+        print(f"alfred: removed install id at {install_id_path}")
     return 0
 
 
@@ -544,8 +926,12 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
         return 1
     if not native:
         print("  mode: safe simulation")
-        print("  would: resolve config, acquire the agent lock, run preflight, and enter the runner")
-        print("  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files")
+        print(
+            "  would: resolve config, acquire the agent lock, run preflight, and enter the runner"
+        )
+        print(
+            "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files"
+        )
         if args.native:
             print("  note: native lifecycle dry-run is not declared for this runner yet")
         else:
@@ -1568,6 +1954,49 @@ def main(argv: list[str] | None = None) -> int:
     p_enabled = sub.add_parser("enabled-agents", help="print the list of enabled codenames")
     p_enabled.set_defaults(func=cmd_enabled_agents)
 
+    p_telemetry = sub.add_parser("telemetry", help="manage opt-in usage telemetry")
+    telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)
+    p_telemetry_status = telemetry_sub.add_parser("status", help="show usage telemetry state")
+    p_telemetry_status.add_argument("--json", action="store_true")
+    p_telemetry_status.add_argument("--alfredrc", help=argparse.SUPPRESS)
+    p_telemetry_status.add_argument("--agents-conf", help=argparse.SUPPRESS)
+    p_telemetry_status.set_defaults(func=cmd_telemetry_status)
+    p_telemetry_on = telemetry_sub.add_parser("on", help="enable usage telemetry")
+    p_telemetry_on.add_argument("--url", help="HTTPS collector /ingest URL")
+    p_telemetry_on.add_argument("--token", help="optional collector ingest token")
+    p_telemetry_on.add_argument(
+        "--clear-token",
+        action="store_true",
+        help="do not keep an existing telemetry token when enabling",
+    )
+    p_telemetry_on.add_argument(
+        "--schedule",
+        default="cron:9:10",
+        help="agents.conf cadence for the usage telemetry reporter (default: cron:9:10)",
+    )
+    p_telemetry_on.add_argument("--alfredrc", help=argparse.SUPPRESS)
+    p_telemetry_on.add_argument("--agents-conf", help=argparse.SUPPRESS)
+    p_telemetry_on.set_defaults(func=cmd_telemetry_on)
+    p_telemetry_off = telemetry_sub.add_parser("off", help="disable usage telemetry")
+    p_telemetry_off.add_argument(
+        "--forget-endpoint",
+        action="store_true",
+        help="remove the telemetry endpoint from the managed .alfredrc block",
+    )
+    p_telemetry_off.add_argument(
+        "--keep-token",
+        action="store_true",
+        help="keep the existing ingest token in .alfredrc",
+    )
+    p_telemetry_off.add_argument(
+        "--delete-install-id",
+        action="store_true",
+        help="delete $ALFRED_HOME/state/telemetry-install-id",
+    )
+    p_telemetry_off.add_argument("--alfredrc", help=argparse.SUPPRESS)
+    p_telemetry_off.add_argument("--agents-conf", help=argparse.SUPPRESS)
+    p_telemetry_off.set_defaults(func=cmd_telemetry_off)
+
     p_pause = sub.add_parser("pause", help="stop scheduled firings for an agent")
     p_pause.add_argument("codename", help="agent codename, or 'all'")
     p_pause.set_defaults(func=cmd_pause)
@@ -1809,9 +2238,7 @@ def main(argv: list[str] | None = None) -> int:
     p_serve = sub.add_parser("serve", help="open the read-only localhost dashboard")
     p_serve.add_argument("--host", help="bind address passed to alfred-serve")
     p_serve.add_argument("--port", type=int, help="bind port passed to alfred-serve")
-    p_serve.add_argument(
-        "--no-browser", action="store_true", help="do not auto-open a browser tab"
-    )
+    p_serve.add_argument("--no-browser", action="store_true", help="do not auto-open a browser tab")
     p_serve.add_argument(
         "--log-level",
         choices=["debug", "info", "warning", "error"],
