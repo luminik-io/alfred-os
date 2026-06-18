@@ -827,6 +827,10 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 }
 
 @media (max-width: 860px) {
+  :root[data-mobile-menu-open] .m-header {
+    z-index: 2147483001;
+  }
+
   .m-nav { gap: 16px; }
   .m-nav-group,
   .m-nav a:not(.m-nav__cta) { display: none; }

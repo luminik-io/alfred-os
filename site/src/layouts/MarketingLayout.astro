@@ -506,6 +506,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
           menuButton.setAttribute("aria-expanded", open ? "true" : "false");
           menuButton.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
           mobileMenu.hidden = !open;
+          document.documentElement.toggleAttribute("data-mobile-menu-open", open);
         }
         if (menuButton && mobileMenu) {
           menuButton.addEventListener("click", function () {
