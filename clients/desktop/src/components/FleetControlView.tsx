@@ -627,7 +627,7 @@ function serviceTone(row: FleetControlRow): {
 
 function defaultSelectedCodename(rows: FleetControlRow[]): string | null {
   return (
-    rows.find((row) => isErrorStatus(row.summary?.status) || row.consecutiveFailures >= 2)
+    rows.find((row) => row.summary?.status === "error" || row.consecutiveFailures >= 2)
       ?.codename ||
     rows.find((row) => row.service === "running")?.codename ||
     rows[0]?.codename ||

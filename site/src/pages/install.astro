@@ -6,48 +6,48 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
 ---
 
 <MarketingLayout
-  title="Install Alfred | 30 minutes if your machine is warm"
-  description="If you already have gh auth login, claude first-run, and Homebrew on macOS, this takes 30 minutes. From cold start it takes 60 to 120."
+  title="Install Alfred | Existing setup or fresh machine"
+  description="Use the fast path if GitHub CLI, Claude Code, a package manager, and Python are already ready. Use the guided path for a fresh machine."
   path="/install/"
 >
   <Hero
     eyebrow="INSTALL"
-    headline="Install in 30 minutes (if your machine is warm)."
-    sub="If you already have gh auth login, claude first-run, and Homebrew on macOS, this takes 30 minutes. From cold start it takes 60 to 120."
+    headline="Install Alfred from the setup you actually have."
+    sub="Fast path for an already-provisioned dev machine. Guided path for a fresh laptop or dedicated agent box."
     headlineSize="lg"
-    primaryCta={{ label: "I have all that already", href: "/getting-started/install/" }}
-    secondaryCta={{ label: "I am starting cold", href: "/getting-started/ai-assisted-install/" }}
+    primaryCta={{ label: "Use existing setup", href: "/getting-started/install/" }}
+    secondaryCta={{ label: "Set up a fresh machine", href: "/getting-started/ai-assisted-install/" }}
   />
 
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
         eyebrow="PICK YOUR STARTING POINT"
-        title="Two honest paths."
-        lede="The first assumes your machine is already provisioned. The second walks you through every step from a fresh laptop."
+        title="Choose the path that matches your machine."
+        lede="The fast path assumes your developer tools are already authenticated. The guided path walks through prerequisites, auth, and the first Alfred run."
       />
       <div class="paths">
         <a class="m-card m-card--hover paths__card" href="/getting-started/install/">
           <span class="m-eyebrow">PATH A &middot; ~30 MIN</span>
-          <h3 class="m-h3">I have all that already.</h3>
+          <h3 class="m-h3">Use an existing dev setup.</h3>
           <ul class="paths__list">
-            <li>gh auth login done</li>
-            <li>claude first-run done</li>
+            <li>GitHub CLI is already authenticated</li>
+            <li>Claude Code first run is complete</li>
             <li>Homebrew on macOS or apt on Linux</li>
             <li>Python 3.11+ on PATH</li>
           </ul>
-          <span class="m-link" style="align-self:start;">Open the 30-min install →</span>
+          <span class="m-link" style="align-self:start;">Open the fast install →</span>
         </a>
         <a class="m-card m-card--hover paths__card" href="/getting-started/ai-assisted-install/">
           <span class="m-eyebrow">PATH B &middot; ~60 TO 120 MIN</span>
-          <h3 class="m-h3">I am starting cold.</h3>
+          <h3 class="m-h3">Set up a fresh machine.</h3>
           <ul class="paths__list">
             <li>Fresh laptop or dedicated box</li>
             <li>No GitHub auth, no CLIs installed</li>
-            <li>Walk-through prompt for Claude Code</li>
-            <li>Asks every question explicitly</li>
+            <li>Guided prompt for Claude Code</li>
+            <li>Every repo and secret is confirmed explicitly</li>
           </ul>
-          <span class="m-link" style="align-self:start;">Open the AI-assisted install →</span>
+          <span class="m-link" style="align-self:start;">Open the guided install →</span>
         </a>
       </div>
     </div>

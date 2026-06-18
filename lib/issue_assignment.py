@@ -50,6 +50,8 @@ ROUTE_BLOCKED = "blocked"
 # go-ahead and is never auto-assigned until the gate is released.
 ROUTE_PENDING_APPROVAL = "pending_approval"
 
+SUPPORTED_ASSIGNMENT_AGENTS = frozenset({ROUTE_BATMAN, ROUTE_LUCIUS})
+
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 _ACTIONABLE_CUES = (
@@ -224,9 +226,14 @@ def fetch_issue_snapshot(repo: str, number: int) -> IssueSnapshot:
     return IssueSnapshot.from_gh_payload(repo, number, payload)
 
 
-def decide_assignment(issue: IssueSnapshot) -> AssignmentDecision:
+def decide_assignment(
+    issue: IssueSnapshot,
+    *,
+    target_agent: str = "",
+) -> AssignmentDecision:
     """Return the lane and labels for ``issue`` without touching GitHub."""
     labels = set(issue.labels)
+    target_agent = _normalize_assignment_target(target_agent)
     if issue.state.upper() != "OPEN":
         return AssignmentDecision(
             route=ROUTE_BLOCKED,
@@ -234,6 +241,18 @@ def decide_assignment(issue: IssueSnapshot) -> AssignmentDecision:
             add_labels=(),
             remove_labels=(),
             reason=f"issue is {issue.state.lower()}",
+            confidence=1.0,
+        )
+    if target_agent == "unsupported":
+        return AssignmentDecision(
+            route=ROUTE_BLOCKED,
+            agent="none",
+            add_labels=(),
+            remove_labels=(),
+            reason=(
+                "unsupported assignment target; choose "
+                f"{_agent_label(ROUTE_BATMAN)} or {_agent_label(ROUTE_LUCIUS)}"
+            ),
             confidence=1.0,
         )
 
@@ -268,25 +287,50 @@ def decide_assignment(issue: IssueSnapshot) -> AssignmentDecision:
             confidence=1.0,
         )
 
-    if label_constants.LARGE_FEATURE in labels or any(
-        label_constants.is_bundle_label(label) for label in labels
-    ):
+    existing_agent = _existing_assignment_agent(labels)
+    held_existing_assignment = (
+        existing_agent
+        and label_constants.DO_NOT_PICKUP in labels
+        and (not target_agent or target_agent == existing_agent)
+    )
+    if held_existing_assignment:
+        return AssignmentDecision(
+            route=existing_agent,
+            agent=existing_agent,
+            add_labels=(),
+            remove_labels=(label_constants.DO_NOT_PICKUP,),
+            reason=f"operator re-enabled {_agent_label(existing_agent)}",
+            confidence=0.95,
+        )
+    if target_agent:
+        if existing_agent == target_agent:
+            return AssignmentDecision(
+                route=ROUTE_ALREADY_ROUTED,
+                agent=target_agent,
+                add_labels=(),
+                remove_labels=(),
+                reason=f"already routed to {_agent_label(target_agent)}",
+                confidence=1.0,
+            )
+        return _decision_for_explicit_target(labels, target_agent)
+
+    if existing_agent == ROUTE_BATMAN:
         return AssignmentDecision(
             route=ROUTE_ALREADY_ROUTED,
             agent="batman",
             add_labels=(),
             remove_labels=(),
-            reason="already routed to Batman",
+            reason=f"already routed to {_agent_label(ROUTE_BATMAN)}",
             confidence=1.0,
         )
 
-    if label_constants.IMPLEMENT in labels:
+    if existing_agent == ROUTE_LUCIUS:
         return AssignmentDecision(
             route=ROUTE_ALREADY_ROUTED,
             agent="lucius",
             add_labels=(),
             remove_labels=(),
-            reason="already routed to Lucius",
+            reason=f"already routed to {_agent_label(ROUTE_LUCIUS)}",
             confidence=1.0,
         )
 
@@ -340,6 +384,7 @@ def assign_issue(
     number: int,
     *,
     dry_run: bool = False,
+    target_agent: str = "",
     fetcher: Fetcher = fetch_issue_snapshot,
     runner: GhRunner | None = None,
 ) -> AssignmentResult:
@@ -355,7 +400,7 @@ def assign_issue(
         logger.exception("could not fetch issue snapshot for %s#%s", repo, number)
         return _error_result(repo, number, "could not fetch issue from GitHub", dry_run=dry_run)
 
-    decision = decide_assignment(issue)
+    decision = decide_assignment(issue, target_agent=target_agent)
     # A blocked route never assigns. The operator-approval gate
     # (ROUTE_PENDING_APPROVAL) is also a non-assigning hold: its decision carries
     # no label changes, so without this branch it would fall through to the
@@ -427,12 +472,12 @@ def render_assignment_detail(
     prefix = "Dry run: would " if dry_run and decision.changed else ""
     if decision.route == ROUTE_LUCIUS:
         return (
-            f"{prefix}assign {target} to Lucius "
+            f"{prefix}assign {target} to {_agent_label(ROUTE_LUCIUS)} "
             f"by adding `{label_constants.IMPLEMENT}`. Reason: {decision.reason}."
         )
     if decision.route == ROUTE_BATMAN:
         return (
-            f"{prefix}assign {target} to Batman "
+            f"{prefix}assign {target} to {_agent_label(ROUTE_BATMAN)} "
             f"by adding `{label_constants.LARGE_FEATURE}`. Reason: {decision.reason}."
         )
     if decision.route == ROUTE_HUMAN_SCOPE:
@@ -441,7 +486,10 @@ def render_assignment_detail(
             f"Reason: {decision.reason}."
         )
     if decision.route == ROUTE_ALREADY_ROUTED:
-        return f"{target} is already routed to {decision.agent}. Reason: {decision.reason}."
+        return (
+            f"{target} is already routed to {_agent_label(decision.agent)}. "
+            f"Reason: {decision.reason}."
+        )
     if decision.route == ROUTE_PENDING_APPROVAL:
         return (
             f"{target} is held for operator approval "
@@ -536,6 +584,111 @@ def _ensure_labels(repo: str, labels: tuple[str, ...], *, runner: GhRunner) -> N
         )
 
 
+def _agent_label(agent: str) -> str:
+    return {
+        ROUTE_BATMAN: "Batman",
+        ROUTE_LUCIUS: "Lucius",
+    }.get(agent, agent or "none")
+
+
+def _normalize_assignment_target(raw: str) -> str:
+    target = (raw or "").strip().lower()
+    if not target or target in {"auto", "alfred"}:
+        return ""
+    aliases = {
+        ROUTE_BATMAN: {
+            "architect",
+            "batman",
+            "bruce",
+            "multi repo",
+            "multi-repo",
+            "multi repo architect",
+            "multi-repo architect",
+        },
+        ROUTE_LUCIUS: {
+            "developer",
+            "implementation",
+            "implementation agent",
+            "lucius",
+            "lucius fox",
+            "senior dev",
+            "senior developer",
+            "single repo",
+            "single-repo",
+            "single repo developer",
+            "single-repo developer",
+        },
+    }
+    for agent, names in aliases.items():
+        if target in names:
+            return agent
+    return "unsupported"
+
+
+def _existing_assignment_agent(labels: set[str]) -> str:
+    if label_constants.LARGE_FEATURE in labels or any(
+        label_constants.is_bundle_label(label) for label in labels
+    ):
+        return ROUTE_BATMAN
+    if label_constants.IMPLEMENT in labels:
+        return ROUTE_LUCIUS
+    return ""
+
+
+def _decision_for_explicit_target(
+    labels: set[str],
+    target_agent: str,
+) -> AssignmentDecision:
+    remove = (label_constants.DO_NOT_PICKUP,) if label_constants.DO_NOT_PICKUP in labels else ()
+    reason = f"operator requested {_agent_label(target_agent)}"
+    if target_agent == ROUTE_BATMAN:
+        remove_labels = tuple(
+            label for label in (*remove, label_constants.IMPLEMENT) if label in labels
+        )
+        return AssignmentDecision(
+            route=ROUTE_BATMAN,
+            agent=ROUTE_BATMAN,
+            add_labels=_missing(labels, label_constants.LARGE_FEATURE),
+            remove_labels=remove_labels,
+            reason=reason,
+            confidence=0.95,
+        )
+
+    if any(label_constants.is_bundle_label(label) for label in labels):
+        return AssignmentDecision(
+            route=ROUTE_BLOCKED,
+            agent="none",
+            add_labels=(),
+            remove_labels=(),
+            reason="issue is part of a Batman bundle; remove the bundle label before rerouting",
+            confidence=1.0,
+        )
+    lucius_blockers = _lucius_assignment_blocking_labels(
+        labels,
+        ignore_large_feature=True,
+    )
+    if lucius_blockers:
+        return AssignmentDecision(
+            route=ROUTE_BLOCKED,
+            agent="none",
+            add_labels=(),
+            remove_labels=(),
+            reason="Lucius pickup is blocked by label(s): " + ", ".join(lucius_blockers),
+            confidence=1.0,
+        )
+    remove_labels = tuple(
+        label for label in (*remove, label_constants.LARGE_FEATURE) if label in labels
+    )
+    return AssignmentDecision(
+        route=ROUTE_LUCIUS,
+        agent=ROUTE_LUCIUS,
+        add_labels=_missing(labels, label_constants.IMPLEMENT),
+        remove_labels=remove_labels,
+        reason=reason,
+        confidence=0.95,
+    )
+
+
 def _label_names(raw_labels: list[Any]) -> list[str]:
     out: list[str] = []
     for label in raw_labels:
@@ -560,8 +713,14 @@ def _assignment_blocking_labels(labels: set[str]) -> list[str]:
     return sorted(blockers)
 
 
-def _lucius_assignment_blocking_labels(labels: set[str]) -> list[str]:
+def _lucius_assignment_blocking_labels(
+    labels: set[str],
+    *,
+    ignore_large_feature: bool = False,
+) -> list[str]:
     candidate_labels = set(labels)
+    if ignore_large_feature:
+        candidate_labels.discard(label_constants.LARGE_FEATURE)
     candidate_labels.add(label_constants.IMPLEMENT)
     blockers = set(label_constants.feature_dev_pickup_blocking_labels(candidate_labels))
     blockers.discard(label_constants.DO_NOT_PICKUP)
@@ -639,6 +798,7 @@ __all__ = [
     "ROUTE_HUMAN_SCOPE",
     "ROUTE_LUCIUS",
     "ROUTE_PENDING_APPROVAL",
+    "SUPPORTED_ASSIGNMENT_AGENTS",
     "AssignmentDecision",
     "AssignmentResult",
     "IssueSnapshot",

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { Badge, TabsList, TabsRoot, TabsTrigger } from "./ui";
@@ -34,8 +35,8 @@ export function Tabs<K extends string>({
   return (
     <TabsRoot value={active} onValueChange={(value) => onChange(value as K)}>
       <TabsList
-        className="grid w-full sm:w-fit"
-        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+        className="alfred-tabs-list grid w-full sm:w-fit"
+        style={{ "--tab-count": tabs.length } as CSSProperties}
         aria-label={ariaLabel}
       >
         {tabs.map((tab) => {
@@ -44,11 +45,17 @@ export function Tabs<K extends string>({
             <TabsTrigger
               key={tab.key}
               id={`${idBase}-tab-${tab.key}`}
-              className="gap-1.5 px-3"
+              className="min-w-0 gap-1 px-1.5 text-[0.78rem] sm:gap-1.5 sm:px-3 sm:text-sm [&>span]:min-w-0 [&>span]:truncate"
               value={tab.key}
               aria-controls={`${idBase}-panel`}
             >
-              {Icon ? <Icon size={15} aria-hidden="true" /> : null}
+              {Icon ? (
+                <Icon
+                  size={15}
+                  className="max-[420px]:hidden"
+                  aria-hidden="true"
+                />
+              ) : null}
               <span>{tab.label}</span>
               {tab.badge ? (
                 <Badge

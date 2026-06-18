@@ -52,7 +52,6 @@ vi.mock("../api", () => ({
   alternateDefaultBaseUrl: (value: string) => {
     const normalized = value.trim().replace(/\/$/, "");
     if (normalized === hooks.DEFAULT_BASE_URL) return null;
-    if (normalized === hooks.LEGACY_AIRPLAY_BASE_URL) return null;
     if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(normalized)) {
       return hooks.DEFAULT_BASE_URL;
     }
@@ -209,7 +208,7 @@ describe("useAlfred refresh race", () => {
   });
 });
 
-describe("useAlfred legacy local port", () => {
+describe("useAlfred fallback port", () => {
   it("does not retry on 7000 when the preferred 7010 endpoint fails", async () => {
     loadSnapshotMock.mockRejectedValue(new Error("connection refused"));
 

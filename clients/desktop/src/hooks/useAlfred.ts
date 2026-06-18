@@ -23,7 +23,7 @@ import {
   startLocalRuntime,
   supportsNativeActions,
 } from "../api";
-import { buildInspectionItems, buildNeedsYou } from "../lib/derive";
+import { buildNeedsYou } from "../lib/derive";
 import {
   buildFleetRows,
   deriveFleetHealth,
@@ -470,7 +470,12 @@ export function useAlfred() {
   }, []);
 
   const runLocalAction = useCallback(
-    async ({ action, target, cadence, refreshAfter = false }: NativeActionRequest) => {
+    async ({
+      action,
+      target,
+      cadence,
+      refreshAfter = false,
+    }: NativeActionRequest): Promise<NativeCommandResult | null> => {
       const key = `${action}:${target || "fleet"}`;
       setNativeBusy(key);
       setNativeError(null);
@@ -488,9 +493,11 @@ export function useAlfred() {
         if (action === "pause" || action === "resume" || action === "run") {
           await refreshFleetService();
         }
+        return result;
       } catch (err) {
         setNativeError(err instanceof Error ? err.message : String(err));
         setNativeErrorRaw(errorDetail(err));
+        return null;
       } finally {
         setNativeBusy(null);
       }
@@ -553,7 +560,6 @@ export function useAlfred() {
   // Review's home lane; reliability inspection signals are operator depth and
   // surface only in the Operator drawer.
   const needsYou = useMemo(() => buildNeedsYou(snapshot), [snapshot]);
-  const inspectionItems = useMemo(() => buildInspectionItems(snapshot), [snapshot]);
 
   const feed = useMemo(() => buildFeed(snapshot), [snapshot]);
   const unseenCount = useMemo(() => countUnseen(feed, seenIds), [feed, seenIds]);
@@ -616,7 +622,6 @@ export function useAlfred() {
     nativeErrorRaw,
     clearNativeResult,
     needsYou,
-    inspectionItems,
     fleetService,
     fleetRows,
     fleetHealth,

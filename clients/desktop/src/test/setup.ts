@@ -24,6 +24,20 @@ const storage = memoryStorage();
 Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
 
+Object.defineProperty(window, "matchMedia", {
+  configurable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }),
+});
+
 if (!Element.prototype.hasPointerCapture) {
   Element.prototype.hasPointerCapture = () => false;
 }
@@ -47,6 +61,17 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }));
 
 afterEach(() => {
-  storage.clear();
   cleanup();
+  storage.clear();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+  delete window.__TAURI_INTERNALS__;
+  window.history.replaceState(null, "", "/");
+  document.title = "";
+  document.documentElement.removeAttribute("data-theme");
+  document.documentElement.removeAttribute("style");
+  document.documentElement.classList.remove("dark");
+  document.body.removeAttribute("class");
+  document.body.removeAttribute("style");
+  document.body.removeAttribute("data-scroll-locked");
 });

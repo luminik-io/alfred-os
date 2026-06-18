@@ -138,7 +138,7 @@ export function SetupView({
           <div className="setup-section">
             <p className="panel-intro">
               Add people who can discuss plans and request drafts in Slack. The final approval gate
-              stays with the workspace owner.
+              stays with the designated operator.
             </p>
             {actionNotice ? (
               <p className={`inline-notice inline-notice--${actionNotice.tone}`}>
@@ -206,7 +206,7 @@ export function SetupView({
           <div className="setup-section">
             <p className="panel-intro">
               Raw runtime probes for power users. Output appears in the result panel at the top of
-              the app. Friendly per-agent controls live on Agents; memory checks live on Lessons.
+              the app. Per-agent controls live on Agents; memory checks live in Learnings.
             </p>
             <div className="console-panel__actions">
               <button
@@ -280,7 +280,7 @@ export function SetupView({
                 action, then the result panel shows the command, exit status, stdout, and stderr.
               </p>
               <div className="cli-chip-list">
-                <code>alfred serve --port 7010 --no-browser</code>
+                <code>alfred serve --port 7010</code>
                 <code>alfred status --json</code>
                 <code>alfred auth status</code>
                 <code>alfred agents</code>

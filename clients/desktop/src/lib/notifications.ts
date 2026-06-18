@@ -1,5 +1,11 @@
 import type { FiringRecord, ReliabilitySignal, Snapshot } from "../types";
 
+// Where a feed row leads when the operator clicks it: an agent's latest run,
+// or the Lessons review queue for memory suggestions.
+export type FeedTarget =
+  | { type: "agent"; codename: string }
+  | { type: "memory" };
+
 // A single entry in the in-app notification center. This is the surface that
 // replaces macOS banners: every firing and every governor "needs you" signal
 // becomes one chronological item the operator can read here.
@@ -13,7 +19,24 @@ export type FeedItem = {
   // ISO timestamp used for ordering; may be null for signals without a time.
   at: string | null;
   href?: string;
+  target?: FeedTarget;
 };
+
+// Governor action tokens (ask_human, retry_later) read like log noise when
+// shown raw; the feed leads with this operator phrasing instead.
+const ACTION_LABELS: Record<string, string> = {
+  ask_human: "needs your decision",
+  inspect: "worth a look",
+  retry_later: "backing off, will retry",
+  review_candidate: "lesson suggestion ready",
+  memory_promotion: "lesson suggestion ready",
+};
+
+const MEMORY_ACTIONS = new Set(["review_candidate", "memory_promotion"]);
+
+function humanizeAction(action: string): string {
+  return ACTION_LABELS[action] || action.replace(/_/g, " ");
+}
 
 const SEEN_KEY = "alfred-desktop.notifications.seen";
 const MAX_FEED = 60;
@@ -58,6 +81,7 @@ function firingToItem(firing: FiringRecord): FeedItem {
     title: `${firing.codename} ${firingVerb(firing.status)}`,
     detail: firing.summary || "No summary recorded.",
     at: firing.ended_at || firing.started_at,
+    target: { type: "agent", codename: firing.codename },
   };
 }
 
@@ -73,11 +97,27 @@ function signalToItem(
   idSuffix: string,
   tone: FeedItem["tone"],
 ): FeedItem {
-  const codename = signal.codename || null;
+  // Signals name their agent inconsistently across kinds; take any of them.
+  const codename = signal.codename || signal.agent || signal.target || null;
+  const action = signal.action || "";
   const title =
-    signal.title || signal.action || (codename ? `${codename} needs you` : "Agents need you");
-  const detail =
+    signal.title ||
+    (action
+      ? codename
+        ? `${codename} · ${humanizeAction(action)}`
+        : humanizeAction(action)
+      : codename
+        ? `${codename} needs you`
+        : "Agents need you");
+  let detail =
     signal.message || signal.summary || signal.reason || "Open the local source before changing state.";
+  // The server appends the raw action token to its message ("...: ask_human");
+  // the title already says it in plain words, so drop the duplicate tail.
+  if (action && /^[a-z0-9_]+$/i.test(action)) {
+    const stripped = detail.replace(new RegExp(`[\\s:·-]*${action}\\s*$`), "").trim();
+    if (stripped) detail = stripped;
+  }
+  const isMemory = MEMORY_ACTIONS.has(action) || signal.kind === "memory_promotion";
   return {
     id: `needs-you:${idSuffix}:${codename || ""}:${stableHash(title + detail)}`,
     kind: "needs-you",
@@ -87,6 +127,7 @@ function signalToItem(
     detail,
     // Governor signals carry no timestamp; they sort to the top as "now".
     at: null,
+    target: isMemory ? { type: "memory" } : codename ? { type: "agent", codename } : undefined,
   };
 }
 

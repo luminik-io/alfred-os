@@ -1,7 +1,7 @@
-import { AlertTriangle, Bell, CheckCircle2, Radio } from "lucide-react";
+import { AlertTriangle, Bell, CheckCircle2, ChevronRight, Radio } from "lucide-react";
 
 import { friendlyTime } from "../format";
-import type { FeedItem } from "../lib/notifications";
+import type { FeedItem, FeedTarget } from "../lib/notifications";
 import { EmptyState, PanelHeader } from "./atoms";
 
 export function NotificationsView({
@@ -9,12 +9,15 @@ export function NotificationsView({
   unseen,
   seen,
   onMarkAllSeen,
+  onOpenTarget,
   embedded = false,
 }: {
   feed: FeedItem[];
   unseen: number;
   seen: Set<string>;
   onMarkAllSeen: () => void;
+  /** Follow a feed row to its source: an agent's latest run or the Lessons queue. */
+  onOpenTarget?: (target: FeedTarget) => void;
   /** When embedded inside another panel (e.g. the Logs tabs) drop the
    *  panel chrome + header so it does not nest a card inside a card. */
   embedded?: boolean;
@@ -28,7 +31,7 @@ export function NotificationsView({
       {feed.length ? (
         <ol className="feed-list">
           {feed.map((item) => (
-            <FeedRow key={item.id} item={item} isNew={!seen.has(item.id)} />
+            <FeedRow key={item.id} item={item} isNew={!seen.has(item.id)} onOpen={onOpenTarget} />
           ))}
         </ol>
       ) : (
@@ -57,10 +60,19 @@ export function NotificationsView({
   );
 }
 
-function FeedRow({ item, isNew }: { item: FeedItem; isNew: boolean }) {
+function FeedRow({
+  item,
+  isNew,
+  onOpen,
+}: {
+  item: FeedItem;
+  isNew: boolean;
+  onOpen?: (target: FeedTarget) => void;
+}) {
   const Icon = iconFor(item);
-  return (
-    <li className={`feed-item feed-item--${item.tone}${isNew ? " feed-item--new" : ""}`}>
+  const clickable = Boolean(item.target && onOpen);
+  const content = (
+    <>
       <Icon size={18} aria-hidden="true" />
       <div className="feed-item__body">
         <div className="feed-item__head">
@@ -69,9 +81,38 @@ function FeedRow({ item, isNew }: { item: FeedItem; isNew: boolean }) {
         </div>
         <p>{item.detail}</p>
       </div>
-      <time className="feed-item__time">{item.at ? friendlyTime(item.at) : "now"}</time>
+      <span className="feed-item__side">
+        <time className="feed-item__time">{item.at ? friendlyTime(item.at) : "now"}</time>
+        {clickable ? <ChevronRight className="feed-item__chevron" size={15} aria-hidden="true" /> : null}
+      </span>
+    </>
+  );
+  const toneClass = `feed-item feed-item--${item.tone}${isNew ? " feed-item--new" : ""}`;
+  if (clickable) {
+    return (
+      <li className={`${toneClass} feed-item--clickable`}>
+        <button
+          type="button"
+          className="feed-item__row"
+          onClick={() => onOpen!(item.target!)}
+          aria-label={openLabel(item)}
+        >
+          {content}
+        </button>
+      </li>
+    );
+  }
+  return (
+    <li className={toneClass}>
+      <div className="feed-item__row">{content}</div>
     </li>
   );
+}
+
+function openLabel(item: FeedItem): string {
+  if (item.target?.type === "memory") return `Review lesson suggestions: ${item.title}`;
+  if (item.target?.type === "agent") return `Open ${item.target.codename}'s latest run: ${item.title}`;
+  return item.title;
 }
 
 function iconFor(item: FeedItem) {

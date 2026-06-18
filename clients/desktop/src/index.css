@@ -7,117 +7,318 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ===========================================================================
+ * THEME TOKEN ARCHITECTURE (docs/THEME_SYSTEM.md)
+ *
+ * Every color in the app resolves from a CSS custom property. Two dimensions
+ * select the active set:
+ *   1. data-theme on :root  -> "alfred" (default) or "linear"
+ *   2. .dark / .light class on :root -> mode within the theme
+ *
+ * The base :root block below is the canonical full token set; it doubles as
+ * Alfred Dark, the default theme, so the app is fully themed before any JS runs
+ * (no undefined var() fallbacks). Theme + mode blocks below override it.
+ *
+ * Glass vs flat (the core aesthetic rule, see THEME_SYSTEM.md):
+ *   --glass / --glass-strong / --glass-highlight / --glass-shadow drive the
+ *   floating chrome (sidebar, palette, dialogs, hero). --surface / --surface-2
+ *   / --hairline drive the flat, dense DATA surfaces (board, lists, tables).
+ *   The per-theme --glass-blur token lets a theme dial glass down to near-flat
+ *   (Linear Crisp) without touching component CSS.
+ *
+ * Each theme MUST define the complete token set. A vitest guard
+ * (src/test/theme-tokens.test.ts) fails CI if any theme drops a token.
+ * ========================================================================= */
+
 :root {
-  color-scheme: light;
-  /* Glass surface tuning used by the agent roster cards (matches the literal
-     blur(24px) saturate(145%) used elsewhere in this file). */
+  color-scheme: dark;
+
+  /* --- Alfred Dark (default): refined near-black steel-violet, Linear-grade
+   * depth. The base carries a touch more chroma so it reads as a deep cool
+   * indigo-black (not flat gray), elevation steps are clearer, hairlines are
+   * crisper with a faint cool tint, and the accent is a shade more vivid. --- */
+  --background: oklch(0.145 0.017 268);
+  --foreground: oklch(0.97 0.012 272);
+  --card: oklch(0.20 0.019 270 / 92%);
+  --card-foreground: oklch(0.97 0.012 272);
+  --popover: oklch(0.205 0.019 270 / 96%);
+  --popover-foreground: oklch(0.97 0.012 272);
+  /* Filled-button accent sits a touch deeper than the signature glow so white
+   * button text clears WCAG AA (4.5:1) on it; --accent/--ring keep the brighter
+   * steel violet for active states and focus rings. */
+  --primary: oklch(0.56 0.19 282);
+  --primary-foreground: oklch(0.99 0.008 272);
+  --secondary: oklch(0.25 0.02 270 / 80%);
+  --secondary-foreground: oklch(0.93 0.014 272);
+  --muted: oklch(0.25 0.018 270 / 72%);
+  --muted-foreground: oklch(0.72 0.022 272);
+  --accent: oklch(0.64 0.19 282);
+  --accent-foreground: oklch(0.99 0.008 272);
+  --destructive: oklch(0.64 0.20 25);
+  --border: oklch(0.86 0.03 270 / 0.10);
+  --input: oklch(0.86 0.03 270 / 0.13);
+  --ring: oklch(0.64 0.19 282);
+  --chart-1: oklch(0.62 0.17 280);
+  --chart-2: oklch(0.66 0.15 230);
+  --chart-3: oklch(0.70 0.16 320);
+  --chart-4: oklch(0.72 0.15 150);
+  --chart-5: oklch(0.78 0.13 75);
+
+  /* Deep ink used behind code blocks and live-tail rows. */
+  --black: oklch(0.105 0.012 270);
+
+  /* Flat DATA surfaces: opaque, hairline-separated, no blur. Clearer elevation
+     steps and a hint more chroma so panels read as deep indigo, not gray. */
+  --surface: oklch(0.20 0.019 270);
+  --surface-2: oklch(0.235 0.02 270);
+  --surface-3: oklch(0.27 0.021 270);
+  --hairline: oklch(0.9 0.025 270 / 0.08);
+  --border-strong: oklch(0.86 0.03 270 / 0.18);
+
+  /* GLASS chrome: translucent layers + blur + a cool specular highlight. */
+  --glass: oklch(0.21 0.02 270 / 0.70);
+  --glass-strong: oklch(0.235 0.021 270 / 0.82);
+  --glass-highlight: rgba(214, 220, 255, 0.10);
+  --glass-shadow: rgba(0, 0, 0, 0.44);
   --glass-blur: 24px;
-  --glass-saturate: 145%;
-  --background: oklch(0.965 0.018 238);
-  --foreground: oklch(0.17 0.035 255);
-  --card: oklch(0.995 0.006 246 / 72%);
-  --card-foreground: oklch(0.17 0.035 255);
-  --popover: oklch(0.99 0.006 246 / 90%);
-  --popover-foreground: oklch(0.17 0.035 255);
-  --primary: oklch(0.53 0.205 261);
-  --primary-foreground: oklch(0.985 0.01 245);
-  --secondary: oklch(0.91 0.038 236 / 84%);
-  --secondary-foreground: oklch(0.21 0.05 257);
-  --muted: oklch(0.89 0.026 242 / 78%);
-  --muted-foreground: oklch(0.45 0.046 252);
-  --accent: oklch(0.68 0.15 188);
-  --accent-foreground: oklch(0.12 0.032 255);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.72 0.035 246 / 44%);
-  --input: oklch(0.87 0.03 242 / 82%);
-  --ring: oklch(0.63 0.185 261);
-  --chart-1: oklch(0.6 0.2 261);
-  --chart-2: oklch(0.68 0.15 188);
-  --chart-3: oklch(0.62 0.18 310);
-  --chart-4: oklch(0.72 0.16 142);
-  --chart-5: oklch(0.76 0.16 78);
-  --black: oklch(0.965 0.018 238);
-  --surface: oklch(0.995 0.006 246 / 72%);
-  --surface-2: oklch(0.93 0.034 238 / 72%);
-  --surface-3: oklch(0.86 0.052 238 / 66%);
-  --glass: oklch(0.995 0.006 246 / 62%);
-  --glass-strong: oklch(0.995 0.006 246 / 84%);
-  --border-strong: oklch(0.62 0.065 246 / 38%);
-  --hairline: oklch(0.68 0.05 246 / 24%);
-  --bright: oklch(0.13 0.036 255);
-  --text: oklch(0.17 0.035 255);
-  --accent-2: oklch(0.72 0.16 188);
-  --accent-ink: oklch(0.98 0.01 245);
-  --accent-soft: oklch(0.68 0.15 188 / 13%);
-  --warn: oklch(0.7 0.17 78);
-  --error: oklch(0.59 0.22 25);
-  --blue: oklch(0.57 0.205 261);
-  --cobalt: oklch(0.53 0.205 261);
-  --cyan: oklch(0.68 0.15 188);
-  --ok: oklch(0.65 0.15 154);
+  --glass-saturate: 140%;
+
+  /* Steel-violet signature, soft + ink variants for fills/labels. */
+  --accent-2: oklch(0.66 0.15 250);
+  --accent-ink: oklch(0.98 0.01 270);
+  --accent-soft: oklch(0.64 0.19 282 / 18%);
+
+  /* Status palette (STATUS ONLY: never decorative). */
+  --ok: oklch(0.72 0.15 150);
+  --warn: oklch(0.78 0.13 75);
+  --error: oklch(0.64 0.20 25);
+
+  /* Supporting hues for agent accents + chips. */
+  --bright: oklch(0.97 0.008 270);
+  --text: oklch(0.96 0.01 270);
+  --blue: oklch(0.66 0.15 250);
+  --cobalt: oklch(0.58 0.16 268);
+  --cyan: oklch(0.74 0.13 220);
+  --rose: oklch(0.70 0.16 354);
+  --violet: oklch(0.66 0.17 300);
+
+  /* Ambient radial depth wash behind the content plane. */
+  --ambient: oklch(0.62 0.19 282 / 0.13);
+
   --radius: 0.5rem;
-  --sidebar: oklch(0.985 0.01 246 / 72%);
-  --sidebar-foreground: oklch(0.18 0.036 255);
-  --sidebar-primary: oklch(0.53 0.205 261);
-  --sidebar-primary-foreground: oklch(0.985 0.01 245);
-  --sidebar-accent: oklch(0.89 0.034 242 / 78%);
-  --sidebar-accent-foreground: oklch(0.2 0.048 257);
-  --sidebar-border: oklch(0.72 0.035 246 / 36%);
-  --sidebar-ring: oklch(0.63 0.185 261);
+
+  --sidebar: oklch(0.175 0.018 268 / 0.74);
+  --sidebar-foreground: oklch(0.93 0.014 272);
+  --sidebar-primary: oklch(0.64 0.19 282);
+  --sidebar-primary-foreground: oklch(0.99 0.008 272);
+  --sidebar-accent: oklch(0.25 0.02 270 / 70%);
+  --sidebar-accent-foreground: oklch(0.96 0.01 272);
+  --sidebar-border: oklch(0.86 0.03 270 / 0.10);
+  --sidebar-ring: oklch(0.64 0.19 282);
 }
 
-.dark {
+/* Alfred Dark is also the explicit named selection. */
+:root[data-theme="alfred"].dark,
+:root[data-theme="alfred"]:not(.light) {
   color-scheme: dark;
-  --background: oklch(0.12 0.028 258);
-  --foreground: oklch(0.94 0.016 248);
-  --card: oklch(0.22 0.038 258 / 64%);
-  --card-foreground: oklch(0.94 0.014 248);
-  --popover: oklch(0.2 0.04 258 / 92%);
-  --popover-foreground: oklch(0.94 0.014 248);
-  --primary: oklch(0.66 0.22 262);
-  --primary-foreground: oklch(0.98 0.012 248);
-  --secondary: oklch(0.29 0.055 260 / 80%);
-  --secondary-foreground: oklch(0.92 0.014 248);
-  --muted: oklch(0.28 0.04 258 / 70%);
-  --muted-foreground: oklch(0.73 0.033 248);
-  --accent: oklch(0.72 0.16 188);
-  --accent-foreground: oklch(0.1 0.028 255);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.82 0.045 250 / 16%);
-  --input: oklch(0.32 0.05 258 / 58%);
-  --ring: oklch(0.66 0.22 262);
-  --chart-1: oklch(0.68 0.22 262);
-  --chart-2: oklch(0.72 0.16 188);
-  --chart-3: oklch(0.72 0.18 310);
-  --chart-4: oklch(0.74 0.14 142);
-  --chart-5: oklch(0.78 0.16 78);
-  --black: oklch(0.09 0.026 260);
-  --surface: oklch(0.18 0.035 258 / 72%);
-  --surface-2: oklch(0.23 0.045 258 / 66%);
-  --surface-3: oklch(0.29 0.06 260 / 58%);
-  --glass: oklch(0.18 0.035 258 / 62%);
-  --glass-strong: oklch(0.22 0.04 258 / 80%);
-  --border-strong: oklch(0.82 0.045 250 / 20%);
-  --hairline: oklch(0.82 0.045 250 / 12%);
-  --bright: oklch(0.96 0.012 248);
-  --text: oklch(0.9 0.016 248);
-  --accent-2: oklch(0.76 0.17 188);
-  --accent-ink: oklch(0.1 0.028 255);
-  --accent-soft: oklch(0.72 0.16 188 / 16%);
-  --warn: oklch(0.78 0.16 78);
-  --error: oklch(0.72 0.18 24);
-  --blue: oklch(0.7 0.21 262);
-  --cobalt: oklch(0.66 0.22 262);
-  --cyan: oklch(0.72 0.16 188);
-  --ok: oklch(0.72 0.14 154);
-  --sidebar: oklch(0.165 0.034 258 / 72%);
-  --sidebar-foreground: oklch(0.9 0.014 248);
-  --sidebar-primary: oklch(0.66 0.22 262);
-  --sidebar-primary-foreground: oklch(0.98 0.012 248);
-  --sidebar-accent: oklch(0.29 0.052 260 / 66%);
-  --sidebar-accent-foreground: oklch(0.94 0.014 248);
-  --sidebar-border: oklch(0.82 0.045 250 / 14%);
-  --sidebar-ring: oklch(0.66 0.22 262);
+}
+
+/* --- Alfred Light: the same steel-violet identity, near-white base.
+ * Text and accent hold WCAG AA. The accent darkens to oklch(0.52) so white
+ * --primary-foreground text on it clears 4.5:1, and to keep links/active legible
+ * on the light surface. --- */
+:root[data-theme="alfred"].light {
+  color-scheme: light;
+  /* Warm-paper light mode: soft off-white/cream surfaces (warm hue ~88, low
+     chroma) and warm-tinted ink + shadows, with the steel-violet accent kept
+     for brand contrast. Calmer and more eye-pleasant than the cool pure-white. */
+  --background: oklch(0.977 0.008 90);
+  --foreground: oklch(0.23 0.012 75);
+  --card: oklch(0.995 0.006 90 / 0.88);
+  --card-foreground: oklch(0.23 0.012 75);
+  --popover: oklch(0.994 0.006 90 / 0.98);
+  --popover-foreground: oklch(0.23 0.012 75);
+  --primary: oklch(0.52 0.19 280);
+  --primary-foreground: oklch(0.99 0.005 90);
+  --secondary: oklch(0.935 0.012 88 / 80%);
+  --secondary-foreground: oklch(0.28 0.016 78);
+  --muted: oklch(0.928 0.010 88 / 78%);
+  --muted-foreground: oklch(0.46 0.018 78);
+  --accent: oklch(0.52 0.19 280);
+  --accent-foreground: oklch(0.99 0.005 90);
+  --destructive: oklch(0.55 0.22 25);
+  --border: oklch(0.30 0.016 75 / 0.12);
+  --input: oklch(0.30 0.016 75 / 0.14);
+  --ring: oklch(0.52 0.19 280);
+  --chart-1: oklch(0.52 0.19 280);
+  --chart-2: oklch(0.55 0.15 230);
+  --chart-3: oklch(0.56 0.17 320);
+  --chart-4: oklch(0.55 0.15 150);
+  --chart-5: oklch(0.62 0.13 75);
+  --black: oklch(0.962 0.008 90);
+  --surface: oklch(0.994 0.006 90);
+  --surface-2: oklch(0.974 0.009 89);
+  --surface-3: oklch(0.949 0.012 88);
+  --hairline: oklch(0.30 0.016 75 / 0.10);
+  --border-strong: oklch(0.30 0.016 75 / 0.20);
+  --glass: oklch(0.994 0.006 90 / 0.66);
+  --glass-strong: oklch(0.995 0.006 90 / 0.85);
+  --glass-highlight: rgba(255, 252, 246, 0.55);
+  --glass-shadow: rgba(72, 56, 40, 0.10);
+  --glass-blur: 24px;
+  --glass-saturate: 140%;
+  --accent-2: oklch(0.50 0.16 250);
+  --accent-ink: oklch(0.99 0.005 90);
+  --accent-soft: oklch(0.52 0.19 280 / 12%);
+  --ok: oklch(0.55 0.15 150);
+  --warn: oklch(0.62 0.14 70);
+  --error: oklch(0.55 0.22 25);
+  --bright: oklch(0.20 0.012 75);
+  --text: oklch(0.23 0.012 75);
+  --blue: oklch(0.50 0.16 250);
+  --cobalt: oklch(0.44 0.17 268);
+  --cyan: oklch(0.52 0.13 220);
+  --rose: oklch(0.55 0.18 354);
+  --violet: oklch(0.52 0.19 300);
+  --ambient: oklch(0.55 0.14 90 / 0.07);
+  --sidebar: oklch(0.985 0.010 90 / 0.74);
+  --sidebar-foreground: oklch(0.28 0.016 78);
+  --sidebar-primary: oklch(0.52 0.19 280);
+  --sidebar-primary-foreground: oklch(0.99 0.005 90);
+  --sidebar-accent: oklch(0.93 0.008 270 / 72%);
+  --sidebar-accent-foreground: oklch(0.27 0.018 270);
+  --sidebar-border: oklch(0.22 0.02 270 / 0.12);
+  --sidebar-ring: oklch(0.52 0.19 280);
+}
+
+/* --- Linear Crisp: flatter and denser. Glass is dialed to near-flat
+ * (--glass-blur drops to 4px, glass layers become nearly opaque), the radius
+ * tightens, and the violet cools toward Linear's neutral indigo-gray without
+ * copying Linear's exact indigo. Dark mode by default. --- */
+:root[data-theme="linear"],
+:root[data-theme="linear"].dark {
+  color-scheme: dark;
+  --background: oklch(0.155 0.008 275);
+  --foreground: oklch(0.95 0.006 275);
+  --card: oklch(0.185 0.009 275);
+  --card-foreground: oklch(0.95 0.006 275);
+  --popover: oklch(0.19 0.009 275 / 98%);
+  --popover-foreground: oklch(0.95 0.006 275);
+  --primary: oklch(0.56 0.15 278);
+  --primary-foreground: oklch(0.99 0.005 275);
+  --secondary: oklch(0.22 0.009 275);
+  --secondary-foreground: oklch(0.92 0.006 275);
+  --muted: oklch(0.22 0.008 275);
+  --muted-foreground: oklch(0.68 0.012 275);
+  --accent: oklch(0.64 0.15 278);
+  --accent-foreground: oklch(0.99 0.005 275);
+  --destructive: oklch(0.64 0.20 25);
+  --border: oklch(1 0 0 / 0.08);
+  --input: oklch(1 0 0 / 0.10);
+  --ring: oklch(0.64 0.15 278);
+  --chart-1: oklch(0.64 0.15 278);
+  --chart-2: oklch(0.66 0.14 225);
+  --chart-3: oklch(0.70 0.15 320);
+  --chart-4: oklch(0.72 0.15 150);
+  --chart-5: oklch(0.78 0.13 75);
+  --black: oklch(0.12 0.006 275);
+  --surface: oklch(0.185 0.009 275);
+  --surface-2: oklch(0.205 0.009 275);
+  --surface-3: oklch(0.235 0.01 275);
+  --hairline: oklch(1 0 0 / 0.07);
+  --border-strong: oklch(1 0 0 / 0.14);
+  --glass: oklch(0.185 0.009 275 / 0.94);
+  --glass-strong: oklch(0.20 0.009 275 / 0.97);
+  --glass-highlight: rgba(255, 255, 255, 0.05);
+  --glass-shadow: rgba(0, 0, 0, 0.30);
+  --glass-blur: 4px;
+  --glass-saturate: 110%;
+  --accent-2: oklch(0.66 0.14 240);
+  --accent-ink: oklch(0.99 0.005 275);
+  --accent-soft: oklch(0.64 0.15 278 / 14%);
+  --ok: oklch(0.72 0.15 150);
+  --warn: oklch(0.78 0.13 75);
+  --error: oklch(0.64 0.20 25);
+  --bright: oklch(0.96 0.005 275);
+  --text: oklch(0.95 0.006 275);
+  --blue: oklch(0.66 0.14 240);
+  --cobalt: oklch(0.58 0.15 262);
+  --cyan: oklch(0.74 0.12 215);
+  --rose: oklch(0.70 0.16 354);
+  --violet: oklch(0.66 0.15 300);
+  --ambient: oklch(0.64 0.15 278 / 0.05);
+  --radius: 0.375rem;
+  --sidebar: oklch(0.165 0.008 275 / 0.96);
+  --sidebar-foreground: oklch(0.92 0.006 275);
+  --sidebar-primary: oklch(0.64 0.15 278);
+  --sidebar-primary-foreground: oklch(0.99 0.005 275);
+  --sidebar-accent: oklch(0.22 0.009 275);
+  --sidebar-accent-foreground: oklch(0.95 0.006 275);
+  --sidebar-border: oklch(1 0 0 / 0.08);
+  --sidebar-ring: oklch(0.64 0.15 278);
+}
+
+/* Linear Crisp light: dense, flat, near-white. */
+:root[data-theme="linear"].light {
+  color-scheme: light;
+  --background: oklch(0.985 0.002 275);
+  --foreground: oklch(0.24 0.01 275);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.01 275);
+  --popover: oklch(1 0 0 / 0.99);
+  --popover-foreground: oklch(0.24 0.01 275);
+  --primary: oklch(0.54 0.18 278);
+  --primary-foreground: oklch(0.99 0.004 275);
+  --secondary: oklch(0.95 0.004 275);
+  --secondary-foreground: oklch(0.28 0.012 275);
+  --muted: oklch(0.95 0.003 275);
+  --muted-foreground: oklch(0.46 0.014 275);
+  --accent: oklch(0.54 0.18 278);
+  --accent-foreground: oklch(0.99 0.004 275);
+  --destructive: oklch(0.55 0.22 25);
+  --border: oklch(0.24 0.012 275 / 0.12);
+  --input: oklch(0.24 0.012 275 / 0.14);
+  --ring: oklch(0.54 0.18 278);
+  --chart-1: oklch(0.54 0.18 278);
+  --chart-2: oklch(0.55 0.14 225);
+  --chart-3: oklch(0.56 0.16 320);
+  --chart-4: oklch(0.55 0.15 150);
+  --chart-5: oklch(0.62 0.13 75);
+  --black: oklch(0.965 0.002 275);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.98 0.002 275);
+  --surface-3: oklch(0.955 0.004 275);
+  --hairline: oklch(0.24 0.012 275 / 0.10);
+  --border-strong: oklch(0.24 0.012 275 / 0.20);
+  --glass: oklch(1 0 0 / 0.92);
+  --glass-strong: oklch(1 0 0 / 0.97);
+  --glass-highlight: rgba(255, 255, 255, 0.5);
+  --glass-shadow: rgba(36, 34, 60, 0.10);
+  --glass-blur: 4px;
+  --glass-saturate: 110%;
+  --accent-2: oklch(0.50 0.15 240);
+  --accent-ink: oklch(0.99 0.004 275);
+  --accent-soft: oklch(0.54 0.18 278 / 12%);
+  --ok: oklch(0.55 0.15 150);
+  --warn: oklch(0.62 0.14 70);
+  --error: oklch(0.55 0.22 25);
+  --bright: oklch(0.2 0.01 275);
+  --text: oklch(0.24 0.01 275);
+  --blue: oklch(0.50 0.15 240);
+  --cobalt: oklch(0.44 0.16 262);
+  --cyan: oklch(0.52 0.12 215);
+  --rose: oklch(0.55 0.18 354);
+  --violet: oklch(0.52 0.18 300);
+  --ambient: oklch(0.54 0.18 278 / 0.06);
+  --radius: 0.375rem;
+  --sidebar: oklch(0.99 0.002 275 / 0.96);
+  --sidebar-foreground: oklch(0.28 0.012 275);
+  --sidebar-primary: oklch(0.54 0.18 278);
+  --sidebar-primary-foreground: oklch(0.99 0.004 275);
+  --sidebar-accent: oklch(0.95 0.004 275);
+  --sidebar-accent-foreground: oklch(0.28 0.012 275);
+  --sidebar-border: oklch(0.24 0.012 275 / 0.12);
+  --sidebar-ring: oklch(0.54 0.18 278);
 }
 
 @theme inline {
@@ -182,255 +383,570 @@
   }
 }
 
+/* One ambient radial depth gradient (very low-opacity steel-violet) behind the
+ * content plane, over the flat near-black base. Each theme sets --ambient and
+ * --background; the wash is identical structure across themes so the rule lives
+ * once here. Linear Crisp sets --ambient lower for its flatter look. */
 body {
   min-width: 320px;
+  margin: 0;
+  overflow: hidden;
   background:
-    linear-gradient(180deg, color-mix(in oklch, var(--background), white 4%), var(--background)),
-    radial-gradient(circle at 16% 8%, color-mix(in oklch, var(--primary), transparent 78%), transparent 28%),
-    radial-gradient(circle at 82% 18%, color-mix(in oklch, var(--accent), transparent 80%), transparent 30%),
-    linear-gradient(135deg, oklch(0.62 0.18 310 / 8%), transparent 36%),
-    linear-gradient(rgba(20, 35, 55, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 35, 55, 0.03) 1px, transparent 1px);
-  background-size: auto, auto, auto, auto, 88px 88px, 88px 88px;
+    radial-gradient(
+      120% 80% at 50% -10%,
+      var(--ambient) 0%,
+      transparent 60%
+    ),
+    var(--background);
+  background-attachment: fixed;
 }
 
-.dark body {
-  background:
-    linear-gradient(180deg, oklch(0.17 0.04 258), var(--background) 40%, oklch(0.09 0.026 260)),
-    radial-gradient(circle at 18% 8%, oklch(0.58 0.22 262 / 26%), transparent 30%),
-    radial-gradient(circle at 82% 16%, oklch(0.72 0.16 188 / 18%), transparent 28%),
-    linear-gradient(128deg, oklch(0.42 0.18 310 / 16%), transparent 35%),
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
-  background-size: auto, auto, auto, auto, 88px 88px, 88px 88px;
+body::before {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  opacity: 0.5;
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--foreground), transparent 94%) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--foreground), transparent 95%) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 70%);
+}
+
+/* Linear Crisp is flatter: drop the ambient grid entirely for a clean plane. */
+:root[data-theme="linear"] body::before {
+  opacity: 0;
 }
 
 #root {
+  position: relative;
+  z-index: 1;
+  height: 100svh;
   min-height: 100svh;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
 }
 
 .alfred-brand-mark {
   position: relative;
   display: grid;
   place-items: center;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--sidebar-ring), transparent 54%);
-  border-radius: 14px;
-  background:
-    linear-gradient(145deg, color-mix(in oklch, var(--primary), white 18%), color-mix(in oklch, var(--accent), black 32%)),
-    color-mix(in oklch, var(--sidebar), black 8%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 12px 30px color-mix(in oklch, var(--primary), transparent 72%);
+  overflow: visible;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.alfred-brand-logo {
+  display: block;
+  filter:
+    drop-shadow(0 4px 10px color-mix(in oklch, var(--primary), transparent 76%))
+    saturate(1.08);
 }
 
 .alfred-brand-mark::after {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 48%);
-  pointer-events: none;
+  content: none;
 }
 
 .alfred-glass {
   border: 1px solid color-mix(in oklch, var(--border), white 8%);
   background:
-    linear-gradient(180deg, color-mix(in oklch, var(--card), white 5%), var(--card)),
-    color-mix(in oklch, var(--background), white 3%);
+    linear-gradient(180deg, var(--glass-highlight), transparent 34%),
+    color-mix(in oklch, var(--card), var(--background) 7%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 24px 80px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(24px) saturate(145%);
+    inset 0 1px 0 var(--glass-highlight),
+    0 10px 32px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.alfred-glass-shell {
+  background: transparent;
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklch, var(--sidebar-border), transparent 0%),
+    inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.alfred-glass-shell [data-sidebar="sidebar"] {
+  overflow: hidden;
+  border: 0;
+  border-right: 1px solid color-mix(in oklch, var(--sidebar-border), white 8%);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 28%),
+    linear-gradient(
+      150deg,
+      color-mix(in oklch, var(--primary), transparent 88%),
+      transparent 40%,
+      color-mix(in oklch, var(--accent), transparent 92%) 100%
+    ),
+    color-mix(in oklch, var(--sidebar), transparent 0%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    10px 0 44px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.alfred-page-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 30%),
+    color-mix(in oklch, var(--card), var(--background) 6%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 12px 32px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.alfred-page-hero::before {
+  content: none;
+}
+
+.dark .alfred-glass-shell {
+  box-shadow:
+    inset -1px 0 0 color-mix(in oklch, var(--sidebar-border), transparent 8%),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .dark .alfred-glass {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 28px 90px rgba(0, 0, 0, 0.34);
+    0 14px 38px rgba(0, 0, 0, 0.22);
 }
 
-.alfred-metric {
-  --metric-tone: var(--primary);
+.command-center {
   display: grid;
-  min-width: 0;
-  gap: 0.125rem;
-  padding: 0.625rem;
-  border: 1px solid color-mix(in oklch, var(--metric-tone), var(--border) 74%);
-  border-radius: 0.625rem;
+  grid-template-rows: auto auto;
+  gap: 1rem;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
+}
+
+.command-center__top,
+.command-center__pane,
+.command-center__route,
+.command-center__pulse,
+.command-center__capacity {
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: var(--radius-xl);
   background:
-    linear-gradient(135deg, color-mix(in oklch, var(--metric-tone), transparent 90%), transparent 52%),
-    linear-gradient(180deg, color-mix(in oklch, var(--card), white 7%), var(--card));
+    linear-gradient(180deg, var(--glass-highlight), transparent 32%),
+    color-mix(in oklch, var(--card), var(--background) 4%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 18px 54px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.dark .command-center__top,
+.dark .command-center__pane,
+.dark .command-center__route,
+.dark .command-center__pulse,
+.dark .command-center__capacity {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 24px color-mix(in oklch, var(--metric-tone), transparent 90%);
+    0 16px 42px rgba(0, 0, 0, 0.22);
 }
 
-.alfred-metric[data-tone="ok"] {
-  --metric-tone: var(--ok);
-}
-
-.alfred-metric[data-tone="warn"] {
-  --metric-tone: var(--warn);
-}
-
-.alfred-metric[data-tone="error"] {
-  --metric-tone: var(--destructive);
-}
-
-.alfred-metric[data-tone="idle"] {
-  --metric-tone: var(--muted-foreground);
-}
-
-.alfred-metric[data-tone="info"] {
-  --metric-tone: var(--accent);
-}
-
-.alfred-metric__label {
-  min-width: 0;
+/* The Home hero: a GLASS banner (blur + specular + ambient steel-violet wash).
+ * Now a two-column morning-after summary plus a single primary CTA. The Ask
+ * prompt is gone (Ask is in the sidebar). */
+.command-center__top {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 5.35rem;
+  align-items: center;
+  gap: 1.1rem;
   overflow: hidden;
+  padding: 1.15rem 1.25rem;
+  background:
+    radial-gradient(
+      90% 140% at 0% 0%,
+      color-mix(in oklch, var(--primary), transparent 85%),
+      transparent 55%
+    ),
+    linear-gradient(180deg, var(--glass-highlight), transparent 31%),
+    var(--glass);
+}
+
+.command-center__top::before {
+  content: none;
+}
+
+.command-center__title,
+.command-center__actions {
+  position: relative;
+  z-index: 1;
+}
+
+.command-center__title {
+  min-width: 0;
+}
+
+.command-center__title p,
+.command-center__pane-head p,
+.command-center__rail-head p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.command-center__title h1,
+.command-center__pane-head h2,
+.command-center__route h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.command-center__title h1 {
+  margin-top: 0.18rem;
+  font-size: 1.72rem;
+  line-height: 1.12;
+  padding-bottom: 0.04em;
+}
+
+.command-center__title span {
+  display: block;
+  margin-top: 0.28rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.command-center__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.command-center__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 19.5rem);
+  min-height: 0;
+  align-items: start;
+  gap: 1rem;
+}
+
+.command-center__pane,
+.command-center__rail {
+  min-width: 0;
+  min-height: 0;
+}
+
+.command-center__pane {
+  display: grid;
+  grid-template-rows: auto auto;
+  overflow: hidden;
+}
+
+.command-center__pane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.85rem 0.95rem;
+}
+
+/* Keep pane headings readable; tabs can move below instead of crowding them. */
+.command-center__pane-head > div:first-child {
+  min-width: max-content;
+}
+
+.command-center__pane-head h2 {
+  margin-top: 0.18rem;
+  font-size: 1.1rem;
+}
+
+.command-center__pane-head [role="tablist"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.alfred-tabs-list {
+  gap: 0.25rem;
+  grid-template-columns: repeat(var(--tab-count), minmax(0, 1fr));
+  height: auto;
+  min-height: 2.25rem;
+}
+
+.alfred-tabs-list [role="tab"] {
+  height: 1.75rem;
+  min-height: 1.75rem;
+}
+
+@media (min-width: 640px) {
+  .alfred-tabs-list {
+    grid-template-columns: repeat(var(--tab-count), minmax(max-content, 1fr));
+  }
+}
+
+.command-center__pane-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 0.95rem;
+}
+
+.command-center__rail {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 1rem;
+}
+
+.command-center__route {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.95rem;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 26%),
+    color-mix(in oklch, var(--card), var(--background) 6%);
+}
+
+.command-center__agent-route {
+  display: grid;
+  /* Rows keep their natural height; when the rail is short the list scrolls
+     instead of crushing each card into sub-line clipping. */
+  grid-auto-rows: max-content;
+  min-height: 0;
+  align-content: start;
+  gap: 0.6rem;
+  overflow: auto;
+  padding-right: 0.08rem;
+}
+
+.command-center__agent-route article {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.08rem 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--agent-accent, var(--primary)), var(--border) 72%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  padding: 0.72rem 0.78rem 0.72rem 0.95rem;
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--agent-accent, var(--primary)), transparent 79%), transparent 70%),
+    color-mix(in oklch, var(--card), var(--background) 4%);
+}
+
+.command-center__agent-route article::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.22rem;
+  background: var(--agent-accent, var(--primary));
+  opacity: 0.72;
+}
+
+.command-center__agent-route span {
   color: var(--muted-foreground);
   font-size: 0.72rem;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.alfred-metric__value {
-  min-width: 0;
+.command-center__agent-route strong {
+  color: color-mix(in oklch, var(--agent-accent, var(--primary)), var(--foreground) 28%);
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.command-center__agent-route p {
+  grid-column: 1 / -1;
   margin: 0;
   overflow: hidden;
-  color: color-mix(in oklch, var(--metric-tone), var(--foreground) 34%);
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 8%);
+  font-size: 0.68rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.alfred-metric__detail {
+.command-center__pulse,
+.command-center__capacity {
+  padding: 0.95rem;
+}
+
+.command-center__rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.command-center__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.command-center__metric {
+  display: grid;
+  gap: 0.08rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 0.7rem 0.72rem;
+  background: color-mix(in oklch, var(--card), var(--background) 5%);
+}
+
+.command-center__metric span {
   min-width: 0;
-  margin: 0.2rem 0 0;
-  overflow: hidden;
   color: var(--muted-foreground);
   font-size: 0.72rem;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.alfred-status-badge {
-  --status-tone: var(--muted-foreground);
-  border-color: color-mix(in oklch, var(--status-tone), transparent 70%);
-  background: color-mix(in oklch, var(--status-tone), transparent 88%);
-  color: color-mix(in oklch, var(--status-tone), var(--foreground) 18%);
+.command-center__metric strong {
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 
-.alfred-status-badge[data-tone="ok"] {
-  --status-tone: var(--ok);
+.command-center__metric p {
+  display: none;
+  min-width: 0;
+  margin: 0;
+  color: color-mix(in oklch, var(--muted-foreground), var(--foreground) 8%);
+  font-size: 0.64rem;
+  line-height: 1.25;
 }
 
-.alfred-status-badge[data-tone="warn"] {
-  --status-tone: var(--warn);
+.command-center__proof-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
 }
 
-.alfred-status-badge[data-tone="error"] {
-  --status-tone: var(--destructive);
+.command-center__proof-strip article {
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 0.72rem;
+  background: color-mix(in oklch, var(--card), var(--background) 5%);
 }
 
-.alfred-status-dot {
-  --status-tone: var(--muted-foreground);
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 999px;
-  background: var(--status-tone);
-  box-shadow: 0 0 0 3px color-mix(in oklch, var(--status-tone), transparent 84%);
+.command-center__proof-strip span,
+.command-center__proof-strip strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.alfred-status-dot[data-tone="ok"] {
-  --status-tone: var(--ok);
+.command-center__proof-strip span {
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
 }
 
-.alfred-status-dot[data-tone="warn"] {
-  --status-tone: var(--warn);
+.command-center__proof-strip strong {
+  margin-top: 0.15rem;
+  color: var(--foreground);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
-.alfred-status-dot[data-tone="error"] {
-  --status-tone: var(--destructive);
+@media (max-width: 1180px) {
+  .command-center {
+    height: auto;
+    max-height: none;
+  }
+
+  .command-center__top {
+    min-height: 4.75rem;
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .command-center__title h1 {
+    font-size: 1.42rem;
+  }
+
+  .command-center__title {
+    grid-column: 1 / -1;
+  }
+
+  .command-center__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .command-center__rail {
+    display: none;
+  }
+
+  .command-center__pane-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .command-center__pane-head [role="tablist"] {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .command-center__actions {
+    align-items: stretch;
+    justify-content: flex-end;
+  }
 }
 
-.compose-chat-panel,
-.board-page .kanban,
-.agents-v2 {
-  border-color: color-mix(in oklch, var(--primary), var(--border) 78%);
-  background:
-    linear-gradient(135deg, color-mix(in oklch, var(--primary), transparent 90%), transparent 40%),
-    linear-gradient(230deg, color-mix(in oklch, var(--accent), transparent 91%), transparent 42%),
-    linear-gradient(15deg, color-mix(in oklch, var(--chart-3), transparent 94%), transparent 48%),
-    color-mix(in oklch, var(--card), var(--background) 8%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 24px 72px rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(24px) saturate(145%);
-  -webkit-backdrop-filter: blur(24px) saturate(145%);
+@media (max-width: 760px) {
+  .command-center {
+    height: auto;
+    min-height: auto;
+  }
+
+  .command-center__top {
+    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .command-center__actions {
+    justify-content: flex-start;
+  }
+
+  .command-center__actions .inline-flex {
+    width: 100%;
+  }
+
+  .command-center__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .command-center__pane-body {
+    padding: 0.75rem;
+  }
 }
 
-.compose-chat__transcript,
-.compose-chat__composer,
-.compose-plan-tray,
-.compose-prompt,
-.mission-contract__item,
-.kanban-col,
-.kanban-card,
-.agents-v2-stat,
-.agents-v2-card__meta div,
-.agents-v2-card__schedule-control {
-  border-color: color-mix(in oklch, var(--primary), var(--border) 82%);
-  background:
-    linear-gradient(135deg, color-mix(in oklch, var(--primary), transparent 94%), transparent 44%),
-    linear-gradient(220deg, color-mix(in oklch, var(--accent), transparent 94%), transparent 46%),
-    color-mix(in oklch, var(--card), var(--background) 10%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.compose-welcome__mark {
-  color: var(--primary-foreground);
-  background:
-    linear-gradient(145deg, var(--primary), var(--accent)),
-    var(--primary);
-  box-shadow: 0 12px 30px color-mix(in oklch, var(--primary), transparent 74%);
-}
-
-.compose-readiness__fill,
-.nav-button--active::after {
-  background: linear-gradient(90deg, var(--primary), var(--accent));
-}
-
-.compose-chat__send,
-.icon-button,
-.approve-button {
-  border-color: color-mix(in oklch, var(--primary), transparent 70%);
-  background:
-    linear-gradient(135deg, var(--primary), var(--accent)),
-    var(--primary);
-  color: var(--primary-foreground);
-  box-shadow: 0 12px 30px color-mix(in oklch, var(--primary), transparent 76%);
-}
-
-.compose-chat__send:hover:not(:disabled),
-.icon-button:hover:not(:disabled),
-.approve-button:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-:root[data-theme="light"] .compose-chat-panel,
-:root[data-theme="light"] .board-page .kanban,
-:root[data-theme="light"] .agents-v2 {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 24px 72px rgba(40, 58, 86, 0.11);
-}
 .agents-deck {
   display: flex;
   flex-direction: column;
@@ -980,11 +1496,142 @@ body {
   }
 }
 
-/* ---------------------------------------------------------------------------
- * Agent roster motion (cinematic deck). Rise-on-mount for the card lists plus a
- * reduced-motion guard that neutralizes the card hover lift and the staggered
- * entry so nothing translates when the user prefers reduced motion.
- * ------------------------------------------------------------------------- */
+.alfred-metric {
+  --metric-tone: var(--primary);
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+  padding: 0.625rem;
+  border: 1px solid color-mix(in oklch, var(--metric-tone), var(--border) 74%);
+  border-radius: 0.625rem;
+  background: color-mix(in oklch, var(--card), var(--metric-tone) 4%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 6px 18px color-mix(in oklch, var(--metric-tone), transparent 94%);
+}
+
+.alfred-metric[data-tone="ok"] {
+  --metric-tone: var(--ok);
+}
+
+.alfred-metric[data-tone="warn"] {
+  --metric-tone: var(--warn);
+}
+
+.alfred-metric[data-tone="error"] {
+  --metric-tone: var(--destructive);
+}
+
+.alfred-metric[data-tone="idle"] {
+  --metric-tone: var(--muted-foreground);
+}
+
+.alfred-metric[data-tone="info"] {
+  --metric-tone: var(--accent);
+}
+
+.alfred-metric__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-metric__value {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: color-mix(in oklch, var(--metric-tone), var(--foreground) 34%);
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-metric__detail {
+  min-width: 0;
+  margin: 0.2rem 0 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-status-badge {
+  --status-tone: var(--muted-foreground);
+  border-color: color-mix(in oklch, var(--status-tone), transparent 70%);
+  background: color-mix(in oklch, var(--status-tone), transparent 88%);
+  color: color-mix(in oklch, var(--status-tone), var(--foreground) 18%);
+}
+
+.alfred-status-badge[data-tone="ok"] {
+  --status-tone: var(--ok);
+}
+
+.alfred-status-badge[data-tone="warn"] {
+  --status-tone: var(--warn);
+}
+
+.alfred-status-badge[data-tone="error"] {
+  --status-tone: var(--destructive);
+}
+
+.alfred-status-dot {
+  --status-tone: var(--muted-foreground);
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--status-tone);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--status-tone), transparent 84%);
+}
+
+.alfred-status-dot[data-tone="ok"] {
+  --status-tone: var(--ok);
+}
+
+.alfred-status-dot[data-tone="warn"] {
+  --status-tone: var(--warn);
+}
+
+.alfred-status-dot[data-tone="error"] {
+  --status-tone: var(--destructive);
+}
+
+.icon-button,
+.approve-button {
+  border-color: color-mix(in oklch, var(--primary), transparent 70%);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 6px 16px color-mix(in oklch, var(--primary), transparent 86%);
+}
+
+.icon-button:hover:not(:disabled),
+.approve-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Compact native surface layer for pre-shadcn views that still render in Alfred. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.animate-rise {
+  animation: alfred-rise 180ms ease-out both;
+}
+
 @keyframes alfred-rise {
   from {
     opacity: 0;
@@ -996,36 +1643,2719 @@ body {
   }
 }
 
-/* Rise-on-mount for the agent card / roster lists. The list element opts in
-   with .motion-rise; each child rises with a small per-index stagger, capped so
-   a long roster still settles quickly. Fill-mode is "backwards" so the entry
-   frame applies during the stagger delay, then releases the transform once the
-   rise finishes, leaving the card hover lift free to run. */
-.agents-deck .motion-rise > * {
+.spin {
+  animation: alfred-spin 900ms linear infinite;
+}
+
+@keyframes alfred-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.panel,
+.notice-panel,
+.command-result,
+.usage-panel {
+  min-width: 0;
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 34px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.panel {
+  padding: 1rem;
+}
+
+.panel--wide {
+  padding: 0;
+}
+
+.panel-header {
+  display: flex;
+  min-width: 0;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-header span,
+.subsection-title,
+.compose-readiness__label {
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.panel-header h2,
+.detail-panel__head h3,
+.plan-card h2 {
+  margin: 0.15rem 0 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.18;
+}
+
+.panel-header h2 {
+  font-size: 1.15rem;
+}
+
+.panel-intro {
+  max-width: 72ch;
+  margin: 0 0 0.85rem;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.panel-intro--tight {
+  margin-bottom: 0.55rem;
+}
+
+.subtab-panel {
+  min-width: 0;
+  padding-top: 0.85rem;
+}
+
+.logs-view,
+.setup-view {
+  min-height: min(680px, calc(100svh - 8rem));
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted), transparent 42%);
+  padding: 0.25rem 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.status-pill span {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.status-pill--ok {
+  border-color: color-mix(in oklch, var(--ok), transparent 62%);
+  color: var(--ok);
+}
+
+.status-pill--warn {
+  border-color: color-mix(in oklch, var(--warn), transparent 62%);
+  color: var(--warn);
+}
+
+.status-pill--error {
+  border-color: color-mix(in oklch, var(--destructive), transparent 58%);
+  color: var(--destructive);
+}
+
+.status-pill--info {
+  border-color: color-mix(in oklch, var(--primary), transparent 62%);
+  color: var(--primary);
+}
+
+.text-button,
+.secondary-button,
+.ghost-button,
+.ghost-icon,
+.icon-button,
+.approve-button,
+.decline-button,
+.command-result__dismiss {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease,
+    filter 140ms ease;
+}
+
+.text-button,
+.ghost-button,
+.ghost-icon,
+.command-result__dismiss {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.text-button {
+  min-height: 2rem;
+  padding-inline: 0;
+  border-color: transparent;
+  color: var(--primary);
+}
+
+.secondary-button {
+  background: color-mix(in oklch, var(--secondary), var(--background) 8%);
+  color: var(--secondary-foreground);
+}
+
+.ghost-icon,
+.command-result__dismiss {
+  width: 2.25rem;
+  padding-inline: 0;
+}
+
+.decline-button {
+  border-color: color-mix(in oklch, var(--destructive), transparent 62%);
+  background: color-mix(in oklch, var(--destructive), transparent 86%);
+  color: color-mix(in oklch, var(--destructive), var(--foreground) 18%);
+}
+
+.secondary-button:hover:not(:disabled),
+.ghost-button:hover:not(:disabled),
+.ghost-icon:hover:not(:disabled),
+.text-button:hover:not(:disabled),
+.command-result__dismiss:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 55%);
+  background: color-mix(in oklch, var(--primary), var(--card) 91%);
+  color: var(--foreground);
+}
+
+.secondary-button:disabled,
+.ghost-button:disabled,
+.ghost-icon:disabled,
+.icon-button:disabled,
+.approve-button:disabled,
+.decline-button:disabled,
+.command-result__dismiss:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.notice-panel,
+.command-result {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: start;
+  margin-bottom: 0.85rem;
+  padding: 0.85rem;
+}
+
+.notice-panel--error,
+.command-result--error {
+  border-color: color-mix(in oklch, var(--destructive), transparent 52%);
+  background: color-mix(in oklch, var(--destructive), var(--card) 92%);
+}
+
+.notice-panel__body,
+.command-result p {
+  min-width: 0;
+}
+
+.notice-panel strong,
+.command-result__head strong {
+  color: var(--foreground);
+  font-size: 0.92rem;
+}
+
+.notice-panel p,
+.command-result p,
+.fallback-note,
+.console-note {
+  margin: 0.25rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.command-result {
+  display: block;
+}
+
+.command-result__head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.command-result__ok {
+  margin-left: auto;
+  border: 1px solid color-mix(in oklch, var(--ok), transparent 62%);
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  color: color-mix(in oklch, var(--ok), var(--foreground) 20%);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.command-result__dismiss {
+  margin-left: 0.25rem;
+}
+
+.notice-details {
+  margin-top: 0.65rem;
+}
+
+.notice-details summary,
+.cli-fallback summary,
+.advanced-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 650;
+  list-style: none;
+}
+
+.notice-details summary::-webkit-details-marker,
+.cli-fallback summary::-webkit-details-marker,
+.advanced-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.notice-details pre,
+.notice-details code,
+.detail-pre,
+.cli-chip-list code {
+  overflow: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 0.65rem;
+  background: color-mix(in oklch, var(--black), var(--background) 8%);
+  color: color-mix(in oklch, var(--foreground), var(--muted-foreground) 8%);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.notice-details pre,
+.detail-pre {
+  margin: 0.55rem 0 0;
+  max-height: 22rem;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.inline-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.75rem;
+  background: color-mix(in oklch, var(--muted), var(--card) 45%);
+  color: var(--foreground);
+  font-size: 0.86rem;
+}
+
+.inline-notice--ok {
+  border-color: color-mix(in oklch, var(--ok), transparent 62%);
+  background: color-mix(in oklch, var(--ok), var(--card) 90%);
+}
+
+.inline-notice--error {
+  border-color: color-mix(in oklch, var(--destructive), transparent 58%);
+  background: color-mix(in oklch, var(--destructive), var(--card) 92%);
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 12rem;
+  border: 1px dashed color-mix(in oklch, var(--border), transparent 8%);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  background: color-mix(in oklch, var(--muted), transparent 62%);
+  text-align: center;
+}
+
+.empty-state--compact {
+  min-height: 7rem;
+  padding: 1rem;
+}
+
+.empty-state svg {
+  color: var(--muted-foreground);
+}
+
+.empty-state--ok svg {
+  color: var(--ok);
+}
+
+.empty-state--error svg {
+  color: var(--destructive);
+}
+
+.empty-state strong {
+  margin-top: 0.55rem;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 1rem;
+}
+
+.empty-state p {
+  max-width: 42ch;
+  margin: 0.3rem auto 0;
+  color: var(--muted-foreground);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.card-actions,
+.button-stack,
+.console-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.card-actions--start {
+  justify-content: flex-start;
+}
+
+.attention-list,
+.lesson-list,
+.plans-workspace {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.attention-card,
+.lesson-card,
+.plan-card,
+.request-thread,
+.usage-tile,
+.feed-item,
+.trusted-user,
+.advanced-panel,
+.cli-fallback,
+.detail-panel,
+.ask-draft {
+  border: 1px solid color-mix(in oklch, var(--border), white 6%);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 9%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.attention-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: start;
+  padding: 0.85rem;
+}
+
+.attention-card > svg {
+  color: var(--primary);
+}
+
+.attention-card--warn > svg {
+  color: var(--warn);
+}
+
+.attention-card--error > svg {
+  color: var(--destructive);
+}
+
+.attention-card--info > svg {
+  color: var(--primary);
+}
+
+.attention-card span,
+.plan-card__meta span,
+.lesson-card__origin,
+.lesson-card__provenance,
+.lesson-card__hint,
+.request-thread__repo,
+.request-step__detail {
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+}
+
+.attention-card strong {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--foreground);
+  font-size: 0.95rem;
+}
+
+.attention-card p,
+.plan-card p,
+.lesson-card p,
+.request-thread__note {
+  margin: 0.3rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.attention-card code {
+  display: inline-block;
+  margin-top: 0.4rem;
+  border-radius: 0.45rem;
+  background: color-mix(in oklch, var(--muted), transparent 42%);
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+}
+
+.attention-card__decision-note,
+.plan-card__decision-note,
+.plan-decision__note {
+  border-left: 2px solid var(--primary);
+  padding-left: 0.6rem;
+}
+
+.plans-workspace {
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+}
+
+.plan-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.9rem;
+}
+
+.plan-card--selected {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 35%);
+}
+
+.plan-card__meta,
+.compact-meta,
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.plan-card__meta span,
+.tag-row span,
+.compact-meta div {
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted), transparent 38%);
+  padding: 0.2rem 0.5rem;
+}
+
+.compact-meta {
+  margin: 0.65rem 0 0;
+}
+
+.compact-meta dt {
+  display: inline;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.compact-meta dd {
+  display: inline;
+  margin: 0 0 0 0.25rem;
+  color: var(--foreground);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.detail-panel {
+  padding: 1rem;
+}
+
+.detail-panel--sheet {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.detail-panel__head span {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.plan-decision {
+  margin-top: 0.85rem;
+}
+
+.plan-detail-sheet {
+  width: min(36rem, calc(100vw - 2rem));
+}
+
+/* ------------------------------------------------------------------------ */
+/* Ask: one ChatGPT-grade conversation surface. A full-height thread, an     */
+/* autogrowing bottom composer, and inline lifecycle cards for saved plans.  */
+/* ------------------------------------------------------------------------ */
+
+.ask {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0.85rem;
+  height: min(100%, calc(100svh - 5.5rem));
+  min-height: 28rem;
+}
+
+/* Empty state: the teaching block sizes to content and the composer is the
+ * hero, so the screen is not a giant empty card. The middle row collapses to
+ * the teaching content; everything centers vertically in the available space. */
+.ask--empty {
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  gap: 1.25rem;
+}
+
+.ask__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.ask__head-text {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.ask__intro {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.ask__head-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.ask__reset {
+  min-height: 2.25rem;
+}
+
+/* The thread is a floating glass plane with quiet native depth. */
+.ask__thread {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid color-mix(in oklch, var(--border), white 8%);
+  border-radius: var(--radius-xl);
+  padding: 1.1rem;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 16%),
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--card), white 4%) 0%,
+      color-mix(in oklch, var(--card), var(--background) 12%) 100%
+    ),
+    color-mix(in oklch, var(--card), var(--background) 10%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 14px 40px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.ask__turns {
+  display: grid;
+  gap: 0.9rem;
+  width: min(48rem, 100%);
+  margin-inline: auto;
+}
+
+/* Compact teaching above the hero composer (empty state). A small mark, a lead
+ * line, one body sentence, and the starter chips. Sized to content, centered,
+ * never a full-height card. */
+.ask__teach {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  width: min(46rem, 100%);
+  margin-inline: auto;
+  text-align: center;
+}
+
+.ask__teach-mark {
+  display: grid;
+  width: 2.6rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 0.9rem;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  box-shadow: 0 8px 22px color-mix(in oklch, var(--primary), transparent 82%);
+}
+
+.ask__teach-lead {
+  margin: 0.15rem 0 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.ask__teach-body {
+  max-width: 46ch;
+  margin: 0 0 0.35rem;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* Chat bubbles. */
+.ask-bubble {
+  width: fit-content;
+  max-width: min(42rem, 92%);
+  border: 1px solid var(--hairline);
+  border-radius: 1.1rem;
+  padding: 0.7rem 0.9rem;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+  animation: alfred-rise 180ms ease-out both;
+}
+
+.ask-bubble--user {
+  margin-left: auto;
+  border-color: color-mix(in oklch, var(--primary), transparent 62%);
+  background: color-mix(in oklch, var(--primary), var(--card) 86%);
+}
+
+.ask-bubble__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.ask-bubble__who {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ask-bubble__copy {
+  display: inline-grid;
+  place-items: center;
+  min-height: 1.6rem;
+  width: 1.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  opacity: 0.7;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.ask-bubble__copy:hover {
+  opacity: 1;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+}
+
+.ask-bubble__text,
+.ask-bubble__md,
+.ask-bubble__md p {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.ask-bubble__md > :first-child {
+  margin-top: 0;
+}
+
+.ask-bubble__md > :last-child {
+  margin-bottom: 0;
+}
+
+.ask-bubble__md ul,
+.ask-bubble__md ol {
+  padding-left: 1.2rem;
+  margin: 0.4rem 0;
+}
+
+.ask-bubble__md pre,
+.ask-bubble__md code {
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--black), var(--background) 10%);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.ask-bubble__md pre {
+  overflow: auto;
+  padding: 0.65rem;
+}
+
+.ask-bubble__md :not(pre) > code {
+  padding: 0.1rem 0.3rem;
+}
+
+.ask-bubble__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--primary);
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ask-bubble__unsafe-link {
+  color: var(--muted-foreground);
+}
+
+.ask-bubble__pending {
+  display: inline-flex;
+  gap: 0.28rem;
+  padding: 0.15rem 0;
+}
+
+.ask-bubble__dot {
+  width: 0.4rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  animation: alfred-pulse 1s ease-in-out infinite;
+}
+
+.ask-bubble__dot:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.ask-bubble__dot:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+@keyframes alfred-pulse {
+  50% {
+    opacity: 0.35;
+    transform: translateY(-2px);
+  }
+}
+
+/* Inline saved-plan card (one-gate File issue). */
+.ask-draft {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.75rem;
+  animation: alfred-rise 200ms ease-out both;
+}
+
+.ask-draft__file span {
+  white-space: nowrap;
+}
+
+.ask-draft__questions {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ask-draft__notice {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.ask-draft__notice--ok {
+  color: color-mix(in oklch, var(--ok), var(--foreground) 16%);
+}
+
+.ask-draft__notice--error {
+  color: color-mix(in oklch, var(--destructive), var(--foreground) 18%);
+}
+
+.ask__error {
+  margin: 0;
+}
+
+/* Composer wrap: the hero input plus a hint line. In the empty state it is
+ * centered and width-capped so the composer reads as a deliberate hero, not a
+ * thin afterthought bar. */
+.ask__composer-wrap {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ask--empty .ask__composer-wrap {
+  width: min(46rem, 100%);
+  margin-inline: auto;
+}
+
+.ask__starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Starters sit inside the teaching block in the empty state; center them. */
+.ask__teach .ask__starters {
+  justify-content: center;
+  margin-top: 0.3rem;
+}
+
+.ask__starter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.1rem;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 0.4rem 0.8rem;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--card), var(--background) 10%);
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.ask__starter:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 40%);
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+  transform: translateY(-1px);
+}
+
+.ask__starter svg {
+  color: var(--muted-foreground);
+}
+
+/* The composer is the hero: a large, bordered, generously-padded glass input.
+ * Glass is appropriate here (it is the primary overlay control, not a flat data
+ * card). It carries strong presence via a slightly heavier border and a focus
+ * ring that lands on the steel-violet accent. */
+.ask__composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  padding: 0.7rem 0.7rem 0.7rem 1.1rem;
+  background: var(--glass);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 12px 32px var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+/* In the empty state the hero composer is taller so it dominates the screen. */
+.ask--empty .ask__composer {
+  padding: 0.95rem 0.95rem 0.95rem 1.25rem;
+}
+
+.ask__composer:focus-within {
+  border-color: color-mix(in oklch, var(--primary), var(--border-strong) 30%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 0 0 3px color-mix(in oklch, var(--primary), transparent 78%);
+}
+
+.ask__input {
+  width: 100%;
+  min-height: 1.6rem;
+  max-height: 14rem;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+  padding: 0.4rem 0;
+}
+
+/* The hero composer opens larger so it reads as the focus of the screen. */
+.ask--empty .ask__input {
+  min-height: 3.2rem;
+  font-size: 1.02rem;
+}
+
+.ask__input::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* The send button is a subtle round icon, not a labelled button. */
+.ask__send {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 70%);
+  border-radius: 999px;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  box-shadow: 0 8px 20px color-mix(in oklch, var(--primary), transparent 82%);
+  transition: filter 140ms ease, transform 140ms ease, opacity 140ms ease;
+}
+
+.ask__send:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.ask__send:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.ask__hint {
+  padding-inline: 0.4rem;
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+}
+
+/* Narrow widths: stack the head, let starters wrap, keep tap targets >= 36px. */
+@media (max-width: 640px) {
+  .ask {
+    height: auto;
+    min-height: 0;
+  }
+
+  .ask__thread {
+    min-height: 22rem;
+    max-height: 60svh;
+    padding: 0.85rem;
+  }
+
+  .ask-bubble {
+    max-width: 100%;
+  }
+}
+
+.request-thread {
+  padding: 0.8rem;
+}
+
+.request-thread__head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.request-thread__title strong {
+  display: block;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.request-thread__repo {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-thread__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.request-stepper {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.request-step {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+  align-content: start;
+}
+
+.request-step__marker {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted), transparent 30%);
+  color: var(--muted-foreground);
+}
+
+.request-step--done .request-step__marker {
+  border-color: color-mix(in oklch, var(--ok), transparent 54%);
+  background: color-mix(in oklch, var(--ok), transparent 82%);
+  color: var(--ok);
+}
+
+.request-step--active .request-step__marker {
+  border-color: color-mix(in oklch, var(--primary), transparent 45%);
+  background: color-mix(in oklch, var(--primary), transparent 82%);
+  color: var(--primary);
+}
+
+.request-step--missing .request-step__marker {
+  border-style: dashed;
+}
+
+.request-step__label {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.request-step--pending .request-step__label,
+.request-step--missing .request-step__label {
+  color: var(--muted-foreground);
+}
+
+.request-step__missing {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+.request-step__detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.request-step__rail {
+  position: absolute;
+  top: 0.72rem;
+  left: 1.45rem;
+  right: -0.35rem;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.request-step--done .request-step__rail {
+  background: color-mix(in oklch, var(--ok), transparent 45%);
+}
+
+.usage-panel {
+  padding: 0.85rem;
+}
+
+.usage-panel--compact {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.usage-panel__note {
+  margin: 0 0 0.6rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.usage-panel__note--warn {
+  color: color-mix(in oklch, var(--warn), var(--foreground) 20%);
+}
+
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.usage-panel--compact .usage-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.usage-tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.7rem;
+}
+
+.usage-tile svg {
+  color: var(--primary);
+}
+
+.usage-tile strong,
+.usage-tile span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-tile strong {
+  color: var(--foreground);
+  font-size: 0.92rem;
+}
+
+.usage-tile span {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.feed-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feed-item__row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  border: 0;
+  padding: 0.75rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.feed-item--clickable {
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.feed-item--clickable:hover {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 42%);
+  background: color-mix(in oklch, var(--primary), var(--card) 93%);
+}
+
+.feed-item svg {
+  color: var(--primary);
+}
+
+.feed-item--ok svg {
+  color: var(--ok);
+}
+
+.feed-item--warn svg {
+  color: var(--warn);
+}
+
+.feed-item--error svg {
+  color: var(--destructive);
+}
+
+.feed-item__body {
+  min-width: 0;
+}
+
+.feed-item__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.feed-item__head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-item__pip {
+  width: 0.45rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.feed-item p {
+  margin: 0.2rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.feed-item__side {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.feed-item__time {
+  white-space: nowrap;
+}
+
+.feed-item__chevron {
+  opacity: 0.65;
+}
+
+.tail-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 26rem;
+}
+
+.tail-agents {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tail-agent,
+.tail-run {
+  display: grid;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: color-mix(in oklch, var(--card), var(--background) 10%);
+  color: var(--foreground);
+  text-align: left;
+}
+
+.tail-agent {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.25rem 0.55rem;
+  align-items: center;
+  padding: 0.65rem;
+}
+
+.tail-agent--active,
+.tail-run--active {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 35%);
+  background: color-mix(in oklch, var(--primary), var(--card) 92%);
+}
+
+.tail-agent__dot {
+  --tail-tone: var(--muted-foreground);
+  width: 0.5rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: var(--tail-tone);
+}
+
+.tail-agent__dot--ok {
+  --tail-tone: var(--ok);
+}
+
+.tail-agent__dot--warn {
+  --tail-tone: var(--warn);
+}
+
+.tail-agent__dot--error {
+  --tail-tone: var(--destructive);
+}
+
+.tail-agent__name,
+.tail-agent__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tail-agent__name {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.tail-agent__meta {
+  grid-column: 2;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
+.tail-console {
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 10%);
+  overflow: hidden;
+}
+
+.tail-console__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.8rem;
+}
+
+.tail-console__head strong {
+  color: var(--foreground);
+}
+
+.tail-console__head small {
+  color: var(--muted-foreground);
+}
+
+.tail-status {
+  margin-left: 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted), transparent 36%);
+  padding: 0.2rem 0.45rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.tail-status--ok {
+  color: var(--ok);
+}
+
+.tail-status--warn {
+  color: var(--warn);
+}
+
+.tail-status--error {
+  color: var(--destructive);
+}
+
+.tail-runs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.65rem 0.8rem;
+}
+
+.tail-run {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0.4rem 0.6rem;
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+}
+
+.tail-stream {
+  max-height: 28rem;
+  min-height: 18rem;
+  overflow: auto;
+  padding: 0.8rem;
+}
+
+.tail-stream__summary,
+.tail-stream__empty {
+  margin: 0 0 0.7rem;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.tail-lines {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tail-lines--live {
+  margin-top: 0.65rem;
+}
+
+.tail-line {
+  display: grid;
+  grid-template-columns: 4.8rem minmax(0, 1fr);
+  gap: 0.6rem;
+  border-radius: 0.55rem;
+  padding: 0.4rem 0.5rem;
+  background: color-mix(in oklch, var(--black), var(--background) 18%);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.tail-line__ts {
+  color: var(--muted-foreground);
+}
+
+.tail-line__text {
+  min-width: 0;
+  color: color-mix(in oklch, var(--foreground), var(--muted-foreground) 8%);
+  overflow-wrap: anywhere;
+}
+
+.tail-line--live {
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 74%);
+  background: color-mix(in oklch, var(--primary), var(--black) 88%);
+}
+
+.setup-section {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.setup-mode-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.setup-mode-back {
+  width: fit-content;
+}
+
+.server-connect-form,
+.trusted-form,
+.console-agent-row {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.server-connect-form label,
+.trusted-form label,
+.console-agent-row label {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.server-row,
+.trusted-form__row,
+.console-agent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.server-row input,
+.trusted-form input,
+.console-agent-row input {
+  min-height: 2.35rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.console-agent-row label {
+  grid-column: 1 / -1;
+}
+
+.trusted-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.trusted-user {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem;
+}
+
+.trusted-user strong,
+.trusted-user span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trusted-user span {
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+}
+
+.cli-fallback,
+.advanced-panel {
+  padding: 0.8rem;
+}
+
+.cli-fallback p,
+.advanced-panel__intro,
+.advanced-panel__ok {
+  margin: 0.6rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.advanced-panel__body {
+  margin-top: 0.8rem;
+}
+
+.cli-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.cli-chip-list code {
+  padding: 0.32rem 0.5rem;
+}
+
+.lesson-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(13rem, 17rem);
+  gap: 0.85rem;
+  padding: 0.9rem;
+}
+
+.lesson-card__body {
+  min-width: 0;
+}
+
+.lesson-card__origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.lesson-card__where {
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 0.15rem 0.4rem;
+}
+
+.lesson-card__what {
+  margin: 0.5rem 0 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 1.02rem;
+  line-height: 1.3;
+}
+
+.lesson-card__matters {
+  color: color-mix(in oklch, var(--warn), var(--foreground) 20%);
+}
+
+.lesson-card__decide {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  border-left: 1px solid var(--hairline);
+  padding-left: 0.85rem;
+}
+
+.health-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.6rem 0 0;
+}
+
+.health-list div {
+  border: 1px solid var(--hairline);
+  border-radius: 0.65rem;
+  padding: 0.6rem;
+}
+
+.health-list dt {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.health-list dd {
+  margin: 0.2rem 0 0;
+  color: var(--foreground);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.console-note--inline {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.thread-modal {
+  max-width: min(44rem, calc(100vw - 2rem));
+}
+
+@media (max-width: 980px) {
+  .usage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tail-layout,
+  .lesson-card {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-card__decide {
+    border-left: 0;
+    border-top: 1px solid var(--hairline);
+    padding-top: 0.85rem;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .panel,
+  .command-result,
+  .notice-panel {
+    border-radius: 0.85rem;
+  }
+
+  .request-thread__head,
+  .panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .request-stepper {
+    grid-template-columns: 1fr;
+  }
+
+  .request-step {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .request-step__marker {
+    grid-row: span 2;
+  }
+
+  .request-step__rail {
+    display: none;
+  }
+
+  .server-row,
+  .trusted-form__row,
+  .console-agent-row,
+  .attention-card,
+  .feed-item__row {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-item__side,
+  .request-thread__actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Human chip vocabulary + canonical lifecycle card (DESIGN_SPEC section 5).
+ * One status color per chip, mapped to the semantic status palette. idle is a
+ * neutral gray; it is never green. error never folds into ok.
+ * ------------------------------------------------------------------------- */
+.alfred-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  height: 20px;
+  border: 1px solid color-mix(in oklch, var(--chip-tone), transparent 64%);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--chip-tone), transparent 88%);
+  padding: 0 8px;
+  color: color-mix(in oklch, var(--chip-tone), var(--foreground) 22%);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.alfred-chip__dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: var(--chip-tone);
+}
+
+.alfred-chip--ok {
+  --chip-tone: var(--ok);
+}
+.alfred-chip--working {
+  --chip-tone: var(--blue);
+}
+.alfred-chip--attention {
+  --chip-tone: var(--accent);
+}
+.alfred-chip--error {
+  --chip-tone: var(--error);
+}
+.alfred-chip--idle {
+  --chip-tone: var(--muted-foreground);
+}
+
+.alfred-repo-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--muted), transparent 42%);
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+}
+
+.alfred-repo-chip--overflow {
+  font-family: inherit;
+  cursor: default;
+}
+
+.alfred-card__repos {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* The canonical card is a FLAT data surface (Linear grade): opaque flat
+ * background, one hairline, tight padding, subtle hover only. No backdrop-blur,
+ * no specular glass line, no puffy shadow. The glass/flat split (THEME_SYSTEM.md)
+ * keeps blur for chrome; data cards stay flat and dense. */
+.alfred-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 0.6rem 0.7rem;
+  transition:
+    border-color 140ms ease-out,
+    background 140ms ease-out;
+}
+
+.alfred-card--selected {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 45%);
+  background: color-mix(in oklch, var(--accent-soft), var(--surface) 55%);
+}
+
+.alfred-card__select {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.alfred-card__select:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--primary), transparent 30%);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.alfred-card__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.alfred-card__age {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* Title: 1-2 lines, then clamp. Plain outcome sentence, dense. */
+.alfred-card__outcome {
+  margin: 0.1rem 0 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 550;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.alfred-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+}
+
+.alfred-card__attribution {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.alfred-card__action {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+/* The Pipeline board: lifecycle columns as flat lanes with light chrome. No
+ * glass, no blur. A slim header, a hairline divider, dense card rhythm. */
+.alfred-pipeline {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.alfred-pipeline__columns {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  .alfred-pipeline__columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .alfred-pipeline__columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.alfred-pipeline__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 12rem;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface), var(--background) 55%);
+  padding: 0.6rem 0.55rem;
+}
+
+/* Slim column header: name + count, with a hairline rule beneath. */
+.alfred-pipeline__column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.1rem 0.15rem 0.5rem;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+}
+
+.alfred-pipeline__column-head small {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.1rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted), transparent 30%);
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.alfred-pipeline__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* Empty column + low-signal disclosure (referenced by PipelineView, previously
+ * unstyled). Quiet, dense, hairline-consistent. */
+.alfred-pipeline__empty {
+  margin: 0.35rem 0.15rem;
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.alfred-pipeline__lowsignal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.alfred-pipeline__lowsignal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.alfred-pipeline__lowsignal-toggle:hover {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 50%);
+  color: var(--foreground);
+}
+
+/* --------------------------------------------------------------------------- *
+ * Onboarding stepper (DESIGN_SPEC section 7). A clean, single-decision-per-step
+ * first-run journey. One GLASS shell floats over the ambient base; a persistent
+ * minimal numbered Stepper sits at the top, the active step lives in a centered
+ * column with generous whitespace, and a Back / Continue footer closes it. Only
+ * the single primary CTA per step carries the steel-violet accent; every data
+ * surface inside a step (repo list, engine probe) stays flat. Appended last so
+ * it overrides nothing above and is easy to lift out if onboarding ever moves.
+ * --------------------------------------------------------------------------- */
+.alfred-onboarding {
+  --alfred-onboarding-accent: var(--primary);
+  display: flex;
+  justify-content: center;
+}
+
+/* The floating glass shell. .alfred-glass already supplies the translucency,
+ * specular top border, blur, and ambient shadow per the theme tokens; this only
+ * lays out the head / stepper / panel / footer stack and caps the width so the
+ * journey reads as one calm card, not a full-bleed page. */
+.alfred-onboarding-shell {
+  width: 100%;
+  max-width: 52rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  border-radius: var(--radius-xl);
+  padding: 1.75rem;
+}
+
+.alfred-onboarding-shell__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.alfred-onboarding-shell__eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-shell__title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.alfred-onboarding-shell__lede {
+  margin: 0.3rem 0 0;
+  max-width: 36rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-shell__advanced {
+  flex-shrink: 0;
+}
+
+/* The persistent progress indicator: numbered nodes joined by thin connectors,
+ * with current / done / upcoming states. The one chrome element of the stepper,
+ * deliberately quiet. */
+.alfred-stepper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.alfred-stepper__track {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alfred-stepper__step {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* Connectors flex to fill the gap between nodes so the row spans the shell
+ * evenly at any width. A filled connector (previous step done) reads accent. */
+.alfred-stepper__connector {
+  flex: 1 1 auto;
+  height: 2px;
+  min-width: 0.75rem;
+  margin: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--hairline);
+  transition: background-color 160ms ease-out;
+}
+
+.alfred-stepper__connector.is-filled {
+  background: color-mix(in oklch, var(--primary), transparent 35%);
+}
+
+.alfred-stepper__step:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* The first node hugs the start; every node after it lets its connector flex. */
+.alfred-stepper__step:not(:first-child) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The active step owns its label, so let its node shrink and the label truncate
+ * rather than push the row past the shell at any sub-desktop width. */
+.alfred-stepper__step.is-active .alfred-stepper__node {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.alfred-stepper__label.is-visible {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-stepper__node {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.35rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+.alfred-stepper__node:hover {
+  color: var(--foreground);
+}
+
+.alfred-stepper__node:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.alfred-stepper__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--surface), var(--background) 20%);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  transition:
+    background-color 160ms ease-out,
+    border-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.alfred-stepper__step.is-active .alfred-stepper__dot {
+  border-color: color-mix(in oklch, var(--primary), transparent 45%);
+  background: color-mix(in oklch, var(--primary), transparent 82%);
+  color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary), transparent 88%);
+}
+
+.alfred-stepper__step.is-done .alfred-stepper__dot {
+  border-color: color-mix(in oklch, var(--primary), transparent 30%);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.alfred-stepper__step.is-active .alfred-stepper__node,
+.alfred-stepper__step.is-done .alfred-stepper__node {
+  color: var(--foreground);
+}
+
+.alfred-stepper__label {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* On wide layouts every step shows its label; on narrow layouts only the active
+ * step keeps its label and the rest collapse to dots, so the row never wraps. */
+.alfred-stepper__count {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The active step's panel: a centered column with breathing room. No box of its
+ * own; it sits directly on the shell so the journey is one surface. */
+.alfred-onboarding-shell__panel {
+  min-height: 16rem;
+}
+
+.alfred-step {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.alfred-step__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.alfred-step__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 60%);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--primary), transparent 84%);
+  color: var(--primary);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+.alfred-step__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.alfred-step__blurb {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.alfred-onboarding-shell__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.alfred-onboarding-shell__progress {
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Step 0 welcome leans typographic, echoing the Fey / Clay near-black onboarding
+ * the spec cites. A soft steel-violet wash sits behind the headline only. */
+.alfred-onboarding-welcome {
+  position: relative;
+  display: grid;
+  gap: 1.5rem;
+  padding: 1.25rem 0.5rem 0.5rem;
+  text-align: center;
+}
+
+.alfred-onboarding-welcome::before {
+  content: "";
+  position: absolute;
+  inset: -1.5rem 8% auto 8%;
+  height: 9rem;
+  background: radial-gradient(
+    60% 100% at 50% 0%,
+    color-mix(in oklch, var(--primary), transparent 82%),
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.alfred-onboarding-welcome > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Responsive: below the tablet breakpoint the shell tightens its padding and the
+ * stepper collapses inactive labels to dots so the row stays on one line with no
+ * horizontal scroll. The footer never truncates because Back / Continue are
+ * short and the step-count hides first. */
+@media (max-width: 768px) {
+  .alfred-onboarding-shell {
+    padding: 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .alfred-onboarding-shell__head {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+/* Below the wide-desktop breakpoint only the active step keeps its label; the
+ * rest collapse to numbered dots so the row stays on one line with no overflow.
+ * Full labels return at >= 1280px where the shell, minus the app sidebar, has
+ * room for all six. display:none (not a clip) keeps collapsed labels out of
+ * flow; each node keeps its aria-label so every step is still announced. */
+@media (max-width: 1279px) {
+  .alfred-stepper__label.is-collapsible {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .alfred-onboarding-shell__progress {
+    display: none;
+  }
+}
+
+/* Phone-width tap-target floor for the stepper nodes (the rail buttons are raw
+ * <button>s, not data-slot buttons, so the global 480px floor does not reach
+ * them). Each node clears 36px on its short axis, and the connectors tighten so
+ * six dots plus the active label fit on one line at 375 with no overflow. */
+@media (max-width: 480px) {
+  .alfred-stepper__node {
+    min-height: 36px;
+    padding-inline: 0.2rem;
+  }
+
+  /* A collapsed (dot-only) node still needs a 36px square hit area. */
+  .alfred-stepper__step:not(.is-active) .alfred-stepper__node {
+    min-width: 36px;
+    justify-content: center;
+  }
+
+  .alfred-stepper__dot {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .alfred-stepper__connector {
+    min-width: 0.1rem;
+    margin: 0 0.1rem;
+  }
+}
+
+/* The very narrowest phones (<= 400px) shave the dot a touch more so six 36px
+ * hit areas plus connectors and the active label clear the row with no overflow,
+ * while the dots still read as 36px tappable via the node min-height/width. */
+@media (max-width: 400px) {
+  .alfred-stepper__dot {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+
+  /* Let connectors fully absorb the last few pixels so the longest active label
+   * ("Repositories") never nudges the row past the shell edge. */
+  .alfred-stepper__connector {
+    min-width: 0;
+    margin: 0 0.08rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Touch-width tap-target floor. Desktop keeps its dense 28 to 32px control
+ * system; at phone widths every interactive control grows to at least 36px on
+ * its short axis so it is comfortably tappable. Scoped to <= 480px so the
+ * desktop grid is untouched. Covers shadcn buttons, the sidebar trigger, tab
+ * triggers, settings appearance controls, and the Ask starter chips found in
+ * the pixel sweep at 375.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+  [data-slot="button"],
+  [data-slot="sidebar-trigger"],
+  .ask__starter,
+  .text-button,
+  .secondary-button,
+  .ghost-button,
+  .ghost-icon,
+  .icon-button,
+  .approve-button,
+  .decline-button,
+  .appearance__card {
+    min-height: 36px;
+  }
+
+  /* Icon-only controls also need 36px of width to be square tappable. */
+  [data-slot="button"][data-size="icon"],
+  [data-slot="button"][data-size="icon-xs"],
+  [data-slot="button"][data-size="icon-sm"],
+  [data-slot="button"][data-size="icon-lg"],
+  [data-slot="sidebar-trigger"],
+  .ghost-icon {
+    min-width: 36px;
+  }
+
+  /* The segmented tab list is a fixed-height shell with inner triggers; grow
+     the shell so each trigger clears 36px, and let triggers fill it. */
+  [data-slot="tabs-list"] {
+    height: auto;
+    min-height: 42px;
+  }
+
+  [data-slot="tabs-trigger"] {
+    min-height: 36px;
+  }
+
+  /* The Alfred segmented control (alfred-tabs-list) already floors its row at
+     2.25rem; lift the inner trigger to a full 36px target too. */
+  .alfred-tabs-list {
+    min-height: 2.75rem;
+  }
+
+  .alfred-tabs-list [role="tab"] {
+    min-height: 36px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion system (DESIGN_SPEC section 5 "Motion" + Phase 3). A small, uniform
+ * layer built only on CSS: card lists rise on mount staggered by index, the
+ * canonical card lifts on hover, and tab panels crossfade in. All durations sit
+ * in the 140 to 200ms ease-out band the spec mandates, and every animation is
+ * disabled wholesale under prefers-reduced-motion (the global reduce block
+ * already clamps durations; the mount/hover transforms are neutralized here so
+ * nothing translates).
+ * ------------------------------------------------------------------------- */
+
+/* Rise-on-mount for card lists. The list element opts in with .motion-rise;
+   each child rises with a small per-index stagger. The stagger is capped so a
+   long list never feels slow.
+
+   Fill-mode is "backwards", not "both": the children are the interactive cards
+   and roster rows, so holding the final keyframe (transform: translateY(0))
+   would mask their hover lift (.alfred-card--interactive:hover and
+   .agents-deck__row:hover) for the rest of the session. "backwards" applies the
+   entry frame during the stagger delay so cards do not flash in early, then
+   releases the transform once the rise finishes, leaving hover transforms free
+   to run. The base card transform is none, so there is no jump at completion. */
+.motion-rise > * {
   animation: alfred-rise 180ms ease-out backwards;
   animation-delay: calc(var(--rise-index, 0) * 40ms);
 }
 
-.agents-deck .motion-rise > *:nth-child(1) { --rise-index: 0; }
-.agents-deck .motion-rise > *:nth-child(2) { --rise-index: 1; }
-.agents-deck .motion-rise > *:nth-child(3) { --rise-index: 2; }
-.agents-deck .motion-rise > *:nth-child(4) { --rise-index: 3; }
-.agents-deck .motion-rise > *:nth-child(5) { --rise-index: 4; }
-.agents-deck .motion-rise > *:nth-child(n + 6) { --rise-index: 5; }
+/* Index-based stagger for the first several cards; later cards share the last
+   delay so the whole list still settles quickly. */
+.motion-rise > *:nth-child(1) { --rise-index: 0; }
+.motion-rise > *:nth-child(2) { --rise-index: 1; }
+.motion-rise > *:nth-child(3) { --rise-index: 2; }
+.motion-rise > *:nth-child(4) { --rise-index: 3; }
+.motion-rise > *:nth-child(5) { --rise-index: 4; }
+.motion-rise > *:nth-child(n + 6) { --rise-index: 5; }
 
+/* Data cards get a subtle Linear-grade hover only: a quiet background and
+   border shift, no translate and no puffy shadow. The flat surface stays flat. */
+.alfred-card--interactive:hover,
+.alfred-card__select:hover .alfred-card,
+.alfred-card:has(.alfred-card__select:hover) {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 55%);
+  background: color-mix(in oklch, var(--surface), var(--foreground) 4%);
+}
+
+.alfred-card--selected:hover,
+.alfred-card:has(.alfred-card__select:hover).alfred-card--selected {
+  background: color-mix(in oklch, var(--accent-soft), var(--surface) 50%);
+}
+
+/* Tab panel crossfade. Radix sets data-state on the content; fade the active
+   panel in. Applied to both the shadcn tabs content and the page sections that
+   swap on tab change via the .motion-fade opt-in. */
+[data-slot="tabs-content"][data-state="active"],
+.motion-fade {
+  animation: alfred-fade 160ms ease-out both;
+}
+
+@keyframes alfred-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Respect reduced motion: no rise, no lift translate, no crossfade. The global
+   reduce block already clamps durations to ~0; here we also strip the
+   transforms so a hovered card does not jump. */
 @media (prefers-reduced-motion: reduce) {
-  /* No card lift, no row slide, no staggered mount entry. The selected/hover
-     state still changes color and border so the affordance survives; only the
-     transforms and the rise animation are removed. */
-  .agent-card,
-  .agent-card:hover,
-  .agents-deck__row,
-  .agents-deck__row:hover {
-    transform: none;
-    transition: none;
+  .motion-rise > *,
+  [data-slot="tabs-content"][data-state="active"],
+  .motion-fade {
+    animation: none;
   }
 
-  .agents-deck .motion-rise > * {
-    animation: none;
+  .alfred-card--interactive:hover,
+  .alfred-card:has(.alfred-card__select:hover),
+  .alfred-pipeline__column:hover,
+  .agent-card:hover {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Settings > Appearance: theme radio-cards + a light/dark segmented control.
+ * The swatches preview each theme with fixed representative colors so the
+ * preview reads correctly whatever the active theme is.
+ * ------------------------------------------------------------------------- */
+.appearance {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.appearance__group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.appearance__legend {
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.appearance__cards {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+}
+
+.appearance__card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.8rem;
+  background: var(--surface);
+  color: var(--foreground);
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.appearance__card:hover {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 50%);
+  transform: translateY(-1px);
+}
+
+.appearance__card--selected {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 20%);
+  background: color-mix(in oklch, var(--accent-soft), var(--surface) 40%);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary), transparent 60%);
+}
+
+.appearance__card-text {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.appearance__card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.appearance__card-head strong {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.appearance__check {
+  color: var(--primary);
+}
+
+.appearance__card-blurb {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+/* The swatch is a tiny stacked preview: base plane, raised card, accent pill.
+ * Fixed colors per theme so it previews the identity, not the active theme. */
+.appearance__swatch {
+  position: relative;
+  display: block;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.appearance__swatch-bg,
+.appearance__swatch-card,
+.appearance__swatch-accent {
+  position: absolute;
+}
+
+.appearance__swatch-bg {
+  inset: 0;
+}
+
+.appearance__swatch-card {
+  inset: 0.55rem 0.55rem auto 0.55rem;
+  height: 0.85rem;
+  border-radius: 0.3rem;
+}
+
+.appearance__swatch-accent {
+  left: 0.55rem;
+  bottom: 0.55rem;
+  width: 1.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+}
+
+.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-bg {
+  background: oklch(0.145 0.017 268);
+}
+.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-card {
+  background: oklch(0.20 0.019 270);
+}
+.appearance__swatch[data-theme-preview="alfred"] .appearance__swatch-accent {
+  background: oklch(0.64 0.19 282);
+}
+
+.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-bg {
+  background: oklch(0.155 0.008 275);
+}
+.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-card {
+  background: oklch(0.205 0.009 275);
+}
+.appearance__swatch[data-theme-preview="linear"] .appearance__swatch-accent {
+  background: oklch(0.64 0.15 278);
+}
+
+.appearance__segment {
+  display: inline-flex;
+  gap: 0.25rem;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.2rem;
+  background: var(--surface);
+}
+
+.appearance__segment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-lg) - 0.15rem);
+  padding: 0.35rem 0.85rem;
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  font-weight: 600;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.appearance__segment-btn--active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Placed after the component block so the mobile floor wins the cascade over
+ * the dense desktop min-height above. */
+@media (max-width: 480px) {
+  .appearance__segment-btn {
+    min-height: 36px;
   }
 }

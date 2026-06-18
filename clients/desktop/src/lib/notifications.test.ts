@@ -90,6 +90,59 @@ describe("buildFeed", () => {
     expect(feed.find((item) => item.kind === "needs-you")?.tone).toBe("error");
   });
 
+  it("humanizes raw governor action tokens and strips the duplicated tail", () => {
+    const feed = buildFeed(
+      snapshot({
+        actions: {
+          status: "needs-attention",
+          actions: [],
+          failure_patterns: [
+            {
+              kind: "failure_pattern",
+              action: "ask_human",
+              summary: "rasalghul has 226 repeated auth failure(s): ask_human",
+              target: "rasalghul",
+            },
+          ],
+          stale_workers: [],
+          promotion_suggestions: [],
+        },
+      }),
+    );
+    const item = feed[0];
+    // Title leads with the agent plus plain words, never the raw token.
+    expect(item.title).toBe("rasalghul · needs your decision");
+    // The ": ask_human" tail duplicated the title, so it is stripped.
+    expect(item.detail).toBe("rasalghul has 226 repeated auth failure(s)");
+    // The row leads to the agent's latest run.
+    expect(item.target).toEqual({ type: "agent", codename: "rasalghul" });
+  });
+
+  it("routes memory suggestions to the Lessons queue and firings to their agent", () => {
+    const feed = buildFeed(
+      snapshot({
+        firings: [firing()],
+        actions: {
+          status: "needs-attention",
+          actions: [
+            {
+              action: "review_candidate",
+              message: "memory candidate 19 is ready for review: failure-pattern:bane",
+            },
+          ],
+          failure_patterns: [],
+          stale_workers: [],
+          promotion_suggestions: [],
+        },
+      }),
+    );
+    expect(feed.find((item) => item.kind === "needs-you")?.target).toEqual({ type: "memory" });
+    expect(feed.find((item) => item.kind === "firing")?.target).toEqual({
+      type: "agent",
+      codename: "lucius",
+    });
+  });
+
   it("gives needs-you signals a stable id across rebuilds", () => {
     const snap = snapshot({
       actions: {

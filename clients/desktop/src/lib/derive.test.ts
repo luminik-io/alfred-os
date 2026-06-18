@@ -3,11 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildActiveThreads,
   buildCostHealth,
-  buildInspectionItems,
   buildNeedsYou,
   buildRunning,
   buildShippedDigest,
-  failurePatternsToAttention,
+  dedupePlans,
   planNeedsAttention,
   threadForCompose,
 } from "./derive";
@@ -101,7 +100,7 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
     };
     const items = buildNeedsYou(emptySnapshot({ plans: [base] }));
     expect(items[0].id).toBe("plan-13-plan");
-    expect(items[0].targetTab).toBe("plans");
+    expect(items[0].targetTab).toBe("pipeline");
     // The single-plan card carries the plan id so it can offer in-place
     // approve/decline.
     expect(items[0].planId).toBe("13-plan");
@@ -184,8 +183,6 @@ describe("buildNeedsYou (calm client-owned decisions)", () => {
       },
     });
     expect(buildNeedsYou(snap)).toHaveLength(0);
-    // The inspection split carries the reliability signals instead.
-    expect(buildInspectionItems(snap).length).toBeGreaterThan(0);
   });
 });
 
@@ -223,17 +220,69 @@ describe("planNeedsAttention", () => {
   });
 });
 
-describe("failurePatternsToAttention", () => {
-  it("groups repeated failure patterns by agent", () => {
-    const items = failurePatternsToAttention([
-      { agent: "rasalghul", subtype: "diff-too-large", count: 12, last_seen: "2026-05-30T10:26:20Z" },
-      { agent: "rasalghul", subtype: "pr-stale", count: 8, last_seen: "2026-06-01T07:07:42Z" },
-      { agent: "nightwing", subtype: "no-fixes-landed", count: 20, last_seen: "2026-06-01T10:35:00Z" },
+describe("dedupePlans", () => {
+  const base: PlanDraft = {
+    plan_id: "p1",
+    title: "Alfred planning draft",
+    status: "draft",
+    parent: null,
+    affected_repos: "your-org/api",
+    updated_at: "2026-06-01T10:00:00Z",
+    path: "",
+    preview: "",
+    content: "",
+    source: "compose",
+    readiness_score: null,
+    readiness_ok: true,
+    revision_count: 0,
+  };
+
+  it("keeps placeholder-titled drafts distinct even when repos match", () => {
+    const rows = dedupePlans([
+      base,
+      {
+        ...base,
+        plan_id: "p2",
+        updated_at: "2026-06-01T11:00:00Z",
+      },
     ]);
-    expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({ id: "failure-rasalghul", title: "Rasalghul reliability signal" });
-    expect(items[0].detail).toContain("2 repeated patterns");
-    expect(items[0].detail).toContain("diff-too-large");
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.plan.plan_id)).toEqual(["p1", "p2"]);
+    expect(rows.map((row) => row.revisions)).toEqual([1, 1]);
+  });
+
+  it("keeps Batman approval plans distinct from matching compose drafts", () => {
+    const rows = dedupePlans([
+      {
+        ...base,
+        plan_id: "compose",
+        title: "Add CSV export",
+      },
+      {
+        ...base,
+        plan_id: "batman",
+        title: "Add CSV export",
+        source: "batman",
+      },
+    ]);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.plan.plan_id)).toEqual(["compose", "batman"]);
+  });
+
+  it("uses compose revision_count as the visible revision count", () => {
+    const rows = dedupePlans([
+      {
+        ...base,
+        plan_id: "compose",
+        title: "Add CSV export",
+        revision_count: 2,
+      },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].revisions).toBe(2);
   });
 });
 
@@ -294,10 +343,9 @@ describe("buildShippedDigest", () => {
     expect(digest[0].what).toBe("Add CSV export.");
     expect(digest[0].agent).toBe("Lucius");
     expect(digest[0].why).toContain("merged into api");
-    // The agent is shown as a badge (digest[0].agent), so the sentence does not
-    // repeat the agent name (no repeated info per card).
+    // Card hygiene: the agent is in the `agent` field/badge, not repeated in the sentence.
+    expect(digest[0].why).toMatch(/^Shipped and merged into api/);
     expect(digest[0].why).not.toContain("Lucius");
-    expect(digest[0].why).toContain("Shipped and merged into api");
   });
 });
 
@@ -341,6 +389,31 @@ describe("buildCostHealth", () => {
     // ok/fail counts come from the whole-day rollup, not the visible window.
     expect(health.succeeded).toBe(7);
     expect(health.failed).toBe(2);
+  });
+
+  it("lets event-log agent failures raise a stale metrics failure total", () => {
+    const snap = emptySnapshot({
+      status: {
+        agents: [
+          {
+            codename: "lucius",
+            last_firing_id: "f1",
+            last_run_at: "2026-06-01T10:00:00Z",
+            status: "error",
+            last_summary: "provider rate limit",
+            firings_today: 1,
+            failures_today: 1,
+          },
+        ],
+        total_today: 1,
+        reliability: {},
+        metrics: { spend_usd: 0, firings: 1, successes: 0, failures: 0, agents_with_spend: 1 },
+      },
+    });
+
+    const health = buildCostHealth(snap);
+
+    expect(health.failed).toBe(1);
   });
 
   it("reports a null (not zero) spend from a rollup with no ledgers today", () => {

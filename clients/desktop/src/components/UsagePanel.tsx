@@ -6,6 +6,7 @@ import type {
   UsageCodexQuotaWindow,
   UsageLimitBucket,
   UsageResponse,
+  UsageWeekly,
 } from "../types";
 import { EmptyState, PanelHeader } from "./atoms";
 
@@ -88,7 +89,12 @@ function UsageBody({
 
   const block = usage.block;
   const fiveHour = usage.limits?.five_hour ?? null;
-  const week = usage.limits?.seven_day ?? null;
+  // An empty or malformed seven_day normalizes to a truthy bucket with all-null
+  // fields. Treat it as absent so the weekly tile uses the local-state fallback
+  // (reset, tier, 7d tokens) instead of rendering an empty "weekly window".
+  const week = bucketHasData(usage.limits?.seven_day ?? null)
+    ? (usage.limits?.seven_day ?? null)
+    : null;
   // A partial failure (Codex read but the active 5h block did not) must not
   // render like a genuinely empty window, or the operator is told there is no
   // Claude usage when really the headroom could not be read.
@@ -104,8 +110,8 @@ function UsageBody({
     {
       key: "weekly",
       icon: Activity,
-      value: formatQuotaLeft(week, null),
-      label: formatQuotaLabel(week, "weekly window", "weekly quota not synced"),
+      value: formatWeeklyValue(week, usage.weekly),
+      label: formatWeeklyLabel(week, usage.weekly),
     },
     // Codex reports its own headroom (5h primary + weekly secondary) via the
     // rate_limits block in its session JSONL. Only show the tile when that
@@ -170,6 +176,18 @@ function UsageBody({
   );
 }
 
+// A real-quota bucket is usable only when it carries a utilization or a reset.
+// An empty or malformed seven_day normalizes to all-null fields; mirror the
+// backend so the weekly tile does not treat it as a present cache and instead
+// falls through to the local-state fallback.
+function bucketHasData(bucket: UsageLimitBucket | null): boolean {
+  if (bucket === null) return false;
+  return (
+    (bucket.utilization !== null && bucket.utilization !== undefined) ||
+    (bucket.resets_at !== null && bucket.resets_at !== undefined)
+  );
+}
+
 function formatQuotaLeft(bucket: UsageLimitBucket | null, fallback: string | null): string {
   if (bucket?.remaining_percent !== null && bucket?.remaining_percent !== undefined) {
     return `${trimPercent(bucket.remaining_percent)}% left`;
@@ -185,6 +203,52 @@ function formatQuotaLabel(
   if (!bucket) return missingLabel;
   const reset = formatReset(bucket.minutes_to_reset);
   return reset === "No reset" ? syncedLabel : `${syncedLabel}, resets in ${reset}`;
+}
+
+// The weekly window value. A real "% left" only when the OAuth usage cache
+// supplied a seven-day quota (the `bucket` path). Otherwise we lead with the
+// reset countdown from the local Claude state fallback, and never invent a
+// percentage. Falls back to "Quota unavailable" when nothing is known.
+function formatWeeklyValue(
+  bucket: UsageLimitBucket | null,
+  weekly: UsageWeekly | null | undefined,
+): string {
+  if (bucket?.remaining_percent !== null && bucket?.remaining_percent !== undefined) {
+    return `${trimPercent(bucket.remaining_percent)}% left`;
+  }
+  if (weekly?.available) {
+    const reset = formatReset(weekly.minutes_to_reset);
+    if (reset !== "No reset") return `resets in ${reset}`;
+    // No reset known but the window is still useful (e.g. token total only).
+    if (weekly.used_tokens_7d !== null && weekly.used_tokens_7d !== undefined) {
+      return `${formatTokens(weekly.used_tokens_7d)} used`;
+    }
+  }
+  return "Quota unavailable";
+}
+
+// The weekly window label. With the OAuth cache (bucket) it mirrors the 5h tile.
+// With the local-state fallback it names the 7-day token total and the plan tier
+// when present. When nothing is known it keeps the honest "not synced" copy.
+function formatWeeklyLabel(
+  bucket: UsageLimitBucket | null,
+  weekly: UsageWeekly | null | undefined,
+): string {
+  if (bucket) {
+    const reset = formatReset(bucket.minutes_to_reset);
+    return reset === "No reset" ? "weekly window" : `weekly window, resets in ${reset}`;
+  }
+  if (weekly?.available) {
+    const parts: string[] = [];
+    if (weekly.used_tokens_7d !== null && weekly.used_tokens_7d !== undefined) {
+      parts.push(`${formatTokens(weekly.used_tokens_7d)} in 7d`);
+    }
+    const tier = weekly.tier_label ?? weekly.tier ?? null;
+    if (tier) parts.push(tier);
+    if (parts.length > 0) return `weekly window, ${parts.join(", ")}`;
+    return "weekly window";
+  }
+  return "weekly quota not synced";
 }
 
 function formatLocalEvidenceOutput(

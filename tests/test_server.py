@@ -370,6 +370,89 @@ def test_json_api_lists_slack_planning_drafts(tmp_path: Path) -> None:
     assert payload["readiness_score"] == 92
 
 
+def test_discard_plan_archives_draft_and_removes_it_from_listing(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True)
+    source = drafts / "compose-junk-01.json"
+    source.write_text(
+        json.dumps(
+            {
+                "source": "compose",
+                "created_at": "2026-05-29T04:00:00Z",
+                "draft": {"title": "Hi", "repos": ["acme/api"]},
+                "readiness": {"ok": False, "score": 12},
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    assert len(client.get("/api/plans").json()["rows"]) == 1
+
+    response = client.post(
+        "/api/plans/compose-junk-01/discard",
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["status"] == "discarded"
+    assert not source.exists()
+    archived = Path(body["archived_path"])
+    assert archived.exists()
+    assert archived.parent.name == "archive"
+    assert client.get("/api/plans").json()["rows"] == []
+
+
+def test_discard_plan_is_idempotent(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True)
+    (drafts / "compose-dup-02.json").write_text(
+        json.dumps({"draft": {"title": "Test", "repos": ["acme/api"]}}),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    first = client.post(
+        "/api/plans/compose-dup-02/discard",
+        headers=_auth_headers(state),
+    )
+    second = client.post(
+        "/api/plans/compose-dup-02/discard",
+        headers=_auth_headers(state),
+    )
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "discarded"
+    assert second.status_code == 200
+    assert second.json()["status"] == "already_discarded"
+    assert second.json()["ok"] is True
+
+
+def test_discard_plan_requires_token_and_same_origin(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True)
+    source = drafts / "compose-guard-03.json"
+    source.write_text(json.dumps({"draft": {"title": "Guarded"}}), encoding="utf-8")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    no_token = client.post(
+        "/api/plans/compose-guard-03/discard",
+        headers={"origin": "http://testserver"},
+    )
+    cross_origin = client.post(
+        "/api/plans/compose-guard-03/discard",
+        headers=_auth_headers(state, origin="http://evil.example"),
+    )
+
+    assert no_token.status_code == 403
+    assert cross_origin.status_code == 403
+    assert source.exists()
+
+
 def test_json_api_lists_slack_followups(tmp_path: Path) -> None:
     state = tmp_path / "state"
     followups = state / "followups"
@@ -1811,12 +1894,13 @@ def test_api_queue_allows_assign_action(tmp_path: Path, monkeypatch: pytest.Monk
 
     state = tmp_path / "state"
     state.mkdir()
-    calls: list[tuple[str, int]] = []
+    calls: list[tuple[str, int, str]] = []
 
-    def fake_assign_issue(repo: str, number: int):
-        calls.append((repo, number))
+    def fake_assign_issue(repo: str, number: int, *, target_agent: str = ""):
+        calls.append((repo, number, target_agent))
         return SimpleNamespace(
             ok=True,
+            decision=SimpleNamespace(agent="lucius"),
             detail=f"{repo}#{number} assigned to Lucius",
             error="",
         )
@@ -1832,8 +1916,47 @@ def test_api_queue_allows_assign_action(tmp_path: Path, monkeypatch: pytest.Monk
 
     assert response.status_code == 200
     assert response.json()["action"] == "assign"
+    assert response.json()["target_agent"] == "lucius"
     assert response.json()["detail"] == "org/repo#7 assigned to Lucius"
-    assert calls == [("org/repo", 7)]
+    assert calls == [("org/repo", 7, "")]
+
+
+def test_api_queue_assign_accepts_target_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import issue_assignment
+
+    state = tmp_path / "state"
+    state.mkdir()
+    calls: list[tuple[str, int, str]] = []
+
+    def fake_assign_issue(repo: str, number: int, *, target_agent: str = ""):
+        calls.append((repo, number, target_agent))
+        return SimpleNamespace(
+            ok=True,
+            decision=SimpleNamespace(agent="batman"),
+            detail=f"{repo}#{number} assigned to Batman",
+            error="",
+        )
+
+    monkeypatch.setattr(issue_assignment, "assign_issue", fake_assign_issue)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/queue",
+        json={
+            "repo": "org/repo",
+            "number": 7,
+            "action": "assign",
+            "target_agent": "batman",
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["target_agent"] == "batman"
+    assert response.json()["detail"] == "org/repo#7 assigned to Batman"
+    assert calls == [("org/repo", 7, "batman")]
 
 
 def test_api_queue_allows_done_action(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

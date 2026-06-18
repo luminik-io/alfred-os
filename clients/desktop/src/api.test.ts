@@ -313,10 +313,10 @@ describe("loadSnapshot degradation", () => {
             JSON.stringify({
               generated_at: "2026-06-02T00:00:00Z",
               lookback_days: 14,
-              repos: ["example-org/api"],
+              repos: ["example-org/alfred"],
               columns: { queued: [], in_progress: [], shipped: [] },
               counts: { queued: 0, in_progress: 0, shipped: 0 },
-              errors: ["example-org/api"],
+              errors: ["example-org/alfred"],
             }),
             { status: 200 },
           );
@@ -326,7 +326,7 @@ describe("loadSnapshot degradation", () => {
     );
     const board = await loadShipped("http://127.0.0.1:7000");
     expect(board.error).toContain("GitHub data unavailable");
-    expect(board.error).toContain("example-org/api");
+    expect(board.error).toContain("example-org/alfred");
     expect(board.columns.shipped).toEqual([]);
   });
 
@@ -340,10 +340,10 @@ describe("loadSnapshot degradation", () => {
             JSON.stringify({
               generated_at: "2026-06-02T00:00:00Z",
               lookback_days: 14,
-              repos: ["example-org/api", "example-org/web"],
+              repos: ["example-org/alfred", "example-org/webapp"],
               columns: { queued: [], in_progress: [], shipped: [] },
               counts: { queued: 0, in_progress: 0, shipped: 0 },
-              errors: ["example-org/api"],
+              errors: ["example-org/alfred"],
             }),
             { status: 200 },
           );
@@ -353,7 +353,7 @@ describe("loadSnapshot degradation", () => {
     );
     const board = await loadShipped("http://127.0.0.1:7000");
     expect(board.error).toBeUndefined();
-    expect(board.errors).toEqual(["example-org/api"]);
+    expect(board.errors).toEqual(["example-org/alfred"]);
   });
 
   it("keeps the dashboard when a non-spine endpoint fails", async () => {

@@ -31,7 +31,8 @@ convenience surface on top, not a dependency.
 
 The app navigation is five primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
-drawer. The design north-star is in [`CLIENT_REDESIGN.md`](CLIENT_REDESIGN.md).
+drawer. The public operator model is documented in
+[`docs/NATIVE_CLIENT.md`](../../docs/NATIVE_CLIENT.md).
 
 **Inbox** is the home / heartbeat: a pinned capacity / health strip over three
 in-page lanes. **Needs you** is approvals and failures waiting on the operator,
@@ -42,10 +43,10 @@ opens a request lifecycle thread (Intake -> Plan -> Queued -> Building ->
 Shipped). The cards deep-link to GitHub for the actual code review; the app never
 embeds a diff or merge UI.
 
-**Work** is the first-class Kanban (Queued / In progress / Shipped) with
-per-card Queue / Hold / Done actions and a "queue an issue" composer (Done closes
-the issue via GitHub's native closed state). It shares the board state with
-Inbox's Shipped lane and the Slack board.
+**Work** is the unified lifecycle board: plans needing approval, queued issues,
+in-flight PRs, and shipped outcomes in one place. Per-card actions handle
+approve, decline, file issue, queue, hold, and done where the local runtime
+allows it. It shares board state with Inbox's Shipped lane and the Slack board.
 
 **Ask** is plain-language request intake: describe the work in plain words,
 and Alfred's planning assistant scores how ready it is to run, surfaces the
@@ -53,21 +54,21 @@ clarifying questions still open, and saves a draft to the planning inbox. Each
 submission refines the same draft. The plain-mode spec coach is the default when
 the runtime starts with `ALFRED_INTAKE_PROFILE=plain`.
 
-**Agents** is the operator-depth page, organized as in-page tabs (this replaces
-the old slide-over Operator drawer). **Roster** carries pause, resume, run-once,
-and dry-run controls per codename. **Logs** has an **Activity** feed plus a
-**Latest run** view that shows one agent's most recent captured run, refreshed on
-the dashboard poll rather than streamed byte-by-byte. **Lessons** shows
+**Agents** is the operator-depth page, organized as in-page tabs. **Roster**
+carries pause, resume, run-once, and dry-run controls per codename.
+**Activity** has the live feed plus a latest-run view that shows one agent's
+most recent captured run, refreshed on the dashboard poll. **Learnings** shows
 reviewable memory candidates with promote / reject and failure-pattern harvest.
-**Plans** is the plan and issue detail inspector.
 
 **Setup** is the client-owned, onboarding-first surface and the repair path: it
 detects installed engine CLIs, connects GitHub and picks repos, starts the local
 runtime, runs common Alfred checks in-app, adds or removes local trusted Slack
 collaborators, and keeps the underlying CLI commands visible as advanced detail.
+It also owns Appearance, including the Alfred and Linear Crisp themes plus
+dark/light mode.
 
-A command palette (Cmd+K) navigates anywhere, and a dark/light "Wayne
-Enterprises" theme toggle lives in the top bar.
+A command palette (Cmd+K) navigates anywhere, and the sidebar includes a fast
+dark/light mode toggle.
 
 ## Run locally
 

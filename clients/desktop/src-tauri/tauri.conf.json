@@ -10,13 +10,28 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Alfred",
         "width": 1120,
         "height": 760,
         "minWidth": 860,
-        "minHeight": 640
+        "minHeight": 640,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 16
+        },
+        "windowEffects": {
+          "effects": ["sidebar", "headerView"],
+          "state": "followsWindowActiveState",
+          "radius": 14
+        }
       }
     ],
     "security": {

@@ -76,29 +76,30 @@ export function AppShell({
       <SidebarProvider>
         <Sidebar
           collapsible="icon"
-          variant="inset"
-          className="border-sidebar-border/70 bg-sidebar/80 backdrop-blur-2xl"
+          variant="sidebar"
+          className="alfred-glass-shell border-sidebar-border/70"
         >
-          <SidebarHeader className="gap-3 p-3">
+          <div className="hidden h-3 shrink-0 md:block" data-tauri-drag-region />
+          <SidebarHeader className="gap-3 px-3 py-3">
             <button
-              className="group-data-[collapsible=icon]:justify-center flex h-11 min-w-0 items-center gap-3 rounded-lg px-2 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="group-data-[collapsible=icon]:justify-center flex h-12 min-w-0 items-center gap-3 rounded-lg px-2 text-left transition hover:bg-sidebar-accent/45 hover:text-sidebar-accent-foreground"
               type="button"
-              onClick={() => onNavigate("review")}
-              aria-label="Alfred home"
+              onClick={() => onNavigate("home")}
+              aria-label="Open Alfred inbox"
             >
-              <span className="alfred-brand-mark size-9 shrink-0">
+              <span className="alfred-brand-mark size-9 shrink-0" aria-hidden="true">
                 <img
                   src="/brand/alfred-logo-transparent.png"
                   alt=""
-                  className="relative z-10 size-8 object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.28)]"
+                  className="alfred-brand-logo size-9 object-contain"
                 />
               </span>
               <span className="min-w-0 group-data-[collapsible=icon]:hidden">
-                <span className="block truncate font-heading text-sm font-medium">
+                <span className="block truncate font-heading text-base font-semibold">
                   Alfred
                 </span>
-                <span className="block truncate text-xs text-sidebar-foreground/65">
-                  Agent console
+                <span className="block text-[10px] font-medium uppercase tracking-[0.1em] text-sidebar-foreground/55">
+                  Autonomous engineering team
                 </span>
               </span>
             </button>
@@ -109,9 +110,9 @@ export function AppShell({
               <SidebarMenu>
                 {navItems.map((item) => {
                   const Icon = item.icon;
-                  const active = tab === item.key;
+                  const active = item.key === "fleet" ? tab === "fleet" : tab === item.key;
                   const badge =
-                    item.key === "operator" && unseenCount > 0
+                    item.key === "fleet" && unseenCount > 0
                       ? unseenCount > 9
                         ? "9+"
                         : String(unseenCount)
@@ -122,6 +123,7 @@ export function AppShell({
                         isActive={active}
                         tooltip={item.label}
                         onClick={() => onNavigate(item.key)}
+                        className="transition-transform duration-150 hover:translate-x-0.5 data-active:translate-x-0.5"
                       >
                         <Icon aria-hidden="true" />
                         <span>{item.label}</span>
@@ -138,11 +140,11 @@ export function AppShell({
             </SidebarGroup>
           </SidebarContent>
 
-          <SidebarFooter className="gap-3 p-3">
-            <div className="group-data-[collapsible=icon]:hidden rounded-lg border border-sidebar-border/70 bg-sidebar-accent/35 p-2">
+          <SidebarFooter className="gap-3 border-t border-sidebar-border/50 p-3">
+            <div className="group-data-[collapsible=icon]:hidden rounded-lg border border-sidebar-border/55 bg-sidebar-accent/20 p-2">
               <FleetStatus snapshot={snapshot} error={error} />
               <p className="mt-1 truncate text-[11px] text-sidebar-foreground/55" title={baseUrl}>
-                {baseUrl}
+                {baseUrl.replace(/^https?:\/\//, "")}
               </p>
             </div>
             <SidebarSeparator />
@@ -175,17 +177,17 @@ export function AppShell({
           <SidebarRail />
         </Sidebar>
 
-        <SidebarInset className="overflow-hidden bg-transparent">
-          <div className="flex h-svh min-w-0 flex-col">
+        <SidebarInset className="h-svh overflow-hidden bg-transparent">
+          <div className="flex h-full min-w-0 flex-col">
             <header className="alfred-glass flex h-12 shrink-0 items-center gap-2 rounded-none border-x-0 border-t-0 px-3 md:hidden">
               <SidebarTrigger>
                 <PanelLeft aria-hidden="true" />
               </SidebarTrigger>
-              <span className="alfred-brand-mark size-7 shrink-0">
+              <span className="alfred-brand-mark size-7 shrink-0" aria-hidden="true">
                 <img
                   src="/brand/alfred-logo-transparent.png"
                   alt=""
-                  className="relative z-10 size-6 object-contain"
+                  className="alfred-brand-logo size-7 object-contain"
                 />
               </span>
               <span className="font-heading text-sm font-medium">Alfred</span>
@@ -193,7 +195,7 @@ export function AppShell({
                 <FleetStatus snapshot={snapshot} error={error} compact />
               </div>
             </header>
-            <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-5 lg:px-6">
+            <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-5 lg:px-7">
               {children}
             </div>
           </div>
@@ -246,14 +248,6 @@ function FleetStatus({
   const offline = Boolean(error);
   const health = snapshot?.status.reliability.status || "checking";
   const text = offline ? "Offline" : health === "ok" ? "Live" : health === "checking" ? "Checking" : "Needs attention";
-  const title =
-    offline
-      ? "Alfred serve offline"
-      : health === "ok"
-        ? "Agents live"
-        : health === "checking"
-          ? "Agents checking"
-          : "Agents need attention";
   const variant = offline ? "destructive" : health === "ok" ? "secondary" : "outline";
   const dot =
     offline
@@ -267,10 +261,21 @@ function FleetStatus({
     <Badge
       variant={variant}
       className={compact ? "h-6 gap-1.5 px-2" : "h-7 gap-1.5 px-2"}
-      title={title}
+      title={offline ? "Alfred serve offline" : health === "ok" ? "Agents live" : `Agents ${titleCase(health)}`}
     >
-      <span className={`size-1.5 rounded-full ${dot}`} aria-hidden="true" />
+      <span
+        className={`size-1.5 rounded-full ${dot}`}
+        aria-hidden="true"
+      />
       {text}
     </Badge>
   );
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }

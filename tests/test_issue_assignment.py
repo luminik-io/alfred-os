@@ -22,6 +22,7 @@ from labels import (  # noqa: E402
     NEEDS_HUMAN_SCOPE,
     NEEDS_INFO,
     PLAN_PENDING_APPROVAL,
+    bundle_label,
 )
 
 
@@ -61,6 +62,14 @@ def test_single_repo_work_routes_to_lucius() -> None:
     assert "single-repo" in decision.reason
 
 
+def test_auto_assignment_target_is_same_as_no_target() -> None:
+    decision = ia.decide_assignment(_issue(), target_agent="auto")
+
+    assert decision.route == ia.ROUTE_LUCIUS
+    assert decision.agent == "lucius"
+    assert decision.add_labels == (IMPLEMENT,)
+
+
 def test_multi_surface_work_routes_to_batman() -> None:
     decision = ia.decide_assignment(
         _issue(
@@ -73,6 +82,62 @@ def test_multi_surface_work_routes_to_batman() -> None:
     assert decision.agent == "batman"
     assert decision.add_labels == (LARGE_FEATURE,)
     assert "multiple product surfaces" in decision.reason
+
+
+def test_explicit_batman_assignment_overrides_single_repo_default() -> None:
+    decision = ia.decide_assignment(_issue(), target_agent="architect")
+
+    assert decision.route == ia.ROUTE_BATMAN
+    assert decision.agent == "batman"
+    assert decision.add_labels == (LARGE_FEATURE,)
+    assert decision.remove_labels == ()
+    assert "Batman" in decision.reason
+
+
+def test_explicit_lucius_assignment_can_reroute_large_feature() -> None:
+    decision = ia.decide_assignment(
+        _issue(labels=(LARGE_FEATURE,)),
+        target_agent="senior developer",
+    )
+
+    assert decision.route == ia.ROUTE_LUCIUS
+    assert decision.agent == "lucius"
+    assert decision.add_labels == (IMPLEMENT,)
+    assert decision.remove_labels == (LARGE_FEATURE,)
+    assert "Lucius" in decision.reason
+
+
+def test_explicit_batman_assignment_can_reroute_lucius_issue() -> None:
+    decision = ia.decide_assignment(
+        _issue(labels=(IMPLEMENT,)),
+        target_agent="architect",
+    )
+
+    assert decision.route == ia.ROUTE_BATMAN
+    assert decision.agent == "batman"
+    assert decision.add_labels == (LARGE_FEATURE,)
+    assert decision.remove_labels == (IMPLEMENT,)
+
+
+def test_explicit_lucius_assignment_is_blocked_for_bundle_issue() -> None:
+    decision = ia.decide_assignment(
+        _issue(labels=(LARGE_FEATURE, bundle_label("checkout-redesign"))),
+        target_agent="lucius",
+    )
+
+    assert decision.route == ia.ROUTE_BLOCKED
+    assert not decision.changed
+    assert "Batman" in decision.reason
+    assert "bundle" in decision.reason
+
+
+def test_unsupported_assignment_target_is_blocked() -> None:
+    decision = ia.decide_assignment(_issue(), target_agent="nightwing")
+
+    assert decision.route == ia.ROUTE_BLOCKED
+    assert not decision.changed
+    assert "Batman" in decision.reason
+    assert "Lucius" in decision.reason
 
 
 def test_vague_work_routes_to_human_scope() -> None:
@@ -211,6 +276,17 @@ def test_pending_approval_gate_is_not_assigned() -> None:
     assert PLAN_PENDING_APPROVAL in decision.reason
 
 
+def test_explicit_target_cannot_bypass_approval_gate() -> None:
+    for target in ("lucius", "architect"):
+        decision = ia.decide_assignment(
+            _issue(labels=(IMPLEMENT, PLAN_PENDING_APPROVAL)),
+            target_agent=target,
+        )
+
+        assert decision.route == ia.ROUTE_PENDING_APPROVAL, target
+        assert not decision.changed, target
+
+
 def test_assign_issue_reports_pending_approval_as_blocked(monkeypatch) -> None:
     # The native Work "assign" action must NOT report success for a gated plan:
     # the decision carries no label changes, so without explicit handling it
@@ -237,6 +313,29 @@ def test_assign_issue_reports_pending_approval_as_blocked(monkeypatch) -> None:
     assert PLAN_PENDING_APPROVAL in result.error
     # The gate label must not be released as a side effect of a failed assign.
     assert calls == []
+
+
+def test_assign_issue_accepts_explicit_target_agent(monkeypatch) -> None:
+    _allowlist(monkeypatch, "acme-io/acme-backend")
+    calls: list[list[str]] = []
+
+    def runner(cmd: list[str]):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    result = ia.assign_issue(
+        "acme-io/acme-backend",
+        12,
+        target_agent="batman",
+        fetcher=lambda _repo, _number: _issue(),
+        runner=runner,
+    )
+
+    assert result.ok
+    assert result.decision.agent == "batman"
+    edit = calls[-1]
+    assert "--add-label" in edit
+    assert LARGE_FEATURE in edit
 
 
 def test_assign_issue_dry_run_reports_pending_approval_without_mutating(monkeypatch) -> None:

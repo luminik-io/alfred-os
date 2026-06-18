@@ -533,6 +533,8 @@ def register_routes(app: FastAPI) -> None:
 
         Body: ``{"repo": "owner/repo", "number": 12, "action": "assign"|"queue"|"hold"|"done"}``.
         ``assign`` chooses Batman or Lucius and labels the issue for that lane;
+        callers may pass ``target_agent`` / ``agent`` as ``batman`` or ``lucius``
+        to override the heuristic without bypassing safety gates;
         ``queue`` labels the issue ``agent:implement``; ``hold`` labels it
         ``do-not-pickup`` so no agent claims it; ``done`` closes the issue
         using GitHub's native closed state (no new label taxonomy).
@@ -555,6 +557,7 @@ def register_routes(app: FastAPI) -> None:
 
         repo = str(body.get("repo") or "").strip()
         action = str(body.get("action") or "").strip().lower()
+        target_agent = str(body.get("target_agent") or body.get("agent") or "").strip()
         try:
             number = int(body.get("number"))
         except (TypeError, ValueError):
@@ -567,24 +570,28 @@ def register_routes(app: FastAPI) -> None:
             )
         if action == "done":
             ok, detail = close_issue(repo, number)
+            response_target_agent = ""
         elif action == "assign":
-            assignment = assign_issue(repo, number)
+            assignment = assign_issue(repo, number, target_agent=target_agent)
             ok, detail = assignment.ok, assignment.detail
+            response_target_agent = assignment.decision.agent or target_agent or "auto"
             if not ok:
                 detail = assignment.error or detail
         else:
             ok, detail = set_issue_pickup(repo, number, hold=(action == "hold"))
+            response_target_agent = ""
         if not ok:
             return JSONResponse({"error": detail}, status_code=400)
-        return JSONResponse(
-            {
-                "ok": True,
-                "repo": repo,
-                "number": number,
-                "action": action,
-                "detail": detail,
-            }
-        )
+        payload = {
+            "ok": True,
+            "repo": repo,
+            "number": number,
+            "action": action,
+            "detail": detail,
+        }
+        if response_target_agent:
+            payload["target_agent"] = response_target_agent
+        return JSONResponse(payload)
 
     @app.get("/api/setup/status", response_class=JSONResponse)
     async def api_setup_status(request: Request) -> JSONResponse:
@@ -953,6 +960,27 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse({"error": "plan is not a follow-up"}, status_code=400)
         archived_path = _archive_followup(plan, action="handled")
         return JSONResponse({"archived_path": str(archived_path)})
+
+    @app.post("/api/plans/{plan_id}/discard", response_class=JSONResponse)
+    async def api_discard_plan(request: Request, plan_id: str) -> JSONResponse:
+        """Discard a local planning draft by archiving, never hard-deleting it."""
+        if not _same_origin_post(request) or not _authorized_mutation(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        draft_id = _safe_planning_draft_id(plan_id)
+        if draft_id is None:
+            return JSONResponse({"error": "plan not found"}, status_code=404)
+        try:
+            result = await run_in_threadpool(
+                _discard_planning_draft,
+                _state_root(request),
+                draft_id,
+            )
+        except FileNotFoundError:
+            return JSONResponse({"error": "plan not found"}, status_code=404)
+        except Exception:  # never let an IO edge crash the server
+            logger.exception("api_discard_plan: failed to archive planning draft")
+            return JSONResponse({"error": _GENERIC_ERROR}, status_code=500)
+        return JSONResponse(result)
 
     @app.post("/api/plans/{plan_id}/decision", response_class=JSONResponse)
     async def api_plan_decision(request: Request, plan_id: str) -> JSONResponse:
@@ -2644,6 +2672,42 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
         "bundle_slug": outcome.bundle_slug,
         "bundle_label": outcome.bundle_label,
         "detail": outcome.detail,
+    }
+
+
+def _discard_planning_draft(state_root: Path, draft_id: str) -> dict[str, Any]:
+    """Archive a planning draft to ``planning-drafts/archive/``.
+
+    Never hard-deletes: the draft JSON is moved under an ``archive/`` subdir so
+    an accidental discard is recoverable. Idempotent: if the live draft is gone
+    but an archived copy already exists, this is a no-op success.
+    """
+    draft_root = Path(state_root) / "planning-drafts"
+    live_path = draft_root / f"{draft_id}.json"
+    archive_dir = draft_root / "archive"
+    archived_path = archive_dir / f"{draft_id}.json"
+
+    if not live_path.is_file():
+        if archived_path.is_file() or any(archive_dir.glob(f"{draft_id}-*.json")):
+            return {
+                "ok": True,
+                "status": "already_discarded",
+                "draft_id": draft_id,
+                "archived_path": str(archived_path),
+            }
+        raise FileNotFoundError(draft_id)
+
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    target = archived_path
+    if target.exists():
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        target = archive_dir / f"{draft_id}-{stamp}.json"
+    live_path.replace(target)
+    return {
+        "ok": True,
+        "status": "discarded",
+        "draft_id": draft_id,
+        "archived_path": str(target),
     }
 
 

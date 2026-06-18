@@ -2,12 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   ActionsResponse,
+  AssignmentTargetAgent,
   ComposeDraftRequest,
   ComposeDraftResponse,
   ConversationControlRequest,
   ConversationControlResponse,
   ConverseRequest,
   ConverseResponse,
+  DiscardPlanResponse,
   FilePlanIssueResponse,
   FiringRecord,
   FiringsResponse,
@@ -375,6 +377,16 @@ export async function filePlanIssue(
   return writeAlfredJson(baseUrl, `/api/plans/${planPathSegment(planId)}/file-issue`);
 }
 
+// Discard a local planning draft (issue 314). The server archives the draft
+// JSON rather than hard-deleting it, and is idempotent, so a double click is
+// safe. Token-gated server-side via _authorized_mutation.
+export async function discardPlan(
+  baseUrl: string,
+  planId: string,
+): Promise<DiscardPlanResponse> {
+  return writeAlfredJson(baseUrl, `/api/plans/${planPathSegment(planId)}/discard`);
+}
+
 export async function composeDraft(
   baseUrl: string,
   request: ComposeDraftRequest,
@@ -666,6 +678,15 @@ export async function rejectMemoryCandidate(
   );
 }
 
+// Read the current trusted-Slack-approver list on its own (the snapshot batch
+// also fetches it, but the onboarding Slack step needs a standalone read so it
+// can show who is already trusted without pulling the whole dashboard).
+export async function loadTrustedSlackUsers(
+  baseUrl: string,
+): Promise<TrustedSlackUsersResponse> {
+  return readAlfredJson<TrustedSlackUsersResponse>(baseUrl, "/api/slack/trusted-users");
+}
+
 export async function addTrustedSlackUser(
   baseUrl: string,
   userId: string,
@@ -692,8 +713,10 @@ export async function setQueuePickup(
   repo: string,
   number: number,
   action: QueueAction,
+  targetAgent: AssignmentTargetAgent = "auto",
 ): Promise<QueueActionResponse> {
-  return writeAlfredJson(baseUrl, "/api/queue", { repo, number, action });
+  const target_agent = action === "assign" && targetAgent !== "auto" ? targetAgent : undefined;
+  return writeAlfredJson(baseUrl, "/api/queue", { repo, number, action, target_agent });
 }
 
 export async function loadSetupStatus(baseUrl: string): Promise<SetupStatus> {
@@ -893,7 +916,7 @@ function shouldNormalizeDevPreviewBaseUrl(value: string): boolean {
 function isLegacyAirPlayPort(value: string): boolean {
   try {
     const url = new URL(value);
-    return isLocalAlfredUrl(url) && url.port === "7000";
+    return isLocalAlfredUrl(url) && (url.port || "80") === "7000";
   } catch {
     return false;
   }

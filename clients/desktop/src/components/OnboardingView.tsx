@@ -1,93 +1,139 @@
 import {
-  CheckCircle2,
-  ChevronRight,
-  CircleDashed,
-  Columns3,
+  ArrowLeft,
+  ArrowRight,
   GitPullRequest,
   ListChecks,
-  PlayCircle,
+  MessageCircle,
   Plug,
-  RefreshCw,
+  Settings2,
   Sparkles,
   TerminalSquare,
-  Trash2,
-  XCircle,
 } from "lucide-react";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  clearSetupDemo,
-  composeSetupPlaybook,
-  errorDetail,
-  loadSetupPlaybooks,
-  loadSetupRepos,
-  loadSetupStatus,
-  saveSetupRepos,
-  seedSetupDemo,
-  supportsNativeActions,
-} from "../api";
+import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
+import { pollGithubAuthStatus } from "../lib/githubAuth";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
-import type {
-  NativeCommandResult,
-  SetupPlaybook,
-  SetupRepo,
-  SetupStatus,
-} from "../types";
+import type { NativeCommandResult, SetupStatus } from "../types";
+import { EngineStep } from "./onboarding/EngineStep";
+import { FirstRequestStep } from "./onboarding/FirstRequestStep";
+import { GitHubStep } from "./onboarding/GitHubStep";
+import { ReposStep } from "./onboarding/ReposStep";
+import { SlackStep } from "./onboarding/SlackStep";
+import { StepFrame } from "./onboarding/StepFrame";
+import { Stepper, type StepperItem } from "./onboarding/Stepper";
 import {
-  Badge,
-  Button,
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-} from "./ui";
+  ONBOARDING_STEP_ORDER,
+  type GithubAuthFlow,
+  type OnboardingNotice,
+  type OnboardingStepKey,
+  type StepProgress,
+} from "./onboarding/types";
+import { WelcomeStep } from "./onboarding/WelcomeStep";
+import { Button, Card, CardContent } from "./ui";
 import { cn } from "@/lib/utils";
 
 /**
- * Onboarding-first Settings for the native developer tool: detect installed
- * CLIs (no API keys), connect GitHub via the gh CLI already signed in, choose
- * the repositories Alfred may work in, compose the first plan from a starter
- * spec, and seed sample Work cards.
+ * The first-run onboarding takeover (DESIGN_SPEC section 7), built as a clean
+ * stepper. A six-step journey a non-technical user (Maya) completes without a
+ * terminal, ending on a populated Home via a real first request or a
+ * clearly-labelled demo:
  *
- * The default golden path is gh-auth + one repo, with NO AWS / Slack required.
- * The repository, first-plan, and Work preview steps are real now: they call the
- * /api/setup/* routes (read-only status/repos/playbooks work in the browser
- * preview; the mutations are token-gated and so need the desktop app, where
- * the native bridge attaches the per-launch token). Off-Tauri, the mutations
- * degrade to a clear "open the desktop app" note rather than faking success.
+ *   0 Welcome        mental model + two doors (Get started / I have a server)
+ *   1 Tools          detect Claude / Codex (no API keys)
+ *   2 GitHub         reuse the gh sign-in (auto-advance when signed in)
+ *   3 Repositories   pick by name + description (private badge)
+ *   4 Slack          optional approvals, clearly skippable
+ *   5 First request  a real Request, or a labelled sample
  *
- * The existing connection + diagnostics content still lives in SetupView,
- * surfaced again under the Fleet page's Diagnostics; the header links there.
+ * The journey lives inside a single glass shell that floats over the ambient
+ * base. A persistent, minimal numbered Stepper sits at the top (current / done /
+ * upcoming), one decision lives in the centered column below it, and a Back /
+ * Continue footer (with a first-class per-step Skip for the Dev persona) closes
+ * the shell. Steel-violet accents only the single primary CTA per step;
+ * everything data-shaped (repo list, engine probe) stays flat.
+ *
+ * Every step is skippable for the Dev persona, has honest empty/error states,
+ * an Enter-key continue flow (suppressed inside text fields), and auto-advance
+ * on a detected gh / engine. The mutating steps (repos, playbook, demo, Slack)
+ * need the per-launch token the native bridge attaches; the browser preview
+ * cannot, so it degrades to a clear read-only note with copy-paste fallback. The
+ * read steps work either way.
+ *
+ * "Advanced setup" (onOpenConnection) hands off to SetupView for the non-takeover
+ * connection + diagnostics surface, which onboarding and Settings share.
  */
 
-type StepStatus = "done" | "active" | "todo";
-type StepIntent = "primary" | "optional" | "complete";
-type SetupStepKey = "engine" | "github" | "repos" | "playbook" | "demo";
-
-// Onboarding raises its own inline notice for the repo/playbook/demo steps. It
-// is rendered only here, so it carries no cross-surface `domain` tag (unlike
-// the app-wide ActionNotice that fans into Plans / Board / Memory / Setup).
-type LocalNotice = { tone: "ok" | "error"; message: string } | null;
-type SetupProgressStep = {
-  key: SetupStepKey;
+type StepMeta = {
+  key: OnboardingStepKey;
   index: number;
   title: string;
-  detail: string;
-  status: StepStatus;
-  intent: StepIntent;
+  railTitle: string;
+  blurb: string;
+  icon: LucideIcon;
+  optional: boolean;
 };
-type SetupDetailStep = {
-  key: SetupStepKey;
-  index: number;
-  status: StepStatus;
-  intent: StepIntent;
-  node: ReactNode;
+
+const IDLE_GITHUB_AUTH_FLOW: GithubAuthFlow = {
+  state: "idle",
+  deviceUrl: null,
+  deviceCode: null,
+  message: null,
+  detail: null,
+};
+
+const GITHUB_DEVICE_URL = "https://github.com/login/device";
+
+const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
+  welcome: {
+    key: "welcome",
+    title: "Welcome to Alfred",
+    railTitle: "Welcome",
+    blurb: "A local fleet that ships pull requests while you stay in control.",
+    icon: Sparkles,
+    optional: false,
+  },
+  engine: {
+    key: "engine",
+    title: "Connect your tools",
+    railTitle: "Tools",
+    blurb: "Alfred checks Claude Code and Codex on this Mac. No API keys.",
+    icon: TerminalSquare,
+    optional: false,
+  },
+  github: {
+    key: "github",
+    title: "Connect GitHub",
+    railTitle: "GitHub",
+    blurb: "Alfred reuses your GitHub sign-in.",
+    icon: GitPullRequest,
+    optional: false,
+  },
+  repos: {
+    key: "repos",
+    title: "Choose repositories",
+    railTitle: "Repositories",
+    blurb: "Pick the projects Alfred may work in.",
+    icon: Plug,
+    optional: false,
+  },
+  slack: {
+    key: "slack",
+    title: "Connect Slack",
+    railTitle: "Slack",
+    blurb: "Optional. Approvals and questions in Slack too.",
+    icon: MessageCircle,
+    optional: true,
+  },
+  request: {
+    key: "request",
+    title: "Your first request",
+    railTitle: "First request",
+    blurb: "End on a real result, or a sample to look at first.",
+    icon: ListChecks,
+    optional: false,
+  },
 };
 
 export function OnboardingView({
@@ -113,23 +159,40 @@ export function OnboardingView({
   nativeResult: NativeCommandResult | null;
   onConnectServer: (url: string) => void;
   onStartRuntime: () => void;
-  onRunLocalAction: (request: NativeActionRequest) => void;
-  /** Jump to the full connection + diagnostics surface. */
+  onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
+  /** Jump to the full connection + diagnostics surface (the advanced handoff). */
   onOpenConnection: () => void;
-  /** Navigate to another primary surface (e.g. Board, Compose) after an action. */
+  /** Navigate to another primary surface (e.g. Inbox, Ask) after an action. */
   onSwitch?: (tab: TabKey) => void;
   onRefreshBoard?: (options?: { demo?: boolean }) => Promise<void> | void;
 }) {
-  // The mutating steps (pick repos, playbook, demo) need the per-launch token
-  // the native bridge attaches; the browser preview cannot, so it shows a
-  // read-only note. The read steps (status, repo list) work either way.
+  // The mutating steps need the per-launch token the native bridge attaches; the
+  // browser preview cannot, so it shows a read-only note. The read steps work
+  // either way.
   const canMutate = supportsNativeActions();
 
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
-  const [notice, setNotice] = useState<LocalNotice>(null);
-  const [selectedStepKey, setSelectedStepKey] = useState<SetupStepKey>("engine");
+  const [notice, setNotice] = useState<OnboardingNotice>(null);
+  const [stepKey, setStepKey] = useState<OnboardingStepKey>("welcome");
+  // True once the first request / demo landed, so the rail shows the journey
+  // complete even though the user has already been routed to Home / Ask.
+  const [requestDone, setRequestDone] = useState(false);
+  // Steps the user explicitly skipped (Dev persona). A skipped step is no longer
+  // the blocker for "what's next" but is not marked done either.
+  const [skipped, setSkipped] = useState<Set<OnboardingStepKey>>(new Set());
+  // True once the user added a Slack approver, so the optional Slack step reads
+  // as done in the rail (the server exposes no approver flag on SetupStatus).
+  const [slackTouched, setSlackTouched] = useState(false);
+  const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
+  // The step the auto-advance effect last moved past, so a detected gh/engine
+  // only auto-advances once and never fights a manual Back.
+  const autoAdvancedFrom = useRef<Set<OnboardingStepKey>>(new Set());
+  // Steps the user opened deliberately (rail click or Back). Auto-advance is
+  // suppressed for these so revisiting a satisfied step to read it never yanks
+  // the user forward; only the natural forward flow auto-advances on detection.
+  const manualSteps = useRef<Set<OnboardingStepKey>>(new Set());
 
   const refreshStatus = useCallback(async () => {
     if (!connected) {
@@ -148,979 +211,403 @@ export function OnboardingView({
     }
   }, [baseUrl, connected]);
 
+  const startGithubAuthLogin = useCallback(async () => {
+    if (!canRun || !connected) {
+      setGithubAuthFlow({
+        ...IDLE_GITHUB_AUTH_FLOW,
+        state: "error",
+        message: "Open Alfred in the desktop app and connect to the local runtime first.",
+      });
+      return;
+    }
+
+    setStatusLoading(true);
+    setGithubAuthFlow({
+      ...IDLE_GITHUB_AUTH_FLOW,
+      state: "starting",
+      message: "Starting GitHub sign-in.",
+    });
+
+    try {
+      const result = await onRunLocalAction({ action: "github_auth_login" });
+      if (!result) {
+        throw new Error("Could not start GitHub sign-in.");
+      }
+      if (!result.success) {
+        throw new Error(result.message || result.stderr || "GitHub sign-in did not start.");
+      }
+
+      const details = result.github_auth;
+      const deviceUrl = details?.device_url || GITHUB_DEVICE_URL;
+      const deviceCode = details?.device_code || null;
+      setGithubAuthFlow({
+        state: "waiting",
+        deviceUrl,
+        deviceCode,
+        message: result.message || "Finish GitHub sign-in in your browser.",
+        detail: null,
+      });
+
+      const poll = await pollGithubAuthStatus(
+        async () => {
+          const next = await loadSetupStatus(baseUrl);
+          setStatus(next);
+          return next;
+        },
+        {
+          pollIntervalMs: details?.poll_interval_ms,
+          timeoutMs: details?.timeout_ms,
+        },
+      );
+
+      if (poll.status) {
+        setStatus(poll.status);
+      }
+      if (poll.state === "success") {
+        setGithubAuthFlow({
+          state: "success",
+          deviceUrl,
+          deviceCode,
+          message: poll.status?.github.detail || "GitHub is connected.",
+          detail: null,
+        });
+      } else {
+        setGithubAuthFlow({
+          state: "timeout",
+          deviceUrl,
+          deviceCode,
+          message: "Still waiting for GitHub. Finish sign-in, then press Recheck.",
+          detail: poll.lastError,
+        });
+      }
+    } catch (err) {
+      setGithubAuthFlow({
+        ...IDLE_GITHUB_AUTH_FLOW,
+        state: "error",
+        message: err instanceof Error ? err.message : String(err),
+        detail: errorDetail(err),
+      });
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [baseUrl, canRun, connected, onRunLocalAction]);
+
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
   const githubConnected = Boolean(status?.github.ok);
-  const engineReady = Boolean(status?.engine_ready);
+  const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
   const reposSelected = (status?.repos.count ?? 0) > 0;
-  const demoPresent = Boolean(status?.demo.present);
-  // CLI confirmation: trust the server-side engine probe when we have it, else
-  // fall back to a native auth/agents result (the strongest local signal).
-  const cliConfirmed = engineReady || Boolean(nativeResult?.success);
-  const firstPlanStatus: StepStatus = reposSelected ? "active" : "todo";
-  const demoStatus: StepStatus = demoPresent ? "done" : reposSelected ? "active" : "todo";
-  const stepStates = useMemo(
-    () =>
-      [
-        {
-          key: "engine",
-          index: 1,
-          title: "Tools",
-          detail: cliConfirmed ? "Claude Code / Codex found" : "Needs local check",
-          status: cliConfirmed ? "done" : "active",
-          intent: "primary",
-        },
-        {
-          key: "github",
-          index: 2,
-          title: "GitHub",
-          detail: githubConnected ? status?.github.detail || "Signed in" : "Use the local gh session",
-          status: githubConnected ? "done" : connected ? "active" : "todo",
-          intent: "primary",
-        },
-        {
-          key: "repos",
-          index: 3,
-          title: "Repositories",
-          detail: reposSelected
-            ? `${status?.repos.count ?? 0} ${(status?.repos.count ?? 0) === 1 ? "repository" : "repositories"} selected`
-            : "Select allowed repos",
-          status: reposSelected ? "done" : githubConnected ? "active" : "todo",
-          intent: "primary",
-        },
-        {
-          key: "playbook",
-          index: 4,
-          title: "First plan",
-          detail: reposSelected ? "Draft from a starter spec" : "Choose repositories first",
-          status: firstPlanStatus,
-          intent: "primary",
-        },
-        {
-          key: "demo",
-          index: 5,
-          title: "Work preview",
-          detail: demoPresent ? "Demo cards are in Work" : "Optional sample cards",
-          status: demoStatus,
-          intent: demoPresent ? "complete" : "optional",
-        },
-      ] satisfies SetupProgressStep[],
-    [
-      cliConfirmed,
-      connected,
-      demoPresent,
-      demoStatus,
-      firstPlanStatus,
-      githubConnected,
-      reposSelected,
-      status?.github.detail,
-      status?.repos.count,
-    ],
-  );
-  const nextStep =
-    stepStates.find((step) => step.status !== "done" && step.intent !== "optional") ??
-    stepStates.find((step) => step.status !== "done") ??
-    null;
-  const recommendedStepKey = nextStep?.key ?? (status?.ready ? "playbook" : "engine");
 
-  useEffect(() => {
-    setSelectedStepKey((current) => {
-      const currentStep = stepStates.find((step) => step.key === current);
-      if (!currentStep || currentStep.status === "done") {
-        return recommendedStepKey;
+  // Per-step completion. Welcome completes once the user moves past it; engine
+  // and github reflect real detection; repos reflects a saved selection; slack
+  // is optional (complete when skipped or an approver was added); request is
+  // complete once a real request or demo landed.
+  const stepComplete = useCallback(
+    (key: OnboardingStepKey): boolean => {
+      switch (key) {
+        case "welcome":
+          return ONBOARDING_STEP_ORDER.indexOf(stepKey) > 0 || requestDone;
+        case "engine":
+          return engineReady;
+        case "github":
+          return githubConnected;
+        case "repos":
+          return reposSelected;
+        case "slack":
+          // Slack is optional and the server exposes no "approver added" flag on
+          // SetupStatus, so the rail marks it done only when the user explicitly
+          // skipped it or added an approver (tracked locally as slackTouched). We
+          // never invent a "Slack done" signal the server did not send.
+          return skipped.has("slack") || slackTouched;
+        case "request":
+          return requestDone;
+        default:
+          return false;
       }
-      return current;
-    });
-  }, [recommendedStepKey, stepStates]);
+    },
+    [engineReady, githubConnected, reposSelected, requestDone, skipped, slackTouched, stepKey],
+  );
 
-  const detailSteps = [
-    {
-      key: "engine",
-      index: 1,
-      status: stepStates[0].status,
-      intent: stepStates[0].intent,
-      node: (
-        <OnboardingStep
-          key="engine"
-          index={1}
-          title="Use the tools already on this Mac"
-          blurb="Alfred checks Claude Code and Codex from the native app."
-          icon={TerminalSquare}
-          status={stepStates[0].status}
-        >
-          <EngineStep
-            status={status}
-            canRun={canRun}
-            nativeBusy={nativeBusy}
-            onRunLocalAction={onRunLocalAction}
-          />
-        </OnboardingStep>
-      ),
+  const steps = useMemo<StepMeta[]>(
+    () =>
+      ONBOARDING_STEP_ORDER.map((key, index) => ({
+        ...STEP_META[key],
+        index,
+      })),
+    [],
+  );
+
+  const progressFor = useCallback(
+    (key: OnboardingStepKey): StepProgress => {
+      if (stepComplete(key)) return "done";
+      if (key === stepKey) return "active";
+      return "todo";
     },
-    {
-      key: "github",
-      index: 2,
-      status: stepStates[1].status,
-      intent: stepStates[1].intent,
-      node: (
-        <OnboardingStep
-          key="github"
-          index={2}
-          title="Connect GitHub"
-          blurb="Reuses your GitHub CLI sign-in."
-          icon={GitPullRequest}
-          status={stepStates[1].status}
-        >
-          <GitHubStep
-            baseUrl={baseUrl}
-            loading={loading}
-            connected={connected}
-            github={status?.github ?? null}
-            onConnectServer={onConnectServer}
-            onStartRuntime={onStartRuntime}
-            canRun={canRun}
-            nativeBusy={nativeBusy}
-          />
-        </OnboardingStep>
-      ),
+    [stepComplete, stepKey],
+  );
+
+  const stepperItems = useMemo<StepperItem[]>(
+    () =>
+      steps.map((step) => ({
+        key: step.key,
+        label: step.railTitle,
+        state: progressFor(step.key),
+        optional: step.optional,
+      })),
+    [steps, progressFor],
+  );
+
+  const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
+  const previousKey = ONBOARDING_STEP_ORDER[currentIndex - 1] ?? null;
+  const nextKey = ONBOARDING_STEP_ORDER[currentIndex + 1] ?? null;
+
+  const goToStep = useCallback((key: OnboardingStepKey, options?: { manual?: boolean }) => {
+    if (options?.manual) {
+      manualSteps.current.add(key);
+    }
+    setNotice(null);
+    setStepKey(key);
+  }, []);
+
+  const advance = useCallback(() => {
+    if (nextKey) goToStep(nextKey);
+  }, [goToStep, nextKey]);
+
+  const skipStep = useCallback(
+    (key: OnboardingStepKey) => {
+      setSkipped((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+      const idx = ONBOARDING_STEP_ORDER.indexOf(key);
+      const following = ONBOARDING_STEP_ORDER[idx + 1] ?? null;
+      if (following) goToStep(following);
     },
-    {
-      key: "repos",
-      index: 3,
-      status: stepStates[2].status,
-      intent: stepStates[2].intent,
-      node: (
-        <OnboardingStep
-          key="repos"
-          index={3}
-          title="Choose repositories Alfred can work in"
-          blurb="Repository access stays bounded to your selection."
-          icon={Plug}
-          status={stepStates[2].status}
-        >
-          <ReposStep
-            baseUrl={baseUrl}
-            canMutate={canMutate}
-            githubConnected={githubConnected}
-            selectedCount={status?.repos.count ?? 0}
-            onSaved={async () => {
-              await refreshStatus();
-            }}
-            setNotice={setNotice}
-          />
-        </OnboardingStep>
-      ),
+    [goToStep],
+  );
+
+  // Auto-advance once when a step's detection lands while the user is sitting on
+  // it (DESIGN_SPEC: auto-advance on detected gh / engine). Never fights a Back.
+  useEffect(() => {
+    if (manualSteps.current.has(stepKey)) return;
+    if (stepKey === "engine" && engineReady && !autoAdvancedFrom.current.has("engine")) {
+      autoAdvancedFrom.current.add("engine");
+      goToStep("github");
+    } else if (stepKey === "github" && githubConnected && !autoAdvancedFrom.current.has("github")) {
+      autoAdvancedFrom.current.add("github");
+      goToStep("repos");
+    }
+  }, [stepKey, engineReady, githubConnected, goToStep]);
+
+  // Enter advances when the focus is not in a text field (so typing a server URL
+  // or Slack id never triggers a jump). The step bodies own their own submits.
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.key !== "Enter" || event.defaultPrevented) return;
+      const target = event.target as HTMLElement;
+      const tag = target.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "BUTTON" ||
+        tag === "A" ||
+        tag === "SUMMARY" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      if (nextKey) {
+        event.preventDefault();
+        advance();
+      }
     },
-    {
-      key: "playbook",
-      index: 4,
-      status: stepStates[3].status,
-      intent: stepStates[3].intent,
-      node: (
-        <OnboardingStep
-          key="playbook"
-          index={4}
-          title="Draft the first plan from a spec"
-          blurb="Starter specs create a reviewable plan before any agent runs."
-          icon={ListChecks}
-          status={stepStates[3].status}
-          accentLabel={stepStates[3].status === "active" ? "Recommended next" : undefined}
-        >
-          <PlaybooksStep
-            baseUrl={baseUrl}
-            canMutate={canMutate}
-            setNotice={setNotice}
-            onSwitch={onSwitch}
-          />
-        </OnboardingStep>
-      ),
-    },
-    {
-      key: "demo",
-      index: 5,
-      status: stepStates[4].status,
-      intent: stepStates[4].intent,
-      node: (
-        <OnboardingStep
-          key="demo"
-          index={5}
-          title="Seed Work preview"
-          blurb="Optional sample cards for the Work view."
-          icon={Columns3}
-          status={stepStates[4].status}
-          accentLabel={demoPresent ? "Ready" : "Optional"}
-        >
-          <DemoStep
-            baseUrl={baseUrl}
-            canMutate={canMutate}
-            demoPresent={demoPresent}
-            onChanged={async () => {
-              await refreshStatus();
-            }}
-            setNotice={setNotice}
-            onSwitch={onSwitch}
-            onRefreshBoard={onRefreshBoard}
-          />
-        </OnboardingStep>
-      ),
-    },
-  ] satisfies SetupDetailStep[];
-  const selectedDetail =
-    detailSteps.find((step) => step.key === selectedStepKey) ??
-    detailSteps.find((step) => step.key === recommendedStepKey) ??
-    detailSteps[0];
-  const selectedIndex = Math.max(0, detailSteps.findIndex((step) => step.key === selectedDetail.key));
-  const previousDetail = detailSteps[selectedIndex - 1] ?? null;
-  const nextDetail = detailSteps[selectedIndex + 1] ?? null;
-  const completedCount = stepStates.filter((step) => step.status === "done").length;
-  const progressPercent = Math.round((completedCount / stepStates.length) * 100);
+    [advance, nextKey],
+  );
+
+  const meta = STEP_META[stepKey];
 
   return (
-    <section className="grid gap-4" aria-label="Setup">
-      <Card className="rounded-lg border-border/70 bg-card/70 shadow-none">
-        <CardHeader className="gap-3 md:grid-cols-[1fr_auto]">
+    <section className="alfred-onboarding" aria-label="Set up Alfred" onKeyDown={onKeyDown}>
+      <div className="alfred-onboarding-shell alfred-glass">
+        <header className="alfred-onboarding-shell__head">
           <div className="min-w-0">
-            <Badge variant="outline" className="mb-2">
-              Setup
-            </Badge>
-            <CardTitle className="text-xl">Connect Alfred</CardTitle>
-            <CardDescription>
-              Connect local tools, GitHub, and approved repositories, then turn a spec
-              into the first plan. No cloud dashboard or token paste.
-            </CardDescription>
+            <p className="alfred-onboarding-shell__eyebrow">First run</p>
+            <h1 className="alfred-onboarding-shell__title">Let's connect Alfred</h1>
+            <p className="alfred-onboarding-shell__lede">
+              Six short steps, about two minutes. You will not need a terminal.
+            </p>
           </div>
-          <CardAction>
-            <Button variant="outline" type="button" onClick={onOpenConnection}>
-              Diagnostics
-            </Button>
-          </CardAction>
-        </CardHeader>
-      </Card>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            onClick={onOpenConnection}
+            className="alfred-onboarding-shell__advanced"
+          >
+            <Settings2 size={15} aria-hidden="true" />
+            <span>Advanced setup</span>
+          </Button>
+        </header>
 
-      {statusError ? (
-        <Card className="rounded-lg border-destructive/30 bg-destructive/10 text-destructive shadow-none">
-          <CardContent className="px-4 text-sm">
-            {statusError} The steps below show their manual fallback.
-          </CardContent>
-        </Card>
-      ) : null}
-      {notice ? (
-        <Card
-          className={cn(
-            "rounded-lg shadow-none",
-            notice.tone === "ok"
-              ? "border-primary/25 bg-primary/10 text-primary"
-              : "border-destructive/25 bg-destructive/10 text-destructive",
-          )}
-        >
-          <CardContent className="px-4 text-sm">{notice.message}</CardContent>
-        </Card>
-      ) : null}
+        <Stepper
+          steps={stepperItems}
+          activeKey={stepKey}
+          onSelect={(key) => goToStep(key, { manual: true })}
+        />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(18rem,22rem)_1fr]">
-        <aside aria-label="Setup readiness" className="grid gap-3">
+        {statusError ? (
+          <Card className="rounded-lg border-destructive/30 bg-destructive/10 text-destructive shadow-none">
+            <CardContent className="px-4 text-sm">
+              {statusError} The steps below still show their manual fallback.
+            </CardContent>
+          </Card>
+        ) : null}
+        {notice ? (
           <Card
             className={cn(
-              "rounded-lg border-border/70 bg-card/70 shadow-none",
-              status?.ready && "border-primary/25 bg-primary/10",
+              "rounded-lg shadow-none",
+              notice.tone === "ok"
+                ? "border-primary/25 bg-primary/10 text-primary"
+                : "border-destructive/25 bg-destructive/10 text-destructive",
             )}
           >
-            <CardHeader>
-              <Badge variant={status?.ready ? "default" : "outline"} className="mb-1 w-fit">
-                Setup status
-              </Badge>
-              <CardTitle>
-                {status?.ready ? "Ready to plan" : nextStep ? `Next: ${nextStep.title}` : "Checking setup"}
-              </CardTitle>
-              <CardDescription>
-                {status?.ready
-                  ? "Tools, GitHub, and repository access are ready."
-                  : nextStep
-                    ? "Complete the highlighted step to unlock planning."
-                    : "Alfred is checking the local setup."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              <div
-                className="h-2 overflow-hidden rounded-full bg-muted"
-                aria-label={`${completedCount} of ${stepStates.length} setup steps complete`}
-              >
-                <span
-                  className="block h-full rounded-full bg-primary transition-[width]"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {status?.ready ? (
-                  <Button size="sm" type="button" onClick={() => onSwitch?.("compose")}>
-                    <Sparkles size={15} aria-hidden="true" />
-                    <span>Plan</span>
-                  </Button>
-                ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  onClick={() => void refreshStatus()}
-                  disabled={!connected || statusLoading}
-                >
-                  <RefreshCw size={14} aria-hidden="true" className={statusLoading ? "animate-spin" : undefined} />
-                  <span>{statusLoading ? "Checking" : "Recheck"}</span>
-                </Button>
-              </div>
-            </CardContent>
+            <CardContent className="px-4 text-sm">{notice.message}</CardContent>
           </Card>
+        ) : null}
 
-          <Card className="rounded-lg border-border/70 bg-card/70 shadow-none">
-            <CardContent className="px-2">
-              <ol className="grid gap-1" aria-label="Setup progress">
-                {stepStates.map((step) => {
-                  const selected = selectedStepKey === step.key;
-                  return (
-                    <li key={step.key}>
-                      <Button
-                        variant={selected ? "secondary" : "ghost"}
-                        className="h-auto w-full justify-start gap-3 px-2 py-2 text-left"
-                        type="button"
-                        onClick={() => setSelectedStepKey(step.key)}
-                        aria-current={selected ? "step" : undefined}
-                        aria-label={step.title}
-                      >
-                        <span
-                          className={cn(
-                            "flex size-6 shrink-0 items-center justify-center rounded-full border text-xs",
-                            step.status === "done"
-                              ? "border-primary/25 bg-primary text-primary-foreground"
-                              : "border-border bg-background text-muted-foreground",
-                          )}
-                          aria-hidden="true"
-                        >
-                          {step.status === "done" ? <CheckCircle2 size={14} /> : step.index}
-                        </span>
-                        <span className="grid min-w-0 flex-1 gap-0.5">
-                          <span className="truncate text-sm font-medium">{step.title}</span>
-                          <span className="truncate text-xs text-muted-foreground">{step.detail}</span>
-                        </span>
-                        {step.intent === "optional" && step.status !== "done" ? (
-                          <Badge variant="outline">Optional</Badge>
-                        ) : null}
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ol>
-            </CardContent>
-          </Card>
-        </aside>
+        <div className="alfred-onboarding-shell__panel motion-fade" key={stepKey}>
+          {stepKey === "welcome" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+              <WelcomeStep
+                onGetStarted={() => goToStep("engine")}
+                onDevShortcut={() => goToStep("github")}
+              />
+            </StepFrame>
+          ) : null}
 
-        <div className="grid min-w-0 gap-3">
-          <ol className="grid gap-3">{selectedDetail.node}</ol>
-          <Card className="rounded-lg border-border/70 bg-card/70 shadow-none" aria-label="Setup step navigation">
-            <CardFooter className="justify-between gap-3 rounded-lg bg-muted/35 px-3 py-3">
-              <Button
-                variant="outline"
-                type="button"
-                disabled={!previousDetail}
-                onClick={() => {
-                  if (previousDetail) setSelectedStepKey(previousDetail.key);
+          {stepKey === "engine" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+              <EngineStep
+                status={status}
+                engineReady={engineReady}
+                canRun={canRun}
+                nativeBusy={nativeBusy}
+                statusLoading={statusLoading}
+                onRunLocalAction={onRunLocalAction}
+                onRecheck={() => void refreshStatus()}
+              />
+            </StepFrame>
+          ) : null}
+
+          {stepKey === "github" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+              <GitHubStep
+                baseUrl={baseUrl}
+                loading={loading}
+                connected={connected}
+                github={status?.github ?? null}
+                canRun={canRun}
+                nativeBusy={nativeBusy}
+                authFlow={githubAuthFlow}
+                statusLoading={statusLoading}
+                onConnectServer={onConnectServer}
+                onStartRuntime={onStartRuntime}
+                onStartGithubAuth={startGithubAuthLogin}
+                onRecheck={() => void refreshStatus()}
+              />
+            </StepFrame>
+          ) : null}
+
+          {stepKey === "repos" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+              <ReposStep
+                baseUrl={baseUrl}
+                canMutate={canMutate}
+                githubConnected={githubConnected}
+                selectedCount={status?.repos.count ?? 0}
+                onSaved={async () => {
+                  await refreshStatus();
                 }}
-              >
-                <span>Back</span>
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Step {selectedDetail.index} of {detailSteps.length}
-              </span>
-              <Button
-                variant={nextDetail ? "default" : "outline"}
-                type="button"
-                disabled={!nextDetail}
-                onClick={() => {
-                  if (nextDetail) setSelectedStepKey(nextDetail.key);
+                setNotice={setNotice}
+              />
+            </StepFrame>
+          ) : null}
+
+          {stepKey === "slack" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
+              <SlackStep
+                baseUrl={baseUrl}
+                connected={connected}
+                canMutate={canMutate}
+                onSkip={() => skipStep("slack")}
+                onApproverAdded={() => setSlackTouched(true)}
+                setNotice={setNotice}
+              />
+            </StepFrame>
+          ) : null}
+
+          {stepKey === "request" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="The payoff">
+              <FirstRequestStep
+                baseUrl={baseUrl}
+                canMutate={canMutate}
+                reposReady={reposSelected}
+                demoPresent={Boolean(status?.demo.present)}
+                setNotice={setNotice}
+                onSwitch={onSwitch}
+                onComplete={() => setRequestDone(true)}
+                onSeedDemo={async () => {
+                  await onRefreshBoard?.({ demo: true });
+                  await refreshStatus();
                 }}
-              >
-                <span>{nextDetail ? "Continue" : "Done"}</span>
-                {nextDetail ? <ChevronRight size={15} aria-hidden="true" /> : null}
-              </Button>
-            </CardFooter>
-          </Card>
+                onClearDemo={async () => {
+                  await onRefreshBoard?.({ demo: false });
+                  await refreshStatus();
+                }}
+              />
+            </StepFrame>
+          ) : null}
         </div>
+
+        <footer className="alfred-onboarding-shell__footer" aria-label="Onboarding navigation">
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            disabled={!previousKey}
+            onClick={() => {
+              if (previousKey) goToStep(previousKey, { manual: true });
+            }}
+          >
+            <ArrowLeft size={15} aria-hidden="true" />
+            <span>Back</span>
+          </Button>
+          <span className="alfred-onboarding-shell__progress">
+            Step {currentIndex + 1} of {ONBOARDING_STEP_ORDER.length}
+          </span>
+          <div className="flex items-center gap-2">
+            {meta.optional && nextKey ? (
+              <Button variant="ghost" size="sm" type="button" onClick={() => skipStep(stepKey)}>
+                <span>Skip</span>
+              </Button>
+            ) : null}
+            {nextKey ? (
+              <Button type="button" size="sm" onClick={advance}>
+                <span>Continue</span>
+                <ArrowRight size={15} aria-hidden="true" />
+              </Button>
+            ) : (
+              <Button type="button" size="sm" onClick={() => onSwitch?.("home")}>
+                <span>Go to Inbox</span>
+                <ArrowRight size={15} aria-hidden="true" />
+              </Button>
+            )}
+          </div>
+        </footer>
       </div>
     </section>
-  );
-}
-
-function EngineStep({
-  status,
-  canRun,
-  nativeBusy,
-  onRunLocalAction,
-}: {
-  status: SetupStatus | null;
-  canRun: boolean;
-  nativeBusy: string | null;
-  onRunLocalAction: (request: NativeActionRequest) => void;
-}) {
-  const engines = status?.engines ?? [];
-  return (
-    <div className="grid gap-3">
-      {engines.length ? (
-        <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">
-          <CardContent className="px-3">
-            <ul className="grid gap-2" aria-label="Installed developer tools">
-              {engines.map((engine) => (
-                <li
-                  key={engine.name}
-                  className="flex items-center gap-2 rounded-md border border-border/60 bg-card/60 px-2.5 py-2 text-sm"
-                >
-                  {engine.installed ? (
-                    <CheckCircle2 size={15} aria-hidden="true" className="text-primary" />
-                  ) : (
-                    <XCircle size={15} aria-hidden="true" className="text-muted-foreground" />
-                  )}
-                  <code className="font-mono text-xs">{engine.name}</code>
-                  <Badge variant={engine.installed ? "secondary" : "outline"} className="ml-auto">
-                    {engine.installed ? "installed" : "not found"}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ) : null}
-      <Button
-        className="w-fit"
-        type="button"
-        disabled={!canRun || nativeBusy === "auth_status:fleet"}
-        onClick={() => onRunLocalAction({ action: "auth_status" })}
-      >
-        <CheckCircle2 size={15} aria-hidden="true" />
-        <span>Check my tools</span>
-      </Button>
-      {!canRun ? (
-        <p className="rounded-lg border border-border/70 bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
-          Desktop mode can run the deeper CLI check.
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          No API keys needed.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function GitHubStep({
-  baseUrl,
-  loading,
-  connected,
-  github,
-  onConnectServer,
-  onStartRuntime,
-  canRun,
-  nativeBusy,
-}: {
-  baseUrl: string;
-  loading: boolean;
-  connected: boolean;
-  github: SetupStatus["github"] | null;
-  onConnectServer: (url: string) => void;
-  onStartRuntime: () => void;
-  canRun: boolean;
-  nativeBusy: string | null;
-}) {
-  const [url, setUrl] = useState(baseUrl);
-  useEffect(() => {
-    setUrl(baseUrl);
-  }, [baseUrl]);
-  return (
-    <div className="grid gap-3">
-      <form
-        className="grid gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const next = url.trim();
-          if (next) onConnectServer(next);
-        }}
-      >
-        <Label htmlFor="onboarding-server-url">Local server URL</Label>
-        <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
-          <Input
-            id="onboarding-server-url"
-            value={url}
-            onChange={(event) => setUrl(event.currentTarget.value)}
-            placeholder="http://127.0.0.1:7010"
-            spellCheck={false}
-          />
-          <Button variant="outline" type="submit" disabled={loading || !url.trim()}>
-            <span>{loading ? "Checking" : "Connect"}</span>
-          </Button>
-          {canRun && !connected ? (
-            <Button
-              type="button"
-              disabled={nativeBusy === "runtime:start"}
-              onClick={onStartRuntime}
-            >
-              <PlayCircle size={15} aria-hidden="true" />
-              <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
-            </Button>
-          ) : null}
-        </div>
-      </form>
-      {github ? (
-        <Card
-          size="sm"
-          className={cn(
-            "rounded-lg shadow-none",
-            github.ok
-              ? "border-primary/25 bg-primary/10 text-primary"
-              : "border-border/70 bg-muted/35 text-muted-foreground",
-          )}
-        >
-          <CardContent className="flex items-center gap-2 px-3 text-sm">
-          {github.ok ? (
-            <>
-              <CheckCircle2 size={14} aria-hidden="true" /> {github.detail}
-            </>
-          ) : (
-            github.detail
-          )}
-          </CardContent>
-        </Card>
-      ) : null}
-      <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">
-        <CardContent className="px-3">
-          <details className="group grid gap-2">
-            <summary className="cursor-pointer list-none">
-              <span className="grid gap-0.5">
-                <strong className="text-sm font-medium">Advanced: sign in from a terminal</strong>
-                <span className="text-xs text-muted-foreground">
-                  The one-time GitHub sign-in Alfred reuses.
-                </span>
-              </span>
-            </summary>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Alfred reuses your <code>gh</code> session. Run this once if GitHub is
-              not connected yet.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge variant="outline" className="font-mono">gh auth login</Badge>
-              <Badge variant="outline" className="font-mono">gh auth status</Badge>
-            </div>
-          </details>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function ReposStep({
-  baseUrl,
-  canMutate,
-  githubConnected,
-  selectedCount,
-  onSaved,
-  setNotice,
-}: {
-  baseUrl: string;
-  canMutate: boolean;
-  githubConnected: boolean;
-  selectedCount: number;
-  onSaved: () => Promise<void>;
-  setNotice: (notice: LocalNotice) => void;
-}) {
-  const [repos, setRepos] = useState<SetupRepo[]>([]);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savedRepos, setSavedRepos] = useState<string[] | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await loadSetupRepos(baseUrl);
-      setRepos(result.repos);
-      setPicked(new Set(result.selected.map((r) => r.toLowerCase())));
-      setError(result.error || null);
-      setLoaded(true);
-    } catch (err) {
-      setError(errorDetail(err) || "Could not list your repositories.");
-    } finally {
-      setLoading(false);
-    }
-  }, [baseUrl]);
-
-  const toggle = (slug: string) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      const key = slug.toLowerCase();
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const visible = new Map(
-        repos.map((repo) => [repo.name_with_owner.toLowerCase(), repo.name_with_owner] as const),
-      );
-      const selected = Array.from(picked).map((slug) => visible.get(slug) || slug);
-      const result = await saveSetupRepos(baseUrl, selected);
-      setSavedRepos(result.repos);
-      setNotice({
-        tone: "ok",
-        message: `Saved ${result.repos.length} ${result.repos.length === 1 ? "repository" : "repositories"} Alfred can work in.`,
-      });
-      await onSaved();
-    } catch (err) {
-      setNotice({ tone: "error", message: errorDetail(err) || "Could not save your repository selection." });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!githubConnected) {
-    return (
-      <Card size="sm" className="rounded-lg border-border/70 bg-muted/35 shadow-none">
-        <CardContent className="px-3 text-sm text-muted-foreground">
-          Connect GitHub first (step 2). Once you are signed in, your repositories
-          appear here to choose from.
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const pickedLabel = `${picked.size} ${picked.size === 1 ? "repository" : "repositories"}`;
-
-  return (
-    <div className="grid gap-3">
-      {!loaded ? (
-        <Button variant="outline" className="w-fit" type="button" onClick={() => void load()} disabled={loading}>
-          <RefreshCw size={14} aria-hidden="true" className={loading ? "animate-spin" : undefined} />
-          <span>{loading ? "Loading repositories" : "Load my repositories"}</span>
-        </Button>
-      ) : null}
-
-      {error ? (
-        <Card size="sm" className="rounded-lg border-border/70 bg-muted/35 shadow-none">
-          <CardContent className="px-3 text-sm text-muted-foreground">{error}</CardContent>
-        </Card>
-      ) : null}
-
-      {loaded && !error ? (
-        repos.length ? (
-          <>
-            <div
-              className="grid max-h-[42vh] gap-2 overflow-y-auto pr-1"
-              role="group"
-              aria-label="Repositories Alfred may work in"
-            >
-              {repos.map((repo) => (
-                <label
-                  className="grid cursor-pointer grid-cols-[auto_1fr_auto] gap-2 rounded-lg border border-border/70 bg-background/55 px-3 py-2 transition-colors hover:bg-muted/45"
-                  key={repo.name_with_owner}
-                >
-                  <input
-                    className="mt-1 size-4 accent-primary"
-                    type="checkbox"
-                    checked={picked.has(repo.name_with_owner.toLowerCase())}
-                    onChange={() => toggle(repo.name_with_owner)}
-                  />
-                  <span className="grid min-w-0 gap-0.5">
-                    <span className="truncate font-mono text-sm">{repo.name_with_owner}</span>
-                    {repo.description ? (
-                      <span className="line-clamp-2 text-xs text-muted-foreground">{repo.description}</span>
-                    ) : null}
-                  </span>
-                  <span className="flex flex-wrap justify-end gap-1">
-                    {repo.is_private ? <Badge variant="outline">private</Badge> : null}
-                    {repo.listed === false ? <Badge variant="secondary">saved</Badge> : null}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => void save()}
-                disabled={!canMutate || saving}
-              >
-                <CheckCircle2 size={15} aria-hidden="true" />
-                <span>{saving ? "Saving" : `Save ${pickedLabel}`}</span>
-              </Button>
-              <Button variant="outline" type="button" onClick={() => void load()} disabled={loading}>
-                <RefreshCw size={14} aria-hidden="true" />
-                <span>Refresh</span>
-              </Button>
-            </div>
-          </>
-        ) : (
-          <Card size="sm" className="rounded-lg border-border/70 bg-muted/35 shadow-none">
-            <CardContent className="px-3 text-sm text-muted-foreground">
-              <strong className="block text-foreground">No repositories found.</strong>
-              gh did not return any repositories for your account.
-            </CardContent>
-          </Card>
-        )
-      ) : null}
-
-      {savedRepos ? (
-        <p className="text-sm text-muted-foreground">
-          Alfred is now scoped to: {savedRepos.length ? savedRepos.join(", ") : "no repositories"}.
-        </p>
-      ) : selectedCount ? (
-        <p className="text-sm text-muted-foreground">
-          {selectedCount} {selectedCount === 1 ? "repository" : "repositories"} selected. Load the list to change them.
-        </p>
-      ) : null}
-
-      {!canMutate ? (
-        <p className="rounded-lg border border-border/70 bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
-          Desktop mode can save repository choices.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function PlaybooksStep({
-  baseUrl,
-  canMutate,
-  setNotice,
-  onSwitch,
-}: {
-  baseUrl: string;
-  canMutate: boolean;
-  setNotice: (notice: LocalNotice) => void;
-  onSwitch?: (tab: TabKey) => void;
-}) {
-  const [playbooks, setPlaybooks] = useState<SetupPlaybook[]>([]);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadSetupPlaybooks(baseUrl)
-      .then((result) => {
-        if (!cancelled) setPlaybooks(result.playbooks);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(errorDetail(err) || "Could not load starter specs.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [baseUrl]);
-
-  const pick = async (key: string) => {
-    setBusyKey(key);
-    try {
-      const result = await composeSetupPlaybook(baseUrl, key);
-      setNotice({
-        tone: "ok",
-        message: `Drafted a first plan: "${result.title}". Open Plan or Plans to review it.`,
-      });
-      onSwitch?.("compose");
-    } catch (err) {
-      setNotice({ tone: "error", message: errorDetail(err) || "Could not draft from that spec." });
-    } finally {
-      setBusyKey(null);
-    }
-  };
-
-  if (error) {
-    return (
-      <Card size="sm" className="rounded-lg border-border/70 bg-muted/35 shadow-none">
-        <CardContent className="px-3 text-sm text-muted-foreground">{error}</CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="grid gap-3">
-      <div className="grid gap-2">
-        {playbooks.map((playbook) => (
-          <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none" key={playbook.key}>
-            <CardHeader className="gap-2 md:grid-cols-[1fr_auto]">
-              <div className="min-w-0">
-                <CardTitle className="text-sm">{playbook.title}</CardTitle>
-                <CardDescription>{playbook.summary}</CardDescription>
-              </div>
-              <CardAction>
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => void pick(playbook.key)}
-                  disabled={!canMutate || busyKey !== null}
-                >
-                  <Sparkles size={14} aria-hidden="true" />
-                  <span>{busyKey === playbook.key ? "Drafting" : "Use this"}</span>
-                </Button>
-              </CardAction>
-            </CardHeader>
-          </Card>
-        ))}
-      </div>
-      {!canMutate ? (
-        <p className="rounded-lg border border-border/70 bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
-          Desktop mode can draft first-plan requests.
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Pick one to draft a first plan. Alfred saves it for review before any agent starts.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function DemoStep({
-  baseUrl,
-  canMutate,
-  demoPresent,
-  onChanged,
-  setNotice,
-  onSwitch,
-  onRefreshBoard,
-}: {
-  baseUrl: string;
-  canMutate: boolean;
-  demoPresent: boolean;
-  onChanged: () => Promise<void>;
-  setNotice: (notice: LocalNotice) => void;
-  onSwitch?: (tab: TabKey) => void;
-  onRefreshBoard?: (options?: { demo?: boolean }) => Promise<void> | void;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  const seed = async () => {
-    setBusy(true);
-    try {
-      await seedSetupDemo(baseUrl);
-      setNotice({ tone: "ok", message: "Seeded demo cards. Open Work to see them." });
-      await onChanged();
-      await onRefreshBoard?.({ demo: true });
-      onSwitch?.("board");
-    } catch (err) {
-      setNotice({ tone: "error", message: errorDetail(err) || "Could not seed the demo." });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const clear = async () => {
-    setBusy(true);
-    try {
-      await clearSetupDemo(baseUrl);
-      setNotice({ tone: "ok", message: "Cleared the demo cards." });
-      await onChanged();
-      await onRefreshBoard?.({ demo: false });
-    } catch (err) {
-      setNotice({ tone: "error", message: errorDetail(err) || "Could not clear the demo." });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="grid gap-3">
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={() => void seed()} disabled={!canMutate || busy}>
-          <PlayCircle size={15} aria-hidden="true" />
-          <span>{busy ? "Working" : demoPresent ? "Re-seed demo" : "Seed Work preview"}</span>
-        </Button>
-        {demoPresent ? (
-          <Button variant="outline" type="button" onClick={() => void clear()} disabled={!canMutate || busy}>
-            <Trash2 size={14} aria-hidden="true" />
-            <span>Clear demo</span>
-          </Button>
-        ) : null}
-      </div>
-      {demoPresent ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CheckCircle2 size={14} aria-hidden="true" /> Demo cards are in Work,
-          clearly labelled. Clear them whenever you like.
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Adds sample cards marked <em>demo</em> to Work.
-        </p>
-      )}
-      {!canMutate ? (
-        <p className="rounded-lg border border-border/70 bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
-          Desktop mode can seed the demo.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function OnboardingStep({
-  index,
-  title,
-  blurb,
-  icon: Icon,
-  status,
-  accentLabel,
-  children,
-}: {
-  index: number;
-  title: string;
-  blurb: string;
-  icon: typeof Plug;
-  status: StepStatus;
-  accentLabel?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <li>
-      <Card
-        className={cn(
-          "rounded-lg border-border/70 bg-card/70 shadow-none",
-          status === "active" && "border-primary/25 bg-primary/10",
-        )}
-      >
-        <CardHeader className="gap-3 md:grid-cols-[auto_1fr_auto]">
-          <span
-            className={cn(
-              "flex size-9 items-center justify-center rounded-full border text-sm font-medium",
-              status === "done"
-                ? "border-primary/25 bg-primary text-primary-foreground"
-                : status === "active"
-                  ? "border-primary/35 bg-primary/15 text-primary"
-                  : "border-border bg-background text-muted-foreground",
-            )}
-            aria-hidden="true"
-          >
-            {status === "done" ? (
-              <CheckCircle2 size={18} />
-            ) : status === "todo" ? (
-              <CircleDashed size={18} />
-            ) : (
-              index
-            )}
-          </span>
-          <div className="min-w-0">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              <Icon size={16} aria-hidden="true" />
-              <span>{title}</span>
-              {accentLabel ? <Badge variant="outline">{accentLabel}</Badge> : null}
-            </CardTitle>
-            <CardDescription>{blurb}</CardDescription>
-          </div>
-          {status === "active" ? (
-            <CardAction>
-              <ChevronRight size={15} aria-hidden="true" className="text-primary" />
-            </CardAction>
-          ) : null}
-        </CardHeader>
-        <CardContent className="px-4">{children}</CardContent>
-      </Card>
-    </li>
   );
 }

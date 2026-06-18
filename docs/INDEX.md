@@ -12,7 +12,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`MONOREPO.md`](MONOREPO.md): running Alfred against a pnpm, Turborepo, or Cargo workspace.
 - [`MULTI_REPO_WORKED_EXAMPLE.md`](MULTI_REPO_WORKED_EXAMPLE.md): one feature shipped across three repos using Batman plus the starter fleet.
 - [`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md): turning specs into issue queues, Batman plans, and reviewable PRs.
-- [`INSTALL_TIME.md`](INSTALL_TIME.md): honest read on warm-start (30 min) and cold-start (60 to 120 min) install duration.
+- [`INSTALL_TIME.md`](INSTALL_TIME.md): honest read on existing-setup (30 min) and fresh-machine (60 to 120 min) install duration.
 - [`../BOOTSTRAP.md`](../BOOTSTRAP.md): full operations setup for a first fleet.
 - [`TUTORIAL.md`](TUTORIAL.md): build the Echo example agent end-to-end.
 - [`DRY_RUN.md`](DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
