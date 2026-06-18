@@ -1,16 +1,12 @@
 import {
   AlertTriangle,
-  Archive,
   ArrowRight,
   Check,
   CheckCircle2,
   ExternalLink,
-  FilePlus2,
-  GitPullRequest,
   Inbox,
   ListChecks,
   MemoryStick,
-  MessageSquare,
   Play,
   Radio,
   Settings,
@@ -20,15 +16,13 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { exactTime, friendlyTime, titleCase } from "../format";
-import { planNeedsAttention } from "../lib/derive";
-import { firstLink, isSafeExternalUrl, openExternal } from "../lib/links";
-import type { AttentionItem, FollowupAction } from "../lib/uiTypes";
+import { titleCase } from "../format";
+import { openExternal } from "../lib/links";
+import type { AttentionItem } from "../lib/uiTypes";
 import { supportsNativeActions } from "../api";
 import type {
   NativeCommandResult,
   PlanDecision,
-  PlanDraft,
   ReliabilitySignal,
   Snapshot,
 } from "../types";
@@ -297,124 +291,6 @@ export function SignalCard({ signal }: { signal: ReliabilitySignal }) {
         <strong>{signal.title || signal.action || signal.codename || "Memory candidate"}</strong>
         <p>{signal.message || signal.summary || signal.reason || "Review evidence before promotion."}</p>
         {signal.command ? <code>{signal.command}</code> : null}
-      </div>
-    </article>
-  );
-}
-
-export function PlanCard({
-  plan,
-  busyPlanAction,
-  onFollowupAction,
-  onDecision,
-  selected = false,
-  onSelect,
-}: {
-  plan: PlanDraft;
-  busyPlanAction: string | null;
-  onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
-  /** Record a real go/no-go on a genuine Batman plan (approve starts work). */
-  onDecision?: (plan: PlanDraft, decision: PlanDecision) => void;
-  selected?: boolean;
-  onSelect?: (plan: PlanDraft) => void;
-}) {
-  const slackLink = firstLink(plan.content, /slack\.com/i);
-  const parentLink = plan.parent && isSafeExternalUrl(plan.parent) ? plan.parent : null;
-  const isFollowup = plan.source === "followup";
-  // Only a genuine Batman go/no-go plan that is still awaiting a sign-off can be
-  // approved or declined in-app. planNeedsAttention already encodes both halves
-  // (source === "batman" and a waiting status), so a decided plan loses the
-  // buttons and reads as approved/declined instead.
-  const canDecide = Boolean(onDecision) && planNeedsAttention(plan);
-  const actionBusy = busyPlanAction?.startsWith(`${plan.plan_id}:`) || false;
-  return (
-    <article className={selected ? "plan-card plan-card--selected" : "plan-card"}>
-      <div>
-        <div className="plan-card__meta">
-          <span>{plan.source}</span>
-          <span>{plan.status}</span>
-          {plan.readiness_score !== null ? <span>{plan.readiness_score}/100</span> : null}
-        </div>
-        <h2>{plan.title}</h2>
-        <p>{plan.preview}</p>
-        <dl className="compact-meta">
-          {plan.affected_repos ? (
-            <div>
-              <dt>Repos</dt>
-              <dd>{plan.affected_repos}</dd>
-            </div>
-          ) : null}
-          {plan.updated_at ? (
-            <div>
-              <dt>Updated</dt>
-              <dd title={exactTime(plan.updated_at)}>{friendlyTime(plan.updated_at)}</dd>
-            </div>
-          ) : null}
-        </dl>
-        {canDecide ? (
-          <p className="plan-card__decision-note" role="note">
-            Approving starts this exact scope on Batman's next run. Declining stops
-            it. No code or worktrees move until you decide.
-          </p>
-        ) : null}
-      </div>
-      <div className="card-actions">
-        {canDecide ? (
-          <>
-            <button
-              className="approve-button"
-              type="button"
-              disabled={actionBusy}
-              onClick={() => onDecision?.(plan, "approve")}
-            >
-              <Check size={16} aria-hidden="true" />
-              <span>Approve</span>
-            </button>
-            <button
-              className="decline-button"
-              type="button"
-              disabled={actionBusy}
-              onClick={() => onDecision?.(plan, "decline")}
-            >
-              <X size={16} aria-hidden="true" />
-              <span>Decline</span>
-            </button>
-          </>
-        ) : null}
-        {isFollowup ? (
-          <>
-            <button
-              className="icon-button"
-              type="button"
-              disabled={actionBusy}
-              onClick={() => onFollowupAction(plan, "convert")}
-            >
-              <FilePlus2 size={16} aria-hidden="true" />
-              <span>Plan next pass</span>
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={actionBusy}
-              onClick={() => onFollowupAction(plan, "handled")}
-            >
-              <Archive size={16} aria-hidden="true" />
-              <span>Mark handled</span>
-            </button>
-          </>
-        ) : null}
-        {onSelect ? (
-          <button className="secondary-button" type="button" onClick={() => onSelect(plan)}>
-            <ListChecks size={16} aria-hidden="true" />
-            <span>{selected ? "Selected" : "Inspect"}</span>
-          </button>
-        ) : null}
-        {parentLink ? (
-          <ExternalButton label="Open issue" href={parentLink} icon={<GitPullRequest size={16} />} />
-        ) : null}
-        {slackLink ? (
-          <ExternalButton label="Open in Slack" href={slackLink} icon={<MessageSquare size={16} />} />
-        ) : null}
       </div>
     </article>
   );

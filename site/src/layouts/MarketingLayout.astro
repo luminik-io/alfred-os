@@ -93,16 +93,40 @@ const orgSchema = {
   ],
 };
 
-const nav = [
-  { label: "How it works", href: "/how-it-works/" },
-  { label: "Multi-repo", href: "/multi-repo/" },
-  { label: "Monorepo", href: "/monorepo/" },
-  { label: "For solo founders", href: "/for-solo-founders/" },
+const navGroups = [
+  {
+    label: "Product",
+    items: [
+      { label: "How it works", href: "/how-it-works/", description: "The agent lifecycle from issue to PR." },
+      { label: "Multi-repo teams", href: "/multi-repo/", description: "Coordinate work across separate repos." },
+      { label: "Monorepos", href: "/monorepo/", description: "Keep one large repo moving safely." },
+      { label: "Solo founders", href: "/for-solo-founders/", description: "Run a small engineering fleet yourself." },
+    ],
+  },
+  {
+    label: "Resources",
+    items: [
+      { label: "Docs", href: "/docs/", description: "Install, operate, and extend Alfred." },
+      { label: "Changelog", href: "/about/changelog/", description: "What shipped recently." },
+      { label: "Roadmap", href: "/about/roadmap/", description: "What is planned next." },
+      { label: "GitHub", href: "https://github.com/luminik-io/alfred-os", description: "Source, issues, and releases.", external: true },
+    ],
+  },
+];
+
+const directNav = [
   { label: "Install", href: "/install/" },
   { label: "Download", href: "/download/" },
   { label: "Pricing", href: "/pricing/" },
-  { label: "Docs", href: "/docs/" },
 ];
+
+const mobileNav = [
+  { label: "Start", items: directNav },
+  ...navGroups,
+];
+
+const isCurrent = (href: string) => !href.startsWith("http") && path === href;
+const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => isCurrent(item.href));
 ---
 
 <!doctype html>
@@ -268,7 +292,33 @@ const nav = [
           Alfred
         </a>
         <nav class="m-nav" aria-label="primary">
-          {nav.map((item) => <a href={item.href} aria-current={path === item.href ? "page" : undefined}>{item.label}</a>)}
+          {navGroups.slice(0, 1).map((group) => (
+            <details class="m-nav-group">
+              <summary aria-current={groupIsCurrent(group.items) ? "page" : undefined}>{group.label}</summary>
+              <div class="m-nav-menu">
+                {group.items.map((item) => (
+                  <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined} rel={"external" in item && item.external ? "noopener" : undefined}>
+                    <span>{item.label}</span>
+                    <small>{item.description}</small>
+                  </a>
+                ))}
+              </div>
+            </details>
+          ))}
+          {directNav.map((item) => <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined}>{item.label}</a>)}
+          {navGroups.slice(1).map((group) => (
+            <details class="m-nav-group">
+              <summary aria-current={groupIsCurrent(group.items) ? "page" : undefined}>{group.label}</summary>
+              <div class="m-nav-menu">
+                {group.items.map((item) => (
+                  <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined} rel={"external" in item && item.external ? "noopener" : undefined}>
+                    <span>{item.label}</span>
+                    <small>{item.description}</small>
+                  </a>
+                ))}
+              </div>
+            </details>
+          ))}
           <ThemeToggle />
           <GitHubBadge />
         </nav>
@@ -286,10 +336,14 @@ const nav = [
         </button>
       </div>
       <nav id="mobile-menu" class="m-mobile-menu" aria-label="mobile primary" hidden data-mobile-menu>
-        {nav.map((item) => (
-          <a href={item.href} aria-current={path === item.href ? "page" : undefined}>{item.label}</a>
+        {mobileNav.map((group) => (
+          <section class="m-mobile-menu__section" aria-label={group.label}>
+            <h3>{group.label}</h3>
+            {group.items.map((item) => (
+              <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined} rel={"external" in item && item.external ? "noopener" : undefined}>{item.label}</a>
+            ))}
+          </section>
         ))}
-        <a class="m-mobile-menu__repo" href="https://github.com/luminik-io/alfred-os" rel="noopener">GitHub</a>
       </nav>
     </header>
 

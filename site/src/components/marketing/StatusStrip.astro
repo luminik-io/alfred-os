@@ -59,6 +59,10 @@ const rows = [
     border-bottom: 1px solid var(--alfred-border);
     gap: 16px;
   }
+  .status-strip__head .m-mono {
+    min-width: max-content;
+    text-align: right;
+  }
   .status-strip__body {
     font-family: var(--font-mono);
     font-size: 13px;
@@ -90,6 +94,22 @@ const rows = [
     .status-strip__row {
       grid-template-columns: 76px 70px 1fr 12px;
       font-size: 12px;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .status-strip {
+      padding: 12px 14px 10px;
+    }
+    .status-strip__head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .status-strip__head .m-mono {
+      min-width: 0;
+      text-align: left;
+      white-space: normal;
     }
   }
 </style>

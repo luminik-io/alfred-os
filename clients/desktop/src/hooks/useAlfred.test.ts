@@ -24,6 +24,7 @@ const hooks = vi.hoisted(() => ({
   runNativeActionMock: vi.fn(),
   rememberBaseUrlMock: vi.fn(),
   decidePlanMock: vi.fn(),
+  discardPlanMock: vi.fn(),
   filePlanIssueMock: vi.fn(),
   DEFAULT_BASE_URL: "http://127.0.0.1:7010",
   LEGACY_AIRPLAY_BASE_URL: "http://127.0.0.1:7000",
@@ -52,7 +53,6 @@ vi.mock("../api", () => ({
   alternateDefaultBaseUrl: (value: string) => {
     const normalized = value.trim().replace(/\/$/, "");
     if (normalized === hooks.DEFAULT_BASE_URL) return null;
-    if (normalized === hooks.LEGACY_AIRPLAY_BASE_URL) return null;
     if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(normalized)) {
       return hooks.DEFAULT_BASE_URL;
     }
@@ -66,6 +66,7 @@ vi.mock("../api", () => ({
   convertFollowupToDraft: vi.fn(),
   markFollowupHandled: vi.fn(),
   decidePlan: (...args: unknown[]) => hooks.decidePlanMock(...args),
+  discardPlan: (...args: unknown[]) => hooks.discardPlanMock(...args),
   filePlanIssue: (...args: unknown[]) => hooks.filePlanIssueMock(...args),
   startLocalRuntime: vi.fn(),
   setTrayStatus: vi.fn(async () => undefined),
@@ -159,6 +160,7 @@ beforeEach(() => {
   loadUsageMock.mockReset();
   runNativeActionMock.mockReset();
   rememberBaseUrlMock.mockReset();
+  hooks.discardPlanMock.mockReset();
   hooks.filePlanIssueMock.mockReset();
   loadShippedMock.mockResolvedValue(shippedBoard());
   loadUsageMock.mockResolvedValue(usage());
@@ -209,7 +211,7 @@ describe("useAlfred refresh race", () => {
   });
 });
 
-describe("useAlfred legacy local port", () => {
+describe("useAlfred fallback port", () => {
   it("does not retry on 7000 when the preferred 7010 endpoint fails", async () => {
     loadSnapshotMock.mockRejectedValue(new Error("connection refused"));
 
@@ -439,5 +441,45 @@ describe("useAlfred plan go/no-go", () => {
     expect(result.current.noticeFor("plans")?.message).toMatch(/agent:implement/i);
     expect(loadSnapshotMock).toHaveBeenCalled();
     expect(loadShippedMock).toHaveBeenCalled();
+  });
+
+  it("discards a local planning draft and refreshes the plans", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    hooks.discardPlanMock.mockResolvedValue({
+      ok: true,
+      status: "discarded",
+      draft_id: "compose-20260604-export",
+      archived_path: "/tmp/state/planning-drafts/archive/compose-20260604-export.json",
+    });
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    loadSnapshotMock.mockClear();
+
+    await act(async () => {
+      await result.current.runPlanDiscard({
+        plan_id: "compose-20260604-export",
+        title: "Add export planning",
+        status: "ready",
+        parent: null,
+        affected_repos: "owner/web",
+        updated_at: null,
+        path: "",
+        preview: "",
+        content: "",
+        source: "compose",
+        readiness_score: 92,
+        readiness_ok: true,
+        revision_count: 0,
+      });
+    });
+
+    expect(hooks.discardPlanMock).toHaveBeenCalledWith(
+      DEFAULT_BASE_URL,
+      "compose-20260604-export",
+    );
+    expect(result.current.noticeFor("plans")?.tone).toBe("ok");
+    expect(result.current.noticeFor("plans")?.message).toMatch(/discarded add export planning/i);
+    expect(loadSnapshotMock).toHaveBeenCalled();
   });
 });

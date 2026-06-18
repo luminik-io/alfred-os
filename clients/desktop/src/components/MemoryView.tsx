@@ -39,9 +39,9 @@ export function MemoryView({
 
   return (
     <section className="panel animate-rise">
-      <PanelHeader eyebrow="Lessons" title="What Alfred has learned" />
+      <PanelHeader eyebrow="Learnings" title="What Alfred has learned" />
       <p className="panel-intro">
-        When Alfred notices something worth remembering, it writes a short lesson here for you to
+        When Alfred notices something worth remembering, it writes a short learning here for you to
         confirm. Keep the ones that look right and Alfred will use them next time. Dismiss the rest.
       </p>
 
@@ -164,7 +164,9 @@ function LessonCard({
           {where ? <span className="lesson-card__where">{where}</span> : null}
         </div>
 
-        <h3 className="lesson-card__what">{candidate.body}</h3>
+        <h3 className="lesson-card__what">
+          {(candidate.statement || "").trim() || candidate.body}
+        </h3>
 
         {matters ? <p className="lesson-card__matters">{matters}</p> : null}
 

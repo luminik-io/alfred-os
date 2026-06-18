@@ -1,8 +1,8 @@
 # How long install takes
 
 Honest read on install duration. The "30 minutes" number on the README assumes
-a lot of preconditions are already met. If you are starting cold, the real
-figure is one to two hours.
+a lot of preconditions are already met. On a fresh machine, the real figure is
+one to two hours.
 
 ## If you already have the prerequisites
 
@@ -22,7 +22,7 @@ In that case the actual work is small: clone the repo, run
 `./bin/alfred-init.py --non-interactive --agents starter --repos my-org/my-app
 --slack-webhook skip`, run `bash deploy.sh`, run `bash bin/doctor.sh`.
 
-## If you are starting cold
+## If you are setting up a fresh machine
 
 Add 30 to 90 minutes if any of these are not done:
 
@@ -39,7 +39,7 @@ Add 30 to 90 minutes if any of these are not done:
 - **Codex (optional engine).** If you want the hybrid engine fallback,
   installing and signing into Codex adds 10 to 15 minutes.
 
-A realistic cold-start total is 60 to 120 minutes.
+A realistic fresh-machine total is 60 to 120 minutes.
 
 ## One-time gates before you start
 

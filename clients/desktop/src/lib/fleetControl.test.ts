@@ -45,7 +45,7 @@ const STATUS_JSON = JSON.stringify({
       today_consecutive_failures: 0,
     },
     {
-      agent: "alfred.robin",
+      agent: "fleet.local.robin",
       loaded: false,
       paused: false,
       paused_since: null,
@@ -68,7 +68,7 @@ describe("parseFleetServiceState", () => {
 
   it("keys the agents by codename", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
-    expect(Object.keys(map).sort()).toEqual(["alfred.robin", "bane", "lucius"]);
+    expect(Object.keys(map).sort()).toEqual(["bane", "fleet.local.robin", "lucius"]);
     expect(map.bane.paused).toBe(true);
   });
 });
@@ -77,7 +77,7 @@ describe("lookupServiceState", () => {
   it("matches a short codename against a fully-qualified label", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
     const found = lookupServiceState(map, "robin");
-    expect(found?.agent).toBe("alfred.robin");
+    expect(found?.agent).toBe("fleet.local.robin");
   });
 });
 
@@ -156,6 +156,11 @@ describe("deriveFleetHealth", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
     // robin has 3 consecutive failures -> error.
     const rows = buildFleetRows([agent("lucius")], map);
+    expect(deriveFleetHealth(rows).level).toBe("error");
+  });
+
+  it("is error when the latest run hit an llm error", () => {
+    const rows = buildFleetRows([agent("lucius", { status: "llm-error" })], {});
     expect(deriveFleetHealth(rows).level).toBe("error");
   });
 

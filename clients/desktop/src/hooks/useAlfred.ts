@@ -6,6 +6,7 @@ import {
   clientBaseUrl,
   convertFollowupToDraft,
   decidePlan,
+  discardPlan,
   errorDetail,
   filePlanIssue,
   initialBaseUrl,
@@ -23,7 +24,7 @@ import {
   startLocalRuntime,
   supportsNativeActions,
 } from "../api";
-import { buildInspectionItems, buildNeedsYou } from "../lib/derive";
+import { buildNeedsYou } from "../lib/derive";
 import {
   buildFleetRows,
   deriveFleetHealth,
@@ -45,6 +46,7 @@ import type {
   NoticeDomain,
 } from "../lib/uiTypes";
 import type {
+  AssignmentTargetAgent,
   NativeCommandResult,
   PlanDecision,
   PlanDraft,
@@ -58,6 +60,12 @@ const POLL_INTERVAL_MS = 60_000;
 type ShippedRefreshOptions = { demo?: boolean };
 
 export type UseAlfred = ReturnType<typeof useAlfred>;
+
+function assignmentLabel(target: AssignmentTargetAgent | string): string {
+  if (target === "batman") return "Batman";
+  if (target === "lucius") return "Lucius";
+  return "Alfred";
+}
 
 export function useAlfred() {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
@@ -327,21 +335,54 @@ export function useAlfred() {
     [baseUrl, refresh, refreshShipped],
   );
 
+  const runPlanDiscard = useCallback(
+    async (plan: PlanDraft) => {
+      const key = `${plan.plan_id}:discard`;
+      setBusyPlanAction(key);
+      setActionNotice(null);
+      try {
+        const result = await discardPlan(baseUrl, plan.plan_id);
+        const message =
+          result.status === "already_discarded"
+            ? `Already discarded ${plan.title}.`
+            : `Discarded ${plan.title}.`;
+        setActionNotice({ tone: "ok", message, domain: "plans" });
+        await refresh(baseUrl);
+      } catch (err) {
+        setActionNotice({
+          tone: "error",
+          message: err instanceof Error ? err.message : String(err),
+          domain: "plans",
+        });
+      } finally {
+        setBusyPlanAction(null);
+      }
+    },
+    [baseUrl, refresh],
+  );
+
   // Assign, arm, hold, or close an issue on the Kanban board. Refreshes the
   // board so the card moves to reflect the new GitHub state.
   const runQueueAction = useCallback(
-    async (repo: string, issueNumber: number, action: QueueAction): Promise<boolean> => {
+    async (
+      repo: string,
+      issueNumber: number,
+      action: QueueAction,
+      targetAgent: AssignmentTargetAgent = "auto",
+    ): Promise<boolean> => {
       setBusyQueue(`${action}:${repo}#${issueNumber}`);
       setActionNotice(null);
       try {
-        await setQueuePickup(baseUrl, repo, issueNumber, action);
+        const result = await setQueuePickup(baseUrl, repo, issueNumber, action, targetAgent);
+        const assignedAgent =
+          targetAgent === "auto" ? result?.target_agent || "Alfred" : targetAgent;
         setActionNotice({
           tone: "ok",
           message:
             action === "queue"
               ? `Queued ${repo}#${issueNumber} for pickup.`
               : action === "assign"
-                ? `Assigned ${repo}#${issueNumber} to Alfred.`
+                ? `Assigned ${repo}#${issueNumber} to ${assignmentLabel(assignedAgent)}.`
               : action === "done"
                 ? `Closed ${repo}#${issueNumber} as done.`
                 : `Held ${repo}#${issueNumber} so no agent picks it up.`,
@@ -470,7 +511,12 @@ export function useAlfred() {
   }, []);
 
   const runLocalAction = useCallback(
-    async ({ action, target, cadence, refreshAfter = false }: NativeActionRequest) => {
+    async ({
+      action,
+      target,
+      cadence,
+      refreshAfter = false,
+    }: NativeActionRequest): Promise<NativeCommandResult | null> => {
       const key = `${action}:${target || "fleet"}`;
       setNativeBusy(key);
       setNativeError(null);
@@ -488,9 +534,11 @@ export function useAlfred() {
         if (action === "pause" || action === "resume" || action === "run") {
           await refreshFleetService();
         }
+        return result;
       } catch (err) {
         setNativeError(err instanceof Error ? err.message : String(err));
         setNativeErrorRaw(errorDetail(err));
+        return null;
       } finally {
         setNativeBusy(null);
       }
@@ -553,7 +601,6 @@ export function useAlfred() {
   // Review's home lane; reliability inspection signals are operator depth and
   // surface only in the Operator drawer.
   const needsYou = useMemo(() => buildNeedsYou(snapshot), [snapshot]);
-  const inspectionItems = useMemo(() => buildInspectionItems(snapshot), [snapshot]);
 
   const feed = useMemo(() => buildFeed(snapshot), [snapshot]);
   const unseenCount = useMemo(() => countUnseen(feed, seenIds), [feed, seenIds]);
@@ -616,7 +663,6 @@ export function useAlfred() {
     nativeErrorRaw,
     clearNativeResult,
     needsYou,
-    inspectionItems,
     fleetService,
     fleetRows,
     fleetHealth,
@@ -635,6 +681,7 @@ export function useAlfred() {
     refreshFleetService,
     runFollowupAction,
     runPlanDecision,
+    runPlanDiscard,
     runPlanIssueFile,
     runQueueAction,
     runMemoryCandidateAction,

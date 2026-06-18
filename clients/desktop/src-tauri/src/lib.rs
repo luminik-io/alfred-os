@@ -1,6 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
+use std::{io::Read, process::Child};
 
 use reqwest::{Method, Url};
 use serde::Serialize;
@@ -17,6 +20,16 @@ struct NativeCommandResult {
     success: bool,
     pid: Option<u32>,
     message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    github_auth: Option<GithubAuthLoginDetails>,
+}
+
+#[derive(Serialize)]
+struct GithubAuthLoginDetails {
+    device_url: Option<String>,
+    device_code: Option<String>,
+    poll_interval_ms: u64,
+    timeout_ms: u64,
 }
 
 #[tauri::command]
@@ -56,6 +69,10 @@ async fn run_alfred_action(
     target: Option<String>,
     cadence: Option<String>,
 ) -> Result<NativeCommandResult, String> {
+    if action.trim() == "github_auth_login" {
+        return start_github_auth_login().await;
+    }
+
     if action.trim() == "brain_doctor" {
         let primary = run_native_command(
             "alfred".to_string(),
@@ -92,13 +109,9 @@ fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String
         return Err("runtime port must be between 1024 and 65535".to_string());
     }
 
-    let args = vec![
-        "serve".to_string(),
-        "--port".to_string(),
-        port.to_string(),
-        "--no-browser".to_string(),
-    ];
-    let child = Command::new("alfred")
+    let args = alfred_serve_args(port);
+    let resolved = resolve_program("alfred");
+    let child = command_with_cli_path(&resolved)
         .args(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -115,6 +128,7 @@ fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String
         success: true,
         pid: Some(pid),
         message: Some(format!("started Alfred local runtime on port {port}")),
+        github_auth: None,
     })
 }
 
@@ -260,6 +274,42 @@ fn read_server_token() -> Option<String> {
     }
 }
 
+fn config_value(key: &str) -> Option<String> {
+    if let Ok(value) = std::env::var(key) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let env_path = alfred_home()?.join(".env");
+    let raw = std::fs::read_to_string(env_path).ok()?;
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((name, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if name.trim() == key {
+            let clean = value.trim().trim_matches('"').trim_matches('\'').trim();
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn alfred_serve_args(port: u16) -> Vec<String> {
+    vec![
+        "serve".to_string(),
+        "--port".to_string(),
+        port.to_string(),
+        "--no-browser".to_string(),
+    ]
+}
+
 fn validate_base_url(raw: &str) -> Result<Url, String> {
     let mut url = Url::parse(raw.trim()).map_err(|_| "enter a valid local URL".to_string())?;
     if url.scheme() != "http" {
@@ -273,6 +323,10 @@ fn validate_base_url(raw: &str) -> Result<Url, String> {
         return Err("only localhost, 127.0.0.1, or ::1 are allowed".to_string());
     }
 
+    if url.port_or_known_default() == Some(7000) {
+        url.set_port(Some(7010))
+            .map_err(|_| "could not normalize local Alfred port".to_string())?;
+    }
     url.set_path("/");
     url.set_query(None);
     url.set_fragment(None);
@@ -305,8 +359,8 @@ fn validate_api_path<'a>(
         is_allowed_read_path(path_part)
     } else if method == Method::POST {
         is_allowed_compose_draft(path_part)
-            || is_allowed_conversation_control(path_part)
             || is_allowed_compose_converse(path_part)
+            || is_allowed_conversation_control(path_part)
             || is_allowed_followup_action(path_part)
             || is_allowed_plan_decision(path_part)
             || is_allowed_memory_action(path_part)
@@ -346,18 +400,21 @@ fn is_allowed_compose_draft(path: &str) -> bool {
     path == "/api/plans/draft"
 }
 
-fn is_allowed_conversation_control(path: &str) -> bool {
-    // POST /api/conversation/control records UX-facing chat control actions
-    // before Compose falls through to the conversational or classic draft path.
-    path == "/api/conversation/control"
-}
-
 fn is_allowed_compose_converse(path: &str) -> bool {
     // POST /api/compose/converse is the non-streaming chat fallback. The
     // token-streamed turn (/api/compose/converse/stream) rides the webview's
     // own fetch and never goes through this Rust bridge, so only the buffered
     // one-shot fallback needs to be on the contract here.
     path == "/api/compose/converse"
+}
+
+fn is_allowed_conversation_control(path: &str) -> bool {
+    // POST /api/conversation/control carries the unified Ask composer's
+    // conversational turns (status questions, control suggestions). Missing
+    // from the contract, it broke chat sends in the packaged app while the
+    // browser dev mode worked, because only the Rust bridge enforces this
+    // allowlist.
+    path == "/api/conversation/control"
 }
 
 fn is_allowed_setup_action(path: &str) -> bool {
@@ -389,7 +446,7 @@ fn is_allowed_plan_decision(path: &str) -> bool {
     if parts.len() != 2 || parts[0].is_empty() {
         return false;
     }
-    matches!(parts[1], "decision" | "file-issue")
+    matches!(parts[1], "decision" | "file-issue" | "discard")
 }
 
 fn is_allowed_memory_action(path: &str) -> bool {
@@ -418,6 +475,286 @@ fn is_allowed_queue_action(path: &str) -> bool {
     // POST /api/queue is the queue/hold control endpoint. The desktop contract
     // only exposes the exact path; the server decides which actions are allowed.
     path == "/api/queue"
+}
+
+const GITHUB_DEVICE_URL: &str = "https://github.com/login/device";
+const GITHUB_AUTH_CAPTURE_MS: u64 = 4_000;
+const GITHUB_AUTH_POLL_INTERVAL_MS: u64 = 2_000;
+const GITHUB_AUTH_TIMEOUT_MS: u64 = 120_000;
+
+fn resolve_gh_bin() -> String {
+    if let Some(configured) = config_value("ALFRED_GH_BIN").or_else(|| config_value("GH_BIN")) {
+        return configured;
+    }
+    for dir in cli_extra_paths() {
+        let candidate = dir.join("gh");
+        if candidate.is_file() {
+            return candidate.to_string_lossy().to_string();
+        }
+    }
+    "gh".to_string()
+}
+
+fn augmented_cli_path() -> std::ffi::OsString {
+    let mut parts: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|raw| std::env::split_paths(&raw).collect())
+        .unwrap_or_default();
+    for extra in cli_extra_paths().into_iter().rev() {
+        if !parts.iter().any(|part| part == &extra) {
+            parts.insert(0, extra);
+        }
+    }
+    std::env::join_paths(parts).unwrap_or_else(|_| std::ffi::OsString::from(""))
+}
+
+fn cli_extra_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(home) = home_dir() {
+        paths.push(home.join(".local").join("bin"));
+        paths.push(home.join(".alfred").join("bin"));
+    }
+    paths.extend([
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/opt/homebrew/sbin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/local/sbin"),
+    ]);
+    paths
+}
+
+fn command_with_cli_path(program: &str) -> Command {
+    let mut command = Command::new(program);
+    command.env("PATH", augmented_cli_path());
+    command
+}
+
+async fn start_github_auth_login() -> Result<NativeCommandResult, String> {
+    tauri::async_runtime::spawn_blocking(start_github_auth_login_blocking)
+        .await
+        .map_err(|err| format!("GitHub sign-in failed to start: {err}"))?
+}
+
+fn start_github_auth_login_blocking() -> Result<NativeCommandResult, String> {
+    let first = start_github_auth_login_attempt(true)?;
+    if first.success || !is_unknown_clipboard_flag(&first) {
+        return Ok(first);
+    }
+    start_github_auth_login_attempt(false)
+}
+
+fn github_auth_login_args(include_clipboard: bool) -> Vec<String> {
+    let mut args = vec![
+        "auth".to_string(),
+        "login".to_string(),
+        "--hostname".to_string(),
+        "github.com".to_string(),
+        "--git-protocol".to_string(),
+        "https".to_string(),
+        "--web".to_string(),
+    ];
+    if include_clipboard {
+        args.push("--clipboard".to_string());
+    }
+    args
+}
+
+fn start_github_auth_login_attempt(include_clipboard: bool) -> Result<NativeCommandResult, String> {
+    let args = github_auth_login_args(include_clipboard);
+    let gh = resolve_gh_bin();
+    let preview = command_preview(&gh, &args);
+    let mut child = command_with_cli_path(&gh)
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("could not start GitHub sign-in: {err}"))?;
+
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel::<(bool, String)>();
+    if let Some(stdout) = child.stdout.take() {
+        spawn_pipe_reader(stdout, true, tx.clone());
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_pipe_reader(stderr, false, tx.clone());
+    }
+    drop(tx);
+
+    let started = Instant::now();
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let mut status = None;
+    let mut success = true;
+    let mut exited = false;
+
+    while started.elapsed() < Duration::from_millis(GITHUB_AUTH_CAPTURE_MS) {
+        let mut pipes_disconnected = false;
+        match rx.recv_timeout(Duration::from_millis(120)) {
+            Ok((is_stdout, chunk)) => {
+                if is_stdout {
+                    stdout.push_str(&chunk);
+                } else {
+                    stderr.push_str(&chunk);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                pipes_disconnected = true;
+            }
+        }
+
+        if let Some(exit) = child
+            .try_wait()
+            .map_err(|err| format!("could not check GitHub sign-in status: {err}"))?
+        {
+            status = exit.code();
+            success = exit.success();
+            exited = true;
+            break;
+        }
+
+        if github_auth_capture_should_stop(pipes_disconnected, &stdout, &stderr) {
+            break;
+        }
+    }
+
+    drain_pipe_chunks(&rx, &mut stdout, &mut stderr);
+
+    if !exited {
+        reap_child(child);
+    }
+
+    let combined = combined_output(&stdout, &stderr);
+    let device_code = extract_device_code(&combined);
+    let device_url = extract_first_url(&combined).or_else(|| Some(GITHUB_DEVICE_URL.to_string()));
+    let message = if exited && success {
+        "GitHub sign-in completed.".to_string()
+    } else if exited {
+        "GitHub sign-in exited before Alfred could confirm authentication.".to_string()
+    } else if device_code.is_some() {
+        "GitHub sign-in started. Enter the one-time code in your browser.".to_string()
+    } else {
+        "GitHub sign-in started. Finish the browser prompt, then Alfred will recheck.".to_string()
+    };
+
+    Ok(NativeCommandResult {
+        command: preview,
+        stdout: trim_text(&stdout),
+        stderr: trim_text(&stderr),
+        status,
+        success: success || !exited,
+        pid: Some(pid),
+        message: Some(message),
+        github_auth: Some(GithubAuthLoginDetails {
+            device_url,
+            device_code,
+            poll_interval_ms: GITHUB_AUTH_POLL_INTERVAL_MS,
+            timeout_ms: GITHUB_AUTH_TIMEOUT_MS,
+        }),
+    })
+}
+
+fn is_unknown_clipboard_flag(result: &NativeCommandResult) -> bool {
+    let haystack = format!("{}\n{}", result.stdout, result.stderr).to_ascii_lowercase();
+    haystack.contains("clipboard")
+        && (haystack.contains("unknown flag")
+            || haystack.contains("unknown shorthand")
+            || haystack.contains("flag provided but not defined"))
+}
+
+fn spawn_pipe_reader<R>(mut reader: R, is_stdout: bool, tx: mpsc::Sender<(bool, String)>)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut buffer = [0_u8; 1024];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let chunk = String::from_utf8_lossy(&buffer[..n]).to_string();
+                    let _ = tx.send((is_stdout, chunk));
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+fn drain_pipe_chunks(
+    rx: &mpsc::Receiver<(bool, String)>,
+    stdout: &mut String,
+    stderr: &mut String,
+) {
+    while let Ok((is_stdout, chunk)) = rx.try_recv() {
+        if is_stdout {
+            stdout.push_str(&chunk);
+        } else {
+            stderr.push_str(&chunk);
+        }
+    }
+}
+
+fn github_auth_capture_should_stop(pipes_disconnected: bool, stdout: &str, stderr: &str) -> bool {
+    extract_device_code(&combined_output(stdout, stderr)).is_some() || pipes_disconnected
+}
+
+fn reap_child(mut child: Child) {
+    thread::spawn(move || {
+        let _ = child.wait();
+    });
+}
+
+fn combined_output(stdout: &str, stderr: &str) -> String {
+    format!("{stdout}\n{stderr}")
+}
+
+fn extract_first_url(text: &str) -> Option<String> {
+    text.split_whitespace().find_map(|token| {
+        let clean = token.trim_matches(|ch: char| {
+            matches!(
+                ch,
+                '<' | '>' | '(' | ')' | '[' | ']' | ',' | '.' | ';' | '"' | '\''
+            )
+        });
+        if clean.starts_with("https://") || clean.starts_with("http://") {
+            Some(clean.to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn extract_device_code(text: &str) -> Option<String> {
+    for line in text.lines() {
+        let lower = line.to_ascii_lowercase();
+        if lower.contains("code") {
+            for token in line.split_whitespace().rev() {
+                let clean = clean_device_token(token);
+                if looks_like_device_code(&clean) {
+                    return Some(clean);
+                }
+            }
+        }
+    }
+    text.split_whitespace()
+        .map(clean_device_token)
+        .find(|token| looks_like_device_code(token))
+}
+
+fn clean_device_token(token: &str) -> String {
+    token
+        .trim_matches(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
+        .to_string()
+}
+
+fn looks_like_device_code(value: &str) -> bool {
+    let len = value.len();
+    (6..=24).contains(&len)
+        && value.contains('-')
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
 }
 
 fn build_alfred_action(
@@ -512,11 +849,17 @@ async fn run_native_command(
 ) -> Result<NativeCommandResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let preview = command_preview(&program, &args);
-        let output = Command::new(&program)
+        let resolved = resolve_program(&program);
+        let output = command_with_cli_path(&resolved)
             .args(&args)
             .stdin(Stdio::null())
             .output()
-            .map_err(|err| format!("could not run {}: {err}", preview.join(" ")))?;
+            .map_err(|err| {
+                format!(
+                    "could not run {} (resolved to {resolved}): {err}",
+                    preview.join(" ")
+                )
+            })?;
         Ok(NativeCommandResult {
             command: preview,
             stdout: trim_output(&output.stdout),
@@ -525,10 +868,70 @@ async fn run_native_command(
             success: output.status.success(),
             pid: None,
             message: None,
+            github_auth: None,
         })
     })
     .await
     .map_err(|err| format!("native action failed to complete: {err}"))?
+}
+
+fn resolve_program(requested: &str) -> String {
+    if requested != "alfred" {
+        return requested.to_string();
+    }
+
+    let explicit = config_value("ALFRED_BIN");
+    let runtime_home = alfred_home();
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let install_candidates = [
+        PathBuf::from("/opt/homebrew/bin/alfred"),
+        PathBuf::from("/usr/local/bin/alfred"),
+    ];
+
+    resolve_alfred_program(
+        explicit.as_deref(),
+        runtime_home.as_deref(),
+        home.as_deref(),
+        &install_candidates,
+    )
+}
+
+fn resolve_alfred_program(
+    explicit: Option<&str>,
+    runtime_home: Option<&Path>,
+    home: Option<&Path>,
+    install_candidates: &[PathBuf],
+) -> String {
+    if let Some(raw) = explicit {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() && Path::new(trimmed).is_file() {
+            return trimmed.to_string();
+        }
+    }
+
+    if let Some(runtime_home) = runtime_home {
+        let candidate = runtime_home.join("bin").join("alfred");
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+
+    if let Some(home) = home {
+        for relative in [".local/bin/alfred", ".alfred/bin/alfred"] {
+            let candidate = home.join(relative);
+            if candidate.is_file() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+    }
+
+    for candidate in install_candidates {
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+
+    "alfred".to_string()
 }
 
 fn validate_codename(value: &str) -> Result<String, String> {
@@ -585,10 +988,13 @@ fn command_preview(program: &str, args: &[String]) -> Vec<String> {
 }
 
 fn trim_output(bytes: &[u8]) -> String {
+    trim_text(&String::from_utf8_lossy(bytes))
+}
+
+fn trim_text(text: &str) -> String {
     const MAX_CHARS: usize = 20_000;
-    let text = String::from_utf8_lossy(bytes).to_string();
     if text.chars().count() <= MAX_CHARS {
-        return text;
+        return text.to_string();
     }
     let mut trimmed: String = text.chars().take(MAX_CHARS).collect();
     trimmed.push_str("\n...[truncated]");
@@ -671,6 +1077,110 @@ fn focus_main_window(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::{self, File};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "alfred-desktop-{name}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
+    fn touch(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("test dir should be created");
+        }
+        File::create(path).expect("test file should be created");
+    }
+
+    #[test]
+    fn resolve_program_passes_through_non_alfred_programs() {
+        assert_eq!(resolve_program("gh"), "gh");
+        assert_eq!(resolve_program("/usr/bin/env"), "/usr/bin/env");
+    }
+
+    #[test]
+    fn resolve_alfred_program_prefers_existing_explicit_override() {
+        let root = temp_root("explicit");
+        let explicit = root.join("bin").join("alfred");
+        touch(&explicit);
+
+        let resolved = resolve_alfred_program(
+            Some(explicit.to_str().expect("test path should be utf-8")),
+            None,
+            None,
+            &[],
+        );
+
+        assert_eq!(resolved, explicit.to_string_lossy().into_owned());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_alfred_program_uses_home_install_paths() {
+        let root = temp_root("home");
+        let local = root.join(".local").join("bin").join("alfred");
+        touch(&local);
+
+        let resolved = resolve_alfred_program(None, None, Some(&root), &[]);
+
+        assert_eq!(resolved, local.to_string_lossy().into_owned());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_alfred_program_prefers_configured_runtime_home() {
+        let root = temp_root("runtime-home");
+        let runtime_home = root.join("configured");
+        let user_home = root.join("user");
+        let runtime = runtime_home.join("bin").join("alfred");
+        let local = user_home.join(".local").join("bin").join("alfred");
+        touch(&local);
+        touch(&runtime);
+
+        let resolved = resolve_alfred_program(None, Some(&runtime_home), Some(&user_home), &[]);
+
+        assert_eq!(resolved, runtime.to_string_lossy().into_owned());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_alfred_program_uses_global_install_candidates() {
+        let root = temp_root("global");
+        let global = root.join("alfred");
+        touch(&global);
+
+        let resolved = resolve_alfred_program(None, None, None, &[global.clone()]);
+
+        assert_eq!(resolved, global.to_string_lossy().into_owned());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolve_alfred_program_falls_back_to_path_lookup() {
+        let missing = temp_root("missing").join("alfred");
+
+        let resolved = resolve_alfred_program(
+            Some("/definitely/not/a/real/alfred"),
+            None,
+            None,
+            &[missing],
+        );
+
+        assert_eq!(resolved, "alfred");
+    }
+
+    #[test]
+    fn base_url_rewrites_legacy_airplay_port() {
+        let url = validate_base_url("http://127.0.0.1:7000")
+            .expect("legacy localhost port should still be accepted");
+        assert_eq!(url.as_str(), "http://127.0.0.1:7010/");
+    }
 
     #[test]
     fn post_allowlist_uses_path_without_query() {
@@ -726,6 +1236,19 @@ mod tests {
         let err = validate_api_path("/api/queue", &Method::GET)
             .expect_err("queue must not be reachable via GET");
         assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
+    fn desktop_runtime_start_keeps_browser_closed() {
+        assert_eq!(
+            alfred_serve_args(7010),
+            vec![
+                "serve".to_string(),
+                "--port".to_string(),
+                "7010".to_string(),
+                "--no-browser".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -808,14 +1331,6 @@ mod tests {
 
     #[test]
     fn plan_decision_and_compose_converse_are_allowlisted() {
-        let (path, _query) = validate_api_path("/api/conversation/control", &Method::POST)
-            .expect("conversation control should be accepted for POST");
-        assert_eq!(path, "/api/conversation/control");
-        assert!(is_allowed_conversation_control("/api/conversation/control"));
-        assert!(!is_allowed_conversation_control(
-            "/api/conversation/control/extra"
-        ));
-
         // POST /api/plans/{id}/decision (approve/decline) is on the contract,
         // with the {id} segment parameterized like the follow-up actions.
         let (path, query) = validate_api_path("/api/plans/batman-42/decision", &Method::POST)
@@ -831,6 +1346,11 @@ mod tests {
         assert!(is_allowed_plan_decision(
             "/api/plans/compose-123/file-issue"
         ));
+        let (path, query) = validate_api_path("/api/plans/compose-123/discard", &Method::POST)
+            .expect("plan discard path should be accepted for POST");
+        assert_eq!(path, "/api/plans/compose-123/discard");
+        assert_eq!(query, None);
+        assert!(is_allowed_plan_decision("/api/plans/compose-123/discard"));
         // The single-segment draft path and unknown verbs must stay off the rule.
         assert!(!is_allowed_plan_decision("/api/plans/draft"));
         assert!(!is_allowed_plan_decision("/api/plans/batman-42/delete"));
@@ -843,6 +1363,10 @@ mod tests {
             .expect("compose converse fallback should be accepted for POST");
         assert_eq!(path, "/api/compose/converse");
         assert!(is_allowed_compose_converse("/api/compose/converse"));
+        assert!(is_allowed_conversation_control("/api/conversation/control"));
+        assert!(!is_allowed_conversation_control(
+            "/api/conversation/control/x"
+        ));
         // The streamed variant never rides this Rust bridge, so it is NOT on
         // the buffered POST contract here.
         assert!(!is_allowed_compose_converse("/api/compose/converse/stream"));
@@ -996,6 +1520,63 @@ mod tests {
     }
 
     #[test]
+    fn github_auth_parser_extracts_device_code_and_url() {
+        let text = "! First copy your one-time code: ABCD-1234\nThen open: https://github.com/login/device\n";
+        assert_eq!(extract_device_code(text).as_deref(), Some("ABCD-1234"));
+        assert_eq!(
+            extract_first_url(text).as_deref(),
+            Some("https://github.com/login/device")
+        );
+    }
+
+    #[test]
+    fn github_auth_parser_trims_terminal_punctuation() {
+        let text = "Copy code `WXYZ-9876`, then visit <https://github.com/login/device>.";
+        assert_eq!(extract_device_code(text).as_deref(), Some("WXYZ-9876"));
+        assert_eq!(
+            extract_first_url(text).as_deref(),
+            Some("https://github.com/login/device")
+        );
+    }
+
+    #[test]
+    fn github_auth_capture_stops_on_device_code_or_closed_pipes() {
+        assert!(github_auth_capture_should_stop(
+            false,
+            "First copy your one-time code: ABCD-1234",
+            ""
+        ));
+        assert!(github_auth_capture_should_stop(true, "", ""));
+        assert!(!github_auth_capture_should_stop(false, "", "waiting"));
+    }
+
+    #[test]
+    fn github_auth_login_args_can_drop_clipboard_for_old_gh() {
+        let with_clipboard = github_auth_login_args(true);
+        assert!(with_clipboard.contains(&"--clipboard".to_string()));
+        let without_clipboard = github_auth_login_args(false);
+        assert!(!without_clipboard.contains(&"--clipboard".to_string()));
+        assert!(without_clipboard.contains(&"--web".to_string()));
+        assert!(without_clipboard.contains(&"--hostname".to_string()));
+        assert!(without_clipboard.contains(&"github.com".to_string()));
+    }
+
+    #[test]
+    fn github_auth_detects_unknown_clipboard_flag() {
+        let result = NativeCommandResult {
+            command: vec!["gh".to_string(), "auth".to_string()],
+            stdout: String::new(),
+            stderr: "unknown flag: --clipboard".to_string(),
+            status: Some(1),
+            success: false,
+            pid: None,
+            message: None,
+            github_auth: None,
+        };
+        assert!(is_unknown_clipboard_flag(&result));
+    }
+
+    #[test]
     fn memory_native_actions_build_fixed_commands() {
         let (_, redis_args) = build_alfred_action("redis_sync_preview", None, None)
             .expect("redis preview has no target");
@@ -1028,6 +1609,147 @@ mod tests {
         assert!(validate_codename(&long).is_err());
         let ok = "a".repeat(80);
         assert_eq!(validate_codename(&ok).expect("80 chars is allowed"), ok);
+    }
+
+    #[test]
+    fn alfred_resolver_prefers_configured_env_var() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
+
+        let root = temp_root("alfred-bin-env");
+        let configured = root.join("bin").join("alfred");
+        touch(&configured);
+
+        std::env::set_var("ALFRED_BIN", &configured);
+        assert_eq!(
+            resolve_program("alfred"),
+            configured.to_string_lossy().into_owned()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("ALFRED_BIN", prev_alfred_bin);
+    }
+
+    #[test]
+    fn alfred_resolver_reads_alfred_env_file() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_hermes = std::env::var("HERMES_HOME").ok();
+        let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
+
+        let root = temp_root("alfred-bin-dotenv");
+        let configured = root.join("custom").join("alfred");
+        touch(&configured);
+        std::fs::write(
+            root.join(".env"),
+            format!("ALFRED_BIN='{}'\n", configured.to_string_lossy()),
+        )
+        .expect("write temp env");
+
+        std::env::set_var("ALFRED_HOME", &root);
+        std::env::remove_var("HERMES_HOME");
+        std::env::remove_var("ALFRED_BIN");
+        assert_eq!(
+            resolve_program("alfred"),
+            configured.to_string_lossy().into_owned()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("HERMES_HOME", prev_hermes);
+        restore_var("ALFRED_BIN", prev_alfred_bin);
+    }
+
+    #[test]
+    fn alfred_resolver_uses_configured_runtime_home_bin() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_hermes = std::env::var("HERMES_HOME").ok();
+        let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
+        let prev_home = std::env::var("HOME").ok();
+
+        let root = temp_root("alfred-home-bin");
+        let runtime = root.join("runtime").join("bin").join("alfred");
+        let local = root.join("user").join(".local").join("bin").join("alfred");
+        touch(&local);
+        touch(&runtime);
+
+        std::env::set_var("ALFRED_HOME", root.join("runtime"));
+        std::env::remove_var("HERMES_HOME");
+        std::env::remove_var("ALFRED_BIN");
+        std::env::set_var("HOME", root.join("user"));
+        assert_eq!(
+            resolve_program("alfred"),
+            runtime.to_string_lossy().into_owned()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("HERMES_HOME", prev_hermes);
+        restore_var("ALFRED_BIN", prev_alfred_bin);
+        restore_var("HOME", prev_home);
+    }
+
+    #[test]
+    fn gh_resolver_prefers_configured_env_var() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_alfred_gh = std::env::var("ALFRED_GH_BIN").ok();
+        let prev_gh = std::env::var("GH_BIN").ok();
+
+        std::env::set_var("ALFRED_GH_BIN", "/custom/bin/gh");
+        std::env::set_var("GH_BIN", "/other/bin/gh");
+        assert_eq!(resolve_gh_bin(), "/custom/bin/gh");
+
+        restore_var("ALFRED_GH_BIN", prev_alfred_gh);
+        restore_var("GH_BIN", prev_gh);
+    }
+
+    #[test]
+    fn gh_resolver_reads_alfred_env_file() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_hermes = std::env::var("HERMES_HOME").ok();
+        let prev_alfred_gh = std::env::var("ALFRED_GH_BIN").ok();
+        let prev_gh = std::env::var("GH_BIN").ok();
+
+        let dir = std::env::temp_dir().join(format!("alfred-gh-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create temp home");
+        std::fs::write(dir.join(".env"), "ALFRED_GH_BIN='/configured/gh'\n")
+            .expect("write temp env");
+
+        std::env::set_var("ALFRED_HOME", &dir);
+        std::env::remove_var("HERMES_HOME");
+        std::env::remove_var("ALFRED_GH_BIN");
+        std::env::remove_var("GH_BIN");
+        assert_eq!(resolve_gh_bin(), "/configured/gh");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("HERMES_HOME", prev_hermes);
+        restore_var("ALFRED_GH_BIN", prev_alfred_gh);
+        restore_var("GH_BIN", prev_gh);
+    }
+
+    #[test]
+    fn native_subprocess_path_includes_common_cli_dirs() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_path = std::env::var("PATH").ok();
+
+        std::env::set_var("HOME", "/tmp/alfred-home");
+        std::env::set_var("PATH", "/usr/bin:/bin");
+        let path = augmented_cli_path().to_string_lossy().to_string();
+
+        assert!(path.contains("/tmp/alfred-home/.local/bin"));
+        assert!(path.contains("/tmp/alfred-home/.alfred/bin"));
+        assert!(path.contains("/opt/homebrew/bin"));
+        assert!(path.contains("/opt/homebrew/sbin"));
+        assert!(path.contains("/usr/local/bin"));
+        assert!(path.contains("/usr/local/sbin"));
+        assert!(path.ends_with("/usr/bin:/bin"));
+
+        restore_var("HOME", prev_home);
+        restore_var("PATH", prev_path);
     }
 
     #[test]

@@ -11,6 +11,10 @@ export type AgentSummary = {
   status: "live" | "idle" | "error" | string;
   last_summary: string;
   firings_today: number;
+  // Today's firings that ended in an honest failure, including a failure
+  // outcome on an otherwise-"complete" firing. Older servers omit it, so it is
+  // optional and absent means "not reported", never zero failures.
+  failures_today?: number;
   // Paused/running service state now comes from the polled /api/status feed
   // instead of shelling `alfred status --json`. The server reads the same
   // pause marker the CLI writes; `loaded` is the inverse of `paused` because
@@ -152,6 +156,7 @@ export type FiringsResponse = {
 // hold   -> take it out of Alfred's reach (do-not-pickup)
 // done   -> close the issue using GitHub's native closed state (no new label)
 export type QueueAction = "assign" | "queue" | "hold" | "done";
+export type AssignmentTargetAgent = "auto" | "batman" | "lucius";
 
 // Response from POST /api/queue (assign, arm, hold, or close an issue).
 export type QueueActionResponse = {
@@ -159,6 +164,7 @@ export type QueueActionResponse = {
   repo: string;
   number: number;
   action: QueueAction;
+  target_agent?: AssignmentTargetAgent | string;
   detail: string;
 };
 
@@ -173,6 +179,10 @@ export type ShippedCard = {
   repo: string;
   number: number | null;
   title: string;
+  // Plain-language outcome sentence derived server-side (conventional-commit
+  // prefix stripped, sentence case, PR body first line preferred when better).
+  // Older servers omit it, so the client falls back to a cleaned title.
+  outcome?: string;
   url: string | null;
   author: string | null;
   kind: "pr" | "issue" | string;
@@ -224,6 +234,10 @@ export type MemoryCandidate = {
   codename: string;
   repo: string;
   body: string;
+  // Plain one-line statement built server-side from the structured failure
+  // fields (agent, subtype, engine, count). Older servers omit it, so the
+  // client falls back to the raw body.
+  statement?: string;
   tags: string[];
   severity: "info" | "warning" | "blocker" | string;
   source: string;
@@ -256,6 +270,16 @@ export type FollowupActionResponse = {
   draft_id?: string;
   draft_path?: string;
   archived_path?: string;
+};
+
+// Discarding a local planning draft archives it (never hard-deletes) so it is
+// recoverable. Idempotent: a second discard returns "already_discarded".
+export type DiscardPlanResponse = {
+  ok: boolean;
+  status: "discarded" | "already_discarded" | string;
+  draft_id: string;
+  archived_path?: string;
+  error?: string;
 };
 
 export type FilePlanIssueResponse = {
@@ -534,6 +558,30 @@ export type UsageLimits = {
   } | null;
 };
 
+// The weekly subscription window. `utilization`/`remaining_percent` are non-null
+// only when the OAuth usage cache provided a real seven-day quota; we never
+// invent one. When that cache is absent the window falls back to the local
+// Claude state file (~/.claude/.claude.json): `resets_at` + `tier` from state,
+// and `used_tokens_7d` derived from transcripts, with the percentage left null.
+export type UsageWeekly = {
+  available?: boolean;
+  total_tokens: number | null;
+  cost_usd: number | null;
+  utilization?: number | null;
+  remaining_percent?: number | null;
+  resets_at?: string | null;
+  minutes_to_reset?: number | null;
+  source?: string | null;
+  // Trailing-7-day token total derived from transcripts (local-state fallback
+  // only). Null when the OAuth quota cache fed the window.
+  used_tokens_7d?: number | null;
+  // Plan tier from the local state file, e.g. "default_claude_max_20x", plus a
+  // short display label, e.g. "Max 20x" (null for unrecognized slugs).
+  tier?: string | null;
+  tier_label?: string | null;
+  unavailable_reason?: string | null;
+};
+
 export type UsageResponse = {
   available: boolean;
   kind: string;
@@ -545,16 +593,8 @@ export type UsageResponse = {
   codex: UsageCodex | null;
   // Real Claude usage-limit percentages, when a local cache is available.
   limits?: UsageLimits | null;
-  // Null unless a real 7-day utilization is available; we never invent a quota.
-  weekly: {
-    total_tokens: number | null;
-    cost_usd: number | null;
-    utilization?: number | null;
-    remaining_percent?: number | null;
-    resets_at?: string | null;
-    minutes_to_reset?: number | null;
-    source?: string | null;
-  } | null;
+  // The weekly window. See `UsageWeekly`.
+  weekly: UsageWeekly | null;
   // Set when the whole rollup is unavailable.
   error?: string;
   // Per-source failures when one local reader worked and the other did not.
@@ -570,10 +610,18 @@ export type NativeAction =
   | "status"
   | "agents"
   | "auth_status"
+  | "github_auth_login"
   | "brain_doctor"
   | "redis_status"
   | "redis_sync_preview"
   | "memory_harvest";
+
+export type GithubAuthLoginDetails = {
+  device_url: string | null;
+  device_code: string | null;
+  poll_interval_ms: number;
+  timeout_ms: number;
+};
 
 // Shape of a single agent entry in `alfred status --json`. The CLI exposes the
 // paused/running state that the read-only /api/status endpoint does not, so the
@@ -601,6 +649,7 @@ export type NativeCommandResult = {
   success: boolean;
   pid: number | null;
   message: string | null;
+  github_auth?: GithubAuthLoginDetails | null;
 };
 
 export type Snapshot = {

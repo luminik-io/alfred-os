@@ -109,7 +109,7 @@ const needsYouItem: AttentionItem = {
   title: "Approve the export plan",
   detail: "Review before Alfred starts.",
   tone: "info",
-  targetTab: "plans",
+  targetTab: "pipeline",
   icon: "plan",
 };
 
@@ -118,20 +118,21 @@ describe("ReviewView", () => {
     renderReview({ needsYou: [needsYouItem] });
     // Lanes are in-page tabs now (no long scroll); the right rail keeps the
     // useful capacity evidence in view without a duplicate cost strip.
-    expect(screen.getByRole("tab", { name: /needs you/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /activity/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /needs/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /running/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /shipped/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /capacity and proof/i })).toBeInTheDocument();
-    // Real local subscription headroom is surfaced in the rail.
-    expect(screen.getByRole("region", { name: /subscription usage/i })).toBeInTheDocument();
-    // A waiting decision opens on the Needs-you lane by default.
-    expect(screen.getByRole("region", { name: /needs you/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /engine capacity/i })).toBeInTheDocument();
+    // Real engine headroom is surfaced in the rail (Claude 5h window) without a
+    // raw token wall.
+    expect(screen.getByText(/5h window/i)).toBeInTheDocument();
+    // A waiting decision opens on the Needs lane by default.
+    expect(screen.getByRole("region", { name: /decisions/i })).toBeInTheDocument();
     expect(screen.getByText(/approve the export plan/i)).toBeInTheDocument();
   });
 
   it("follows the smart default lane as state loads, until the operator pins one", async () => {
     // Before the first snapshot resolves, the dashboard surfaces a transient
-    // connection item, so decisions is truthy and Review opens on Needs you.
+    // connection item, so decisions is truthy and Inbox opens on Needs.
     const { rerender } = render(
       <ReviewView
         snapshot={null}
@@ -142,10 +143,10 @@ describe("ReviewView", () => {
         onSwitch={vi.fn()}
       />,
     );
-    expect(screen.getByRole("tab", { name: /needs you/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /needs/i })).toHaveAttribute("aria-selected", "true");
 
     // A healthy snapshot with no real decisions arrives: the lane moves to
-    // Activity on its own instead of stranding Review on an empty Needs-you panel.
+    // Running on its own instead of stranding Inbox on an empty Needs panel.
     rerender(
       <ReviewView
         snapshot={snapshot()}
@@ -156,8 +157,8 @@ describe("ReviewView", () => {
         onSwitch={vi.fn()}
       />,
     );
-    expect(screen.getByRole("tab", { name: /activity/i })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: /needs you/i })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tab", { name: /running/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /needs/i })).toHaveAttribute("aria-selected", "false");
 
     // Once the operator manually picks a lane, respect it even as state changes.
     await userEvent.setup().click(screen.getByRole("tab", { name: /shipped/i }));
@@ -215,7 +216,10 @@ describe("ReviewView", () => {
 
   it("shows running firings in the Running lane", () => {
     renderReview({ snapshot: snapshot({ firings: [firing()] }) });
+    expect(screen.getByText("Alfred is working")).toBeInTheDocument();
+    expect(screen.getByText(/1 run is active now/i)).toBeInTheDocument();
     expect(screen.getByText(/working on the csv export\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
   });
 
   it("renders shipped work as a plain-English digest", async () => {
@@ -267,38 +271,169 @@ describe("ReviewView", () => {
     expect(screen.getByText(/shipped and merged into web/i)).toBeInTheDocument();
   });
 
-  it("shows compact engine headroom from the native reader, labelled as usage not billed-$", () => {
-    renderReview();
-    const panel = screen.getByRole("region", { name: /subscription usage/i });
-    // The Inbox capacity rail is the compact headroom view: Claude 5h + weekly
-    // windows with a reset countdown, never a raw token wall or dollar figure.
-    expect(within(panel).getByText(/5h window/i)).toBeInTheDocument();
-    expect(within(panel).getByText(/weekly/i)).toBeInTheDocument();
-    expect(within(panel).getByText("2h 5m")).toBeInTheDocument();
-    // Local token totals and the dollar figure are full-view only; the compact
-    // rail never exposes them.
-    expect(panel.textContent).not.toMatch(/142/);
-    expect(panel.textContent).not.toMatch(/\$109/);
+  it("opens Running when queued board work exists alongside shipped proof", () => {
+    renderReview({
+      shipped: board({
+        columns: {
+          queued: [
+            {
+              repo: "your-org/api",
+              number: 12,
+              title: "Add billing report",
+              url: "https://github.com/your-org/api/issues/12",
+              author: "batman",
+              kind: "issue",
+              timestamp: "2026-06-02T11:45:00Z",
+              age_days: 0,
+              is_draft: false,
+              labels: [],
+            },
+          ],
+          in_progress: [],
+          shipped: [
+            {
+              repo: "your-org/api",
+              number: 7,
+              title: "feat: add CSV export",
+              url: "https://github.com/your-org/api/pull/7",
+              author: "lucius",
+              kind: "pr",
+              timestamp: "2026-06-02T11:00:00Z",
+              age_days: 0,
+              is_draft: false,
+              labels: [],
+            },
+          ],
+        },
+        counts: { queued: 1, in_progress: 0, shipped: 1 },
+      }),
+    });
+
+    expect(screen.getByRole("tab", { name: /running/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Alfred is working")).toBeInTheDocument();
+    expect(screen.getByText(/1 request is queued or building/i)).toBeInTheDocument();
+    expect(screen.getByText("Add billing report")).toBeInTheDocument();
+    expect(screen.queryByText("Alfred is clear")).not.toBeInTheDocument();
   });
 
-  it("shows a plain 'usage unavailable' state when local usage cannot be read", () => {
+  it("counts active firings and active board threads together", () => {
+    renderReview({
+      snapshot: snapshot({ firings: [firing()] }),
+      shipped: board({
+        columns: {
+          queued: [
+            {
+              repo: "your-org/api",
+              number: 12,
+              title: "Add billing report",
+              url: "https://github.com/your-org/api/issues/12",
+              author: "batman",
+              kind: "issue",
+              timestamp: "2026-06-02T11:45:00Z",
+              age_days: 0,
+              is_draft: false,
+              labels: [],
+            },
+          ],
+          in_progress: [],
+          shipped: [],
+        },
+        counts: { queued: 1, in_progress: 0, shipped: 0 },
+      }),
+    });
+
+    expect(screen.getByLabelText("2 new")).toBeInTheDocument();
+    expect(screen.getByText(/1 run is active now/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 request is queued or building/i)).toBeInTheDocument();
+  });
+
+  it("uses uncapped board counts for live-work chrome", () => {
+    const queued = Array.from({ length: 8 }, (_, index) => ({
+      repo: "your-org/api",
+      number: index + 1,
+      title: `Queued request ${index + 1}`,
+      url: `https://github.com/your-org/api/issues/${index + 1}`,
+      author: "batman",
+      kind: "issue",
+      timestamp: "2026-06-02T11:45:00Z",
+      age_days: 0,
+      is_draft: false,
+      labels: [],
+    }));
+    renderReview({
+      shipped: board({
+        columns: { queued, in_progress: [], shipped: [] },
+        counts: { queued: 8, in_progress: 0, shipped: 0 },
+      }),
+    });
+
+    expect(screen.getByLabelText("8 new")).toBeInTheDocument();
+    expect(screen.getByText(/8 requests are queued or building/i)).toBeInTheDocument();
+    const workingCard = screen.getByText("Working now").closest("article");
+    expect(workingCard).not.toBeNull();
+    expect(within(workingCard as HTMLElement).getByText("8")).toBeInTheDocument();
+    expect(within(workingCard as HTMLElement).getByText(/follow live work/i)).toBeInTheDocument();
+  });
+
+  it("shows compact engine headroom without exposing token totals or dollars", () => {
+    renderReview();
+    const rail = screen.getByRole("region", { name: /engine capacity/i });
+    // The Inbox rail is the compact headroom view: Claude 5h + weekly windows,
+    // never a raw token wall or dollar figure.
+    expect(within(rail).getByText(/5h window/i)).toBeInTheDocument();
+    expect(within(rail).getByText(/weekly/i)).toBeInTheDocument();
+    expect(rail.textContent).not.toMatch(/142/);
+    expect(rail.textContent).not.toMatch(/\$/);
+  });
+
+  it("shows a compact usage-unavailable state when local usage cannot be read", () => {
     renderReview({
       usage: usage({ available: false, block: null, codex: null, error: "usage logs unavailable" }),
       usageState: "error",
     });
-    expect(screen.getByText(/usage unavailable/i)).toBeInTheDocument();
-    expect(screen.getByText(/usage logs unavailable/i)).toBeInTheDocument();
-    // It must not crash the rest of the Review surface: the capacity rail still
-    // renders alongside the degraded usage panel.
-    expect(screen.getByRole("region", { name: /capacity and proof/i })).toBeInTheDocument();
+    const rail = screen.getByRole("region", { name: /engine capacity/i });
+    // Honest degraded state: the panel says usage is unavailable rather than
+    // inventing headroom, and the rest of the Review surface still renders.
+    expect(within(rail).getByText(/usage unavailable/i)).toBeInTheDocument();
+    expect(rail).toBeInTheDocument();
   });
 
-  it("routes the Ask action to the conversational planning surface", async () => {
+  it("falls back the hero CTA to Open Work when nothing needs the user", async () => {
+    // The redundant Ask card is gone (Ask lives in the sidebar). With no
+    // decisions waiting, the hero's single CTA opens Work.
     const onSwitch = vi.fn();
-    renderReview({ onSwitch });
+    renderReview({ onSwitch, needsYou: [] });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^ask alfred$/i }));
-    expect(onSwitch).toHaveBeenCalledWith("compose");
+    expect(
+      screen.queryByRole("button", { name: /ask alfred/i }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /open work/i }));
+    expect(onSwitch).toHaveBeenCalledWith("pipeline");
+  });
+
+  it("points the hero CTA at the waiting decisions when some exist", async () => {
+    // When decisions are waiting the hero CTA becomes the top decision and
+    // switches the inbox to the Needs lane in place (no navigation away).
+    const onSwitch = vi.fn();
+    renderReview({
+      onSwitch,
+      needsYou: [
+        {
+          id: "a1",
+          label: "Plan",
+          title: "Approve the export plan",
+          detail: "Batman needs a go-ahead.",
+          tone: "info",
+          icon: "plan",
+          targetTab: "pipeline",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    const cta = screen.getByRole("button", { name: /review the 1 waiting/i });
+    await user.click(cta);
+    // The lane CTA does not navigate; it pins the Needs lane within Inbox.
+    expect(onSwitch).not.toHaveBeenCalled();
   });
 
   it("approves a waiting Batman plan in-place from the Needs-you card", async () => {
@@ -324,7 +459,8 @@ describe("ReviewView", () => {
       onPlanDecision,
     });
 
-    expect(screen.getByText(/approving starts this exact scope/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^approve/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^decline/i })).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: /^approve/i }));
     expect(onPlanDecision).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "13-plan" }),

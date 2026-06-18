@@ -120,6 +120,22 @@ describe("FleetControlView", () => {
     expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
   });
 
+  it("opens on an llm-error agent before a running agent", () => {
+    render(
+      <FleetControlView
+        agents={[agent("lucius", { status: "live" }), agent("bane", { status: "llm-error" })]}
+        schedule={SCHEDULE}
+        service={SERVICE}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Pause$/i })).not.toBeInTheDocument();
+  });
+
   it("reads paused state from the polled summary without a CLI service map", async () => {
     render(
       <FleetControlView

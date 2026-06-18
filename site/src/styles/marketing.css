@@ -607,16 +607,91 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-nav {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 22px;
 }
 
-.m-nav a {
+.m-nav a,
+.m-nav summary {
   color: var(--alfred-text);
   font-size: 14px;
   font-weight: 500;
 }
-.m-nav a:hover { color: var(--alfred-text-bright); text-decoration: none; }
-.m-nav a[aria-current="page"] { color: var(--alfred-text-bright); }
+.m-nav a:hover,
+.m-nav summary:hover { color: var(--alfred-text-bright); text-decoration: none; }
+.m-nav a[aria-current="page"],
+.m-nav summary[aria-current="page"] { color: var(--alfred-text-bright); }
+
+.m-nav-group {
+  position: relative;
+}
+
+.m-nav-group summary {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  padding-bottom: 4px;
+}
+
+.m-nav-group summary::-webkit-details-marker { display: none; }
+
+.m-nav-group summary::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  order: 2;
+  opacity: 0.7;
+  transition: transform 160ms ease;
+}
+
+.m-nav-group[open] summary::before {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.m-nav-menu {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 50%;
+  z-index: 70;
+  display: grid;
+  width: min(330px, calc(100vw - 40px));
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--alfred-border-strong);
+  border-radius: var(--radius);
+  background: var(--alfred-surface);
+  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.44);
+  transform: translateX(-50%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.m-nav-menu a {
+  display: grid;
+  gap: 2px;
+  padding: 11px 12px;
+  border-radius: 6px;
+  color: var(--alfred-text);
+}
+
+.m-nav-menu a:hover,
+.m-nav-menu a:focus-visible,
+.m-nav-menu a[aria-current="page"] {
+  background: var(--alfred-surface-2);
+  color: var(--alfred-text-bright);
+}
+
+.m-nav-menu small {
+  color: var(--alfred-mute);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
 
 .m-nav__cta {
   padding: 8px 14px;
@@ -683,12 +758,12 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   left: 20px;
   z-index: 60;
   display: grid;
-  gap: 4px;
+  gap: 10px;
   padding: 10px;
   border: 1px solid var(--alfred-border-strong);
   border-radius: var(--radius);
-  background: color-mix(in oklab, var(--alfred-surface-2) 94%, transparent);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  background: var(--alfred-surface-2);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.44);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
@@ -706,6 +781,28 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   border-radius: 6px;
   color: var(--alfred-text);
   font-weight: 600;
+}
+
+.m-mobile-menu__section {
+  display: grid;
+  gap: 4px;
+}
+
+.m-mobile-menu__section + .m-mobile-menu__section {
+  padding-top: 8px;
+  border-top: 1px solid var(--alfred-border);
+}
+
+.m-mobile-menu__section h3 {
+  margin: 0;
+  padding: 0 12px 2px;
+  color: var(--alfred-mute);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.3;
+  text-transform: uppercase;
 }
 
 .m-mobile-menu a:hover,
@@ -731,6 +828,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 
 @media (max-width: 860px) {
   .m-nav { gap: 16px; }
+  .m-nav-group,
   .m-nav a:not(.m-nav__cta) { display: none; }
   .m-menu-button { display: inline-flex; }
 }
@@ -863,11 +961,13 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 
 /* Animated underline on nav items. The accent line slides in from the
    left on hover. */
-.m-nav a {
+.m-nav > a,
+.m-nav summary {
   position: relative;
   padding-bottom: 4px;
 }
-.m-nav a::after {
+.m-nav > a::after,
+.m-nav summary::after {
   content: "";
   position: absolute;
   left: 0;
@@ -880,9 +980,13 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   transition: transform 220ms ease;
 }
 .m-nav a:hover { text-decoration: none; }
-.m-nav a:hover::after { transform: scaleX(1); }
+.m-nav > a:hover::after,
+.m-nav summary:hover::after,
+.m-nav > a[aria-current="page"]::after,
+.m-nav summary[aria-current="page"]::after { transform: scaleX(1); }
 @media (prefers-reduced-motion: reduce) {
-  .m-nav a::after { transition: none; }
+  .m-nav > a::after,
+  .m-nav summary::after { transition: none; }
 }
 
 /* Subtle accent pulse on the GitHub star icon to draw the eye. */

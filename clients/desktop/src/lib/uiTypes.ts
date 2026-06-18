@@ -1,27 +1,28 @@
 import type { NativeAction } from "../types";
 
-// The redesigned IA: job-shaped primary destinations plus the agent-depth
-// surfaces that live inside the first-class Agents page.
-//   review  -> home / heartbeat (Needs you / Running / Shipped + cost strip)
-//   board   -> Alfred Kanban Board (issues, PRs, shipped work)
-//   compose -> plan work with Alfred (plain-mode spec coach)
-//   operator -> Agents page (service control, logs, lessons, plans)
-//   setup   -> onboarding + connection
-// Agent depth (rendered as subtabs inside Agents):
-//   plans / memory / fleet / logs
+// Job-shaped IA. Internal keys preserve legacy deep links; labels are product
+// copy and live in primaryTabs.ts.
+//   home     -> Inbox: needs you, live activity, shipped PRs
+//   compose  -> Ask: conversational request intake
+//   pipeline -> Work: plans, queue, PR lifecycle, shipped evidence
+//   fleet    -> Agents: roster, schedules, activity, lessons
+//   lessons  -> Lessons: what the fleet learned, rendered inside Agents
+// Internal aliases:
+//   settings -> Setup: onboarding, repos, collaborators, diagnostics
+//   logs     -> the activity tail for one agent, rendered inside Fleet
 export type TabKey =
-  | "review"
-  | "board"
+  | "home"
   | "compose"
-  | "operator"
-  | "setup"
-  | "plans"
-  | "memory"
+  | "pipeline"
   | "fleet"
+  | "lessons"
+  | "settings"
   | "logs";
 
-// The four agent-depth surfaces, surfaced only inside Agents.
-export type OperatorKey = "plans" | "memory" | "fleet" | "logs";
+// The depth surfaces grouped inside Fleet.
+export type OperatorKey = "fleet" | "logs" | "lessons";
+
+export type SetupMode = "guided" | "advanced";
 
 export type FollowupAction = "convert" | "handled";
 

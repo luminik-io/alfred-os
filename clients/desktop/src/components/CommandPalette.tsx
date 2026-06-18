@@ -40,7 +40,6 @@ export function CommandPalette({
       title="Command palette"
       description="Search Alfred actions."
       className="max-w-lg"
-      showCloseButton
     >
       <CommandRoot>
         <CommandInput placeholder="Search actions" />

@@ -53,7 +53,7 @@ export function parseFleetServiceState(result: NativeCommandResult | null): Flee
 /**
  * Look up an agent's service entry tolerating the CLI's fully-qualified labels.
  * The /api/status feed reports short codenames (e.g. "lucius") while the status
- * JSON may report "alfred.lucius"; match on either the exact key or the
+ * JSON may report "fleet.local.lucius"; match on either the exact key or the
  * trailing segment.
  */
 export function lookupServiceState(
@@ -166,9 +166,7 @@ export function deriveFleetHealth(rows: FleetControlRow[]): {
   if (!rows.length) {
     return { level: "unknown", summary: "no agents detected" };
   }
-  const errored = rows.filter(
-    (row) => row.summary?.status === "error" || hasFailStreak(row),
-  );
+  const errored = rows.filter((row) => isErrorStatus(row.summary?.status) || hasFailStreak(row));
   if (errored.length) {
     return {
       level: "error",
@@ -193,4 +191,8 @@ const FAIL_STREAK_THRESHOLD = 2;
 
 function hasFailStreak(row: FleetControlRow): boolean {
   return row.consecutiveFailures >= FAIL_STREAK_THRESHOLD;
+}
+
+function isErrorStatus(value: string | null | undefined): boolean {
+  return value === "error" || value === "llm-error" || value === "llm_error";
 }
