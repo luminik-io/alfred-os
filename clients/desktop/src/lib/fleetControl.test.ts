@@ -45,7 +45,7 @@ const STATUS_JSON = JSON.stringify({
       today_consecutive_failures: 0,
     },
     {
-      agent: "luminik.eng.robin",
+      agent: "fleet.local.robin",
       loaded: false,
       paused: false,
       paused_since: null,
@@ -68,7 +68,7 @@ describe("parseFleetServiceState", () => {
 
   it("keys the agents by codename", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
-    expect(Object.keys(map).sort()).toEqual(["bane", "lucius", "luminik.eng.robin"]);
+    expect(Object.keys(map).sort()).toEqual(["bane", "fleet.local.robin", "lucius"]);
     expect(map.bane.paused).toBe(true);
   });
 });
@@ -77,7 +77,7 @@ describe("lookupServiceState", () => {
   it("matches a short codename against a fully-qualified label", () => {
     const map = parseFleetServiceState(nativeResult({ stdout: STATUS_JSON }));
     const found = lookupServiceState(map, "robin");
-    expect(found?.agent).toBe("luminik.eng.robin");
+    expect(found?.agent).toBe("fleet.local.robin");
   });
 });
 
