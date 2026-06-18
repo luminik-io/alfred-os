@@ -431,6 +431,61 @@ def test_discard_plan_is_idempotent(tmp_path: Path) -> None:
     assert second.json()["ok"] is True
 
 
+def test_discard_plan_returns_existing_timestamped_archive_path(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    archive = state / "planning-drafts" / "archive"
+    archive.mkdir(parents=True)
+    archived = archive / "compose-dup-03-20260618-120000.json"
+    archived.write_text(json.dumps({"draft": {"title": "Archived"}}), encoding="utf-8")
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/compose-dup-03/discard",
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "already_discarded"
+    assert Path(body["archived_path"]) == archived
+    assert Path(body["archived_path"]).exists()
+
+
+def test_discard_plan_treats_concurrent_archive_as_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True)
+    live = drafts / "compose-race.json"
+    live.write_text(json.dumps({"draft": {"title": "Race"}}), encoding="utf-8")
+    archive = drafts / "archive" / "compose-race.json"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    real_replace = Path.replace
+
+    def racing_replace(self: Path, target: Path) -> Path:
+        if self == live:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(live.read_text(encoding="utf-8"), encoding="utf-8")
+            live.unlink()
+            raise FileNotFoundError(str(live))
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", racing_replace)
+
+    response = client.post(
+        "/api/plans/compose-race/discard",
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "already_discarded"
+    assert Path(body["archived_path"]) == archive
+    assert archive.exists()
+
+
 def test_discard_plan_requires_token_and_same_origin(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"

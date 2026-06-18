@@ -3563,6 +3563,104 @@ body {
   gap: 0.9rem;
 }
 
+.alfred-pipeline__assign {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.9fr) minmax(14rem, 1fr) minmax(8rem, 0.45fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface), var(--background) 45%);
+  padding: 0.65rem;
+}
+
+.alfred-pipeline__assign-label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.45rem;
+  row-gap: 0.12rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.alfred-pipeline__assign-label svg {
+  color: var(--primary);
+}
+
+.alfred-pipeline__assign-label span {
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 0.84rem;
+  font-weight: 680;
+}
+
+.alfred-pipeline__assign-label small {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.alfred-pipeline__assign input,
+.alfred-pipeline__assign select {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: color-mix(in oklch, var(--background), var(--surface) 22%);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
+.alfred-pipeline__assign input {
+  padding: 0.45rem 0.65rem;
+}
+
+.alfred-pipeline__assign select {
+  padding: 0.45rem 0.55rem;
+}
+
+.alfred-pipeline__assign input:focus,
+.alfred-pipeline__assign select:focus {
+  outline: 2px solid color-mix(in oklch, var(--primary), transparent 55%);
+  outline-offset: 1px;
+}
+
+.alfred-pipeline__assign input[aria-invalid="true"] {
+  border-color: color-mix(in oklch, var(--destructive), var(--border) 25%);
+}
+
+.alfred-pipeline__assign-error {
+  grid-column: 2 / 4;
+  margin: -0.2rem 0 0;
+  color: var(--destructive);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 920px) {
+  .alfred-pipeline__assign {
+    grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.4fr) auto;
+  }
+
+  .alfred-pipeline__assign-label {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .alfred-pipeline__assign {
+    grid-template-columns: 1fr;
+  }
+
+  .alfred-pipeline__assign-error {
+    grid-column: 1;
+  }
+}
+
 .alfred-pipeline__columns {
   display: grid;
   gap: 0.65rem;
@@ -3590,6 +3688,24 @@ body {
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface), var(--background) 55%);
   padding: 0.6rem 0.55rem;
+}
+
+@media (min-width: 900px) {
+  .alfred-pipeline__columns {
+    align-items: start;
+  }
+
+  .alfred-pipeline__column {
+    max-height: min(42rem, calc(100vh - 8.5rem));
+    min-height: min(24rem, calc(100vh - 8.5rem));
+  }
+
+  .alfred-pipeline__cards {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.15rem;
+    scrollbar-gutter: stable;
+  }
 }
 
 /* Slim column header: name + count, with a hairline rule beneath. */

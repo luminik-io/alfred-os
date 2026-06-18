@@ -292,7 +292,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
           Alfred
         </a>
         <nav class="m-nav" aria-label="primary">
-          {navGroups.map((group) => (
+          {navGroups.slice(0, 1).map((group) => (
             <details class="m-nav-group">
               <summary aria-current={groupIsCurrent(group.items) ? "page" : undefined}>{group.label}</summary>
               <div class="m-nav-menu">
@@ -306,6 +306,19 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
             </details>
           ))}
           {directNav.map((item) => <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined}>{item.label}</a>)}
+          {navGroups.slice(1).map((group) => (
+            <details class="m-nav-group">
+              <summary aria-current={groupIsCurrent(group.items) ? "page" : undefined}>{group.label}</summary>
+              <div class="m-nav-menu">
+                {group.items.map((item) => (
+                  <a href={item.href} aria-current={isCurrent(item.href) ? "page" : undefined} rel={"external" in item && item.external ? "noopener" : undefined}>
+                    <span>{item.label}</span>
+                    <small>{item.description}</small>
+                  </a>
+                ))}
+              </div>
+            </details>
+          ))}
           <ThemeToggle />
           <GitHubBadge />
         </nav>

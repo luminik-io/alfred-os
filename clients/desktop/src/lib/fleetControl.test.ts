@@ -159,6 +159,11 @@ describe("deriveFleetHealth", () => {
     expect(deriveFleetHealth(rows).level).toBe("error");
   });
 
+  it("is error when the latest run hit an llm error", () => {
+    const rows = buildFleetRows([agent("lucius", { status: "llm-error" })], {});
+    expect(deriveFleetHealth(rows).level).toBe("error");
+  });
+
   it("is warn when an agent is paused or stopped but none erroring", () => {
     const map = parseFleetServiceState(
       nativeResult({

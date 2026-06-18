@@ -71,6 +71,7 @@ function renderPipeline(props: Partial<Parameters<typeof PipelineView>[0]> = {})
       plans={[]}
       busyPlanAction={null}
       onDecision={vi.fn()}
+      onDiscardPlan={vi.fn()}
       onFileIssue={vi.fn()}
       onFollowupAction={vi.fn()}
       {...props}
@@ -214,6 +215,30 @@ describe("PipelineView", () => {
     );
   });
 
+  it("discards a local planning draft from the detail panel", async () => {
+    const onDiscardPlan = vi.fn();
+    const user = userEvent.setup();
+    renderPipeline({
+      plans: [
+        plan({
+          plan_id: "compose-export",
+          title: "Add export planning",
+          status: "ready",
+          parent: null,
+          source: "compose",
+          readiness_score: 92,
+          readiness_ok: true,
+        }),
+      ],
+      onDiscardPlan,
+    });
+    await user.click(screen.getByRole("button", { name: /add export planning/i }));
+    await user.click(screen.getByRole("button", { name: /discard draft/i }));
+    expect(onDiscardPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: "compose-export" }),
+    );
+  });
+
   it("holds and marks done a queued issue from its detail panel", async () => {
     const onQueueAction = vi.fn();
     const user = userEvent.setup();
@@ -229,6 +254,18 @@ describe("PipelineView", () => {
     expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 12, "hold");
     await user.click(screen.getByRole("button", { name: /mark done/i }));
     expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 12, "done");
+  });
+
+  it("routes an existing issue from the Work assignment strip", async () => {
+    const onQueueAction = vi.fn().mockResolvedValue(true);
+    const user = userEvent.setup();
+    renderPipeline({ onQueueAction });
+
+    await user.type(screen.getByPlaceholderText(/owner\/repo#123/i), "your-org/api#42");
+    await user.selectOptions(screen.getByLabelText(/assignment target/i), "batman");
+    await user.click(screen.getByRole("button", { name: /route/i }));
+
+    expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 42, "assign", "batman");
   });
 
   it("does not offer Hold or Mark done on demo cards", async () => {

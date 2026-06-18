@@ -109,7 +109,7 @@ fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String
         return Err("runtime port must be between 1024 and 65535".to_string());
     }
 
-    let args = vec!["serve".to_string(), "--port".to_string(), port.to_string()];
+    let args = alfred_serve_args(port);
     let resolved = resolve_program("alfred");
     let child = command_with_cli_path(&resolved)
         .args(&args)
@@ -299,6 +299,15 @@ fn config_value(key: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn alfred_serve_args(port: u16) -> Vec<String> {
+    vec![
+        "serve".to_string(),
+        "--port".to_string(),
+        port.to_string(),
+        "--no-browser".to_string(),
+    ]
 }
 
 fn validate_base_url(raw: &str) -> Result<Url, String> {
@@ -579,6 +588,7 @@ fn start_github_auth_login_attempt(include_clipboard: bool) -> Result<NativeComm
     let mut exited = false;
 
     while started.elapsed() < Duration::from_millis(GITHUB_AUTH_CAPTURE_MS) {
+        let mut pipes_disconnected = false;
         match rx.recv_timeout(Duration::from_millis(120)) {
             Ok((is_stdout, chunk)) => {
                 if is_stdout {
@@ -588,7 +598,9 @@ fn start_github_auth_login_attempt(include_clipboard: bool) -> Result<NativeComm
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                pipes_disconnected = true;
+            }
         }
 
         if let Some(exit) = child
@@ -601,7 +613,7 @@ fn start_github_auth_login_attempt(include_clipboard: bool) -> Result<NativeComm
             break;
         }
 
-        if extract_device_code(&combined_output(&stdout, &stderr)).is_some() {
+        if github_auth_capture_should_stop(pipes_disconnected, &stdout, &stderr) {
             break;
         }
     }
@@ -681,6 +693,10 @@ fn drain_pipe_chunks(
             stderr.push_str(&chunk);
         }
     }
+}
+
+fn github_auth_capture_should_stop(pipes_disconnected: bool, stdout: &str, stderr: &str) -> bool {
+    extract_device_code(&combined_output(stdout, stderr)).is_some() || pipes_disconnected
 }
 
 fn reap_child(mut child: Child) {
@@ -1223,6 +1239,19 @@ mod tests {
     }
 
     #[test]
+    fn desktop_runtime_start_keeps_browser_closed() {
+        assert_eq!(
+            alfred_serve_args(7010),
+            vec![
+                "serve".to_string(),
+                "--port".to_string(),
+                "7010".to_string(),
+                "--no-browser".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn memory_candidate_api_paths_are_allowlisted() {
         let (path, query) = validate_api_path("/api/memory/candidates?limit=20", &Method::GET)
             .expect("memory candidates list should be accepted for GET");
@@ -1508,6 +1537,17 @@ mod tests {
             extract_first_url(text).as_deref(),
             Some("https://github.com/login/device")
         );
+    }
+
+    #[test]
+    fn github_auth_capture_stops_on_device_code_or_closed_pipes() {
+        assert!(github_auth_capture_should_stop(
+            false,
+            "First copy your one-time code: ABCD-1234",
+            ""
+        ));
+        assert!(github_auth_capture_should_stop(true, "", ""));
+        assert!(!github_auth_capture_should_stop(false, "", "waiting"));
     }
 
     #[test]

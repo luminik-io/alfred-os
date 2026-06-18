@@ -2688,12 +2688,13 @@ def _discard_planning_draft(state_root: Path, draft_id: str) -> dict[str, Any]:
     archived_path = archive_dir / f"{draft_id}.json"
 
     if not live_path.is_file():
-        if archived_path.is_file() or any(archive_dir.glob(f"{draft_id}-*.json")):
+        existing_archive = _existing_planning_draft_archive(archive_dir, archived_path, draft_id)
+        if existing_archive:
             return {
                 "ok": True,
                 "status": "already_discarded",
                 "draft_id": draft_id,
-                "archived_path": str(archived_path),
+                "archived_path": str(existing_archive),
             }
         raise FileNotFoundError(draft_id)
 
@@ -2702,13 +2703,34 @@ def _discard_planning_draft(state_root: Path, draft_id: str) -> dict[str, Any]:
     if target.exists():
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         target = archive_dir / f"{draft_id}-{stamp}.json"
-    live_path.replace(target)
+    try:
+        live_path.replace(target)
+    except FileNotFoundError:
+        existing_archive = _existing_planning_draft_archive(archive_dir, archived_path, draft_id)
+        if existing_archive:
+            return {
+                "ok": True,
+                "status": "already_discarded",
+                "draft_id": draft_id,
+                "archived_path": str(existing_archive),
+            }
+        raise
     return {
         "ok": True,
         "status": "discarded",
         "draft_id": draft_id,
         "archived_path": str(target),
     }
+
+
+def _existing_planning_draft_archive(
+    archive_dir: Path,
+    archived_path: Path,
+    draft_id: str,
+) -> Path | None:
+    if archived_path.is_file():
+        return archived_path
+    return next(archive_dir.glob(f"{draft_id}-*.json"), None)
 
 
 def _safe_planning_draft_id(raw: Any) -> str | None:

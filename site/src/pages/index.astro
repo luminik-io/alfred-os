@@ -167,7 +167,7 @@ const why = [
       <SectionHeader
         eyebrow="WHY ALFRED IS DIFFERENT"
         title="It keeps working after you close the laptop."
-        lede="Most coding agents sit and wait for you to type the next thing. Alfred is built to pick up work on its own and keep going while you are doing something else."
+        lede="Chat-first coding tools wait for a prompt. Alfred picks up approved GitHub work, runs locally, and reports back when it needs a decision."
       />
       <div class="why-grid">
         {why.map((w, i) => (
@@ -184,7 +184,7 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="LOCAL MEMORY"
-        title="Your agents remember what actually happened."
+        title="Your agents keep a record of each run."
         lede="Alfred keeps notes on your own machine: lessons you have approved, which files agents changed, what went wrong before, and what is in progress right now. You see and approve new lessons in Slack or the desktop app before they ever shape future work."
       />
       <div class="memory-grid">
@@ -192,7 +192,7 @@ const why = [
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">01</span>
             <h3 class="m-h3">Lessons wait for your approval.</h3>
-            <p>Agents and trusted teammates can suggest a lesson worth keeping, but it does nothing until you approve it. That keeps the notes useful and stops a wrong guess from being treated as fact.</p>
+            <p>Agents and trusted teammates can suggest a lesson worth keeping. A suggestion waits for approval before it changes future work. That keeps a wrong guess from becoming part of the system.</p>
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">02</span>
@@ -202,7 +202,7 @@ const why = [
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">03</span>
             <h3 class="m-h3">A shared memory server is optional.</h3>
-            <p>If you already run the Redis Agent Memory Server, Alfred can connect to it and sync the lessons you have approved. If you do not, the default setup keeps everything on your machine with nothing extra to install.</p>
+            <p>If you already run the Redis Agent Memory Server, Alfred can connect to it and sync the lessons you have approved. The default setup keeps everything on your machine with nothing extra to install.</p>
           </div>
           <p class="memory-link">
             <a class="m-link" href="/concepts/fleet-brain/">How local memory works</a>
@@ -247,7 +247,7 @@ const why = [
       <SectionHeader
         eyebrow="WRITE THE PLAN ONCE"
         title="You write the plan. Alfred is the team that builds it."
-        lede="Write what you want once, in plain text. Drake reads it, asks about the parts you left out, and files small tasks in the right repos. Lucius picks them up and the pull requests come back. You never copy a prompt into a chat window."
+        lede="Write what you want once, in plain text. Drake reads it, asks for the missing details, and files small tasks in the right repos. Lucius picks them up and opens the pull requests."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -261,7 +261,7 @@ const why = [
       <SectionHeader
         eyebrow="THE BATMAN AGENT"
         title="One big feature, planned across every repo it touches."
-        lede="Most coding agents work on one repo at a time. Batman holds a whole feature in view at once: the backend service, the web page, the mobile screen, the background job. It drafts the plan, posts it to Slack for approval, then splits it into a task per repo so Lucius can work on them all in parallel."
+        lede="Single-repo agents lose the edges of a cross-repo feature. Batman keeps the backend service, web page, mobile screen, and background job in one plan. It posts the plan to Slack for approval, then files one task per repo so Lucius can work in parallel."
       />
       <BatmanFanOut />
       <div class="batman-cta">

@@ -196,7 +196,7 @@ describe("ComposeView", () => {
   it("uses the default technical copy when no plain profile is active", () => {
     renderComposeView("technical");
     expect(screen.getByText(/new request/i)).toBeInTheDocument();
-    expect(screen.getByText(/give the outcome, repo scope, and constraints/i)).toBeInTheDocument();
+    expect(screen.getByText(/name the finish line, repo scope, and constraints/i)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /plain language/i })).not.toBeChecked();
   });
 

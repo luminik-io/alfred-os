@@ -916,7 +916,7 @@ function shouldNormalizeDevPreviewBaseUrl(value: string): boolean {
 function isLegacyAirPlayPort(value: string): boolean {
   try {
     const url = new URL(value);
-    return isLocalAlfredUrl(url) && (url.port || "80") === "7000";
+    return isLocalAlfredUrl(url) && url.port === "7000";
   } catch {
     return false;
   }

@@ -166,9 +166,7 @@ export function deriveFleetHealth(rows: FleetControlRow[]): {
   if (!rows.length) {
     return { level: "unknown", summary: "no agents detected" };
   }
-  const errored = rows.filter(
-    (row) => row.summary?.status === "error" || hasFailStreak(row),
-  );
+  const errored = rows.filter((row) => isErrorStatus(row.summary?.status) || hasFailStreak(row));
   if (errored.length) {
     return {
       level: "error",
@@ -193,4 +191,8 @@ const FAIL_STREAK_THRESHOLD = 2;
 
 function hasFailStreak(row: FleetControlRow): boolean {
   return row.consecutiveFailures >= FAIL_STREAK_THRESHOLD;
+}
+
+function isErrorStatus(value: string | null | undefined): boolean {
+  return value === "error" || value === "llm-error" || value === "llm_error";
 }

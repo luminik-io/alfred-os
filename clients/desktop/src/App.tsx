@@ -91,6 +91,7 @@ function App() {
     refresh,
     runFollowupAction,
     runPlanDecision,
+    runPlanDiscard,
     runPlanIssueFile,
     runQueueAction,
     runMemoryCandidateAction,
@@ -199,6 +200,7 @@ function App() {
             onRefresh={() => void refreshShipped()}
             onQueueAction={runQueueAction}
             onDecision={runPlanDecision}
+            onDiscardPlan={runPlanDiscard}
             onFileIssue={runPlanIssueFile}
             onFollowupAction={runFollowupAction}
           />

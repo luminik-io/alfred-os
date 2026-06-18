@@ -219,7 +219,7 @@ describe("ReviewView", () => {
     expect(screen.getByText("Alfred is working")).toBeInTheDocument();
     expect(screen.getByText(/1 run is active now/i)).toBeInTheDocument();
     expect(screen.getByText(/working on the csv export\./i)).toBeInTheDocument();
-    expect(screen.queryByText(/quiet night/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
   });
 
   it("renders shipped work as a plain-English digest", async () => {

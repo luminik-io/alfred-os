@@ -176,7 +176,7 @@ export function ReviewView({
         snagCount ? `${snagCount} hit a snag.` : null,
       ]
         .filter(Boolean)
-        .join(" ") || "Quiet night. Nothing needed you."
+        .join(" ") || "All clear. Nothing needed you."
     : "Waiting for the local runtime";
   const headline = decisions
     ? decisions === 1

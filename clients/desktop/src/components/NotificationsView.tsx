@@ -26,7 +26,7 @@ export function NotificationsView({
     <>
       <p className="panel-intro">
         Recent firings and governor &ldquo;needs you&rdquo; items collect here instead of macOS
-        banners. This is the surface to read fleet activity from.
+        banners. Use this when you want the raw stream behind Inbox.
       </p>
       {feed.length ? (
         <ol className="feed-list">

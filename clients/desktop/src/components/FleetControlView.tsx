@@ -143,7 +143,7 @@ export function FleetControlView({
             <div className="agents-deck__summary">
               <SummaryStat
                 label="Health"
-                value={health.level === "ok" ? "Live" : titleCase(health.level)}
+                value={fleetHealthLabel(health.level)}
                 tone={health.level}
               />
               <SummaryStat
@@ -627,12 +627,19 @@ function serviceTone(row: FleetControlRow): {
 
 function defaultSelectedCodename(rows: FleetControlRow[]): string | null {
   return (
-    rows.find((row) => row.summary?.status === "error" || row.consecutiveFailures >= 2)
+    rows.find((row) => isErrorStatus(row.summary?.status) || row.consecutiveFailures >= 2)
       ?.codename ||
     rows.find((row) => row.service === "running")?.codename ||
     rows[0]?.codename ||
     null
   );
+}
+
+function fleetHealthLabel(level: "ok" | "warn" | "error" | "unknown"): string {
+  if (level === "ok") return "Live";
+  if (level === "warn") return "Needs attention";
+  if (level === "error") return "Failing";
+  return "Unknown";
 }
 
 function agentProfile(row: FleetControlRow, schedule?: ScheduledRun): {
@@ -679,7 +686,7 @@ function agentStats(rows: FleetControlRow[]) {
       if (row.service === "paused") stats.paused += 1;
       if (row.service === "stopped") stats.stopped += 1;
       if (row.service === "unknown") stats.unknown += 1;
-      if (row.summary?.status === "error" || row.consecutiveFailures >= 2) {
+      if (isErrorStatus(row.summary?.status) || row.consecutiveFailures >= 2) {
         stats.erroring += 1;
       }
       stats.runsToday += row.summary?.firings_today ?? 0;

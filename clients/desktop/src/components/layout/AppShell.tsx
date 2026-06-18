@@ -28,6 +28,7 @@ import {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  useSidebar,
 } from "../ui/sidebar";
 import {
   Tooltip,
@@ -81,35 +82,13 @@ export function AppShell({
         >
           <div className="hidden h-3 shrink-0 md:block" data-tauri-drag-region />
           <SidebarHeader className="gap-3 px-3 py-3">
-            <button
-              className="group-data-[collapsible=icon]:justify-center flex h-12 min-w-0 items-center gap-3 rounded-lg px-2 text-left transition hover:bg-sidebar-accent/45 hover:text-sidebar-accent-foreground"
-              type="button"
-              onClick={() => onNavigate("home")}
-              aria-label="Open Alfred inbox"
-            >
-              <span className="alfred-brand-mark size-9 shrink-0" aria-hidden="true">
-                <img
-                  src="/brand/alfred-logo-transparent.png"
-                  alt=""
-                  className="alfred-brand-logo size-9 object-contain"
-                />
-              </span>
-              <span className="min-w-0 group-data-[collapsible=icon]:hidden">
-                <span className="block truncate font-heading text-base font-semibold">
-                  Alfred
-                </span>
-                <span className="block text-[10px] font-medium uppercase tracking-[0.1em] text-sidebar-foreground/55">
-                  Autonomous engineering team
-                </span>
-              </span>
-            </button>
+            <SidebarBrandButton onNavigate={onNavigate} />
           </SidebarHeader>
 
           <SidebarContent>
             <SidebarGroup>
               <SidebarMenu>
                 {navItems.map((item) => {
-                  const Icon = item.icon;
                   const active = item.key === "fleet" ? tab === "fleet" : tab === item.key;
                   const badge =
                     item.key === "fleet" && unseenCount > 0
@@ -118,22 +97,14 @@ export function AppShell({
                         : String(unseenCount)
                       : null;
                   return (
-                    <SidebarMenuItem key={item.key}>
-                      <SidebarMenuButton
-                        isActive={active}
-                        tooltip={item.label}
-                        onClick={() => onNavigate(item.key)}
-                        className="transition-transform duration-150 hover:translate-x-0.5 data-active:translate-x-0.5"
-                      >
-                        <Icon aria-hidden="true" />
-                        <span>{item.label}</span>
-                      </SidebarMenuButton>
-                      {badge ? (
-                        <SidebarMenuBadge aria-label={`${unseenCount} unread`}>
-                          {badge}
-                        </SidebarMenuBadge>
-                      ) : null}
-                    </SidebarMenuItem>
+                    <ShellNavMenuItem
+                      key={item.key}
+                      active={active}
+                      badge={badge}
+                      item={item}
+                      onNavigate={onNavigate}
+                      unseenCount={unseenCount}
+                    />
                   );
                 })}
               </SidebarMenu>
@@ -205,6 +176,79 @@ export function AppShell({
   );
 }
 
+function SidebarBrandButton({ onNavigate }: { onNavigate: (key: TabKey) => void }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  const navigateHome = () => {
+    onNavigate("home");
+    if (isMobile) setOpenMobile(false);
+  };
+
+  return (
+    <button
+      className="group-data-[collapsible=icon]:justify-center flex h-12 min-w-0 items-center gap-3 rounded-lg px-2 text-left transition hover:bg-sidebar-accent/45 hover:text-sidebar-accent-foreground"
+      type="button"
+      onClick={navigateHome}
+      aria-label="Open Alfred inbox"
+    >
+      <span className="alfred-brand-mark size-9 shrink-0" aria-hidden="true">
+        <img
+          src="/brand/alfred-logo-transparent.png"
+          alt=""
+          className="alfred-brand-logo size-9 object-contain"
+        />
+      </span>
+      <span className="min-w-0 group-data-[collapsible=icon]:hidden">
+        <span className="block truncate font-heading text-base font-semibold">
+          Alfred
+        </span>
+        <span className="block text-[10px] font-medium uppercase tracking-[0.1em] text-sidebar-foreground/55">
+          Autonomous engineering team
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function ShellNavMenuItem({
+  active,
+  badge,
+  item,
+  onNavigate,
+  unseenCount,
+}: {
+  active: boolean;
+  badge: string | null;
+  item: ShellNavItem;
+  onNavigate: (key: TabKey) => void;
+  unseenCount: number;
+}) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  const Icon = item.icon;
+  const navigate = () => {
+    onNavigate(item.key);
+    if (isMobile) setOpenMobile(false);
+  };
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={active}
+        tooltip={item.label}
+        onClick={navigate}
+        className="transition-transform duration-150 hover:translate-x-0.5 data-active:translate-x-0.5"
+      >
+        <Icon aria-hidden="true" />
+        <span>{item.label}</span>
+      </SidebarMenuButton>
+      {badge ? (
+        <SidebarMenuBadge aria-label={`${unseenCount} unread`}>
+          {badge}
+        </SidebarMenuBadge>
+      ) : null}
+    </SidebarMenuItem>
+  );
+}
+
 function ShellIconButton({
   children,
   disabled,
@@ -247,7 +291,22 @@ function FleetStatus({
 }) {
   const offline = Boolean(error);
   const health = snapshot?.status.reliability.status || "checking";
-  const text = offline ? "Offline" : health === "ok" ? "Live" : health === "checking" ? "Checking" : "Needs attention";
+  const text =
+    offline
+      ? "Offline"
+      : health === "ok"
+        ? "Live"
+        : health === "checking"
+          ? "Checking"
+          : "Needs attention";
+  const title =
+    offline
+      ? "Alfred serve offline"
+      : health === "ok"
+        ? "Agents live"
+        : health === "checking"
+          ? "Checking agent status"
+          : "Agents need attention";
   const variant = offline ? "destructive" : health === "ok" ? "secondary" : "outline";
   const dot =
     offline
@@ -261,7 +320,7 @@ function FleetStatus({
     <Badge
       variant={variant}
       className={compact ? "h-6 gap-1.5 px-2" : "h-7 gap-1.5 px-2"}
-      title={offline ? "Alfred serve offline" : health === "ok" ? "Agents live" : `Agents ${titleCase(health)}`}
+      title={title}
     >
       <span
         className={`size-1.5 rounded-full ${dot}`}
@@ -270,12 +329,4 @@ function FleetStatus({
       {text}
     </Badge>
   );
-}
-
-function titleCase(value: string): string {
-  return value
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() + part.slice(1))
-    .join(" ");
 }

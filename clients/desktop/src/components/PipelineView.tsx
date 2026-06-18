@@ -27,9 +27,10 @@ import {
   isLowSignalPlan,
   planNeedsAttention,
 } from "../lib/derive";
-import { firstLink, isSafeExternalUrl, openExternal } from "../lib/links";
+import { firstLink, isSafeExternalUrl, openExternal, parseIssueRef } from "../lib/links";
 import type { ActionNotice, FollowupAction } from "../lib/uiTypes";
 import type {
+  AssignmentTargetAgent,
   PlanDecision,
   PlanDraft,
   QueueAction,
@@ -51,6 +52,7 @@ type QueueActionHandler = (
   repo: string,
   issueNumber: number,
   action: QueueAction,
+  targetAgent?: AssignmentTargetAgent,
 ) => void | Promise<boolean>;
 
 // A unified selection key so the detail panel can address either a plan or a
@@ -102,6 +104,7 @@ export function PipelineView({
   onRefresh,
   onQueueAction,
   onDecision,
+  onDiscardPlan,
   onFileIssue,
   onFollowupAction,
 }: {
@@ -115,6 +118,7 @@ export function PipelineView({
   onRefresh?: () => void;
   onQueueAction?: QueueActionHandler;
   onDecision: (plan: PlanDraft, decision: PlanDecision) => void;
+  onDiscardPlan: (plan: PlanDraft) => void;
   onFileIssue: (plan: PlanDraft) => void;
   onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
 }) {
@@ -221,6 +225,10 @@ export function PipelineView({
           )}
           <span>{notice.message}</span>
         </div>
+      ) : null}
+
+      {canQueue && onQueueAction ? (
+        <QueueComposer onQueueAction={onQueueAction} busy={Boolean(busyQueue)} />
       ) : null}
 
       {hardError && !hasAnything ? (
@@ -332,6 +340,7 @@ export function PipelineView({
               plan={selectedPlan}
               busyPlanAction={busyPlanAction}
               onDecision={onDecision}
+              onDiscardPlan={onDiscardPlan}
               onFileIssue={onFileIssue}
               onFollowupAction={onFollowupAction}
             />
@@ -354,6 +363,65 @@ export function PipelineView({
         </SheetContent>
       </Sheet>
     </section>
+  );
+}
+
+function QueueComposer({
+  onQueueAction,
+  busy,
+}: {
+  onQueueAction: QueueActionHandler;
+  busy: boolean;
+}) {
+  const [value, setValue] = useState("");
+  const [targetAgent, setTargetAgent] = useState<AssignmentTargetAgent>("auto");
+  const parsed = parseIssueRef(value);
+  const invalid = Boolean(value.trim()) && !parsed;
+
+  return (
+    <form
+      className="alfred-pipeline__assign"
+      aria-label="Assign existing GitHub issue"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!parsed || busy) return;
+        const ok = await onQueueAction(parsed.repo, parsed.number, "assign", targetAgent);
+        if (ok !== false) setValue("");
+      }}
+    >
+      <div className="alfred-pipeline__assign-label">
+        <FilePlus2 size={16} aria-hidden="true" />
+        <span>Assign existing issue</span>
+        <small>Paste owner/repo#123 or a GitHub issue URL.</small>
+      </div>
+      <input
+        id="pipeline-assign-issue"
+        value={value}
+        onChange={(event) => setValue(event.currentTarget.value)}
+        placeholder="owner/repo#123"
+        spellCheck={false}
+        aria-invalid={invalid}
+        aria-describedby={invalid ? "pipeline-assign-error" : undefined}
+      />
+      <select
+        value={targetAgent}
+        onChange={(event) => setTargetAgent(event.currentTarget.value as AssignmentTargetAgent)}
+        aria-label="Assignment target"
+      >
+        <option value="auto">Smart route</option>
+        <option value="batman">Batman</option>
+        <option value="lucius">Lucius</option>
+      </select>
+      <button className="secondary-button" type="submit" disabled={!parsed || busy}>
+        <FilePlus2 size={16} aria-hidden="true" />
+        <span>{busy ? "Routing" : "Route"}</span>
+      </button>
+      {invalid ? (
+        <p id="pipeline-assign-error" className="alfred-pipeline__assign-error">
+          Use owner/repo#123 or a GitHub issue URL.
+        </p>
+      ) : null}
+    </form>
   );
 }
 
@@ -462,12 +530,14 @@ function PlanInspector({
   plan,
   busyPlanAction,
   onDecision,
+  onDiscardPlan,
   onFileIssue,
   onFollowupAction,
 }: {
   plan: PlanDraft;
   busyPlanAction: string | null;
   onDecision: (plan: PlanDraft, decision: PlanDecision) => void;
+  onDiscardPlan: (plan: PlanDraft) => void;
   onFileIssue: (plan: PlanDraft) => void;
   onFollowupAction: (plan: PlanDraft, action: FollowupAction) => void;
 }) {
@@ -477,6 +547,9 @@ function PlanInspector({
   const canFileIssue =
     !parentLink &&
     plan.readiness_ok === true &&
+    (plan.source === "compose" || plan.source === "planning");
+  const canDiscardDraft =
+    !parentLink &&
     (plan.source === "compose" || plan.source === "planning");
   const isFollowup = plan.source === "followup";
   const actionBusy = busyPlanAction?.startsWith(`${plan.plan_id}:`) || false;
@@ -550,6 +623,17 @@ function PlanInspector({
           >
             <FilePlus2 size={16} aria-hidden="true" />
             <span>File GitHub issue</span>
+          </button>
+        ) : null}
+        {canDiscardDraft ? (
+          <button
+            className="decline-button"
+            type="button"
+            disabled={actionBusy}
+            onClick={() => onDiscardPlan(plan)}
+          >
+            <X size={16} aria-hidden="true" />
+            <span>Discard draft</span>
           </button>
         ) : null}
         {isFollowup ? (
