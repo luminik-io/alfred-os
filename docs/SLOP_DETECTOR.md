@@ -130,8 +130,7 @@ LLM-authored:
 
 - The `X. Y. The Z.` three-beat rhythm at the end of a paragraph
   (`(?m)^[A-Z][^.\n]{2,40}\. [A-Z][^.\n]{2,40}\. The [A-Z][^.\n]{2,40}\.\s*$`).
-- Em dash and en dash (`[—–]`). Use ` - ` (hyphen between spaces) or
-  restructure.
+- Unicode dash characters. Use ` - ` (hyphen between spaces) or restructure.
 
 Override any of this by passing your own pack via `--rules` or by
 setting `$ALFRED_SLOP_RULES`. Start from the bundled file, edit, point

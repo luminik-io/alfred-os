@@ -5,7 +5,7 @@
  * Nav-positioned link to the alfred-os repo. Shows the GitHub mark and a
  * star count. The star count is fetched at build time from the GitHub
  * REST API (unauthenticated) and inlined, so the page does not make a
- * client-side request and there is no spinner. Falls back to a dash if
+ * client-side request and there is no spinner. Falls back to `n/a` if
  * the build-time fetch fails (no network, rate-limited, repo not yet
  * created in CI, etc.). This keeps the static output deterministic.
  */
@@ -17,13 +17,13 @@ async function fetchStars(): Promise<string> {
     const res = await fetch(`https://api.github.com/repos/${REPO}`, {
       headers: { "User-Agent": "alfred-os-site-build", "Accept": "application/vnd.github+json" },
     });
-    if (!res.ok) return "—";
+    if (!res.ok) return "n/a";
     const data = (await res.json()) as { stargazers_count?: number };
     const n = data.stargazers_count ?? 0;
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
     return n.toString();
   } catch {
-    return "—";
+    return "n/a";
   }
 }
 

@@ -1,17 +1,17 @@
 import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
 
-// Served at /llms-full.txt — surface 2 of the llmstxt.org spec
+// Served at /llms-full.txt: surface 2 of the llmstxt.org spec
 // (https://llmstxt.org). Where /llms.txt is a curated table of contents
 // with one link per page, /llms-full.txt is the whole site in a single
 // markdown file so an LLM can ingest the entire documentation set in
 // one fetch without crawling every URL.
 //
 // This is the natural companion to:
-//   - /llms.txt              — curated TOC (surface 1)
-//   - /<page>.md             — per-page mirror (surface 3, built by
+//   - /llms.txt: curated TOC (surface 1)
+//   - /<page>.md: per-page mirror (surface 3, built by
 //                              src/integrations/md-mirror.ts)
-//   - /agents.md             — AGENTS.md convention (Anthropic et al.)
+//   - /agents.md: AGENTS.md convention (Anthropic et al.)
 //
 // Source of truth: the Starlight `docs` content collection. Pages outside
 // the collection (marketing landings, install/pricing/multi-repo) are
@@ -40,7 +40,7 @@ export const GET: APIRoute = async ({ site }) => {
     "A local agent-fleet runtime for solo builders. Claude Code and Codex agents scheduled by launchd or systemd, on a machine you control.";
 
   const out: string[] = [
-    "# Alfred — full documentation",
+    "# Alfred: full documentation",
     "",
     `> ${summary}`,
     "",

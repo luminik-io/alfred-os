@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
 
-// Served at /llms.txt — the llmstxt.org convention: a curated, link-rich
+// Served at /llms.txt: the llmstxt.org convention, a curated, link-rich
 // markdown index an LLM can read to understand the site. Generated from the
 // Starlight `docs` collection so it stays in sync as pages are added.
 
@@ -21,7 +21,7 @@ export const GET: APIRoute = async ({ site }) => {
   const docs = await getCollection("docs");
 
   // Page URLs must include the configured `base` path (ALFRED_OS_SITE_BASE),
-  // not just the origin — a fork hosting under e.g. /docs/ needs every link
+  // not just the origin. A fork hosting under e.g. /docs/ needs every link
   // prefixed so crawlers and LLMs following llms.txt hit the right paths.
   // import.meta.env.BASE_URL is the build-time `base`, always "/"-bounded.
   const url = (id: string) =>
