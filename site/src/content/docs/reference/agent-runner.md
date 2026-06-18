@@ -5,9 +5,9 @@ description: Public primitives in the lib/agent_runner package. Function signatu
 
 The shared runtime. Every codename agent imports from this package. Source: [`lib/agent_runner/`](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner).
 
-The package is internally split into focused submodules — `paths`,
+The package is internally split into focused submodules: `paths`,
 `config`, `process`, `result`, `transcripts`, `metadata`, `notify`,
-`state`, `github`, `orchestrator` — but every public name listed below
+`state`, `github`, `orchestrator`. Every public name listed below
 is re-exported from `agent_runner` itself, so the historical flat
 imports keep working:
 
