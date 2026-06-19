@@ -77,9 +77,10 @@ by the toggle beside it.
 
 The app can help draft or refine a spec, but the final collaboration loop stays
 in Slack. Any "send to Alfred" action should post to or link back to the
-approval thread. A planned single-repo issue lands behind an operator-approval
-gate (`agent:plan-pending-approval`) and is held from autonomous pickup until
-the operator approves it, so nothing single-repo ships without a go-ahead.
+approval thread. A locally drafted single-repo issue lands behind an
+operator-approval gate (`agent:plan-pending-approval`) and is held from
+autonomous pickup until the operator approves it, so nothing single-repo ships
+without a go-ahead.
 
 ### Agents
 

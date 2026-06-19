@@ -71,7 +71,7 @@ agents from stepping on each other.
   optional `codex` CLI auth. It does not bill LLM calls separately and does
   not require provider API keys.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
-  report, hard spend caps, and an explicit GitHub state machine. A planned
+  report, hard spend caps, and an explicit GitHub state machine. A locally drafted
   single-repo issue lands behind an operator-approval gate
   (`agent:plan-pending-approval`) and is held from autonomous pickup until you
   approve it.
