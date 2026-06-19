@@ -169,8 +169,10 @@ async function searchGitHub(query) {
 async function graphQL(query, variables) {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response;
+    let payload;
     try {
-      const response = await fetch("https://api.github.com/graphql", {
+      response = await fetch("https://api.github.com/graphql", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -179,17 +181,20 @@ async function graphQL(query, variables) {
         },
         body: JSON.stringify({ query, variables }),
       });
-      const payload = await response.json();
-      if (response.ok && !payload.errors) {
-        return payload.data;
-      }
-      if (attempt === maxAttempts || response.status < 500) {
-        throw new Error(JSON.stringify(payload.errors || payload, null, 2));
-      }
+      payload = await response.json();
     } catch (error) {
       if (attempt === maxAttempts) {
         throw error;
       }
+      await sleep(500 * attempt);
+      continue;
+    }
+    if (response.ok && !payload.errors) {
+      return payload.data;
+    }
+    const message = JSON.stringify(payload.errors || payload, null, 2);
+    if (payload.errors || response.status < 500 || attempt === maxAttempts) {
+      throw new Error(message);
     }
     await sleep(500 * attempt);
   }
