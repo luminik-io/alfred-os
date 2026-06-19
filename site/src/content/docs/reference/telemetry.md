@@ -13,7 +13,7 @@ the endpoint they configure:
 - lifetime PRs opened by Alfred
 - lifetime PRs merged
 - lifetime PRs reviewed
-- lifetime file deltas
+- lifetime changed-file total
 
 No repo names, branch names, PR titles, code, logs, prompts, usernames, hostnames,
 or billing data are sent.

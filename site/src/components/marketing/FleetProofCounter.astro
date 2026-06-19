@@ -1,0 +1,114 @@
+---
+/**
+ * Static proof snapshot from the Alfred setup used to build Luminik and Alfred.
+ *
+ * This is not the community telemetry counter. It is a deliberately small
+ * snapshot from the operator's local `alfred metrics --days 30` output:
+ * aggregate counts only, with no repo names, code, prompts, branches,
+ * people, hosts, or customer context.
+ */
+
+interface Props {
+  days: number;
+  updated: string;
+  agentRuns: number;
+  activeAgents: number;
+  agentTurns: number;
+  codexRuns: number;
+  toolCalls: number;
+  filesEdited: number;
+}
+
+const {
+  days,
+  updated,
+  agentRuns,
+  activeAgents,
+  agentTurns,
+  codexRuns,
+  toolCalls,
+  filesEdited,
+} = Astro.props;
+
+const fmt = (n: number) => n.toLocaleString("en-US");
+---
+
+<section class="fleet-proof" aria-label="Luminik Alfred fleet snapshot">
+  <p class="fleet-proof__line">
+    In the last {days} days, Luminik's local Alfred fleet ran
+    <span>{fmt(agentRuns)}</span> times across <span>{fmt(activeAgents)}</span>
+    active agents.
+  </p>
+  <div class="fleet-proof__grid" role="list">
+    <div class="fleet-proof__cell" role="listitem">
+      <span class="fleet-proof__num">{fmt(agentTurns)}</span>
+      <span class="fleet-proof__label">agent turns</span>
+    </div>
+    <div class="fleet-proof__cell" role="listitem">
+      <span class="fleet-proof__num">{fmt(codexRuns)}</span>
+      <span class="fleet-proof__label">Codex runs</span>
+    </div>
+    <div class="fleet-proof__cell" role="listitem">
+      <span class="fleet-proof__num">{fmt(toolCalls)}</span>
+      <span class="fleet-proof__label">tool calls</span>
+    </div>
+    <div class="fleet-proof__cell" role="listitem">
+      <span class="fleet-proof__num">{fmt(filesEdited)}</span>
+      <span class="fleet-proof__label">files edited</span>
+    </div>
+  </div>
+  <p class="fleet-proof__foot m-mono m-mute">
+    Snapshot from Prasad's local Alfred state on {updated}. Private repo names
+    and work content are not shown.
+  </p>
+</section>
+
+<style>
+  .fleet-proof {
+    text-align: center;
+  }
+  .fleet-proof__line {
+    color: var(--alfred-text-bright);
+    font-size: clamp(20px, 3vw, 28px);
+    line-height: 1.4;
+    margin: 0 0 24px;
+  }
+  .fleet-proof__line span,
+  .fleet-proof__num {
+    color: var(--alfred-accent);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .fleet-proof__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin: 0 auto 18px;
+  }
+  .fleet-proof__cell {
+    border: 1px solid var(--alfred-border);
+    border-radius: 10px;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .fleet-proof__num {
+    font-size: 24px;
+  }
+  .fleet-proof__label,
+  .fleet-proof__foot {
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+  .fleet-proof__foot {
+    margin: 0;
+    line-height: 1.6;
+  }
+  @media (max-width: 520px) {
+    .fleet-proof__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

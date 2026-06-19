@@ -37,16 +37,16 @@ export const GET: APIRoute = async ({ site }) => {
   const root = docs.find((d) => d.id === "");
   const summary =
     root?.data.description ??
-    "Autonomous coding agents for approved GitHub work. Claude Code and Codex agents run by launchd or systemd on a machine you control.";
+    "An agent engineering team that works while you are away. Claude Code and Codex agents run by launchd or systemd on a machine you control.";
 
   const out: string[] = [
     "# Alfred: full documentation",
     "",
     `> ${summary}`,
     "",
-    "Alfred is the open-source framework for autonomous coding agents that",
-    "work through approved GitHub tasks while the operator is away from the",
-    "keyboard. The host scheduler (launchd on macOS, systemd on Linux) fires",
+    "Alfred is the open-source framework for an agent engineering team that",
+    "works while the operator is away from the keyboard. The host scheduler",
+    "(launchd on macOS, systemd on Linux) fires",
     "each agent; the harness wraps every firing in a lock, preflight, spend",
     "cap, and an isolated git worktree.",
     "",

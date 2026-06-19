@@ -3,37 +3,58 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
 import Hero from "../components/marketing/Hero.astro";
 import SectionHeader from "../components/marketing/SectionHeader.astro";
 import ImpactCounter from "../components/marketing/ImpactCounter.astro";
+import FleetProofCounter from "../components/marketing/FleetProofCounter.astro";
 import CodeBlock from "../components/marketing/CodeBlock.astro";
 ---
 
 <MarketingLayout
   title="Impact | Alfred"
-  description="Anonymous, opt-in Alfred usage counts. See pull requests opened, reviewed, and merged without repo names, code, or personal data."
+  description="Real Alfred fleet activity from Luminik's local setup, plus the anonymous opt-in community counter."
   path="/impact/"
 >
   <Hero
-    eyebrow="PUBLIC PROOF"
-    headline="See what Alfred users are shipping."
-    sub="Operators can opt in to share anonymous daily counts: pull requests opened, pull requests reviewed, pull requests merged, and file deltas. No repo names, no code, no personal data."
+    eyebrow="REAL FLEET ACTIVITY"
+    headline="The Alfred setup that builds Alfred and Luminik."
+    sub="A snapshot from Prasad's local Alfred state, plus a community counter for operators who choose to share anonymous totals. No repo names, code, prompts, branches, hostnames, or people."
     headlineSize="lg"
     primaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
     secondaryCta={{ label: "Download Alfred", href: "/download/" }}
   >
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
-        <span class="m-eyebrow">LIVE COUNTER</span>
-        <span class="m-mono m-mute">opt-in only</span>
+        <span class="m-eyebrow">LOCAL SNAPSHOT</span>
+        <span class="m-mono m-mute">last 30 days</span>
       </div>
-      <ImpactCounter threshold={50} variant="plain" />
+      <FleetProofCounter
+        days={30}
+        updated="2026-06-19"
+        agentRuns={2780}
+        activeAgents={13}
+        agentTurns={24357}
+        codexRuns={129}
+        toolCalls={5092}
+        filesEdited={74}
+      />
     </div>
   </Hero>
 
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
+        eyebrow="COMMUNITY COUNTER"
+        title="Operators can opt in to share public totals."
+        lede="The public telemetry counter is separate from the Luminik snapshot above. It stays off unless an operator turns it on, and it sends only aggregate counts."
+      />
+      <ImpactCounter threshold={1} />
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
+      <SectionHeader
         eyebrow="WHAT GETS COUNTED"
         title="Only counts. Nothing from the work itself."
-        lede="The telemetry payload is intentionally small. It shows that Alfred is being used without exposing what the operator is building."
+        lede="When an operator opts in, Alfred can report a tiny payload that proves usage without exposing what the operator is building."
       />
       <div class="proof-grid">
         <article class="m-card">
@@ -53,8 +74,8 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
         </article>
         <article class="m-card">
           <span class="m-mono proof-grid__num">04</span>
-          <h3 class="m-h3">File deltas</h3>
-          <p>A coarse count of changed files, reported as an aggregate number only.</p>
+          <h3 class="m-h3">Changed files</h3>
+          <p>A coarse changed-file count, reported as an aggregate number only.</p>
         </article>
       </div>
     </div>
