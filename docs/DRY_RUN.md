@@ -47,7 +47,7 @@ From a fresh checkout (no deploy needed), put `lib/` on `PYTHONPATH`:
 PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 ```
 
-After install, the operator CLI resolves any codename without touching the host
+After install, the Alfred CLI resolves any codename without touching the host
 scheduler:
 
 ```sh

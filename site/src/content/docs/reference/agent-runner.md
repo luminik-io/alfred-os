@@ -15,7 +15,7 @@ imports keep working:
 from agent_runner import preflight, make_worktree, slack_post, claude_invoke
 ```
 
-Categorised by what the operator-facing primitive does. For deep semantics, read the source's docstrings. They're the authoritative reference.
+Categorised by what the local-control primitive does. For deep semantics, read the source's docstrings. They're the authoritative reference.
 
 ## Path resolution + module constants
 

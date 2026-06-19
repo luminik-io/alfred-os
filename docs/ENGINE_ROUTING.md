@@ -27,7 +27,7 @@ The framework reads the engine for each firing from a precedence chain. The firs
 5. An optional legacy state file.
 6. The codename's compiled-in default, usually `hybrid`.
 
-Operator CLI:
+Alfred CLI:
 
 ```sh
 alfred engine status                 # one line per codename, resolved mode

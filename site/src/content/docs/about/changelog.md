@@ -36,7 +36,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 
 - **`agent_runner` package decomposition**: the single-file monolith becomes a 10-file package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
 - **`alfred metrics` + `alfred logs` CLIs**: weekly per-agent rollups (firings, cost, turns, tool-use), per-firing stream-JSON transcript inspection.
-- **State machine + multi-repo**: atomic `LabelClient` for the issue-claim state machine, `cross_repo_pr` coordinator for stacked PRs across repos, managed `multi_worktree` pool, `alfred label-state` operator CLI.
+- **State machine + multi-repo**: atomic `LabelClient` for the issue-claim state machine, `cross_repo_pr` coordinator for stacked PRs across repos, managed `multi_worktree` pool, `alfred label-state` CLI.
 - **Damian + Batman planning/execution**: Damian files `agent:bundle:<slug>` siblings across affected repos; Batman now executes the approved plan flow by applying the gate, preserving scope, and filing child issues.
 - **`slack_approval`**: reaction-based approval gate as a `typing.Protocol` so the call site can swap Slack for any other channel.
 - **`fleet-brain` v1 memory**: SQLite-backed per-codename / per-repo `recall` / `reflect` with atomic writes, ULID ids, stdlib-only. `MemoryProvider` Protocol with chained + null implementations, optional `gbrain` shim. See [Fleet brain](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md).

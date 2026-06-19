@@ -51,7 +51,7 @@ can inspect by hand:
 
 - `$ALFRED_HOME`
 - `alfred serve`
-- the operator CLI
+- the Alfred CLI
 - GitHub issue and PR links
 - Slack plan threads
 - the local fleet brain

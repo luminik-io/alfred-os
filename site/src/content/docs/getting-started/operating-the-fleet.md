@@ -25,7 +25,7 @@ When you see a `[BLOCKED]` or a `pause` event in Slack, that is the only signal 
 
 ## CLI recipes
 
-The `alfred` CLI is the operator's day-to-day verb set. Pure stdlib, no daemon. Common recipes:
+The `alfred` CLI is your day-to-day verb set. Pure stdlib, no daemon. Common recipes:
 
 ```sh
 alfred status               # local fleet health, locks, pauses, approval waits
@@ -177,4 +177,4 @@ Block thirty minutes once a week. The fleet does most of its own housekeeping vi
 - [State and memory](/concepts/state-and-memory/): every state file this page reads or writes.
 - [Engine routing](/concepts/engine-routing/): per-codename Claude / Codex / hybrid.
 - [Issue claim state machine](/concepts/state-machine/): cooperative coordination via GitHub labels and comments.
-- [Operator CLI reference](/reference/cli/): every `alfred` subcommand with one-line help.
+- [Alfred CLI reference](/reference/cli/): every `alfred` subcommand with one-line help.

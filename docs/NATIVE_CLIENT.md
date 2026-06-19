@@ -279,7 +279,7 @@ GET  /api/slack/threads
 ```
 
 `GET /api/usage` is served by `alfred serve` today and backs the capacity rail.
-It reports the operator's real Claude and Codex subscription headroom for the
+It reports your real Claude and Codex subscription headroom for the
 rolling 5-hour and weekly windows, read from the engines' own local CLI state
 files on the host. Alfred drives Claude Code and Codex through their local
 subscription CLIs rather than API keys, so there is no billing API to query and

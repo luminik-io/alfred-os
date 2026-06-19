@@ -1,9 +1,9 @@
 ---
-title: Operator CLI
-description: install.sh, deploy.sh, doctor.sh, and the alfred operator CLI.
+title: Alfred CLI
+description: install.sh, deploy.sh, doctor.sh, and the alfred CLI.
 ---
 
-The operator CLI covers the local fleet control surface: install, deploy,
+The Alfred CLI covers the local fleet control surface: install, deploy,
 doctor, starter setup, status, runner-gate enablement, pause/resume, manual
 runs, engine selection, Claude/Codex auth checks, Claude account management, and shipped-work summaries.
 

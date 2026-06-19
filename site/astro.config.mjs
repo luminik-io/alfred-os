@@ -515,7 +515,7 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "agent_runner API", slug: "reference/agent-runner" },
-            { label: "Operator CLI", slug: "reference/cli" },
+            { label: "Alfred CLI", slug: "reference/cli" },
             { label: "Telemetry", slug: "reference/telemetry" },
             { label: "launchd plist template", slug: "reference/launchd" },
             { label: "Environment variables", slug: "reference/env" },

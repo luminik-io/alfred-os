@@ -27,7 +27,7 @@ PYTHONPATH=lib python3 examples/bin/echo_summarise.py --dry-run
 
 You get a step-numbered trace of the full lifecycle and an exit code of 0. The same works for `examples/bin/hello.py` (the minimal agent) and `bin/lucius.py` (the feature-dev agent).
 
-After install, use the operator CLI:
+After install, use the Alfred CLI:
 
 ```sh
 alfred dry-run lucius

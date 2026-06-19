@@ -88,7 +88,7 @@ is never resolved to anything.
 1. Decide where the counts go. Either deploy the bundled collector
    (see below) or point at any endpoint that accepts the payload above.
 
-2. Enable telemetry from the operator CLI:
+2. Enable telemetry from the Alfred CLI:
 
    ```sh
    alfred telemetry on --url https://your-worker.example.com/ingest

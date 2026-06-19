@@ -202,7 +202,7 @@ flowchart TB
     subgraph core["core fleet (headless)"]
         serve["alfred serve<br/>localhost JSON API"]
         state[("$ALFRED_HOME/state<br/>firings / plans / memory")]
-        cli["operator CLI: bin/alfred"]
+        cli["Alfred CLI: bin/alfred"]
         fleet["lib/agent_runner + bin/*.py"]
     end
 
@@ -257,7 +257,7 @@ Alfred installs in tiers. `core` is the standalone base and runs headless; `clie
 flowchart TB
     subgraph core["core (base, headless)"]
         fleet["fleet: lib/agent_runner + bin/*.py"]
-        cli["operator CLI: bin/alfred"]
+        cli["Alfred CLI: bin/alfred"]
         sched["scheduler: launchd / systemd --user"]
         serve["alfred serve<br/>localhost JSON API (127.0.0.1)"]
     end
@@ -284,7 +284,7 @@ flowchart TB
     bridge -->|labeled issue| gh
 ```
 
-- **`core`** is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the operator CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`. Core is headless and Linux-friendly: nothing here needs a desktop, a browser, or Slack. This is the only tier you must install.
+- **`core`** is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the Alfred CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`. Core is headless and Linux-friendly: nothing here needs a desktop, a browser, or Slack. This is the only tier you must install.
 - **`client`** is the Tauri desktop control plane under `clients/desktop`: fleet service control, a command center, plan/run/memory views, and safe local actions. It is a thin control plane, not a second runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
 - **`slack`** is the planning listener plus the issue bridge. The listener (`lib/slack_listener.py`) runs in Socket Mode; the bridge (`lib/slack_issue_bridge.py`) is off by default and only ever files a labeled issue. The `serve` extra (`pip install 'alfred-os[serve]'`) pulls in FastAPI and uvicorn for `alfred serve`; `slack-sdk` and `boto3` are in the base install since v0.4.0.
 

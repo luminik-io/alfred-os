@@ -1,6 +1,6 @@
 # The `alfred-shipped-public` emitter
 
-`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical Alfred site now renders a separate public GitHub board for the `luminik-io/alfred-os` repository from `site/src/data/impact-proof.json`. Operators who want a shipped-work page for their own private or customer repos should use this emitter instead, because it scrubs local state before anything is published.
+`bin/alfred-shipped-public.py` reads your `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical Alfred site now renders a separate public GitHub board for the `luminik-io/alfred-os` repository from `site/src/data/impact-proof.json`. Use this emitter when you want a shipped-work page for your own private or customer repos, because it scrubs local state before anything is published.
 
 This document explains the schema, the scrub rules, and the emit command.
 
@@ -8,9 +8,9 @@ This document explains the schema, the scrub rules, and the emit command.
 
 You have run Alfred for a while and you want a public-facing shipped-work page. Maybe it's part of your build-in-public story. Maybe it's the verifiability bar your customers ask for. Either way the contract is:
 
-- The operator runs the emitter on their own state directory.
+- You run the emitter on your own state directory.
 - The emitter scrubs aggressively before writing.
-- The operator publishes the resulting JSON wherever they want.
+- You publish the resulting JSON wherever you want.
 
 The canonical Alfred repository does not render an operator's local emitted feed by default because partner names, customer terms, and internal product codenames vary and should not appear in upstream marketing copy.
 
@@ -65,7 +65,7 @@ Any title containing one of those private tokens has it rewritten in place to a 
 
 ### Partner-name redaction
 
-PR titles often mention the third-party platform an integration targets (event-data vendors, CRMs, mail providers, observability, SSO). These platforms are public companies but the fact that the operator integrates with them is operator-private business context.
+PR titles often mention the third-party platform an integration targets (event-data vendors, CRMs, mail providers, observability, SSO). These platforms are public companies, but the fact that your install integrates with them is private business context.
 
 The emitter collapses partner names to neutral category words:
 
@@ -152,6 +152,6 @@ JSON Schema 2020-12, `additionalProperties: false` everywhere. The canonical mac
 
 ## Suggested cadence
 
-A weekly cron is enough for most operators. Add a launchd unit / systemd timer that runs every Saturday morning and writes the JSON to your publishing target (S3, your site's data dir, a Gist, whatever).
+A weekly cron is enough for most installs. Add a launchd unit / systemd timer that runs every Saturday morning and writes the JSON to your publishing target (S3, your site's data dir, a Gist, whatever).
 
 The emitter is idempotent: same state in, same JSON out (modulo the `generated_at` stamp). Safe to run repeatedly.

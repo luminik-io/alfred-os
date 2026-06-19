@@ -44,7 +44,7 @@ flowchart TB
     runner["agent_runner module<br/><i>lock · preflight · spend · claude_invoke · codex_invoke · gh · slack</i>"]
     engine["claude -p or codex exec<br/><i>the LLM work, in a fresh subprocess</i>"]
     gh["GitHub<br/><i>issues, specs, PRs, labels</i>"]
-    slack["Slack channel<br/><i>the operator's read surface</i>"]
+    slack["Slack channel<br/><i>your read surface</i>"]
     state[("$ALFRED_HOME/state/<br/><i>JSON + local SQLite</i>")]
 
     scheduler --> role --> runner --> engine
@@ -149,8 +149,8 @@ flowchart TB
 
 ## Roadmap
 
-The engineering fleet ships today. The local memory layer, fleet UI, and first
-native client also ship today. The next larger categories are content, sales,
+The engineering fleet, local memory, Slack planning loop, and signed Mac/Linux
+desktop app all ship in v0.5.1. The next larger categories are content, sales,
 and ops; each needs its own integrations, prompts, tests, and human-approval
 rules.
 
@@ -164,10 +164,10 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.5.1. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, plan-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a signed native Mac/Linux client with a public download page.
+Latest release: v0.5.1. Alfred ships a local coding-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a signed native Mac/Linux client with a public download page.
 
 The native client is packaged as a signed and notarized macOS app plus Linux
-AppImage and Debian artifacts. The design boundary is stable: one operator, one
+AppImage and Debian artifacts. The design boundary is stable: one person, one
 local host, local CLIs, isolated worktrees, GitHub as the coordination layer.
 PRs are welcome when they strengthen that shape: reliability, setup, docs,
 tests, new codenames with clear scope, or optional integrations that fail

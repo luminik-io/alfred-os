@@ -17,7 +17,7 @@ repo, the right shape is Drake scoping the issue and Lucius implementing it.
 - Coordinating a `data-schema-v2` migration across a producer service,
   a consumer service, and a data pipeline.
 
-The common shape: one operator-authored issue, multiple downstream
+The common shape: one parent issue, multiple downstream
 repos, child scopes that can be worked in parallel once approved.
 
 ## When to use Lucius or Drake instead
@@ -269,7 +269,7 @@ operator Slack member id, approval channel, parent repo, picker, and
 approval timeout in one idempotent block in `~/.alfredrc`. It finishes
 with `bin/doctor.sh --lifecycle` unless `--skip-doctor` is passed.
 
-The same flow is also available through the operator CLI after deploy:
+The same flow is also available through the Alfred CLI after deploy:
 
 ```sh
 alfred batman setup
@@ -304,7 +304,7 @@ The Slack approval gate also reads these (from `slack_approval`):
 | `1` | yes | no | yes, immediately |
 
 The default (`0`) preserves the historical Alfred behaviour: Batman
-drafts a plan and stops. Operators who want autonomy opt into
+drafts a plan and stops. Users who want autonomy opt into
 `approval-gate` (recommended) or `1` (only when you trust the parent
 issues already).
 

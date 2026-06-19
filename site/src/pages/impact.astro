@@ -142,7 +142,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
   </section>
 
   <section class="m-section m-section--soft">
-    <div class="m-container operator-grid">
+    <div class="m-container control-grid">
       <div>
         <SectionHeader
           eyebrow="YOUR CONTROL"
@@ -312,7 +312,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
     font-size: 15px;
     line-height: 1.6;
   }
-  .operator-grid {
+  .control-grid {
     display: grid;
     grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
     gap: 48px;
@@ -328,7 +328,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
   @media (max-width: 980px) {
     .proof-grid,
     .product-proof,
-    .operator-grid {
+    .control-grid {
       grid-template-columns: 1fr;
     }
   }

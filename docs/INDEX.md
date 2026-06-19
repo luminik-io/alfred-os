@@ -52,7 +52,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`../lib/agent_runner/`](../lib/agent_runner/__init__.py): shared runtime library (package; public API in `__init__.py`).
 - [`../lib/slack_format.py`](../lib/slack_format.py): Slack Block Kit formatting helpers.
 - [`../lib/batman.py`](../lib/batman.py): multi-repo bundle primitives.
-- [`../bin/`](../bin/): operator CLI, init wizard, doctor, deploy helpers, and reference agent runners.
+- [`../bin/`](../bin/): Alfred CLI, init wizard, doctor, deploy helpers, and reference agent runners.
 - [`../launchd/`](../launchd/): plist template, renderer, and `agents.conf.example`.
 - [`../examples/`](../examples/): minimal example agents, label-state CLI, and pre-push hook.
 

@@ -27,7 +27,7 @@ flowchart TB
     subgraph core["core fleet (headless)"]
         serve["alfred serve<br/>localhost JSON API"]
         state[("$ALFRED_HOME/state<br/>firings / plans / memory")]
-        cli["operator CLI: bin/alfred"]
+        cli["Alfred CLI: bin/alfred"]
         fleet["lib/agent_runner + bin/*.py"]
     end
 
@@ -56,7 +56,7 @@ flowchart TB
 ## Boundary
 
 The client reads and writes the same local surfaces an operator can inspect by
-hand: `$ALFRED_HOME`, `alfred serve`, the operator CLI, GitHub issue and PR
+hand: `$ALFRED_HOME`, `alfred serve`, the Alfred CLI, GitHub issue and PR
 links, Slack plan threads, and the local fleet brain. It introduces no hosted
 gateway, public port, shadow database, or separate scheduler.
 

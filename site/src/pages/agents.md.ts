@@ -88,7 +88,7 @@ export const GET: APIRoute = async ({ site }) => {
     "  `agent:large-feature` issues and a configurable Slack approval gate.",
     "",
     "Full lifecycle: [" + (conceptsEntry?.data.title ?? "Architecture") + "](" + url("concepts/architecture") + ").",
-    "Operator CLI reference: [" + (cliEntry?.data.title ?? "CLI") + "](" + url("reference/cli") + ").",
+    "Alfred CLI reference: [" + (cliEntry?.data.title ?? "CLI") + "](" + url("reference/cli") + ").",
     "",
     "## What Alfred does NOT do",
     "",

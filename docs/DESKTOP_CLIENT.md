@@ -4,7 +4,7 @@ Alfred Desktop (`clients/desktop`) is a native Mac/Linux control surface for a l
 
 Slack stays Alfred's collaboration surface. The desktop app is for local trust and repair: what needs attention, which plans are waiting, why a run failed, which memory candidates are ready, and which local actions are safe to run next. It is a thin control plane, not a second runtime, and it never becomes a chat app or a hosted gateway.
 
-For the design rationale and the Slack boundary, see [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md). For the JSON API it reads, see [`SERVE.md`](SERVE.md). This page is the operator-facing tour of the control surface and how to build installers.
+For the design rationale and the Slack boundary, see [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md). For the JSON API it reads, see [`SERVE.md`](SERVE.md). This page is the user-facing tour of the control surface and how to build installers.
 
 ## The control surface
 

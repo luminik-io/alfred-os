@@ -16,7 +16,7 @@
 - [ ] My change does NOT broaden scope (no multi-tenant, no web UI, no hosted-service patterns).
 - [ ] My change does NOT add a runtime dependency that's not already in `pyproject.toml` (or I justify it in the PR body).
 - [ ] My change is testable. I added tests under `tests/` for new behaviour.
-- [ ] If this change affects an operator-facing flow (`install.sh`, `bin/`, `examples/bin/`), I updated the relevant doc.
+- [ ] If this change affects a user-facing Alfred flow (`install.sh`, `bin/`, `examples/bin/`), I updated the relevant doc.
 
 ## Verification
 

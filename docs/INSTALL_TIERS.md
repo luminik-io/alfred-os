@@ -4,7 +4,7 @@ Alfred installs in three tiers. Only the first is required. The other two are op
 
 | Tier | What it is | Required? | Needs a desktop? |
 |---|---|---|---|
-| `core` | Fleet, operator CLI, host scheduler, `alfred serve` JSON API | Yes | No (headless, Linux-friendly) |
+| `core` | Fleet, Alfred CLI, host scheduler, `alfred serve` JSON API | Yes | No (headless, Linux-friendly) |
 | `client` | Tauri desktop control plane (`clients/desktop`) | No | Yes |
 | `slack` | Planning listener + issue bridge | No | No |
 
@@ -12,7 +12,7 @@ For the architecture behind these tiers, see [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 ## `core`: the standalone base
 
-The core install is the whole product for most operators. It is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the operator CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`.
+The core install is the whole product for most setups. It is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the Alfred CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`.
 
 Core is fully standalone. The CLI and fleet do not need Alfred Desktop, a browser, or Slack to function. A headless Debian or Ubuntu box can run the entire fleet from cron-style timers with nothing on screen. See [`LINUX.md`](LINUX.md) for the `systemd --user` path.
 

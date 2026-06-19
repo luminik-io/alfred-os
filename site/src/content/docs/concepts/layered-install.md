@@ -9,7 +9,7 @@ Alfred installs in three tiers. Only the first is required. Alfred Desktop and t
 flowchart TB
     subgraph core["core (base, headless)"]
         fleet["fleet: lib/agent_runner + bin/*.py"]
-        cli["operator CLI: bin/alfred"]
+        cli["Alfred CLI: bin/alfred"]
         sched["scheduler: launchd / systemd --user"]
         serve["alfred serve<br/>localhost JSON API (127.0.0.1)"]
     end
@@ -41,7 +41,7 @@ flowchart TB
 The core tier is the whole product for most operators:
 
 - the fleet (`lib/agent_runner/` plus the `bin/*.py` runners),
-- the operator CLI (`bin/alfred`),
+- the Alfred CLI (`bin/alfred`),
 - the host scheduler (launchd on macOS, `systemd --user` on Linux),
 - `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`.
 

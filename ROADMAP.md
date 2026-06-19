@@ -116,7 +116,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full ledger.
 Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
-- **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public usage page can render this on their own site. IC: core. Effort: S. Issue: TBD.
+- **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day window covering firings, success rate, and unattended hours. People who want a public usage page can render this on their own site. IC: core. Effort: S. Issue: TBD.
 - **Alfred Desktop v2.** Keep Slack as the collaboration surface and build on the packaged Tauri shell with guided setup repair, release/update status, lock recovery, safer command previews, and a first-class Goals inbox with evidence. No extra gateway, no local mirror, no second source of truth. Keep `alfred serve` JSON APIs stable so the Tauri shell stays thin. IC: core. Effort: M. Issue: TBD.
 - **fleet-brain v2.** Keep SQLite as the default local store and add optional graph/vector recall for operators who want deeper search across lessons, failures, files, bundles, and follow-ups. Expose the same memory through a local MCP adapter. IC: core. Effort: L. Issue: TBD.
 - **Memory quality loop v2.** Improve duplicate collapse, evidence ranking, stale lesson retirement, and approved follow-up execution for governor findings before a lesson can shape future runs. IC: core. Effort: M. Issue: TBD.
@@ -147,7 +147,7 @@ Candidly speculative. No IC, no quarter, no committed effort estimate.
 Decisions considered and left out. Listed so contributors do not re-pitch them.
 
 - **Plugin or skill marketplace bundled into Alfred.** Considered and decided against. Skills are operator-installed Claude Code skills; a bundled marketplace would push maintenance onto the framework. The convention-only resolver stays.
-- **Hosted Alfred SaaS.** Not on the roadmap. Alfred is operator-hosted by design; multi-tenant is a different product.
+- **Hosted Alfred SaaS.** Not on the roadmap. Alfred is self-hosted by design; multi-tenant is a different product.
 - **First-class GitHub App** instead of the operator's `gh` PAT. Larger onboarding surface; deferred until there is demonstrated demand.
 - **Pluggable spend backends** (filesystem, sqlite, Redis). Single-host is the design, so this stays speculative.
 - **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience but the install story is fine.
@@ -156,7 +156,7 @@ Decisions considered and left out. Listed so contributors do not re-pitch them.
 
 Alfred has a deliberate shape. These are not missing features; they are the design.
 
-- **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
+- **Single-person install.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` and `systemd` own cadence; each firing is a fresh, isolated process. Better failure isolation, and it survives reboots.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` and `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.

@@ -171,5 +171,5 @@ The next useful layer is reliability, not more mystery:
 See also:
 
 - [State and memory](/concepts/state-and-memory/)
-- [Operator CLI](/reference/cli/)
+- [Alfred CLI](/reference/cli/)
 - [`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md)
