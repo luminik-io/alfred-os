@@ -62,7 +62,7 @@ const windowRange = `${dateOnly(from)}..${toDate}`;
 
 const rows = [];
 
-for (const repo of REPOS) {
+for (const [repoIndex, repo] of REPOS.entries()) {
   const prs = (await searchGitHub(`repo:${repo} is:pr is:merged merged:${windowRange}`)).filter(
     (item) => item.__typename === "PullRequest",
   );
@@ -86,7 +86,10 @@ for (const repo of REPOS) {
     total_issues_opened: openedIssues.length,
     total_issues_closed: closedIssues.length,
   });
-  console.error(`${repo}: ${agentPrs.length} agent PRs, ${agentIssuesOpened.length} agent issues`);
+  console.error(
+    `repo ${repoIndex + 1}/${REPOS.length}: ${agentPrs.length} agent PRs, ` +
+      `${agentIssuesOpened.length} agent issues`,
+  );
 }
 
 const summary = rows.reduce(
