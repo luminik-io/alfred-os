@@ -100,7 +100,7 @@ export const GET: APIRoute = async ({ site }) => {
     "- Does not call out to a vendor backend for telemetry.",
     "- Does not act without an issue label or a Slack approval (where",
     "  configured). Batman, in particular, halts before filing child",
-    "  issues until the operator reacts with the configured emoji.",
+    "  issues until you react with the configured emoji.",
     "",
     "## How to crawl the rest of the site",
     "",

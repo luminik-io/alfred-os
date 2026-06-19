@@ -50,8 +50,8 @@ agents from stepping on each other.
   summaries. The local dashboard and desktop app inspect those same sources;
   they do not become a hosted control plane.
 - Treat Slack as the planning surface: teammates can reply in a Batman plan
-  thread with scope changes, questions, and acceptance criteria while the
-  operator keeps approval authority. Registered plan-thread replies persist
+  thread with scope changes, questions, and acceptance criteria while you keep
+  approval authority. Registered plan-thread replies persist
   local revision artifacts and echo the current repo scope before approval.
   Follow-up replies after PR links are captured as context for the next pass,
   not as implicit merge approval.
@@ -72,7 +72,7 @@ agents from stepping on each other.
   not require provider API keys.
 - Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
   report, hard spend caps, and an explicit GitHub state machine. A locally drafted
-  single-repo issue lands behind an operator-approval gate
+  single-repo issue lands behind an approval gate
   (`agent:plan-pending-approval`) and is held from autonomous pickup until you
   approve it.
 
@@ -125,7 +125,7 @@ The same works for `examples/bin/hello.py` and `bin/lucius.py`, and via the
 `ALFRED_DRY_RUN=1` env var instead of the flag. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
 for what is stubbed versus real.
 
-After install, the operator CLI resolves every codename without touching the
+After install, the Alfred CLI resolves every codename without touching the
 host scheduler:
 
 ```sh
@@ -231,7 +231,7 @@ Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume o
 
 - Long-running loops have no failure isolation. One bad run trashes the others.
 - In-memory state can't survive an OS reboot. A long-lived host restarts every few weeks.
-- Chat-first interfaces put the operator on the critical path.
+- Chat-first interfaces keep you on the critical path.
 
 Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, the `agent_runner` module wraps each firing in a lock, preflight, spend cap, and isolated worktree, and `claude -p` (or `codex exec`) does the bounded LLM work in a fresh subprocess. Spend is tracked per agent per day. When a Claude-backed agent hits a Claude provider limit, every other agent skips for an hour. The framework code never touches the LLM directly: the runner is plain Python, the model writes the code. The [System shape](#system-shape) diagram above traces one firing end to end; [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
 
@@ -399,7 +399,7 @@ and a per-IP rate limit either way. Full contract:
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
 - [Telemetry](docs/TELEMETRY.md): the opt-in, off-by-default anonymous proof-counter. Exactly what is sent, what is never sent, the single on/off switch, and how to self-host the collector.
 - [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
-- [Hermes integration](docs/HERMES.md): optional operator-layer recipe for teams already using Hermes.
+- [Hermes integration](docs/HERMES.md): optional Hermes-layer recipe for teams already using Hermes.
 - [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers. Install, deploy, and operate.
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
@@ -440,7 +440,7 @@ workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling,
 Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
 v0.5.1 carries the first signed native Mac and Linux desktop app (built with Tauri),
 live Claude and Codex subscription usage in that app, a single-repo
-operator-approval gate, a disk guardian that pauses your agents cleanly when the
+approval gate, a disk guardian that pauses your agents cleanly when the
 disk is nearly full, a Slack planning path that turns an approved draft into a
 labeled GitHub issue, fleet-brain reliability and memory tooling, one-command
 setup-token bootstrap, a public download page, and SEO plus consent-gated
@@ -454,8 +454,8 @@ billing API, backed by the live `GET /api/usage` endpoint, with the same data
 also available from the `alfred usage` CLI). Its Agents view has a cinematic
 roster with a list toggle. Runs emit step-level events so the timeline shows
 real progress, and any
-issue carrying the operator-approval gate label (`agent:plan-pending-approval`)
-is held from autonomous pickup until the operator approves it and the label
+issue carrying the approval gate label (`agent:plan-pending-approval`)
+is held from autonomous pickup until you approve it and the label
 clears. Slack remains the primary collaboration surface.
 
 The design boundary is stable: one person, one local Mac or Linux box, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
