@@ -1,13 +1,13 @@
 ---
 title: Hermes integration
-description: Optional Hermes setup for operators who want a chat gateway, Kanban, MCP, skills, memory, or dashboards around Alfred.
+description: Optional Hermes setup when you want a chat gateway, Kanban, MCP, skills, memory, or dashboards around Alfred.
 ---
 
 Alfred does not require Hermes. The core runtime is local Python,
 host-scheduler units, GitHub CLI, git worktrees, Slack delivery, and local model
 CLIs.
 
-Hermes is useful when you want an operator layer around the engineering fleet:
+Hermes is useful when you want a companion control layer around the engineering fleet:
 chat gateway, cron prompts, persistent goals, Kanban, MCP tools, skills, memory,
 or dashboards. In that setup Hermes observes, reports, or creates handoffs,
 while Alfred owns the engineering agent state machine and scheduler units.

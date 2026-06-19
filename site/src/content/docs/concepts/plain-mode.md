@@ -22,7 +22,7 @@ Alfred's quality bar is unchanged: every piece of work still becomes a
 structured draft with a problem statement, desired behavior, scope, checks, and
 a verification plan, and it still passes every existing gate before anything
 ships. Plain mode only changes *who has to think in those terms*. In the default
-(technical) mode, the operator does. In plain mode, the assistant does that work
+(technical) mode, you do. In plain mode, the assistant does that work
 invisibly and talks to the person entirely in plain language.
 
 ## Turn it on
@@ -34,7 +34,7 @@ export ALFRED_INTAKE_PROFILE=plain
 ```
 
 - **Unset** (or any unrecognized value) keeps the original technical behavior,
-  unchanged. A typo never silently downgrades an operator into plain mode.
+  unchanged. A typo never silently downgrades the default technical mode into plain mode.
 - **`plain`** switches the planning assistant's conversational surface to the
   non-technical front door.
 
@@ -67,8 +67,8 @@ Plain mode is the friendly entrance; the existing pieces do the rest.
 
 - **[Slack listener](/concepts/slack-native-planning/).** A teammate DMs Alfred
   describing what they want. With plain mode on, Alfred replies with plain
-  questions and a plain plan instead of operator commands and readiness scores.
-- **[Desktop client](/concepts/desktop-client/).** The Compose box becomes a
+  questions and a plain plan instead of internal commands and readiness scores.
+- **[Alfred Desktop](/concepts/desktop-client/).** The Compose box becomes a
   plain-language intake.
 - **The fleet.** Receives the exact same structured work it always has, and keeps
   every gate (claim-lock, spend caps, review, approval) intact.

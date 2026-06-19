@@ -57,7 +57,7 @@ from server.plan_approvals import (
     issue_num_from_plan_id,
     write_decision,
 )
-from server.reader import PlanDraft
+from server.reader import FilesystemReader, PlanDraft
 
 logger = logging.getLogger(__name__)
 
@@ -971,7 +971,7 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse({"error": "plan not found"}, status_code=404)
         try:
             result = await run_in_threadpool(
-                _discard_planning_draft,
+                _discard_planning_draft_group,
                 _state_root(request),
                 draft_id,
             )
@@ -1036,9 +1036,9 @@ def register_routes(app: FastAPI) -> None:
         """File labeled GitHub issue work from a ready local planning draft.
 
         This is the native-client issue filing route for Plan work. It does not run an
-        agent, touch a worktree, or bypass the fleet gates: it creates either
-        one ``agent:implement`` issue or a Batman multi-repo bundle, then the
-        normal Alfred queue decides when and how to claim it. The route is
+        agent, touch a worktree, or bypass the fleet gates: it creates one
+        ``agent:implement`` issue, then the normal Alfred queue decides when
+        and how to claim it. The route is
         same-origin and token-gated like other local mutations, and it is
         idempotent via the saved draft's ``bridge.issue_url`` field.
         """
@@ -2380,7 +2380,7 @@ def _plain_compose_user(text: str) -> str:
             user = _compact_plain_text(match.group(1)).strip(" ,.;:")
             if 2 <= len(user) <= 80:
                 return user[:1].upper() + user[1:]
-    return "Operator or product user"
+    return "Not specified."
 
 
 def _plain_compose_acceptance(text: str) -> list[str]:
@@ -2569,7 +2569,7 @@ def _list_compose_drafts(request: Request) -> list[dict[str, Any]]:
 def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]:
     """Create fleet-pickup GitHub issue work from a saved planning draft.
 
-    The native client calls this only after an explicit local operator action.
+    The native client calls this only after an explicit local File issue action.
     Safety still comes from the same bridge rules as Slack: readiness must pass,
     repos must be allowlisted, and an existing ``bridge.issue_url`` or bundle
     URL map makes the operation idempotent.
@@ -2603,27 +2603,33 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
             approval_reactions=base.approval_reactions,
         )
     )
+    existing_issue_url = _planning_draft_issue_url(payload)
     outcome = bridge.convert(
         payload,
         trusted=True,
         thread_link="",
-        already_converted=bool(_planning_draft_issue_url(payload)),
+        already_converted=bool(existing_issue_url),
         origin="native-client",
     )
-    if outcome.status == "already_converted" and outcome.issue_url:
+    issue_url = outcome.issue_url or existing_issue_url
+    repo = outcome.repo or _first_draft_repo(payload)
+    issue_urls = [issue_url] if issue_url else []
+    issues_by_repo = {repo: issue_url} if repo and issue_url else {}
+    repos_out = [repo] if repo else []
+    labels_out = [base.label] if base.label else []
+
+    if outcome.status == "already_converted" and issue_url:
         return {
             "ok": True,
             "status": "already_filed",
             "draft_id": draft_id,
-            "issue_url": outcome.issue_url,
-            "issue_urls": list(outcome.issue_urls),
-            "issues_by_repo": outcome.issues_by_repo,
-            "repo": outcome.repo or _first_draft_repo(payload),
-            "repos": list(outcome.repos),
+            "issue_url": issue_url,
+            "issue_urls": issue_urls,
+            "issues_by_repo": issues_by_repo,
+            "repo": repo,
+            "repos": repos_out,
             "label": base.label,
-            "labels": list(outcome.labels),
-            "bundle_slug": outcome.bundle_slug,
-            "bundle_label": outcome.bundle_label,
+            "labels": labels_out,
             "detail": outcome.detail,
         }
     if not outcome.created:
@@ -2631,26 +2637,22 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
             "ok": False,
             "status": outcome.status,
             "draft_id": draft_id,
-            "repo": outcome.repo,
+            "repo": repo,
             "label": base.label,
-            "labels": list(outcome.labels),
-            "bundle_slug": outcome.bundle_slug,
-            "bundle_label": outcome.bundle_label,
+            "labels": labels_out,
             "error": outcome.detail or outcome.status,
         }
 
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     payload["bridge"] = {
         "converted": True,
-        "issue_url": outcome.issue_url,
-        "issue_urls": list(outcome.issue_urls),
-        "issues_by_repo": outcome.issues_by_repo,
-        "repo": outcome.repo,
-        "repos": list(outcome.repos),
+        "issue_url": issue_url,
+        "issue_urls": issue_urls,
+        "issues_by_repo": issues_by_repo,
+        "repo": repo,
+        "repos": repos_out,
         "label": base.label,
-        "labels": list(outcome.labels),
-        "bundle_slug": outcome.bundle_slug,
-        "bundle_label": outcome.bundle_label,
+        "labels": labels_out,
         "filed_at": now,
         "source": "native-client",
     }
@@ -2662,17 +2664,89 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
         "ok": True,
         "status": "filed",
         "draft_id": draft_id,
-        "issue_url": outcome.issue_url,
-        "issue_urls": list(outcome.issue_urls),
-        "issues_by_repo": outcome.issues_by_repo,
-        "repo": outcome.repo,
-        "repos": list(outcome.repos),
+        "issue_url": issue_url,
+        "issue_urls": issue_urls,
+        "issues_by_repo": issues_by_repo,
+        "repo": repo,
+        "repos": repos_out,
         "label": base.label,
-        "labels": list(outcome.labels),
-        "bundle_slug": outcome.bundle_slug,
-        "bundle_label": outcome.bundle_label,
+        "labels": labels_out,
         "detail": outcome.detail,
     }
+
+
+def _discard_planning_draft_group(state_root: Path, draft_id: str) -> dict[str, Any]:
+    """Archive every visible duplicate represented by one planning draft card."""
+    root = Path(state_root)
+    plan = FilesystemReader(state_root=root).get_plan(draft_id)
+    if plan is None:
+        return _discard_planning_draft(root, draft_id)
+
+    draft_ids = _planning_draft_discard_group_ids(root, plan)
+    results: list[dict[str, Any]] = []
+    for candidate_id in draft_ids:
+        try:
+            results.append(_discard_planning_draft(root, candidate_id))
+        except FileNotFoundError:
+            if candidate_id == draft_id:
+                raise
+            continue
+    if not results:
+        raise FileNotFoundError(draft_id)
+
+    archived_paths = [
+        str(result["archived_path"]) for result in results if result.get("archived_path")
+    ]
+    return {
+        "ok": True,
+        "status": (
+            "discarded"
+            if any(result.get("status") == "discarded" for result in results)
+            else "already_discarded"
+        ),
+        "draft_id": draft_id,
+        "draft_ids": [str(result.get("draft_id") or "") for result in results],
+        "discarded_count": len(results),
+        "archived_path": archived_paths[0] if archived_paths else None,
+        "archived_paths": archived_paths,
+    }
+
+
+def _planning_draft_discard_group_ids(state_root: Path, plan: PlanDraft) -> list[str]:
+    fallback = _safe_planning_draft_id(plan.plan_id)
+    if not fallback or not _dedupeable_planning_draft(plan):
+        return [fallback] if fallback else []
+
+    title, repos = _plan_dedupe_key(plan)
+    if not title or not repos:
+        return [fallback]
+
+    ids: list[str] = []
+    for candidate in FilesystemReader(state_root=Path(state_root)).list_plans(limit=10_000):
+        if not _dedupeable_planning_draft(candidate):
+            continue
+        if _plan_dedupe_key(candidate) != (title, repos):
+            continue
+        candidate_id = _safe_planning_draft_id(candidate.plan_id)
+        if candidate_id:
+            ids.append(candidate_id)
+    return ids or [fallback]
+
+
+def _dedupeable_planning_draft(plan: PlanDraft) -> bool:
+    return plan.source in {"compose", "planning", "slack"} and not plan.parent
+
+
+def _plan_dedupe_key(plan: PlanDraft) -> tuple[str, str]:
+    title = re.sub(r"\s+", " ", (plan.title or "").strip().lower())
+    if title == "alfred planning draft":
+        title = ""
+    repos = sorted(
+        repo.strip().lower()
+        for repo in re.split(r"[,\s]+", plan.affected_repos or "")
+        if repo.strip()
+    )
+    return title, ",".join(repos)
 
 
 def _discard_planning_draft(state_root: Path, draft_id: str) -> dict[str, Any]:

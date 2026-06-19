@@ -21,13 +21,18 @@ no separate "disable" step and no cached state that keeps it running.
 
 ## Why it exists
 
-One reason: the public impact page. It can show how many pull requests opted-in
-Alfred installs have opened, reviewed, and merged. Those numbers are useful only
-if they come from real installs, so operators can opt in to contribute their
-anonymous totals.
+One reason: the community counter on the public impact page. It can show how
+many pull requests opted-in Alfred installs have opened, merged, and moved to a
+terminal state. Those numbers are useful only if they come from real installs,
+so people can opt in to contribute their anonymous totals.
 
 It is not analytics, not crash reporting, not feature tracking, and not tied to
 any account. It is a counter.
+
+The richer GitHub activity board on `/impact` is separate. It uses public
+GitHub metadata from `luminik-io/alfred-os`: merged PRs, issue flow, additions,
+deletions, changed files, and PR URLs. Anonymous telemetry does not send that
+detail.
 
 ## Exactly what is sent
 
@@ -56,10 +61,10 @@ month turns over) never double counts. See
 | --- | --- | --- |
 | `install_id` | A random URL-safe token generated locally on first opt-in and stored at `$ALFRED_HOME/state/telemetry-install-id`. Not derived from hostname, MAC, user, or email. The collector keys its single per-install record on this. If the token cannot be persisted (read-only state dir), the reporter skips that run rather than mint a fresh ephemeral id, so one host never looks like many installs. | `secrets.token_urlsafe` |
 | `period` | The constant `lifetime`. Advisory metadata only: the collector de-duplicates on `install_id` alone, never on this label, so a calendar rollover cannot re-add a constant total. | fixed |
-| `prs_opened` | Count of **Alfred-authored** PRs the local fleet-brain has cached. The poller caches every PR it sees, so this counts only rows carrying the `agent:authored` label or an agent branch prefix, never operator- or bot-opened PRs. Counted with an exact `COUNT(*)`, never silently capped at the 500-row list limit. | `github_items` (kind = pr, agent-authored) |
+| `prs_opened` | Count of **Alfred-authored** PRs the local fleet-brain has cached. The poller caches every PR it sees, so this counts only rows carrying the `agent:authored` label or an agent branch prefix, never human- or bot-opened PRs. Counted with an exact `COUNT(*)`, never silently capped at the 500-row list limit. | `github_items` (kind = pr, agent-authored) |
 | `prs_merged` | Of those Alfred-authored PRs, how many merged. | `github_items` agent-authored, state = merged |
-| `prs_reviewed` | Of those Alfred-authored PRs, how many reached a terminal state (merged or closed), which in Alfred's flow means they went through review. Never exceeds `prs_opened`. | `github_items` agent-authored, state in (merged, closed) |
-| `loc_added` | A file-delta count: one per repo file an agent added or modified. The brain does not store per-line LOC, so this is a file count carrying the wire name `loc_added` for forward compatibility. | `file_touches` rows |
+| `prs_reviewed` | Of those Alfred-authored PRs, how many reached a terminal state (merged or closed). The wire name is historical; public pages should label this as terminal PRs unless a future telemetry schema stores explicit review-agent inspections. Never exceeds `prs_opened`. | `github_items` agent-authored, state in (merged, closed) |
+| `loc_added` | A file-delta count: one per repo file an agent added or modified. The brain does not store per-line LOC, so this is a file count carrying the wire name `loc_added` for forward compatibility. Public pages must label it as a changed-file proxy, not LOC. | `file_touches` rows |
 
 Counts are clamped to `[0, 100000]` before sending. The server clamps again.
 
@@ -83,7 +88,7 @@ is never resolved to anything.
 1. Decide where the counts go. Either deploy the bundled collector
    (see below) or point at any endpoint that accepts the payload above.
 
-2. Enable telemetry from the operator CLI:
+2. Enable telemetry from the Alfred CLI:
 
    ```sh
    alfred telemetry on --url https://your-worker.example.com/ingest

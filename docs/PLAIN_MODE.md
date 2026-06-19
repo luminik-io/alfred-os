@@ -64,7 +64,7 @@ Plain mode is the friendly entrance; the existing pieces do the rest.
   want. With `ALFRED_INTAKE_PROFILE=plain`, the assistant replies with plain
   questions and a plain plan instead of operator commands and readiness
   scores.
-- **Desktop client.** The Compose box becomes a plain-language intake. The
+- **Alfred Desktop.** The Compose box becomes a plain-language intake. The
   person types a request, answers a question or two, and approves the plan.
 - **Your agents.** They receive the exact same structured work they always have, and
   keep every gate (claim-lock, spend caps, review, approval) intact.

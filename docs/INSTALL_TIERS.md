@@ -4,7 +4,7 @@ Alfred installs in three tiers. Only the first is required. The other two are op
 
 | Tier | What it is | Required? | Needs a desktop? |
 |---|---|---|---|
-| `core` | Fleet, operator CLI, host scheduler, `alfred serve` JSON API | Yes | No (headless, Linux-friendly) |
+| `core` | Fleet, Alfred CLI, host scheduler, `alfred serve` JSON API | Yes | No (headless, Linux-friendly) |
 | `client` | Tauri desktop control plane (`clients/desktop`) | No | Yes |
 | `slack` | Planning listener + issue bridge | No | No |
 
@@ -12,9 +12,9 @@ For the architecture behind these tiers, see [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 ## `core`: the standalone base
 
-The core install is the whole product for most operators. It is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the operator CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`.
+The core install is the whole product for most setups. It is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the Alfred CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`.
 
-Core is fully standalone. The CLI and fleet do not need the desktop client, a browser, or Slack to function. A headless Debian or Ubuntu box can run the entire fleet from cron-style timers with nothing on screen. See [`LINUX.md`](LINUX.md) for the `systemd --user` path.
+Core is fully standalone. The CLI and fleet do not need Alfred Desktop, a browser, or Slack to function. A headless Debian or Ubuntu box can run the entire fleet from cron-style timers with nothing on screen. See [`LINUX.md`](LINUX.md) for the `systemd --user` path.
 
 Install it the same way as the main walkthrough:
 
@@ -32,22 +32,22 @@ claude
 
 ### The `serve` extra
 
-`alfred serve` is the localhost JSON API over `$ALFRED_HOME/state`. It binds to `127.0.0.1` by default and is the seam the desktop client reads through. Its Python dependencies are an optional extra so a pure-fleet install stays small:
+`alfred serve` is the localhost JSON API over `$ALFRED_HOME/state`. It binds to `127.0.0.1` by default and is the API Alfred Desktop reads through. Its Python dependencies are an optional extra so a pure-fleet install stays small:
 
 ```sh
 pip install 'alfred-os[serve]'   # FastAPI + uvicorn + jinja2
 alfred serve --no-browser        # listens on http://127.0.0.1:7010
 ```
 
-If port 7010 is taken, use another localhost port and point the desktop client
+If port 7010 is taken, use another localhost port and point Alfred Desktop
 at it from Setup. Binding to `0.0.0.0` is allowed but discouraged: the dashboard
 exposes paths and event payloads that may carry repo URLs or other operator
 context. The fleet runs fine without `serve` ever starting; it is only needed
-when you want the dashboard or the desktop client.
+when you want the dashboard or Alfred Desktop.
 
 ## `client`: the desktop control plane
 
-The desktop client is an optional Tauri app under `clients/desktop`. It is a thin local control plane and installer, not a second Alfred runtime. Slack remains the collaboration surface; the client is for local trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet.
+Alfred Desktop is an optional Tauri app under `clients/desktop`. It is a thin local control surface and installer, not a second Alfred runtime. Slack remains the collaboration surface; the client is for local trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet.
 
 It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. You can run Alfred entirely without it.
 
@@ -89,6 +89,6 @@ Leave `ALFRED_BRIDGE_ENABLED` unset to keep approvals as refine-only no-ops. For
 ## Picking your tiers
 
 - **Headless Linux fleet, no UI:** `core` only. Run the CLI and scheduler; skip `serve`, the client, and Slack, or wire just an incoming webhook for one-way posts.
-- **Mac operator who wants a cockpit:** `core` + `client`. Install the `serve` extra, run `alfred serve`, and drive the fleet from the desktop app.
+- **Mac operator who wants Alfred Desktop:** `core` + `client`. Install the `serve` extra, run `alfred serve`, and drive the fleet from the desktop app.
 - **Team that plans in Slack:** `core` + `slack`. Run the listener, keep the bridge off until you trust the flow, then arm it with an allowlist.
 - **Everything:** all three. The client and Slack surfaces both sit on top of the same `core` and never bypass its gates.

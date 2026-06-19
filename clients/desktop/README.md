@@ -31,11 +31,11 @@ convenience surface on top, not a dependency.
 
 The app navigation is five primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
-drawer. The public operator model is documented in
+drawer. The public control model is documented in
 [`docs/NATIVE_CLIENT.md`](../../docs/NATIVE_CLIENT.md).
 
 **Inbox** is the home / heartbeat: a pinned capacity / health strip over three
-in-page lanes. **Needs you** is approvals and failures waiting on the operator,
+in-page lanes. **Needs you** is approvals and failures waiting on you,
 **Activity** is what is running and scheduled, and **Shipped** is merged work
 (defaulting to the last 24h, with a 24h / 7d / 14d filter). Shipped is backed by
 `GET /api/shipped` and renders the same readable cards as the Slack board; a card
@@ -54,7 +54,7 @@ clarifying questions still open, and saves a draft to the planning inbox. Each
 submission refines the same draft. The plain-mode spec coach is the default when
 the runtime starts with `ALFRED_INTAKE_PROFILE=plain`.
 
-**Agents** is the operator-depth page, organized as in-page tabs. **Roster**
+**Agents** is the detailed control page, organized as in-page tabs. **Roster**
 carries pause, resume, run-once, and dry-run controls per codename.
 **Activity** has the live feed plus a latest-run view that shows one agent's
 most recent captured run, refreshed on the dashboard poll. **Learnings** shows
@@ -183,7 +183,7 @@ allowlisted set of Alfred JSON API paths on `http://localhost`,
 (follow-up planning actions, the Compose draft endpoint `POST /api/plans/draft`,
 the Kanban queue control `POST /api/queue`, and local Slack trusted-user
 updates). `POST /api/queue` mutates fleet/repo state, so it requires the
-operator's per-launch token via the `X-Alfred-Token` header, not just a
+per-launch token via the `X-Alfred-Token` header, not just a
 same-origin request. Local plan and firing detail stays in native inspector
 panes; explicit Slack and GitHub links open outside the app through Tauri's
 opener plugin.

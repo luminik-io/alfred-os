@@ -95,7 +95,7 @@ const STRUCTURED_DATA = JSON.stringify({
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
       description:
-        "A local runtime and coordination layer that turns GitHub issues, specs, and PR " +
+        "A local runtime and coordination layer that turns Slack requests, GitHub issues, specs, and PR " +
         "feedback into autonomous Claude Code or Codex runs with isolated git " +
         "worktrees, label state, reviews, tests, and Slack reports.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
@@ -372,7 +372,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Alfred. An autonomous engineering team for solo builders.",
+            content: "Alfred. Coding agents that keep development moving while you are away.",
           },
         },
         {
@@ -386,7 +386,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "Alfred, an autonomous engineering team for solo builders.",
+            content: "Alfred. Coding agents that keep development moving while you are away.",
           },
         },
         {
@@ -488,8 +488,8 @@ export default defineConfig({
             { label: "Fleet brain", slug: "concepts/fleet-brain" },
             { label: "Slack-native planning", slug: "concepts/slack-native-planning" },
             { label: "Plain mode", slug: "concepts/plain-mode" },
-            { label: "Native local client", slug: "concepts/native-client" },
-            { label: "Desktop client", slug: "concepts/desktop-client" },
+            { label: "Alfred Desktop", slug: "concepts/native-client" },
+            { label: "Desktop app guide", slug: "concepts/desktop-client" },
             { label: "Layered install", slug: "concepts/layered-install" },
             { label: "Disk guardian", slug: "concepts/disk-guardian" },
             { label: "Engine routing", slug: "concepts/engine-routing" },
@@ -515,7 +515,7 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "agent_runner API", slug: "reference/agent-runner" },
-            { label: "Operator CLI", slug: "reference/cli" },
+            { label: "Alfred CLI", slug: "reference/cli" },
             { label: "Telemetry", slug: "reference/telemetry" },
             { label: "launchd plist template", slug: "reference/launchd" },
             { label: "Environment variables", slug: "reference/env" },

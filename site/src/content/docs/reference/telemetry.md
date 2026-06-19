@@ -6,14 +6,14 @@ description: Opt-in usage counts and the public impact page.
 Alfred runtime telemetry is off by default. A default install does not phone
 home and does not create an install id.
 
-When an operator opts in, Alfred sends a small daily usage-count payload to
-the endpoint they configure:
+When you opt in, Alfred sends a small daily usage-count payload to the endpoint
+you configure:
 
 - random install token
 - lifetime PRs opened by Alfred
 - lifetime PRs merged
-- lifetime PRs reviewed
-- lifetime changed-file total
+- lifetime PRs that reached merged or closed state
+- lifetime changed-file proxy
 
 No repo names, branch names, PR titles, code, logs, prompts, usernames, hostnames,
 or billing data are sent.
@@ -48,8 +48,13 @@ The marketing site has an `/impact/` page that can show anonymous aggregate
 totals from opted-in installs. The static build reads the public stats endpoint
 from `PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
 
-When no stats endpoint is configured, or when totals are below the proof floor,
+When no stats endpoint is configured, or when totals are below the display floor,
 the page shows a neutral warm-up state.
+
+The public GitHub board on `/impact/` is separate from anonymous telemetry. It is
+generated from public GitHub metadata for `luminik-io/alfred-os`, so the site can
+show real PR links, issue flow, additions, deletions, and changed files without
+asking private installs to send that detail.
 
 ## Collector
 

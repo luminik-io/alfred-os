@@ -51,6 +51,7 @@ import type {
   PlanDecision,
   PlanDraft,
   QueueAction,
+  QueueActionResponse,
   ShippedBoard,
   Snapshot,
   UsageResponse,
@@ -65,6 +66,22 @@ function assignmentLabel(target: AssignmentTargetAgent | string): string {
   if (target === "batman") return "Batman";
   if (target === "lucius") return "Lucius";
   return "Alfred";
+}
+
+function assignmentNoticeMessage(
+  repo: string,
+  issueNumber: number,
+  requestedTarget: AssignmentTargetAgent,
+  result: QueueActionResponse,
+): string {
+  const routedTarget =
+    result.target_agent || (requestedTarget !== "auto" ? requestedTarget : "");
+  if (routedTarget === "batman" || routedTarget === "lucius") {
+    return `Assigned ${repo}#${issueNumber} to ${assignmentLabel(routedTarget)}.`;
+  }
+  const detail = result.detail?.trim();
+  if (detail) return detail;
+  return `${repo}#${issueNumber} needs human scoping before an agent can pick it up.`;
 }
 
 export function useAlfred() {
@@ -342,10 +359,18 @@ export function useAlfred() {
       setActionNotice(null);
       try {
         const result = await discardPlan(baseUrl, plan.plan_id);
+        const matchingDrafts =
+          typeof result.discarded_count === "number" && result.discarded_count > 1
+            ? result.discarded_count - 1
+            : 0;
+        const groupedSuffix =
+          matchingDrafts > 0
+            ? ` and ${matchingDrafts} matching ${matchingDrafts === 1 ? "draft" : "drafts"}`
+            : "";
         const message =
           result.status === "already_discarded"
             ? `Already discarded ${plan.title}.`
-            : `Discarded ${plan.title}.`;
+            : `Discarded ${plan.title}${groupedSuffix}.`;
         setActionNotice({ tone: "ok", message, domain: "plans" });
         await refresh(baseUrl);
       } catch (err) {
@@ -374,15 +399,13 @@ export function useAlfred() {
       setActionNotice(null);
       try {
         const result = await setQueuePickup(baseUrl, repo, issueNumber, action, targetAgent);
-        const assignedAgent =
-          targetAgent === "auto" ? result?.target_agent || "Alfred" : targetAgent;
         setActionNotice({
           tone: "ok",
           message:
             action === "queue"
               ? `Queued ${repo}#${issueNumber} for pickup.`
               : action === "assign"
-                ? `Assigned ${repo}#${issueNumber} to ${assignmentLabel(assignedAgent)}.`
+                ? assignmentNoticeMessage(repo, issueNumber, targetAgent, result)
               : action === "done"
                 ? `Closed ${repo}#${issueNumber} as done.`
                 : `Held ${repo}#${issueNumber} so no agent picks it up.`,

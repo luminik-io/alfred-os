@@ -13,7 +13,7 @@ Solid arrows are state transitions (someone modifies an issue or PR). Dashed arr
 
 ```mermaid
 flowchart LR
-    subgraph operator[Operator]
+    subgraph human[You]
         slack["fleet Slack channel"]
         ops_cli["alfred CLI"]
     end
@@ -23,10 +23,10 @@ flowchart LR
         prs["PRs<br/>(agent:authored)"]
     end
 
+    batman["batman<br/><i>architect · opt-in</i>"]
+    lucius["lucius<br/><i>feature-dev · every 20m</i>"]
     drake["drake<br/><i>planner · every 2h</i>"]
     damian["damian<br/><i>spec-bundle-planner · opt-in</i>"]
-    batman["batman<br/><i>cross-repo coordinator · opt-in</i>"]
-    lucius["lucius<br/><i>feature-dev · every 20m</i>"]
     bane["bane<br/><i>test-coverage · every 4h</i>"]
     rasalghul["rasalghul<br/><i>code-review · every 30m</i>"]
     nightwing["nightwing<br/><i>review-fix · every 45m</i>"]
@@ -35,9 +35,9 @@ flowchart LR
     gordon["gordon<br/><i>deploy-health · daily 08:00</i>"]
     automerge["automerge<br/><i>squash-merge · every 15m</i>"]
 
-    drake -- "files" --> issues
-    damian -- "files bundles" --> issues
-    batman -- "plans bundles" --> issues
+    batman -- "owns bundles" --> issues
+    drake -- "files scoped work" --> issues
+    damian -- "files spec bundles" --> issues
     robin -- "triages" --> issues
     issues -- "claim_issue" --> lucius
     lucius -- "transition_to=pr-open" --> prs
@@ -51,19 +51,19 @@ flowchart LR
     huntress -- "smoke-test fails" --> robin
     gordon -- "drift / Sentry" --> slack
 
-    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & damian & batman & automerge -. "status" .-> slack
+    batman & lucius & drake & bane & rasalghul & nightwing & robin & huntress & gordon & damian & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-The loop closes on itself: Drake files work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. The operator's first required action is usually just labelling issues `agent:implement` and reviewing PRs before merge.
+The loop closes on itself: Batman owns multi-repo bundles, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
 
-## Batman: the multi-repo agent
+## Batman: the architect agent
 
-Batman is the agent that holds a whole feature in its head. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts a rollout plan, posts it to Slack for operator approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
+Batman is the architect agent that owns a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, posts it to Slack for approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
 
-Batman runs every hour by default but is opt-in: a fresh install does not start it. Enable it once you have a recurring multi-repo or monorepo-package feature shape and want a coordination layer above the per-repo agents. The OSS variant always halts before filing children; custom fleets can layer approval logic on top.
+Batman runs every hour by default but is opt-in: a fresh install does not start it. Enable it once you have a recurring multi-repo or monorepo-package feature shape and want a coordination layer above the per-repo agents. Fresh installs halt after the plan by default. Set `BATMAN_AUTO_EXECUTE=approval-gate` after setup when you want Batman to file child issues only after Slack approval.
 
 See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
@@ -71,17 +71,20 @@ See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Wo
 
 Schedules are sensible defaults; override per-agent in `agents.conf`.
 
-The installer starts with a smaller recommended fleet: Drake, Lucius, Ras al
-Ghul, and agent-cleanup. Pick `all` only when you want the full roster.
+The engineering hierarchy starts with Batman, Lucius, and Drake: Batman is the
+architect for cross-repo features, Lucius ships repo-local implementation PRs,
+and Drake scopes smaller single-repo requests. The first-install preset stays
+smaller: Lucius, Drake, Ras al Ghul, and agent-cleanup. Pick `all` only when
+you want the full roster.
 
 ### Specialist agents
 
 | Codename | Role | Default schedule | What it does |
 |---|---|---|---|
+| **batman** | architect | every 1 h, opt-in | Owns multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
 | **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |
-| **batman** | cross-repo coordinator | every 1 h, opt-in | Picks `agent:large-feature` / `agent:bundle:<slug>` issues and runs the plan-approve-execute-report cycle. Batman in OSS now ships plan + approval + execution. The default approval gate is Slack reaction-based. Toggle `BATMAN_AUTO_EXECUTE=1` to skip the gate (not recommended for fresh operators). See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
 | **bane** | test-coverage | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
 | **rasalghul** | code-review | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
 | **nightwing** | review-fix | every 45 min | Lands fixes for P0/P1 reviewer comments (CodeRabbit, Codex, rasalghul) on `agent:authored` PRs. |
@@ -120,7 +123,7 @@ The primitives in `lib/agent_runner.py` cover the common patterns: lock, preflig
 
 ## Roadmap categories
 
-The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-operator.
+The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-person.
 
 ## Memory
 
@@ -143,8 +146,8 @@ repo-relative paths changed by a firing or PR. `alfred brain files your-org/api`
 answers the practical question "what did the fleet touch here recently?"
 without requiring a hosted dashboard or external index.
 
-The shipping default is the in-tree `fleet_brain` SQLite provider. Operators
-who maintain a separate personal knowledge base can chain it as a fallback:
+The shipping default is the in-tree `fleet_brain` SQLite provider. If you
+maintain a separate personal knowledge base, you can chain it as a fallback:
 
 ```sh
 ALFRED_MEMORY_PROVIDERS=fleet,gbrain
@@ -153,7 +156,7 @@ ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 
 The chain consults `fleet` first and falls through to `gbrain` only when the
 fleet-brain has nothing for that `(codename, repo)`. The `gbrain` provider is
-read-only and not bundled; it is the operator's optional personal knowledge
+read-only and not bundled; it is your optional personal knowledge
 base CLI, and the shim degrades to empty when the binary is missing.
 
 If you already run Redis Agent Memory Server locally, add it as an optional

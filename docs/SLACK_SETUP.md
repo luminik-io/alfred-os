@@ -9,7 +9,7 @@ If you already have a webhook URL, the framework needs `SLACK_WEBHOOK_URL` in yo
 ## At the end
 
 - A Slack app named `<your-fleet>-bot` in the workspace where you want the channel.
-- An **incoming webhook URL** scoped to one channel (e.g. `#fleet`, `#dev-bots`, `#engineering-agents`).
+- An **incoming webhook URL** scoped to one channel (e.g. `#fleet`, `#dev-bots`, `#alfred-agents`).
 - *(Optional)* a **bot token** (`xoxb-...`) for Block Kit firing threads and
   other Web API calls webhooks cannot do.
 - *(Optional)* an **app-level token** (`xapp-1-…`) for Socket Mode if you want Alfred to receive planning messages and thread replies.
@@ -68,7 +68,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...........
 Reload your shell (`exec $SHELL`). `slack_post()` reads this directly.
 
 **Pros**: zero AWS dependency, easiest to rotate (edit one file).
-**Cons**: lives in plaintext on the operator's home directory.
+**Cons**: lives in plaintext in your home directory.
 
 ### Option B: AWS Secrets Manager (recommended for prod)
 
@@ -208,7 +208,7 @@ ALFRED_SLACK_BOT_USER_ID=U0BOTUSERID
 change the trusted collaborator list. `ALFRED_TRUSTED_SLACK_USER_IDS` is a
 static comma-separated allowlist for collaborators who can discuss plans, revise
 drafts, and create planning requests. You can also add local collaborators from
-Slack with `trust <@user>` or from the desktop client's Setup tab; those live in
+Slack with `trust <@user>` or from Alfred Desktop's Setup tab; those live in
 `$ALFRED_HOME/state/slack-trust/trusted-users.json` and are picked up without
 restarting the listener.
 
@@ -228,9 +228,9 @@ Safety model:
 
 - Only `ALFRED_OPERATOR_SLACK_USER_ID` and `ALFRED_TRUSTED_SLACK_USER_IDS`
   are allowed to create drafts or amend registered threads.
-- Local users added through `trust <@user>` or the desktop client have the same
+- Local users added through `trust <@user>` or Alfred Desktop have the same
   planning rights as env-trusted users, but cannot approve execution unless
-  they are also the operator.
+  they are also the configured approver.
 - If no trusted users are configured, the listener ignores every event.
 - Alfred only treats a thread as actionable after it registered the root
   message in `$ALFRED_HOME/state/slack-threads/`.
@@ -345,7 +345,7 @@ from chat by **leading a message with a known verb**. These are handled by
 | `memory sync now` | Operator-only. Write reviewed lessons to Redis AMS. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
-| `trusted` | Show the operator and trusted Slack users Alfred currently accepts. |
+| `trusted` | Show the configured approver and trusted Slack users Alfred currently accepts. |
 | `trust <@user>` | Operator-only. Add a local Slack collaborator without a listener restart. |
 | `untrust <@user>` | Operator-only. Remove a locally trusted Slack collaborator. |
 | `help` | List these commands. |
@@ -372,7 +372,7 @@ Safety model:
   follow-up. `handled <id>` archives the follow-up. None of these commands
   files GitHub issues, starts agents, approves execution, or merges PRs.
 - **Memory is reviewable.** `remember ...` and `memory remember ...` queue
-  candidates only. They do not enter future prompt context until the operator
+  candidates only. They do not enter future prompt context until you
   runs `memory promote <id>`.
   `memory harvest` previews repeated-failure lessons before `memory harvest now`
   queues them. A scheduled `memory-harvest.py` job can queue the same

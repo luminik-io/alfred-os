@@ -13,7 +13,7 @@ preflight, spend cap, and an isolated git worktree. Agents are one Python file
 per role under `bin/`, named after a coherent fictional cast (the codename
 pattern). `examples/` holds the reference agents the tutorial builds.
 
-Operators inspect and steer the fleet through the operator CLI (`bin/alfred`),
+Users inspect and steer the fleet through the Alfred CLI (`bin/alfred`),
 the optional `alfred serve` JSON API, the optional Tauri desktop client under
 `clients/desktop`, and Slack. The desktop client has a Claude + Codex
 subscription-headroom rail (backed by the live `GET /api/usage` endpoint, read
@@ -26,8 +26,8 @@ timeline shows real progress.
 
 ## Design boundaries (do not cross without a discussion)
 
-- **Single operator.** One person, one host, one config. Not multi-tenant, not
-  a hosted SaaS.
+- **Single-person install.** One person, one host, one config. Not multi-tenant,
+  not a hosted SaaS.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex`.
 - **Lean on the platform.** Adopt Anthropic-native capabilities rather than

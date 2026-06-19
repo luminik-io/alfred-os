@@ -2,7 +2,7 @@
 
 Coordinates creation and cleanup of per-repo git worktrees with
 synchronised branch names and a shared feature ID. Used by bundle /
-large-feature coordinators (e.g. Batman) that need to make changes
+large-feature architects (e.g. Batman) that need to make changes
 across two or more repos in lockstep.
 
 Design:

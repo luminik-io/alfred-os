@@ -1,18 +1,41 @@
 # The `alfred-shipped-public` emitter
 
-`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical `alfred-os` site does not host a live rendering of this feed; operators who want a public usage page on their own site can render the JSON however they prefer.
+`bin/alfred-shipped-public.py` reads your `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical Alfred site now renders a separate public GitHub board for the `luminik-io/alfred-os` repository from `site/src/data/impact-proof.json`. Use this emitter when you want a shipped-work page for your own private or customer repos, because it scrubs local state before anything is published.
 
 This document explains the schema, the scrub rules, and the emit command.
 
 ## When to use it
 
-You have run Alfred for a while and you want a public-facing rolling proof page. Maybe it's part of your build-in-public story. Maybe it's the verifiability bar your customers ask for. Either way the contract is:
+You have run Alfred for a while and you want a public-facing shipped-work page. Maybe it's part of your build-in-public story. Maybe it's the verifiability bar your customers ask for. Either way the contract is:
 
-- The operator runs the emitter on their own state directory.
+- You run the emitter on your own state directory.
 - The emitter scrubs aggressively before writing.
-- The operator publishes the resulting JSON wherever they want.
+- You publish the resulting JSON wherever you want.
 
-The canonical `alfred-os` repository does not ship a renderer because the operator's own choice of partner names, customer terms, and internal product codenames varies and should not appear in upstream marketing copy.
+The canonical Alfred repository does not render an operator's local emitted feed by default because partner names, customer terms, and internal product codenames vary and should not appear in upstream marketing copy.
+
+## Canonical site product snapshot
+
+The canonical site also has an aggregate-only Luminik product snapshot at
+`site/src/data/luminik-product-proof.json`. It is deliberately not a list of
+PRs. The refresh script reads an operator-provided repo list and writes only
+counts:
+
+```sh
+cd site
+ALFRED_PRODUCT_PROOF_REPOS="owner/repo-a,owner/repo-b" npm run proof:product
+```
+
+The repo list stays in the environment and is never written to the data file.
+That lets the public site show real product totals without publishing private
+repo names, PR titles, issue titles, branches, prompts, or code.
+
+On the canonical site, `.github/workflows/site.yml` refreshes this aggregate
+snapshot on every main-branch deploy, every manual site dispatch, and the daily
+site build when `ALFRED_PRODUCT_PROOF_REPOS` is set as a repository variable.
+Private repo access comes from the `ALFRED_PRODUCT_PROOF_TOKEN` Actions secret.
+If those are not configured, the workflow keeps using the committed seed file
+so forks and public PR previews still build.
 
 ## The emitter (`bin/alfred-shipped-public.py`)
 
@@ -42,7 +65,7 @@ Any title containing one of those private tokens has it rewritten in place to a 
 
 ### Partner-name redaction
 
-PR titles often mention the third-party platform an integration targets (event-data vendors, CRMs, mail providers, observability, SSO). These platforms are public companies but the fact that the operator integrates with them is operator-private business context.
+PR titles often mention the third-party platform an integration targets (event-data vendors, CRMs, mail providers, observability, SSO). These platforms are public companies, but the fact that your install integrates with them is private business context.
 
 The emitter collapses partner names to neutral category words:
 
@@ -129,6 +152,6 @@ JSON Schema 2020-12, `additionalProperties: false` everywhere. The canonical mac
 
 ## Suggested cadence
 
-A weekly cron is enough for most operators. Add a launchd unit / systemd timer that runs every Saturday morning and writes the JSON to your publishing target (S3, your site's data dir, a Gist, whatever).
+A weekly cron is enough for most installs. Add a launchd unit / systemd timer that runs every Saturday morning and writes the JSON to your publishing target (S3, your site's data dir, a Gist, whatever).
 
 The emitter is idempotent: same state in, same JSON out (modulo the `generated_at` stamp). Safe to run repeatedly.

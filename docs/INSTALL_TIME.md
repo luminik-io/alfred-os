@@ -1,8 +1,8 @@
 # How long install takes
 
-Honest read on install duration. The "30 minutes" number on the README assumes
-a lot of preconditions are already met. On a fresh machine, the real figure is
-one to two hours.
+Honest read on install duration. The 30-minute fast path assumes a lot of
+preconditions are already met. On a fresh machine, the real figure is one to
+two hours.
 
 ## If you already have the prerequisites
 

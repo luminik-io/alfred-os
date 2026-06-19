@@ -28,7 +28,7 @@ The framework reads the engine for each firing from a precedence chain. The firs
 5. An optional legacy state file.
 6. The codename's compiled-in default, usually `hybrid`.
 
-Operator CLI:
+Alfred CLI:
 
 ```sh
 alfred engine status                 # one line per codename, resolved mode
@@ -40,7 +40,7 @@ alfred codex probe                   # run one tiny non-interactive request
 alfred auth status                   # auth-surface check across both engines
 ```
 
-Set the env-var form in `~/.alfredrc` when you want the override to follow the operator's shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
+Set the env-var form in `~/.alfredrc` when you want the override to follow your shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
 
 ## Hybrid fallback behavior
 
@@ -62,6 +62,7 @@ The shipped fleet has the following defaults. Override per codename when your ac
 
 | Codename | Default mode | Why |
 |---|---|---|
+| **batman** | `hybrid` | Architect for cross-repo execution. Long-context planning prefers Claude; Codex fallback keeps the architect lane alive during Claude outages. |
 | **lucius** | `hybrid` | Builder. Wants Claude for first-class code generation, but cannot afford to be idle during a Claude rate-limit hour. |
 | **drake** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
 | **bane** | `hybrid` | Test-coverage builder. Same posture as Lucius; tests are valuable enough to fall back rather than skip. |
@@ -70,7 +71,6 @@ The shipped fleet has the following defaults. Override per codename when your ac
 | **robin** | `hybrid` | Bug triage. Light-touch; either engine works. |
 | **huntress** | `claude` | Post-deploy smoke. Lower volume; Claude is fine. |
 | **gordon** | `claude` | Deploy-health. Read-only; quiet on healthy days. |
-| **batman** | `hybrid` | Cross-repo coordinator. Long-context planning prefers Claude; fallback keeps the planner alive during Claude outages. |
 | **automerge** | n/a | No engine call. |
 | **agent-cleanup** | n/a | No engine call. |
 
@@ -93,7 +93,7 @@ The current engine surface is two: Claude Code and Codex. The runtime contract i
 On the roadmap:
 
 - **Gemini CLI**: when Google ships a stable non-interactive `gemini -p` equivalent with a structured result. Useful as a third independent reviewer or as a hedge against Anthropic and OpenAI both being down at once.
-- **Ollama and other local engines**: for operators who want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
+- **Ollama and other local engines**: for teams that want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
 - **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
 
 Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and a subtype-mapping table so hybrid fallback knows which failures to swallow.

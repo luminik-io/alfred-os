@@ -114,14 +114,14 @@ See [Slack setup → Optional: Slack planning listener](https://github.com/lumin
 
 ## Optional: plan-mode approval gate
 
-If you want the operator to approve every Batman plan in Slack (instead of
+If you want every Batman plan approved in Slack (instead of
 the file-polling fallback), wire up `lib/slack_approval.py`. It reuses the
 bot token resolved above, posts the plan, and polls reactions on that one
-message until the configured operator reacts with `:white_check_mark:` (or
+message until the configured approver reacts with `:white_check_mark:` (or
 `:x:` to reject).
 
-The plan thread is also the amendment surface. The configured operator, plus
-any trusted feedback users, can reply in plain English before the operator
+The plan thread is also the amendment surface. The configured approver, plus
+any trusted feedback users, can reply in plain English before approval
 reacts. Alfred acknowledges newly captured plan replies in-thread with the
 execution scope if approved now, then carries those replies as amendments when
 the plan is approved. Repo add/remove replies update execution scope before
@@ -151,12 +151,12 @@ export ALFRED_SECRETS_BACKEND=aws
 
 Required Slack scopes (in addition to `chat:write`): `reactions:read`,
 `channels:read`, `groups:read`. Add `channels:history` and `groups:history`
-when you want Alfred to capture operator replies from approval threads.
+when you want Alfred to capture replies from approval threads.
 Install the optional `[slack]` extra (`pip install 'alfred-os[slack]'`).
 
 Full walkthrough at [`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_APPROVAL.md):
 app manifest snippet, env var reference, fallback strategy ordering,
-operator-only check semantics, and the
+approver-only check semantics, and the
 [`agent:plan-pending-approval`](/concepts/state-machine/) label transition
 the gate drives.
 

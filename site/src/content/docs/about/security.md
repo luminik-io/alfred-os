@@ -36,16 +36,16 @@ Out of scope:
 - Remote code execution from a Slack message body, gh API response, or any external data the runner reads.
 - Privilege escalation that lets a per-agent IAM identity act outside its declared policy.
 - Secret leakage paths.
-- Bypass of the `do-not-pickup` operator override.
+- Bypass of the `do-not-pickup` manual override.
 - Race conditions in `claim_issue` that allow duplicate claims.
 
 ## Hardening recommendations
 
 For consumer fleets:
 
-1. **Per-agent IAM**, never operator SSO. See [AWS setup](/guides/aws/).
+1. **Per-agent IAM**, never your admin SSO. See [AWS setup](/guides/aws/).
 2. **Secrets via AWS Secrets Manager**, not env files committed to home.
-3. **Pre-push hook installed** in every operator-touched repo.
+3. **Pre-push hook installed** in every repo you touch manually.
 4. **Read every skill before installing.** Skills run with `claude`'s permissions.
 5. **Webhook URLs treated as secrets.** Rotate on suspected exposure.
 6. **Bot tokens (`xoxb-`) and app tokens (`xapp-1-`) treated as secrets.** Same.

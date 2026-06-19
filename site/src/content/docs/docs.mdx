@@ -1,17 +1,17 @@
 ---
 title: Alfred
-description: Alfred is an agent engineering team that works while you are away. It plans across repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, opens pull requests, routes review, and reports to Slack.
+description: Alfred is a local fleet of autonomous coding agents that turns Slack requests, rough plans, specs, and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.
 template: splash
 head:
   - tag: title
-    content: "Alfred: an agent engineering team that works while you are away"
+    content: "Alfred: autonomous coding agents for lean engineering teams"
 hero:
-  tagline: "An agent engineering team that works while you are away. Alfred plans across repos or monorepo packages, implements with your Claude Code and Codex subscriptions, opens pull requests, routes review, and reports to Slack."
+  tagline: "Autonomous coding agents that keep development moving while you are away. Alfred starts from Slack requests, rough plans, specs, or GitHub issues, then scopes work, opens pull requests, routes review, and reports to Slack."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
   actions:
-    - text: Install (30 min)
+    - text: Install
       link: /getting-started/install/
       icon: right-arrow
       variant: primary
@@ -27,13 +27,15 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 Interactive coding agents finish a prompt while you sit at the keyboard. Alfred is built for engineering work that should keep moving while you are away: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
 
-That work needs durable coordination: scoped intake from GitHub issues and specs, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
+You do not sit in front of Claude or Codex and keep prompting every step. You give Alfred the goal, the repos, and the approval rules; Alfred keeps the loop moving until it has a pull request, a review finding, or a decision to bring back to Slack.
 
-The starter fleet is intentionally narrow: Drake plans work, Lucius implements scoped issues, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman, Bane, Nightwing, and other specialists.
+That work needs durable coordination: Slack threads and specs that can become scoped GitHub issues, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a Mac or Linux box you choose and uses CLI auth you already pay for.
+
+The starter fleet is intentionally narrow: Lucius implements scoped issues, Drake plans smaller work, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman as the architect for cross-repo work, plus Bane, Nightwing, and other specialists.
 
 Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
-`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, memory database, skill registry, or dashboard service is required.
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, hosted memory database, skill registry, or dashboard service is required. Local fleet-brain memory ships with Alfred and stays on the host.
 
 ```mermaid
 flowchart TB
@@ -42,8 +44,8 @@ flowchart TB
     runner["agent_runner module<br/><i>lock · preflight · spend · claude_invoke · codex_invoke · gh · slack</i>"]
     engine["claude -p or codex exec<br/><i>the LLM work, in a fresh subprocess</i>"]
     gh["GitHub<br/><i>issues, specs, PRs, labels</i>"]
-    slack["Slack channel<br/><i>the operator's read surface</i>"]
-    state[("$ALFRED_HOME/state/<br/><i>JSON on disk, no DB</i>")]
+    slack["Slack channel<br/><i>your read surface</i>"]
+    state[("$ALFRED_HOME/state/<br/><i>JSON + local SQLite</i>")]
 
     scheduler --> role --> runner --> engine
     runner -- "claim / release / PR" --> gh
@@ -57,14 +59,20 @@ flowchart TB
   <Card title="Autonomous scheduled runs" icon="rocket">
     Agents keep working on schedule, survive host restarts, and do not depend on one fragile long-running process.
   </Card>
-  <Card title="Development-team workflow" icon="document">
-    Issues and specs become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report.
+  <Card title="The loop around Claude and Codex" icon="setting">
+    Alfred finds work, scopes it, runs agents in worktrees, checks results, records memory, and routes decisions back to Slack.
+  </Card>
+  <Card title="Plan-to-PR workflow" icon="document">
+    Slack requests, specs, and issues become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report, and merge when your policy allows it.
   </Card>
   <Card title="Role-level engine routing" icon="setting">
     Route builders and reviewers separately across Claude Code, Codex, or hybrid fallback.
   </Card>
-  <Card title="Batman: multi-repo + monorepo planning" icon="puzzle">
-    The agent that holds a whole feature in its head. Reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel. Single-repo coding agents stop at the boundary; Batman is the boundary.
+  <Card title="Batman: architect agent" icon="puzzle">
+    Batman owns the feature above the repo-local work. It reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel.
+  </Card>
+  <Card title="Local memory you approve" icon="puzzle">
+    Fleet-brain recalls repo lessons, file touches, failure patterns, and reviewable memory candidates. New lessons wait for approval before they shape future runs.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
     Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.
@@ -80,8 +88,8 @@ flowchart TB
 ## Quick start
 
 <LinkCard
-  title="Install in 30 minutes"
-  description="Fresh-machine setup. The wizard can configure a one-repo or multi-repo starter fleet without manual prompt or label copying."
+  title="Install Alfred"
+  description="Fast setup for an existing dev machine, plus a guided path for a fresh host. The wizard can configure a one-repo or multi-repo starter fleet without manual prompt or label copying."
   href="/getting-started/install/"
 />
 
@@ -93,13 +101,13 @@ flowchart TB
 
 <LinkCard
   title="Pick your workspace shape"
-  description="One repo, multi-repo product workspace, specs-led planning, or Batman bundle planning."
+  description="One repo, multi-repo product workspace, plan-led work, or Batman bundle planning."
   href="/getting-started/workspace-patterns/"
 />
 
 <LinkCard
-  title="Use specs-driven development"
-  description="Turn specs into scoped issue queues, Batman plans, clean worktrees, reviewable PRs, and visible Slack summaries."
+  title="Let Alfred structure the plan"
+  description="Turn rough requests or specs into scoped issue queues, Batman plans, clean worktrees, reviewable PRs, and visible Slack summaries."
   href="/guides/specs-driven-development/"
 />
 
@@ -129,20 +137,20 @@ flowchart TB
 
 <LinkCard
   title="Meet the fleet"
-  description="The starter fleet and the full engineering roster: Lucius, Drake, Bane, Ra's al Ghul, and the rest. What each codename does and how work flows between them."
+  description="The starter fleet and the full engineering roster: Batman, Lucius, Drake, Ra's al Ghul, Bane, and the rest. What each codename does and how work flows between them."
   href="/concepts/fleet/"
 />
 
 <LinkCard
-  title="Native local client"
-  description="The Mac/Linux app is a thin local control plane while Slack stays the collaboration surface."
+  title="Alfred Desktop"
+  description="The Mac/Linux app is a thin local control surface while Slack stays the collaboration surface."
   href="/concepts/native-client/"
 />
 
 ## Roadmap
 
-The engineering fleet ships today. The local memory layer, fleet UI, and first
-native client also ship today. The next larger categories are content, sales,
+The engineering fleet, local memory, Slack planning loop, and signed Mac/Linux
+desktop app all ship in v0.5.1. The next larger categories are content, sales,
 and ops; each needs its own integrations, prompts, tests, and human-approval
 rules.
 
@@ -150,17 +158,16 @@ rules.
   <Card title="Content" icon="document">Blog, LinkedIn, SEO drafts, and site-page generation. Human approval before publish.</Card>
   <Card title="Sales / SDR" icon="rocket">Prospect identification, event-page sourcing, and outreach drafts. Human approval before send.</Card>
   <Card title="Ops departments" icon="setting">Personal assistant, finance, and product-ops agents with drafts-only defaults for anything that sends, publishes, or pays.</Card>
-  <Card title="Memory" icon="puzzle">Local recall, reviewable lesson candidates, repeated-failure actions, and read-only MCP access.</Card>
 </CardGrid>
 
 The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.5.1. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a signed native Mac/Linux client with a public download page.
+Latest release: v0.5.1. Alfred ships a local coding-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a signed native Mac/Linux client with a public download page.
 
 The native client is packaged as a signed and notarized macOS app plus Linux
-AppImage and Debian artifacts. The design boundary is stable: one operator, one
+AppImage and Debian artifacts. The design boundary is stable: one person, one
 local host, local CLIs, isolated worktrees, GitHub as the coordination layer.
 PRs are welcome when they strengthen that shape: reliability, setup, docs,
 tests, new codenames with clear scope, or optional integrations that fail

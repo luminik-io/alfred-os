@@ -1,15 +1,13 @@
-# Batman: the multi-repo coordinator
+# Batman: the architect agent
 
-Batman is Alfred's plan-approve-execute-report agent for features that
-span more than one repository. It reads a single parent issue, drafts a
-bundle plan, posts that plan to Slack for an explicit operator approval,
-files scoped child issues across the named repos, and posts a follow-up
-report naming the children that landed.
+Batman is Alfred's architect agent for features that span more than one
+repository. It reads a single parent issue, drafts the rollout, posts the plan
+to Slack for operator approval, files scoped child issues across the named
+repos, and posts a follow-up report naming the children that landed.
 
-Single-repo work is NOT Batman territory. For a feature that fits in one
-repo, the right shape is Drake (planner) filing the issue and Lucius
-(feature dev) implementing it. Use Batman only when the change spans
-multiple repos or modules and a coordination layer earns its keep.
+Use Batman when the change spans multiple repos or packages and needs one
+accountable agent above the repo-local work. For a feature that fits in one
+repo, the right shape is Drake scoping the issue and Lucius implementing it.
 
 ## When to reach for Batman
 
@@ -19,19 +17,18 @@ multiple repos or modules and a coordination layer earns its keep.
 - Coordinating a `data-schema-v2` migration across a producer service,
   a consumer service, and a data pipeline.
 
-The common shape: one operator-authored issue, multiple downstream
+The common shape: one parent issue, multiple downstream
 repos, child scopes that can be worked in parallel once approved.
 
-## When NOT to use Batman
+## When to use Lucius or Drake instead
 
 - Single-repo features ("add a settings dropdown"). That is Drake then
   Lucius.
 - Cross-cutting refactors where the children would all be in the same
   repo. That is also Drake then Lucius (or just Lucius if Drake already
   filed it).
-- Anything where a human plans to write the scoping doc themselves. The
-  plan-approve cycle exists to capture intent into machine-actionable
-  child issues; if you are skipping that, you do not need Batman.
+- Anything where a human already wrote the scoping doc and only needs one repo
+  changed. Lucius can take that directly.
 
 ## Lifecycle
 
@@ -272,7 +269,7 @@ operator Slack member id, approval channel, parent repo, picker, and
 approval timeout in one idempotent block in `~/.alfredrc`. It finishes
 with `bin/doctor.sh --lifecycle` unless `--skip-doctor` is passed.
 
-The same flow is also available through the operator CLI after deploy:
+The same flow is also available through the Alfred CLI after deploy:
 
 ```sh
 alfred batman setup
@@ -306,15 +303,17 @@ The Slack approval gate also reads these (from `slack_approval`):
 | `approval-gate` | yes | yes, according to `BATMAN_APPROVAL_MODE` | only after approval |
 | `1` | yes | no | yes, immediately |
 
-The default (`0`) preserves the historical alfred-os behaviour: Batman
-drafts a plan and stops. Operators who want autonomy opt into
+The default (`0`) preserves the historical Alfred behaviour: Batman
+drafts a plan and stops. Users who want autonomy opt into
 `approval-gate` (recommended) or `1` (only when you trust the parent
 issues already).
 
 ## Safety story
 
-- Batman never edits code. The only writes are GitHub issue creates and
-  Slack posts.
+- Batman does not directly edit repo files in the OSS reference runner.
+  It owns the multi-repo execution lane by turning an approved plan into
+  scoped child issues. Lucius, Bane, and Nightwing do the code changes
+  in isolated worktrees.
 - Approval is a hard gate when `BATMAN_AUTO_EXECUTE=approval-gate`: if
   Slack mode cannot capture a `message_ts`, Batman halts rather than
   executing without a captured approval anchor. In `file` mode, Batman

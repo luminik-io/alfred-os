@@ -30,7 +30,7 @@ This doc lists a recommended skill set for an autonomous engineering fleet, what
 
 | Skill | Source | Used by | Why |
 |---|---|---|---|
-| `spec-driven-development` | Anthropic official | feature-dev agents | Forces the model to derive code from a written spec instead of inventing requirements |
+| `spec-driven-development` | Anthropic official | feature-dev agents | Grounds the model in a written spec instead of letting it invent requirements |
 | `code-review-and-quality` | Anthropic official | feature-dev (self-check), reviewer | Multi-axis review: correctness, edge cases, type safety, test coverage |
 | `security-and-hardening` | Anthropic official | feature-dev (auth/IAM/session paths), reviewer | Security-specific lens; complements code-review-and-quality |
 | `debugging-and-error-recovery` | Anthropic official | bug-triage, monitoring agents | Systematic root-cause path |

@@ -188,13 +188,13 @@ The planning-assistant refinement is LLM-backed only when `ALFRED_PLANNING_ASSIS
 
 ## Desktop control plane
 
-The desktop client (`clients/desktop`) is a Tauri app and the optional `client` tier. It is a thin local control plane, not a second runtime: it reads the fleet's own state over the `alfred serve` JSON seam and runs a narrow set of safe local actions through a native command allowlist. There is no hosted gateway, no public port, and no shadow database.
+Alfred Desktop (`clients/desktop`) is a Tauri app and the optional `client` tier. It is a thin local control surface, not a second runtime: it reads the fleet's own state over the `alfred serve` JSON API and runs a narrow set of safe local actions through a native command allowlist. There is no hosted gateway, no public port, and no shadow database.
 
 Code: `clients/desktop/src/` (React UI, `api.ts`, `types.ts`), `clients/desktop/src-tauri/` (Tauri shell + native command allowlist), `lib/server/` (`alfred serve`).
 
 ```mermaid
 flowchart TB
-    subgraph client["desktop client (clients/desktop, Tauri)"]
+    subgraph client["Alfred Desktop (clients/desktop, Tauri)"]
         ui["React UI tabs:<br/>Inbox / Ask / Work / Agents / Setup"]
         native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, brain doctor, redis,<br/>safe dry-run"]
     end
@@ -202,7 +202,7 @@ flowchart TB
     subgraph core["core fleet (headless)"]
         serve["alfred serve<br/>localhost JSON API"]
         state[("$ALFRED_HOME/state<br/>firings / plans / memory")]
-        cli["operator CLI: bin/alfred"]
+        cli["Alfred CLI: bin/alfred"]
         fleet["lib/agent_runner + bin/*.py"]
     end
 
@@ -257,7 +257,7 @@ Alfred installs in tiers. `core` is the standalone base and runs headless; `clie
 flowchart TB
     subgraph core["core (base, headless)"]
         fleet["fleet: lib/agent_runner + bin/*.py"]
-        cli["operator CLI: bin/alfred"]
+        cli["Alfred CLI: bin/alfred"]
         sched["scheduler: launchd / systemd --user"]
         serve["alfred serve<br/>localhost JSON API (127.0.0.1)"]
     end
@@ -284,13 +284,13 @@ flowchart TB
     bridge -->|labeled issue| gh
 ```
 
-- **`core`** is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the operator CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`. Core is headless and Linux-friendly: nothing here needs a desktop, a browser, or Slack. This is the only tier you must install.
+- **`core`** is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the Alfred CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`. Core is headless and Linux-friendly: nothing here needs a desktop, a browser, or Slack. This is the only tier you must install.
 - **`client`** is the Tauri desktop control plane under `clients/desktop`: fleet service control, a command center, plan/run/memory views, and safe local actions. It is a thin control plane, not a second runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
 - **`slack`** is the planning listener plus the issue bridge. The listener (`lib/slack_listener.py`) runs in Socket Mode; the bridge (`lib/slack_issue_bridge.py`) is off by default and only ever files a labeled issue. The `serve` extra (`pip install 'alfred-os[serve]'`) pulls in FastAPI and uvicorn for `alfred serve`; `slack-sdk` and `boto3` are in the base install since v0.4.0.
 
-The seam matters: the desktop client and any future surface read and write the same `$ALFRED_HOME` state, GitHub, and Slack threads the operator can inspect directly. There is no hosted gateway, no public port, and no shadow database. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
+The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub, and Slack threads the operator can inspect directly. There is no hosted gateway, no public port, and no shadow database. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
 
-Distribution follows the same shape. The fleet and CLI install from source; the desktop client builds native installers; tagged releases are published from CI; and a secret scan gates every push.
+Distribution follows the same shape. The fleet and CLI install from source; Alfred Desktop builds native installers; tagged releases are published from CI; and a secret scan gates every push.
 
 ```mermaid
 flowchart TD

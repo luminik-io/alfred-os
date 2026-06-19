@@ -40,7 +40,7 @@ function draftResponse(overrides: Partial<ComposeDraftResponse> = {}): ComposeDr
     saved_path: "/state/planning-drafts/compose-20260530-120000-add-csv-export.json",
     title: "Add CSV export to the attendees table",
     readiness: { ok: false, score: 78 },
-    questions: ["How will the operator verify this worked?"],
+    questions: ["How will you verify this worked after Alfred opens a PR?"],
     findings: [
       {
         code: "missing_non_goals",
@@ -119,7 +119,7 @@ describe("ComposeView", () => {
     expect(screen.getByText(/needs detail/i)).toBeInTheDocument();
     expect(screen.getByText(/saved as a plan/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/how will the operator verify this worked\?/i),
+      screen.getByText(/how will you verify this worked after Alfred opens a PR\?/i),
     ).toBeInTheDocument();
   });
 
@@ -170,7 +170,7 @@ describe("ComposeView", () => {
     renderComposeView();
 
     await send(user, "Add a CSV download button");
-    await screen.findByText(/how will the operator verify this worked\?/i);
+    await screen.findByText(/how will you verify this worked after Alfred opens a PR\?/i);
 
     await send(user, "It should only export the visible rows");
 
@@ -196,7 +196,7 @@ describe("ComposeView", () => {
   it("uses the default technical copy when no plain profile is active", () => {
     renderComposeView("technical");
     expect(screen.getByText(/new request/i)).toBeInTheDocument();
-    expect(screen.getByText(/name the finish line, repo scope, and constraints/i)).toBeInTheDocument();
+    expect(screen.getByText(/give the outcome, repo scope, and constraints/i)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /plain language/i })).not.toBeChecked();
   });
 

@@ -133,7 +133,7 @@ Otherwise it's `agent:needs-human-review`, the operator scopes it down or splits
 
 ### Which repo?
 
-Map spec → repo owner based on what the change actually touches. When unsure, default to filing the issue in the repo whose code most directly owns the behavior. The feature-dev agent can escalate to the cross-repo coordinator if cross-repo turns out to be needed.
+Map spec → repo owner based on what the change actually touches. When unsure, default to filing the issue in the repo whose code most directly owns the behavior. The feature-dev agent can escalate to the cross-repo architect if cross-repo turns out to be needed.
 
 ### Priority
 

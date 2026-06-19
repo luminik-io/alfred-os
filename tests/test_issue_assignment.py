@@ -358,5 +358,5 @@ def test_assign_issue_dry_run_reports_pending_approval_without_mutating(monkeypa
     # claiming success-as-assigned and without touching the gate label.
     assert result.dry_run is True
     assert result.decision.route == ia.ROUTE_PENDING_APPROVAL
-    assert "held for operator approval" in result.detail
+    assert "held for approval" in result.detail
     assert calls == []

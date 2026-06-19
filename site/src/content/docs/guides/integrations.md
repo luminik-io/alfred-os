@@ -27,7 +27,7 @@ skills fetched at runtime without review.
 | --- | --- | --- |
 | Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code or Codex, optional Slack webhook. |
 | Alfred + external memory | You want searchable memory in interactive sessions. | Standalone Alfred plus a separately installed memory layer. |
-| Alfred + operator gateway | You want chat control, MCP registration, skills, durable task boards, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/operator layer. |
+| Alfred + control gateway | You want chat control, MCP registration, skills, durable task boards, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/control layer. |
 
 The standalone profile is the only path the installer assumes.
 
@@ -38,5 +38,5 @@ The standalone profile is the only path the installer assumes.
 - `alfred gateway bridge` for GitHub issue/label handoff from an external board.
 - `alfred dashboards export` for static fleet snapshots.
 
-All should be additive. New operators should still be able to run Alfred
+All should be additive. New users should still be able to run Alfred
 without installing any of them.

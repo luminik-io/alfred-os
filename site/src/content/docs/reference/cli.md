@@ -1,9 +1,9 @@
 ---
-title: Operator CLI
-description: install.sh, deploy.sh, doctor.sh, and the alfred operator CLI.
+title: Alfred CLI
+description: install.sh, deploy.sh, doctor.sh, and the alfred CLI.
 ---
 
-The operator CLI covers the local fleet control surface: install, deploy,
+The Alfred CLI covers the local fleet control surface: install, deploy,
 doctor, starter setup, status, runner-gate enablement, pause/resume, manual
 runs, engine selection, Claude/Codex auth checks, Claude account management, and shipped-work summaries.
 
@@ -176,7 +176,7 @@ and Batman approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
 directories and refuses to clear live holders or matching dirty worktrees
 unless `--force` is passed. `labels` creates or checks the
 canonical GitHub labels needed by the lifecycle state machine, Batman planning,
-and operator overrides. `telemetry` controls the opt-in public usage counter:
+and issue-claim overrides. `telemetry` controls the opt-in public usage counter:
 `status` shows local state, `on` writes the managed `.alfredrc` block and
 scheduler row in the source checkout, and `off` disables reporting and removes
 the scheduler row.

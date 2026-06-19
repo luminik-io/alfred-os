@@ -21,7 +21,7 @@ local actions without pushing the operator into a browser for local Alfred state
 
 The CLI is the intended portable substrate. The goal verbs below are the planned
 contract, not a shipped command yet; the durable goal ledger and its
-`alfred goal` surface are tracked under "Native local client v2" in
+`alfred goal` surface are tracked under "Alfred Desktop v2" in
 [`../ROADMAP.md`](../ROADMAP.md):
 
 ```sh

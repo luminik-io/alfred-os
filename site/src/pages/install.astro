@@ -10,10 +10,10 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
   description="Use the fast path if GitHub CLI, Claude Code, a package manager, and Python are already ready. Use the guided path for a fresh machine."
   path="/install/"
 >
-  <Hero
-    eyebrow="INSTALL"
-    headline="Install Alfred for your current setup."
-    sub="Fast path for an already-provisioned dev machine. Guided path for a fresh laptop or dedicated agent box."
+	    <Hero
+	    eyebrow="INSTALL"
+	    headline="Install Alfred for your current setup."
+	    sub="Fast path for an already-provisioned dev machine. Guided path for a fresh laptop, Mac mini, Linux server, or dedicated agent box."
     headlineSize="lg"
     primaryCta={{ label: "Use existing setup", href: "/getting-started/install/" }}
     secondaryCta={{ label: "Set up a fresh machine", href: "/getting-started/ai-assisted-install/" }}
@@ -70,13 +70,14 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
           "ok    launchd                  21 agents loaded",
           "ok    spend cap                $20/day fleet",
           "",
-          "$ alfred fire lucius --dry-run",
-          "ok    preflight passed",
-          "ok    issue selection (would claim #247)",
-          "skip  claude_invoke (dry-run)",
-          "ok    runner lifecycle verified, no spend",
-        ]}
-      />
+	          "$ alfred dry-run lucius",
+	          "alfred dry-run: lucius",
+	          "  role: feature dev",
+	          "  mode: safe simulation",
+	          "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
+	          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",
+	        ]}
+	      />
     </div>
   </section>
 

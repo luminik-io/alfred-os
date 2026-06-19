@@ -25,7 +25,7 @@ When you see a `[BLOCKED]` or a `pause` event in Slack, that is the only signal 
 
 ## CLI recipes
 
-The `alfred` CLI is the operator's day-to-day verb set. Pure stdlib, no daemon. Common recipes:
+The `alfred` CLI is your day-to-day verb set. Pure stdlib, no daemon. Common recipes:
 
 ```sh
 alfred status               # local fleet health, locks, pauses, approval waits
@@ -83,7 +83,7 @@ Every firing prints exactly one sentinel string on its way out. The scheduler lo
 | `[<AGENT>-NO-COMMIT]` | The engine reported success but no commit landed. | Inspect the salvage draft PR (if one was opened) or check the firing log to learn why. |
 | `[SILENT]` | No matching issue. | Nothing. The non-event is the signal. |
 
-Anything ending in `-BLOCKED`, `-FAILED`, or `-NO-COMMIT` is the operator's concern. Everything else is the fleet doing its job.
+Anything ending in `-BLOCKED`, `-FAILED`, or `-NO-COMMIT` needs your attention. Everything else is the fleet doing its job.
 
 ## When to run `alfred run <codename> --force`
 
@@ -131,7 +131,7 @@ cat $ALFRED_HOME/state/paused-repos.json
 alfred status
 ```
 
-If every repo is paused, every consumer's `pick_*` helper returns nothing and every firing exits as `[SILENT]`. Operator may have run `label-state repo pause <repo>` and forgotten to resume.
+If every repo is paused, every consumer's `pick_*` helper returns nothing and every firing exits as `[SILENT]`. You may have run `label-state repo pause <repo>` and forgotten to resume.
 
 ### 4. Agent self-paused
 
@@ -165,7 +165,7 @@ Block thirty minutes once a week. The fleet does most of its own housekeeping vi
 
 - `alfred shipped --period weekly`: read the digest. Anything missing from what you expected? Anything that landed and you did not notice?
 - `bash bin/doctor.sh`: confirm preflight still passes for every configured agent.
-- `bash bin/scrub-check.sh`: if you contribute to alfred-os itself, run this before pushing.
+- `bash bin/scrub-check.sh`: if you contribute to Alfred itself, run this before pushing.
 - `ls $ALFRED_HOME/state/claims/` if it exists: stale claims should be empty after the daily sweep, but inspect anything older than 24h.
 - Rotate `/tmp/my.fleet.*` logs if `/tmp` is filling up. macOS clears them on reboot, but a host that stays up for weeks accumulates a lot.
 - Prune `$ALFRED_HOME/state/transcripts/` and `$ALFRED_HOME/state/codex/` older than a month if you do not need them for forensics. `agent-cleanup` already handles spend files and worktrees.
@@ -177,4 +177,4 @@ Block thirty minutes once a week. The fleet does most of its own housekeeping vi
 - [State and memory](/concepts/state-and-memory/): every state file this page reads or writes.
 - [Engine routing](/concepts/engine-routing/): per-codename Claude / Codex / hybrid.
 - [Issue claim state machine](/concepts/state-machine/): cooperative coordination via GitHub labels and comments.
-- [Operator CLI reference](/reference/cli/): every `alfred` subcommand with one-line help.
+- [Alfred CLI reference](/reference/cli/): every `alfred` subcommand with one-line help.

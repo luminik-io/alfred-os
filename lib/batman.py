@@ -1,13 +1,14 @@
-"""Bundle primitives for Batman, the multi-repo planning coordinator.
+"""Bundle primitives for Batman, the multi-repo architect agent.
 
 Batman picks ``agent:bundle:<slug>`` bundles across product repos,
 drafts plans, and exposes claim / release helpers for fleets that add
-their own execution layer. This
-module is the pure-data part: ``Bundle`` dataclass, claim / release
-across the bundle, plan parsing from issue bodies. Public ``bin/batman.py``
-is plan-only: it finds a bundle, posts a rollout plan, and stops before
-worktrees, PR chaining, merge, or deploy steps. Site-specific fleets can
-build those execution steps on top of these primitives.
+their own execution layer. This module is the pure-data part: ``Bundle``
+dataclass, claim / release across the bundle, and plan parsing from
+issue bodies. Public ``bin/batman.py`` now has a parent-issue lifecycle
+that can draft, request approval, file scoped child issues, and report
+status. The legacy bundle-scan path still drafts a plan only, so
+migrated fleets keep their old safety posture unless they opt into the
+parent-issue workflow.
 
 Key contract, bundle = atomic unit:
 

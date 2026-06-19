@@ -70,7 +70,7 @@ import re
 import subprocess
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 ENV_ENABLED = "ALFRED_BRIDGE_ENABLED"
 ENV_REPOS = "ALFRED_BRIDGE_REPOS"
@@ -98,6 +98,7 @@ DEFAULT_APPROVAL_PHRASES: tuple[str, ...] = (
 DEFAULT_APPROVAL_REACTIONS: frozenset[str] = frozenset({"white_check_mark"})
 
 _MAX_TITLE = 256
+IssueOrigin = Literal["slack", "native-client"]
 
 
 class IssueCreator(Protocol):
@@ -236,6 +237,7 @@ class SlackIssueBridge:
         trusted: bool,
         thread_link: str = "",
         already_converted: bool = False,
+        origin: IssueOrigin = "slack",
     ) -> BridgeOutcome:
         """Create one labeled issue from a saved planning-draft payload.
 
@@ -248,6 +250,9 @@ class SlackIssueBridge:
                 to the issue footer for traceability.
             already_converted: True when the draft/thread was already converted
                 once; the bridge refuses to double-create (idempotency).
+            origin: where the explicit filing action happened. Slack keeps the
+                trusted in-thread approval footer; Desktop uses a local action
+                footer so the audit trail stays truthful.
 
         Returns:
             A :class:`BridgeOutcome`. ``created`` is True only when an issue
@@ -309,7 +314,7 @@ class SlackIssueBridge:
         title = _truncate_title(str(draft.get("title") or "").strip())
         if not title:
             return BridgeOutcome(False, "refused_no_title", "draft has no title")
-        body = build_issue_body(draft_payload, thread_link=thread_link)
+        body = build_issue_body(draft_payload, thread_link=thread_link, origin=origin)
 
         try:
             url = self._create_issue(
@@ -346,13 +351,18 @@ class SlackIssueBridge:
 # ---------------------------------------------------------------------------
 
 
-def build_issue_body(draft_payload: dict, *, thread_link: str = "") -> str:
+def build_issue_body(
+    draft_payload: dict,
+    *,
+    thread_link: str = "",
+    origin: IssueOrigin = "slack",
+) -> str:
     """Build the GitHub issue body from a saved planning-draft payload.
 
     Prefers the structured ``issue_body`` already rendered by the planning
     assistant (acceptance criteria, repo scope, etc.). Appends the rendered
     spec body when present so the implementing agent gets the full guardrails,
-    then a footer noting the Slack origin for traceability.
+    then a footer noting the filing origin for traceability.
     """
     parts: list[str] = []
     issue_body = str(draft_payload.get("issue_body") or "").strip()
@@ -362,19 +372,26 @@ def build_issue_body(draft_payload: dict, *, thread_link: str = "") -> str:
     already_present = "\n\n".join(parts)
     if spec_body and spec_body not in already_present:
         parts.append("## Development Spec\n\n" + spec_body)
-    parts.append(_origin_footer(thread_link))
+    parts.append(_origin_footer(thread_link, origin=origin))
     return "\n\n".join(part for part in parts if part).rstrip() + "\n"
 
 
-def _origin_footer(thread_link: str) -> str:
-    lines = [
-        "---",
-        "",
-        "Filed by the Alfred Slack issue bridge after an explicit, trusted in-thread approval.",
-    ]
-    link = (thread_link or "").strip()
-    if link:
-        lines.append(f"Source Slack thread: {link}")
+def _origin_footer(thread_link: str, *, origin: IssueOrigin = "slack") -> str:
+    if origin == "native-client":
+        lines = [
+            "---",
+            "",
+            "Filed from Alfred Desktop after an explicit local File issue action.",
+        ]
+    else:
+        lines = [
+            "---",
+            "",
+            "Filed by the Alfred Slack issue bridge after an explicit, trusted in-thread approval.",
+        ]
+        link = (thread_link or "").strip()
+        if link:
+            lines.append(f"Source Slack thread: {link}")
     lines.append(
         "This issue enters the normal autonomous queue and is still subject to "
         "every claim, spend, and review gate before any change ships.",

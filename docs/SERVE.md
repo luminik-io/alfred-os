@@ -5,7 +5,7 @@ plans, the local fleet brain, and local planning drafts. It is read-only for
 runtime state and can write issue/spec drafts under `$ALFRED_HOME/planning-drafts`.
 The operator's pane of glass for "what is the fleet doing right now".
 
-Status: v0.5.1 ships the local cockpit used by the desktop client. It includes
+Status: v0.5.1 ships the local control surface used by Alfred Desktop. It includes
 reliability-governor cards, human-readable timestamps, responsive table shells,
 mobile card layouts, a sticky header, a saved-plan inbox, a Planning intake
 page, setup endpoints, usage headroom, queue controls, streaming logs, and
@@ -132,7 +132,7 @@ parent issue, update time, and a local detail link.
 ### `GET /plans/{plan_id}` - Single saved plan
 
 Renders the saved Markdown or generated spec body exactly as it exists on disk.
-This keeps the local cockpit aligned with the Slack plan that the operator is
+This keeps the local control surface aligned with the Slack plan that the operator is
 approving or editing.
 
 For Slack follow-up items, the detail page also exposes two local actions:
@@ -249,8 +249,8 @@ POST /api/slack/trusted-users/{user_id}/remove
 
 Read endpoints intentionally mirror the HTML pages.
 
-`GET /api/usage` is served by `alfred serve` today and backs the desktop client's
-capacity rail. It reports the operator's real Claude subscription headroom for
+`GET /api/usage` is served by `alfred serve` today and backs Alfred Desktop's
+capacity rail. It reports your real Claude subscription headroom for
 the rolling 5-hour and weekly windows, plus Codex's latest-day token usage. Codex
 exposes no rolling-window or weekly headroom, so the API reports its latest-day
 token total rather than inventing a Codex quota percentage. All of it is read

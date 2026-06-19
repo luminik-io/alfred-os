@@ -261,7 +261,7 @@ binaries and turns them into a concrete setup action instead of treating them
 as product regressions.
 
 `alfred brain governor` combines repeated failure patterns, stale workers, and
-memory-promotion suggestions into one operator action list. It is still
+memory-promotion suggestions into one review action list. It is still
 read-only: it does not pause a codename, create an issue, or mutate memory. It
 gives the operator and the local dashboard a single place to see what needs
 attention next.
@@ -307,7 +307,7 @@ GC controls:
 - `lib/fleet_brain/schema.py`: `CREATE TABLE IF NOT EXISTS` statements. Idempotent on every connection.
 - `lib/fleet_brain/store.py`: `Store` Protocol plus the `SQLiteStore` implementation. Connections are short-lived (per call); the `:memory:` path caches a single handle for test ergonomics.
 - `lib/fleet_brain/__init__.py`: the public `FleetBrain` class. Dependency-inverted on `Store` so a future PGLite/AGE-backed implementation drops in.
-- `bin/alfred-brain.py`: operator CLI.
+- `bin/alfred-brain.py`: Alfred CLI.
 - `bin/alfred-mcp.py`: read-only JSON-RPC stdio bridge.
 - `bin/fleet-ingest.py`: outbox drainer.
 
@@ -344,7 +344,7 @@ memory sync
 ```
 
 `remember ...` and `memory remember ...` stage candidates; they do not become
-prompt context. Promotion and rejection stay operator-only. The desktop client
+prompt context. Promotion and rejection stay operator-only. Alfred Desktop
 uses the same local candidate queue through `alfred serve`, so Slack, CLI, and
 client review the same rows. `memory harvest` previews repeated-failure lessons
 from the reliability governor; `memory harvest now` queues those lessons as

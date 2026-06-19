@@ -1,7 +1,7 @@
-# Operator analytics CLIs
+# Alfred analytics CLIs
 
 `alfred metrics` and `alfred logs` are read-only tools for inspecting what
-what the fleet wrote to disk. They never mutate state; they read
+the fleet wrote to disk. They never mutate state; they read
 `$ALFRED_STATE_DIR` (default `$ALFRED_HOME/state`, default `~/.alfred/state`)
 and print the result.
 
@@ -95,7 +95,7 @@ fleet success rate: 78.3%  (over 23 completed firings; 0 no-ops not counted)
 
 ## `alfred usage`
 
-Report the operator's real Claude and Codex subscription headroom for the
+Report your real Claude and Codex subscription headroom for the
 rolling 5-hour and weekly limit windows. Alfred drives Claude Code and Codex
 through their local subscription CLIs rather than API keys, so there is no
 billing API to query. `alfred usage` instead reads the state files those CLIs

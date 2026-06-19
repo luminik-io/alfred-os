@@ -1,9 +1,9 @@
 # Design language
 
-How the Alfred native desktop app (`clients/desktop`) and the marketing and
+How Alfred Desktop (`clients/desktop`) and the marketing and
 docs site (`site/`) look and feel, so a contributor can add a screen or a page
 that matches what is already there. This is the visual-language reference. For
-the desktop client's product direction and the Slack boundary, see
+Alfred Desktop's product direction and the Slack boundary, see
 [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md); for the tab-by-tab operator tour and how
 to build installers, see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md). This page is
 the visual complement to those two, not a duplicate.
@@ -88,7 +88,7 @@ themes stay covered.
 
 ## Typography
 
-The desktop client, marketing site, docs, server/static UI, and generated OG
+Alfred Desktop, marketing site, docs, server/static UI, and generated OG
 image share one Alfred type system. The app and site bundle fonts locally
 through `@fontsource`; the server/static UI serves the same local WOFF files.
 There is no runtime call to a font CDN.

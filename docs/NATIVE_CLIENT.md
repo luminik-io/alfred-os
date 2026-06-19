@@ -1,13 +1,13 @@
-# Native local client
+# Alfred Desktop
 
-Status: native client shipped under `clients/desktop` with signed macOS
+Status: Alfred Desktop ships under `clients/desktop` with signed macOS
 packages and Linux artifacts. Slack is still the
 primary collaboration surface, the desktop app is the guided local control
 center, and the CLI remains the durable power-user and automation surface.
 
 ## Decision
 
-Build the native Mac/Linux client as a thin local control plane and installer,
+Build the native Mac/Linux app as a thin local control surface and installer,
 not a second Alfred runtime.
 
 Slack remains the primary collaboration UI because it already has threads,
@@ -17,7 +17,7 @@ memory review, safe pause/resume, dry-run launch, and recovery.
 
 The client must not become a hosted gateway, a shadow database, or a softer
 copy of Slack. It reads and writes through the same local APIs, state files,
-and CLI commands the operator can inspect by hand. Users should be able to run
+and CLI commands you can inspect by hand. Users should be able to run
 Alfred with or without the client.
 
 ## Product Principles
@@ -33,7 +33,7 @@ Alfred with or without the client.
 - Explain before acting: write actions show the target, expected effect, and
   rollback path before running. The underlying command is audit detail, not the
   primary interface.
-- Accessible to technical and non-technical operators: use product language
+- Accessible to technical and non-technical users: use product language
   first, shell commands second. The app can reveal details without making them
   the default.
 
@@ -77,9 +77,10 @@ by the toggle beside it.
 
 The app can help draft or refine a spec, but the final collaboration loop stays
 in Slack. Any "send to Alfred" action should post to or link back to the
-approval thread. A planned single-repo issue lands behind an operator-approval
-gate (`agent:plan-pending-approval`) and is held from autonomous pickup until
-the operator approves it, so nothing single-repo ships without a go-ahead.
+approval thread. A locally drafted single-repo issue lands behind an
+approval gate (`agent:plan-pending-approval`) and is held from
+autonomous pickup until you approve it, so nothing single-repo ships
+without a go-ahead.
 
 ### Agents
 
@@ -125,7 +126,7 @@ Logs should be readable without horizontal scrolling on narrow screens.
 
 ### Memory
 
-Memory is reviewable and appears where the operator is already working:
+Memory is reviewable and appears where you are already working:
 
 - Home surfaces memory candidates ready for review
 - Compose recalls promoted planning hints beside drafts
@@ -167,7 +168,7 @@ Use the Alfred site design system:
 - stable table-to-card responsive layouts
 - links to GitHub and Slack open outside the app
 
-The app should feel like a calm local cockpit: dense enough for engineers,
+The app should feel like a calm local control surface: dense enough for engineers,
 legible enough for someone who has never used `launchctl`.
 
 ## Experience Signature
@@ -278,7 +279,7 @@ GET  /api/slack/threads
 ```
 
 `GET /api/usage` is served by `alfred serve` today and backs the capacity rail.
-It reports the operator's real Claude and Codex subscription headroom for the
+It reports your real Claude and Codex subscription headroom for the
 rolling 5-hour and weekly windows, read from the engines' own local CLI state
 files on the host. Alfred drives Claude Code and Codex through their local
 subscription CLIs rather than API keys, so there is no billing API to query and

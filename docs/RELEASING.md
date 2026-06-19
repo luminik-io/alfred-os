@@ -9,7 +9,7 @@ built and what artifacts it produces, see
 ## Why the release starts as a draft
 
 The release body is the `Highlights` block from `CHANGELOG.md`. From v0.5.0 on,
-that block tells the reader the native desktop app is signed and can be
+that block tells the reader Alfred Desktop is signed and can be
 downloaded. The signed `.dmg` (macOS) and `.AppImage` / `.deb` (Linux) assets
 are produced and attached by a separate signing workflow that runs against the
 tag, not by `release.yml`. `release.yml` only creates the release and prints the
@@ -18,7 +18,7 @@ source tarball checksum for the Homebrew formula.
 So the release is created as a **draft**. A draft is not public and is not the
 latest release. That keeps the download claim honest: nobody can read
 "download the signed app" on a published release page until the signed assets
-are actually attached. A human attaches the assets and presses Publish.
+are attached. A human attaches the assets and presses Publish.
 
 ## Flow for a version (vX.Y.Z)
 

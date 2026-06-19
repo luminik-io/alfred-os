@@ -7,16 +7,16 @@ import JobCard from "../components/marketing/JobCard.astro";
 ---
 
 <MarketingLayout
-  title="An engineering team for solo builders | Alfred"
-  description="Alfred runs on a Mac or Linux machine you already own, signs in with your Claude Code and Codex subscriptions, and opens pull requests while you are away from the keyboard."
+  title="Run a bigger engineering loop as a solo builder | Alfred"
+  description="Alfred runs on a Mac mini, spare MacBook, or Linux box you choose, signs in with your Claude Code and Codex subscriptions, and turns plans or GitHub issues into pull requests while you are away."
   path="/for-solo-founders/"
 >
   <Hero
     eyebrow="FOR SOLO FOUNDERS AND SMALL TEAMS"
-    headline="An engineering team for solo builders."
-    sub="Set up Alfred on a Mac or Linux machine you already own, sign in with the subscriptions you already pay for, and let it open pull requests while you handle the decisions only you can make."
+    headline="Run a bigger engineering loop without hiring a bigger team."
+    sub="Set up Alfred on a Mac mini, spare MacBook, or Linux box you choose, sign in with the subscriptions you already pay for, and let coding agents turn rough plans into PRs while you handle the decisions only you can make."
     headlineSize="lg"
-    primaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
+    primaryCta={{ label: "Install", href: "/getting-started/install/" }}
     secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
     <div slot="panel" class="panel">
@@ -37,12 +37,12 @@ import JobCard from "../components/marketing/JobCard.astro";
       <SectionHeader
         eyebrow="WHILE YOU ARE AWAY"
         title="Three times you do not have to be at the keyboard."
-        lede="Alfred works from a Mac, Linux box, or server you control during the hours the rest of your week cannot. For overnight work, use a host you leave awake or a small dedicated box."
+        lede="Alfred works from a Mac, Linux box, or server you control during the hours the rest of your week cannot cover. For overnight work, use a host you leave awake or a small dedicated box."
       />
       <div class="windows">
         <JobCard
           title="While you sleep"
-          body="Every 20 minutes overnight, Lucius works through the tasks Drake lined up during the day. You wake up to pull requests that are ready to review."
+          body="On its configured cadence overnight, Lucius works through the tasks Drake lined up during the day. You wake up to pull requests and review notes."
           log={[
             "[02:14] lucius PR #1247 opened",
             "[03:42] lucius PR #1248 opened",
@@ -79,7 +79,7 @@ import JobCard from "../components/marketing/JobCard.astro";
       <SectionHeader
         eyebrow="WHERE YOU STAY IN CONTROL"
         title="Where Alfred stops and you decide."
-        lede="Alfred opens pull requests and leaves merging to a human reviewer. The review step is an intentional guardrail."
+        lede="Alfred can open pull requests, run review, fix comments, and merge small safe PRs when you enable that policy. Large plans and risky work wait for your approval."
       />
       <div class="boundaries">
         <article class="m-card">
@@ -92,11 +92,11 @@ import JobCard from "../components/marketing/JobCard.astro";
         </article>
         <article class="m-card">
           <h3 class="m-h3">You review before anything merges</h3>
-          <p>Ra's al Ghul leaves comments and marks the pull request, but the merge button stays under your finger. No agent can merge on its own unless you allow it.</p>
+          <p>Ra's al Ghul leaves comments and marks the pull request. Automerge only handles PRs that meet the policy you set: old enough, green CI, reviewed, and no unresolved blocker comments.</p>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">No access to production</h3>
-          <p>Alfred runs on your laptop or a machine you set aside for it. It never holds your live database password or your billing keys.</p>
+          <h3 class="m-h3">No production access by default</h3>
+          <p>The default setup does not need live database passwords or billing keys. Alfred only gets the repo, Slack, AWS, and environment access you explicitly grant to that host.</p>
         </article>
       </div>
     </div>

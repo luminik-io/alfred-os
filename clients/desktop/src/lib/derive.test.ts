@@ -271,6 +271,28 @@ describe("dedupePlans", () => {
     expect(rows.map((row) => row.plan.plan_id)).toEqual(["compose", "batman"]);
   });
 
+  it("keeps filed drafts distinct from matching unfiled drafts", () => {
+    const rows = dedupePlans([
+      {
+        ...base,
+        plan_id: "compose-unfiled",
+        title: "Add CSV export",
+        updated_at: "2026-06-01T11:00:00Z",
+      },
+      {
+        ...base,
+        plan_id: "compose-filed",
+        title: "add csv export",
+        parent: "https://github.com/your-org/api/issues/42",
+        updated_at: "2026-06-01T12:00:00Z",
+      },
+    ]);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.plan.plan_id)).toEqual(["compose-unfiled", "compose-filed"]);
+    expect(rows.map((row) => row.revisions)).toEqual([1, 1]);
+  });
+
   it("uses compose revision_count as the visible revision count", () => {
     const rows = dedupePlans([
       {

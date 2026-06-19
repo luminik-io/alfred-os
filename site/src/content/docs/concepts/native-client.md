@@ -1,9 +1,9 @@
 ---
-title: Native local client
-description: "How Alfred approaches the Mac/Linux companion app while keeping Slack as the collaboration surface."
+title: Alfred Desktop
+description: "How the optional Mac/Linux desktop app works with the local Alfred core runtime while keeping Slack as the collaboration surface."
 ---
 
-The native Alfred client is a local control plane, not a second Alfred.
+Alfred Desktop is a local companion app for Alfred core, not a second Alfred.
 Slack remains the primary collaboration UI: plans, replies, approvals, and
 post-PR follow-up belong in Slack threads.
 
@@ -22,16 +22,36 @@ The client is for trust and operations:
 - whether setup, Slack, GitHub, engines, and schedules are healthy
 - which safe action can repair the fleet
 
-Full design note and run commands: [`docs/NATIVE_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/NATIVE_CLIENT.md).
+## First Launch
+
+1. Install Alfred core from [Install](/getting-started/install/) or the
+   Homebrew/source commands on [Download](/download/).
+2. Start the local API:
+
+   ```sh
+   alfred serve
+   ```
+
+3. Install Alfred Desktop from the signed macOS DMG or Linux package on
+   [Download](/download/).
+4. Open Alfred Desktop. The app connects to `http://127.0.0.1` or
+   `http://localhost`, reads the same local state as the CLI, and shows Setup
+   actions if the runtime is not reachable yet.
+
+The desktop package alone is not the agent runtime. It needs Alfred core, your
+GitHub auth, and at least one configured repo before it can show real plans,
+runs, and agents.
+
+Full implementation note and build commands: [`docs/NATIVE_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/NATIVE_CLIENT.md).
 
 ## Boundary
 
-The client should read and write through the same local surfaces an operator
-can inspect by hand:
+The client should read and write through the same local surfaces you can inspect
+by hand:
 
 - `$ALFRED_HOME`
 - `alfred serve`
-- the operator CLI
+- the Alfred CLI
 - GitHub issue and PR links
 - Slack plan threads
 - the local fleet brain
@@ -40,7 +60,7 @@ It should not introduce a hosted gateway, public port, shadow database, or
 separate scheduler. Alfred should still work perfectly from Slack and the CLI
 when the client is not running.
 
-## Product shape
+## Product Shape
 
 The first screen is a Command Center: fleet health, pending approvals, blocked
 plans, stale workers, repeated failures, memory review, and safe next actions.
@@ -59,23 +79,23 @@ Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail
 while still giving the native client a clean draft inbox.
 
-## Design direction
+## Design Direction
 
 Use the Alfred brand system: Instrument Sans for display, Quicksand for UI text,
 Fragment Mono only for ids and commands. The interface should feel like a calm local
-cockpit: compact, direct, high contrast, and friendly enough for a user who
+control surface: compact, direct, high contrast, and friendly enough for a user who
 does not want to tail logs.
 
-## Implementation path
+## Implementation Path
 
 1. Stabilize JSON APIs in `alfred serve`. Done.
 2. Ship a Tauri shell for Mac/Linux with safe local follow-up actions, runtime launch, a curated command console, status/auth/agent checks, memory checks, Redis checks, and dry-run launch. Done.
 3. Add deeper guided install and broader write actions with command previews.
 4. Package signed Mac builds and Linux artifacts. Done.
 
-The client builds native installers locally: `npm run tauri -- build` produces `.app`/`.dmg` on macOS and `.AppImage`/`.deb` on Linux from the Tauri bundle config. CI builds with `--no-bundle` to prove the binary compiles without code signing. Releases publish a signed and notarized macOS DMG and app zip, plus Linux AppImage and Debian artifacts. See the [desktop client](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
+The client builds native installers locally: `npm run tauri -- build` produces `.app`/`.dmg` on macOS and `.AppImage`/`.deb` on Linux from the Tauri bundle config. CI builds with `--no-bundle` to prove the binary compiles without code signing. Releases publish a signed and notarized macOS DMG and app zip, plus Linux AppImage and Debian artifacts. See [Alfred Desktop](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
 
 The direct-host model is inspired by Hermes Desktop's strongest lesson: keep
 the host as the source of truth and avoid a second sync layer.
 
-The client is the optional `client` tier of the [layered install](/concepts/layered-install/). The core fleet and CLI run fully standalone without it.
+The client is Alfred Desktop in the optional `client` tier of the [layered install](/concepts/layered-install/). Alfred core and the CLI run fully standalone without it.

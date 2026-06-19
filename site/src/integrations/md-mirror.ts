@@ -1,5 +1,5 @@
 /**
- * md-mirror — Astro integration that emits a per-page Markdown sibling
+ * md-mirror: Astro integration that emits a per-page Markdown sibling
  * for every built HTML page. Surface 3 of the llmstxt.org pattern (after
  * /llms.txt and /llms-full.txt): AI crawlers (ChatGPT, Claude, Perplexity,
  * GPTBot, ClaudeBot, PerplexityBot) can ingest each page as raw GFM
@@ -92,7 +92,7 @@ export function mdMirror(opts: Options = {}): AstroIntegration {
           const html = await readFile(abs, "utf8");
           const main = extractMain(html);
           if (!main) {
-            // No <main> or <article> — site chrome only, nothing to mirror.
+            // No <main> or <article>: site chrome only, nothing to mirror.
             skipped++;
             continue;
           }

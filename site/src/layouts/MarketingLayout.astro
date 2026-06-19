@@ -74,16 +74,16 @@ const orgSchema = {
       name: "Alfred",
       url: SITE_URL,
       description:
-        "Alfred is an agent engineering team that works while you are away, using Claude Code and Codex on a machine you control.",
+        "Alfred runs autonomous coding agents that turn Slack requests, plans, specs, and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.",
     },
     {
       "@type": "SoftwareApplication",
-      name: "Alfred OS",
+      name: "Alfred",
       applicationCategory: "DeveloperApplication",
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
       description:
-        "Open-source agent engineering team for Claude Code and Codex. Drake turns requests into tasks, Lucius writes code, Ras al Ghul reviews pull requests, and Batman coordinates work across repos.",
+        "Open-source local agent runtime for Claude Code and Codex. Batman architects cross-repo work, Drake plans scoped tasks, Lucius writes code, and Ras al Ghul reviews pull requests.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
       license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
       isAccessibleForFree: true,
@@ -97,7 +97,7 @@ const navGroups = [
   {
     label: "Product",
     items: [
-      { label: "How it works", href: "/how-it-works/", description: "The agent lifecycle from issue to PR." },
+      { label: "How it works", href: "/how-it-works/", description: "From request to merged PR." },
       { label: "Multi-repo teams", href: "/multi-repo/", description: "Coordinate work across separate repos." },
       { label: "Monorepos", href: "/monorepo/", description: "Keep one large repo moving safely." },
       { label: "Solo founders", href: "/for-solo-founders/", description: "Run a small engineering fleet yourself." },
@@ -107,7 +107,7 @@ const navGroups = [
     label: "Resources",
     items: [
       { label: "Docs", href: "/docs/", description: "Install, operate, and extend Alfred." },
-      { label: "Impact", href: "/impact/", description: "Local snapshot and opt-in totals." },
+      { label: "Impact", href: "/impact/", description: "Shipping record and opt-in totals." },
       { label: "Changelog", href: "/about/changelog/", description: "What shipped recently." },
       { label: "Roadmap", href: "/about/roadmap/", description: "What is planned next." },
       { label: "GitHub", href: "https://github.com/luminik-io/alfred-os", description: "Source, issues, and releases.", external: true },
@@ -161,12 +161,12 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:alt" content="Alfred. An agent engineering team for Claude Code and Codex." />
+    <meta property="og:image:alt" content="Alfred. Coding agents that keep development moving while you are away." />
 
     {/* Twitter / X */}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={og} />
-    <meta name="twitter:image:alt" content="Alfred. An agent engineering team for Claude Code and Codex." />
+    <meta name="twitter:image:alt" content="Alfred. Coding agents that keep development moving while you are away." />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
 
@@ -380,7 +380,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
               <li><a href="/getting-started/install/">Install</a></li>
               <li><a href="/concepts/architecture/">Architecture</a></li>
               <li><a href="/concepts/fleet/">The fleet</a></li>
-              <li><a href="/reference/cli/">Operator CLI</a></li>
+              <li><a href="/reference/cli/">Alfred CLI</a></li>
             </ul>
           </div>
           <div class="m-footer__col">
@@ -401,7 +401,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
 
         <div class="m-footer__base">
           <span class="m-footer__attribution">
-            Alfred OS is open source under the <a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE" rel="noopener">MIT License</a>.
+            Alfred is open source under the <a href="https://github.com/luminik-io/alfred-os/blob/main/LICENSE" rel="noopener">MIT License</a>.
             Built by Prasad Subrahmanya
             &middot; <a href="https://github.com/prasadus92" rel="noopener">GitHub</a>
             &middot; <a href="https://prasad.tech" rel="noopener">prasad.tech</a>
@@ -495,10 +495,37 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
             }
           };
           if (mq.addEventListener) mq.addEventListener("change", listener);
-          else if (mq.addListener) mq.addListener(listener);
         }
 
-        // 4. Mobile nav menu.
+        // 4. Desktop grouped nav.
+        var navGroups = Array.prototype.slice.call(document.querySelectorAll(".m-nav-group"));
+        function closeNavGroups(except) {
+          navGroups.forEach(function (group) {
+            if (group !== except) group.open = false;
+          });
+        }
+        navGroups.forEach(function (group) {
+          var summary = group.querySelector("summary");
+          if (summary) {
+            summary.addEventListener("click", function () {
+              if (!group.open) closeNavGroups(group);
+            });
+          }
+          group.addEventListener("toggle", function () {
+            if (group.open) closeNavGroups(group);
+          });
+        });
+        document.addEventListener("click", function (ev) {
+          var target = ev.target;
+          if (!(target instanceof Node)) return;
+          if (!target.closest || target.closest(".m-nav-group")) return;
+          closeNavGroups(null);
+        });
+        document.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") closeNavGroups(null);
+        });
+
+        // 5. Mobile nav menu.
         var menuButton = document.querySelector("[data-mobile-menu-toggle]");
         var mobileMenu = document.querySelector("[data-mobile-menu]");
         function setMobileMenu(open) {
@@ -529,7 +556,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
           }, { passive: true });
         }
 
-        // 5. Image-zoom: wire data-zoom-open triggers to open their dialog.
+        // 6. Image-zoom: wire data-zoom-open triggers to open their dialog.
         //    Backdrop click also closes (native dialogs do not do this by
         //    default). Escape close is native.
         document.querySelectorAll("[data-zoom-open]").forEach((btn) => {
@@ -550,7 +577,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
           });
         });
 
-        // 6. Count-up animation: when a [data-countup] element enters the
+        // 7. Count-up animation: when a [data-countup] element enters the
         //    viewport, animate from 0 to its data-target over ~900ms with
         //    an ease-out curve. Then add .is-done so it stays in place.
         if (typeof IntersectionObserver !== "undefined" && !reduced) {
@@ -571,14 +598,15 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
                 const duration = 900;
                 const start = performance.now();
                 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+                const formatCount = (value) => value.toLocaleString("en-US");
                 const tick = (now) => {
                   const elapsed = Math.min(1, (now - start) / duration);
                   const v = Math.round(target * easeOut(elapsed));
-                  el.textContent = String(v);
+                  el.textContent = formatCount(v);
                   if (elapsed < 1) {
                     requestAnimationFrame(tick);
                   } else {
-                    el.textContent = String(target);
+                    el.textContent = formatCount(target);
                     el.classList.add("is-done");
                   }
                 };
@@ -597,7 +625,8 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
         } else {
           document.querySelectorAll("[data-countup]").forEach((el) => {
             const target = el.getAttribute("data-target") || "";
-            el.textContent = target;
+            const value = parseInt(target, 10);
+            el.textContent = Number.isFinite(value) ? value.toLocaleString("en-US") : target;
             el.classList.add("is-done");
           });
         }

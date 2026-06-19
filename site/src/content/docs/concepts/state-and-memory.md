@@ -3,7 +3,7 @@ title: State and memory
 description: What Alfred remembers between firings, what it forgets, and where every byte of that memory lives on disk.
 ---
 
-Alfred is built on the premise that the host filesystem is a fine state store for a single-operator fleet. Every firing reads its inputs from scratch, writes its outputs to plain JSON or JSONL files under `$ALFRED_HOME/state/`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete `$ALFRED_HOME/state/`, the next firing rebuilds whatever it still needs.
+Alfred is built on the premise that the host filesystem is a fine state store for a single-person fleet. Every firing reads its inputs from scratch, writes its outputs to plain JSON or JSONL files under `$ALFRED_HOME/state/`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete `$ALFRED_HOME/state/`, the next firing rebuilds whatever it still needs.
 
 This page is the map of that directory and the contract each file carries. Full doc at [`docs/STATE_AND_MEMORY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_AND_MEMORY.md).
 
@@ -12,7 +12,7 @@ This page is the map of that directory and the contract each file carries. Full 
 ```
 $ALFRED_HOME/state/
 ├── global-blocked-until.json     fleet-wide rate-limit block
-├── paused-repos.json             repos the operator manually paused
+├── paused-repos.json             repos you manually paused
 ├── code-map.json                 cross-repo HEAD SHAs and file index
 ├── slack-webhook.cache           30-day cache of the resolved webhook URL
 ├── _paused/                      per-agent pause markers
@@ -37,7 +37,7 @@ $ALFRED_HOME/state/
 
 **`global-blocked-until.json`** is the fleet-wide rate-limit block. When a Claude-backed agent returns `error_rate_limit` or `error_budget`, the runner calls `set_global_block(hours=1, reason=...)` which writes this file. Every other agent's `is_globally_blocked()` check at the top of `main()` reads it, prints `[<AGENT>-GLOBAL-BLOCKED]`, and exits 0 until the timestamp passes. See [Architecture](/concepts/architecture/) for the rationale.
 
-**`paused-repos.json`** is the operator's manual repo pause list. `alfred status` reads it, `set_repo_paused()` writes it. Every consumer's `pick_*` helper skips paused repos. Missing or malformed file is treated as "no repos paused" (fail-open).
+**`paused-repos.json`** is the manual repo pause list. `alfred status` reads it, `set_repo_paused()` writes it. Every consumer's `pick_*` helper skips paused repos. Missing or malformed file is treated as "no repos paused" (fail-open).
 
 **`code-map.json`** is the cross-repo index that `code-map-refresh` writes every six hours. Drake and code-map-aware review prompts read it for repo HEAD SHAs and a light file inventory. Safe to delete; the next `code-map-refresh` firing rebuilds it.
 
@@ -79,11 +79,11 @@ $ALFRED_HOME/state/
 | Engine session id from `claude -p` | written to the result; not resumed | n/a | n/a |
 | Lessons in the fleet brain | yes | yes | yes |
 
-The contract is intentionally narrow: anything an agent must remember between firings is a JSON or JSONL file on disk. Anything else is reconstructed from GitHub, the repo checkout, or the operator's `~/.alfredrc`.
+The contract is intentionally narrow: anything an agent must remember between firings is a JSON or JSONL file on disk. Anything else is reconstructed from GitHub, the repo checkout, or your `~/.alfredrc`.
 
 ## The fleet brain
 
-The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, the operator's preferred PR style).
+The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, preferred PR style).
 
 That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine, then record any durable lessons the engine returns in a machine-readable reflection block.
 
@@ -96,7 +96,7 @@ only in Slack.
 Repeated failures can be grouped with `alfred brain failure-patterns` and
 summarized with `alfred brain governor`. The governor classifies local setup
 problems, provider limits, auth failures, timeouts, and agent-quality loops,
-then returns a read-only action list for the operator and dashboard.
+then returns a read-only action list for you and the dashboard.
 
 The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider, or `ALFRED_MEMORY_PROVIDERS=fleet,redis` to consult an already-running Redis Agent Memory Server. See [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md) for the full design, schema, and CLI.
 
@@ -113,13 +113,13 @@ The brain v1 store is dependency-inverted on a `Store` Protocol, so a future PGL
 
 ## Privacy model
 
-Everything in this tree is local to the operator's machine. Nothing in the Alfred OSS surface transmits state files, transcripts, lessons, or spend ledgers off-host. The only outbound channels are:
+Everything in this tree is local to your machine. Nothing in Alfred transmits state files, transcripts, lessons, or spend ledgers off-host. The only outbound channels are:
 
 - The configured engine (`claude -p` or `codex exec`), which sends the prompt you compose to Anthropic or OpenAI on your existing CLI auth.
 - The GitHub CLI (`gh`), which talks to GitHub on your existing `gh auth login` token.
 - The Slack incoming webhook, when configured.
 
-If you delete `$ALFRED_HOME/`, you delete every byte Alfred remembers about your fleet. Treat the directory the way you treat your shell history: it is operator data, not fleet data, and never leaves the host unless you put it somewhere yourself.
+If you delete `$ALFRED_HOME/`, you delete every byte Alfred remembers about your fleet. Treat the directory the way you treat your shell history: it is your data, not fleet data, and never leaves the host unless you put it somewhere yourself.
 
 ## See also
 

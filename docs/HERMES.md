@@ -3,9 +3,9 @@
 Alfred does not require Hermes.
 
 The OSS runtime is local Python, host scheduler units, git worktrees, GitHub
-CLI, model CLIs, and optional Slack delivery. Hermes is a companion operator layer for
-people who already want chat gateways, MCP servers, skills, memory, or
-dashboards around their local agents.
+CLI, model CLIs, and optional Slack delivery. Hermes is a companion control
+layer for people who already want chat gateways, MCP servers, skills, memory,
+or dashboards around their local agents.
 
 Use this page only if you already run Hermes or explicitly want Hermes features.
 It is not part of the Alfred quick start.
@@ -13,7 +13,7 @@ It is not part of the Alfred quick start.
 ## Current Hermes Landscape
 
 As of the May 2026 public Hermes Agent releases, Hermes has grown into a broad
-operator host:
+local host:
 
 - chat gateways for Telegram, Discord, Slack, WhatsApp, Signal, Email, and
   other channels
@@ -28,10 +28,10 @@ operator host:
   host's real state rather than a separate gateway
 
 That means Hermes can overlap with Alfred in orchestration and visibility.
-Hermes Desktop can also be a useful operator console if your fleet already uses
+Hermes Desktop can also be a useful control console if your fleet already uses
 Hermes. The clean boundary is still the same: Alfred owns its GitHub issue state
-machine and scheduled engineering-agent execution; Hermes can observe, route,
-or create handoffs around it.
+machine and scheduled coding-agent runs; Hermes can observe, route, or create
+handoffs around it.
 
 ## Boundary
 
@@ -77,7 +77,7 @@ share:
 
 Do not copy a whole `~/.alfred` or `~/.hermes` directory between machines. Both
 can contain tokens, transcripts, cached webhooks, local worktrees, and
-operator-specific state. Treat memory stores the same way.
+user-specific state. Treat memory stores the same way.
 
 ## Install Order
 
@@ -183,7 +183,7 @@ That is a Hermes repair, not an Alfred runtime requirement.
 Good:
 
 - Alfred's host scheduler fires Alfred agents.
-- Hermes posts daily operator summaries.
+- Hermes posts daily summaries.
 - Hermes calls read-only Alfred commands such as `alfred status` or
   `alfred shipped --since 1d`.
 - Hermes links to Alfred Slack threads or dashboards.
@@ -210,8 +210,9 @@ The best bridge is additive and boring:
    Hermes dashboards or memory ingestion.
 3. A Hermes skill can create a GitHub issue with `agent:implement` or
    `agent:large-feature`, then Alfred owns the GitHub state path. For
-   `agent:large-feature`, public Batman drafts the bundle plan; automatic
-   cross-repo execution remains operator or private-fleet work.
+   `agent:large-feature`, Batman can draft the bundle plan, wait for approval,
+   and file child issues. The repo-specific agents still claim and implement
+   those child issues through the normal queue.
 4. Optional: a Hermes Kanban card can link to the GitHub issue/PR, but the
    GitHub state remains the source of truth for Alfred work.
 
@@ -229,13 +230,13 @@ bash bin/doctor.sh
 ```
 
 **Hermes cannot see Alfred status.** Confirm Hermes shells inherit the same
-`ALFRED_HOME`, `WORKSPACE_ROOT`, and `GH_ORG` values as your operator shell.
+`ALFRED_HOME`, `WORKSPACE_ROOT`, and `GH_ORG` values as your normal shell.
 
 **Memory is unavailable.** Scheduled Alfred runners should keep working. Fix the
 memory/Hermes side separately and avoid making memory availability a hard
 preflight for engineering agents.
 
-**Hermes falls back to a different model.** That is an operator-layer decision.
+**Hermes falls back to a different model.** That is a gateway-layer decision.
 Alfred's model choice lives in Alfred env vars and per-agent engine state.
 
 ## What Not To Commit

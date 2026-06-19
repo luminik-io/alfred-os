@@ -1,15 +1,15 @@
 ---
 title: Layered install
-description: The core fleet runs standalone and headless. The desktop client and Slack agent are optional surfaces on top.
+description: The core fleet runs standalone and headless. Alfred Desktop and the Slack agent are optional surfaces on top.
 ---
 
-Alfred installs in three tiers. Only the first is required. The desktop client and the Slack agent are optional surfaces that talk to the core through seams you can inspect by hand.
+Alfred installs in three tiers. Only the first is required. Alfred Desktop and the Slack agent are optional surfaces that talk to the core through local APIs and state files you can inspect by hand.
 
 ```mermaid
 flowchart TB
     subgraph core["core (base, headless)"]
         fleet["fleet: lib/agent_runner + bin/*.py"]
-        cli["operator CLI: bin/alfred"]
+        cli["Alfred CLI: bin/alfred"]
         sched["scheduler: launchd / systemd --user"]
         serve["alfred serve<br/>localhost JSON API (127.0.0.1)"]
     end
@@ -38,10 +38,10 @@ flowchart TB
 
 ## core: standalone and headless
 
-The core tier is the whole product for most operators:
+The core tier is the whole product for most users:
 
 - the fleet (`lib/agent_runner/` plus the `bin/*.py` runners),
-- the operator CLI (`bin/alfred`),
+- the Alfred CLI (`bin/alfred`),
 - the host scheduler (launchd on macOS, `systemd --user` on Linux),
 - `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`.
 
@@ -58,7 +58,7 @@ It binds to `127.0.0.1` by default. Binding to `0.0.0.0` is allowed but discoura
 
 ## client: the desktop control plane
 
-The optional desktop client (Tauri, under `clients/desktop`) is a thin local control plane, not a second runtime. It is for trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet. Inbox shows the decision queue, Ask holds planning intake, Work manages the queue and shipped board, Agents handles roster/activity/memory, and Setup handles repair checks.
+Alfred Desktop (Tauri, under `clients/desktop`) is a thin local control surface, not a second runtime. It is for trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet. Inbox shows the decision queue, Ask holds planning intake, Work manages the queue and shipped board, Agents handles roster/activity/memory, and Setup handles repair checks.
 
 The client talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. No public port, no relay, no shadow database. You can run Alfred entirely without it.
 
@@ -69,7 +69,7 @@ npm install
 npm run tauri dev
 ```
 
-See [native local client](/concepts/native-client/) for the full client design.
+See [Alfred Desktop](/concepts/native-client/) for the full client design.
 
 ## slack: the planning surface
 
@@ -85,7 +85,7 @@ The optional Slack tier is the planning listener plus the issue bridge:
 | You want | Install |
 |---|---|
 | A headless Linux fleet, no UI | `core` only |
-| A Mac cockpit | `core` + `client` |
+| A Mac with Alfred Desktop | `core` + `client` |
 | Plan-in-Slack workflow | `core` + `slack` (bridge off until you trust it) |
 | Everything | all three |
 

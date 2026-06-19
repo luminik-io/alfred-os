@@ -171,7 +171,7 @@ def test_render_agents_conf_includes_batman(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
     text = init_mod.render_agents_conf(state)
     assert (
-        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo coordinator" in text
+        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect" in text
     )
 
 

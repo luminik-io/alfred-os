@@ -241,7 +241,7 @@ def render_development_spec(
 
 ## Intended User
 
-{draft.user.strip() or "Operator or product user"}
+{draft.user.strip() or "Not specified."}
 
 ## Current Behavior
 
@@ -294,7 +294,7 @@ def render_development_spec(
 
 - Keep the PR scoped to the repository scope above.
 - Prefer existing project patterns over new abstractions.
-- Do not expand beyond the non-goals without operator approval.
+- Do not expand beyond the non-goals without explicit approval.
 - Treat acceptance criteria and verification plan as the merge gate.
 """
 
@@ -506,7 +506,7 @@ def render_post_pr_followup_block(
         "## Slack Follow-up Feedback",
         "",
         "These trusted thread replies were captured after Alfred posted a report or PR link.",
-        "Treat them as follow-up context only; do not merge or expand scope without operator approval.",
+        "Treat them as follow-up context only; do not merge or expand scope without explicit approval.",
         "",
     ]
     if context_links:

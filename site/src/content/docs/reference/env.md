@@ -5,7 +5,7 @@ description: Every env var the framework reads, what defaults to what, where eac
 
 The framework is env-driven so a fresh user can clone + run without editing source. Every variable listed here is honoured by `agent_runner.py`, `install.sh`, `deploy.sh`, or the rendered scheduler units.
 
-For the operator-config template, see [`.alfredrc.example`](https://github.com/luminik-io/alfred-os/blob/main/.alfredrc.example).
+For the local config template, see [`.alfredrc.example`](https://github.com/luminik-io/alfred-os/blob/main/.alfredrc.example).
 
 ## Required
 
@@ -17,7 +17,7 @@ For the operator-config template, see [`.alfredrc.example`](https://github.com/l
 
 | Var | Used by | Default | Notes |
 |---|---|---|---|
-| `OPERATOR_NAME` | agent prompts | (blank → "the operator") | Substituted via `load_prompt(..., extra_vars=...)`. |
+| `OPERATOR_NAME` | agent prompts | blank | Optional human-readable name substituted via `load_prompt(..., extra_vars=...)`. |
 | `OPERATOR_EMAIL` | agent prompts | (blank) | Same. |
 | `OPERATOR_GH_HANDLE` | some prompts | (blank) | Used when distinct from `GH_ORG`. |
 
@@ -73,9 +73,11 @@ engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 | `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `lib/batman.py` post-report Slack follow-up capture | `60` |
 | `BATMAN_SLACK_CHANNEL` | `lib/batman.py` plan and report channel | (blank, falls back to Slack home channel) |
 
-Batman is opt-in and public Alfred ships it as plan-only. It scans the
-configured repo list, groups `agent:bundle:<slug>` siblings, posts a rollout
-plan, and stops before automatic cross-repo PR execution.
+Batman is opt-in. The newer `BATMAN_PARENT_REPO` path reads parent issues,
+waits for approval when required, files child `agent:implement` issues, and
+reports status. The legacy `BATMAN_SCAN_REPOS` path scans configured repos,
+groups `agent:bundle:<slug>` siblings, posts a rollout plan, and stops before
+child issue filing.
 
 ## Claude auth
 
@@ -97,7 +99,7 @@ plan, and stops before automatic cross-repo PR execution.
 | `SLACK_APP_TOKEN` | Socket Mode token for the optional planning listener | (none) |
 | `ALFRED_SLACK_APP_TOKEN` | Alternate Socket Mode token env var | (none) |
 | `ALFRED_OPERATOR_SLACK_USER_ID` | Operator user id for reactions and trusted listener input | (required for approvals/listener) |
-| `ALFRED_TRUSTED_SLACK_USER_IDS` | Extra users allowed to refine plans and drafts | operator only |
+| `ALFRED_TRUSTED_SLACK_USER_IDS` | Extra users allowed to refine plans and drafts | approver only |
 | `ALFRED_SLACK_BOT_USER_ID` | Bot user id; listener ignores its own messages | (none) |
 | `SLACK_HOME_CHANNEL` | default bot channel | `alfred` |
 | `BATMAN_APPROVAL_CHANNEL` | legacy alias for `SLACK_HOME_CHANNEL` | (none) |
@@ -110,7 +112,7 @@ Resolution order: env -> 30-day disk cache at `$ALFRED_HOME/state/slack-webhook.
 |---|---|---|
 | `ALFRED_HUNTRESS_AWS_PROFILE`, `ALFRED_GORDON_AWS_PROFILE` | role runners that touch AWS | (none: AWS checks disabled or use default chain) |
 | `AWS_PROFILE` | set by role runners around owned `aws ...` calls | (none) |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN` | stripped before `aws ...` calls in agents that need pure-profile auth | (operator's SSO leakage) |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN` | stripped before `aws ...` calls in agents that need pure-profile auth | (admin SSO leakage) |
 
 ## Doctor
 

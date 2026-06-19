@@ -10,16 +10,16 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 
 <MarketingLayout
   title="Planning across repos | Alfred"
-  description="Batman drafts one plan that covers as many repos as you set, files a task in each repo, and Lucius works on them all at the same time."
+  description="Batman drafts one plan across the repos you choose, files scoped tasks in each repo, and the fleet picks them up through the normal queue."
   path="/multi-repo/"
 >
   <Hero
     eyebrow="PLANNING ACROSS REPOS"
     headline="Plan once. Build across every repo."
-    sub="Batman drafts one plan that covers as many repos as you set, files a task in each repo, and Lucius works on them all at the same time."
+    sub="Batman drafts one plan across the repos you choose, files scoped tasks in each repo, and the fleet picks them up through the normal queue."
     headlineSize="lg"
     primaryCta={{ label: "Read the worked example", href: "/guides/specs-driven-development/" }}
-    secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
+	    secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
   >
     <div slot="panel" class="panel">
       <div class="panel__head">
@@ -57,7 +57,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
       <SectionHeader
         eyebrow="WHAT BATMAN FILES"
         title="A plan, then a task per repo, then the work."
-        lede="Batman reads one big feature request, drafts the plan, and posts it to Slack for approval. You react with the agreed emoji. Batman then files a task in each repo, makes a copy of each one to work in, and runs the whole thing. You choose how much approval it needs with the BATMAN_AUTO_EXECUTE setting: always ask, wait for your Slack reaction, or always go ahead."
+        lede="Batman reads one big feature request, drafts the plan, and posts it to Slack for approval. You react with the agreed emoji. Batman then files scoped tasks in the right repos. Lucius and the rest of the fleet claim those tasks through the normal queue, with the same worktree, spend, review, and merge gates as any other run."
       />
       <div class="example-grid">
         <div>
@@ -79,7 +79,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
               "  - mobile: settings screen v2",
               "  - data-infra: invoice export job",
               "",
-              "Halt before file. Awaiting operator approval.",
+              "Waiting for your go-ahead before filing.",
             ]}
           />
         </div>
@@ -128,11 +128,11 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:implement</code>
-          <p>Each task starts with this label. Lucius works on them across repos at the same time.</p>
+          <p>Each task starts with this label. Lucius can claim repo-sized tasks independently, each in its own worktree.</p>
         </div>
         <div class="m-card states__row">
           <code class="m-mono states__tag">agent:done</code>
-          <p>Added to a task when its pull request merges. The feature request closes once every task is done.</p>
+          <p>Added to a task when its pull request merges. You can use the completed tasks to close the parent feature request with a clear trail.</p>
         </div>
       </div>
     </div>
@@ -140,21 +140,22 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 
   <section class="m-section">
     <div class="m-container">
-      <SectionHeader
-        eyebrow="CHECK THE PLAN FIRST"
-        title="Do a test run of the planner."
-        lede="Batman never files tasks without your approval. A test run shows you the plan it would file, so you can see it before anything happens."
-      />
-      <CodeBlock
-        title="terminal"
-        lines={[
-          "$ alfred fire batman --dry-run --issue your-platform#812",
-          "ok    preflight passed",
-          "ok    bundle plan drafted (4 repos, 11 children)",
-          "skip  gh issue create (dry-run)",
-          "ok    plan posted to Slack as draft, awaiting approval",
-        ]}
-      />
+	      <SectionHeader
+	        eyebrow="CHECK THE PLAN FIRST"
+		        title="Test the architect before you spend anything."
+	        lede="Batman never files tasks without your approval. A dry run checks the local wiring without touching GitHub, Slack, an LLM, or your repos."
+	      />
+	      <CodeBlock
+	        title="terminal"
+	        lines={[
+	          "$ alfred dry-run batman",
+	          "alfred dry-run: batman",
+	          "  role: cross-repo architect",
+	          "  mode: safe simulation",
+	          "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
+	          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",
+	        ]}
+	      />
     </div>
   </section>
 </MarketingLayout>

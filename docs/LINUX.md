@@ -144,7 +144,7 @@ Windows file-locking semantics confuse `git worktree`.
 Still not container-friendly today. The launchd/systemd assumption means
 hosting the scheduler outside the container and shelling in for each firing,
 at which point you have reimplemented the host scheduler poorly. A
-"alfred-os in a container" pattern would need the framework to expose its
+"Alfred in a container" pattern would need the framework to expose its
 own minimal scheduler and abandon the host-scheduler dependency. Not on the
 roadmap.
 

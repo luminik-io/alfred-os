@@ -1,6 +1,8 @@
 name: Site
 
 on:
+  schedule:
+    - cron: "17 6 * * *"
   push:
     branches: [main]
     paths:
@@ -22,6 +24,8 @@ concurrency:
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
   pages: write
   id-token: write
 
@@ -40,6 +44,27 @@ jobs:
         working-directory: site
         run: npm ci
 
+      - name: Refresh public impact proof
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        working-directory: site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        # Deploy-time refresh only. The committed JSON is a seed for local builds
+        # and PR previews; the main-branch site build reads this fresh file.
+        run: npm run proof:update
+
+      - name: Refresh Luminik product proof
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && vars.ALFRED_PRODUCT_PROOF_REPOS != ''
+        working-directory: site
+        env:
+          ALFRED_PRODUCT_PROOF_REPOS: ${{ vars.ALFRED_PRODUCT_PROOF_REPOS }}
+          ALFRED_PRODUCT_PROOF_DAYS: ${{ vars.ALFRED_PRODUCT_PROOF_DAYS || '30' }}
+          ALFRED_PRODUCT_PROOF_LABEL: ${{ vars.ALFRED_PRODUCT_PROOF_LABEL || 'Luminik product setup' }}
+          GH_TOKEN: ${{ secrets.ALFRED_PRODUCT_PROOF_TOKEN }}
+        # Private/product proof is aggregate-only. The repo list and token stay
+        # in Actions config; the generated JSON contains counts, not repo names.
+        run: npm run proof:product
+
       - name: Build site
         working-directory: site
         env:
@@ -51,14 +76,14 @@ jobs:
       # Publishing is gated so forks and private prep branches can build docs
       # without deploying. Set ALFRED_OS_PUBLISH_PAGES=true for public releases.
       - name: Upload Pages artifact
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
 
   deploy:
     name: Deploy to GitHub Pages
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
     environment:
