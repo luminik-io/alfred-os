@@ -490,6 +490,7 @@ const DEDUPEABLE_PLAN_SOURCES = new Set(["compose", "planning", "slack"]);
 
 function planDedupeKey(plan: PlanDraft): string | null {
   if (!DEDUPEABLE_PLAN_SOURCES.has(plan.source)) return null;
+  if (plan.parent) return null;
   const title = (plan.title || "").trim().toLowerCase();
   if (!title || title === PLACEHOLDER_PLAN_TITLE) return null;
   const repos = (plan.affected_repos || "")

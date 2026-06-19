@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Alfred is deliberately small. Read [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md) and [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md) before opening — features that broaden scope (multi-tenant, hosted, web UI, vector DB) get politely declined.
+        Alfred is deliberately small. Read [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md) and [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md) before opening. Features that broaden scope (multi-tenant, hosted, web UI, vector DB) get politely declined.
 
         Strong feature requests describe the use case first, the proposed solution second.
 

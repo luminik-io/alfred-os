@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for taking the time to file a bug. The more concrete you are, the faster we can fix it.
 
-        **Before filing:** check [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md) "Common stumbles" and [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md) "Troubleshooting" — most install/config issues are answered there.
+        **Before filing:** check [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TUTORIAL.md) "Common stumbles" and [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md) "Troubleshooting". Most install/config issues are answered there.
 
   - type: input
     id: version
