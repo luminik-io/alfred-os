@@ -2380,7 +2380,7 @@ def _plain_compose_user(text: str) -> str:
             user = _compact_plain_text(match.group(1)).strip(" ,.;:")
             if 2 <= len(user) <= 80:
                 return user[:1].upper() + user[1:]
-    return "Operator or product user"
+    return "Not specified."
 
 
 def _plain_compose_acceptance(text: str) -> list[str]:

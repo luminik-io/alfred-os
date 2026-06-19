@@ -295,7 +295,7 @@ def render_issue_body(draft: IssueDraft) -> str:
         "## Problem",
         draft.problem.strip() or "TODO",
         "## User",
-        draft.user.strip() or "Operator or product user",
+        draft.user.strip() or "Not specified.",
         "## Current Behavior",
         draft.current_behavior.strip() or "Not specified.",
         "## Desired Behavior",

@@ -492,7 +492,7 @@ def render_assignment_detail(
         )
     if decision.route == ROUTE_PENDING_APPROVAL:
         return (
-            f"{target} is held for operator approval "
+            f"{target} is held for approval "
             f"(`{label_constants.PLAN_PENDING_APPROVAL}`); it was not assigned. "
             f"Reason: {decision.reason}."
         )
