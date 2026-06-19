@@ -9,19 +9,24 @@ const OUT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../src/data/impact-proof.json",
 );
-const AGENT_BRANCH_PREFIXES = csvEnv("ALFRED_IMPACT_AGENT_BRANCH_PREFIXES", [
-  "alfred/",
-  "alfred-nightly/",
-  "automerge/",
-  "bane/",
-  "batman/",
-  "damian/",
-  "lucius/",
-  "nightwing/",
-  "rasalghul/",
-  "robin/",
-]);
+const AGENT_BRANCH_PREFIXES = csvEnv(
+  "ALFRED_IMPACT_AGENT_BRANCH_PREFIXES",
+  [
+    "alfred/",
+    "alfred-nightly/",
+    "automerge/",
+    "bane/",
+    "batman/",
+    "damian/",
+    "lucius/",
+    "nightwing/",
+    "rasalghul/",
+    "robin/",
+  ],
+  { lowercase: false },
+);
 const AGENT_SHIPPED_LABELS = csvEnv("ALFRED_IMPACT_AGENT_LABELS", [
+  "agent:authored",
   "agent:done",
   "agent:shipped",
   "alfred:shipped",
@@ -245,12 +250,13 @@ function isWithinWindow(value) {
   return Number.isFinite(timestamp) && timestamp >= from.getTime() && timestamp <= now.getTime();
 }
 
-function csvEnv(name, fallback) {
+function csvEnv(name, fallback, { lowercase = true } = {}) {
+  const normalize = (value) => (lowercase ? value.toLowerCase() : value);
   const raw = (process.env[name] || "").trim();
-  if (!raw) return fallback.map((item) => item.toLowerCase());
+  if (!raw) return fallback.map((item) => normalize(item));
   return raw
     .split(",")
-    .map((item) => item.trim().toLowerCase())
+    .map((item) => normalize(item.trim()))
     .filter(Boolean);
 }
 
@@ -267,7 +273,7 @@ function isAgentMarked(item) {
     return false;
   }
   const labels = labelNames(item);
-  const branch = String(item.headRefName || "").trim().toLowerCase();
+  const branch = String(item.headRefName || "").trim();
   return (
     AGENT_BRANCH_PREFIXES.some((prefix) => branch.startsWith(prefix)) ||
     labels.some((label) => AGENT_SHIPPED_LABELS.includes(label))
