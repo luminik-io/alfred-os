@@ -3,14 +3,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DAYS = Number.parseInt(process.env.ALFRED_DOGFOOD_DAYS || "30", 10);
+const DAYS = Number.parseInt(process.env.ALFRED_PRODUCT_PROOF_DAYS || "30", 10);
 const OUT = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  "../src/data/luminik-dogfood-proof.json",
+  "../src/data/luminik-product-proof.json",
 );
-const REPOS = csvEnv("ALFRED_DOGFOOD_REPOS", []);
+const REPOS = csvEnv("ALFRED_PRODUCT_PROOF_REPOS", []);
 const AGENT_BRANCH_PREFIXES = csvEnv(
-  "ALFRED_DOGFOOD_AGENT_BRANCH_PREFIXES",
+  "ALFRED_PRODUCT_PROOF_AGENT_BRANCH_PREFIXES",
   [
     "alfred/",
     "alfred-nightly/",
@@ -25,7 +25,7 @@ const AGENT_BRANCH_PREFIXES = csvEnv(
   ],
   { lowercase: false },
 );
-const AGENT_LABELS = csvEnv("ALFRED_DOGFOOD_AGENT_LABELS", [
+const AGENT_LABELS = csvEnv("ALFRED_PRODUCT_PROOF_AGENT_LABELS", [
   "agent:authored",
   "agent:done",
   "agent:shipped",
@@ -33,7 +33,7 @@ const AGENT_LABELS = csvEnv("ALFRED_DOGFOOD_AGENT_LABELS", [
   "shipped-by-alfred",
 ]);
 const EXCLUDED_AUTHORS = new Set(
-  csvEnv("ALFRED_DOGFOOD_EXCLUDED_AUTHORS", [
+  csvEnv("ALFRED_PRODUCT_PROOF_EXCLUDED_AUTHORS", [
     "app/dependabot",
     "dependabot",
     "dependabot[bot]",
@@ -42,7 +42,7 @@ const EXCLUDED_AUTHORS = new Set(
 
 if (REPOS.length === 0) {
   throw new Error(
-    "Set ALFRED_DOGFOOD_REPOS to a comma-separated list of repo slugs. The output stays aggregate-only.",
+    "Set ALFRED_PRODUCT_PROOF_REPOS to a comma-separated list of repo slugs. The output stays aggregate-only.",
   );
 }
 
@@ -113,7 +113,7 @@ const summary = rows.reduce(
 const proof = {
   generated_at: now.toISOString(),
   source: {
-    label: process.env.ALFRED_DOGFOOD_LABEL || "Luminik dogfood setup",
+    label: process.env.ALFRED_PRODUCT_PROOF_LABEL || "Luminik product setup",
     note:
       "Aggregate-only snapshot from GitHub data visible to the operator's local auth. " +
       "The source repos are private/product repos and are not committed here. " +
@@ -139,7 +139,7 @@ async function searchGitHub(query) {
   let cursor = null;
   do {
     const data = await graphQL(
-      `query DogfoodProof($query: String!, $cursor: String) {
+      `query ProductProof($query: String!, $cursor: String) {
         search(type: ISSUE, query: $query, first: 100, after: $cursor) {
           pageInfo { hasNextPage endCursor }
           nodes {
@@ -175,7 +175,7 @@ async function graphQL(query, variables) {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          "User-Agent": "alfred-dogfood-proof",
+          "User-Agent": "alfred-product-proof",
         },
         body: JSON.stringify({ query, variables }),
       });

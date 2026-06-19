@@ -16,13 +16,18 @@
 Alfred keeps engineering work moving when you are not sitting at the keyboard.
 It turns Slack requests, rough plans, specs, and GitHub issues into scoped
 tasks, isolated worktrees, pull requests, reviews, tests, safe merges, and Slack
-summaries. Drake is the planner. Lucius is the senior developer. Ra's al Ghul
-is the reviewer. Bane handles test coverage. Nightwing fixes reviewer comments.
-Batman is the architect for work that spans many repos. Automerge can land
+summaries. Batman is the architect for work that spans repos. Lucius is the
+senior developer. Drake scopes smaller work. Ra's al Ghul is the reviewer. Bane
+handles test coverage. Nightwing fixes reviewer comments. Automerge can land
 small safe PRs once they pass your policy. The agents run on a computer you
 control, during the hours that host is awake, using the subscriptions you
 already pay for. Alfred shells out to your local CLI auth, so provider API keys
 and hosted agent accounts are not part of the setup.
+
+You do not sit in front of Claude or Codex and keep prompting every step.
+You give Alfred the goal, the repos, and the approval rules; Alfred keeps the
+loop moving until it has a pull request, a review finding, or a decision to
+bring back to Slack.
 
 Docs site: https://alfred.luminik.io
 
@@ -37,9 +42,9 @@ isolated copy of the repo, sends the right work to the right agent, hands
 finished code to a reviewer, caps how much it can spend, and keeps several
 agents from stepping on each other.
 
-- Narrow roles with clear handoffs: Drake is the planner, Lucius is the senior
-  developer, Ra's al Ghul is the reviewer, Bane is QA, Nightwing is the fixer,
-  and Batman is the architect for cross-repo rollouts.
+- Narrow roles with clear handoffs: Batman is the architect for cross-repo
+  work, Lucius is the senior developer, Drake scopes smaller work, Ra's al Ghul
+  is the reviewer, Bane is QA, and Nightwing is the fixer.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
   summaries. The local dashboard and desktop app inspect those same sources;
@@ -232,9 +237,10 @@ Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, t
 
 ## Runtime boundary
 
-Alfred core does not install or run an external agent gateway, memory database,
-skill registry, or dashboard service. The fleet works with local Python scripts,
-`gh`, `git`, and the configured LLM CLIs.
+Alfred core does not install or run an external agent gateway, hosted memory
+database, skill registry, or dashboard service. The fleet works with local
+Python scripts, `gh`, `git`, the local fleet-brain SQLite store, and the
+configured LLM CLIs.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
 where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
@@ -283,8 +289,8 @@ enable it and removing that one variable disables it completely.
   brain does not store per-line LOC. Public pages label it as a changed-file
   proxy. See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
-The richer `/impact` proof board is different: it is generated from public
-GitHub metadata for `luminik-io/alfred-os`, so it can show real PR links,
+The richer `/impact` GitHub activity board is different: it is generated from
+public GitHub metadata for `luminik-io/alfred-os`, so it can show real PR links,
 issues, additions, deletions, and changed files without exposing a user's
 private work.
 
@@ -340,14 +346,14 @@ and a per-IP rate limit either way. Full contract:
 |---|---|
 | [`lib/agent_runner/`](lib/agent_runner/__init__.py) | Shared library (package; public API re-exported from `__init__.py`). Preflight, lock, spend, claude_invoke, codex_invoke, gh, slack, event-log, commit-trailer, handoff-table, issue claim state machine, runner gate helpers, dedup helpers (`find_open_authored_pr_for_issue`, `reuse_or_make_worktree`), worktree recovery refs, runtime memory, slack severity routing, dry-run seam. |
 | [`lib/slack_format.py`](lib/slack_format.py) | Block Kit + bot-token Slack helpers: per-firing `firing_thread_root` / `firing_thread_reply` / `firing_thread_close`. Severity colour stripes. |
-| [`lib/batman.py`](lib/batman.py) | Bundle primitives for the multi-repo coordinator: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
+| [`lib/batman.py`](lib/batman.py) | Bundle primitives for Batman, the architect agent: `Bundle`, `claim_bundle` (all-or-nothing), `release_bundle`, `parse_plan_from_bundle`. |
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
 | [`bin/alfred`](bin/alfred) | Operator CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
-| [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
+| [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
 | [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Opt-in, off-by-default anonymous usage reporter. Hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`. Posts only aggregate counts (PRs opened/merged/reviewed, changed-file totals) to your configured endpoint; fail-soft. |
@@ -404,7 +410,7 @@ Rendered version: https://alfred.luminik.io/.
 
 ## Codename pattern
 
-The framework expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels and gh state rather than in-process calls. The shipped examples use Batman side-characters: **Batman** (multi-repo coordinator), **Lucius** (feature dev), **Drake** (planner), **Bane** (test coverage), **Ra's al Ghul** (PR review), **Robin** (bug triage), **Nightwing** (review-fix), **Huntress** (post-deploy smoke), **Gordon** (deploy health). Pick whatever cast fits.
+The framework expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels and gh state rather than in-process calls. The shipped examples use Batman side-characters: **Batman** (architect), **Lucius** (feature dev), **Drake** (planner), **Bane** (test coverage), **Ra's al Ghul** (PR review), **Robin** (bug triage), **Nightwing** (review-fix), **Huntress** (post-deploy smoke), **Gordon** (deploy health). Pick whatever cast fits.
 
 The cast matters for two reasons. Codenames appear in PR titles, Slack messages, and commit-trailer metadata; a coherent cast makes the fleet's channel scannable. And narrow scopes per codename are a forcing function for design quality. "What does Bane do?" is a sharper question than "what does the test agent do?".
 

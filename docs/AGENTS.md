@@ -16,10 +16,10 @@ flowchart LR
         prs["PRs<br/>(agent:authored)"]
     end
 
+    batman["batman<br/><i>architect</i><br/>opt-in"]
+    lucius["lucius<br/><i>feature-dev</i><br/>every 20m"]
     drake["drake<br/><i>planner</i><br/>every 2h"]
     damian["damian<br/><i>spec-bundle-planner</i><br/>opt-in"]
-    batman["batman<br/><i>cross-repo coordinator</i><br/>opt-in"]
-    lucius["lucius<br/><i>feature-dev</i><br/>every 20m"]
     bane["bane<br/><i>test-coverage</i><br/>every 4h"]
     rasalghul["rasalghul<br/><i>code-review</i><br/>every 30m"]
     nightwing["nightwing<br/><i>review-fix</i><br/>every 45m"]
@@ -28,9 +28,9 @@ flowchart LR
     gordon["gordon<br/><i>deploy-health</i><br/>daily 08:00"]
     automerge["automerge<br/><i>squash-merge</i><br/>every 15m"]
 
-    drake -- "files" --> issues
-    damian -- "files bundles" --> issues
-    batman -- "plans bundles" --> issues
+    batman -- "owns bundles" --> issues
+    drake -- "files scoped work" --> issues
+    damian -- "files spec bundles" --> issues
     robin -- "triages" --> issues
     issues -- "claim_issue" --> lucius
     lucius -- "transition_to=pr-open" --> prs
@@ -44,7 +44,7 @@ flowchart LR
     huntress -- "smoke-test fails" --> robin
     gordon -- "drift / Sentry" --> slack
 
-    lucius & bane & rasalghul & nightwing & robin & huntress & gordon & drake & damian & batman & automerge -. "status" .-> slack
+    batman & lucius & drake & bane & rasalghul & nightwing & robin & huntress & gordon & damian & automerge -. "status" .-> slack
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
@@ -58,16 +58,18 @@ issue-claim overrides.
 The repo ships these agents. Schedules are sensible defaults; override
 per-agent in `agents.conf`.
 
-The recommended starter fleet is intentionally smaller: Drake, Lucius, Ras al
-Ghul, and agent-cleanup. That gives a solo builder planning, implementation,
-review, and housekeeping without lighting up every scheduled role on day one.
+The recommended engineering hierarchy starts with Batman, Lucius, and Drake:
+Batman is the architect for cross-repo features, Lucius ships repo-local
+implementation PRs, and Drake scopes smaller single-repo requests. For a first
+single-repo install, start with Lucius, Drake, Ras al Ghul, and agent-cleanup;
+enable Batman when multi-repo or multi-package work becomes recurring.
 
 | Codename | Role | Default schedule | Default repos | What it does |
 |---|---|---|---|---|
+| **batman** | architect | every 1 h, opt-in | `BATMAN_SCAN_REPOS` / `BATMAN_PARENT_REPO` | Owns multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. |
 | **lucius** | feature-dev | every 20 min | `ALFRED_LUCIUS_REPOS` | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs `claude -p` with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | all in-scope repos | Reads specs / roadmap / `IMMEDIATE_NEXT_STEPS` / cross-repo open-issue list / code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in rolling 24 h. |
 | **damian** | spec-bundle-planner | daily 09:00, opt-in | `DAMIAN_SCAN_REPOS` | Reads `DAMIAN_SPEC_DIR` end-to-end, identifies multi-repo features, files `agent:bundle:<slug>` siblings across affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. Prompt seeded from `prompts/spec-bundle-planner.md`. |
-| **batman** | cross-repo coordinator | every 1 h, opt-in | `BATMAN_SCAN_REPOS` / `BATMAN_PARENT_REPO` | Plans cross-repo work. The parent-issue path can wait for approval, file child `agent:implement` issues, and report status; the legacy scan path drafts plans only. Batman does not implement code itself. |
 | **bane** | test-coverage | every 4 h | `ALFRED_BANE_REPOS` (round-robin) | Picks the lowest-coverage actively-changed file. Writes tests. Opens PR. |
 | **rasalghul** | code-review | every 30 min | all in-scope repos | Multi-axis review (correctness, security, perf, maintainability) on every fresh PR. Posts as comment. |
 | **nightwing** | review-fix | every 45 min | all `agent:authored` PRs | Lands fixes for P0 / P1 reviewer comments (CodeRabbit, Codex, rasalghul) on agent-authored PRs. |

@@ -29,9 +29,10 @@ so operators can opt in to contribute their anonymous totals.
 It is not analytics, not crash reporting, not feature tracking, and not tied to
 any account. It is a counter.
 
-The richer proof board on `/impact` is separate. It uses public GitHub metadata
-from `luminik-io/alfred-os`: merged PRs, issue flow, additions, deletions,
-changed files, and PR URLs. Anonymous telemetry does not send that detail.
+The richer GitHub activity board on `/impact` is separate. It uses public
+GitHub metadata from `luminik-io/alfred-os`: merged PRs, issue flow, additions,
+deletions, changed files, and PR URLs. Anonymous telemetry does not send that
+detail.
 
 ## Exactly what is sent
 

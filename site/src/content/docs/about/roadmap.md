@@ -103,7 +103,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `MemoryProvider` protocol plus `gbrain` bridge: agents read and write to a memory store through a stable interface; the OSS reference is fleet-brain, and operators can drop in their own.
 - `alfred spec`: template and lint helpers for specs-driven development.
 - `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
-- Batman execute-after-approval: once a bundle plan is approved, Batman now executes the per-repo PR sequence rather than stopping at the plan.
+- Batman execute-after-approval: once a bundle plan is approved, Batman files the approved per-repo child issues and reports status rather than stopping at the plan.
 - [`alfred serve`](/concepts/architecture/) v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
 - `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` that operators can publish on their own site. The canonical site also has `/impact/`, a separate opt-in usage counter backed by the telemetry collector.
 - Concept pages covering state, memory, engine routing, the connector protocol, and the approval gate.
@@ -118,17 +118,18 @@ Items with active work and a committed IC.
 
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day rolling window covering firings, success rate, and unattended hours. Operators who want a public usage page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Local client v2.** Keep Slack as the collaboration surface and build on the packaged Tauri shell with deeper setup checks, credential repair, safe pause/resume, dry-run launch, doctor execution, safer command previews, memory promotion actions, and a first-class Goals inbox/evidence inspector. No extra gateway, no local mirror, no second source of truth. IC: core. Effort: M. Issue: TBD.
-- **fleet-brain v2.** Replace the SQLite layer with PGLite plus Apache AGE for graph queries and pgvector for semantic recall, exposed through an MCP server adapter so local clients can read fleet memory. IC: core. Effort: L. Issue: TBD.
-- **Memory quality loop v2.** Add evidence-linked lesson promotion, approved follow-up execution for governor findings, spec-to-issue memory, and lightweight candidate quality checks before promotion. IC: core. Effort: M. Issue: TBD.
+- **Alfred Desktop v2.** Keep Slack as the collaboration surface and build on the packaged Tauri shell with guided setup repair, release/update status, lock recovery, safer command previews, and a first-class Goals inbox with evidence. No extra gateway, no local mirror, no second source of truth. Keep `alfred serve` JSON APIs stable so the Tauri shell stays thin. IC: core. Effort: M. Issue: TBD.
+- **fleet-brain v2.** Keep SQLite as the default local store and add optional graph/vector recall for operators who want deeper search across lessons, failures, files, bundles, and follow-ups. Expose the same memory through a local MCP adapter. IC: core. Effort: L. Issue: TBD.
+- **Memory quality loop v2.** Improve duplicate collapse, evidence ranking, stale lesson retirement, and approved follow-up execution for governor findings before a lesson can shape future runs. IC: core. Effort: M. Issue: TBD.
 
 ## Next (next quarter)
 
 Committed for the following quarter. Design first, then code.
 
 - **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
-- **Better Batman v2.** Post-approval per-repo execution sweep with bundle-completion detection: Batman keeps watch on the PR chain it opened, reports per-repo progress, and closes the bundle once every PR has landed or been explicitly dropped. Effort: M. Issue: TBD.
+- **Better Batman v2.** Bundle-completion tracking after approval: Batman keeps watch on child issues and PRs, reports per-repo progress, and closes the bundle once every child has landed or been explicitly dropped. Effort: M. Issue: TBD.
 - **Native lifecycle dry-run for every shipped runner.** `alfred dry-run <codename>` now resolves every codename safely; next step is making every individual runner support the full synthetic lifecycle, not just the safe simulation. Effort: S. Issue: TBD.
+- **`alfred serve` API hardening.** v0.5.1 ships the local control surface used by Alfred Desktop. Next work is a versioned API contract, compatibility tests, richer event-stream traces, and clearer error payloads for native clients. Effort: S. Issue: TBD.
 
 ## Horizon (no committed quarter)
 
@@ -144,7 +145,7 @@ Candidly speculative. No IC, no quarter, no committed effort estimate.
 
 ## Considered, not committed
 
-Decisions on the table that did not make the cut. Listed so contributors do not re-pitch them.
+Decisions considered and left out. Listed so contributors do not re-pitch them.
 
 - **Plugin or skill marketplace bundled into Alfred.** Considered and decided against. Skills are operator-installed Claude Code skills; a bundled marketplace would push maintenance onto the framework. The convention-only resolver stays.
 - **Hosted Alfred SaaS.** Not on the roadmap. Alfred is operator-hosted by design; multi-tenant is a different product.

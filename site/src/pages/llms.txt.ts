@@ -42,6 +42,8 @@ export const GET: APIRoute = async ({ site }) => {
     "each agent; the harness wraps every firing in a lock, preflight, spend",
     "cap, and an isolated git worktree. The engineering fleet ships today;",
     "content, sales, and ops departments are the roadmap. Source: https://github.com/luminik-io/alfred-os",
+    "The operator gives Alfred goals, repos, and approval rules instead of",
+    "sitting in front of Claude or Codex and prompting every step.",
     "",
   ];
 

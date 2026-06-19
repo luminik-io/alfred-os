@@ -116,7 +116,7 @@ const proof = {
   source: {
     repo: REPO,
     url: `https://github.com/${REPO}`,
-    note: "Rolling public Alfred OS activity filtered to Alfred runtime GitHub signals. PRs require an Alfred branch prefix or shipped label, and Dependabot is excluded. Issues require an agent:* label. The committed JSON is a seed; main-branch site builds refresh it before deploy.",
+    note: "Public Alfred activity from GitHub. PRs require an Alfred branch prefix or shipped label, and Dependabot is excluded. Issues require an agent:* label. The committed JSON is a seed; main-branch site builds refresh it before deploy.",
   },
   window: {
     days: DAYS,

@@ -6,91 +6,88 @@ import ImpactCounter from "../components/marketing/ImpactCounter.astro";
 import ImpactProofBoard from "../components/marketing/ImpactProofBoard.astro";
 import CodeBlock from "../components/marketing/CodeBlock.astro";
 import proof from "../data/impact-proof.json";
-import dogfood from "../data/luminik-dogfood-proof.json";
+import productProof from "../data/luminik-product-proof.json";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
-const dogfoodGenerated = dogfood.generated_at.slice(0, 10);
+const productProofGenerated = productProof.generated_at.slice(0, 10);
 ---
 
 <MarketingLayout
   title="Impact | Alfred"
-  description="Public Alfred proof from inspectable GitHub signals: merged pull requests, issue labels, changed files, and the anonymous opt-in community counter."
+  description="A running record of what Alfred has shipped: aggregate Luminik product totals, public open-source links, and anonymous community counts."
   path="/impact/"
 >
   <Hero
-    eyebrow="PUBLIC GITHUB PROOF"
-    headline="Proof you can inspect."
-    sub="This page counts public Alfred OS work only when GitHub shows runtime evidence: an Alfred branch prefix or a shipped label. If the current window has no matches, the page says so and keeps wider repo activity separate."
+    eyebrow="ALFRED IN USE"
+    headline="What Alfred has shipped."
+    sub={`In the last ${productProof.window.days} days, Alfred has helped ship product work across Luminik repos. Private work stays private. Public repo work appears below when GitHub makes the Alfred link visible.`}
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
     secondaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
   >
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
-        <span class="m-eyebrow">ROLLING WINDOW</span>
-        <span class="m-mono m-mute">{proof.window.days} days</span>
+        <span class="m-eyebrow">LAST {productProof.window.days} DAYS</span>
+        <span class="m-mono m-mute">updated {productProofGenerated}</span>
       </div>
       <div class="hero-proof">
-        <span>{proof.summary.prs_merged.toLocaleString("en-US")}</span>
-        <p>merged runtime PRs</p>
+        <span>{fmt(productProof.summary.agent_prs_merged)}</span>
+        <p>agent-identified PRs merged</p>
       </div>
       <div class="hero-proof__grid">
         <div>
-          <span>{proof.summary.issues_opened.toLocaleString("en-US")}</span>
-          <p>agent-labeled issues</p>
+          <span>{fmt(productProof.summary.agent_issues_opened)}</span>
+          <p>issues opened</p>
         </div>
         <div>
-          <span>{proof.summary.lines_added.toLocaleString("en-US")}</span>
-          <p>lines added</p>
+          <span>{fmt(productProof.summary.files_changed)}</span>
+          <p>files changed</p>
         </div>
       </div>
     </div>
   </Hero>
 
   <section class="m-section m-section--soft">
-    <div class="m-container dogfood-proof">
-      <div class="dogfood-proof__copy">
+    <div class="m-container product-proof">
+      <div class="product-proof__copy">
         <SectionHeader
-          eyebrow="LUMINIK DOGFOOD SNAPSHOT"
-          title="What Alfred has shipped in the product repos."
-          lede={`Last ${dogfood.window.days} days across ${dogfood.summary.repos_scanned} Luminik repos. Counted from GitHub labels and Alfred branch prefixes, then published as aggregate numbers only.`}
+          eyebrow="RUNNING ON LUMINIK"
+          title="Alfred works on real product repos every day."
+          lede={`The counter uses labels and branch names in GitHub across ${productProof.summary.repos_scanned} Luminik repos. It publishes totals and leaves out private repo details.`}
           reveal={false}
         />
-        <p class="dogfood-proof__note">
-          No private repo names, PR titles, issue titles, branches, comments, prompts, or code are published here.
-          The public GitHub board below is stricter and shows only inspectable links from the open-source repo.
+        <p class="product-proof__note">
+          This page publishes totals only. It leaves out private repo names, PR titles, issue titles,
+          branches, comments, prompts, and code.
         </p>
       </div>
-      <div class="dogfood-proof__panel" aria-label="Luminik dogfood metrics">
-        <div class="dogfood-proof__head">
-          <span class="m-eyebrow">AGGREGATE ONLY</span>
-          <span class="m-mono m-mute">updated {dogfoodGenerated}</span>
+      <div class="product-proof__panel" aria-label="Luminik product metrics">
+        <div class="product-proof__head">
+          <span class="m-eyebrow">LUMINIK SETUP</span>
+          <span class="m-mono m-mute">updated {productProofGenerated}</span>
         </div>
-        <div class="dogfood-proof__main">
-          <span>{fmt(dogfood.summary.agent_prs_merged)}</span>
-          <p>agent-identified PRs merged</p>
+        <div class="product-proof__main">
+          <span>{fmt(productProof.summary.agent_prs_merged)}</span>
+          <p>PRs merged</p>
         </div>
-        <div class="dogfood-proof__grid">
+        <div class="product-proof__grid">
           <div>
-            <span>{fmt(dogfood.summary.agent_issues_opened)}</span>
-            <p>agent-labeled issues opened</p>
+            <span>{fmt(productProof.summary.agent_issues_opened)}</span>
+            <p>issues opened</p>
           </div>
           <div>
-            <span>{fmt(dogfood.summary.agent_issues_closed)}</span>
-            <p>agent-labeled issues closed</p>
+            <span>{fmt(productProof.summary.agent_issues_closed)}</span>
+            <p>issues closed</p>
           </div>
           <div>
-            <span>{fmt(dogfood.summary.files_changed)}</span>
+            <span>{fmt(productProof.summary.files_changed)}</span>
             <p>files changed</p>
           </div>
           <div>
-            <span>+{fmt(dogfood.summary.lines_added)}</span>
-            <p>lines added, -{fmt(dogfood.summary.lines_removed)} removed</p>
+            <span>+{fmt(productProof.summary.lines_added)}</span>
+            <p>lines added, {fmt(productProof.summary.lines_removed)} removed</p>
           </div>
         </div>
-        <p class="dogfood-proof__foot">
-          Filtered from {fmt(dogfood.summary.total_prs_merged)} merged PRs and {fmt(dogfood.summary.total_issues_opened)} opened issues in the same repos.
-        </p>
       </div>
     </div>
   </section>
@@ -104,7 +101,7 @@ const dogfoodGenerated = dogfood.generated_at.slice(0, 10);
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="ANONYMOUS COMMUNITY COUNTER"
+        eyebrow="COMMUNITY TOTALS"
         title="Installs can add aggregate totals."
         lede="This counter counts aggregate PR activity from installs that choose to report. It does not send repo names, titles, branches, prompts, code, people, or hostnames."
       />
@@ -117,7 +114,7 @@ const dogfoodGenerated = dogfood.generated_at.slice(0, 10);
       <SectionHeader
         eyebrow="WHAT GETS COUNTED"
         title="Only aggregate counts. Nothing from the work itself."
-        lede="Anonymous telemetry is for community adoption, not for exposing an operator's work. Public proof with PR titles and URLs comes from repos the operator deliberately publishes."
+        lede="Anonymous telemetry is for community adoption, not for exposing an operator's work. Public PR titles and URLs appear only for repos the operator deliberately publishes."
       />
       <div class="proof-grid">
         <article class="m-card">
@@ -236,22 +233,21 @@ const dogfoodGenerated = dogfood.generated_at.slice(0, 10);
     grid-template-columns: repeat(4, 1fr);
     gap: 18px;
   }
-  .dogfood-proof {
+  .product-proof {
     display: grid;
     grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
     gap: 40px;
     align-items: center;
   }
-  .dogfood-proof__copy :global(.m-section-header) {
+  .product-proof__copy :global(.m-section-header) {
     margin-bottom: 18px;
   }
-  .dogfood-proof__note,
-  .dogfood-proof__foot {
+  .product-proof__note {
     color: var(--alfred-text);
     font-size: 15px;
     line-height: 1.6;
   }
-  .dogfood-proof__panel {
+  .product-proof__panel {
     min-width: 0;
     padding: 22px;
     border: 1px solid var(--alfred-border-strong);
@@ -259,7 +255,7 @@ const dogfoodGenerated = dogfood.generated_at.slice(0, 10);
     background: var(--alfred-black);
     box-shadow: 0 24px 90px rgba(0, 0, 0, 0.22);
   }
-  .dogfood-proof__head {
+  .product-proof__head {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -267,46 +263,42 @@ const dogfoodGenerated = dogfood.generated_at.slice(0, 10);
     padding-bottom: 16px;
     border-bottom: 1px solid var(--alfred-border);
   }
-  .dogfood-proof__main {
+  .product-proof__main {
     padding: 24px 0 18px;
     text-align: center;
   }
-  .dogfood-proof__main span,
-  .dogfood-proof__grid span {
+  .product-proof__main span,
+  .product-proof__grid span {
     color: var(--alfred-accent);
     font-family: var(--font-display);
     font-weight: 700;
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
-  .dogfood-proof__main span {
+  .product-proof__main span {
     font-size: clamp(48px, 8vw, 86px);
   }
-  .dogfood-proof__main p,
-  .dogfood-proof__grid p {
+  .product-proof__main p,
+  .product-proof__grid p {
     margin-top: 8px;
     color: var(--alfred-mute);
     font-size: 13px;
   }
-  .dogfood-proof__grid {
+  .product-proof__grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
-  .dogfood-proof__grid div {
+  .product-proof__grid div {
     min-width: 0;
     padding: 16px 14px;
     border: 1px solid var(--alfred-border);
     border-radius: var(--radius);
     background: var(--alfred-surface);
   }
-  .dogfood-proof__grid span {
+  .product-proof__grid span {
     display: block;
     font-size: clamp(24px, 4vw, 34px);
-  }
-  .dogfood-proof__foot {
-    margin-top: 16px;
-    color: var(--alfred-mute);
   }
   .proof-grid__num {
     display: block;
@@ -335,18 +327,18 @@ const dogfoodGenerated = dogfood.generated_at.slice(0, 10);
   }
   @media (max-width: 980px) {
     .proof-grid,
-    .dogfood-proof,
+    .product-proof,
     .operator-grid {
       grid-template-columns: 1fr;
     }
   }
   @media (max-width: 520px) {
     .impact-panel__head,
-    .dogfood-proof__head {
+    .product-proof__head {
       align-items: flex-start;
       flex-direction: column;
     }
-    .dogfood-proof__grid {
+    .product-proof__grid {
       grid-template-columns: 1fr;
     }
   }

@@ -8,7 +8,7 @@
     "start": "astro dev",
     "og": "node scripts/generate-og.mjs",
     "proof:update": "node scripts/build-impact-proof.mjs",
-    "proof:dogfood": "node scripts/build-dogfood-proof.mjs",
+    "proof:product": "node scripts/build-product-proof.mjs",
     "check:fonts": "node scripts/check-fonts.mjs",
     "build": "npm run check:fonts && astro check && astro build",
     "preview": "astro preview",

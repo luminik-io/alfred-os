@@ -61,50 +61,50 @@ const hasRuntimeProof =
 
 const metrics = [
   {
-    label: "Alfred runtime PRs merged",
+    label: "Alfred PRs merged",
     value: fmt(proof.summary.prs_merged),
-    detail: "Runtime branch or shipped label",
+    detail: "Visible in GitHub",
   },
   {
-    label: "Agent-labeled issues opened",
+    label: "Alfred issues opened",
     value: fmt(proof.summary.issues_opened),
-    detail: "Alfred agent labels only",
+    detail: "Visible agent label",
   },
   {
     label: "Lines added",
     value: fmt(proof.summary.lines_added),
-    detail: `${fmt(proof.summary.lines_removed)} removed`,
+    detail: "On listed PRs",
   },
   {
     label: "Files changed",
     value: fmt(proof.summary.files_changed),
-    detail: "GitHub diff stats",
+    detail: "On listed PRs",
   },
 ];
 ---
 
-<section class="proof-board" aria-label="Public Alfred OS shipping proof">
+<section class="proof-board" aria-label="Public Alfred shipping record">
   <div class="proof-board__meta">
     <div>
-      <span class="m-eyebrow">PUBLIC GITHUB PROOF</span>
-      <h2 class="m-display-md">Public PRs Alfred can prove.</h2>
+      <span class="m-eyebrow">OPEN-SOURCE REPO</span>
+      <h2 class="m-display-md">Open-source Alfred work you can inspect.</h2>
     </div>
     <p>
-      Rolling {proof.window.days}-day window from{" "}
+      Last {proof.window.days} days from{" "}
       <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>.
-      PRs need an Alfred branch prefix or shipped label, and Dependabot is excluded.
-      Issues need an Alfred agent label.
+      PRs appear here when the branch or label shows Alfred did the work.
+      Issues appear when they carry an Alfred agent label.
       Updated {generated}.
     </p>
   </div>
 
   {!hasRuntimeProof && proof.summary.repo_activity ? (
     <div class="proof-callout" role="note">
-      <span class="m-eyebrow">STRICT FILTER EMPTY</span>
+      <span class="m-eyebrow">NO LINKED PRS YET</span>
       <p>
-        No public PR or issue matched the Alfred runtime filter in this window.
-        The whole public repo still merged {fmt(proof.summary.repo_activity.prs_merged)} PRs.
-        Alfred keeps those numbers separate until the GitHub evidence is visible.
+        The last {proof.window.days} days have no public Alfred PR or issue links yet.
+        The repo still merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during the same period.
+        This board lists work when GitHub makes the Alfred link visible.
       </p>
     </div>
   ) : null}
@@ -122,8 +122,8 @@ const metrics = [
   <div class="proof-layout">
     <section class="proof-panel" aria-label="Weekly merged pull requests">
       <div class="proof-panel__head">
-        <h3 class="m-h3">Weekly Alfred runtime PRs merged</h3>
-        <span class="m-mono m-mute">{day(proof.window.from)} to {day(proof.window.to)}</span>
+        <h3 class="m-h3">Weekly PRs merged</h3>
+        <span class="m-mono m-mute">Last {proof.window.days} days</span>
       </div>
       <div class="trend" role="list">
         {proof.trend.length > 0 ? (
@@ -137,7 +137,7 @@ const metrics = [
             </div>
           ))
         ) : (
-          <p class="proof-empty">No merged PRs matched Alfred runtime evidence in this window.</p>
+          <p class="proof-empty">No linked public PRs in the last {proof.window.days} days.</p>
         )}
       </div>
     </section>
@@ -156,7 +156,7 @@ const metrics = [
             </a>
           ))
         ) : (
-          <p class="proof-empty">No Alfred-labeled issues in this public window yet.</p>
+          <p class="proof-empty">No linked public issues in the last {proof.window.days} days.</p>
         )}
       </div>
     </section>
@@ -164,8 +164,8 @@ const metrics = [
 
   <section class="proof-panel proof-panel--wide" aria-label="Recent merged pull requests">
     <div class="proof-panel__head">
-      <h3 class="m-h3">Recent merged Alfred runtime PRs</h3>
-      <span class="m-mono m-mute">filtered list</span>
+      <h3 class="m-h3">Recent merged PRs</h3>
+      <span class="m-mono m-mute">Open-source links</span>
     </div>
     <div class="pr-list">
       {proof.prs.length > 0 ? (
@@ -179,17 +179,17 @@ const metrics = [
           </a>
         ))
       ) : (
-        <p class="proof-empty">No public PR links matched the Alfred runtime filter in this window.</p>
+        <p class="proof-empty">No linked public PRs in the last {proof.window.days} days.</p>
       )}
     </div>
   </section>
 
   <p class="proof-note">
-    Lines are GitHub additions and deletions on filtered Alfred runtime PRs.
-    Generated files and lockfiles are included because GitHub counts them in PR stats.
+    Line counts come from GitHub additions and deletions on listed PRs.
+    GitHub includes generated files and lockfiles in those stats.
     {proof.summary.repo_activity ? (
       <>
-        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs in the same window; those broader numbers stay separate from Alfred runtime proof.
+        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during this period. This board lists work when GitHub makes the Alfred link visible.
       </>
     ) : null}
   </p>

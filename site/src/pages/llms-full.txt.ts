@@ -49,6 +49,8 @@ export const GET: APIRoute = async ({ site }) => {
     "(launchd on macOS, systemd on Linux) fires",
     "each agent; the harness wraps every firing in a lock, preflight, spend",
     "cap, and an isolated git worktree.",
+    "The operator gives Alfred goals, repos, and approval rules instead of",
+    "sitting in front of Claude or Codex and prompting every step.",
     "",
     `Source: https://github.com/luminik-io/alfred-os`,
     `Roadmap: https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md`,

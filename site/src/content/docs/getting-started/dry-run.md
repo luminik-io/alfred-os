@@ -49,11 +49,11 @@ Two equivalent switches:
 - The `ALFRED_DRY_RUN` environment variable, set to any truthy value (`1`, `true`, `yes`, `on`).
 - The `--dry-run` CLI flag, accepted by the example runners and `bin/lucius.py`.
 
-A runner that sees `--dry-run` calls `agent_runner.set_dry_run()`, which writes `ALFRED_DRY_RUN=1` back into the process environment so every downstream seam, and any subprocess-spawned child, agrees on the mode.
+A runner that sees `--dry-run` calls `agent_runner.set_dry_run()`, which writes `ALFRED_DRY_RUN=1` back into the process environment so every downstream code path, and any subprocess-spawned child, agrees on the mode.
 
 ## What is stubbed vs real
 
-Everything that does **not** touch the outside world runs for real: the lock, preflight (its result is narrated but a config gap no longer aborts the firing), the event log, prompt construction, and the runner's own result-branching logic.
+Everything inside Alfred runs for real: the lock, preflight narration, event log, prompt construction, and the runner's own result-branching logic. Calls to the outside world stay stubbed.
 
 Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper in `lib/agent_runner.py`:
 

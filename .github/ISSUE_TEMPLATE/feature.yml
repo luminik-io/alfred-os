@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Alfred-OS is deliberately small. Read [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md) and [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md) before opening — features that broaden scope (multi-tenant, hosted, web UI, vector DB) get politely declined.
+        Alfred is deliberately small. Read [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred-os/blob/main/CONTRIBUTING.md) and [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md) before opening — features that broaden scope (multi-tenant, hosted, web UI, vector DB) get politely declined.
 
         Strong feature requests describe the use case first, the proposed solution second.
 
@@ -50,9 +50,9 @@ body:
     id: scope
     attributes:
       label: Scope check
-      description: Confirm the request fits alfred-os's design constraints.
+      description: Confirm the request fits Alfred's design constraints.
       options:
-        - label: My use case is single-operator. (Alfred-OS is not multi-tenant.)
+        - label: My use case is single-operator. (Alfred is not multi-tenant.)
           required: true
         - label: I'm willing to write the PR (or fund someone to write it). The framework is weekend-maintained.
           required: false

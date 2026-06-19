@@ -27,13 +27,15 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 Interactive coding agents finish a prompt while you sit at the keyboard. Alfred is built for engineering work that should keep moving while you are away: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
 
+You do not sit in front of Claude or Codex and keep prompting every step. You give Alfred the goal, the repos, and the approval rules; Alfred keeps the loop moving until it has a pull request, a review finding, or a decision to bring back to Slack.
+
 That work needs durable coordination: Slack threads and specs that can become scoped GitHub issues, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
 
-The starter fleet is intentionally narrow: Drake plans work, Lucius implements scoped issues, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman, Bane, Nightwing, and other specialists.
+The starter fleet is intentionally narrow: Lucius implements scoped issues, Drake plans smaller work, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman as the architect for cross-repo work, plus Bane, Nightwing, and other specialists.
 
 Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
-`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, memory database, skill registry, or dashboard service is required.
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, hosted memory database, skill registry, or dashboard service is required. Local fleet-brain memory ships with Alfred and stays on the host.
 
 ```mermaid
 flowchart TB
@@ -43,7 +45,7 @@ flowchart TB
     engine["claude -p or codex exec<br/><i>the LLM work, in a fresh subprocess</i>"]
     gh["GitHub<br/><i>issues, specs, PRs, labels</i>"]
     slack["Slack channel<br/><i>the operator's read surface</i>"]
-    state[("$ALFRED_HOME/state/<br/><i>JSON on disk, no DB</i>")]
+    state[("$ALFRED_HOME/state/<br/><i>JSON + local SQLite</i>")]
 
     scheduler --> role --> runner --> engine
     runner -- "claim / release / PR" --> gh
@@ -57,14 +59,20 @@ flowchart TB
   <Card title="Autonomous scheduled runs" icon="rocket">
     Agents keep working on schedule, survive host restarts, and do not depend on one fragile long-running process.
   </Card>
+  <Card title="The loop around Claude and Codex" icon="setting">
+    Alfred finds work, scopes it, runs agents in worktrees, checks results, records memory, and routes decisions back to Slack.
+  </Card>
   <Card title="Plan-to-PR workflow" icon="document">
     Slack requests, specs, and issues become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report, and merge when your policy allows it.
   </Card>
   <Card title="Role-level engine routing" icon="setting">
     Route builders and reviewers separately across Claude Code, Codex, or hybrid fallback.
   </Card>
-  <Card title="Batman: architect for multi-repo work" icon="puzzle">
-    Batman holds a whole feature in one plan. It reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel.
+  <Card title="Batman: architect agent" icon="puzzle">
+    Batman owns the feature above the repo-local work. It reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel.
+  </Card>
+  <Card title="Local memory you approve" icon="puzzle">
+    Fleet-brain recalls repo lessons, file touches, failure patterns, and reviewable memory candidates. New lessons wait for approval before they shape future runs.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
     Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.
@@ -129,7 +137,7 @@ flowchart TB
 
 <LinkCard
   title="Meet the fleet"
-  description="The starter fleet and the full engineering roster: Lucius, Drake, Bane, Ra's al Ghul, and the rest. What each codename does and how work flows between them."
+  description="The starter fleet and the full engineering roster: Batman, Lucius, Drake, Ra's al Ghul, Bane, and the rest. What each codename does and how work flows between them."
   href="/concepts/fleet/"
 />
 
@@ -150,7 +158,6 @@ rules.
   <Card title="Content" icon="document">Blog, LinkedIn, SEO drafts, and site-page generation. Human approval before publish.</Card>
   <Card title="Sales / SDR" icon="rocket">Prospect identification, event-page sourcing, and outreach drafts. Human approval before send.</Card>
   <Card title="Ops departments" icon="setting">Personal assistant, finance, and product-ops agents with drafts-only defaults for anything that sends, publishes, or pays.</Card>
-  <Card title="Memory" icon="puzzle">Local recall, reviewable lesson candidates, repeated-failure actions, and read-only MCP access.</Card>
 </CardGrid>
 
 The full [roadmap](/about/roadmap/) tracks what is in flight.

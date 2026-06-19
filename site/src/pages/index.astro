@@ -29,28 +29,39 @@ import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
 import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 import NativeClientShowcase from "../components/marketing/NativeClientShowcase.astro";
 import DownloadTracker from "../components/marketing/DownloadTracker.astro";
-import dogfood from "../data/luminik-dogfood-proof.json";
+import productProof from "../data/luminik-product-proof.json";
 
 type JobState = "live" | "warn" | "idle" | "info";
 
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
-    title: "Planner: Drake shapes the work",
-    body: "Reads a Slack request, GitHub issue, or plain-text plan, asks for missing details, then files small tasks a coding agent can pick up on its own.",
+    title: "Architect: Batman drives cross-repo features",
+    body: "Owns large work that touches more than one repo: reads the parent issue or Slack plan, checks the affected repos, gets approval, files the repo-level work, and keeps the bundle moving.",
     log: [
-      "[09:02] drake  refined billing-v2 plan",
-      "[09:02] drake  filed your-backend#247 agent:implement",
-      "[09:02] drake  filed your-backend#248 agent:implement",
+      "[10:30] batman drafted bundle:billing-v2",
+      "[10:31] batman posted plan to Slack",
+      "[10:34] operator approved scope",
+      "[10:35] batman opened backend -> web -> mobile tasks",
     ],
-    state: "live",
+    state: "info",
   },
   {
     title: "Senior dev: Lucius opens PRs",
-    body: "Picks up one of those tasks, makes its own copy of the repo to work in, runs Claude Code or Codex with the full project in context, and opens a pull request with tests.",
+    body: "Picks up a scoped task, makes its own copy of the repo, runs Claude Code or Codex with the full project in context, and opens a pull request with tests.",
     log: [
       "[12:04] lucius claimed your-backend#247",
       "[12:04] lucius worktree ~/.alfred/wt/12042118/",
       "[12:18] lucius PR #1247 opened",
+    ],
+    state: "live",
+  },
+  {
+    title: "Planner: Drake shapes single-repo work",
+    body: "Reads a Slack request, GitHub issue, or plain-text plan, asks for missing details, then files small tasks a coding agent can pick up on its own.",
+    log: [
+      "[09:02] drake refined settings plan",
+      "[09:02] drake filed your-backend#248 agent:implement",
+      "[09:03] drake linked acceptance checks",
     ],
     state: "live",
   },
@@ -84,23 +95,12 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     ],
     state: "idle",
   },
-  {
-    title: "Architect: Batman plans across repos",
-    body: "Reads a big feature request, drafts a plan that covers every repo it touches, and posts it to Slack for you to discuss and approve. Once you say yes, it splits the work into scoped tasks for the fleet queue. Teammates you trust can refine the plan in the thread; only you can approve it.",
-    log: [
-      "[10:30] batman drafted bundle:billing-v2",
-      "[10:31] batman posted plan to Slack for approval",
-      "[10:34] operator approved with :white_check_mark:",
-      "[10:34] batman filed 4 child issues for pickup",
-    ],
-    state: "info",
-  },
 ];
 
 const why = [
   {
-    title: "Keeps shipping while you are away",
-    body: "On configured schedules, agents pick up the Slack drafts, plans, and GitHub issues you marked for Alfred, write the code, open pull requests, review them, and post short Slack summaries. Run Alfred on an awake Mac, Linux box, or dedicated host for overnight work.",
+    title: "Removes prompt-by-prompt babysitting",
+    body: "Alfred finds the next task, hands it to the right role, runs the work in an isolated repo copy, routes review, records memory, and comes back to Slack when a human decision is needed.",
   },
   {
     title: "Runs on a machine you already own",
@@ -134,7 +134,7 @@ const why = [
   <Hero
     eyebrow="AUTONOMOUS CODING AGENTS"
     headline="Coding agents that keep shipping while you are away."
-    sub="Start from a Slack message, GitHub issue, or rough plan. Alfred helps turn it into scoped work, assigns specialist agents, opens PRs, runs review, fixes comments, and merges small safe changes when your policy allows. It runs from an awake Mac or Linux machine you control."
+    sub="Start from a Slack message, GitHub issue, or rough plan. You give Alfred the goal and approval rules; Alfred keeps the Claude and Codex loop moving until there is a PR, a review finding, or a Slack decision for you. It runs from an awake Mac or Linux machine you control."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
@@ -267,8 +267,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
-        title="Alfred helps turn plans into issue queues, PRs, and reviews."
-        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Drake asks for missing details, turns the work into scoped tasks in the right repos, and hands those tasks to Lucius when you step away."
+        title="Batman architects the rollout. Lucius ships the PRs. Drake keeps smaller work scoped."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman owns multi-repo features, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -281,8 +281,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="THE ARCHITECT AGENT"
-        title="One big feature, planned across every repo it touches."
-        lede="Single-repo agents lose the edges of a cross-repo feature. Batman is the architect role: it keeps the backend service, web page, mobile screen, and background job in one plan. It posts the plan to Slack for approval, then files one task per repo so the work can move in parallel."
+        title="Batman drives cross-repo features end to end."
+        lede="Batman is the accountable lead for work that spans repos. It reads the parent issue, checks the affected repos, plans the rollout, gets approval in Slack, opens the repo-level work, and keeps the bundle visible until the implementation fleet can finish it."
       />
       <BatmanFanOut />
       <div class="batman-cta">
@@ -320,14 +320,14 @@ const why = [
           alt="Slack message from the Alfred bot showing Batman drafting a plan for issue #504, with affected repos backend, frontend, mobile, and a rollout order. The plan is in draft, awaiting approval."
           tag="batman plan"
           meta="2026-05-12 11:44 UTC"
-          caption="Batman reads one big feature request, drafts a plan across the backend, web, and mobile repos, and posts it to Slack for approval. Once you react with the agreed emoji, Batman files scoped tasks for the normal fleet queue."
+          caption="Batman reads one big feature request, plans the backend, web, and mobile rollout, gets approval in Slack, then opens scoped tasks for the implementation fleet."
         />
         <SlackProof
           src="/proof/slack-shipped-summary.png"
           alt="Slack message from the Alfred bot summarising one private Luminik setup: 153 PRs merged, 44 issues opened, 144 issues closed, and 44,351 lines added across six repos."
           tag="daily summary"
           meta="2026-05-20 20:45 CET"
-          caption="A private Luminik setup summary across six repos. It is shown as a product example; the public impact page counts only PRs and issues with visible GitHub evidence."
+          caption="A private Luminik setup summary across six repos. It is shown as a product example; the impact page shows current aggregate totals and open-source links you can inspect."
         />
       </div>
 
@@ -380,19 +380,19 @@ const why = [
     <div class="m-container built-by">
       <SectionHeader
         eyebrow="BUILT BY LUMINIK"
-        title="Used every day by the team that built it."
-        lede={`In the last ${dogfood.window.days} days, Alfred's dogfood setup merged ${dogfood.summary.agent_prs_merged.toLocaleString("en-US")} agent-identified PRs across ${dogfood.summary.repos_scanned} Luminik repos. The public impact page shows the aggregate proof and keeps private repo details private.`}
+        title="Used every day by Luminik."
+        lede={`In the last ${productProof.window.days} days, Alfred helped merge ${productProof.summary.agent_prs_merged.toLocaleString("en-US")} agent-identified PRs across ${productProof.summary.repos_scanned} Luminik repos. The impact page shows aggregate product totals and open-source links you can inspect.`}
       />
       <div class="built-by__panel m-card">
         <div class="built-by__metrics">
-          <MetricRow label="agent PRs" value={dogfood.summary.agent_prs_merged.toLocaleString("en-US")} state="live" />
-          <MetricRow label="agent issues" value={dogfood.summary.agent_issues_opened.toLocaleString("en-US")} state="live" />
-          <MetricRow label="files changed" value={dogfood.summary.files_changed.toLocaleString("en-US")} state="info" />
-          <MetricRow label="repos" value={dogfood.summary.repos_scanned.toLocaleString("en-US")} state="live" />
+          <MetricRow label="agent PRs" value={productProof.summary.agent_prs_merged.toLocaleString("en-US")} state="live" />
+          <MetricRow label="agent issues" value={productProof.summary.agent_issues_opened.toLocaleString("en-US")} state="live" />
+          <MetricRow label="files changed" value={productProof.summary.files_changed.toLocaleString("en-US")} state="info" />
+          <MetricRow label="repos" value={productProof.summary.repos_scanned.toLocaleString("en-US")} state="live" />
         </div>
         <div class="built-by__cta">
           <a class="m-btn" href="/install/">Pick an install path</a>
-          <a class="m-btn m-btn--ghost" href="/impact/">See impact proof</a>
+          <a class="m-btn m-btn--ghost" href="/impact/">See what shipped</a>
           <a class="m-btn m-btn--ghost" href="/for-solo-founders/">For solo founders</a>
           <a class="m-btn m-btn--ghost" href="https://github.com/luminik-io/alfred-os">GitHub</a>
         </div>

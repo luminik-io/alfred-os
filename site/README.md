@@ -1,6 +1,6 @@
 # Alfred docs site
 
-Astro Starlight site for [alfred-os](https://github.com/luminik-io/alfred-os).
+Astro Starlight site for [Alfred](https://github.com/luminik-io/alfred-os).
 
 ## Local dev
 

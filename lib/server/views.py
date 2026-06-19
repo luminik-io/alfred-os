@@ -2733,7 +2733,7 @@ def _planning_draft_discard_group_ids(state_root: Path, plan: PlanDraft) -> list
 
 
 def _dedupeable_planning_draft(plan: PlanDraft) -> bool:
-    return plan.source in {"compose", "planning", "slack"}
+    return plan.source in {"compose", "planning", "slack"} and not plan.parent
 
 
 def _plan_dedupe_key(plan: PlanDraft) -> tuple[str, str]:

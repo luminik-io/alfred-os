@@ -1,9 +1,9 @@
 # Dry-run mode
 
 Dry-run is a low-commitment "watch it work" path. It runs the **whole** agent
-firing lifecycle (preflight, lock, pick, claim, worktree, prompt build, engine
-invoke, result branching, PR-create / release, Slack report) but stubs every
-side-effecting boundary so the run costs nothing.
+firing lifecycle: preflight, lock, pick, claim, worktree, prompt build, engine
+invoke, result branching, PR-create / release, and Slack report. External calls
+are stubbed, so the run costs nothing.
 
 A developer with **nothing configured**, meaning no `gh` auth, no AWS, no Slack,
 and no Claude, can run a dry-run firing and watch the sequence end to end, exiting 0.
@@ -38,8 +38,8 @@ Two equivalent switches:
   ```
 
 A runner that sees `--dry-run` calls `agent_runner.set_dry_run()`, which writes
-`ALFRED_DRY_RUN=1` back into the process environment so every downstream seam,
-and any subprocess-spawned child, agrees on the mode.
+`ALFRED_DRY_RUN=1` back into the process environment so every downstream code
+path, and any subprocess-spawned child, agrees on the mode.
 
 From a fresh checkout (no deploy needed), put `lib/` on `PYTHONPATH`:
 
@@ -66,13 +66,12 @@ simulation.
 
 ## What is stubbed vs real
 
-Everything that does **not** touch the outside world runs for real: the lock,
-preflight (its result is narrated but a config gap no longer aborts the
-firing), the event log, prompt construction, and the runner's own
-result-branching logic.
+Everything inside Alfred runs for real: the lock, preflight narration, event
+log, prompt construction, and the runner's own result-branching logic. Calls to
+the outside world stay stubbed.
 
 Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper,
-checked at exactly these seams in [`lib/agent_runner/`](../lib/agent_runner/__init__.py):
+checked at exactly these boundaries in [`lib/agent_runner/`](../lib/agent_runner/__init__.py):
 
 | Boundary | Real behaviour | Dry-run behaviour |
 |---|---|---|
@@ -94,9 +93,9 @@ checked at exactly these seams in [`lib/agent_runner/`](../lib/agent_runner/__in
   lifecycle.
 - **Missing repo env vars** (`ECHO_REPO_SLUG`, `ALFRED_LUCIUS_REPOS`): the
   runners fall back to a `dry-run-repo` / `dry-run-org/dry-run-repo` slug.
-- **Preflight gaps**: `preflight()` still runs and still reports what is
-  missing, but in dry-run the runner narrates the gap and continues instead of
-  exiting. A real firing still exits clean on a config gap.
+- **Preflight gaps**: `preflight()` still runs and reports what is missing. In
+  dry-run, the runner narrates the gap and continues. A real firing still exits
+  clean on a config gap.
 
 ## Example output
 

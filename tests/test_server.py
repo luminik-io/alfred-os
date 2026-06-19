@@ -378,21 +378,23 @@ def _write_planning_draft(
     repos: list[str],
     created_at: str = "2026-06-01T04:00:00Z",
     revision_count: int = 0,
+    bridge_issue_url: str = "",
 ) -> Path:
     drafts = state / "planning-drafts"
     drafts.mkdir(parents=True, exist_ok=True)
     path = drafts / f"{draft_id}.json"
+    payload: dict[str, object] = {
+        "source": "compose",
+        "created_at": created_at,
+        "updated_at": created_at,
+        "draft": {"title": title, "repos": repos},
+        "readiness": {"ok": True, "score": 90},
+        "revision_count": revision_count,
+    }
+    if bridge_issue_url:
+        payload["bridge"] = {"converted": True, "issue_url": bridge_issue_url}
     path.write_text(
-        json.dumps(
-            {
-                "source": "compose",
-                "created_at": created_at,
-                "updated_at": created_at,
-                "draft": {"title": title, "repos": repos},
-                "readiness": {"ok": True, "score": 90},
-                "revision_count": revision_count,
-            }
-        ),
+        json.dumps(payload),
         encoding="utf-8",
     )
     return path
@@ -491,6 +493,40 @@ def test_discard_plan_archives_matching_deduped_group(tmp_path: Path) -> None:
     assert {row["plan_id"] for row in client.get("/api/plans").json()["rows"]} == {
         "compose-b-distinct"
     }
+
+
+def test_discard_plan_keeps_filed_sibling_out_of_deduped_group(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    unfiled = _write_planning_draft(
+        state,
+        "compose-export-unfiled",
+        title="Add a CSV export",
+        repos=["acme/api", "acme/web"],
+    )
+    filed = _write_planning_draft(
+        state,
+        "compose-export-filed",
+        title="add a CSV export",
+        repos=["acme/web", "acme/api"],
+        bridge_issue_url="https://github.com/acme/api/issues/42",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/compose-export-unfiled/discard",
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "discarded"
+    assert body["discarded_count"] == 1
+    assert body["draft_ids"] == ["compose-export-unfiled"]
+    assert not unfiled.exists()
+    assert filed.exists()
+    rows = client.get("/api/plans").json()["rows"]
+    assert [row["plan_id"] for row in rows] == ["compose-export-filed"]
+    assert rows[0]["parent"] == "https://github.com/acme/api/issues/42"
 
 
 def test_discard_plan_is_idempotent(tmp_path: Path) -> None:

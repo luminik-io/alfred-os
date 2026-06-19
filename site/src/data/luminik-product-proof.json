@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-06-19T14:51:34.520Z",
   "source": {
-    "label": "Luminik dogfood setup",
+    "label": "Luminik product setup",
     "note": "Aggregate-only snapshot from GitHub data visible to the operator's local auth. The source repos are private/product repos and are not committed here. PRs count when they carry an agent label or known Alfred branch prefix. Issues count when they carry an agent:* label."
   },
   "window": {

@@ -1,33 +1,33 @@
 # The `alfred-shipped-public` emitter
 
-`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical `alfred-os` site now renders a separate public GitHub proof board for the `luminik-io/alfred-os` repository from `site/src/data/impact-proof.json`. Operators who want a proof page for their own private or customer repos should use this emitter instead, because it scrubs local state before anything is published.
+`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical Alfred site now renders a separate public GitHub board for the `luminik-io/alfred-os` repository from `site/src/data/impact-proof.json`. Operators who want a shipped-work page for their own private or customer repos should use this emitter instead, because it scrubs local state before anything is published.
 
 This document explains the schema, the scrub rules, and the emit command.
 
 ## When to use it
 
-You have run Alfred for a while and you want a public-facing rolling proof page. Maybe it's part of your build-in-public story. Maybe it's the verifiability bar your customers ask for. Either way the contract is:
+You have run Alfred for a while and you want a public-facing shipped-work page. Maybe it's part of your build-in-public story. Maybe it's the verifiability bar your customers ask for. Either way the contract is:
 
 - The operator runs the emitter on their own state directory.
 - The emitter scrubs aggressively before writing.
 - The operator publishes the resulting JSON wherever they want.
 
-The canonical `alfred-os` repository does not render an operator's local emitted feed by default because partner names, customer terms, and internal product codenames vary and should not appear in upstream marketing copy.
+The canonical Alfred repository does not render an operator's local emitted feed by default because partner names, customer terms, and internal product codenames vary and should not appear in upstream marketing copy.
 
-## Canonical site dogfood snapshot
+## Canonical site product snapshot
 
-The canonical site also has an aggregate-only dogfood snapshot at
-`site/src/data/luminik-dogfood-proof.json`. It is deliberately not a list of
+The canonical site also has an aggregate-only Luminik product snapshot at
+`site/src/data/luminik-product-proof.json`. It is deliberately not a list of
 PRs. The refresh script reads an operator-provided repo list and writes only
 counts:
 
 ```sh
 cd site
-ALFRED_DOGFOOD_REPOS="owner/repo-a,owner/repo-b" npm run proof:dogfood
+ALFRED_PRODUCT_PROOF_REPOS="owner/repo-a,owner/repo-b" npm run proof:product
 ```
 
 The repo list stays in the environment and is never written to the data file.
-That lets the public site show real operator proof without publishing private
+That lets the public site show real product totals without publishing private
 repo names, PR titles, issue titles, branches, prompts, or code.
 
 ## The emitter (`bin/alfred-shipped-public.py`)

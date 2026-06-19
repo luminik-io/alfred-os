@@ -76,7 +76,8 @@ only when you want Alfred to create labels there or pick issues and PRs from it.
 
 ## Batman
 
-Batman is included and supports multi-repo planning. It has two public paths:
+Batman is included as the architect agent for cross-repo work. It has two
+public paths:
 
 - `BATMAN_PARENT_REPO` parent issues can go through plan, approval, child-issue
   filing, and status reporting.
@@ -84,8 +85,9 @@ Batman is included and supports multi-repo planning. It has two public paths:
   group siblings with `agent:bundle:<slug>`, post a rollout plan, and stop
   before child issue filing.
 
-Batman does not implement code itself. It plans and files scoped work for the
-normal fleet queue.
+Batman owns the feature shape above the repo-local work. It plans the rollout
+and files scoped child issues for the normal fleet queue when the gate allows
+it.
 
 Enable it with:
 

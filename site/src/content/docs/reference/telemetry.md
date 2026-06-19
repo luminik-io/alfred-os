@@ -48,10 +48,10 @@ The marketing site has an `/impact/` page that can show anonymous aggregate
 totals from opted-in installs. The static build reads the public stats endpoint
 from `PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
 
-When no stats endpoint is configured, or when totals are below the proof floor,
+When no stats endpoint is configured, or when totals are below the display floor,
 the page shows a neutral warm-up state.
 
-The public proof board on `/impact/` is separate from anonymous telemetry. It is
+The public GitHub board on `/impact/` is separate from anonymous telemetry. It is
 generated from public GitHub metadata for `luminik-io/alfred-os`, so the site can
 show real PR links, issue flow, additions, deletions, and changed files without
 asking private installs to send that detail.
