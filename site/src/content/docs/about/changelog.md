@@ -17,14 +17,14 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
 - **Scheduled memory harvest**: `memory-harvest.py` queues reviewable repeated-failure candidates from the reliability governor, nudges Slack only when there is something to review, and never promotes lessons or syncs Redis by itself.
 - **Reviewable runtime memory by default**: engine-written reflections now queue as memory candidates unless `ALFRED_MEMORY_REFLECTION_MODE=direct` is set explicitly.
 - **Planning memory loop**: the Planning tab recalls promoted repo lessons while drafting, embeds advisory hints in saved specs, and queues reviewable spec-to-issue memory candidates.
-- **`alfred serve` cockpit polish**: Fleet / Firings / Plans / Planning tabs, saved Alfred plan inbox, issue/spec intake, human-readable timestamps, and mobile card layouts for the previously cramped tables.
+- **`alfred serve` control-surface polish**: Fleet / Firings / Plans / Planning tabs, saved Alfred plan inbox, issue/spec intake, human-readable timestamps, and mobile card layouts for the previously cramped tables.
 - **Batman planning replies**: `add repo:` and `remove repo:` replies in the approval thread now amend execution scope before child issues or worktrees are created.
 - **Slack follow-up capture**: trusted replies after Batman reports or PR links are classified, acknowledged, and carried as context for the next plan or PR pass without granting merge approval.
 - **Slack planning listener**: optional Socket Mode listener for trusted DMs,
   app mentions, and registered Alfred threads. It saves local planning drafts
   and feedback context while keeping reaction approval as the only execution
   gate.
-- **Native local client preview**: `clients/desktop` ships the first Tauri
+- **Alfred Desktop preview**: `clients/desktop` ships the first Tauri
   Mac/Linux shell over `alfred serve` JSON APIs, with Home, Compose, Fleet,
   Logs, and Setup gear surfaces plus external Slack/GitHub/local links.
 - **`alfred spec`**: template, lint, and readiness helpers for specs-driven development, including acceptance criteria, rollout checks, and GitHub-ready issue drafts.

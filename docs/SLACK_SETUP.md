@@ -208,7 +208,7 @@ ALFRED_SLACK_BOT_USER_ID=U0BOTUSERID
 change the trusted collaborator list. `ALFRED_TRUSTED_SLACK_USER_IDS` is a
 static comma-separated allowlist for collaborators who can discuss plans, revise
 drafts, and create planning requests. You can also add local collaborators from
-Slack with `trust <@user>` or from the desktop client's Setup tab; those live in
+Slack with `trust <@user>` or from Alfred Desktop's Setup tab; those live in
 `$ALFRED_HOME/state/slack-trust/trusted-users.json` and are picked up without
 restarting the listener.
 
@@ -228,7 +228,7 @@ Safety model:
 
 - Only `ALFRED_OPERATOR_SLACK_USER_ID` and `ALFRED_TRUSTED_SLACK_USER_IDS`
   are allowed to create drafts or amend registered threads.
-- Local users added through `trust <@user>` or the desktop client have the same
+- Local users added through `trust <@user>` or Alfred Desktop have the same
   planning rights as env-trusted users, but cannot approve execution unless
   they are also the operator.
 - If no trusted users are configured, the listener ignores every event.

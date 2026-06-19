@@ -23,7 +23,7 @@ public download path for signed desktop artifacts.
 
 - Public download page: `/download/` links to stable latest-release assets for
   `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
-- Native runtime alignment: `alfred serve` defaults to 7010, the desktop client
+- Native runtime alignment: `alfred serve` defaults to 7010, Alfred Desktop
   stops probing legacy 7000 after a 7010 failure, and stale saved 7000 URLs are
   normalized before any browser or Tauri request.
 - Launch polish: the docs/site describe signed macOS and Linux artifacts, the
@@ -49,7 +49,7 @@ public download path for signed desktop artifacts.
   launchd/systemd, queue repeated-failure candidates automatically, and notify
   Slack only when the operator has something to review.
 - Planning memory loop: the Planning tab recalls promoted repo lessons while drafting, embeds prompt-safe hints into saved specs, and proposes reviewable spec-to-issue memory candidates when a spec is saved.
-- `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
+- `alfred serve` control-surface polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.
 - Slack planning assistant: Batman approval threads and the local Planning tab now share `acceptance:`, `test:`, `add repo:`, `remove repo:`, and `question:` commands so operators can adjust plans before implementation. Repo add/remove replies are applied to execution scope before child issues or worktrees are created. Trusted Slack feedback users can shape plans without being able to approve them, and explicit `question:` feedback blocks execution until the plan is resolved. Registered plan-thread replies are also saved under `$ALFRED_HOME/state/plan-revisions/`, update the thread registry as `revised` or `needs_resolution`, and acknowledge the execution scope if approved now.
 - Slack follow-up loop: trusted replies after Batman reports or PR links are classified as `change`, `fix`, `test`, `question`, `scope`, or notes, acknowledged in-thread, saved under `$ALFRED_HOME/state/followups`, surfaced in Plans as `needs follow-up`, and can be converted into a local planning draft or marked handled without silently approving, merging, or changing code.
@@ -65,7 +65,7 @@ public download path for signed desktop artifacts.
   with `trust <@user>` / `untrust <@user>` or the desktop Setup gear. Trusted
   collaborators can discuss plans and create drafts, while execution approval
   remains operator-only.
-- Native local client: `clients/desktop` ships a Tauri Mac/Linux shell
+- Alfred Desktop: `clients/desktop` ships a Tauri Mac/Linux shell
   over the local Alfred runtime. It opens to "what needs attention?", shows
   Inbox, Ask, Work, Agents, and Setup surfaces, keeps local plan/run details
   inside native inspector panes, uses responsive icon/tab navigation instead of

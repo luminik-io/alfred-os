@@ -54,6 +54,10 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 const day = (raw: string) => new Date(raw).toISOString().slice(0, 10);
 const generated = day(proof.generated_at);
 const maxTrend = Math.max(...proof.trend.map((item) => item.prs_merged), 1);
+const hasRuntimeProof =
+  proof.summary.prs_merged > 0 ||
+  proof.summary.issues_opened > 0 ||
+  proof.summary.issues_triaged > 0;
 
 const metrics = [
   {
@@ -83,16 +87,27 @@ const metrics = [
   <div class="proof-board__meta">
     <div>
       <span class="m-eyebrow">PUBLIC GITHUB PROOF</span>
-      <h2 class="m-display-md">Alfred runtime pull requests and issue labels.</h2>
+      <h2 class="m-display-md">Public PRs Alfred can prove.</h2>
     </div>
     <p>
       Rolling {proof.window.days}-day window from{" "}
       <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>.
-      Filtered to Alfred runtime evidence: PRs need an Alfred branch prefix or
-      shipped label, and Dependabot is excluded. Issues need an Alfred agent label.
+      PRs need an Alfred branch prefix or shipped label, and Dependabot is excluded.
+      Issues need an Alfred agent label.
       Updated {generated}.
     </p>
   </div>
+
+  {!hasRuntimeProof && proof.summary.repo_activity ? (
+    <div class="proof-callout" role="note">
+      <span class="m-eyebrow">STRICT FILTER EMPTY</span>
+      <p>
+        No public PR or issue matched the Alfred runtime filter in this window.
+        The whole public repo still merged {fmt(proof.summary.repo_activity.prs_merged)} PRs.
+        Alfred keeps those numbers separate until the GitHub evidence is visible.
+      </p>
+    </div>
+  ) : null}
 
   <div class="proof-metrics" role="list">
     {metrics.map((metric) => (
@@ -164,7 +179,7 @@ const metrics = [
           </a>
         ))
       ) : (
-        <p class="proof-empty">No public PR links to show yet under the stricter runtime filter.</p>
+        <p class="proof-empty">No public PR links matched the Alfred runtime filter in this window.</p>
       )}
     </div>
   </section>
@@ -174,7 +189,7 @@ const metrics = [
     Generated files and lockfiles are included because GitHub counts them in PR stats.
     {proof.summary.repo_activity ? (
       <>
-        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs in the same window.
+        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs in the same window; those broader numbers stay separate from Alfred runtime proof.
       </>
     ) : null}
   </p>
@@ -210,11 +225,23 @@ const metrics = [
     gap: 16px;
   }
 
+  .proof-callout,
   .proof-metric,
   .proof-panel {
     background: var(--alfred-surface);
     border: 1px solid var(--alfred-border-strong);
     border-radius: var(--radius);
+  }
+
+  .proof-callout {
+    padding: 18px 20px;
+  }
+
+  .proof-callout p {
+    margin: 8px 0 0;
+    color: var(--alfred-text);
+    font-size: 15px;
+    line-height: 1.6;
   }
 
   .proof-metric {

@@ -27,17 +27,17 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
 ---
 
 <MarketingLayout
-  title="Download Alfred | macOS, Linux, or from source"
-  description="Get Alfred for macOS or Linux, or install it from source in a few commands. Open source, MIT. Pick the build for your machine and start coding agents that keep development moving while you are away."
+  title="Download Alfred Desktop | macOS, Linux, or install Alfred core"
+  description="Download Alfred Desktop for macOS or Linux, or install the Alfred core runtime from source. Alfred Desktop is an optional local companion for the CLI runtime."
   path="/download/"
 >
   <Hero
     eyebrow="DOWNLOAD"
-    headline="Download Alfred for your machine."
-    sub="Alfred runs on a Mac or Linux box you already own. Grab the signed macOS app, the Linux package for your system, or install from source if you would rather work from the code."
+    headline="Download Alfred Desktop."
+    sub="Alfred Desktop is the optional Mac/Linux app for a local Alfred runtime. It connects to `alfred serve`; it does not run agents by itself. Install Alfred core from source or Homebrew when you want the scheduled coding agents."
     headlineSize="lg"
     primaryCta={{
-      label: "Download for macOS",
+      label: "Download Desktop for macOS",
       href: MAC_DMG,
       data: {
         "data-download-os": "macos",
@@ -53,8 +53,8 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
     <div class="m-container">
       <SectionHeader
         eyebrow="PICK YOUR BUILD"
-        title="Two ready-made builds, or install from source."
-        lede="The macOS disk image is signed and notarized. Linux ships as an AppImage or a Debian package. If you want to inspect or edit the code first, install from source below."
+        title="Desktop app builds, plus the core runtime."
+        lede="Alfred Desktop gives you a local control surface for plans, agents, setup checks, and logs. The core runtime runs coding agents through the CLI and scheduler."
       />
 
       <div class="dl-grid">
@@ -63,11 +63,12 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
             <span class="m-eyebrow">MACOS</span>
             <span class="m-mono m-mute">macOS 10.15+</span>
           </div>
-          <h3 class="m-h3">The signed macOS app</h3>
+          <h3 class="m-h3">Alfred Desktop for macOS</h3>
           <p class="dl-card__body">
             Open the disk image, drag Alfred to Applications, and launch it
-            beside your local <span class="m-mono">alfred serve</span>. The app
-            bundle inside the DMG is signed, notarized, and stapled.
+            beside your local <span class="m-mono">alfred serve</span>. Install
+            Alfred core first if you want real agents, schedules, and local state.
+            The app bundle inside the DMG is signed, notarized, and stapled.
           </p>
           <div class="dl-card__actions">
             <a
@@ -98,10 +99,11 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
             <span class="m-eyebrow">LINUX</span>
             <span class="m-mono m-mute">Debian / Ubuntu</span>
           </div>
-          <h3 class="m-h3">The Linux build</h3>
+          <h3 class="m-h3">Alfred Desktop for Linux</h3>
           <p class="dl-card__body">
             Use the AppImage when you want a portable binary, or the
-            <span class="m-mono">.deb</span> package on apt-based systems.
+            <span class="m-mono">.deb</span> package on apt-based systems. Both
+            connect to the local Alfred core runtime over localhost.
           </p>
           <div class="dl-card__actions">
             <a
@@ -135,13 +137,13 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
     <div class="m-container">
       <SectionHeader
         eyebrow="FROM SOURCE"
-        title="Rather work from the code? A few commands get you running."
-        lede="Built for the developer crowd. Clone the repo and run the installer, or use the Homebrew tap on macOS. Both put the operator commands on your PATH."
+        title="Install Alfred core from the code."
+        lede="This is the runtime path: the operator CLI, local state, scheduler files, labels, and agents. Clone the repo and run the installer, or use the Homebrew tap on macOS."
       />
 
       <div class="dl-source">
         <div class="dl-source__col">
-          <h3 class="m-h3">Install from source (three commands)</h3>
+          <h3 class="m-h3">Install Alfred core from source</h3>
           <p class="dl-source__lede">
             Clone the repo, step in, and run the installer. Works on macOS and
             Debian or Ubuntu Linux. Safe to re-run.
@@ -156,12 +158,12 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           />
           <p class="dl-source__after">
             Use this path when you want the latest <span class="m-mono">main</span>,
-            framework edits, or Linux.
+            core runtime, framework edits, or Linux.
           </p>
         </div>
 
         <div class="dl-source__col">
-          <h3 class="m-h3">The Homebrew tap</h3>
+          <h3 class="m-h3">Install Alfred core with Homebrew</h3>
           <p class="dl-source__lede">
             For macOS, if you prefer a package-manager install of the latest
             tagged release.
@@ -188,26 +190,26 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT YOU GET"
-        title="Coding agents on your own machine."
-        lede="Alfred picks up the Slack drafts, plans, and GitHub issues you mark for it, writes code in isolated repo copies, opens pull requests, routes review, and posts a short summary to Slack. The work runs on your host."
+        title="Core runtime first. Desktop when you want the app."
+        lede="Alfred core picks up the Slack drafts, plans, and GitHub issues you mark for it, writes code in isolated repo copies, opens pull requests, routes review, and posts a short summary to Slack. Alfred Desktop reads and controls that local runtime."
       />
       <div class="dl-reqs">
         <article class="m-card">
-          <h3 class="m-h3">What you get</h3>
+          <h3 class="m-h3">Alfred core runtime</h3>
           <ul class="dl-reqs__list">
             <li>Four agents to start: Drake, Lucius, Ra's al Ghul, and a cleanup agent</li>
             <li>Scheduled runs for each agent while your chosen host is awake</li>
-            <li>Planning and approval in Slack, or the desktop app</li>
+            <li>Planning and approval in Slack, plus optional inspection in Alfred Desktop</li>
             <li>Open source, MIT licensed, yours to read and fork</li>
           </ul>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">What you need</h3>
+          <h3 class="m-h3">Alfred Desktop</h3>
           <ul class="dl-reqs__list">
-            <li>macOS 10.15 or newer, or Debian / Ubuntu Linux</li>
-            <li>A Claude Code subscription you already pay for</li>
-            <li>A GitHub account for the repos you want worked on</li>
-            <li>A machine that stays awake during the hours you set</li>
+            <li>Shows plans, agents, logs, setup checks, memory review, and safe actions</li>
+            <li>Starts or reconnects to <span class="m-mono">alfred serve</span> on localhost</li>
+            <li>Opens Slack and GitHub links outside the app</li>
+            <li>Does not replace the CLI, scheduler, GitHub labels, or Slack approval gates</li>
           </ul>
         </article>
       </div>

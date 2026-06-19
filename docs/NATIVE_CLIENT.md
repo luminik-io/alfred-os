@@ -1,13 +1,13 @@
-# Native local client
+# Alfred Desktop
 
-Status: native client shipped under `clients/desktop` with signed macOS
+Status: Alfred Desktop ships under `clients/desktop` with signed macOS
 packages and Linux artifacts. Slack is still the
 primary collaboration surface, the desktop app is the guided local control
 center, and the CLI remains the durable power-user and automation surface.
 
 ## Decision
 
-Build the native Mac/Linux client as a thin local control plane and installer,
+Build the native Mac/Linux app as a thin local control surface and installer,
 not a second Alfred runtime.
 
 Slack remains the primary collaboration UI because it already has threads,
@@ -167,7 +167,7 @@ Use the Alfred site design system:
 - stable table-to-card responsive layouts
 - links to GitHub and Slack open outside the app
 
-The app should feel like a calm local cockpit: dense enough for engineers,
+The app should feel like a calm local control surface: dense enough for engineers,
 legible enough for someone who has never used `launchctl`.
 
 ## Experience Signature

@@ -14,6 +14,22 @@ You have run Alfred for a while and you want a public-facing rolling proof page.
 
 The canonical `alfred-os` repository does not render an operator's local emitted feed by default because partner names, customer terms, and internal product codenames vary and should not appear in upstream marketing copy.
 
+## Canonical site dogfood snapshot
+
+The canonical site also has an aggregate-only dogfood snapshot at
+`site/src/data/luminik-dogfood-proof.json`. It is deliberately not a list of
+PRs. The refresh script reads an operator-provided repo list and writes only
+counts:
+
+```sh
+cd site
+ALFRED_DOGFOOD_REPOS="owner/repo-a,owner/repo-b" npm run proof:dogfood
+```
+
+The repo list stays in the environment and is never written to the data file.
+That lets the public site show real operator proof without publishing private
+repo names, PR titles, issue titles, branches, prompts, or code.
+
 ## The emitter (`bin/alfred-shipped-public.py`)
 
 The emitter is the privacy boundary. It reads state from `$ALFRED_HOME/state/shipped/prs.json` (and optionally `trend.json`), applies the public allowlist, and writes a JSON file that conforms to the schema below.

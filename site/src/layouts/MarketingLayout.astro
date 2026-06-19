@@ -118,7 +118,7 @@ const navGroups = [
 const directNav = [
   { label: "Install", href: "/install/" },
   { label: "Download", href: "/download/" },
-  { label: "Pricing", href: "/pricing/" },
+  { label: "Cost", href: "/pricing/" },
 ];
 
 const mobileNav = [
@@ -370,7 +370,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
               <li><a href="/monorepo/">Monorepo</a></li>
               <li><a href="/for-solo-founders/">For solo founders</a></li>
               <li><a href="/download/">Download</a></li>
-              <li><a href="/pricing/">Pricing</a></li>
+              <li><a href="/pricing/">Cost</a></li>
             </ul>
           </div>
           <div class="m-footer__col">
@@ -570,14 +570,15 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
                 const duration = 900;
                 const start = performance.now();
                 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+                const formatCount = (value) => value.toLocaleString("en-US");
                 const tick = (now) => {
                   const elapsed = Math.min(1, (now - start) / duration);
                   const v = Math.round(target * easeOut(elapsed));
-                  el.textContent = String(v);
+                  el.textContent = formatCount(v);
                   if (elapsed < 1) {
                     requestAnimationFrame(tick);
                   } else {
-                    el.textContent = String(target);
+                    el.textContent = formatCount(target);
                     el.classList.add("is-done");
                   }
                 };
@@ -596,7 +597,8 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
         } else {
           document.querySelectorAll("[data-countup]").forEach((el) => {
             const target = el.getAttribute("data-target") || "";
-            el.textContent = target;
+            const value = parseInt(target, 10);
+            el.textContent = Number.isFinite(value) ? value.toLocaleString("en-US") : target;
             el.classList.add("is-done");
           });
         }

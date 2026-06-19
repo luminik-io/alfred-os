@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-06-19T14:51:34.520Z",
+  "source": {
+    "label": "Luminik dogfood setup",
+    "note": "Aggregate-only snapshot from GitHub data visible to the operator's local auth. The source repos are private/product repos and are not committed here. PRs count when they carry an agent label or known Alfred branch prefix. Issues count when they carry an agent:* label."
+  },
+  "window": {
+    "days": 30,
+    "from": "2026-05-20T14:51:34.520Z",
+    "to": "2026-06-19T14:51:34.520Z"
+  },
+  "summary": {
+    "repos_scanned": 9,
+    "agent_prs_merged": 304,
+    "agent_issues_opened": 490,
+    "agent_issues_closed": 593,
+    "lines_added": 85200,
+    "lines_removed": 14859,
+    "files_changed": 1069,
+    "total_prs_merged": 1074,
+    "total_issues_opened": 517,
+    "total_issues_closed": 629
+  }
+}

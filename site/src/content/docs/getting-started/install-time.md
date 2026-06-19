@@ -3,9 +3,9 @@ title: How long install takes
 description: Honest read on Alfred install duration for existing dev setups and fresh machines, plus the one-time gates to check before starting.
 ---
 
-Honest read on install duration. The "30 minutes" number on the README assumes
-a lot of prerequisites are already met. On a fresh machine, the real figure is
-one to two hours.
+Honest read on install duration. The 30-minute fast path assumes a lot of
+prerequisites are already met. On a fresh machine, the real figure is one to
+two hours.
 
 This page mirrors [`docs/INSTALL_TIME.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/INSTALL_TIME.md).
 

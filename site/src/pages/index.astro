@@ -29,6 +29,7 @@ import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
 import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 import NativeClientShowcase from "../components/marketing/NativeClientShowcase.astro";
 import DownloadTracker from "../components/marketing/DownloadTracker.astro";
+import dogfood from "../data/luminik-dogfood-proof.json";
 
 type JobState = "live" | "warn" | "idle" | "info";
 
@@ -99,7 +100,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
 const why = [
   {
     title: "Keeps shipping while you are away",
-    body: "On configured schedules, agents pick up the Slack drafts, plans, and GitHub issues you marked for Alfred, write the code, open pull requests, review them, and post short Slack summaries. Use an awake host for overnight work.",
+    body: "On configured schedules, agents pick up the Slack drafts, plans, and GitHub issues you marked for Alfred, write the code, open pull requests, review them, and post short Slack summaries. Run Alfred on an awake Mac, Linux box, or dedicated host for overnight work.",
   },
   {
     title: "Runs on a machine you already own",
@@ -132,10 +133,10 @@ const why = [
 >
   <Hero
     eyebrow="AUTONOMOUS CODING AGENTS"
-    headline="Coding agents that keep development moving while you are away."
-    sub="Start from a Slack message, GitHub issue, or rough plan. Alfred helps turn it into scoped work, assigns specialist agents, opens PRs, runs review, fixes comments, and merges small safe changes when your policy allows. It all runs from a machine you control."
+    headline="Coding agents that keep shipping while you are away."
+    sub="Start from a Slack message, GitHub issue, or rough plan. Alfred helps turn it into scoped work, assigns specialist agents, opens PRs, runs review, fixes comments, and merges small safe changes when your policy allows. It runs from an awake Mac or Linux machine you control."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
-    secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
+    secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
     <div slot="panel" class="hero-panel">
@@ -267,7 +268,7 @@ const why = [
       <SectionHeader
         eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
         title="Alfred helps turn plans into issue queues, PRs, and reviews."
-        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Drake asks for missing details, turns the work into scoped tasks in the right repos, and hands those tasks to Lucius while you are away."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Drake asks for missing details, turns the work into scoped tasks in the right repos, and hands those tasks to Lucius when you step away."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -323,10 +324,10 @@ const why = [
         />
         <SlackProof
           src="/proof/slack-shipped-summary.png"
-          alt="Slack message from the Alfred bot summarising one day of shipped work: 153 PRs merged, 44 issues opened, 144 issues closed, +44,351 lines added across your-frontend, your-agents, your-mobile, your-nango, your-backend, and your-data-acquisition."
+          alt="Slack message from the Alfred bot summarising one private Luminik setup: 153 PRs merged, 44 issues opened, 144 issues closed, and 44,351 lines added across six repos."
           tag="daily summary"
           meta="2026-05-20 20:45 CET"
-          caption="One solo builder's day across six repos. You read this summary in the morning. Every pull request still gets a human review before it merges; how much gets done depends on how many agents you run, how big your repos are, and how small you keep each task."
+          caption="A private Luminik setup summary across six repos. It is shown as a product example; the public impact page counts only PRs and issues with visible GitHub evidence."
         />
       </div>
 
@@ -364,11 +365,12 @@ const why = [
           "ok    launchd                  21 agents loaded",
           "ok    spend cap                $20/day fleet",
           "",
-          "$ alfred fire lucius --dry-run",
-          "ok    preflight passed",
-          "ok    worktree would open at ~/.alfred/wt/...",
-          "skip  claude_invoke (dry-run)",
-          "ok    no spend, no LLM call, runner lifecycle verified",
+          "$ alfred dry-run lucius",
+          "alfred dry-run: lucius",
+          "  role: feature dev",
+          "  mode: safe simulation",
+          "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
+          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",
         ]}
       />
     </div>
@@ -379,17 +381,18 @@ const why = [
       <SectionHeader
         eyebrow="BUILT BY LUMINIK"
         title="Used every day by the team that built it."
-        lede="Luminik runs Alfred across nine repos with 21 agents. They open pull requests every day while the team is away from the keyboard."
+        lede={`In the last ${dogfood.window.days} days, Alfred's dogfood setup merged ${dogfood.summary.agent_prs_merged.toLocaleString("en-US")} agent-identified PRs across ${dogfood.summary.repos_scanned} Luminik repos. The public impact page shows the aggregate proof and keeps private repo details private.`}
       />
       <div class="built-by__panel m-card">
         <div class="built-by__metrics">
-          <MetricRow label="agents" value="21" state="live" />
-          <MetricRow label="repos" value="9" state="live" />
-          <MetricRow label="runs" value="every 20 min" glyph="arrow" state="info" />
-          <MetricRow label="people" value="1" state="live" />
+          <MetricRow label="agent PRs" value={dogfood.summary.agent_prs_merged.toLocaleString("en-US")} state="live" />
+          <MetricRow label="agent issues" value={dogfood.summary.agent_issues_opened.toLocaleString("en-US")} state="live" />
+          <MetricRow label="files changed" value={dogfood.summary.files_changed.toLocaleString("en-US")} state="info" />
+          <MetricRow label="repos" value={dogfood.summary.repos_scanned.toLocaleString("en-US")} state="live" />
         </div>
         <div class="built-by__cta">
-          <a class="m-btn" href="/getting-started/install/">Install (30 min)</a>
+          <a class="m-btn" href="/install/">Pick an install path</a>
+          <a class="m-btn m-btn--ghost" href="/impact/">See impact proof</a>
           <a class="m-btn m-btn--ghost" href="/for-solo-founders/">For solo founders</a>
           <a class="m-btn m-btn--ghost" href="https://github.com/luminik-io/alfred-os">GitHub</a>
         </div>

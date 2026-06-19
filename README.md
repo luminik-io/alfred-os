@@ -13,16 +13,16 @@
 
 **Autonomous coding agents that keep development moving while you are away.**
 
-Alfred keeps engineering work moving while you are away from the keyboard. It
-turns Slack requests, rough plans, specs, and GitHub issues into scoped tasks,
-isolated worktrees, pull requests, reviews, tests, safe merges, and Slack
-summaries. Drake is the planner. Lucius is the senior developer. Ra's al Ghul is
-the reviewer. Bane handles test coverage. Nightwing fixes reviewer comments.
+Alfred keeps engineering work moving when you are not sitting at the keyboard.
+It turns Slack requests, rough plans, specs, and GitHub issues into scoped
+tasks, isolated worktrees, pull requests, reviews, tests, safe merges, and Slack
+summaries. Drake is the planner. Lucius is the senior developer. Ra's al Ghul
+is the reviewer. Bane handles test coverage. Nightwing fixes reviewer comments.
 Batman is the architect for work that spans many repos. Automerge can land
 small safe PRs once they pass your policy. The agents run on a computer you
-control, using the subscriptions you already pay for. Alfred shells out to your
-local CLI auth, so provider API keys and hosted agent accounts are not part of
-the setup.
+control, during the hours that host is awake, using the subscriptions you
+already pay for. Alfred shells out to your local CLI auth, so provider API keys
+and hosted agent accounts are not part of the setup.
 
 Docs site: https://alfred.luminik.io
 
@@ -131,7 +131,10 @@ alfred dry-run all
 
 ### Full install
 
-About 30 minutes from a fresh Mac or Debian/Ubuntu host.
+About 30 minutes on a dev machine that already has GitHub auth, Claude Code, a
+package manager, and Python ready. A fresh laptop or dedicated agent box is
+closer to 60 to 120 minutes because the browser auth and Slack decisions take
+real time.
 
 Source checkout path:
 
@@ -378,8 +381,8 @@ and a per-IP rate limit either way. Full contract:
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Fleet brain](docs/FLEET_BRAIN.md): local memory, Slack-driven reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
-- [Native local client](docs/NATIVE_CLIENT.md): Mac/Linux client, Slack-native boundary, the usage capacity rail (backed by the live `GET /api/usage` endpoint), cinematic agent roster, and local API shape.
-- [Desktop client](docs/DESKTOP_CLIENT.md): the desktop client tab by tab, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the `alfred serve` seam, and building native installers.
+- [Alfred Desktop](docs/NATIVE_CLIENT.md): Mac/Linux app, Slack-native boundary, the usage capacity rail (backed by the live `GET /api/usage` endpoint), cinematic agent roster, and local API shape.
+- [Desktop app guide](docs/DESKTOP_CLIENT.md): the desktop app tab by tab, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the `alfred serve` API, and building native installers.
 - [Operator analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, `alfred usage`, and `alfred slack-listener`.
 - [Goals](docs/GOALS.md): durable goal contract across Slack, CLI, client, planning readiness, evaluator, and memory.
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).

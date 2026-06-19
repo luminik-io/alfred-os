@@ -68,7 +68,7 @@ Plain mode is the friendly entrance; the existing pieces do the rest.
 - **[Slack listener](/concepts/slack-native-planning/).** A teammate DMs Alfred
   describing what they want. With plain mode on, Alfred replies with plain
   questions and a plain plan instead of operator commands and readiness scores.
-- **[Desktop client](/concepts/desktop-client/).** The Compose box becomes a
+- **[Alfred Desktop](/concepts/desktop-client/).** The Compose box becomes a
   plain-language intake.
 - **The fleet.** Receives the exact same structured work it always has, and keeps
   every gate (claim-lock, spend caps, review, approval) intact.

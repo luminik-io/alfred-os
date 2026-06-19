@@ -124,7 +124,7 @@ memory sync
 ```
 
 `remember ...` and `memory remember ...` stage candidates only. Promotion and
-rejection stay operator-only. The desktop client uses the same local candidate
+rejection stay operator-only. Alfred Desktop uses the same local candidate
 queue through `alfred serve`, so Slack, CLI, and client review the same rows.
 `memory harvest` previews repeated-failure lessons and `memory harvest now`
 queues them as candidates. Redis Agent Memory Server stays optional and

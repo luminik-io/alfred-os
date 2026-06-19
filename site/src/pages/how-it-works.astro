@@ -69,7 +69,7 @@ const labels = [
     sub="One run, from the timer that starts it to the Slack message at the end. Nothing running in the cloud, no service to sign up for."
     headlineSize="lg"
     primaryCta={{ label: "Read the architecture", href: "/concepts/architecture/" }}
-    secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
+	    secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
   />
 
   <section class="m-section">
@@ -122,16 +122,14 @@ const labels = [
       <CodeBlock
         title="terminal"
         lines={[
-          "$ alfred fire lucius --dry-run",
-          "ok    preflight passed",
-          "ok    issue selection (would claim #247)",
-          "ok    worktree would open at ~/.alfred/wt/...",
-          "skip  claude_invoke (dry-run)",
-          "skip  gh pr create (dry-run)",
-          "ok    slack_post (dry-run, no webhook call)",
-          "ok    runner lifecycle verified, no spend",
-        ]}
-      />
+	          "$ alfred dry-run lucius",
+	          "alfred dry-run: lucius",
+	          "  role: feature dev",
+	          "  mode: safe simulation",
+	          "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
+	          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",
+	        ]}
+	      />
     </div>
   </section>
 </MarketingLayout>

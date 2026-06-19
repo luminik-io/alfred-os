@@ -8,7 +8,7 @@ import JobCard from "../components/marketing/JobCard.astro";
 
 <MarketingLayout
   title="Run a bigger engineering loop as a solo builder | Alfred"
-  description="Alfred runs on a Mac or Linux machine you already own, signs in with your Claude Code and Codex subscriptions, and turns plans or GitHub issues into pull requests while you are away from the keyboard."
+  description="Alfred runs on a Mac or Linux machine you already own, signs in with your Claude Code and Codex subscriptions, and turns plans or GitHub issues into pull requests while you are away."
   path="/for-solo-founders/"
 >
   <Hero
@@ -16,7 +16,7 @@ import JobCard from "../components/marketing/JobCard.astro";
     headline="Run a bigger engineering loop without hiring a bigger team."
     sub="Set up Alfred on a Mac or Linux machine you already own, sign in with the subscriptions you already pay for, and let coding agents turn rough plans into PRs while you handle the decisions only you can make."
     headlineSize="lg"
-    primaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
+    primaryCta={{ label: "Install", href: "/getting-started/install/" }}
     secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
     <div slot="panel" class="panel">
@@ -95,8 +95,8 @@ import JobCard from "../components/marketing/JobCard.astro";
           <p>Ra's al Ghul leaves comments and marks the pull request. Automerge only handles PRs that meet the policy you set: old enough, green CI, reviewed, and no unresolved blocker comments.</p>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">No access to production</h3>
-          <p>Alfred runs on your laptop or a machine you set aside for it. It never holds your live database password or your billing keys.</p>
+          <h3 class="m-h3">No production access by default</h3>
+          <p>The default setup does not need live database passwords or billing keys. Alfred only gets the repo, Slack, AWS, and environment access you explicitly grant to that host.</p>
         </article>
       </div>
     </div>

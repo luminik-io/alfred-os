@@ -1,9 +1,9 @@
 ---
 title: Install
-description: Fresh-machine setup for Alfred in about 30 minutes.
+description: Fast setup for an existing dev machine, with a longer guided path for a fresh host.
 ---
 
-This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md). For the full doc with every troubleshooting case, read it on GitHub.
+This page condenses [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md). Budget about 30 minutes on an already-provisioned dev machine, or 60 to 120 minutes for a fresh laptop, server, or dedicated agent box. For the full doc with every troubleshooting case, read it on GitHub.
 
 ## TL;DR
 

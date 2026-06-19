@@ -1,17 +1,17 @@
 ---
-title: Desktop client
-description: The Tauri Mac/Linux control plane over alfred serve, with native installers and no hosted gateway.
+title: Alfred Desktop
+description: The Tauri Mac/Linux control surface over alfred serve, with native installers and no hosted gateway.
 ---
 
-The Alfred desktop client (`clients/desktop`) is a native Mac/Linux control
-plane for a local install. It is the optional `client` tier of the
+Alfred Desktop (`clients/desktop`) is a native Mac/Linux control surface for a
+local install. It is the optional `client` tier of the
 [layered install](/concepts/layered-install/): the core fleet and CLI run fully
 standalone without it.
 
 Slack stays Alfred's collaboration surface. The desktop app is for local trust
 and repair: what needs attention, which plans are waiting, why a run failed,
 which memory candidates are ready, and which local actions are safe to run next.
-It is a thin control plane, not a second runtime.
+It is a thin control surface, not a second runtime.
 
 Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md) and [`docs/NATIVE_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/NATIVE_CLIENT.md).
 
@@ -19,7 +19,7 @@ Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/lumi
 
 ```mermaid
 flowchart TB
-    subgraph client["desktop client (clients/desktop, Tauri)"]
+    subgraph client["Alfred Desktop (clients/desktop, Tauri)"]
         ui["React UI tabs:<br/>Inbox / Ask / Work / Agents / Setup"]
         native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, memory, redis,<br/>safe dry-run"]
     end

@@ -19,7 +19,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
     sub="Batman drafts one plan across the repos you choose, files scoped tasks in each repo, and the fleet picks them up through the normal queue."
     headlineSize="lg"
     primaryCta={{ label: "Read the worked example", href: "/guides/specs-driven-development/" }}
-    secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
+	    secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
   >
     <div slot="panel" class="panel">
       <div class="panel__head">
@@ -140,21 +140,22 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 
   <section class="m-section">
     <div class="m-container">
-      <SectionHeader
-        eyebrow="CHECK THE PLAN FIRST"
-        title="Do a test run of the planner."
-        lede="Batman never files tasks without your approval. A test run shows you the plan it would file, so you can see it before anything happens."
-      />
-      <CodeBlock
-        title="terminal"
-        lines={[
-          "$ alfred fire batman --dry-run --issue your-platform#812",
-          "ok    preflight passed",
-          "ok    bundle plan drafted (4 repos, 11 children)",
-          "skip  gh issue create (dry-run)",
-          "ok    plan posted to Slack as draft, awaiting approval",
-        ]}
-      />
+	      <SectionHeader
+	        eyebrow="CHECK THE PLAN FIRST"
+	        title="Test the coordinator before you spend anything."
+	        lede="Batman never files tasks without your approval. A dry run checks the local wiring without touching GitHub, Slack, an LLM, or your repos."
+	      />
+	      <CodeBlock
+	        title="terminal"
+	        lines={[
+	          "$ alfred dry-run batman",
+	          "alfred dry-run: batman",
+	          "  role: cross-repo coordinator",
+	          "  mode: safe simulation",
+	          "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
+	          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",
+	        ]}
+	      />
     </div>
   </section>
 </MarketingLayout>

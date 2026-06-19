@@ -344,7 +344,7 @@ memory sync
 ```
 
 `remember ...` and `memory remember ...` stage candidates; they do not become
-prompt context. Promotion and rejection stay operator-only. The desktop client
+prompt context. Promotion and rejection stay operator-only. Alfred Desktop
 uses the same local candidate queue through `alfred serve`, so Slack, CLI, and
 client review the same rows. `memory harvest` previews repeated-failure lessons
 from the reliability governor; `memory harvest now` queues those lessons as
