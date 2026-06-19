@@ -215,8 +215,8 @@ function html({ fontCss, logoData }) {
         <div class="meta"><span class="accent">●</span> live · open source · mit</div>
       </div>
       <div class="hero">
-        <div class="eyebrow">an autonomous engineering team</div>
-        <h1>A team of coding agents.<br />Ships <span class="away">while you're away.</span></h1>
+        <div class="eyebrow">specs in, PRs out</div>
+        <h1>Coding agents that ship<br />from your specs.</h1>
         <p class="sub">Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else.</p>
         <div class="stripe">
           <span><span class="dot">●</span> self-hosted</span>

@@ -12,8 +12,8 @@ the endpoint they configure:
 - random install token
 - lifetime PRs opened by Alfred
 - lifetime PRs merged
-- lifetime PRs reviewed
-- lifetime changed-file total
+- lifetime PRs that reached merged or closed state
+- lifetime changed-file proxy
 
 No repo names, branch names, PR titles, code, logs, prompts, usernames, hostnames,
 or billing data are sent.
@@ -50,6 +50,11 @@ from `PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
 
 When no stats endpoint is configured, or when totals are below the proof floor,
 the page shows a neutral warm-up state.
+
+The public proof board on `/impact/` is separate from anonymous telemetry. It is
+generated from public GitHub metadata for `luminik-io/alfred-os`, so the site can
+show real PR links, issue flow, additions, deletions, and changed files without
+asking private installs to send that detail.
 
 ## Collector
 

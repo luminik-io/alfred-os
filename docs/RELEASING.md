@@ -18,7 +18,7 @@ source tarball checksum for the Homebrew formula.
 So the release is created as a **draft**. A draft is not public and is not the
 latest release. That keeps the download claim honest: nobody can read
 "download the signed app" on a published release page until the signed assets
-are actually attached. A human attaches the assets and presses Publish.
+are attached. A human attaches the assets and presses Publish.
 
 ## Flow for a version (vX.Y.Z)
 

@@ -78,8 +78,8 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
 
 const why = [
   {
-    title: "Works while you are away",
-    body: "On configured schedules, agents check the GitHub issues you marked for Alfred, write the code, open pull requests, and post a short summary to Slack. Use an awake host for overnight work.",
+    title: "Keeps shipping while you are away",
+    body: "On configured schedules, agents read the specs and GitHub issues you marked for Alfred, write the code, open pull requests, review them, and post short Slack summaries. Use an awake host for overnight work.",
   },
   {
     title: "Runs on a machine you already own",
@@ -106,14 +106,14 @@ const why = [
 ---
 
 <MarketingLayout
-  title="Alfred | Your agent engineering team, working while you are away"
-  description="Alfred runs Claude Code and Codex from a Mac or Linux machine you control. It picks up GitHub issues you mark for it, works in isolated repo copies, opens pull requests, routes review, and posts Slack updates."
+  title="Alfred | Coding agents that ship from your specs"
+  description="Alfred runs Claude Code and Codex from a Mac or Linux machine you control. It turns specs and GitHub issues into worktrees, pull requests, reviews, safe merges, and Slack updates."
   path="/"
 >
   <Hero
-    eyebrow="YOUR AGENT ENGINEERING TEAM"
-    headline="An engineering team of coding agents, working while you are away."
-    sub="Tell Alfred what to build, approve the plan, then step away. Drake turns the request into tasks, Lucius writes code, Ra's al Ghul reviews pull requests, and Batman coordinates work across repos. It all runs from a machine you control."
+    eyebrow="SPECS IN, PRS OUT"
+    headline="Coding agents that ship from your specs while you are away."
+    sub="Write the spec, approve the plan, then step away. Drake turns specs into scoped GitHub issues, Lucius opens PRs, Ra's al Ghul reviews them, Nightwing fixes reviewer comments, and Automerge lands the small safe ones. It all runs from a machine you control."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
@@ -149,8 +149,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT IT DOES FOR YOU"
-        title="Four agents carry the work from request to merge."
-        lede="Each agent has one job, named plainly below. You start with these four and add more, like Bane and Nightwing, when you need them."
+        title="Agents carry the work from spec to merge."
+        lede="Each agent has one job. You can start small with planning, implementation, and review, then add test coverage, reviewer-comment fixes, and safe automerge when your process is ready."
       />
       <div class="job-grid">
         {jobs.map((j, i) => (
@@ -166,8 +166,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WHY ALFRED IS DIFFERENT"
-        title="It keeps working after you approve the plan."
-        lede="Alfred checks the GitHub issues you marked for it, works in isolated repo copies, and comes back with pull requests and Slack summaries when it needs a decision."
+        title="It runs the engineering loop without babysitting."
+        lede="Alfred checks the specs and GitHub issues you marked for it, works in isolated repo copies, opens pull requests, routes review, and comes back to Slack only when it needs a decision."
       />
       <div class="why-grid">
         {why.map((w, i) => (
@@ -246,8 +246,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WRITE THE PLAN ONCE"
-        title="You write the plan. Alfred becomes the team that builds it."
-        lede="Write what you want once, in plain text. Drake reads it, asks for the missing details, and files small tasks in the right repos. Lucius picks them up while you are away."
+        title="Specs become issue queues, PRs, and reviews."
+        lede="Write what you want once, in plain text. Drake reads it, asks for missing details, and files small tasks in the right repos. Lucius picks them up while you are away."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -261,7 +261,7 @@ const why = [
       <SectionHeader
         eyebrow="THE BATMAN AGENT"
         title="One big feature, planned across every repo it touches."
-        lede="Single-repo agents lose the edges of a cross-repo feature. Batman keeps the backend service, web page, mobile screen, and background job in one plan. It posts the plan to Slack for approval, then files one task per repo so Lucius can work in parallel."
+        lede="Single-repo agents lose the edges of a cross-repo feature. Batman keeps the backend service, web page, mobile screen, and background job in one plan. It posts the plan to Slack for approval, then files one task per repo so the work can move in parallel."
       />
       <BatmanFanOut />
       <div class="batman-cta">

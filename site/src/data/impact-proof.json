@@ -1,0 +1,213 @@
+{
+  "generated_at": "2026-06-19T13:04:49.130Z",
+  "source": {
+    "repo": "luminik-io/alfred-os",
+    "url": "https://github.com/luminik-io/alfred-os",
+    "note": "Rolling public GitHub activity for Alfred OS. Generated from merged PRs and issues in the public repository."
+  },
+  "window": {
+    "days": 30,
+    "from": "2026-05-20T13:04:49.130Z",
+    "to": "2026-06-19T13:04:49.130Z"
+  },
+  "summary": {
+    "prs_merged": 130,
+    "agent_labeled_prs": 10,
+    "issues_opened": 32,
+    "issues_closed": 32,
+    "issues_triaged": 8,
+    "lines_added": 185132,
+    "lines_removed": 36958,
+    "files_changed": 1903
+  },
+  "trend": [
+    {
+      "week": "2026-W21",
+      "prs_merged": 29
+    },
+    {
+      "week": "2026-W22",
+      "prs_merged": 47
+    },
+    {
+      "week": "2026-W23",
+      "prs_merged": 26
+    },
+    {
+      "week": "2026-W24",
+      "prs_merged": 8
+    },
+    {
+      "week": "2026-W25",
+      "prs_merged": 20
+    }
+  ],
+  "prs": [
+    {
+      "number": 240,
+      "title": "Clarify Alfred positioning and impact counter",
+      "url": "https://github.com/luminik-io/alfred-os/pull/240",
+      "merged_at": "2026-06-19T08:42:00Z",
+      "lines_added": 206,
+      "lines_removed": 71,
+      "files_changed": 13,
+      "agent_authored": false
+    },
+    {
+      "number": 239,
+      "title": "Refine Alfred away-positioning copy",
+      "url": "https://github.com/luminik-io/alfred-os/pull/239",
+      "merged_at": "2026-06-19T08:04:32Z",
+      "lines_added": 69,
+      "lines_removed": 66,
+      "files_changed": 8,
+      "agent_authored": false
+    },
+    {
+      "number": 238,
+      "title": "Polish launch telemetry and site positioning",
+      "url": "https://github.com/luminik-io/alfred-os/pull/238",
+      "merged_at": "2026-06-18T21:35:16Z",
+      "lines_added": 1052,
+      "lines_removed": 152,
+      "files_changed": 29,
+      "agent_authored": false
+    },
+    {
+      "number": 237,
+      "title": "chore(site)(deps): bump dompurify from 3.4.10 to 3.4.11 in /site",
+      "url": "https://github.com/luminik-io/alfred-os/pull/237",
+      "merged_at": "2026-06-18T19:29:03Z",
+      "lines_added": 3,
+      "lines_removed": 3,
+      "files_changed": 1,
+      "agent_authored": true
+    },
+    {
+      "number": 236,
+      "title": "Unify Alfred typography across site and docs",
+      "url": "https://github.com/luminik-io/alfred-os/pull/236",
+      "merged_at": "2026-06-18T15:27:02Z",
+      "lines_added": 247,
+      "lines_removed": 198,
+      "files_changed": 24,
+      "agent_authored": false
+    },
+    {
+      "number": 235,
+      "title": "Keep mobile nav above cookie consent",
+      "url": "https://github.com/luminik-io/alfred-os/pull/235",
+      "merged_at": "2026-06-18T14:34:38Z",
+      "lines_added": 5,
+      "lines_removed": 0,
+      "files_changed": 2,
+      "agent_authored": false
+    },
+    {
+      "number": 234,
+      "title": "Polish public site and docs copy",
+      "url": "https://github.com/luminik-io/alfred-os/pull/234",
+      "merged_at": "2026-06-18T14:16:17Z",
+      "lines_added": 17,
+      "lines_removed": 18,
+      "files_changed": 7,
+      "agent_authored": false
+    },
+    {
+      "number": 233,
+      "title": "feat(desktop): port redesigned native client",
+      "url": "https://github.com/luminik-io/alfred-os/pull/233",
+      "merged_at": "2026-06-18T13:42:49Z",
+      "lines_added": 11900,
+      "lines_removed": 13760,
+      "files_changed": 84,
+      "agent_authored": false
+    },
+    {
+      "number": 232,
+      "title": "chore(release): update Homebrew formula for v0.5.1",
+      "url": "https://github.com/luminik-io/alfred-os/pull/232",
+      "merged_at": "2026-06-17T16:19:10Z",
+      "lines_added": 13,
+      "lines_removed": 10,
+      "files_changed": 1,
+      "agent_authored": false
+    },
+    {
+      "number": 231,
+      "title": "chore(release): prepare v0.5.1",
+      "url": "https://github.com/luminik-io/alfred-os/pull/231",
+      "merged_at": "2026-06-17T15:54:36Z",
+      "lines_added": 72,
+      "lines_removed": 21,
+      "files_changed": 12,
+      "agent_authored": false
+    }
+  ],
+  "issues": [
+    {
+      "number": 206,
+      "title": "Rebuild native client as an AI-native command room",
+      "url": "https://github.com/luminik-io/alfred-os/issues/206",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:52:20Z",
+      "closed_at": "2026-06-11T20:01:14Z"
+    },
+    {
+      "number": 204,
+      "title": "Onboarding flow for AI and no-AI installs",
+      "url": "https://github.com/luminik-io/alfred-os/issues/204",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:52:20Z",
+      "closed_at": "2026-06-11T20:01:14Z"
+    },
+    {
+      "number": 207,
+      "title": "CLI parity and direct-install polish",
+      "url": "https://github.com/luminik-io/alfred-os/issues/207",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:52:20Z",
+      "closed_at": "2026-06-11T20:01:15Z"
+    },
+    {
+      "number": 205,
+      "title": "Architecture decision: Chat SDK, assistant-ui, AI SDK, and CopilotKit",
+      "url": "https://github.com/luminik-io/alfred-os/issues/205",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:52:20Z",
+      "closed_at": "2026-06-12T07:00:00Z"
+    },
+    {
+      "number": 200,
+      "title": "Redesign Slack notifications and action messages",
+      "url": "https://github.com/luminik-io/alfred-os/issues/200",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:51:31Z",
+      "closed_at": "2026-06-11T20:01:12Z"
+    },
+    {
+      "number": 202,
+      "title": "Label-free issue invocation with automatic Batman/Lucius routing",
+      "url": "https://github.com/luminik-io/alfred-os/issues/202",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:51:31Z",
+      "closed_at": "2026-06-11T20:01:13Z"
+    },
+    {
+      "number": 201,
+      "title": "Manual agent controls: trigger Batman and edit schedules",
+      "url": "https://github.com/luminik-io/alfred-os/issues/201",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:51:31Z",
+      "closed_at": "2026-06-11T20:01:13Z"
+    },
+    {
+      "number": 203,
+      "title": "Fully conversational Alfred in Slack and native client",
+      "url": "https://github.com/luminik-io/alfred-os/issues/203",
+      "state": "CLOSED",
+      "created_at": "2026-06-06T21:51:31Z",
+      "closed_at": "2026-06-11T20:01:13Z"
+    }
+  ]
+}

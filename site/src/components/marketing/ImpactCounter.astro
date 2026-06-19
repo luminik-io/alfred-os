@@ -46,7 +46,7 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
     <p class="impact__warming m-mono">Community counter waiting for reports.</p>
     <p class="impact__sub">
       Once a telemetry endpoint is configured and opted-in installs report,
-      this panel shows aggregate PR and changed-file totals.
+      this panel shows aggregate PR totals and a coarse changed-file count.
     </p>
   </div>
 
@@ -63,11 +63,11 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
     <div class="impact__grid" role="list">
       <div class="impact__cell" role="listitem">
         <span class="impact__cellnum" data-field="prs_reviewed">0</span>
-        <span class="impact__celllbl">PRs reviewed</span>
+        <span class="impact__celllbl">terminal PRs</span>
       </div>
       <div class="impact__cell" role="listitem">
-        <span class="impact__cellnum" data-field="loc_added">0</span>
-        <span class="impact__celllbl">changed files</span>
+        <span class="impact__cellnum" data-field="files_changed">0</span>
+        <span class="impact__celllbl">changed files proxy</span>
       </div>
     </div>
     <p class="impact__foot m-mono m-mute" data-impact-updated></p>
@@ -105,7 +105,7 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
         if (!Number.isFinite(opened) || opened < threshold) {
           return; // below the proof floor; stay neutral
         }
-        const fields = ["prs_opened", "prs_merged", "prs_reviewed", "loc_added", "installs"];
+        const fields = ["prs_opened", "prs_merged", "prs_reviewed", "installs"];
         for (const field of fields) {
           const value = Number(data?.[field] ?? 0);
           root
@@ -114,6 +114,12 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
               el.textContent = fmt(Number.isFinite(value) ? value : 0);
             });
         }
+        const filesChanged = Number(data?.files_changed ?? data?.loc_added ?? 0);
+        root
+          .querySelectorAll<HTMLElement>('[data-field="files_changed"]')
+          .forEach((el) => {
+            el.textContent = fmt(Number.isFinite(filesChanged) ? filesChanged : 0);
+          });
         const updated = root.querySelector<HTMLElement>("[data-impact-updated]");
         if (updated && typeof data?.updated_at === "string") {
           const when = new Date(data.updated_at);

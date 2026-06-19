@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: Alfred is an agent engineering team that works while you are away. It plans across repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, opens pull requests, routes review, and reports to Slack.
+description: Alfred is a local fleet of coding agents that turns specs and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.
 template: splash
 head:
   - tag: title
-    content: "Alfred: an agent engineering team that works while you are away"
+    content: "Alfred: coding agents that ship from your specs"
 hero:
-  tagline: "An agent engineering team that works while you are away. Alfred plans across repos or monorepo packages, implements with your Claude Code and Codex subscriptions, opens pull requests, routes review, and reports to Slack."
+  tagline: "Coding agents that ship from your specs while you are away. Alfred plans across repos or monorepo packages, implements with your Claude Code and Codex subscriptions, opens pull requests, routes review, and reports to Slack."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -27,7 +27,7 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 Interactive coding agents finish a prompt while you sit at the keyboard. Alfred is built for engineering work that should keep moving while you are away: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
 
-That work needs durable coordination: scoped intake from GitHub issues and specs, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
+That work needs durable coordination: specs that live outside the chat transcript, scoped GitHub issues, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
 
 The starter fleet is intentionally narrow: Drake plans work, Lucius implements scoped issues, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman, Bane, Nightwing, and other specialists.
 
@@ -57,8 +57,8 @@ flowchart TB
   <Card title="Autonomous scheduled runs" icon="rocket">
     Agents keep working on schedule, survive host restarts, and do not depend on one fragile long-running process.
   </Card>
-  <Card title="Development-team workflow" icon="document">
-    Issues and specs become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report.
+  <Card title="Spec-to-PR workflow" icon="document">
+    Specs become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report, and merge when your policy allows it.
   </Card>
   <Card title="Role-level engine routing" icon="setting">
     Route builders and reviewers separately across Claude Code, Codex, or hybrid fallback.

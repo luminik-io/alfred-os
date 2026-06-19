@@ -1,6 +1,8 @@
 name: Site
 
 on:
+  schedule:
+    - cron: "17 6 * * *"
   push:
     branches: [main]
     paths:
@@ -40,6 +42,13 @@ jobs:
         working-directory: site
         run: npm ci
 
+      - name: Refresh public impact proof
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        working-directory: site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run proof:update
+
       - name: Build site
         working-directory: site
         env:
@@ -51,14 +60,14 @@ jobs:
       # Publishing is gated so forks and private prep branches can build docs
       # without deploying. Set ALFRED_OS_PUBLISH_PAGES=true for public releases.
       - name: Upload Pages artifact
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
 
   deploy:
     name: Deploy to GitHub Pages
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
     environment:

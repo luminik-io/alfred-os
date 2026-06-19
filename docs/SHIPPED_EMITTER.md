@@ -1,6 +1,6 @@
 # The `alfred-shipped-public` emitter
 
-`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical `alfred-os` site does not host a live rendering of this feed; operators who want a public usage page on their own site can render the JSON however they prefer.
+`bin/alfred-shipped-public.py` reads the operator's `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical `alfred-os` site now renders a separate public GitHub proof board for the `luminik-io/alfred-os` repository from `site/src/data/impact-proof.json`. Operators who want a proof page for their own private or customer repos should use this emitter instead, because it scrubs local state before anything is published.
 
 This document explains the schema, the scrub rules, and the emit command.
 
@@ -12,7 +12,7 @@ You have run Alfred for a while and you want a public-facing rolling proof page.
 - The emitter scrubs aggressively before writing.
 - The operator publishes the resulting JSON wherever they want.
 
-The canonical `alfred-os` repository does not ship a renderer because the operator's own choice of partner names, customer terms, and internal product codenames varies and should not appear in upstream marketing copy.
+The canonical `alfred-os` repository does not render an operator's local emitted feed by default because partner names, customer terms, and internal product codenames vary and should not appear in upstream marketing copy.
 
 ## The emitter (`bin/alfred-shipped-public.py`)
 

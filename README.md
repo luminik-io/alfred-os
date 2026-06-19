@@ -11,16 +11,17 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**An agent engineering team that works while you are away.**
+**Coding agents that ship from your specs while you are away.**
 
 Alfred keeps engineering work moving while you are away from the keyboard. It
-plans across your repos or monorepo packages, implements with the Claude Code
-and Codex subscriptions you already pay for, opens pull requests, routes
-review, and reports to Slack. Drake turns your plans into tasks. Lucius writes
-the code. Ra's al Ghul reviews the pull requests. Batman coordinates work that
-spans many repos. The agents run on a computer you control, using the
-subscriptions you already pay for. Alfred shells out to your local CLI auth, so
-provider API keys and hosted agent accounts are not part of the setup.
+turns specs and GitHub issues into scoped tasks, isolated worktrees, pull
+requests, reviews, tests, safe merges, and Slack summaries. Drake turns specs
+into tasks. Lucius writes the code. Ra's al Ghul reviews the pull requests.
+Nightwing fixes reviewer comments. Batman coordinates work that spans many
+repos. Automerge can land small safe PRs once they pass your policy. The agents
+run on a computer you control, using the subscriptions you already pay for.
+Alfred shells out to your local CLI auth, so provider API keys and hosted agent
+accounts are not part of the setup.
 
 Docs site: https://alfred.luminik.io
 
@@ -29,9 +30,9 @@ Docs site: https://alfred.luminik.io
 Interactive coding agents finish one prompt while you sit at the keyboard.
 Alfred is for engineering work that should keep moving after you step away:
 planned features, reviewer comments, follow-up tests, dependency bumps, docs
-gaps, and multi-repo rollouts. It picks up tasks from GitHub, gives each run
-its own isolated copy of the repo, sends the right work to the right agent,
-hands finished code to a reviewer, caps how much it can spend, and keeps
+gaps, and multi-repo rollouts. It picks up tasks from specs and GitHub, gives
+each run its own isolated copy of the repo, sends the right work to the right
+agent, hands finished code to a reviewer, caps how much it can spend, and keeps
 several agents from stepping on each other.
 
 - Narrow roles with clear handoffs: Drake plans, Lucius implements, Ra's al
@@ -68,11 +69,11 @@ several agents from stepping on each other.
   (`agent:plan-pending-approval`) and is held from autonomous pickup until you
   approve it.
 
-Default flow: specs or roadmap context -> Drake files scoped
-`agent:implement` issues -> Lucius claims one issue and opens a worktree ->
-Claude Code or Codex implements -> a PR opens with `agent:authored` -> Ra's al
-Ghul reviews -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Slack
-reports what changed.
+Default flow: spec -> Drake files scoped `agent:implement` issues -> Lucius
+claims one issue and opens a worktree -> Claude Code or Codex implements -> a
+PR opens with `agent:authored` -> Ra's al Ghul reviews -> Nightwing fixes P0/P1
+comments -> Bane adds tests -> Automerge lands the small safe PRs you allow ->
+Slack reports what changed.
 
 ## Quick start
 
@@ -243,9 +244,10 @@ Alfred is also not a hosted model gateway. It owns the repeatable local fleet pa
 ## Anonymous usage telemetry (opt-in)
 
 Alfred ships a small, **opt-in, off-by-default** telemetry reporter. It exists
-for one purpose: the public impact page can show how many pull requests opted-in
-installs have opened, reviewed, and merged. It is off until you turn it on, and
-one environment variable turns it off again.
+for one purpose: the community counter on the public impact page can show how
+many pull requests opted-in installs have opened, merged, and moved to a
+terminal state. It is
+off until you turn it on, and one environment variable turns it off again.
 
 **Default state: OFF.** Nothing is sent, no `install_id` is generated, and no
 network call is made unless you set `ALFRED_TELEMETRY_ENABLED=1`. Any other
@@ -273,7 +275,13 @@ enable it and removing that one variable disables it completely.
   fleet-brain, sent into one stable `period` bucket so daily re-sends never
   double count.
 - `loc_added` is a file-delta count (one per repo file an agent touched); the
-  brain does not store per-line LOC. See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+  brain does not store per-line LOC. Public pages label it as a changed-file
+  proxy. See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+
+The richer `/impact` proof board is different: it is generated from public
+GitHub metadata for `luminik-io/alfred-os`, so it can show real PR links,
+issues, additions, deletions, and changed files without exposing a user's
+private work.
 
 **What is never sent:** repo names, file paths, code, commit text, branch names,
 hostnames, IP addresses, Slack handles, codenames, or anything that identifies a

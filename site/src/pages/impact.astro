@@ -3,47 +3,58 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
 import Hero from "../components/marketing/Hero.astro";
 import SectionHeader from "../components/marketing/SectionHeader.astro";
 import ImpactCounter from "../components/marketing/ImpactCounter.astro";
-import FleetProofCounter from "../components/marketing/FleetProofCounter.astro";
+import ImpactProofBoard from "../components/marketing/ImpactProofBoard.astro";
 import CodeBlock from "../components/marketing/CodeBlock.astro";
+import proof from "../data/impact-proof.json";
 ---
 
 <MarketingLayout
   title="Impact | Alfred"
-  description="Real Alfred fleet activity from Luminik's local setup, plus the anonymous opt-in community counter."
+  description="Public proof of Alfred OS work: merged pull requests, issue flow, changed files, and the anonymous opt-in community counter."
   path="/impact/"
 >
   <Hero
-    eyebrow="REAL FLEET ACTIVITY"
-    headline="The Alfred setup that builds Alfred and Luminik."
-    sub="A snapshot from Prasad's local Alfred state, plus a community counter for operators who choose to share anonymous totals. No repo names, code, prompts, branches, hostnames, or people."
+    eyebrow="REAL SHIPPING DATA"
+    headline="Public proof you can click."
+    sub="Alfred's public site shows the work shipped in the open: merged PRs, issue flow, changed files, and real GitHub links. Anonymous community telemetry is separate and only counts aggregate usage from installs that opt in."
     headlineSize="lg"
-    primaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
-    secondaryCta={{ label: "Download Alfred", href: "/download/" }}
+    primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
+    secondaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
   >
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
-        <span class="m-eyebrow">LOCAL SNAPSHOT</span>
-        <span class="m-mono m-mute">last 30 days</span>
+        <span class="m-eyebrow">ROLLING WINDOW</span>
+        <span class="m-mono m-mute">{proof.window.days} days</span>
       </div>
-      <FleetProofCounter
-        days={30}
-        updated="2026-06-19"
-        agentRuns={2780}
-        activeAgents={13}
-        agentTurns={24357}
-        codexRuns={129}
-        toolCalls={5092}
-        filesEdited={74}
-      />
+      <div class="hero-proof">
+        <span>{proof.summary.prs_merged.toLocaleString("en-US")}</span>
+        <p>merged public PRs</p>
+      </div>
+      <div class="hero-proof__grid">
+        <div>
+          <span>{proof.summary.issues_opened.toLocaleString("en-US")}</span>
+          <p>issues opened</p>
+        </div>
+        <div>
+          <span>{proof.summary.lines_added.toLocaleString("en-US")}</span>
+          <p>lines added</p>
+        </div>
+      </div>
     </div>
   </Hero>
 
   <section class="m-section">
     <div class="m-container">
+      <ImpactProofBoard proof={proof} />
+    </div>
+  </section>
+
+  <section class="m-section">
+    <div class="m-container">
       <SectionHeader
-        eyebrow="COMMUNITY COUNTER"
-        title="Operators can opt in to share public totals."
-        lede="The public telemetry counter is separate from the Luminik snapshot above. It stays off unless an operator turns it on, and it sends only aggregate counts."
+        eyebrow="ANONYMOUS COMMUNITY COUNTER"
+        title="Opted-in installs can add their totals."
+        lede="This counter is intentionally smaller than the GitHub proof above. It counts aggregate PR activity from installs that choose to report. It does not send repo names, titles, branches, prompts, code, people, or hostnames."
       />
       <ImpactCounter threshold={1} />
     </div>
@@ -53,8 +64,8 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT GETS COUNTED"
-        title="Only counts. Nothing from the work itself."
-        lede="When an operator opts in, Alfred can report a tiny payload that proves usage without exposing what the operator is building."
+        title="Only aggregate counts. Nothing from the work itself."
+        lede="Anonymous telemetry is for community adoption, not for exposing an operator's work. Public proof with PR titles and URLs comes from repos the operator deliberately publishes."
       />
       <div class="proof-grid">
         <article class="m-card">
@@ -64,8 +75,8 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
         </article>
         <article class="m-card">
           <span class="m-mono proof-grid__num">02</span>
-          <h3 class="m-h3">Pull requests reviewed</h3>
-          <p>How many PRs a review agent inspected and reported on.</p>
+          <h3 class="m-h3">Terminal pull requests</h3>
+          <p>How many Alfred-authored PRs reached merged or closed state.</p>
         </article>
         <article class="m-card">
           <span class="m-mono proof-grid__num">03</span>
@@ -75,7 +86,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
         <article class="m-card">
           <span class="m-mono proof-grid__num">04</span>
           <h3 class="m-h3">Changed files</h3>
-          <p>A coarse changed-file count, reported as an aggregate number only.</p>
+          <p>The current anonymous field is a file-touch proxy. Real GitHub line counts are shown only for public repos.</p>
         </article>
       </div>
     </div>
@@ -86,8 +97,8 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
       <div>
         <SectionHeader
           eyebrow="OPERATOR CONTROL"
-          title="Off by default. One command to turn on."
-          lede="The operator chooses the endpoint, can self-host the collector, and can turn reporting off without touching the rest of Alfred."
+          title="Ask first. One command to turn on."
+          lede="For an open-source developer tool, trust matters more than a larger counter. Alfred asks during setup and stays off unless the operator opts in."
         />
         <div class="control-points">
           <p><strong>No repo names.</strong> Alfred does not send the repository, organization, branch, issue title, PR title, or source code.</p>
@@ -134,6 +145,39 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
     gap: 12px;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--alfred-border);
+  }
+  .hero-proof {
+    text-align: center;
+    padding: 12px 0 4px;
+  }
+  .hero-proof span,
+  .hero-proof__grid span {
+    color: var(--alfred-accent);
+    font-family: var(--font-display);
+    font-size: clamp(42px, 7vw, 72px);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero-proof p,
+  .hero-proof__grid p {
+    margin-top: 8px;
+    color: var(--alfred-mute);
+    font-size: 13px;
+  }
+  .hero-proof__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .hero-proof__grid div {
+    border: 1px solid var(--alfred-border);
+    border-radius: var(--radius);
+    padding: 14px 12px;
+    text-align: center;
+  }
+  .hero-proof__grid span {
+    font-size: 24px;
   }
   .proof-grid {
     display: grid;
