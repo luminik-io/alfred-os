@@ -2569,7 +2569,7 @@ def _list_compose_drafts(request: Request) -> list[dict[str, Any]]:
 def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]:
     """Create fleet-pickup GitHub issue work from a saved planning draft.
 
-    The native client calls this only after an explicit local operator action.
+    The native client calls this only after an explicit local File issue action.
     Safety still comes from the same bridge rules as Slack: readiness must pass,
     repos must be allowlisted, and an existing ``bridge.issue_url`` or bundle
     URL map makes the operation idempotent.
@@ -2609,6 +2609,7 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
         trusted=True,
         thread_link="",
         already_converted=bool(existing_issue_url),
+        origin="native-client",
     )
     issue_url = outcome.issue_url or existing_issue_url
     repo = outcome.repo or _first_draft_repo(payload)

@@ -229,6 +229,21 @@ def test_convert_creates_issue_with_repo_and_label() -> None:
     assert "slack://thread?x" in call["body"]
 
 
+def test_convert_native_origin_uses_desktop_footer() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    payload = _ready_payload()
+
+    outcome = bridge.convert(payload, trusted=True, origin="native-client")
+
+    assert outcome.created is True
+    body = creator.calls[0]["body"]
+    assert "Alfred Desktop" in body
+    assert "explicit local File issue action" in body
+    assert "Slack issue bridge" not in body
+    assert "Source Slack thread" not in body
+
+
 def test_convert_accepts_numeric_readiness_score() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
@@ -472,6 +487,16 @@ def test_issue_body_includes_footer_and_safety_note() -> None:
     assert "guardrails here" in body
     assert "Alfred Slack issue bridge" in body
     assert "https://slack/x" in body
+    assert "every claim, spend, and review gate" in body
+
+
+def test_issue_body_can_use_desktop_footer() -> None:
+    payload = {"issue_body": "## Problem\n\nX", "spec_body": "guardrails here"}
+    body = build_issue_body(payload, thread_link="", origin="native-client")
+    assert "Alfred Desktop" in body
+    assert "explicit local File issue action" in body
+    assert "Slack issue bridge" not in body
+    assert "Source Slack thread" not in body
     assert "every claim, spend, and review gate" in body
 
 

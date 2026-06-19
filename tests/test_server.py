@@ -1440,6 +1440,8 @@ def test_file_plan_issue_files_ready_draft_once(
     assert calls[0]["title"] == "File ready plans from native"
     assert calls[0]["labels"] == ["agent:implement"]
     assert "Ready native plans need queue pickup." in str(calls[0]["body"])
+    assert "Alfred Desktop" in str(calls[0]["body"])
+    assert "Slack issue bridge" not in str(calls[0]["body"])
 
     saved = json.loads(draft_path.read_text(encoding="utf-8"))
     assert saved["bridge"]["converted"] is True

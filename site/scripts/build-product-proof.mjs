@@ -64,13 +64,22 @@ const rows = [];
 
 for (const [repoIndex, repo] of REPOS.entries()) {
   const prs = (await searchGitHub(`repo:${repo} is:pr is:merged merged:${windowRange}`)).filter(
-    (item) => item.__typename === "PullRequest",
+    (item) =>
+      item.__typename === "PullRequest" &&
+      item.mergedAt &&
+      isWithinWindow(item.mergedAt),
   );
   const openedIssues = (await searchGitHub(`repo:${repo} is:issue created:${windowRange}`)).filter(
-    (item) => item.__typename === "Issue",
+    (item) =>
+      item.__typename === "Issue" &&
+      item.createdAt &&
+      isWithinWindow(item.createdAt),
   );
   const closedIssues = (await searchGitHub(`repo:${repo} is:issue closed:${windowRange}`)).filter(
-    (item) => item.__typename === "Issue",
+    (item) =>
+      item.__typename === "Issue" &&
+      item.closedAt &&
+      isWithinWindow(item.closedAt),
   );
   const agentPrs = prs.filter(isAgentPr);
   const agentIssuesOpened = openedIssues.filter(isAgentIssue);
@@ -153,9 +162,12 @@ async function searchGitHub(query) {
               changedFiles
               deletions
               headRefName
+              mergedAt
               labels(first: 50) { nodes { name } }
             }
             ... on Issue {
+              closedAt
+              createdAt
               labels(first: 50) { nodes { name } }
             }
           }
@@ -226,6 +238,11 @@ function isAgentIssue(issue) {
 
 function sum(items, field) {
   return items.reduce((total, item) => total + Number(item[field] || 0), 0);
+}
+
+function isWithinWindow(value) {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && timestamp >= from.getTime() && timestamp <= now.getTime();
 }
 
 function csvEnv(name, fallback, { lowercase = true } = {}) {
