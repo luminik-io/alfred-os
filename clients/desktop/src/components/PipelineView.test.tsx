@@ -321,6 +321,7 @@ describe("PipelineView", () => {
         affected_repos: "your-org/api",
         source: "compose",
         status: "draft",
+        parent: null,
         updated_at: updated,
       });
     renderPipeline({
