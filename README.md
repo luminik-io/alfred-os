@@ -11,23 +11,23 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**Autonomous coding agents for approved GitHub work.**
+**An agent engineering team that works while you are away.**
 
-Alfred keeps approved engineering work moving while you are away from the
-keyboard. It plans across your repos or monorepo packages, implements with the
-Claude Code and Codex subscriptions you already pay for, opens pull requests,
-routes review, and reports to Slack. Drake turns your plans into tasks. Lucius
-writes the code. Ra's al Ghul reviews the pull requests. Batman coordinates
-work that spans many repos. The agents run on a computer you control, using
-the subscriptions you already pay for. Alfred shells out to your local CLI
-auth, so provider API keys and hosted agent accounts are not part of the setup.
+Alfred keeps engineering work moving while you are away from the keyboard. It
+plans across your repos or monorepo packages, implements with the Claude Code
+and Codex subscriptions you already pay for, opens pull requests, routes
+review, and reports to Slack. Drake turns your plans into tasks. Lucius writes
+the code. Ra's al Ghul reviews the pull requests. Batman coordinates work that
+spans many repos. The agents run on a computer you control, using the
+subscriptions you already pay for. Alfred shells out to your local CLI auth, so
+provider API keys and hosted agent accounts are not part of the setup.
 
 Docs site: https://alfred.luminik.io
 
 ## Why use it
 
 Interactive coding agents finish one prompt while you sit at the keyboard.
-Alfred is for approved work that should keep moving after you step away:
+Alfred is for engineering work that should keep moving after you step away:
 planned features, reviewer comments, follow-up tests, dependency bumps, docs
 gaps, and multi-repo rollouts. It picks up tasks from GitHub, gives each run
 its own isolated copy of the repo, sends the right work to the right agent,
@@ -337,7 +337,7 @@ and a per-IP rate limit either way. Full contract:
 | [`bin/batman.py`](bin/batman.py) | Multi-repo coordinator. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
-| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Opt-in, off-by-default anonymous usage reporter. Hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`. Posts only aggregate counts (PRs opened/merged/reviewed, file deltas) to your configured endpoint; fail-soft. |
+| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Opt-in, off-by-default anonymous usage reporter. Hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`. Posts only aggregate counts (PRs opened/merged/reviewed, changed-file totals) to your configured endpoint; fail-soft. |
 | [`telemetry/worker/`](telemetry/worker/) | Self-hostable Cloudflare Worker that ingests the anonymous aggregate and serves the public totals for the site counter. Ships with placeholder ids; deploy under your own account. |
 | [`bin/`](bin/) | Operator helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |

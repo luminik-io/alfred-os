@@ -74,7 +74,7 @@ const orgSchema = {
       name: "Alfred",
       url: SITE_URL,
       description:
-        "Alfred runs a fleet of autonomous coding agents on Claude Code and Codex, on hardware you already own.",
+        "Alfred is an agent engineering team that works while you are away, using Claude Code and Codex on a machine you control.",
     },
     {
       "@type": "SoftwareApplication",
@@ -83,7 +83,7 @@ const orgSchema = {
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
       description:
-        "Open-source local runtime for autonomous engineering agents on Claude Code and Codex. Coordinates a named fleet (Drake, Lucius, Ras al Ghul, Batman) via GitHub labels, isolated git worktrees, and a Slack approval gate.",
+        "Open-source agent engineering team for Claude Code and Codex. Drake turns requests into tasks, Lucius writes code, Ras al Ghul reviews pull requests, and Batman coordinates work across repos.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
       license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
       isAccessibleForFree: true,
@@ -107,7 +107,7 @@ const navGroups = [
     label: "Resources",
     items: [
       { label: "Docs", href: "/docs/", description: "Install, operate, and extend Alfred." },
-      { label: "Impact", href: "/impact/", description: "Public opt-in usage counter." },
+      { label: "Impact", href: "/impact/", description: "Local snapshot and opt-in totals." },
       { label: "Changelog", href: "/about/changelog/", description: "What shipped recently." },
       { label: "Roadmap", href: "/about/roadmap/", description: "What is planned next." },
       { label: "GitHub", href: "https://github.com/luminik-io/alfred-os", description: "Source, issues, and releases.", external: true },
@@ -161,12 +161,12 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:alt" content="Alfred. A local coding-agent runtime for Claude Code and Codex." />
+    <meta property="og:image:alt" content="Alfred. An agent engineering team for Claude Code and Codex." />
 
     {/* Twitter / X */}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={og} />
-    <meta name="twitter:image:alt" content="Alfred. A local coding-agent runtime for Claude Code and Codex." />
+    <meta name="twitter:image:alt" content="Alfred. An agent engineering team for Claude Code and Codex." />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
 
