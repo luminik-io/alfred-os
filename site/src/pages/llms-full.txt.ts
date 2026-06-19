@@ -37,18 +37,18 @@ export const GET: APIRoute = async ({ site }) => {
   const root = docs.find((d) => d.id === "");
   const summary =
     root?.data.description ??
-    "A local agent-fleet runtime for solo builders. Claude Code and Codex agents scheduled by launchd or systemd, on a machine you control.";
+    "Autonomous coding agents for approved GitHub work. Claude Code and Codex agents run by launchd or systemd on a machine you control.";
 
   const out: string[] = [
     "# Alfred: full documentation",
     "",
     `> ${summary}`,
     "",
-    "Alfred is the open-source framework for running a local fleet of",
-    "autonomous development agents on a single machine you control. The host",
-    "scheduler (launchd on macOS, systemd on Linux) fires each agent; the",
-    "harness wraps every firing in a lock, preflight, spend cap, and an",
-    "isolated git worktree.",
+    "Alfred is the open-source framework for autonomous coding agents that",
+    "work through approved GitHub tasks while the operator is away from the",
+    "keyboard. The host scheduler (launchd on macOS, systemd on Linux) fires",
+    "each agent; the harness wraps every firing in a lock, preflight, spend",
+    "cap, and an isolated git worktree.",
     "",
     `Source: https://github.com/luminik-io/alfred-os`,
     `Roadmap: https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md`,

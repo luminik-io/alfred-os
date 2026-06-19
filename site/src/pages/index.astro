@@ -78,8 +78,8 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
 
 const why = [
   {
-    title: "Runs when you step away",
-    body: "On configured schedules, your agents check for new tasks, write the code, open pull requests, and post a short summary to Slack. Use an awake host for overnight work.",
+    title: "Works while you are away",
+    body: "On configured schedules, agents check approved GitHub tasks, write the code, open pull requests, and post a short summary to Slack. Use an awake host for overnight work.",
   },
   {
     title: "Runs on a machine you already own",
@@ -99,21 +99,21 @@ const why = [
   },
   {
     title: "Open source, MIT licensed",
-    body: "Every line is on GitHub at github.com/luminik-io/alfred-os. Fork it, read it, run it offline. No lock-in, no hosted runtime, and no product telemetry unless you opt in.",
+    body: "Every line is on GitHub at github.com/luminik-io/alfred-os. Fork it, read it, run it offline, or audit the code. Product telemetry is off unless you opt in.",
   },
 ];
 
 ---
 
 <MarketingLayout
-  title="Alfred | Local coding-agent runtime for reviewed PRs"
-  description="Alfred runs Claude Code and Codex on your GitHub repos, using the subscriptions you already pay for. It picks up approved work, opens pull requests, routes review, and reports to Slack."
+  title="Alfred | Coding agents that work while you are away"
+  description="Alfred runs Claude Code and Codex on approved GitHub work from a Mac or Linux host you control. It opens pull requests, routes review, and posts Slack updates while you are away."
   path="/"
 >
   <Hero
-    eyebrow="FOR SOLO BUILDERS AND SMALL TEAMS"
-    headline="A local runtime for coding agents that open reviewed PRs."
-    sub="Alfred runs Claude Code and Codex on your GitHub repos, using the subscriptions you already pay for. It picks up approved work, opens pull requests, routes review, and reports to Slack."
+    eyebrow="AUTONOMOUS CODING AGENTS"
+    headline="Keep approved GitHub work moving while you are away."
+    sub="You approve the plan. Alfred runs Claude Code and Codex from a machine you control, works in isolated repo copies, opens pull requests, routes review, and posts Slack updates."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
@@ -121,7 +121,7 @@ const why = [
     <div slot="panel" class="hero-panel">
       <div class="hero-panel__head">
         <span class="m-eyebrow">EXAMPLE STATUS</span>
-        <span class="m-mono m-mute">local runtime</span>
+        <span class="m-mono m-mute">your machine</span>
       </div>
       <MetricRow label="agents" value="21" countTo={21} state="live" />
       <MetricRow label="repos" value="9" countTo={9} state="live" />
@@ -166,8 +166,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WHY ALFRED IS DIFFERENT"
-        title="It keeps working when you step away."
-        lede="Chat-first coding tools wait for a prompt. Alfred runs approved GitHub work from a Mac, Linux box, or server you control, then reports back when it needs a decision."
+        title="Runs on its own after you approve the work."
+        lede="Alfred checks approved GitHub tasks on a schedule, works in isolated repo copies, and comes back with pull requests and Slack summaries when it needs a decision."
       />
       <div class="why-grid">
         {why.map((w, i) => (
@@ -246,8 +246,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WRITE THE PLAN ONCE"
-        title="You write the plan. Alfred is the team that builds it."
-        lede="Write what you want once, in plain text. Drake reads it, asks for the missing details, and files small tasks in the right repos. Lucius picks them up and opens the pull requests."
+        title="You write the plan. Alfred turns it into pull requests."
+        lede="Write what you want once, in plain text. Drake reads it, asks for the missing details, and files small tasks in the right repos. Lucius picks them up while you work elsewhere."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -359,7 +359,7 @@ const why = [
       <SectionHeader
         eyebrow="BUILT BY LUMINIK"
         title="Used every day by the team that built it."
-        lede="Luminik runs Alfred across nine repos with 21 agents. They open pull requests every day, before anyone on the team opens their laptop."
+        lede="Luminik runs Alfred across nine repos with 21 agents. They open pull requests every day while the team is away from the keyboard."
       />
       <div class="built-by__panel m-card">
         <div class="built-by__metrics">

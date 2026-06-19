@@ -11,30 +11,32 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**A local coding-agent runtime that opens reviewed pull requests.**
+**Autonomous coding agents for approved GitHub work.**
 
-Alfred plans across your repos or monorepo packages, implements with the
-Claude Code and Codex subscriptions you already pay for, and reports to
-Slack while you focus on something else. Drake turns your plans into tasks.
-Lucius writes the code and opens pull requests. Ra's al Ghul reviews them.
-Batman coordinates work that spans many repos. The agents run on the
-subscriptions you already pay for, on a computer you control. No provider API
-keys, no cloud agent service.
+Alfred keeps approved engineering work moving while you are away from the
+keyboard. It plans across your repos or monorepo packages, implements with the
+Claude Code and Codex subscriptions you already pay for, opens pull requests,
+routes review, and reports to Slack. Drake turns your plans into tasks. Lucius
+writes the code. Ra's al Ghul reviews the pull requests. Batman coordinates
+work that spans many repos. The agents run on a computer you control, using
+the subscriptions you already pay for. Alfred shells out to your local CLI
+auth, so provider API keys and hosted agent accounts are not part of the setup.
 
 Docs site: https://alfred.luminik.io
 
 ## Why use it
 
 Interactive coding agents finish one prompt while you sit at the keyboard.
-Alfred is the layer around them for work that keeps coming back and that you
-want shipped without you. It picks up tasks from GitHub, gives each run its own
-isolated copy of the repo, sends the right work to the right agent, hands
-finished code to a reviewer, caps how much it can spend, and keeps several
-agents from stepping on each other.
+Alfred is for approved work that should keep moving after you step away:
+planned features, reviewer comments, follow-up tests, dependency bumps, docs
+gaps, and multi-repo rollouts. It picks up tasks from GitHub, gives each run
+its own isolated copy of the repo, sends the right work to the right agent,
+hands finished code to a reviewer, caps how much it can spend, and keeps
+several agents from stepping on each other.
 
-- Narrow roles, not a chatty multi-agent crowd: Drake plans, Lucius
-  implements, Ra's al Ghul reviews, Bane adds tests, Nightwing picks up
-  unresolved review comments, Batman drafts multi-repo rollouts.
+- Narrow roles with clear handoffs: Drake plans, Lucius implements, Ra's al
+  Ghul reviews, Bane adds tests, Nightwing picks up unresolved review
+  comments, Batman drafts multi-repo rollouts.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
   summaries. The local dashboard and desktop app inspect those same sources;
@@ -397,12 +399,12 @@ See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/coden
 
 ## Design boundaries
 
-Alfred has a deliberate shape. These are not missing features; they are the design.
+Alfred has a deliberate shape. The boundaries below are intentional.
 
-- **Single operator.** One person, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
+- **Single operator.** One person, one host, one config. Alfred is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. It does not run a hosted inference service and does not require provider API keys.
-- **Explicit goals, not runaway autonomy.** Larger work should have an operator-owned contract: outcome, verification, constraints, human gates, and blocked condition.
+- **Local CLI auth.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. There is no hosted inference service or provider API key setup.
+- **Explicit goals and bounded autonomy.** Larger work should have an operator-owned contract: outcome, verification, constraints, human gates, and blocked condition.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
