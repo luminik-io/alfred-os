@@ -30,6 +30,13 @@ The repo list stays in the environment and is never written to the data file.
 That lets the public site show real product totals without publishing private
 repo names, PR titles, issue titles, branches, prompts, or code.
 
+On the canonical site, `.github/workflows/site.yml` refreshes this aggregate
+snapshot on every main-branch deploy, every manual site dispatch, and the daily
+site build when `ALFRED_PRODUCT_PROOF_REPOS` is set as a repository variable.
+Private repo access comes from the `ALFRED_PRODUCT_PROOF_TOKEN` Actions secret.
+If those are not configured, the workflow keeps using the committed seed file
+so forks and public PR previews still build.
+
 ## The emitter (`bin/alfred-shipped-public.py`)
 
 The emitter is the privacy boundary. It reads state from `$ALFRED_HOME/state/shipped/prs.json` (and optionally `trend.json`), applies the public allowlist, and writes a JSON file that conforms to the schema below.

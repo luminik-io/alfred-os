@@ -2,7 +2,7 @@
 
 ``damian`` is Alfred's spec-aware, multi-repo bundle planner. It sits one
 level above ``drake`` (single-repo issue filer) and feeds ``batman``
-(cross-repo bundle coordinator) by emitting ``agent:bundle:<slug>``
+(cross-repo architect) by emitting ``agent:bundle:<slug>``
 siblings across two or more configured repos.
 
 This module is the pure-data layer: spec parsing, multi-repo detection,

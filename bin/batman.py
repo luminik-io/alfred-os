@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``batman``, multi-repo feature coordinator.
+"""``batman``, multi-repo feature architect.
 
 Picks the oldest open ``agent:large-feature`` issue across the
 configured product repos. When the issue carries an
@@ -7,12 +7,12 @@ configured product repos. When the issue carries an
 is pulled in and the resulting bundle is treated as the atomic unit.
 
 Bundle primitives live in ``lib/batman.py`` so the parsing /
-claim-rollback / plan-shape logic stays unit-testable. This file is the
-runner skeleton: preflight, find a bundle, post a plan summary, exit.
-The full execution chain (worktrees + Claude invocation + cross-repo
-PR chaining + operator approval gate) is intentionally NOT in alfred-os
-yet. Fleets with extra coordination requirements can layer those
-site-specific extensions on top.
+claim-rollback / plan-shape logic stays unit-testable. This file owns
+the runner path: preflight, select a parent issue or legacy bundle,
+draft the rollout, capture approval when configured, file scoped child
+issues, and report what happened. Batman does not directly edit repo
+files in the OSS reference runner; Lucius, Bane, and Nightwing own the
+worktrees and PRs that flow from those child issues.
 
 Wiring:
 
@@ -26,8 +26,9 @@ Wiring:
   - Honours the fleet enable file: if ``batman`` is not enabled there,
     the runner exits early with a one-line stderr note.
 
-Skeleton implementation of the Batman bundle workflow. Skeleton-only, the
-operator can extend the per-repo execution chain to taste.
+The legacy bundle-scan path remains plan-only for migrated fleets. The
+parent-issue lifecycle is the current path for plan -> approval -> child
+issue execution.
 """
 
 from __future__ import annotations

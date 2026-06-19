@@ -115,8 +115,8 @@ const proof = {
   source: {
     label: process.env.ALFRED_PRODUCT_PROOF_LABEL || "Luminik product setup",
     note:
-      "Aggregate-only snapshot from GitHub data visible to the operator's local auth. " +
-      "The source repos are private/product repos and are not committed here. " +
+      "Aggregate-only snapshot from GitHub data visible to the site build token. " +
+      "The source repos stay in Actions config and are not committed here. " +
       "PRs count when they carry an agent label or known Alfred branch prefix. " +
       "Issues count when they carry an agent:* label.",
   },

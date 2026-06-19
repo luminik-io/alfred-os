@@ -56,7 +56,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - **`bin/doctor.sh --dev`**: dev-install mode that tolerates host-config gaps while still failing hard on code defects.
 - **`alfred claude probe`**: a first-class Claude Code auth smoke test.
 - **`alfred codex status/probe` and `alfred auth status/probe`**: first-class Codex CLI and combined provider-auth diagnostics.
-- **Solo-builder setup cleanup**: `alfred-init.py --repos`, starter-fleet default, prompt seeding, standard GitHub label setup, and Batman visible as an opt-in cross-repo coordinator (plan-only in v0.3.0, gained execute-after-approval in v0.4.0).
+- **Solo-builder setup cleanup**: `alfred-init.py --repos`, starter-fleet default, prompt seeding, standard GitHub label setup, and Batman visible as an opt-in cross-repo architect (plan-only in v0.3.0, gained execute-after-approval in v0.4.0).
 - Docs: a [publishing guide](https://github.com/luminik-io/alfred-os/blob/main/docs/PUBLISHING.md) for maintainers, a rewritten [Linux guide](/guides/linux/), [Codex provider guide](https://github.com/luminik-io/alfred-os/blob/main/docs/CODEX_PROVIDER.md), mermaid diagrams across the concept pages, and this docs site.
 - Fixes: Batman bundle scans stay inside the selected repository scope, and `alfred auth status` now returns nonzero when the Codex CLI status path fails.
 

@@ -64,7 +64,7 @@ STICKY_LABEL_SET: Final[frozenset[str]] = frozenset({DO_NOT_PICKUP, NEEDS_HUMAN_
 # --------------------------------------------------------------------------
 
 LARGE_FEATURE: Final[str] = "agent:large-feature"
-"""Multi-repo feature; picked up as a bundle by the bundle coordinator."""
+"""Multi-repo feature; picked up as a bundle by Batman."""
 
 BUNDLE_LABEL_PREFIX: Final[str] = "agent:bundle:"
 """Prefix for per-bundle labels (``agent:bundle:<slug>``)."""
@@ -302,7 +302,7 @@ LIFECYCLE_LABEL_DEFS: Final[tuple[LabelDef, ...]] = (
     LabelDef(
         LARGE_FEATURE,
         "ff6b00",
-        "Multi-repo feature; picked up as a bundle by the bundle coordinator.",
+        "Multi-repo feature; picked up as a bundle by Batman.",
     ),
     LabelDef(
         AUTHORED,

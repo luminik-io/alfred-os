@@ -96,7 +96,7 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
     ),
     "cross_repo_coordinator": (
         "batman",
-        "cross-repo coordinator (plans agent:large-feature bundles)",
+        "cross-repo architect (plans and files approved agent:large-feature bundles)",
         True,
         "interval:3600",
     ),
@@ -1106,7 +1106,7 @@ def step_5_pick_agents(
         warn("Nothing matched. Using the recommended starter fleet.")
         state.enabled_roles = starter_roles(available)
     # Multi-repo fleets benefit from Batman (cross-repo `agent:large-feature`
-    # planner with a Slack approval gate). If the operator landed on a 2+-repo
+    # architect with a Slack approval gate). If the operator landed on a 2+-repo
     # org and didn't pick Batman, surface it once as a yes/no question rather
     # than letting the agent stay hidden behind the docs (issue #104).
     if (
@@ -1117,7 +1117,7 @@ def step_5_pick_agents(
         print()
         note(
             f"Your org has {len(state.repos)} visible repos. Batman is the cross-repo "
-            "planner (single `agent:large-feature` issue fans out into coordinated PRs "
+            "architect (single `agent:large-feature` issue fans out into coordinated PRs "
             "across repos, gated by a Slack approval reaction)."
         )
         if ask_yes_no("Add Batman to this fleet?", default=False):

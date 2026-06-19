@@ -20,7 +20,7 @@ summaries. Batman is the architect for work that spans repos. Lucius is the
 senior developer. Drake scopes smaller work. Ra's al Ghul is the reviewer. Bane
 handles test coverage. Nightwing fixes reviewer comments. Automerge can land
 small safe PRs once they pass your policy. The agents run on a computer you
-control, during the hours that host is awake, using the subscriptions you
+choose, during the hours that machine is awake, using the subscriptions you
 already pay for. Alfred shells out to your local CLI auth, so provider API keys
 and hosted agent accounts are not part of the setup.
 
@@ -420,10 +420,10 @@ See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/coden
 
 Alfred has a deliberate shape. The boundaries below are intentional.
 
-- **Single operator.** One person, one host, one config. Alfred is software you install and run yourself.
+- **Single install.** One person, one Mac or Linux box, one config. Alfred is software you install and run yourself.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` / `systemd` own cadence; each firing is a fresh, isolated process. That means better failure isolation, and it survives reboots.
 - **Local CLI auth.** Alfred shells out to `claude` and optional `codex` on your own subscription-backed CLI auth. There is no hosted inference service or provider API key setup.
-- **Explicit goals and bounded autonomy.** Larger work should have an operator-owned contract: outcome, verification, constraints, human gates, and blocked condition.
+- **Explicit goals and bounded autonomy.** Larger work should have a clear contract: outcome, verification, constraints, human gates, and blocked condition.
 - **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
@@ -458,7 +458,7 @@ issue carrying the operator-approval gate label (`agent:plan-pending-approval`)
 is held from autonomous pickup until the operator approves it and the label
 clears. Slack remains the primary collaboration surface.
 
-The design boundary is stable: one operator, one local host, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
+The design boundary is stable: one person, one local Mac or Linux box, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
 
 ## License
 

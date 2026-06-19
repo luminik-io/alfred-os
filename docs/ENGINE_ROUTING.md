@@ -61,6 +61,7 @@ The shipped fleet has the following defaults. Override per codename when your ac
 
 | Codename | Default mode | Why |
 |---|---|---|
+| **batman** | `hybrid` | Architect for cross-repo execution. Long-context planning prefers Claude; Codex fallback keeps the architect lane alive during Claude outages. |
 | **lucius** | `hybrid` | Builder. Wants Claude for first-class code generation, but cannot afford to be idle during a Claude rate-limit hour. |
 | **drake** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
 | **bane** | `hybrid` | Test-coverage builder. Same posture as Lucius; tests are valuable enough to fall back rather than skip. |
@@ -69,7 +70,6 @@ The shipped fleet has the following defaults. Override per codename when your ac
 | **robin** | `hybrid` | Bug triage. Light-touch; either engine works. |
 | **huntress** | `claude` | Post-deploy smoke. Lower volume; Claude is fine. |
 | **gordon** | `claude` | Deploy-health. Read-only; quiet on healthy days. |
-| **batman** | `hybrid` | Cross-repo coordinator. Long-context planning prefers Claude; fallback keeps the planner alive during Claude outages. |
 | **automerge** | n/a | No engine call. |
 | **agent-cleanup** | n/a | No engine call. |
 

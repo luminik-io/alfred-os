@@ -20,7 +20,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
   <Hero
     eyebrow="ALFRED IN USE"
     headline="What Alfred has shipped."
-    sub={`In the last ${productProof.window.days} days, Alfred has helped ship product work across Luminik repos. Private work stays private. Public repo work appears below when GitHub makes the Alfred link visible.`}
+    sub={`In the last ${productProof.window.days} days, Alfred has helped ship product work across Luminik repos. The site refreshes these aggregate totals on every main-branch deploy and once a day. Private work stays private.`}
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
     secondaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
@@ -53,7 +53,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
         <SectionHeader
           eyebrow="RUNNING ON LUMINIK"
           title="Alfred works on real product repos every day."
-          lede={`The counter uses labels and branch names in GitHub across ${productProof.summary.repos_scanned} Luminik repos. It publishes totals and leaves out private repo details.`}
+          lede={`The counter uses labels and branch names in GitHub across ${productProof.summary.repos_scanned} Luminik repos. A scheduled site build updates it automatically; the published file keeps only aggregate totals.`}
           reveal={false}
         />
         <p class="product-proof__note">
@@ -103,7 +103,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
       <SectionHeader
         eyebrow="COMMUNITY TOTALS"
         title="Installs can add aggregate totals."
-        lede="This counter counts aggregate PR activity from installs that choose to report. It does not send repo names, titles, branches, prompts, code, people, or hostnames."
+        lede="This counter reads live totals from the telemetry stats endpoint when one is configured. Installs that opt in send aggregate PR counts only: no repo names, titles, branches, prompts, code, people, or hostnames."
       />
       <ImpactCounter threshold={1} />
     </div>
@@ -114,7 +114,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
       <SectionHeader
         eyebrow="WHAT GETS COUNTED"
         title="Only aggregate counts. Nothing from the work itself."
-        lede="Anonymous telemetry is for community adoption, not for exposing an operator's work. Public PR titles and URLs appear only for repos the operator deliberately publishes."
+        lede="Anonymous telemetry is for community adoption, not for exposing private work. Public PR titles and URLs appear only for repos someone deliberately publishes."
       />
       <div class="proof-grid">
         <article class="m-card">
@@ -130,7 +130,7 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
         <article class="m-card">
           <span class="m-mono proof-grid__num">03</span>
           <h3 class="m-h3">Pull requests merged</h3>
-          <p>How many PRs reached the shipped state after the operator's process.</p>
+          <p>How many PRs reached the shipped state after the team's normal review process.</p>
         </article>
         <article class="m-card">
           <span class="m-mono proof-grid__num">04</span>
@@ -145,9 +145,9 @@ const productProofGenerated = productProof.generated_at.slice(0, 10);
     <div class="m-container operator-grid">
       <div>
         <SectionHeader
-          eyebrow="OPERATOR CONTROL"
+          eyebrow="YOUR CONTROL"
           title="Off until you turn it on."
-          lede="For an open-source developer tool, trust matters more than a larger counter. Alfred asks during setup and keeps telemetry disabled unless the operator opts in."
+          lede="For an open-source developer tool, trust matters more than a larger counter. Alfred asks during setup and keeps telemetry disabled unless you opt in."
         />
         <div class="control-points">
           <p><strong>No repo names.</strong> Alfred does not send the repository, organization, branch, issue title, PR title, or source code.</p>

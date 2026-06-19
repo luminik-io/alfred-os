@@ -113,7 +113,7 @@ The brain v1 store is dependency-inverted on a `Store` Protocol, so a future PGL
 
 ## Privacy model
 
-Everything in this tree is local to the operator's machine. Nothing in the AlfredS surface transmits state files, transcripts, lessons, or spend ledgers off-host. The only outbound channels are:
+Everything in this tree is local to your machine. Nothing in Alfred transmits state files, transcripts, lessons, or spend ledgers off-host. The only outbound channels are:
 
 - The configured engine (`claude -p` or `codex exec`), which sends the prompt you compose to Anthropic or OpenAI on your existing CLI auth.
 - The GitHub CLI (`gh`), which talks to GitHub on your existing `gh auth login` token.

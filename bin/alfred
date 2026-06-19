@@ -151,7 +151,7 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
     "batman": {
         "script": "batman.py",
         "schedule": "interval:3600",
-        "role": "cross-repo coordinator",
+        "role": "cross-repo architect",
     },
     "huntress": {
         "script": "huntress.py",

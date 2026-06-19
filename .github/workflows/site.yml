@@ -51,6 +51,18 @@ jobs:
         # and PR previews; the main-branch site build reads this fresh file.
         run: npm run proof:update
 
+      - name: Refresh Luminik product proof
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && vars.ALFRED_PRODUCT_PROOF_REPOS != ''
+        working-directory: site
+        env:
+          ALFRED_PRODUCT_PROOF_REPOS: ${{ vars.ALFRED_PRODUCT_PROOF_REPOS }}
+          ALFRED_PRODUCT_PROOF_DAYS: ${{ vars.ALFRED_PRODUCT_PROOF_DAYS || '30' }}
+          ALFRED_PRODUCT_PROOF_LABEL: ${{ vars.ALFRED_PRODUCT_PROOF_LABEL || 'Luminik product setup' }}
+          GH_TOKEN: ${{ secrets.ALFRED_PRODUCT_PROOF_TOKEN }}
+        # Private/product proof is aggregate-only. The repo list and token stay
+        # in Actions config; the generated JSON contains counts, not repo names.
+        run: npm run proof:product
+
       - name: Build site
         working-directory: site
         env:

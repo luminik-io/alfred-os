@@ -310,8 +310,10 @@ issues already).
 
 ## Safety story
 
-- Batman never edits code. The only writes are GitHub issue creates and
-  Slack posts.
+- Batman does not directly edit repo files in the OSS reference runner.
+  It owns the multi-repo execution lane by turning an approved plan into
+  scoped child issues. Lucius, Bane, and Nightwing do the code changes
+  in isolated worktrees.
 - Approval is a hard gate when `BATMAN_AUTO_EXECUTE=approval-gate`: if
   Slack mode cannot capture a `message_ts`, Batman halts rather than
   executing without a captured approval anchor. In `file` mode, Batman

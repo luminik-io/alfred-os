@@ -43,7 +43,7 @@ in depth.
 - **Bat-signal**: The Slack alert raised when an agent prints `[BLOCKED]`
   or when a fleet-wide spend or rate-limit cap trips.
   See also: [Output samples](OUTPUT_SAMPLES.md).
-- **Batman**: Cross-repo coordinator that turns `agent:large-feature` issues
+- **Batman**: Cross-repo architect that turns `agent:large-feature` issues
   into rollout plans and, on the parent-issue path, approved child
   `agent:implement` issues for the normal fleet queue. See also:
   [Multi-repo worked example](MULTI_REPO_WORKED_EXAMPLE.md).
