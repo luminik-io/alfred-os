@@ -380,11 +380,10 @@ Total wall-clock: 6h 26m.
 ## What this example demonstrates
 
 - The operator files one `agent:large-feature` issue, not three.
-- Batman posts a plan, not an execution.
-- The child `agent:implement` issues are filed by the operator (or by a
-  private Batman extension) and each lives in the repo that owns the
-  change. This answers the most common "but who files the per-repo issues"
-  question: a human does in the OSS path; an automation can in a custom one.
+- Batman posts a plan and waits for approval before child issues are filed.
+- The child `agent:implement` issues each live in the repo that owns the change.
+  Batman can file them after approval, or an operator can file the same children
+  by hand in a stricter process.
 - Lucius, Ra's al Ghul, Nightwing, and Bane act on whatever is in their
   inbox without knowing they are part of a bundle. The bundle label is for
   tracking, not coordination. They never call each other; they only see

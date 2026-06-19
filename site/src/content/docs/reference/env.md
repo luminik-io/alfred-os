@@ -73,9 +73,11 @@ engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 | `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `lib/batman.py` post-report Slack follow-up capture | `60` |
 | `BATMAN_SLACK_CHANNEL` | `lib/batman.py` plan and report channel | (blank, falls back to Slack home channel) |
 
-Batman is opt-in and public Alfred ships it as plan-only. It scans the
-configured repo list, groups `agent:bundle:<slug>` siblings, posts a rollout
-plan, and stops before automatic cross-repo PR execution.
+Batman is opt-in. The newer `BATMAN_PARENT_REPO` path reads parent issues,
+waits for approval when required, files child `agent:implement` issues, and
+reports status. The legacy `BATMAN_SCAN_REPOS` path scans configured repos,
+groups `agent:bundle:<slug>` siblings, posts a rollout plan, and stops before
+child issue filing.
 
 ## Claude auth
 

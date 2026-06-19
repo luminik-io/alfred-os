@@ -30,7 +30,7 @@ Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred-os/blob/ma
 
 | Skill | Source | Used by | Why |
 |---|---|---|---|
-| `spec-driven-development` | Anthropic | feature-dev | Forces the model to derive code from a written spec |
+| `spec-driven-development` | Anthropic | feature-dev | Grounds the model in a written spec |
 | `code-review-and-quality` | Anthropic | feature-dev (self-check), reviewer | Multi-axis review |
 | `security-and-hardening` | Anthropic | feature-dev (auth), reviewer | Security-specific lens |
 | `debugging-and-error-recovery` | Anthropic | bug-triage, monitoring | Systematic root-cause path |

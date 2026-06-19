@@ -1036,9 +1036,9 @@ def register_routes(app: FastAPI) -> None:
         """File labeled GitHub issue work from a ready local planning draft.
 
         This is the native-client issue filing route for Plan work. It does not run an
-        agent, touch a worktree, or bypass the fleet gates: it creates either
-        one ``agent:implement`` issue or a Batman multi-repo bundle, then the
-        normal Alfred queue decides when and how to claim it. The route is
+        agent, touch a worktree, or bypass the fleet gates: it creates one
+        ``agent:implement`` issue, then the normal Alfred queue decides when
+        and how to claim it. The route is
         same-origin and token-gated like other local mutations, and it is
         idempotent via the saved draft's ``bridge.issue_url`` field.
         """
@@ -2603,27 +2603,32 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
             approval_reactions=base.approval_reactions,
         )
     )
+    existing_issue_url = _planning_draft_issue_url(payload)
     outcome = bridge.convert(
         payload,
         trusted=True,
         thread_link="",
-        already_converted=bool(_planning_draft_issue_url(payload)),
-        origin="native-client",
+        already_converted=bool(existing_issue_url),
     )
-    if outcome.status == "already_converted" and outcome.issue_url:
+    issue_url = outcome.issue_url or existing_issue_url
+    repo = outcome.repo or _first_draft_repo(payload)
+    issue_urls = [issue_url] if issue_url else []
+    issues_by_repo = {repo: issue_url} if repo and issue_url else {}
+    repos_out = [repo] if repo else []
+    labels_out = [base.label] if base.label else []
+
+    if outcome.status == "already_converted" and issue_url:
         return {
             "ok": True,
             "status": "already_filed",
             "draft_id": draft_id,
-            "issue_url": outcome.issue_url,
-            "issue_urls": list(outcome.issue_urls),
-            "issues_by_repo": outcome.issues_by_repo,
-            "repo": outcome.repo or _first_draft_repo(payload),
-            "repos": list(outcome.repos),
+            "issue_url": issue_url,
+            "issue_urls": issue_urls,
+            "issues_by_repo": issues_by_repo,
+            "repo": repo,
+            "repos": repos_out,
             "label": base.label,
-            "labels": list(outcome.labels),
-            "bundle_slug": outcome.bundle_slug,
-            "bundle_label": outcome.bundle_label,
+            "labels": labels_out,
             "detail": outcome.detail,
         }
     if not outcome.created:
@@ -2631,26 +2636,22 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
             "ok": False,
             "status": outcome.status,
             "draft_id": draft_id,
-            "repo": outcome.repo,
+            "repo": repo,
             "label": base.label,
-            "labels": list(outcome.labels),
-            "bundle_slug": outcome.bundle_slug,
-            "bundle_label": outcome.bundle_label,
+            "labels": labels_out,
             "error": outcome.detail or outcome.status,
         }
 
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     payload["bridge"] = {
         "converted": True,
-        "issue_url": outcome.issue_url,
-        "issue_urls": list(outcome.issue_urls),
-        "issues_by_repo": outcome.issues_by_repo,
-        "repo": outcome.repo,
-        "repos": list(outcome.repos),
+        "issue_url": issue_url,
+        "issue_urls": issue_urls,
+        "issues_by_repo": issues_by_repo,
+        "repo": repo,
+        "repos": repos_out,
         "label": base.label,
-        "labels": list(outcome.labels),
-        "bundle_slug": outcome.bundle_slug,
-        "bundle_label": outcome.bundle_label,
+        "labels": labels_out,
         "filed_at": now,
         "source": "native-client",
     }
@@ -2662,15 +2663,13 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
         "ok": True,
         "status": "filed",
         "draft_id": draft_id,
-        "issue_url": outcome.issue_url,
-        "issue_urls": list(outcome.issue_urls),
-        "issues_by_repo": outcome.issues_by_repo,
-        "repo": outcome.repo,
-        "repos": list(outcome.repos),
+        "issue_url": issue_url,
+        "issue_urls": issue_urls,
+        "issues_by_repo": issues_by_repo,
+        "repo": repo,
+        "repos": repos_out,
         "label": base.label,
-        "labels": list(outcome.labels),
-        "bundle_slug": outcome.bundle_slug,
-        "bundle_label": outcome.bundle_label,
+        "labels": labels_out,
         "detail": outcome.detail,
     }
 

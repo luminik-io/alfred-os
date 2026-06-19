@@ -11,17 +11,18 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**Coding agents that ship from your specs while you are away.**
+**Autonomous coding agents that keep development moving while you are away.**
 
 Alfred keeps engineering work moving while you are away from the keyboard. It
-turns specs and GitHub issues into scoped tasks, isolated worktrees, pull
-requests, reviews, tests, safe merges, and Slack summaries. Drake turns specs
-into tasks. Lucius writes the code. Ra's al Ghul reviews the pull requests.
-Nightwing fixes reviewer comments. Batman coordinates work that spans many
-repos. Automerge can land small safe PRs once they pass your policy. The agents
-run on a computer you control, using the subscriptions you already pay for.
-Alfred shells out to your local CLI auth, so provider API keys and hosted agent
-accounts are not part of the setup.
+turns Slack requests, rough plans, specs, and GitHub issues into scoped tasks,
+isolated worktrees, pull requests, reviews, tests, safe merges, and Slack
+summaries. Drake is the planner. Lucius is the senior developer. Ra's al Ghul is
+the reviewer. Bane handles test coverage. Nightwing fixes reviewer comments.
+Batman is the architect for work that spans many repos. Automerge can land
+small safe PRs once they pass your policy. The agents run on a computer you
+control, using the subscriptions you already pay for. Alfred shells out to your
+local CLI auth, so provider API keys and hosted agent accounts are not part of
+the setup.
 
 Docs site: https://alfred.luminik.io
 
@@ -30,14 +31,15 @@ Docs site: https://alfred.luminik.io
 Interactive coding agents finish one prompt while you sit at the keyboard.
 Alfred is for engineering work that should keep moving after you step away:
 planned features, reviewer comments, follow-up tests, dependency bumps, docs
-gaps, and multi-repo rollouts. It picks up tasks from specs and GitHub, gives
-each run its own isolated copy of the repo, sends the right work to the right
-agent, hands finished code to a reviewer, caps how much it can spend, and keeps
-several agents from stepping on each other.
+gaps, and multi-repo rollouts. It starts from Slack intake, rough plans, specs,
+or GitHub issues, helps structure that work into tasks, gives each run its own
+isolated copy of the repo, sends the right work to the right agent, hands
+finished code to a reviewer, caps how much it can spend, and keeps several
+agents from stepping on each other.
 
-- Narrow roles with clear handoffs: Drake plans, Lucius implements, Ra's al
-  Ghul reviews, Bane adds tests, Nightwing picks up unresolved review
-  comments, Batman drafts multi-repo rollouts.
+- Narrow roles with clear handoffs: Drake is the planner, Lucius is the senior
+  developer, Ra's al Ghul is the reviewer, Bane is QA, Nightwing is the fixer,
+  and Batman is the architect for cross-repo rollouts.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
   summaries. The local dashboard and desktop app inspect those same sources;
@@ -69,11 +71,11 @@ several agents from stepping on each other.
   (`agent:plan-pending-approval`) and is held from autonomous pickup until you
   approve it.
 
-Default flow: spec -> Drake files scoped `agent:implement` issues -> Lucius
-claims one issue and opens a worktree -> Claude Code or Codex implements -> a
-PR opens with `agent:authored` -> Ra's al Ghul reviews -> Nightwing fixes P0/P1
-comments -> Bane adds tests -> Automerge lands the small safe PRs you allow ->
-Slack reports what changed.
+Default flow: request, plan, spec, or issue -> Drake files scoped
+`agent:implement` issues -> Lucius claims one issue and opens a worktree ->
+Claude Code or Codex implements -> a PR opens with `agent:authored` -> Ra's al
+Ghul reviews -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge
+lands the small safe PRs you allow -> Slack reports what changed.
 
 ## Quick start
 

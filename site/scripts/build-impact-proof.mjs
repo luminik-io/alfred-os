@@ -9,6 +9,31 @@ const OUT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../src/data/impact-proof.json",
 );
+const AGENT_BRANCH_PREFIXES = csvEnv("ALFRED_IMPACT_AGENT_BRANCH_PREFIXES", [
+  "alfred/",
+  "alfred-nightly/",
+  "automerge/",
+  "bane/",
+  "batman/",
+  "damian/",
+  "lucius/",
+  "nightwing/",
+  "rasalghul/",
+  "robin/",
+]);
+const AGENT_SHIPPED_LABELS = csvEnv("ALFRED_IMPACT_AGENT_LABELS", [
+  "agent:done",
+  "agent:shipped",
+  "alfred:shipped",
+  "shipped-by-alfred",
+]);
+const EXCLUDED_AUTHORS = new Set(
+  csvEnv("ALFRED_IMPACT_EXCLUDED_AUTHORS", [
+    "app/dependabot",
+    "dependabot",
+    "dependabot[bot]",
+  ]),
+);
 
 const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || readGhToken();
 
@@ -33,26 +58,52 @@ const issuesOpened = await searchGitHub(openedIssueQuery);
 const issuesClosed = await searchGitHub(closedIssueQuery);
 
 const sortedPrs = prs
-  .filter((item) => item.__typename === "PullRequest" && item.mergedAt)
+  .filter(
+    (item) =>
+      item.__typename === "PullRequest" &&
+      item.mergedAt &&
+      isWithinWindow(item.mergedAt),
+  )
   .sort((a, b) => new Date(b.mergedAt) - new Date(a.mergedAt));
 
 const sortedIssuesOpened = issuesOpened
-  .filter((item) => item.__typename === "Issue")
+  .filter(
+    (item) =>
+      item.__typename === "Issue" &&
+      item.createdAt &&
+      isWithinWindow(item.createdAt),
+  )
   .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
 const sortedIssuesClosed = issuesClosed
-  .filter((item) => item.__typename === "Issue" && item.closedAt)
+  .filter(
+    (item) =>
+      item.__typename === "Issue" &&
+      item.closedAt &&
+      isWithinWindow(item.closedAt),
+  )
   .sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt));
 
+const agentPrs = sortedPrs.filter(isAgentMarked);
+const agentIssuesOpened = sortedIssuesOpened.filter(isAgentIssue);
+const agentIssuesClosed = sortedIssuesClosed.filter(isAgentIssue);
+
 const summary = {
-  prs_merged: sortedPrs.length,
-  agent_labeled_prs: sortedPrs.filter(isAgentMarked).length,
-  issues_opened: sortedIssuesOpened.length,
-  issues_closed: sortedIssuesClosed.length,
-  issues_triaged: sortedIssuesOpened.filter(isTriagedIssue).length,
-  lines_added: sum(sortedPrs, "additions"),
-  lines_removed: sum(sortedPrs, "deletions"),
-  files_changed: sum(sortedPrs, "changedFiles"),
+  prs_merged: agentPrs.length,
+  issues_opened: agentIssuesOpened.length,
+  issues_closed: agentIssuesClosed.length,
+  issues_triaged: agentIssuesOpened.filter(isTriagedIssue).length,
+  lines_added: sum(agentPrs, "additions"),
+  lines_removed: sum(agentPrs, "deletions"),
+  files_changed: sum(agentPrs, "changedFiles"),
+  repo_activity: {
+    prs_merged: sortedPrs.length,
+    issues_opened: sortedIssuesOpened.length,
+    issues_closed: sortedIssuesClosed.length,
+    lines_added: sum(sortedPrs, "additions"),
+    lines_removed: sum(sortedPrs, "deletions"),
+    files_changed: sum(sortedPrs, "changedFiles"),
+  },
 };
 
 const proof = {
@@ -60,7 +111,7 @@ const proof = {
   source: {
     repo: REPO,
     url: `https://github.com/${REPO}`,
-    note: "Rolling public GitHub activity for Alfred OS. Generated from merged PRs and issues in the public repository.",
+    note: "Rolling public Alfred OS activity filtered to Alfred runtime GitHub signals. PRs require an Alfred branch prefix or shipped label, and Dependabot is excluded. Issues require an agent:* label. The committed JSON is a seed; main-branch site builds refresh it before deploy.",
   },
   window: {
     days: DAYS,
@@ -68,8 +119,8 @@ const proof = {
     to: now.toISOString(),
   },
   summary,
-  trend: buildTrend(sortedPrs),
-  prs: sortedPrs.slice(0, 10).map((pr) => ({
+  trend: buildTrend(agentPrs),
+  prs: agentPrs.slice(0, 10).map((pr) => ({
     number: pr.number,
     title: pr.title,
     url: pr.url,
@@ -79,7 +130,7 @@ const proof = {
     files_changed: pr.changedFiles || 0,
     agent_authored: isAgentMarked(pr),
   })),
-  issues: sortedIssuesOpened.slice(0, 8).map((issue) => ({
+  issues: agentIssuesOpened.slice(0, 8).map((issue) => ({
     number: issue.number,
     title: issue.title,
     url: issue.url,
@@ -92,7 +143,7 @@ const proof = {
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(proof, null, 2)}\n`);
 console.log(
-  `Wrote ${OUT}: ${summary.prs_merged} PRs, ${summary.issues_opened} opened issues, ${summary.issues_closed} closed issues.`,
+  `Wrote ${OUT}: ${summary.prs_merged} agent PRs, ${summary.issues_opened} agent issues, ${summary.repo_activity.prs_merged} total public PRs.`,
 );
 
 async function searchGitHub(query) {
@@ -114,6 +165,7 @@ async function searchGitHub(query) {
               deletions
               changedFiles
               headRefName
+              author { login }
               labels(first: 30) { nodes { name } }
             }
             ... on Issue {
@@ -138,20 +190,39 @@ async function searchGitHub(query) {
 }
 
 async function graphQL(query, variables) {
-  const response = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "User-Agent": "alfred-os-impact-proof",
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  const payload = await response.json();
-  if (!response.ok || payload.errors) {
-    throw new Error(JSON.stringify(payload.errors || payload, null, 2));
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch("https://api.github.com/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "User-Agent": "alfred-os-impact-proof",
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+      const payload = await response.json();
+      if (response.ok && !payload.errors) {
+        return payload.data;
+      }
+      if (attempt === maxAttempts || response.status < 500) {
+        throw new Error(JSON.stringify(payload.errors || payload, null, 2));
+      }
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+    }
+    await sleep(500 * attempt);
   }
-  return payload.data;
+  throw new Error("GitHub GraphQL request failed");
+}
+
+function sleep(ms) {
+  return new Promise((resolveSleep) => {
+    setTimeout(resolveSleep, ms);
+  });
 }
 
 function readGhToken() {
@@ -169,15 +240,42 @@ function sum(items, field) {
   return items.reduce((total, item) => total + Number(item[field] || 0), 0);
 }
 
+function isWithinWindow(value) {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && timestamp >= from.getTime() && timestamp <= now.getTime();
+}
+
+function csvEnv(name, fallback) {
+  const raw = (process.env[name] || "").trim();
+  if (!raw) return fallback.map((item) => item.toLowerCase());
+  return raw
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function labelNames(item) {
-  return (item.labels?.nodes || []).map((label) => label.name);
+  return (item.labels?.nodes || []).map((label) => String(label.name || "").toLowerCase());
+}
+
+function authorLogin(item) {
+  return String(item.author?.login || "").trim().toLowerCase();
 }
 
 function isAgentMarked(item) {
+  if (EXCLUDED_AUTHORS.has(authorLogin(item))) {
+    return false;
+  }
+  const labels = labelNames(item);
+  const branch = String(item.headRefName || "").trim().toLowerCase();
   return (
-    labelNames(item).includes("agent:authored") ||
-    String(item.headRefName || "").startsWith("agent/")
+    AGENT_BRANCH_PREFIXES.some((prefix) => branch.startsWith(prefix)) ||
+    labels.some((label) => AGENT_SHIPPED_LABELS.includes(label))
   );
+}
+
+function isAgentIssue(issue) {
+  return labelNames(issue).some((label) => label.startsWith("agent:"));
 }
 
 function isTriagedIssue(issue) {

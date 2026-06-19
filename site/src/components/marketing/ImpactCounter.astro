@@ -78,9 +78,12 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
   // Reveal the live numbers only when the endpoint is set AND the totals clear
   // the threshold. Any failure leaves the neutral fallback in place.
   function initImpactCounter() {
-    const root = document.querySelector<HTMLElement>(".impact");
-    if (!root) return;
+    document
+      .querySelectorAll<HTMLElement>(".impact")
+      .forEach((root) => initImpactCounterRoot(root));
+  }
 
+  function initImpactCounterRoot(root: HTMLElement) {
     const url = (root.dataset.statsUrl || "").trim();
     const threshold = Number(root.dataset.threshold || "50");
     if (!url) return; // no collector configured; keep the fallback

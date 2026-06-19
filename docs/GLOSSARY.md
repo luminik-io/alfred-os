@@ -43,9 +43,10 @@ in depth.
 - **Bat-signal**: The Slack alert raised when an agent prints `[BLOCKED]`
   or when a fleet-wide spend or rate-limit cap trips.
   See also: [Output samples](OUTPUT_SAMPLES.md).
-- **Batman**: Cross-repo coordinator that turns `agent:large-feature` plus
-  `agent:bundle:<slug>` issues into a rollout plan post; OSS Batman is
-  plan-only. See also: [Multi-repo worked example](MULTI_REPO_WORKED_EXAMPLE.md).
+- **Batman**: Cross-repo coordinator that turns `agent:large-feature` issues
+  into rollout plans and, on the parent-issue path, approved child
+  `agent:implement` issues for the normal fleet queue. See also:
+  [Multi-repo worked example](MULTI_REPO_WORKED_EXAMPLE.md).
 - **`claude -p`**: Claude Code's non-interactive subprocess mode, the surface
   Alfred uses to invoke Claude with a prompt and capture an AgentResult.
   See also: [Claude Code guide](CLAUDE_CODE.md).

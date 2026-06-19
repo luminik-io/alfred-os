@@ -2,7 +2,7 @@
 /**
  * SpecsDrivenFlow.astro
  *
- * Inline SVG illustration: a spec file in /specs/ becomes scoped
+ * Inline SVG illustration: a rough request or plan becomes scoped
  * agent:implement issues, then PRs. Mirrors the Operations Room aesthetic
  * (themed cards, log lines, soft accent pulse). Used on the landing page
  * specs-driven section and on /docs/guides/specs-driven-development/.
@@ -12,10 +12,10 @@
  */
 ---
 
-<figure class="m-spec m-figure m-reveal" aria-label="One spec turns into many scoped issues and PRs">
+<figure class="m-spec m-figure m-reveal" aria-label="One request becomes scoped issues and PRs">
   <div class="m-spec__head">
-    <span class="m-mono m-spec__tag">SPECS-DRIVEN FLOW</span>
-    <span class="m-mono m-spec__meta">/specs &nbsp;→&nbsp; drake &nbsp;→&nbsp; agent:implement &nbsp;→&nbsp; PR</span>
+    <span class="m-mono m-spec__tag">PLAN-TO-PR FLOW</span>
+    <span class="m-mono m-spec__meta">request &nbsp;→&nbsp; drake &nbsp;→&nbsp; agent:implement &nbsp;→&nbsp; PR</span>
   </div>
 
   <svg viewBox="0 0 1180 380" role="img" aria-hidden="false" class="m-spec__svg" preserveAspectRatio="xMidYMid meet">
@@ -30,24 +30,24 @@
       </filter>
     </defs>
 
-    <!-- Spec file card -->
+    <!-- Request / plan card -->
     <g transform="translate(40 70)" filter="url(#specShadow)">
       <rect width="280" height="240" rx="8" ry="8" class="svg-card svg-card-stroke" />
-      <text x="22" y="34" font-family="'Fragment Mono', monospace" font-size="11" class="svg-warn" letter-spacing="2">/specs/billing-v2.md</text>
+      <text x="22" y="34" font-family="'Fragment Mono', monospace" font-size="11" class="svg-warn" letter-spacing="2">slack thread or plan.md</text>
       <text x="22" y="64" font-family="'Quicksand Variable', sans-serif" font-size="16" font-weight="700" class="svg-text-bright">## What</text>
       <text x="22" y="84" font-family="'Fragment Mono', monospace" font-size="12" class="svg-text">Org-scoped billing v2.</text>
       <text x="22" y="120" font-family="'Quicksand Variable', sans-serif" font-size="16" font-weight="700" class="svg-text-bright">## Acceptance</text>
       <text x="22" y="140" font-family="'Fragment Mono', monospace" font-size="12" class="svg-text">- /api/v1/invoices by org</text>
       <text x="22" y="158" font-family="'Fragment Mono', monospace" font-size="12" class="svg-text">- Pricing page rewrite</text>
       <text x="22" y="176" font-family="'Fragment Mono', monospace" font-size="12" class="svg-text">- Mobile settings v2</text>
-      <text x="22" y="210" font-family="'Fragment Mono', monospace" font-size="11" class="svg-mute">human-authored</text>
+      <text x="22" y="210" font-family="'Fragment Mono', monospace" font-size="11" class="svg-mute">human starts, Alfred scopes</text>
     </g>
 
     <!-- Drake step -->
     <g transform="translate(440 145)" filter="url(#specShadow)">
       <rect width="180" height="90" rx="8" ry="8" class="svg-card svg-card-stroke" />
-      <text x="20" y="32" font-family="'Fragment Mono', monospace" font-size="11" class="svg-accent" letter-spacing="2">DRAKE READS</text>
-      <text x="20" y="58" font-family="'Quicksand Variable', sans-serif" font-size="15" font-weight="700" class="svg-text-bright">files scoped issues</text>
+      <text x="20" y="32" font-family="'Fragment Mono', monospace" font-size="11" class="svg-accent" letter-spacing="2">DRAKE SCOPES</text>
+      <text x="20" y="58" font-family="'Quicksand Variable', sans-serif" font-size="15" font-weight="700" class="svg-text-bright">files clear issues</text>
       <text x="20" y="78" font-family="'Fragment Mono', monospace" font-size="11" class="svg-mute">every 20 min</text>
     </g>
 

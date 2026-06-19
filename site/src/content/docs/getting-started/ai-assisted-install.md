@@ -107,10 +107,10 @@ cross-repo `agent:large-feature` issues ready for planning.
   --slack-webhook skip
 ```
 
-Public Batman is multi-repo and execution-aware: it scans `BATMAN_SCAN_REPOS`,
-groups `agent:bundle:<slug>` issues, posts a rollout plan to Slack for
-approval, and then runs the rollout end-to-end once approved. Set
-`BATMAN_AUTO_EXECUTE=0` to keep the plan-only behaviour (every plan waits
-for the operator); the default `approval-gate` reads Slack reactions; set
-`1` to skip the gate entirely (not recommended for fresh operators). See
+Public Batman is multi-repo aware. The parent-issue path posts a rollout plan to
+Slack, waits for approval when required, files scoped child issues, and reports
+status. The older scan path still drafts plans only. Set `BATMAN_AUTO_EXECUTE=0`
+to make every parent-issue plan wait for the operator; the default
+`approval-gate` reads Slack reactions; set `1` to skip the gate entirely (not
+recommended for fresh operators). See
 [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md).

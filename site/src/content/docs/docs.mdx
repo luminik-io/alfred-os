@@ -1,12 +1,12 @@
 ---
 title: Alfred
-description: Alfred is a local fleet of coding agents that turns specs and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.
+description: Alfred is a local fleet of autonomous coding agents that turns Slack requests, rough plans, specs, and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.
 template: splash
 head:
   - tag: title
-    content: "Alfred: coding agents that ship from your specs"
+    content: "Alfred: autonomous coding agents for lean engineering teams"
 hero:
-  tagline: "Coding agents that ship from your specs while you are away. Alfred plans across repos or monorepo packages, implements with your Claude Code and Codex subscriptions, opens pull requests, routes review, and reports to Slack."
+  tagline: "Autonomous coding agents that keep development moving while you are away. Alfred starts from Slack requests, rough plans, specs, or GitHub issues, then scopes work, opens pull requests, routes review, and reports to Slack."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -27,7 +27,7 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 Interactive coding agents finish a prompt while you sit at the keyboard. Alfred is built for engineering work that should keep moving while you are away: planned features, follow-up tests, reviewer comments, dependency bumps, docs gaps, multi-repo rollouts.
 
-That work needs durable coordination: specs that live outside the chat transcript, scoped GitHub issues, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
+That work needs durable coordination: Slack threads and specs that can become scoped GitHub issues, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a host you already own and uses CLI auth you already pay for.
 
 The starter fleet is intentionally narrow: Drake plans work, Lucius implements scoped issues, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman, Bane, Nightwing, and other specialists.
 
@@ -57,14 +57,14 @@ flowchart TB
   <Card title="Autonomous scheduled runs" icon="rocket">
     Agents keep working on schedule, survive host restarts, and do not depend on one fragile long-running process.
   </Card>
-  <Card title="Spec-to-PR workflow" icon="document">
-    Specs become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report, and merge when your policy allows it.
+  <Card title="Plan-to-PR workflow" icon="document">
+    Slack requests, specs, and issues become bounded jobs: plan, claim, open a worktree, implement, PR, review, test, report, and merge when your policy allows it.
   </Card>
   <Card title="Role-level engine routing" icon="setting">
     Route builders and reviewers separately across Claude Code, Codex, or hybrid fallback.
   </Card>
-  <Card title="Batman: multi-repo + monorepo planning" icon="puzzle">
-    The agent that holds a whole feature in its head. Reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel. Single-repo coding agents stop at the boundary; Batman is the boundary.
+  <Card title="Batman: architect for multi-repo work" icon="puzzle">
+    Batman holds a whole feature in one plan. It reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
     Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.
@@ -93,13 +93,13 @@ flowchart TB
 
 <LinkCard
   title="Pick your workspace shape"
-  description="One repo, multi-repo product workspace, specs-led planning, or Batman bundle planning."
+  description="One repo, multi-repo product workspace, plan-led work, or Batman bundle planning."
   href="/getting-started/workspace-patterns/"
 />
 
 <LinkCard
-  title="Use specs-driven development"
-  description="Turn specs into scoped issue queues, Batman plans, clean worktrees, reviewable PRs, and visible Slack summaries."
+  title="Let Alfred structure the plan"
+  description="Turn rough requests or specs into scoped issue queues, Batman plans, clean worktrees, reviewable PRs, and visible Slack summaries."
   href="/guides/specs-driven-development/"
 />
 
@@ -157,7 +157,7 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.5.1. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a signed native Mac/Linux client with a public download page.
+Latest release: v0.5.1. Alfred ships a local engineering-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, plan-led workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a signed native Mac/Linux client with a public download page.
 
 The native client is packaged as a signed and notarized macOS app plus Linux
 AppImage and Debian artifacts. The design boundary is stable: one operator, one

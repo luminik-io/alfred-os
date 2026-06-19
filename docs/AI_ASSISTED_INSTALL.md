@@ -265,13 +265,16 @@ starter agents to create labels and potentially operate on specs issues too.
 ## Batman Planning
 
 Batman is the OSS multi-repo coordinator. It is included in Alfred and supports
-multi-repo planning today, but the public version is plan-only:
+two public paths:
 
-- scans `BATMAN_SCAN_REPOS`
-- picks open `agent:large-feature` issues
-- groups siblings with the same `agent:bundle:<slug>` label
-- posts a rollout plan with affected repos and order
-- does not yet execute cross-repo PR chains automatically
+- `BATMAN_PARENT_REPO` parent issues can go through plan, approval, child-issue
+  filing, and status reporting.
+- `BATMAN_SCAN_REPOS` legacy scans pick open `agent:large-feature` issues,
+  group siblings with the same `agent:bundle:<slug>` label, post a rollout plan,
+  and stop before child issue filing.
+
+Batman does not implement code itself. It plans and files scoped work for the
+normal fleet queue.
 
 To enable Batman during setup:
 

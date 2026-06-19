@@ -74,7 +74,7 @@ const orgSchema = {
       name: "Alfred",
       url: SITE_URL,
       description:
-        "Alfred runs coding agents that turn specs and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.",
+        "Alfred runs autonomous coding agents that turn Slack requests, plans, specs, and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.",
     },
     {
       "@type": "SoftwareApplication",
@@ -83,7 +83,7 @@ const orgSchema = {
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
       description:
-        "Open-source local agent runtime for Claude Code and Codex. Drake turns specs into tasks, Lucius writes code, Ras al Ghul reviews pull requests, and Batman coordinates work across repos.",
+        "Open-source local agent runtime for Claude Code and Codex. Drake plans work, Lucius writes code, Ras al Ghul reviews pull requests, and Batman coordinates work across repos.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
       license: "https://github.com/luminik-io/alfred-os/blob/main/LICENSE",
       isAccessibleForFree: true,
@@ -97,7 +97,7 @@ const navGroups = [
   {
     label: "Product",
     items: [
-      { label: "How it works", href: "/how-it-works/", description: "From spec to merged PR." },
+      { label: "How it works", href: "/how-it-works/", description: "From request to merged PR." },
       { label: "Multi-repo teams", href: "/multi-repo/", description: "Coordinate work across separate repos." },
       { label: "Monorepos", href: "/monorepo/", description: "Keep one large repo moving safely." },
       { label: "Solo founders", href: "/for-solo-founders/", description: "Run a small engineering fleet yourself." },
@@ -161,12 +161,12 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:alt" content="Alfred. Coding agents that ship from specs." />
+    <meta property="og:image:alt" content="Alfred. Coding agents that keep development moving while you are away." />
 
     {/* Twitter / X */}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={og} />
-    <meta name="twitter:image:alt" content="Alfred. Coding agents that ship from specs." />
+    <meta name="twitter:image:alt" content="Alfred. Coding agents that keep development moving while you are away." />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
 
@@ -495,7 +495,6 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
             }
           };
           if (mq.addEventListener) mq.addEventListener("change", listener);
-          else if (mq.addListener) mq.addListener(listener);
         }
 
         // 4. Mobile nav menu.

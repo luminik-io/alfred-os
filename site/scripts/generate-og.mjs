@@ -216,7 +216,7 @@ function html({ fontCss, logoData }) {
       </div>
       <div class="hero">
         <div class="eyebrow">specs in, PRs out</div>
-        <h1>Coding agents that ship<br />from your specs.</h1>
+        <h1>Autonomous coding agents<br />for lean engineering teams.</h1>
         <p class="sub">Alfred plans across your repos or monorepo packages, implements with the Claude Code and Codex subscriptions you already pay for, and reports to Slack while you focus on something else.</p>
         <div class="stripe">
           <span><span class="dot">●</span> self-hosted</span>

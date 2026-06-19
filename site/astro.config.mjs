@@ -95,7 +95,7 @@ const STRUCTURED_DATA = JSON.stringify({
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
       description:
-        "A local runtime and coordination layer that turns GitHub issues, specs, and PR " +
+        "A local runtime and coordination layer that turns Slack requests, GitHub issues, specs, and PR " +
         "feedback into autonomous Claude Code or Codex runs with isolated git " +
         "worktrees, label state, reviews, tests, and Slack reports.",
       downloadUrl: "https://github.com/luminik-io/alfred-os",
@@ -372,7 +372,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Alfred. Coding agents that ship from specs.",
+            content: "Alfred. Coding agents that keep development moving while you are away.",
           },
         },
         {
@@ -386,7 +386,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "Alfred. Coding agents that ship from specs.",
+            content: "Alfred. Coding agents that keep development moving while you are away.",
           },
         },
         {

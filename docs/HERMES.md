@@ -210,8 +210,9 @@ The best bridge is additive and boring:
    Hermes dashboards or memory ingestion.
 3. A Hermes skill can create a GitHub issue with `agent:implement` or
    `agent:large-feature`, then Alfred owns the GitHub state path. For
-   `agent:large-feature`, public Batman drafts the bundle plan; automatic
-   cross-repo execution remains operator or private-fleet work.
+   `agent:large-feature`, Batman can draft the bundle plan, wait for approval,
+   and file child issues. The repo-specific agents still claim and implement
+   those child issues through the normal queue.
 4. Optional: a Hermes Kanban card can link to the GitHub issue/PR, but the
    GitHub state remains the source of truth for Alfred work.
 

@@ -34,17 +34,17 @@ type JobState = "live" | "warn" | "idle" | "info";
 
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
-    title: "Drake turns requests into tasks",
-    body: "Reads the plans you write in plain text, asks about the details you left out, then files small, well-defined tasks on GitHub that a coding agent can pick up on its own.",
+    title: "Planner: Drake shapes the work",
+    body: "Reads a Slack request, GitHub issue, or plain-text plan, asks for missing details, then files small tasks a coding agent can pick up on its own.",
     log: [
-      "[09:02] drake  read /specs/billing-v2.md",
+      "[09:02] drake  refined billing-v2 plan",
       "[09:02] drake  filed your-backend#247 agent:implement",
       "[09:02] drake  filed your-backend#248 agent:implement",
     ],
     state: "live",
   },
   {
-    title: "Lucius writes the code",
+    title: "Senior dev: Lucius opens PRs",
     body: "Picks up one of those tasks, makes its own copy of the repo to work in, runs Claude Code or Codex with the full project in context, and opens a pull request with tests.",
     log: [
       "[12:04] lucius claimed your-backend#247",
@@ -54,7 +54,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "live",
   },
   {
-    title: "Ra's al Ghul reviews the pull request",
+    title: "Reviewer: Ra's al Ghul checks PRs",
     body: "Reads the changes, runs your test suite in its own copy of the repo, leaves comments on the lines that need work, and marks the pull request ready or needs changes.",
     log: [
       "[12:18] ras-al reviewed PR#1247",
@@ -64,7 +64,27 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
     state: "warn",
   },
   {
-    title: "Batman plans work that spans repos",
+    title: "QA: Bane adds missing tests",
+    body: "Looks at recently changed files, finds the places that need coverage, and opens focused test PRs that stand on their own.",
+    log: [
+      "[15:10] bane found low coverage in billing",
+      "[15:23] bane PR #1250 opened",
+      "[15:24] bane labelled tests-only",
+    ],
+    state: "live",
+  },
+  {
+    title: "Fixer: Nightwing handles review comments",
+    body: "Finds agent-authored PRs with unresolved high-priority review comments, applies the fix in a clean worktree, and pushes the update back to the PR branch.",
+    log: [
+      "[16:01] nightwing found P1 on PR#1247",
+      "[16:08] nightwing pushed fix",
+      "[16:09] nightwing asked for re-review",
+    ],
+    state: "idle",
+  },
+  {
+    title: "Architect: Batman plans across repos",
     body: "Reads a big feature request, drafts a plan that covers every repo it touches, and posts it to Slack for you to discuss and approve. Once you say yes, it splits the work into tasks and starts each one. Teammates you trust can refine the plan in the thread; only you can approve it.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
@@ -79,7 +99,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
 const why = [
   {
     title: "Keeps shipping while you are away",
-    body: "On configured schedules, agents read the specs and GitHub issues you marked for Alfred, write the code, open pull requests, review them, and post short Slack summaries. Use an awake host for overnight work.",
+    body: "On configured schedules, agents pick up the Slack drafts, plans, and GitHub issues you marked for Alfred, write the code, open pull requests, review them, and post short Slack summaries. Use an awake host for overnight work.",
   },
   {
     title: "Runs on a machine you already own",
@@ -106,14 +126,14 @@ const why = [
 ---
 
 <MarketingLayout
-  title="Alfred | Coding agents that ship from your specs"
-  description="Alfred runs Claude Code and Codex from a Mac or Linux machine you control. It turns specs and GitHub issues into worktrees, pull requests, reviews, safe merges, and Slack updates."
+  title="Alfred | Autonomous coding agents for lean engineering teams"
+  description="Alfred runs Claude Code and Codex from a Mac or Linux machine you control. It turns Slack requests, plans, and GitHub issues into worktrees, pull requests, reviews, safe merges, and Slack updates."
   path="/"
 >
   <Hero
-    eyebrow="SPECS IN, PRS OUT"
-    headline="Coding agents that ship from your specs while you are away."
-    sub="Write the spec, approve the plan, then step away. Drake turns specs into scoped GitHub issues, Lucius opens PRs, Ra's al Ghul reviews them, Nightwing fixes reviewer comments, and Automerge lands the small safe ones. It all runs from a machine you control."
+    eyebrow="AUTONOMOUS CODING AGENTS"
+    headline="Coding agents that keep development moving while you are away."
+    sub="Start from a Slack message, GitHub issue, or rough plan. Alfred helps turn it into scoped work, assigns specialist agents, opens PRs, runs review, fixes comments, and merges small safe changes when your policy allows. It all runs from a machine you control."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install (30 min)", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
@@ -149,8 +169,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT IT DOES FOR YOU"
-        title="Agents carry the work from spec to merge."
-        lede="Each agent has one job. You can start small with planning, implementation, and review, then add test coverage, reviewer-comment fixes, and safe automerge when your process is ready."
+        title="Specialist agents carry work from request to reviewed PR."
+        lede="Each agent has one plain job. You can start with planning, implementation, and review, then add test coverage, reviewer-comment fixes, and safe automerge when your process is ready."
       />
       <div class="job-grid">
         {jobs.map((j, i) => (
@@ -167,7 +187,7 @@ const why = [
       <SectionHeader
         eyebrow="WHY ALFRED IS DIFFERENT"
         title="It runs the engineering loop without babysitting."
-        lede="Alfred checks the specs and GitHub issues you marked for it, works in isolated repo copies, opens pull requests, routes review, and comes back to Slack only when it needs a decision."
+        lede="Alfred checks the Slack drafts, plans, and GitHub issues you marked for it, works in isolated repo copies, opens pull requests, routes review, and comes back to Slack when it needs a decision."
       />
       <div class="why-grid">
         {why.map((w, i) => (
@@ -245,13 +265,13 @@ const why = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="WRITE THE PLAN ONCE"
-        title="Specs become issue queues, PRs, and reviews."
-        lede="Write what you want once, in plain text. Drake reads it, asks for missing details, and files small tasks in the right repos. Lucius picks them up while you are away."
+        eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
+        title="Alfred helps turn plans into issue queues, PRs, and reviews."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Drake asks for missing details, turns the work into scoped tasks in the right repos, and hands those tasks to Lucius while you are away."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
-        <a class="m-link" href="/guides/specs-driven-development/">How writing the plan works</a>
+        <a class="m-link" href="/guides/specs-driven-development/">How Alfred helps structure the plan</a>
       </p>
     </div>
   </section>
@@ -259,9 +279,9 @@ const why = [
   <section class="m-section m-section--soft" id="batman">
     <div class="m-container">
       <SectionHeader
-        eyebrow="THE BATMAN AGENT"
+        eyebrow="THE ARCHITECT AGENT"
         title="One big feature, planned across every repo it touches."
-        lede="Single-repo agents lose the edges of a cross-repo feature. Batman keeps the backend service, web page, mobile screen, and background job in one plan. It posts the plan to Slack for approval, then files one task per repo so the work can move in parallel."
+        lede="Single-repo agents lose the edges of a cross-repo feature. Batman is the architect role: it keeps the backend service, web page, mobile screen, and background job in one plan. It posts the plan to Slack for approval, then files one task per repo so the work can move in parallel."
       />
       <BatmanFanOut />
       <div class="batman-cta">
@@ -288,9 +308,9 @@ const why = [
   <section class="m-section m-section--soft" id="real-production">
     <div class="m-container">
       <SectionHeader
-        eyebrow="REAL OUTPUT"
-        title="What lands in Slack after each run."
-        lede="The two Slack posts below are real, captured from one builder's own setup: a Batman plan waiting for approval, and a summary of a day's work. Your own numbers will depend on how many agents you run, how big your repos are, and how much you let the agents do on their own."
+        eyebrow="SLACK-NATIVE PLANNING"
+        title="Talk to Alfred where your team already talks."
+        lede="Slack is the planning and control surface. Trusted users can start requests, refine plans in a thread, approve big work, ask for status, pause agents, and keep context attached to the work. Slack never bypasses the approval gates."
       />
 
       <div class="proof-grid">

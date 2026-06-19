@@ -37,14 +37,14 @@ interface Agent {
 
 // OSS fleet codenames (all public, documented in /concepts/codename-pattern/).
 const roster: Agent[] = [
-  { codename: "Batman",   role: "Plans large features",       state: "warn", cadence: "on bundle", accent: "#5789FF" },
-  { codename: "Drake",    role: "Turns requests into tasks",  state: "live", cadence: "every 20m", accent: "#00E5C7" },
-  { codename: "Lucius",   role: "Writes the code",            state: "live", cadence: "every 20m", accent: "#7CE2B0" },
-  { codename: "Bane",     role: "Writes the tests",           state: "live", cadence: "every 30m", accent: "#F4B43E" },
-  { codename: "Ra's al Ghul", role: "Reviews pull requests",  state: "live", cadence: "on PR open", accent: "#C792EA" },
-  { codename: "Nightwing", role: "Fixes review comments",     state: "idle", cadence: "on review", accent: "#8FA6C9" },
-  { codename: "Robin",    role: "Sorts incoming bugs",        state: "live", cadence: "on report", accent: "#FF9E64" },
-  { codename: "Gordon",   role: "Flags stale docs",           state: "idle", cadence: "daily 07:00", accent: "#56C7E6" },
+  { codename: "Batman",   role: "Architect: plans cross-repo work", state: "warn", cadence: "on bundle", accent: "#5789FF" },
+  { codename: "Drake",    role: "Planner: turns requests into tasks", state: "live", cadence: "every 20m", accent: "#00E5C7" },
+  { codename: "Lucius",   role: "Senior dev: writes implementation PRs", state: "live", cadence: "every 20m", accent: "#7CE2B0" },
+  { codename: "Bane",     role: "QA: adds missing tests", state: "live", cadence: "every 30m", accent: "#F4B43E" },
+  { codename: "Ra's al Ghul", role: "Reviewer: checks pull requests", state: "live", cadence: "on PR open", accent: "#C792EA" },
+  { codename: "Nightwing", role: "Fixer: handles review and CI feedback", state: "idle", cadence: "on review", accent: "#8FA6C9" },
+  { codename: "Robin",    role: "Triage: sorts incoming bugs", state: "live", cadence: "on report", accent: "#FF9E64" },
+  { codename: "Gordon",   role: "Ops: flags stale docs and health drift", state: "idle", cadence: "daily 07:00", accent: "#56C7E6" },
 ];
 
 const monogram = (name: string) => name.replace(/[^A-Za-z]/g, "").charAt(0).toUpperCase();

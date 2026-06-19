@@ -1252,6 +1252,90 @@ def test_compose_draft_iterates_on_same_draft_id(tmp_path: Path) -> None:
     assert matching[0]["revision_count"] == 2
 
 
+def test_file_plan_issue_files_ready_draft_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import server.setup as setup_mod
+    import slack_issue_bridge
+
+    state = tmp_path / "state"
+    state.mkdir()
+    draft_id = "compose-20260619-120000-file-gh-issue"
+    draft_path = state / "planning-drafts" / f"{draft_id}.json"
+    draft_path.parent.mkdir(parents=True)
+    draft_path.write_text(
+        json.dumps(
+            {
+                "source": "compose",
+                "draft_id": draft_id,
+                "draft": {
+                    "title": "File ready plans from native",
+                    "repos": ["acme-org/api"],
+                },
+                "issue_body": "## Problem\n\nReady native plans need queue pickup.",
+                "readiness": {"ok": True, "score": 95},
+                "questions": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_issue_creator(*, repo: str, title: str, body: str, labels: list[str]) -> str:
+        calls.append({"repo": repo, "title": title, "body": body, "labels": labels})
+        return "https://github.com/acme-org/api/issues/42"
+
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "")
+    monkeypatch.setenv("ALFRED_BRIDGE_LABEL", "agent:implement")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["acme-org/api"])
+    monkeypatch.setattr(slack_issue_bridge, "default_issue_creator", fake_issue_creator)
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    first = client.post(
+        f"/api/plans/{draft_id}/file-issue",
+        headers=_auth_headers(state),
+    )
+
+    assert first.status_code == 200
+    payload = first.json()
+    assert payload["status"] == "filed"
+    assert payload["issue_url"] == "https://github.com/acme-org/api/issues/42"
+    assert payload["issue_urls"] == ["https://github.com/acme-org/api/issues/42"]
+    assert payload["issues_by_repo"] == {
+        "acme-org/api": "https://github.com/acme-org/api/issues/42"
+    }
+    assert payload["repo"] == "acme-org/api"
+    assert payload["repos"] == ["acme-org/api"]
+    assert payload["label"] == "agent:implement"
+    assert payload["labels"] == ["agent:implement"]
+    assert len(calls) == 1
+    assert calls[0]["repo"] == "acme-org/api"
+    assert calls[0]["title"] == "File ready plans from native"
+    assert calls[0]["labels"] == ["agent:implement"]
+    assert "Ready native plans need queue pickup." in str(calls[0]["body"])
+
+    saved = json.loads(draft_path.read_text(encoding="utf-8"))
+    assert saved["bridge"]["converted"] is True
+    assert saved["bridge"]["source"] == "native-client"
+    assert saved["bridge"]["issue_url"] == "https://github.com/acme-org/api/issues/42"
+    assert saved["bridge"]["issues_by_repo"] == {
+        "acme-org/api": "https://github.com/acme-org/api/issues/42"
+    }
+
+    second = client.post(
+        f"/api/plans/{draft_id}/file-issue",
+        headers=_auth_headers(state),
+    )
+
+    assert second.status_code == 200
+    assert second.json()["status"] == "already_filed"
+    assert second.json()["issue_url"] == "https://github.com/acme-org/api/issues/42"
+    assert len(calls) == 1
+
+
 def test_compose_draft_requires_intent(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()

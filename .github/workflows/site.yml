@@ -47,6 +47,8 @@ jobs:
         working-directory: site
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        # Deploy-time refresh only. The committed JSON is a seed for local builds
+        # and PR previews; the main-branch site build reads this fresh file.
         run: npm run proof:update
 
       - name: Build site

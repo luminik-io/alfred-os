@@ -10,13 +10,13 @@ import proof from "../data/impact-proof.json";
 
 <MarketingLayout
   title="Impact | Alfred"
-  description="Public proof of Alfred OS work: merged pull requests, issue flow, changed files, and the anonymous opt-in community counter."
+  description="Public proof from Alfred runtime signals: merged pull requests, issue labels, changed files, and the anonymous opt-in community counter."
   path="/impact/"
 >
   <Hero
-    eyebrow="REAL SHIPPING DATA"
-    headline="Public proof you can click."
-    sub="Alfred's public site shows the work shipped in the open: merged PRs, issue flow, changed files, and real GitHub links. Anonymous community telemetry is separate and only counts aggregate usage from installs that opt in."
+    eyebrow="OPEN GITHUB DATA"
+    headline="Public proof with the filters shown."
+    sub="The board counts only PRs with Alfred runtime evidence: a known branch prefix or shipped label. Dependabot and operator-created PRs stay out. Anonymous community telemetry is separate and only shows aggregate usage from installs that opt in."
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
     secondaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
@@ -28,12 +28,12 @@ import proof from "../data/impact-proof.json";
       </div>
       <div class="hero-proof">
         <span>{proof.summary.prs_merged.toLocaleString("en-US")}</span>
-        <p>merged public PRs</p>
+          <p>merged runtime PRs</p>
       </div>
       <div class="hero-proof__grid">
         <div>
           <span>{proof.summary.issues_opened.toLocaleString("en-US")}</span>
-          <p>issues opened</p>
+          <p>agent-labeled issues</p>
         </div>
         <div>
           <span>{proof.summary.lines_added.toLocaleString("en-US")}</span>
