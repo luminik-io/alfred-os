@@ -13,7 +13,7 @@ Solid arrows are state transitions (someone modifies an issue or PR). Dashed arr
 
 ```mermaid
 flowchart LR
-    subgraph operator[Operator]
+    subgraph human[You]
         slack["fleet Slack channel"]
         ops_cli["alfred CLI"]
     end
@@ -55,11 +55,11 @@ flowchart LR
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-The loop closes on itself: Batman owns multi-repo bundles, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. The operator's first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
+The loop closes on itself: Batman owns multi-repo bundles, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
 
 ## Batman: the architect agent
 
-Batman is the architect agent that owns a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, posts it to Slack for operator approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
+Batman is the architect agent that owns a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, posts it to Slack for approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
 
@@ -123,7 +123,7 @@ The primitives in `lib/agent_runner.py` cover the common patterns: lock, preflig
 
 ## Roadmap categories
 
-The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-operator.
+The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred-os/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-person.
 
 ## Memory
 
@@ -146,8 +146,8 @@ repo-relative paths changed by a firing or PR. `alfred brain files your-org/api`
 answers the practical question "what did the fleet touch here recently?"
 without requiring a hosted dashboard or external index.
 
-The shipping default is the in-tree `fleet_brain` SQLite provider. Operators
-who maintain a separate personal knowledge base can chain it as a fallback:
+The shipping default is the in-tree `fleet_brain` SQLite provider. If you
+maintain a separate personal knowledge base, you can chain it as a fallback:
 
 ```sh
 ALFRED_MEMORY_PROVIDERS=fleet,gbrain
@@ -156,7 +156,7 @@ ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 
 The chain consults `fleet` first and falls through to `gbrain` only when the
 fleet-brain has nothing for that `(codename, repo)`. The `gbrain` provider is
-read-only and not bundled; it is the operator's optional personal knowledge
+read-only and not bundled; it is your optional personal knowledge
 base CLI, and the shim degrades to empty when the binary is missing.
 
 If you already run Redis Agent Memory Server locally, add it as an optional

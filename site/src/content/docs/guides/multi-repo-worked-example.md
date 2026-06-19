@@ -1,6 +1,6 @@
 ---
 title: "Worked example: Batman across three repos"
-description: One feature shipped across backend, frontend, and mobile using the default Alfred fleet plus Batman, from operator issue to bundle rollup.
+description: One feature shipped across backend, frontend, and mobile using the default Alfred fleet plus Batman, from parent issue to bundle rollup.
 ---
 
 This walkthrough shows one feature shipped across three repos using the
@@ -26,9 +26,9 @@ ALFRED_RASALGHUL_REPOS=your-backend,your-frontend,your-mobile
 BATMAN_SCAN_REPOS=your-backend,your-frontend,your-mobile
 ```
 
-## Step 1: operator files one `agent:large-feature` issue
+## Step 1: File one `agent:large-feature` issue
 
-The operator opens the issue in the repo that owns the first decision. For a
+Open the issue in the repo that owns the first decision. For a
 schema-shaped feature like this, that is the backend. The issue carries two
 labels: `agent:large-feature` and `agent:bundle:add-org-slug`.
 
@@ -113,12 +113,12 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-To proceed, the operator approves the plan in the configured approval surface.
+To proceed, approve the plan in the configured approval surface.
 After approval, Batman files one scoped child issue per repo and labels each
 issue for the normal fleet pickup path.
 ```
 
-Batman does not bypass the operator. It waits for the approval gate, then files
+Batman does not bypass approval. It waits for the approval gate, then files
 child issues rather than opening worktrees directly. Lucius claims those issues
 through the same label, lock, spend, review, and merge gates as any other work.
 
@@ -294,7 +294,7 @@ Ship-ready: yes
 ## Step 6: Nightwing applies the nits
 
 Nightwing fires every 45 minutes and only lands P0/P1 reviewer comments.
-P2 nits are out of scope by default. For this example, assume the operator
+P2 nits are out of scope by default. For this example, assume you
 also asked Nightwing to address P2 nits on this PR by labelling it
 `nightwing:p2`. On the next firing:
 
@@ -332,7 +332,7 @@ After Ra's al Ghul says "Ship-ready: yes" and CI is green for 30 minutes,
 `agent:done`.
 
 A separate deploy step (Alfred does not own this) rolls staging. Once
-backend is live on staging, the operator unblocks the frontend and mobile
+backend is live on staging, you unblock the frontend and mobile
 child issues by removing their `agent:blocked` label or otherwise marking
 them eligible.
 
@@ -357,9 +357,9 @@ that every child carries.
 
 ## Step 9: final bundle rollup
 
-When the last child PR in the bundle merges, the operator (or a custom
+When the last child PR in the bundle merges, you (or a custom
 extension to Batman) posts a closing rollup. The OSS package does not
-auto-close the parent `agent:large-feature` issue; the operator does it.
+auto-close the parent `agent:large-feature` issue; you do it.
 
 Example closing rollup post:
 
@@ -379,10 +379,10 @@ Total wall-clock: 6h 26m.
 
 ## What this example demonstrates
 
-- The operator files one `agent:large-feature` issue, not three.
+- You file one `agent:large-feature` issue, not three.
 - Batman posts a plan and waits for approval before child issues are filed.
 - The child `agent:implement` issues each live in the repo that owns the change.
-  Batman can file them after approval, or an operator can file the same children
+  Batman can file them after approval, or you can file the same children
   by hand in a stricter process.
 - Lucius, Ra's al Ghul, Nightwing, and Bane act on whatever is in their
   inbox without knowing they are part of a bundle. The bundle label is for

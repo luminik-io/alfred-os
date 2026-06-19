@@ -40,7 +40,7 @@ alfred codex probe                   # run one tiny non-interactive request
 alfred auth status                   # auth-surface check across both engines
 ```
 
-Set the env-var form in `~/.alfredrc` when you want the override to follow the operator's shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
+Set the env-var form in `~/.alfredrc` when you want the override to follow your shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
 
 ## Hybrid fallback behavior
 
@@ -93,7 +93,7 @@ The current engine surface is two: Claude Code and Codex. The runtime contract i
 On the roadmap:
 
 - **Gemini CLI**: when Google ships a stable non-interactive `gemini -p` equivalent with a structured result. Useful as a third independent reviewer or as a hedge against Anthropic and OpenAI both being down at once.
-- **Ollama and other local engines**: for operators who want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
+- **Ollama and other local engines**: for teams that want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
 - **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
 
 Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and a subtype-mapping table so hybrid fallback knows which failures to swallow.

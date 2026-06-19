@@ -17,7 +17,7 @@ memory review, safe pause/resume, dry-run launch, and recovery.
 
 The client must not become a hosted gateway, a shadow database, or a softer
 copy of Slack. It reads and writes through the same local APIs, state files,
-and CLI commands the operator can inspect by hand. Users should be able to run
+and CLI commands you can inspect by hand. Users should be able to run
 Alfred with or without the client.
 
 ## Product Principles
@@ -33,7 +33,7 @@ Alfred with or without the client.
 - Explain before acting: write actions show the target, expected effect, and
   rollback path before running. The underlying command is audit detail, not the
   primary interface.
-- Accessible to technical and non-technical operators: use product language
+- Accessible to technical and non-technical users: use product language
   first, shell commands second. The app can reveal details without making them
   the default.
 
@@ -78,8 +78,8 @@ by the toggle beside it.
 The app can help draft or refine a spec, but the final collaboration loop stays
 in Slack. Any "send to Alfred" action should post to or link back to the
 approval thread. A locally drafted single-repo issue lands behind an
-operator-approval gate (`agent:plan-pending-approval`) and is held from
-autonomous pickup until the operator approves it, so nothing single-repo ships
+approval gate (`agent:plan-pending-approval`) and is held from
+autonomous pickup until you approve it, so nothing single-repo ships
 without a go-ahead.
 
 ### Agents
@@ -126,7 +126,7 @@ Logs should be readable without horizontal scrolling on narrow screens.
 
 ### Memory
 
-Memory is reviewable and appears where the operator is already working:
+Memory is reviewable and appears where you are already working:
 
 - Home surfaces memory candidates ready for review
 - Compose recalls promoted planning hints beside drafts

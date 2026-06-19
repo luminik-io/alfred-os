@@ -25,7 +25,7 @@ flowchart LR
     runner <--> state
 ```
 
-State that lives outside the operator's filesystem becomes state the operator has to operate. Alfred keeps all of it in plain JSON files under `$ALFRED_HOME/state/`. No Redis, no SQS, no Postgres, and no required external agent gateway.
+State outside your filesystem becomes another service to run. Alfred keeps its state in plain JSON files under `$ALFRED_HOME/state/`. No Redis, no SQS, no Postgres, and no required external agent gateway.
 
 ## One firing, end to end
 
@@ -67,7 +67,7 @@ Every agent firing is a fresh scheduler event, not a tick in a long-running proc
 
 - ✅ Failure isolation. A crashing firing doesn't poison the next one.
 - ✅ OS-level reliability. Reboots, system updates, sleep cycles. `launchd` or `systemd --user` handles all of them.
-- ✅ Per-firing observability. Stdout/stderr to per-agent files; the operator's grep-and-tail muscle memory works.
+- ✅ Per-firing observability. Stdout/stderr to per-agent files; normal grep-and-tail muscle memory works.
 - ❌ No in-process state. Anything an agent needs to remember between firings goes through `$ALFRED_HOME/state/<agent>/*.json`.
 - ❌ Cold start cost. ~1-2s of Python import + agent_runner setup per firing. Acceptable at the 20-min cadence.
 
@@ -92,11 +92,11 @@ Every `claude -p` invocation gets its own worktree:
 ~/.alfred/worktrees/eng-<codename>-<repo>-<issue>-<ts>/
 ```
 
-The worktree is created via `git worktree add` from a fresh `origin/main` (or whatever the agent designates), and `git worktree remove --force` after. Concurrent firings on different issues do not see each other's edits. A crashed firing can't corrupt the operator's main checkout because they're separate directories pointing at different branches.
+The worktree is created via `git worktree add` from a fresh `origin/main` (or whatever the agent designates), and `git worktree remove --force` after. Concurrent firings on different issues do not see each other's edits. A crashed firing can't corrupt your main checkout because they're separate directories pointing at different branches.
 
 ```mermaid
 flowchart TB
-    main[("canonical checkout<br/>~/code/backend<br/><i>operator edits here</i>")]
+    main[("canonical checkout<br/>~/code/backend<br/><i>you edit here</i>")]
 
     subgraph wt["$ALFRED_HOME/worktrees/"]
         w1["eng-lucius-backend-303-...<br/>branch: agent/lucius/303"]
@@ -114,7 +114,7 @@ flowchart TB
     style x1 fill:none,stroke:none
 ```
 
-Three Lucius firings against three issues create three worktrees and three branches. None can `git push` to another firing's branch, and none can edit a file the operator is actively editing in the canonical checkout. The worktree is removed at the end of the firing, success or failure.
+Three Lucius firings against three issues create three worktrees and three branches. None can `git push` to another firing's branch, and none can edit a file you are actively editing in the canonical checkout. The worktree is removed at the end of the firing, success or failure.
 
 ### 3. Per-agent IAM
 
@@ -126,7 +126,7 @@ gordon-cron         read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sen
 alfred-host         read-only on alfred/* secrets (catch-all for fleet-wide config)
 ```
 
-The operator's SSO (which has admin everywhere) is never used by scheduled agents. AWS-aware runners read role-specific variables such as `ALFRED_GORDON_AWS_PROFILE`, strip inherited `AWS_*` credentials, and set `AWS_PROFILE` only around the AWS subprocess they own.
+Your admin SSO is never used by scheduled agents. AWS-aware runners read role-specific variables such as `ALFRED_GORDON_AWS_PROFILE`, strip inherited `AWS_*` credentials, and set `AWS_PROFILE` only around the AWS subprocess they own.
 
 See [AWS setup](/guides/aws/) for templates.
 
@@ -175,7 +175,7 @@ See [codename pattern](/concepts/codename-pattern/) for more.
 
 ## What this rules out
 
-- Multi-tenant deployments. Alfred is single-operator by design.
+- Multi-tenant deployments. Alfred is a single-person install by design.
 - Long-running orchestration loops. The OS scheduler is the orchestrator.
 - Hosted LLM gateway. Alfred has local CLI engine adapters and simple per-agent engine selection; it does not run inference for you.
 - Browser automation runtimes. If your fleet needs Playwright, install it in the codename's bin script.

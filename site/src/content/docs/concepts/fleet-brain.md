@@ -18,7 +18,7 @@ Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os
 | Entity | Purpose |
 |---|---|
 | `Lesson` | A recallable fact about a codename, repo, convention, or recurring failure. |
-| `MemoryCandidate` | A proposed lesson awaiting operator review. |
+| `MemoryCandidate` | A proposed lesson awaiting review. |
 | `FailureEvent` | A normalized non-success outcome, useful for spotting repeated setup or runtime failures. |
 | `GitHubItem` | Cached issue/PR state pulled through the local GitHub CLI. |
 | `BundleItem` | Membership in an `agent:bundle:<slug>` rollout. |
@@ -68,7 +68,7 @@ export ALFRED_MEMORY_REFLECTION_MODE=candidate
 ```
 
 Then use `alfred brain candidates` to promote useful lessons and reject noisy
-ones. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only for trusted operator-only
+ones. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only for trusted local
 runs where direct lesson writes are intentional.
 
 If you already run Redis Agent Memory Server, keep it optional and explicit:
@@ -86,7 +86,7 @@ The GitHub poller keeps issue, PR, and bundle state in the same local memory
 store. The doctor command uses that cache to report poll freshness, open bundle
 shape, stale worker heartbeats, repeated failures, and high-confidence memory
 candidates that are ready for review. The governor command turns those signals
-into a read-only action list for the operator and the local dashboard.
+into a read-only action list for you and the local dashboard.
 `alfred brain harvest` previews candidate lessons from repeated failure
 patterns; `alfred brain harvest --apply` queues those lessons for review.
 
@@ -105,7 +105,7 @@ Raw chat is never promoted as long-term truth by itself.
 Slack-created planning drafts use the same automatic review queue. If the draft
 is already implementation-ready, Alfred proposes a `slack-planning` candidate
 with the local draft path and thread evidence. The candidate is visible in
-`memory`, but it is not recallable until the operator promotes it. Disable this
+`memory`, but it is not recallable until you promote it. Disable this
 with `ALFRED_SLACK_MEMORY_CANDIDATES=0`.
 
 Slack can drive the same review loop:
@@ -124,7 +124,7 @@ memory sync
 ```
 
 `remember ...` and `memory remember ...` stage candidates only. Promotion and
-rejection stay operator-only. Alfred Desktop uses the same local candidate
+rejection stay explicit. Alfred Desktop uses the same local candidate
 queue through `alfred serve`, so Slack, CLI, and client review the same rows.
 `memory harvest` previews repeated-failure lessons and `memory harvest now`
 queues them as candidates. Redis Agent Memory Server stays optional and
@@ -155,7 +155,7 @@ Available tools include:
 The brain never leaves your host unless you export or back it up yourself. The
 only prompt-boundary effect is recall: Alfred prepends selected lessons to the
 next engine invocation. Treat the brain like shell history: useful, local, and
-operator-owned.
+owned by the local host.
 
 ## Next memory work
 

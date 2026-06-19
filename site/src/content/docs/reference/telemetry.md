@@ -6,8 +6,8 @@ description: Opt-in usage counts and the public impact page.
 Alfred runtime telemetry is off by default. A default install does not phone
 home and does not create an install id.
 
-When an operator opts in, Alfred sends a small daily usage-count payload to
-the endpoint they configure:
+When you opt in, Alfred sends a small daily usage-count payload to the endpoint
+you configure:
 
 - random install token
 - lifetime PRs opened by Alfred

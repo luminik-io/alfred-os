@@ -55,7 +55,7 @@ The port is a real mapping, not a translation shim:
 | `launchctl kickstart -k` | `systemctl --user stop` then `start` | one-shot run, killing any in-flight firing |
 | `EnvironmentVariables` block | `Environment=` lines | per-agent env without polluting the shell |
 
-Rendered systemd units use the `%h` specifier in place of the operator's literal home directory, so a unit file is host-agnostic.
+Rendered systemd units use the `%h` specifier in place of your literal home directory, so a unit file is host-agnostic.
 
 ## Install
 
@@ -100,7 +100,7 @@ Raw `systemctl --user list-timers` and `journalctl --user -u <label>` still work
 sudo loginctl enable-linger "$USER"
 ```
 
-This is the one piece `deploy.sh` does **not** do for you. It needs `sudo` and is a deliberate operator decision.
+This is the one piece `deploy.sh` does **not** do for you. It needs `sudo`, so Alfred leaves it as an explicit decision.
 
 ## WSL2 and Docker
 

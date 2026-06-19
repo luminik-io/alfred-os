@@ -38,7 +38,7 @@ flowchart TB
 
 ## core: standalone and headless
 
-The core tier is the whole product for most operators:
+The core tier is the whole product for most users:
 
 - the fleet (`lib/agent_runner/` plus the `bin/*.py` runners),
 - the Alfred CLI (`bin/alfred`),

@@ -46,8 +46,8 @@ Full implementation note and build commands: [`docs/NATIVE_CLIENT.md`](https://g
 
 ## Boundary
 
-The client should read and write through the same local surfaces an operator
-can inspect by hand:
+The client should read and write through the same local surfaces you can inspect
+by hand:
 
 - `$ALFRED_HOME`
 - `alfred serve`

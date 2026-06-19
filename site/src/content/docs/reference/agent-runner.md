@@ -20,7 +20,7 @@ Categorised by what the local-control primitive does. For deep semantics, read t
 ## Path resolution + module constants
 
 ```python
-HOME: Path                   # operator's home directory
+HOME: Path                   # user's home directory
 ALFRED_HOME: Path            # runtime root, default ~/.alfred
 WORKSPACE_ROOT: Path         # parent of per-repo checkouts, default ~/code
 WORKSPACE: Path              # WORKSPACE_ROOT / "product" (back-compat alias)
@@ -268,7 +268,7 @@ Substitutes `${ENV_VAR}` from the environment (and any `extra_vars`). Unset vars
 ## Conventions
 
 - Every primitive that does network I/O has an explicit timeout and returns a status (bool / dict / dataclass) rather than raising on operational errors. Programming bugs do raise.
-- Every primitive that writes operator-visible state (Slack, gh, files) is idempotent or near-idempotent.
+- Every primitive that writes user-visible state (Slack, gh, files) is idempotent or near-idempotent.
 - Every primitive that depends on the host shell uses `subprocess.run` (via `run()`), never `shell=True`.
 
 For implementation details, the [package source](https://github.com/luminik-io/alfred-os/tree/main/lib/agent_runner) is exhaustively commented. Each submodule's docstring documents what it owns and what it does not own.

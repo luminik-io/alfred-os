@@ -89,7 +89,7 @@ How to revert or disable the change if it breaks.
    Codex, pushes a branch, and opens a PR.
 4. **Ras al Ghul, Bane, and Nightwing close the review path.** Review, tests,
    and P0/P1 comment fixes happen as separate bounded jobs.
-5. **Slack and shipped summaries show the outcome.** The operator sees what was
+5. **Slack and shipped summaries show the outcome.** You see what was
    planned, claimed, opened, merged, or blocked.
 
 ## Workspace Patterns
@@ -143,8 +143,8 @@ Slack thread as the place to change the plan before approval. Plain-English
 feedback is enough: "remove mobile", "make this read-only", "add an empty
 state", or "split this into two PRs". Alfred acknowledges newly captured plan
 replies in-thread with the execution scope if approved now, and when the
-configured operator approves with a reaction, Alfred passes those replies along
-as operator amendments. Trusted feedback users can amend the plan without
+configured approver approves with a reaction, Alfred passes those replies along
+as approval amendments. Trusted feedback users can amend the plan without
 approval authority. Repo add/remove replies update execution scope before
 implementation starts, and `question:` replies keep the plan paused until they
 are resolved.

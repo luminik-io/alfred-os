@@ -176,7 +176,7 @@ and Batman approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
 directories and refuses to clear live holders or matching dirty worktrees
 unless `--force` is passed. `labels` creates or checks the
 canonical GitHub labels needed by the lifecycle state machine, Batman planning,
-and operator overrides. `telemetry` controls the opt-in public usage counter:
+and issue-claim overrides. `telemetry` controls the opt-in public usage counter:
 `status` shows local state, `on` writes the managed `.alfredrc` block and
 scheduler row in the source checkout, and `off` disables reporting and removes
 the scheduler row.

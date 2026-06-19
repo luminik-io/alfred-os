@@ -5,7 +5,7 @@ counts from Alfred installs that have opted in, and serves the public totals to
 the marketing site's `/impact` counter.
 
 It is the server half of an opt-in feature. The install half (the agent-side
-reporter) is **off by default** and sends nothing unless the operator sets
+reporter) is **off by default** and sends nothing unless you set
 `ALFRED_TELEMETRY_ENABLED=1`. See [`docs/TELEMETRY.md`](../../docs/TELEMETRY.md)
 for the full privacy contract.
 
@@ -174,7 +174,7 @@ unwarranted weight (and complexity) for a soft speed bump on an opt-in,
 free-tier counter whose abuse bound does not depend on the limiter. Operators who
 need a hard write gate set `INGEST_TOKEN`.
 
-## Deploy steps (operator)
+## Deploy steps
 
 You need a Cloudflare account (the free plan is enough) and
 [`wrangler`](https://developers.cloudflare.com/workers/wrangler/) installed
@@ -246,7 +246,7 @@ You need a Cloudflare account (the free plan is enough) and
    **Supported path: opt in through `alfred-init`.** Running `alfred-init` and
    answering yes to the telemetry prompt sets all three vars above for you AND
    writes the `alfred.proof-telemetry` job row into `agents.conf`, so the
-   reporter is actually scheduled to run (it posts once a day). Setting the env
+   reporter is scheduled to run (it posts once a day). Setting the env
    vars by hand without that scheduler row means the switch is on but nothing
    ever fires the reporter, so no reports are sent. Re-running `alfred-init`
    later and answering no removes the opt-in; you can also disable any time by

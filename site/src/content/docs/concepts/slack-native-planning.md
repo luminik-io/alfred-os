@@ -63,7 +63,7 @@ question: should this touch emails too?
 open questions: none
 ```
 
-Only configured operator/trusted users can create drafts. If none are
+Only the configured approver and trusted users can create drafts. If none are
 configured, the listener ignores every event. The listener writes local draft
 JSON and feedback files; it never files issues, opens PRs, merges, or approves
 execution.
@@ -117,13 +117,13 @@ reaches the command, so chat can never inject a flag. `status` and `runs` are
 read-only. `draft <id>` and `handled <id>` only touch local follow-up files and
 planning drafts; they never approve execution, file GitHub issues, start agents,
 or merge PRs. `remember ...` only stages a memory candidate; it does not enter
-future prompt context until the operator promotes it.
+future prompt context until you promote it.
 
 Ready Slack-created drafts also queue reviewable `slack-planning` candidates
 automatically, with the local draft path and thread evidence attached. This is
 the same safety boundary as `remember ...`: useful decisions become visible in
 the memory review queue, but raw chat never becomes long-term truth without an
-operator promotion. Set `ALFRED_SLACK_MEMORY_CANDIDATES=0` to turn this off.
+manual promotion. Set `ALFRED_SLACK_MEMORY_CANDIDATES=0` to turn this off.
 
 ## Watch progress in the thread
 
@@ -153,4 +153,4 @@ health, plans, runs, memory review, setup checks, and safe repairs. They should
 not become a second chat app. Every plan should link back to the Slack thread
 where collaboration happened.
 
-The listener and bridge are the optional `slack` tier of the [layered install](/concepts/layered-install/). The core fleet runs without them; a fresh install keeps the issue bridge off until the operator arms it.
+The listener and bridge are the optional `slack` tier of the [layered install](/concepts/layered-install/). The core fleet runs without them; a fresh install keeps the issue bridge off until you arm it.

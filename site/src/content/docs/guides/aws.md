@@ -11,7 +11,7 @@ Full guide at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob
 
 ## Why per-agent IAM
 
-The operator's SSO has admin everywhere. If a scheduled agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps blast radius:
+Your admin SSO may have broad AWS access. If a scheduled agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps blast radius:
 
 - `<your-codename>-cron`: read-only on the agent's specific secrets (test creds, webhooks, etc.).
 - `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token.
@@ -74,5 +74,5 @@ Every 90 days minimum. Mint new key → update `~/.aws/credentials` → verify w
 ## Troubleshooting
 
 - `AccessDeniedException` on a specific action: policy doesn't grant it. Check the error for the exact ARN + action.
-- Operator's SSO env vars override the agent's profile: run under launchd (no operator env inherited) or strip env at the top of the runner.
+- Admin SSO env vars override the agent's profile: run under launchd (no shell env inherited) or strip env at the top of the runner.
 - `AccessDeniedException` on a secret you can clearly read: resource pattern needs `*` suffix to match the 6-char secret ID suffix (`alfred/slack-webhook-NmY0Gv`).

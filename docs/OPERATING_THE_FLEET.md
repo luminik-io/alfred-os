@@ -80,7 +80,7 @@ Every firing prints exactly one sentinel string on its way out. The scheduler lo
 | `[<AGENT>-NO-COMMIT]` | The engine reported success but no commit landed. | Inspect the salvage draft PR (if one was opened) or check the firing log to learn why. |
 | `[SILENT]` | No matching issue. | Nothing. The non-event is the signal. |
 
-Anything ending in `-BLOCKED`, `-FAILED`, or `-NO-COMMIT` is the operator's concern. Everything else is the fleet doing its job.
+Anything ending in `-BLOCKED`, `-FAILED`, or `-NO-COMMIT` needs your attention. Everything else is the fleet doing its job.
 
 ## When to run `alfred run <codename> --force`
 
@@ -128,7 +128,7 @@ cat $ALFRED_HOME/state/paused-repos.json
 alfred status
 ```
 
-If every repo is paused, every consumer's `pick_*` helper returns nothing and every firing exits as `[SILENT]`. Operator may have run `label-state repo pause <repo>` and forgotten to resume.
+If every repo is paused, every consumer's `pick_*` helper returns nothing and every firing exits as `[SILENT]`. You may have run `label-state repo pause <repo>` and forgotten to resume.
 
 ### 4. Agent self-paused
 

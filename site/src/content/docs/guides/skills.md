@@ -67,14 +67,14 @@ Skills run with the same permissions as `claude`. They can read/write files in t
 3. Run a Snyk / CodeQL scan on unfamiliar sources.
 4. Pin to a specific commit when installing from a third-party tap.
 
-The fleet's IAM-per-agent + per-firing-worktree-isolation patterns limit blast radius (a malicious skill in the Lucius worktree can't reach the operator's home or the secondary Claude account). Mitigations, not prevention.
+The fleet's IAM-per-agent + per-firing-worktree-isolation patterns limit blast radius (a malicious skill in the Lucius worktree can't reach your home directory or the secondary Claude account). Mitigations, not prevention.
 
 ## Anti-recommendations
 
 - **Anything that auto-publishes** (auto-tweet, auto-deploy, auto-merge). Use as draft-then-review only.
 - **Skills that fork to the network without explicit allowlists.** Network egress from a worktree is a known agent attack vector.
-- **Skills the operator hasn't read.** Skills are markdown. Read them.
+- **Skills you have not read.** Skills are markdown. Read them.
 
 ## Where skills live in the framework's mental model
 
-Skills are operator-installed, not framework-bundled. Alfred ships zero skills by default. Consumer fleets pick. Keeps the framework pluralist (different fleets, different stacks) and small (no skill maintenance burden on us).
+Skills are user-installed, not framework-bundled. Alfred ships zero skills by default. Consumer fleets pick. Keeps the framework pluralist (different fleets, different stacks) and small (no skill maintenance burden on us).

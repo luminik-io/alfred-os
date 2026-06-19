@@ -110,7 +110,7 @@ cross-repo `agent:large-feature` issues ready for planning.
 Public Batman is multi-repo aware. The parent-issue path posts a rollout plan to
 Slack, waits for approval when required, files scoped child issues, and reports
 status. The older scan path still drafts plans only. Set `BATMAN_AUTO_EXECUTE=0`
-to make every parent-issue plan wait for the operator; the default
+to make every parent-issue plan wait for approval; the default
 `approval-gate` reads Slack reactions; set `1` to skip the gate entirely (not
-recommended for fresh operators). See
+recommended for fresh installs). See
 [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md).

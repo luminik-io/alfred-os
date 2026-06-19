@@ -8,7 +8,7 @@ One Slack channel for the fleet. With 6+ codename agents firing every 20 minutes
 Two failure modes:
 
 1. **Drown the signal.** A genuine alert (Claude rate-limit, ECS drift, security scan finding) gets lost in the daily firehose.
-2. **Split the channel.** Two channels (one for noise, one for alerts) works, but solo operator + two channels = neither gets read religiously.
+2. **Split the channel.** Two channels (one for noise, one for alerts) works, but one person plus two channels usually means neither gets read reliably.
 
 Severity routing solves both without changing channel count.
 
@@ -76,8 +76,8 @@ Your eye snaps to the 🚨 line. The ⚠️ line is visible without scrolling. T
 
 When sweeping a callsite, ask: what would I want to know about while making coffee?
 
-- **`alert`**: anything that pauses the fleet, breaks production, or signals security. The operator must see it before the next agent firing potentially makes it worse.
-- **`warn`**: soft failures that recover on their own (rate-limit on one provider, max-turns on one issue) but the operator should know happened.
+- **`alert`**: anything that pauses the fleet, breaks production, or signals security. You should see it before the next agent firing can make it worse.
+- **`warn`**: soft failures that recover on their own (rate-limit on one provider, max-turns on one issue) but should still be visible.
 - **`info`**: everything else. If you're not sure, this is the right answer.
 
 Bias toward `info`. Over-using `alert` re-creates the firehose problem you started with.

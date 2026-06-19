@@ -1,12 +1,12 @@
 # Agents
 
-The agents shipped in Alfred are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; the operator can rename any agent during `alfred-init` or by editing `~/.alfredrc` later.
+The agents shipped in Alfred are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; you can rename any agent during `alfred-init` or by editing `~/.alfredrc` later.
 
 ## Fleet map
 
 ```mermaid
 flowchart LR
-    subgraph operator[Operator]
+    subgraph human[You]
         slack["configured Slack channel"]
         ops_cli["alfred CLI"]
     end
@@ -49,7 +49,7 @@ flowchart LR
 ```
 
 Solid arrows are state transitions (someone modifies the issue or PR). Dashed
-arrows are observability (someone reports). Operator interaction is via the
+arrows are observability (someone reports). You interact through the
 `alfred` CLI, Slack, and the optional `examples/bin/label_state.py` helper for
 issue-claim overrides.
 
@@ -109,13 +109,13 @@ Constraints:
 - Pronounceable. You'll say "lucius shipped #303" out loud at some point.
 - Consistent across the fleet. Don't mix Batman + Star Wars; pick one universe.
 
-The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-morning-brief`, `fleet-recap`) are infrastructure and ship with plain-English names. You can rename these too if you want every agent in your cast, but most operators leave them alone.
+The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-morning-brief`, `fleet-recap`) are infrastructure and ship with plain-English names. You can rename these too if you want every agent in your cast, but most people leave them alone.
 
 ## How the codename gets wired
 
 ```mermaid
 flowchart TB
-    init["alfred-init wizard<br/><i>operator picks codenames</i>"]
+    init["alfred-init wizard<br/><i>you pick codenames</i>"]
     rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
     conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
     unit["my.fleet.marshall scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=marshall</code>"]
@@ -130,7 +130,7 @@ flowchart TB
     runner --> output
 ```
 
-The agent script lives at `bin/<role>.py` (e.g. `bin/lucius.py` is the feature-dev script's default name). The operator-chosen codename is set via:
+The agent script lives at `bin/<role>.py` (e.g. `bin/lucius.py` is the feature-dev script's default name). The chosen codename is set via:
 
 1. The scheduler unit environment: `AGENT_CODENAME=<chosen-name>`. Rendered from the label suffix in `agents.conf`.
 2. The agent runner reads `AGENT = os.environ.get("AGENT_CODENAME", "<default>")` at startup.
@@ -182,14 +182,14 @@ alfred clear-lock <codename>  # clear a stale /tmp lock after safety checks
 alfred enable <codename>      # add codename to the runner gate
 alfred disable <codename>     # remove codename from the runner gate
 alfred enabled-agents         # print the current runner-gate list
-alfred labels check --all     # report missing lifecycle/operator labels
-alfred labels bootstrap --all # create missing lifecycle/operator labels
+alfred labels check --all     # report missing lifecycle/approval labels
+alfred labels bootstrap --all # create missing lifecycle/approval labels
 alfred shipped --period weekly # summarize merged PRs, issues, LOC, config changes
 bash deploy.sh                # sync bin/lib; render + bootstrap if agents.conf exists
 bash bin/doctor.sh            # preflight configured Python agents
 bash bin/doctor.sh --lifecycle # validate Batman parser, Slack approval, Claude OAuth
 ```
 
-Use `alfred-label-state` for issue-claim operator overrides. Use
+Use `alfred-label-state` for issue-claim overrides. Use
 `alfred clear-lock --check` before clearing a lock unless you have already
 confirmed the holder is dead and any matching worktree is preserved.

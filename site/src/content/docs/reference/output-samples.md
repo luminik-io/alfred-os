@@ -1,10 +1,10 @@
 ---
 title: Output samples
-description: Every shape of output Alfred produces, so first-readers can mentally simulate the operator experience before installing.
+description: Every shape of output Alfred produces, so first-readers can mentally simulate the Alfred experience before installing.
 ---
 
 This page is a reference for every shape of output Alfred produces. If you are
-deciding whether to install, you can mentally simulate the operator experience
+deciding whether to install, you can mentally simulate the Alfred experience
 by reading this end to end.
 
 This page mirrors [`docs/OUTPUT_SAMPLES.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/OUTPUT_SAMPLES.md).
@@ -78,7 +78,7 @@ Total: $0.90 / 87 turns / 3 PRs
 
 When it appears: Batman scanned `BATMAN_SCAN_REPOS`, found an
 `agent:large-feature` issue, resolved its bundle, and posted the plan.
-Batman pauses at the plan until the operator approves it.
+Batman pauses at the plan until you approve it.
 
 ```
 batman · plan drafted
@@ -89,7 +89,7 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-Approval:     waiting for operator go-ahead
+Approval:     waiting for approval
 Next:         approve in Slack or the configured gate. After approval, Batman
               files and supervises the child issue sequence.
 ```
@@ -111,7 +111,7 @@ $ bash bin/doctor.sh
 [doctor]   git ........................... ok (git 2.43.0)
 [doctor]   claude ........................ ok (Claude Code 1.2.4)
 [doctor]   codex ......................... ok (codex 0.3.1)
-[doctor]   gh auth ....................... ok (operator@example.com)
+[doctor]   gh auth ....................... ok (you@example.com)
 
 [doctor] workspace repos ......................... ok
 [doctor]   ~/code/your-backend ........ ok (origin: your-org/your-backend)
@@ -256,7 +256,7 @@ Authored by Lucius (Alfred). Engine: hybrid (claude). Turns: 17. Cost: $0.21.
 
 ## Terminal: `alfred run echo --force`
 
-When it appears: the operator runs a single firing of the Echo example agent
+When it appears: you run a single firing of the Echo example agent
 manually, bypassing the schedule. `--force` overrides the paused-agent check.
 
 ```

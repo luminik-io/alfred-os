@@ -58,7 +58,7 @@ Without the codename, "the test agent" tends to creep: "well, while it's there, 
 
 ## Pick your own cast
 
-The shipped examples use Batman side-characters because the original operator liked Batman. Pick anything coherent:
+The shipped examples use Batman side-characters because Alfred started with that cast. Pick anything coherent:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
@@ -69,7 +69,7 @@ Constraints:
 
 - ASCII-safe names (used in filenames, label slugs, gh CLI args). `rasalghul` not `Ra's al Ghul`.
 - ~10 characters max. Long codenames pollute Slack scrolling.
-- Pronounceable. The operator is going to say "Lucius shipped #303" out loud at some point.
+- Pronounceable. You are going to say "Lucius shipped #303" out loud at some point.
 - Consistent across the fleet. Don't mix Batman + Star Wars; pick one universe.
 
 ## The wiring
@@ -82,11 +82,11 @@ Each codename has:
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your repo guidance file** (`AGENTS.md` or `CLAUDE.md`) documenting role + trigger + scope.
 
-The role implementation lives in `bin/<role>.py` (the filename never changes). The operator-chosen codename flows in at runtime through the rendered scheduler unit:
+The role implementation lives in `bin/<role>.py` (the filename never changes). The chosen codename flows in at runtime through the rendered scheduler unit:
 
 ```mermaid
 flowchart TB
-    init["alfred-init wizard<br/><i>operator picks codenames</i>"]
+    init["alfred-init wizard<br/><i>you pick codenames</i>"]
     rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
     conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
     unit["my.fleet.marshall scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=marshall</code>"]

@@ -8,12 +8,12 @@ Recent releases. The canonical, complete history lives in [`CHANGELOG.md`](https
 ## Next
 
 - **`alfred setup-token`**: one-command bootstrap of `CLAUDE_CODE_OAUTH_TOKEN` so launchd / `systemd --user` agents authenticate without the host credential store. Wraps `claude setup-token`, captures the token, writes one managed export line to `~/.alfredrc` with 0600 perms, and is idempotent under `--force` rotation. The `alfred-init` wizard now offers it on first install. See [Claude Code auth](https://github.com/luminik-io/alfred-os/blob/main/docs/CLAUDE_CODE.md#authenticating-scheduled-launchd--systemd-firings).
-- **`ALFRED_FLEET_OVERLAY` hook**: optional operator-supplied module imported at the end of `agent_runner` init, so a fleet can populate `GH_REPO_TO_LOCAL`, `STANDARD_LABELS`, and `HANDOFFS` from one place instead of forking every `bin/*.py`.
+- **`ALFRED_FLEET_OVERLAY` hook**: optional user-supplied module imported at the end of `agent_runner` init, so a fleet can populate `GH_REPO_TO_LOCAL`, `STANDARD_LABELS`, and `HANDOFFS` from one place instead of forking every `bin/*.py`.
 - **`preflight()` slug-to-local mapping**: consults `GH_REPO_TO_LOCAL` when checking that local checkouts exist, so multi-repo workspaces with renames (`org/myorg-backend` cloned at `product/backend/`) stop reporting bogus "missing checkout" errors.
 - **Python 3.14 bytes/str fix**: `subprocess.TimeoutExpired.stdout` returns bytes on Python 3.14 even when `text=True` is passed to `subprocess.run`. The `agent_runner.process.run` wrapper now decodes so downstream callers that hand the result to `Path.write_text` keep working.
 - **Fleet memory reliability tools**: reviewable memory candidates, normalized failure-event history, `alfred brain doctor`, `alfred brain harvest` for repeated-failure lesson candidates, and a read-only `alfred mcp serve` bridge for local MCP clients.
-- **Optional Redis AMS memory provider**: operators who already run Redis Agent Memory Server can set `ALFRED_MEMORY_PROVIDERS=fleet,redis`, check it with `alfred brain redis-status`, and sync reviewed lessons with `alfred brain redis-sync` while keeping the default install local and dependency-light.
-- **Slack memory curation**: trusted users can run `memory`, `memory harvest`, `remember [repo:] <lesson>`, `memory remember ...`, and `memory redis` from Slack to inspect and stage memory, while operator-only `memory promote <id>` / `memory reject <id>` control what enters future recall.
+- **Optional Redis AMS memory provider**: users who already run Redis Agent Memory Server can set `ALFRED_MEMORY_PROVIDERS=fleet,redis`, check it with `alfred brain redis-status`, and sync reviewed lessons with `alfred brain redis-sync` while keeping the default install local and dependency-light.
+- **Slack memory curation**: trusted users can run `memory`, `memory harvest`, `remember [repo:] <lesson>`, `memory remember ...`, and `memory redis` from Slack to inspect and stage memory, while approver-only `memory promote <id>` / `memory reject <id>` control what enters future recall.
 - **Scheduled memory harvest**: `memory-harvest.py` queues reviewable repeated-failure candidates from the reliability governor, nudges Slack only when there is something to review, and never promotes lessons or syncs Redis by itself.
 - **Reviewable runtime memory by default**: engine-written reflections now queue as memory candidates unless `ALFRED_MEMORY_REFLECTION_MODE=direct` is set explicitly.
 - **Planning memory loop**: the Planning tab recalls promoted repo lessons while drafting, embeds advisory hints in saved specs, and queues reviewable spec-to-issue memory candidates.
@@ -52,7 +52,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 
 - **Linux support** via `systemd --user` timers, a Debian/Ubuntu apt lane in `install.sh`, systemd unit rendering in `deploy.sh`, and a `lib/scheduler.py` host abstraction behind the `alfred` CLI. See [Linux](/guides/linux/).
 - **`--dry-run` mode**: run a full agent firing lifecycle with every side-effecting boundary stubbed: no LLM call, no spend, no Slack post, no GitHub or git mutation. Works with zero host config. See [Dry-run mode](/getting-started/dry-run/).
-- **`alfred pause` / `resume` / `run`** operator verbs; `alfred agents` now shows a real scheduler-load column.
+- **`alfred pause` / `resume` / `run`** control verbs; `alfred agents` now shows a real scheduler-load column.
 - **`bin/doctor.sh --dev`**: dev-install mode that tolerates host-config gaps while still failing hard on code defects.
 - **`alfred claude probe`**: a first-class Claude Code auth smoke test.
 - **`alfred codex status/probe` and `alfred auth status/probe`**: first-class Codex CLI and combined provider-auth diagnostics.

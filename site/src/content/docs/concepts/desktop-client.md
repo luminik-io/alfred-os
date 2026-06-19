@@ -55,7 +55,7 @@ flowchart TB
 
 ## Boundary
 
-The client reads and writes the same local surfaces an operator can inspect by
+The client reads and writes the same local surfaces you can inspect by
 hand: `$ALFRED_HOME`, `alfred serve`, the Alfred CLI, GitHub issue and PR
 links, Slack plan threads, and the local fleet brain. It introduces no hosted
 gateway, public port, shadow database, or separate scheduler.
