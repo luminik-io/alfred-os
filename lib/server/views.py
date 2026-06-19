@@ -57,7 +57,7 @@ from server.plan_approvals import (
     issue_num_from_plan_id,
     write_decision,
 )
-from server.reader import PlanDraft
+from server.reader import FilesystemReader, PlanDraft
 
 logger = logging.getLogger(__name__)
 
@@ -971,7 +971,7 @@ def register_routes(app: FastAPI) -> None:
             return JSONResponse({"error": "plan not found"}, status_code=404)
         try:
             result = await run_in_threadpool(
-                _discard_planning_draft,
+                _discard_planning_draft_group,
                 _state_root(request),
                 draft_id,
             )
@@ -2672,6 +2672,80 @@ def _file_planning_draft_issue(state_root: Path, plan_id: str) -> dict[str, Any]
         "labels": labels_out,
         "detail": outcome.detail,
     }
+
+
+def _discard_planning_draft_group(state_root: Path, draft_id: str) -> dict[str, Any]:
+    """Archive every visible duplicate represented by one planning draft card."""
+    root = Path(state_root)
+    plan = FilesystemReader(state_root=root).get_plan(draft_id)
+    if plan is None:
+        return _discard_planning_draft(root, draft_id)
+
+    draft_ids = _planning_draft_discard_group_ids(root, plan)
+    results: list[dict[str, Any]] = []
+    for candidate_id in draft_ids:
+        try:
+            results.append(_discard_planning_draft(root, candidate_id))
+        except FileNotFoundError:
+            if candidate_id == draft_id:
+                raise
+            continue
+    if not results:
+        raise FileNotFoundError(draft_id)
+
+    archived_paths = [
+        str(result["archived_path"]) for result in results if result.get("archived_path")
+    ]
+    return {
+        "ok": True,
+        "status": (
+            "discarded"
+            if any(result.get("status") == "discarded" for result in results)
+            else "already_discarded"
+        ),
+        "draft_id": draft_id,
+        "draft_ids": [str(result.get("draft_id") or "") for result in results],
+        "discarded_count": len(results),
+        "archived_path": archived_paths[0] if archived_paths else None,
+        "archived_paths": archived_paths,
+    }
+
+
+def _planning_draft_discard_group_ids(state_root: Path, plan: PlanDraft) -> list[str]:
+    fallback = _safe_planning_draft_id(plan.plan_id)
+    if not fallback or not _dedupeable_planning_draft(plan):
+        return [fallback] if fallback else []
+
+    title, repos = _plan_dedupe_key(plan)
+    if not title or not repos:
+        return [fallback]
+
+    ids: list[str] = []
+    for candidate in FilesystemReader(state_root=Path(state_root)).list_plans(limit=10_000):
+        if not _dedupeable_planning_draft(candidate):
+            continue
+        if _plan_dedupe_key(candidate) != (title, repos):
+            continue
+        candidate_id = _safe_planning_draft_id(candidate.plan_id)
+        if candidate_id:
+            ids.append(candidate_id)
+    return ids or [fallback]
+
+
+def _dedupeable_planning_draft(plan: PlanDraft) -> bool:
+    return plan.source in {"compose", "planning", "slack"}
+
+
+def _plan_dedupe_key(plan: PlanDraft) -> tuple[str, str]:
+    title = re.sub(r"\s+", " ", (plan.title or "").strip().lower())
+    if title == "alfred planning draft":
+        title = ""
+    repos = sorted(
+        repo.strip().lower()
+        for repo in re.split(r"[,\s]+", plan.affected_repos or "")
+        if repo.strip()
+    )
+    return title, ",".join(repos)
 
 
 def _discard_planning_draft(state_root: Path, draft_id: str) -> dict[str, Any]:

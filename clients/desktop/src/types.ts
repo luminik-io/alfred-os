@@ -278,7 +278,10 @@ export type DiscardPlanResponse = {
   ok: boolean;
   status: "discarded" | "already_discarded" | string;
   draft_id: string;
+  draft_ids?: string[];
+  discarded_count?: number;
   archived_path?: string;
+  archived_paths?: string[];
   error?: string;
 };
 

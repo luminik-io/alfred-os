@@ -239,6 +239,31 @@ describe("PipelineView", () => {
     );
   });
 
+  it("labels grouped planning drafts as a plural discard action", async () => {
+    const onDiscardPlan = vi.fn();
+    const user = userEvent.setup();
+    renderPipeline({
+      plans: [
+        plan({
+          plan_id: "compose-export",
+          title: "Add export planning",
+          status: "ready",
+          parent: null,
+          source: "compose",
+          readiness_score: 92,
+          readiness_ok: true,
+          revision_count: 3,
+        }),
+      ],
+      onDiscardPlan,
+    });
+    await user.click(screen.getByRole("button", { name: /add export planning/i }));
+    await user.click(screen.getByRole("button", { name: /discard drafts/i }));
+    expect(onDiscardPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ plan_id: "compose-export" }),
+    );
+  });
+
   it("holds and marks done a queued issue from its detail panel", async () => {
     const onQueueAction = vi.fn();
     const user = userEvent.setup();

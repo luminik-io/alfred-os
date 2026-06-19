@@ -553,6 +553,7 @@ function PlanInspector({
     (plan.source === "compose" || plan.source === "planning");
   const isFollowup = plan.source === "followup";
   const actionBusy = busyPlanAction?.startsWith(`${plan.plan_id}:`) || false;
+  const discardLabel = plan.revision_count > 1 ? "Discard drafts" : "Discard draft";
   return (
     <div className="detail-panel detail-panel--sheet" aria-label="Selected plan details">
       <div className="detail-panel__head">
@@ -588,8 +589,8 @@ function PlanInspector({
       {canDecide ? (
         <div className="plan-decision">
           <p className="plan-decision__note" role="note">
-            Approving starts this exact scope on Batman's next run. Declining stops
-            it. No code or worktrees move until you decide.
+            Approving lets Batman file this exact scope on its next run. Declining
+            stops it. No code or worktrees move until you decide.
           </p>
           <div className="card-actions card-actions--start">
             <button
@@ -633,7 +634,7 @@ function PlanInspector({
             onClick={() => onDiscardPlan(plan)}
           >
             <X size={16} aria-hidden="true" />
-            <span>Discard draft</span>
+            <span>{discardLabel}</span>
           </button>
         ) : null}
         {isFollowup ? (

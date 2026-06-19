@@ -85,12 +85,12 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
   },
   {
     title: "Architect: Batman plans across repos",
-    body: "Reads a big feature request, drafts a plan that covers every repo it touches, and posts it to Slack for you to discuss and approve. Once you say yes, it splits the work into tasks and starts each one. Teammates you trust can refine the plan in the thread; only you can approve it.",
+    body: "Reads a big feature request, drafts a plan that covers every repo it touches, and posts it to Slack for you to discuss and approve. Once you say yes, it splits the work into scoped tasks for the fleet queue. Teammates you trust can refine the plan in the thread; only you can approve it.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
       "[10:31] batman posted plan to Slack for approval",
       "[10:34] operator approved with :white_check_mark:",
-      "[10:34] batman filed 4 child issues, opened 4 worktrees",
+      "[10:34] batman filed 4 child issues for pickup",
     ],
     state: "info",
   },
@@ -319,7 +319,7 @@ const why = [
           alt="Slack message from the Alfred bot showing Batman drafting a plan for issue #504, with affected repos backend, frontend, mobile, and a rollout order. The plan is in draft, awaiting approval."
           tag="batman plan"
           meta="2026-05-12 11:44 UTC"
-          caption="Batman reads one big feature request, drafts a plan across the backend, web, and mobile repos, and posts it to Slack for approval. Once you react with the agreed emoji, Batman files the tasks and starts the work."
+          caption="Batman reads one big feature request, drafts a plan across the backend, web, and mobile repos, and posts it to Slack for approval. Once you react with the agreed emoji, Batman files scoped tasks for the normal fleet queue."
         />
         <SlackProof
           src="/proof/slack-shipped-summary.png"

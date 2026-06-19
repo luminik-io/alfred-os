@@ -370,6 +370,34 @@ def test_json_api_lists_slack_planning_drafts(tmp_path: Path) -> None:
     assert payload["readiness_score"] == 92
 
 
+def _write_planning_draft(
+    state: Path,
+    draft_id: str,
+    *,
+    title: str,
+    repos: list[str],
+    created_at: str = "2026-06-01T04:00:00Z",
+    revision_count: int = 0,
+) -> Path:
+    drafts = state / "planning-drafts"
+    drafts.mkdir(parents=True, exist_ok=True)
+    path = drafts / f"{draft_id}.json"
+    path.write_text(
+        json.dumps(
+            {
+                "source": "compose",
+                "created_at": created_at,
+                "updated_at": created_at,
+                "draft": {"title": title, "repos": repos},
+                "readiness": {"ok": True, "score": 90},
+                "revision_count": revision_count,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_discard_plan_archives_draft_and_removes_it_from_listing(tmp_path: Path) -> None:
     state = tmp_path / "state"
     drafts = state / "planning-drafts"
@@ -403,6 +431,66 @@ def test_discard_plan_archives_draft_and_removes_it_from_listing(tmp_path: Path)
     assert archived.exists()
     assert archived.parent.name == "archive"
     assert client.get("/api/plans").json()["rows"] == []
+
+
+def test_discard_plan_archives_matching_deduped_group(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    newest = _write_planning_draft(
+        state,
+        "compose-a-newest",
+        title="Add a CSV export",
+        repos=["acme/api", "acme/web"],
+    )
+    mid = _write_planning_draft(
+        state,
+        "compose-a-mid",
+        title="add a CSV export",
+        repos=["acme/web", "acme/api"],
+    )
+    oldest = _write_planning_draft(
+        state,
+        "compose-a-oldest",
+        title="Add a CSV export",
+        repos=["acme/api", "acme/web"],
+        revision_count=2,
+    )
+    distinct = _write_planning_draft(
+        state,
+        "compose-b-distinct",
+        title="Fix the login redirect",
+        repos=["acme/api"],
+    )
+    for path, mtime in (
+        (newest, 4000),
+        (mid, 3000),
+        (oldest, 1000),
+        (distinct, 2000),
+    ):
+        os.utime(path, (mtime, mtime))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/plans/compose-a-newest/discard",
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "discarded"
+    assert body["discarded_count"] == 3
+    assert set(body["draft_ids"]) == {
+        "compose-a-newest",
+        "compose-a-mid",
+        "compose-a-oldest",
+    }
+    assert len(body["archived_paths"]) == 3
+    assert not newest.exists()
+    assert not mid.exists()
+    assert not oldest.exists()
+    assert distinct.exists()
+    assert {row["plan_id"] for row in client.get("/api/plans").json()["rows"]} == {
+        "compose-b-distinct"
+    }
 
 
 def test_discard_plan_is_idempotent(tmp_path: Path) -> None:

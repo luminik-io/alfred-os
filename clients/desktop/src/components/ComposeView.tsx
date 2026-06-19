@@ -41,7 +41,7 @@ import { PlainModeToggle } from "./PlainModeToggle";
 // planning assistant still produces the same structured draft; the optional
 // ALFRED_INTAKE_PROFILE=plain server env makes the assistant ask plain
 // questions and hide jargon in its summary (see intake_profiles.py).
-const PLACEHOLDER = "Describe the change, who needs it, and any limits Alfred should respect.";
+const PLACEHOLDER = "Describe the outcome, who needs it, and any limits Alfred should respect.";
 
 const STARTERS = [
   {
@@ -431,7 +431,7 @@ export function ComposeView({
           <p className="ask__intro">
             {isPlainMode
               ? "Say the outcome in your own words. Alfred asks only what is missing, then saves a plan you can file as a GitHub issue."
-              : "Name the finish line, repo scope, and constraints. Alfred prepares the GitHub handoff."}
+              : "Give the outcome, repo scope, and constraints. Alfred prepares the GitHub handoff."}
           </p>
         </div>
         <div className="ask__head-controls">
@@ -471,7 +471,7 @@ export function ComposeView({
           <span className="ask__teach-mark" aria-hidden="true">
             <Sparkles size={20} />
           </span>
-          <p className="ask__teach-lead">Give Alfred a clear finish line.</p>
+          <p className="ask__teach-lead">Start with the outcome.</p>
           <p className="ask__teach-body">
             {isPlainMode
               ? "Use normal language. Alfred asks for missing details, then turns it into a plan you can file."

@@ -22,6 +22,7 @@ const hooks = vi.hoisted(() => ({
   loadShippedMock: vi.fn(),
   loadUsageMock: vi.fn(),
   runNativeActionMock: vi.fn(),
+  setQueuePickupMock: vi.fn(),
   rememberBaseUrlMock: vi.fn(),
   decidePlanMock: vi.fn(),
   discardPlanMock: vi.fn(),
@@ -42,6 +43,7 @@ const loadUsageMock = hooks.loadUsageMock as ReturnType<
 const runNativeActionMock = hooks.runNativeActionMock as ReturnType<
   typeof vi.fn<() => Promise<NativeCommandResult>>
 >;
+const setQueuePickupMock = hooks.setQueuePickupMock;
 const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
 
 vi.mock("../api", () => ({
@@ -63,6 +65,7 @@ vi.mock("../api", () => ({
   loadShipped: (baseUrl: string) => hooks.loadShippedMock(baseUrl),
   loadUsage: (baseUrl: string) => hooks.loadUsageMock(baseUrl),
   runNativeAction: () => hooks.runNativeActionMock(),
+  setQueuePickup: (...args: unknown[]) => hooks.setQueuePickupMock(...args),
   convertFollowupToDraft: vi.fn(),
   markFollowupHandled: vi.fn(),
   decidePlan: (...args: unknown[]) => hooks.decidePlanMock(...args),
@@ -159,6 +162,7 @@ beforeEach(() => {
   loadShippedMock.mockReset();
   loadUsageMock.mockReset();
   runNativeActionMock.mockReset();
+  setQueuePickupMock.mockReset();
   rememberBaseUrlMock.mockReset();
   hooks.discardPlanMock.mockReset();
   hooks.filePlanIssueMock.mockReset();
@@ -329,6 +333,38 @@ describe("useAlfred post-action refresh ordering", () => {
   });
 });
 
+describe("useAlfred board assignment notices", () => {
+  it("preserves a human-scope assignment response instead of falling back to Alfred", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius")]));
+    setQueuePickupMock.mockResolvedValue({
+      ok: true,
+      repo: "org/repo",
+      number: 7,
+      action: "assign",
+      target_agent: "human",
+      detail:
+        "mark org/repo#7 `needs:human-scope`. Reason: not enough actionable scope.",
+    });
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => {
+      await result.current.runQueueAction("org/repo", 7, "assign", "auto");
+    });
+
+    expect(setQueuePickupMock).toHaveBeenCalledWith(
+      DEFAULT_BASE_URL,
+      "org/repo",
+      7,
+      "assign",
+      "auto",
+    );
+    expect(result.current.noticeFor("board")?.message).toContain("needs:human-scope");
+    expect(result.current.noticeFor("board")?.message).not.toContain("Alfred");
+  });
+});
+
 describe("useAlfred plan go/no-go", () => {
   function batmanPlan() {
     return {
@@ -480,6 +516,55 @@ describe("useAlfred plan go/no-go", () => {
     );
     expect(result.current.noticeFor("plans")?.tone).toBe("ok");
     expect(result.current.noticeFor("plans")?.message).toMatch(/discarded add export planning/i);
+    expect(loadSnapshotMock).toHaveBeenCalled();
+  });
+
+  it("mentions matching drafts when a grouped planning draft is discarded", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("batman")]));
+    hooks.discardPlanMock.mockResolvedValue({
+      ok: true,
+      status: "discarded",
+      draft_id: "compose-20260604-export",
+      draft_ids: [
+        "compose-20260604-export",
+        "compose-20260604-export-older",
+        "compose-20260604-export-oldest",
+      ],
+      discarded_count: 3,
+      archived_path: "/state/planning-drafts/archive/compose-20260604-export.json",
+      archived_paths: [
+        "/state/planning-drafts/archive/compose-20260604-export.json",
+        "/state/planning-drafts/archive/compose-20260604-export-older.json",
+        "/state/planning-drafts/archive/compose-20260604-export-oldest.json",
+      ],
+    });
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    loadSnapshotMock.mockClear();
+
+    await act(async () => {
+      await result.current.runPlanDiscard({
+        plan_id: "compose-20260604-export",
+        title: "Add export planning",
+        status: "ready",
+        parent: null,
+        affected_repos: "owner/web",
+        updated_at: null,
+        path: "",
+        preview: "",
+        content: "",
+        source: "compose",
+        readiness_score: 92,
+        readiness_ok: true,
+        revision_count: 3,
+      });
+    });
+
+    expect(result.current.noticeFor("plans")?.tone).toBe("ok");
+    expect(result.current.noticeFor("plans")?.message).toBe(
+      "Discarded Add export planning and 2 matching drafts.",
+    );
     expect(loadSnapshotMock).toHaveBeenCalled();
   });
 });
