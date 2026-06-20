@@ -336,10 +336,10 @@ def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
         server.shutdown()
 
     assert result.returncode == 0, result.stderr
-    assert not token.exists()
-    assert not token_endpoint.exists()
+    assert token.read_text(encoding="utf-8").strip() == "old-token"
+    assert token_endpoint.read_text(encoding="utf-8").strip() == url
     assert install_id.read_text(encoding="utf-8").strip() == "old-install-id"
-    assert "kept install id" in result.stderr
+    assert "kept install id and token" in result.stderr
 
 
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
