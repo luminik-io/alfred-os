@@ -6,9 +6,10 @@ interface TrendItem {
 
 interface Props {
   trend: TrendItem[];
+  windowDays?: number;
 }
 
-const { trend } = Astro.props;
+const { trend, windowDays } = Astro.props;
 const numberOrZero = (value: unknown) => {
   const n = Number(value ?? 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -17,22 +18,23 @@ const safeTrend = trend
   .map((item) => ({ week: item.week, prs_merged: numberOrZero(item.prs_merged) }))
   .filter((item) => item.week);
 const maxTrend = Math.max(...safeTrend.map((item) => item.prs_merged), 1);
+const trendColumns = Math.max(safeTrend.length, 1);
+const windowLabel = windowDays ? `Last ${windowDays} days` : "Recent weeks";
 const fmt = (n: number) => n.toLocaleString("en-US");
 ---
 
-<section class="trend-panel" aria-label="Weekly merged pull requests">
+<section class="trend-panel" aria-label={`Weekly merged pull requests for ${windowLabel.toLowerCase()}`}>
   <div class="trend-panel__head">
     <div>
-      <span class="m-eyebrow">LAST 30 DAYS</span>
+      <span class="m-eyebrow">{windowLabel}</span>
       <h2 class="m-display-md">PRs merged by week.</h2>
     </div>
     <p>
-      This chart shows when Alfred's work landed during the same 30-day window
-      as the totals above.
+      It shows when the merged PRs above landed.
     </p>
   </div>
 
-  <div class="trend-chart" role="list">
+  <div class="trend-chart" role="list" style={`--trend-columns:${trendColumns};`}>
     {safeTrend.map((item, index) => (
       <div
         class="trend-chart__item"
@@ -81,10 +83,12 @@ const fmt = (n: number) => n.toLocaleString("en-US");
   .trend-chart {
     height: 260px;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--trend-columns), minmax(54px, 1fr));
     gap: 18px;
     align-items: stretch;
+    overflow-x: auto;
     padding-top: 8px;
+    padding-bottom: 4px;
   }
   .trend-chart__item {
     position: relative;

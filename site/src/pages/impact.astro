@@ -12,6 +12,8 @@ const linesChanged = productProof.summary.lines_added + productProof.summary.lin
 const productTrend = Array.isArray((productProof as { trend?: unknown }).trend)
   ? (productProof as { trend: Array<{ week: string; prs_merged: number }> }).trend
   : [];
+const telemetryStatsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim();
+const hasLiveTelemetry = telemetryStatsUrl.length > 0;
 const hasPublicActivity =
   proof.prs.length > 0 ||
   proof.issues.length > 0 ||
@@ -28,7 +30,7 @@ const hasPublicActivity =
   <Hero
     eyebrow="ALFRED IMPACT"
     headline="What Alfred shipped."
-    sub="Last 30 days: PRs merged, issues opened and closed, and code changed across repos where Alfred is working. Updated daily from GitHub."
+    sub="Last 30 days: merged PRs, opened and closed issues, and code changed across repos where Alfred is working."
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
     secondaryCta={{ label: "Telemetry details", href: "/reference/telemetry/" }}
@@ -60,7 +62,22 @@ const hasPublicActivity =
   {productTrend.length > 0 ? (
     <section class="m-section impact-section">
       <div class="m-container">
-        <ImpactTrend trend={productTrend} />
+        <ImpactTrend trend={productTrend} windowDays={productProof.window.days} />
+      </div>
+    </section>
+  ) : null}
+
+  {hasLiveTelemetry ? (
+    <section class="m-section impact-section">
+      <div class="m-container impact-live-section">
+        <div class="impact-live-section__copy">
+          <span class="m-eyebrow">LIVE USAGE</span>
+          <h2 class="m-display-md">Alfred installs in use.</h2>
+          <p>
+            Anonymous totals from Alfred setups that keep usage sharing on.
+          </p>
+        </div>
+        <ImpactCounter threshold={1} />
       </div>
     </section>
   ) : null}
@@ -96,6 +113,29 @@ const hasPublicActivity =
   }
   .impact-section {
     padding-top: 72px;
+  }
+  .impact-live-section {
+    display: grid;
+    grid-template-columns: minmax(0, 0.7fr) minmax(340px, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .impact-live-section__copy {
+    padding-top: 12px;
+  }
+  .impact-live-section__copy h2 {
+    margin-top: 12px;
+  }
+  .impact-live-section__copy p {
+    max-width: 460px;
+    color: var(--alfred-text);
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  @media (max-width: 820px) {
+    .impact-live-section {
+      grid-template-columns: 1fr;
+    }
   }
   @media (max-width: 520px) {
     .impact-panel__head {
