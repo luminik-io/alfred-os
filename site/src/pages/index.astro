@@ -36,7 +36,7 @@ type JobState = "live" | "warn" | "idle" | "info";
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
     title: "Architect: Batman drives cross-repo features",
-    body: "Owns large work that touches more than one repo: reads the parent issue or Slack plan, checks the affected repos, gets approval, files the repo-level work, and keeps the bundle moving.",
+    body: "Leads large work that touches more than one repo: reads the parent issue or Slack plan, checks the affected repos, gets approval, files the repo-level work, and keeps the bundle moving.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
       "[10:31] batman posted plan to Slack",
@@ -134,7 +134,7 @@ const why = [
   <Hero
     eyebrow="AUTONOMOUS CODING AGENTS"
     headline="Coding agents that keep shipping while you are away."
-    sub="Start from a Slack message, GitHub issue, or rough plan. You give Alfred the goal and approval rules; Alfred keeps the Claude and Codex loop moving until there is a PR, a review finding, or a Slack decision for you. Run it on an awake Mac mini, MacBook, or Linux box."
+    sub="Start from a Slack message, GitHub issue, or rough plan. Alfred keeps Claude and Codex moving until there is a PR, review finding, or Slack decision."
     primaryCta={{ label: "Download", href: "/download/", data: { "data-download-os": "other", "data-download-source": "home-hero", "data-download-kind": "intent" } }}
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
@@ -268,7 +268,7 @@ const why = [
       <SectionHeader
         eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
         title="Batman architects the rollout. Lucius ships the PRs. Drake keeps smaller work scoped."
-        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman owns multi-repo features, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman leads multi-repo features, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">

@@ -79,10 +79,10 @@ public download path for signed desktop artifacts.
 - Signed desktop packages: the release pipeline publishes a signed and
   notarized macOS DMG plus app zip, and Linux AppImage and Debian artifacts
   under stable release asset names.
-- Goal contract design: `docs/GOALS.md` defines Alfred-owned durable goals
+- Goal contract design: `docs/GOALS.md` defines durable goals in Alfred
   across Slack, CLI, native client, planner, evaluator, and memory. Engine
   native goal modes can be used as execution hints, but Slack threads,
-  approval gates, and the evidence ledger remain Alfred-owned.
+  approval gates, and the evidence ledger remain part of Alfred.
 - Plain intake mode: `ALFRED_INTAKE_PROFILE=plain` turns the planning assistant into a non-technical front door. A teammate can describe work in plain language; the assistant asks at most one or two plain questions, hides specs, scope, readiness scores, and PRs, and renders a "Here's what I'll do ... OK to go ahead?" plan framed around reviewing a preview. The same structured draft is built invisibly, so the downstream bridge and fleet are unchanged. Default (unset) stays technical. See [`docs/PLAIN_MODE.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/PLAIN_MODE.md).
 
 ### v0.4.0: 2026-05-23

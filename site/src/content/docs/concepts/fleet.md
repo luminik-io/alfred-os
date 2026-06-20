@@ -35,7 +35,7 @@ flowchart LR
     gordon["gordon<br/><i>deploy-health · daily 08:00</i>"]
     automerge["automerge<br/><i>squash-merge · every 15m</i>"]
 
-    batman -- "owns bundles" --> issues
+    batman -- "plans bundles" --> issues
     drake -- "files scoped work" --> issues
     damian -- "files spec bundles" --> issues
     robin -- "triages" --> issues
@@ -55,11 +55,11 @@ flowchart LR
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-The loop closes on itself: Batman owns multi-repo bundles, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
+The loop closes on itself: Batman leads multi-repo bundles, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
 
 ## Batman: the architect agent
 
-Batman is the architect agent that owns a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, posts it to Slack for approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
+Batman is the architect agent that leads a whole feature across repos. Where Lucius implements one scoped issue at a time inside one repo, Batman reads one `agent:large-feature` issue, walks the affected repos, drafts the rollout plan, posts it to Slack for approval, and only then files scoped `agent:implement` child issues across every repo Lucius needs to work in.
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
 
@@ -81,7 +81,7 @@ you want the full roster.
 
 | Codename | Role | Default schedule | What it does |
 |---|---|---|---|
-| **batman** | architect | every 1 h, opt-in | Owns multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
+| **batman** | architect | every 1 h, opt-in | Leads multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
 | **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |

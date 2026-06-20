@@ -67,14 +67,14 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
   <div class="impact__fallback" data-impact-fallback hidden={hasSeed}>
     <p class="impact__warming m-mono">No reporting machines yet.</p>
     <p class="impact__sub">
-      Usage totals appear here once reporting starts.
+      Numbers appear here once reporting starts.
     </p>
   </div>
 
   <div class="impact__live" data-impact-live hidden={!hasSeed}>
     <div class="impact__main">
       <span class="impact__num impact__num--main" data-field="prs_merged">{fmt(seedTotals.prs_merged)}</span>
-      <p>PRs merged by Alfred</p>
+      <p>PRs merged</p>
     </div>
     <div class="impact__grid" role="list">
       <div class="impact__cell" role="listitem">

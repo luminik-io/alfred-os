@@ -184,10 +184,9 @@ alfred doctor
 alfred dry-run lucius
 ```
 
-Dry-run is a diagnostic path. It resolves the codename and prints a
-no-side-effect firing trace: no scheduler action, no GitHub mutation, no Slack
-post, no LLM call, and no file edit. See [`docs/DRY_RUN.md`](docs/DRY_RUN.md)
-for the exact boundary.
+Dry-run is a diagnostic path. It resolves the codename and prints the firing
+steps without touching the scheduler, GitHub, Slack, LLMs, or local files. See
+[`docs/DRY_RUN.md`](docs/DRY_RUN.md) for the exact boundary.
 
 ## System shape
 
@@ -206,8 +205,8 @@ flowchart LR
     shared --> state["ALFRED_HOME state"]
 ```
 
-One firing is one short-lived process. The OS scheduler owns cadence, the
-runner owns safety rails, and the LLM CLI only receives the bounded task.
+One firing is one short-lived process. The OS scheduler controls cadence, the
+runner applies safety rails, and the LLM CLI only receives the bounded task.
 
 ## Design notes
 
@@ -234,7 +233,7 @@ Companion layers can be useful around Alfred, but they are not bundled and must
 not be required for a clean OSS install. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the boundary.
 
-Alfred owns the repeatable local fleet pattern: schedules, worktrees, issue
+Alfred provides the repeatable local fleet pattern: schedules, worktrees, issue
 claims, PR loops, Slack reporting, and failure guards. Today it supports Claude
 Code CLI and Codex CLI adapters. Other engines require a wrapper binary or new
 adapter code.
