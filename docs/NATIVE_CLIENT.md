@@ -218,8 +218,9 @@ The shipped client lives at `clients/desktop`:
 - Local plan and firing details stay in native inspector panes; only explicit
   Slack and GitHub links open outside the app.
 - The app opens to Inbox and has Inbox, Ask, Work, Agents, and Setup surfaces.
-- Releases publish a signed and notarized macOS DMG plus app zip, and Linux
-  AppImage and Debian artifacts. Local `npm run tauri -- build` still produces
+- Public releases start as draft GitHub Releases. Signed and notarized macOS
+  assets, plus Linux AppImage and Debian packages, are attached before the
+  release is published. Local `npm run tauri -- build` still produces
   host-native bundles for inspection.
 - Inbox shows the decision queue, the Claude and Codex capacity rail (backed by
   the live `GET /api/usage` endpoint), recent plans, recent runs,

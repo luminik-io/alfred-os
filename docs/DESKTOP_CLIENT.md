@@ -78,9 +78,10 @@ Continuous integration builds the client with `--no-bundle` to prove the native 
 npm run tauri -- build --no-bundle --ci
 ```
 
-The release pipeline publishes a signed and notarized macOS DMG and app zip,
-plus Linux AppImage and Debian artifacts. Local `tauri build` still works when
-you need to inspect or test the installer output yourself.
+The public release workflow creates the draft release. Signed and notarized
+macOS assets, plus Linux AppImage and Debian packages, are attached before that
+release is published. Local `tauri build` still works when you need to inspect
+or test the installer output yourself.
 
 ## Checks
 

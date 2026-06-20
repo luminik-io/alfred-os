@@ -66,7 +66,7 @@ public download path for signed desktop artifacts.
   remains operator-only.
 - Native local client: `clients/desktop` ships a Tauri Mac/Linux shell
   over the local Alfred runtime. It opens to "what needs attention?", shows
-  Home, Compose, Plans, Memory, Fleet, Logs, and Setup gear surfaces, keeps
+  Inbox, Ask, Work, Agents, and Setup surfaces, keeps
   local plan/run details inside native inspector panes, uses responsive
   icon/tab navigation instead of horizontal menu scrolling, opens only explicit
   Slack/GitHub links outside the app, can start or reconnect to the local
@@ -75,9 +75,9 @@ public download path for signed desktop artifacts.
   `alfred serve`, preview Redis AMS sync, queue failure-pattern memories, and
   can convert trusted follow-ups into planning drafts or mark them handled
   without bypassing Slack approval.
-- Signed desktop packages: the release pipeline publishes a signed and
-  notarized macOS DMG plus app zip, and Linux AppImage and Debian artifacts
-  under stable release asset names.
+- Signed desktop packages: the public release workflow creates a draft release.
+  Signed macOS DMG/app zip and Linux AppImage/Debian assets are attached before
+  that release is published under stable asset names.
 - Goal contract design: `docs/GOALS.md` defines Alfred-owned durable goals
   across Slack, CLI, native client, planner, evaluator, and memory. Engine
   native goal modes can be used as execution hints, but Slack threads,

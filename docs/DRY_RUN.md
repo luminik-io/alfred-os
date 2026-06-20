@@ -1,13 +1,14 @@
 # Dry-run mode
 
-Dry-run is a diagnostic path. It runs the agent
-firing lifecycle: preflight, lock, pick, claim, worktree, prompt build, engine
-invoke, result branching, PR-create / release, and Slack report. External calls
-are stubbed.
+Dry-run is a diagnostic path. By default it prints a safe simulation for any
+configured codename, without touching the scheduler, GitHub, Slack, AWS,
+Playwright, an LLM, or a real worktree. Runners that declare native dry-run
+support can also execute their lifecycle hooks with outside-world calls
+stubbed.
 
 A developer with **nothing configured**, meaning no `gh` auth, no AWS, no Slack,
-and no Claude, can run a dry-run firing and watch the sequence end to end.
-The output is a narrated, step-numbered trace, legible enough to record with
+and no Claude, can run a dry-run and see the sequence Alfred would follow. The
+output is a narrated, step-numbered trace, legible enough to record with
 asciinema.
 
 ## How it differs from doctor mode
@@ -16,9 +17,10 @@ asciinema.
 runner to a **preflight-only** check: it verifies host configuration and exits
 before the lifecycle starts.
 
-Dry-run is the opposite: it runs the lifecycle and stubs the
-calls that would touch the outside world. Use doctor mode to answer "is this
-host configured correctly?"; use dry-run to answer "what does a firing do, step by step?".
+Dry-run is the opposite: it shows the firing path and, for native dry-run
+runners, executes that path with outside calls stubbed. Use doctor mode to
+answer "is this host configured correctly?"; use dry-run to answer "what does a
+firing do, step by step?".
 
 ## Activating it
 

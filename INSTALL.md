@@ -186,9 +186,10 @@ agent.
   Batman's `agent:large-feature` label.
 - Runs `bash deploy.sh`, then `bash bin/doctor.sh`.
 
-Batman is included in the catalog as an opt-in cross-repo coordinator. In the
-public release it posts bundle plans for `agent:large-feature` work; teams can
-layer their own approval-and-execution chain on top.
+Batman is included in the catalog as the opt-in architect for cross-repo work.
+The default mode posts a bundle plan and stops. `BATMAN_AUTO_EXECUTE=approval-gate`
+files child issues only after configured approval; `BATMAN_AUTO_EXECUTE=1`
+files them immediately for teams that want that level of automation.
 
 **When do I need Batman?**
 

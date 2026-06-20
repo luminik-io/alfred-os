@@ -381,9 +381,11 @@ loops:
    no secrets, source attached, confidence present, not contradicted by a newer
    lesson, and scoped to a codename/repo when possible.
 
-## v2 roadmap: PGLite + Apache AGE
+## v2 direction: PGLite + Apache AGE
 
-The internal Alfred fleet runs a richer brain: PGLite (Postgres in WASM) with the Apache AGE graph extension and pgvector for embeddings, fronted by a localhost HTTP bridge. That stack supports:
+The public v1 brain is SQLite-first. A future storage backend can use PGLite
+(Postgres in WASM), Apache AGE, and pgvector behind the same `Store` boundary
+when Alfred needs:
 
 - Cypher graph traversal (cross-firing blast-radius, cross-repo dependency walks).
 - Bi-temporal queries (`valid_from`, `valid_to`, `recorded_from`, `recorded_to` on every vertex and edge).

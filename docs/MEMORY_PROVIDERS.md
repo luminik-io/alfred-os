@@ -69,7 +69,7 @@ chain wrapper catches it and tries the next writer.
 | `fleet` | `lib/memory/providers.py` | yes | Wraps `fleet_brain.FleetBrain`. SQLite under `$ALFRED_HOME`. |
 | `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into the operator's personal knowledge base CLI. Not bundled functionality. |
 | `redis` | `lib/memory/redis_agent_memory.py` | yes | Optional bridge to Redis Agent Memory Server. Not installed or started by Alfred. |
-| `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Default when env is empty. |
+| `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Used when `ALFRED_MEMORY_PROVIDERS=null` or the env var is explicitly empty. |
 
 ## Configuration
 

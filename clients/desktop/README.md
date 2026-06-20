@@ -191,7 +191,7 @@ opener plugin.
 State-changing controls use a narrow native allowlist. The app can start the
 local runtime, run fleet/auth/agent checks, pause, resume, run once, run safe
 agent dry-runs, run memory health checks, check Redis memory, author planning
-drafts from the Compose tab, call local follow-up planning endpoints, and update
-the local Slack trust file. It does not expose arbitrary shell execution.
+drafts from Ask, call local follow-up planning endpoints, and update the local
+Slack trust file. It does not expose arbitrary shell execution.
 Broader lock-clearing and memory-promotion actions should keep the same
 contract: explicit preview, affected path, result, and rollback hint.

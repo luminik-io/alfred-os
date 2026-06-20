@@ -3,9 +3,9 @@ title: Dry-run mode
 description: Watch a side-effect-safe agent firing before trusting scheduled work.
 ---
 
-Dry-run is a diagnostic path. It runs the agent firing lifecycle (preflight, lock, pick, claim, worktree, prompt build, engine invoke, result branching, PR-create / release, Slack report) with the outside-world calls stubbed.
+Dry-run is a diagnostic path. By default it prints a safe simulation for any configured codename, without touching the scheduler, GitHub, Slack, AWS, Playwright, an LLM, or a real worktree. Runners that declare native dry-run support can also execute their lifecycle hooks with outside-world calls stubbed.
 
-A developer with **nothing configured** (no `gh` auth, no AWS, no Slack, no Claude) can run a dry-run firing and watch the sequence end to end. The output is a narrated, step-numbered trace.
+A developer with **nothing configured** (no `gh` auth, no AWS, no Slack, no Claude) can run a dry-run and see the sequence Alfred would follow. The output is a narrated, step-numbered trace.
 
 Condensed companion to [`docs/DRY_RUN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DRY_RUN.md).
 
@@ -13,7 +13,7 @@ Condensed companion to [`docs/DRY_RUN.md`](https://github.com/luminik-io/alfred-
 
 `ALFRED_DOCTOR=1` short-circuits a runner to a **preflight-only** check: it verifies host configuration and exits before the lifecycle starts.
 
-Dry-run is the opposite: it runs the lifecycle and stubs the calls that would touch the outside world. Use doctor mode to answer "is this host configured correctly?"; use dry-run to answer "what does a firing do, step by step?".
+Dry-run is the opposite: it shows the firing path and, for native dry-run runners, executes that path with outside calls stubbed. Use doctor mode to answer "is this host configured correctly?"; use dry-run to answer "what does a firing do, step by step?".
 
 ## Try it in 2 minutes
 
