@@ -2,7 +2,7 @@
 
 Batman is Alfred's architect agent for features that span more than one
 repository. It reads a single parent issue, drafts the rollout, posts the plan
-to Slack for configured approval, files scoped child issues across the named
+to Slack for operator approval, files scoped child issues across the named
 repos, and posts a follow-up report naming the children that landed.
 
 Use Batman when the change spans multiple repos or packages and needs one

@@ -84,7 +84,7 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-Approval:     waiting for approval
+Approval:     waiting for operator go-ahead
 Next:         approve in Slack or the configured gate. After approval, Batman
               files and supervises the child issue sequence.
 ```

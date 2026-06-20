@@ -48,9 +48,9 @@ At most one of those four is set on any issue at a time.
 
 | Label | Meaning |
 |---|---|
-| `do-not-pickup` | Manual override; agents must skip this issue regardless of any other label |
+| `do-not-pickup` | Operator override; agents must skip this issue regardless of any other label |
 | `needs:human-scope` | Issue is too vague for autonomous work; not eligible for pickup |
-| `agent:plan-pending-approval` | Approval gate; any issue carrying it is held from autonomous pickup until the configured approver clears it |
+| `agent:plan-pending-approval` | Operator-approval gate; any issue carrying it is held from autonomous pickup until the operator approves and the label is cleared |
 
 These can coexist with any lifecycle label.
 
