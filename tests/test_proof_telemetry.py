@@ -435,10 +435,7 @@ def test_script_prefers_checkout_lib_over_stale_alfred_home_lib(tmp_path):
     home.mkdir()
     stale_lib.mkdir(parents=True)
     (stale_lib / "proof_telemetry.py").write_text(
-        "def is_enabled():\n"
-        "    return True\n"
-        "def telemetry_url():\n"
-        "    return ''\n",
+        "def is_enabled():\n    return True\ndef telemetry_url():\n    return ''\n",
         encoding="utf-8",
     )
 
