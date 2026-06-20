@@ -63,12 +63,12 @@ const metrics = [
   {
     label: "Alfred PRs merged",
     value: fmt(proof.summary.prs_merged),
-    detail: "Visible in GitHub",
+    detail: "Public links",
   },
   {
     label: "Alfred issues opened",
     value: fmt(proof.summary.issues_opened),
-    detail: "Visible agent label",
+    detail: "Public issues",
   },
   {
     label: "Lines added",
@@ -87,13 +87,13 @@ const metrics = [
   <div class="proof-board__meta">
     <div>
       <span class="m-eyebrow">OPEN-SOURCE REPO</span>
-      <h2 class="m-display-md">Open-source Alfred work you can inspect.</h2>
+      <h2 class="m-display-md">Public Alfred examples.</h2>
     </div>
     <p>
       Last {proof.window.days} days from{" "}
       <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>.
-      PRs appear here when the branch or label shows Alfred did the work.
-      Issues appear when they carry an Alfred agent label.
+      PRs appear here when GitHub carries a clear Alfred branch or label.
+      Issues appear when the repo labels them for an Alfred agent.
       Updated {generated}.
     </p>
   </div>
@@ -104,7 +104,7 @@ const metrics = [
       <p>
         The last {proof.window.days} days have no public Alfred PR or issue links yet.
         The repo still merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during the same period.
-        This board lists work when GitHub makes the Alfred link visible.
+        Public links appear here when the repo carries a clear Alfred signal.
       </p>
     </div>
   ) : null}
@@ -189,7 +189,7 @@ const metrics = [
     GitHub includes generated files and lockfiles in those stats.
     {proof.summary.repo_activity ? (
       <>
-        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during this period. This board lists work when GitHub makes the Alfred link visible.
+        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during this period. This board shows the subset with a clear Alfred signal.
       </>
     ) : null}
   </p>

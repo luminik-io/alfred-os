@@ -1,22 +1,11 @@
 ---
 title: Telemetry
-description: Opt-in usage counts and the public impact page.
+description: Aggregate usage-count reference for Alfred.
 ---
 
-Alfred runtime telemetry is off by default. A default install does not phone
-home and does not create an install id.
-
-When you opt in, Alfred sends a small daily usage-count payload to the endpoint
-you configure:
-
-- random install token
-- lifetime PRs opened by Alfred
-- lifetime PRs merged
-- lifetime PRs that reached merged or closed state
-- lifetime changed-file proxy
-
-No repo names, branch names, PR titles, code, logs, prompts, usernames, hostnames,
-or billing data are sent.
+Alfred can send anonymous aggregate usage totals to an ingest endpoint you
+configure. Reporting is enabled unless you opt out, but nothing is sent until
+`ALFRED_TELEMETRY_URL` exists.
 
 ## CLI
 
@@ -34,27 +23,37 @@ alfred telemetry on \
   --token the-same-value-as-the-collector
 ```
 
-`alfred telemetry on` writes a managed block to `~/.alfredrc` and adds the
-`alfred.proof-telemetry` scheduler row to the source checkout's
-`launchd/agents.conf` when Alfred can identify it. Re-run `deploy.sh` after
-changing scheduler rows.
+`alfred telemetry off` writes `ALFRED_TELEMETRY_ENABLED=0` and removes the
+scheduler row. `alfred telemetry on` writes the endpoint, re-enables reporting,
+and schedules `alfred.proof-telemetry`.
 
-`alfred telemetry off` writes `ALFRED_TELEMETRY_ENABLED=0`, removes the
-scheduler row, and removes the ingest token from the managed block.
+## Payload
+
+Sent once a day when an endpoint is configured:
+
+- random install token
+- lifetime Alfred-authored PRs opened
+- lifetime Alfred-authored PRs merged
+- lifetime Alfred-authored PRs that reached merged or closed state
+- lifetime issues with an `agent:*` label
+- lifetime changed-file count
+- lifetime changed-line count when the local brain has line counts
+
+No repo names, branch names, PR titles, issue titles, code, logs, prompts,
+people, hostnames, or billing data are sent.
 
 ## Public Counter
 
-The marketing site has an `/impact/` page that can show anonymous aggregate
-totals from opted-in installs. The static build reads the public stats endpoint
-from `PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
+The `/impact/` page shows the first reporter from Luminik's Alfred setup and can
+replace those seed numbers with live aggregate totals from
+`PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
 
-When no stats endpoint is configured, or when totals are below the display floor,
-the page shows a neutral warm-up state.
+Today, the Luminik seed has line counts from GitHub. Anonymous local reporters
+send `lines_changed: 0` until Alfred stores per-line additions/deletions in the
+local fleet brain.
 
-The public GitHub board on `/impact/` is separate from anonymous telemetry. It is
-generated from public GitHub metadata for `luminik-io/alfred-os`, so the site can
-show real PR links, issue flow, additions, deletions, and changed files without
-asking private installs to send that detail.
+The public GitHub examples on `/impact/` are separate. They use public GitHub
+metadata for `luminik-io/alfred-os`.
 
 ## Collector
 
@@ -62,11 +61,11 @@ The bundled collector lives in
 [`telemetry/worker/`](https://github.com/luminik-io/alfred-os/tree/main/telemetry/worker).
 It exposes:
 
-- `POST /ingest` for opted-in hosts
+- `POST /ingest` for reporting machines
 - `GET /stats` for aggregate public totals
 
 Use `INGEST_TOKEN` on the Worker and the matching `ALFRED_TELEMETRY_TOKEN` on
-opted-in hosts when counter integrity matters.
+reporting machines when only your own hosts should write to the counter.
 
 Full implementation contract:
 [`docs/TELEMETRY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TELEMETRY.md).

@@ -348,7 +348,7 @@ class WizardState:
     role_to_repos: dict[str, list[str]] = field(default_factory=dict)  # role -> [org/repo]
     role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
-    telemetry_enabled: bool = False  # opt-in anonymous proof-telemetry; default OFF
+    telemetry_enabled: bool = True  # anonymous proof telemetry is opt-out
     telemetry_url: str = ""  # ingest endpoint, only written when telemetry_enabled
     telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
 
@@ -680,17 +680,14 @@ def render_agents_conf(state: WizardState) -> str:
         label = f"alfred.{codename}"
         role_text = desc.split(" (", 1)[0]
         lines.append(f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}")
-    # Opt-in proof-telemetry is not an AGENT_CATALOG role, so it is not in
-    # enabled_roles. Emit its scheduler row here, and ONLY when the operator
-    # opted in with both a flag and a URL. Without this the generated
-    # agents.conf has no proof-telemetry line and deploy.sh schedules nothing,
-    # so an opted-in host would never actually report. The runner is still a
-    # hard no-op unless ALFRED_TELEMETRY_ENABLED=1 at run time, so this row is
-    # safe even if the operator later flips telemetry off.
+    # Proof-telemetry is not an AGENT_CATALOG role, so it is not in
+    # enabled_roles. Emit its scheduler row only when an ingest URL exists.
+    # Without a URL, the reporter is a clean no-op and scheduling it would only
+    # create noise in doctor output.
     if state.telemetry_enabled and state.telemetry_url:
         lines.append(
             "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
-            "alfred.proof-telemetry\tAnonymous proof-telemetry (opt-in)"
+            "alfred.proof-telemetry\tAnonymous usage totals"
         )
     return "\n".join(lines) + "\n"
 
@@ -722,10 +719,9 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
             out[f"ALFRED_{default_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
-    # Anonymous proof-telemetry is opt-in. We only ever write the enable var
-    # when the operator explicitly said yes; leaving it unset is the default
-    # and the only OFF state the runtime needs (the reporter treats anything
-    # other than "1" as off). So a "no" answer writes nothing here.
+    # Anonymous proof-telemetry is opt-out. We write the enable var only when a
+    # URL exists, because without a URL there is nothing to report. A "no" answer
+    # writes ALFRED_TELEMETRY_ENABLED=0 below so the opt-out is explicit.
     if state.telemetry_enabled and state.telemetry_url:
         out["ALFRED_TELEMETRY_ENABLED"] = "1"
         out["ALFRED_TELEMETRY_URL"] = state.telemetry_url
@@ -733,6 +729,8 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         # token was provided. Matches the collector's INGEST_TOKEN.
         if state.telemetry_token:
             out["ALFRED_TELEMETRY_TOKEN"] = state.telemetry_token
+    elif not state.telemetry_enabled:
+        out["ALFRED_TELEMETRY_ENABLED"] = "0"
     return out
 
 
@@ -1306,57 +1304,45 @@ def step_8_schedule(state: WizardState, *, non_interactive: bool) -> None:
 
 
 def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
-    """Opt-in prompt for anonymous proof-telemetry. Default is NO.
+    """Prompt for anonymous proof-telemetry. Default is YES, with opt-out.
 
-    Non-interactive runs never opt in (the default stays OFF). A ``yes`` here
-    still does nothing until an ingest URL is provided; with no URL the reporter
-    is a no-op, so we only flip the enable var when both are present.
+    Sending still needs an ingest URL. With no URL, the reporter is a clean
+    no-op and no scheduler row is written.
     """
-    step("Anonymous usage telemetry (opt-in)")
+    step("Anonymous usage totals")
     note(
-        "Alfred can send ANONYMOUS, AGGREGATE counts (PRs opened/merged/reviewed, "
-        "file deltas) to a counter endpoint you run. Default is OFF."
+        "Alfred can share anonymous aggregate counts: PRs opened, PRs merged, "
+        "terminal PRs, and changed files."
     )
-    note("Never sent: repo names, code, file paths, hostnames, IP, or any PII.")
-    note("One switch turns it off again any time: ALFRED_TELEMETRY_ENABLED. See docs/TELEMETRY.md.")
+    note("Never sent: repo names, code, paths, prompts, titles, people, or hostnames.")
+    note("Turn it off any time with `alfred telemetry off`.")
     if non_interactive:
-        # apply_config_overrides may have already opted telemetry IN from a
-        # --config (telemetry_enabled + telemetry_url). The generated config
-        # (render_agents_conf / env_assignments_for) writes ALFRED_TELEMETRY_ENABLED=1
-        # and schedules proof-telemetry on EXACTLY this same condition, so the
-        # status we print here must mirror it, never a flat "left OFF".
         if state.telemetry_enabled and state.telemetry_url:
             ok(
-                "Telemetry opted IN via --config; sending to "
+                "Telemetry endpoint configured; sending anonymous totals to "
                 f"{telemetry_endpoint_label(state.telemetry_url)}. "
-                "Disable any time by removing ALFRED_TELEMETRY_ENABLED."
+                "Disable any time with `alfred telemetry off`."
             )
         elif state.telemetry_enabled and not state.telemetry_url:
-            # Flag set without a URL: the reporter is a no-op and the generated
-            # config writes nothing, so telemetry is effectively OFF. Say so, and
-            # say why, instead of claiming a clean default.
-            warn("Telemetry flag set but no telemetry_url in --config; telemetry stays OFF.")
+            warn("Telemetry is selected, but no telemetry_url was provided; no report is scheduled.")
         else:
-            ok("Telemetry left OFF (default).")
+            ok("Telemetry opted out.")
         return
-    # apply_config_overrides may have pre-set telemetry_enabled from --config;
-    # respect an explicit config opt-in, otherwise ask with default No.
-    opt_in = state.telemetry_enabled or ask_yes_no(
-        "Send anonymous aggregate telemetry?", default=False
+    share = ask_yes_no(
+        "Share anonymous usage totals?", default=state.telemetry_enabled
     )
-    if not opt_in:
+    if not share:
         state.telemetry_enabled = False
         state.telemetry_url = ""
-        ok("Telemetry left OFF.")
+        ok("Telemetry opted out.")
         return
     url = (
         state.telemetry_url
         or ask("Telemetry ingest URL (blank to skip)", state.telemetry_url).strip()
     )
     if not url:
-        state.telemetry_enabled = False
         state.telemetry_url = ""
-        warn("No URL given; telemetry stays OFF.")
+        warn("No URL given; no report is scheduled.")
         return
     # Optional shared ingest token. The default public Worker has no write gate,
     # so this is skippable (press enter). Only matters when the operator's Worker
@@ -1370,7 +1356,7 @@ def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
     state.telemetry_enabled = True
     state.telemetry_url = url
     state.telemetry_token = token
-    ok("Telemetry opted IN. Disable any time by removing ALFRED_TELEMETRY_ENABLED.")
+    ok("Telemetry endpoint configured. Disable any time with `alfred telemetry off`.")
 
 
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
@@ -1609,11 +1595,11 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       schedule for an agent. Key resolves the same way as
       ``role_codename``; value is in ``agents.conf`` schedule format
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
-    - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): opt in to
-      anonymous proof-telemetry non-interactively. Both must be set for
-      the reporter to do anything; default is OFF. ``telemetry_enabled``
-      is parsed strictly (see ``parse_consent``): a quoted ``"false"``
-      stays OFF.
+    - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): configure
+      anonymous proof-telemetry non-interactively. Reporting is opt-out, but
+      still needs ``telemetry_url`` before anything is scheduled or sent.
+      ``telemetry_enabled`` is parsed strictly (see ``parse_consent``): a
+      quoted ``"false"`` opts out.
     - ``telemetry_token`` (str): optional shared ingest token sent as
       ``X-Ingest-Token``; only written when telemetry is opted in.
     """
@@ -1677,10 +1663,11 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                 warn(f"--config role_schedule: unknown agent {raw_key!r}; ignored")
                 continue
             state.role_to_schedule[role] = str(raw_schedule)
-    # Opt-in telemetry. Both keys must be explicit; we never infer an opt-in.
+    # Telemetry opt-out. A missing key keeps the default (enabled), but a URL is
+    # still required before anything is scheduled or sent.
     # parse_consent is strict: a quoted "false"/"0"/"no" (or anything that is
-    # not a recognized truthy token) stays OFF, unlike bool("false") which is
-    # True. The off-by-default guarantee is load-bearing for a privacy switch.
+    # not a recognized truthy token) opts out, unlike bool("false") which is
+    # True.
     if "telemetry_enabled" in cfg:
         state.telemetry_enabled = parse_consent(cfg["telemetry_enabled"])
     if "telemetry_url" in cfg:

@@ -176,7 +176,7 @@ def test_render_agents_conf_includes_batman(init_mod, tmp_path):
 
 
 def test_render_agents_conf_omits_telemetry_row_by_default(init_mod, tmp_path):
-    # No opt-in: the generated agents.conf must NOT schedule proof-telemetry.
+    # No endpoint: the generated agents.conf must NOT schedule proof-telemetry.
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)
     assert "proof-telemetry" not in text
@@ -192,15 +192,15 @@ def test_render_agents_conf_omits_telemetry_row_without_url(init_mod, tmp_path):
 
 
 def test_render_agents_conf_schedules_telemetry_when_opted_in(init_mod, tmp_path):
-    # Regression for the Codex finding: opting in via alfred-init must actually
-    # schedule the proof-telemetry job, otherwise an opted-in host never reports.
+    # Configuring a telemetry endpoint via alfred-init must actually schedule
+    # the proof-telemetry job, otherwise a reporting host never reports.
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     state.telemetry_enabled = True
     state.telemetry_url = "https://worker.example.com/ingest"
     text = init_mod.render_agents_conf(state)
     assert (
         "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
-        "alfred.proof-telemetry\tAnonymous proof-telemetry (opt-in)" in text
+        "alfred.proof-telemetry\tAnonymous usage totals" in text
     )
 
 
@@ -227,7 +227,7 @@ def test_render_agents_conf_telemetry_row_is_a_valid_schedule_record(init_mod, t
 
 
 def test_opt_in_produces_both_schedule_and_env(init_mod, tmp_path):
-    # Full opt-in contract: after the operator opts in, the generated config must
+    # Full reporting contract: after the operator configures an endpoint, the generated config must
     # carry BOTH the launchd schedule row (so the job actually runs) AND the
     # runtime env vars (so the running job is enabled and knows where to post).
     # Either one alone is a silent no-op.
@@ -302,7 +302,7 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# telemetry opt-in (off by default)
+# telemetry endpoint / opt-out behavior
 # ---------------------------------------------------------------------------
 
 
@@ -331,23 +331,25 @@ def test_env_assignments_telemetry_written_when_opted_in(init_mod, tmp_path):
     assert out["ALFRED_TELEMETRY_URL"] == "https://worker.example.com/ingest"
 
 
-def test_telemetry_step_non_interactive_stays_off(init_mod, tmp_path):
+def test_telemetry_step_non_interactive_without_url_schedules_nothing(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path)
     init_mod.step_8b_telemetry(state, non_interactive=True)
-    assert state.telemetry_enabled is False
+    assert state.telemetry_enabled is True
     assert state.telemetry_url == ""
 
 
-def test_telemetry_step_non_interactive_default_prints_off(init_mod, tmp_path, capsys):
-    # The genuine default (no --config, no opt-in) must still print OFF.
+def test_telemetry_step_non_interactive_default_prints_no_report(init_mod, tmp_path, capsys):
+    # The default keeps telemetry selected, but with no URL nothing is scheduled.
     state = _state_with(init_mod, tmp_path)
     init_mod.step_8b_telemetry(state, non_interactive=True)
-    out = capsys.readouterr().out
-    assert "Telemetry left OFF (default)." in out
+    captured = capsys.readouterr()
+    out = captured.out + captured.err
+    assert "no telemetry_url was provided" in out
+    assert "no report is scheduled" in out
 
 
 def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_path, capsys):
-    # Regression: when --config pre-opted telemetry IN (telemetry_enabled +
+    # Regression: when --config configured telemetry (telemetry_enabled +
     # telemetry_url already applied by apply_config_overrides), the non-interactive
     # status line must say telemetry is ON, NOT "left OFF". The printed status must
     # match what the generated config actually writes (ALFRED_TELEMETRY_ENABLED=1 +
@@ -359,10 +361,9 @@ def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_pat
     )
     init_mod.step_8b_telemetry(state, non_interactive=True)
     out = capsys.readouterr().out
-    # Honest status: the status line says opted IN and names the endpoint host,
-    # and NEVER claims telemetry was left off. (The standing notes legitimately
-    # mention the default being OFF, so we assert on the status wording.)
-    assert "opted IN" in out
+    # Honest status: the status line names the endpoint host and never claims
+    # telemetry was opted out.
+    assert "endpoint configured" in out
     # The printed endpoint label is the exact, token-safe scheme://host/path. We
     # assert the full label string (not a bare-host substring) and confirm its
     # parsed host so the check is structural, never URL-substring sanitization.
@@ -370,8 +371,8 @@ def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_pat
     assert expected_label == "https://worker.example.com/ingest"
     assert expected_label in out
     assert urllib.parse.urlsplit(expected_label).hostname == "worker.example.com"
-    assert "left OFF" not in out
-    assert "stays OFF" not in out
+    assert "opted out" not in out
+    assert "no report is scheduled" not in out
     # And the status is consistent with the generated config: enable var set and
     # the proof-telemetry job is scheduled.
     env = init_mod.env_assignments_for(state)
@@ -393,7 +394,7 @@ def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_p
     )
     init_mod.step_8b_telemetry(state, non_interactive=True)
     out = capsys.readouterr().out
-    assert "opted IN" in out
+    assert "endpoint configured" in out
     # The label must keep the host but strip every secret. Assert structurally on
     # the parsed label (host present, no userinfo, empty query) rather than a
     # bare-host substring check, and confirm the label appears verbatim in the
@@ -412,17 +413,17 @@ def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_p
     assert "s3cret" not in out
 
 
-def test_telemetry_step_non_interactive_flag_without_url_prints_off(init_mod, tmp_path, capsys):
+def test_telemetry_step_non_interactive_flag_without_url_prints_no_report(init_mod, tmp_path, capsys):
     # telemetry_enabled set but no URL: generated config writes nothing and the
-    # reporter no-ops, so the status must say OFF (with the reason), not opted IN.
+    # reporter no-ops, so the status must say no report is scheduled.
     state = _state_with(init_mod, tmp_path)
     state.telemetry_enabled = True
     state.telemetry_url = ""
     init_mod.step_8b_telemetry(state, non_interactive=True)
     captured = capsys.readouterr()
     combined = captured.out + captured.err
-    assert "OFF" in combined
-    assert "opted IN" not in combined
+    assert "no report is scheduled" in combined
+    assert "endpoint configured" not in combined
     # Consistent with the generated config: nothing is written or scheduled.
     env = init_mod.env_assignments_for(state)
     assert "ALFRED_TELEMETRY_ENABLED" not in env
@@ -476,12 +477,12 @@ def test_config_override_telemetry_opt_in(init_mod, tmp_path):
 
 
 def test_telemetry_step_interactive_collects_optional_token(init_mod, tmp_path, monkeypatch):
-    # Interactive opt-in path: after the URL, the wizard prompts for the optional
+    # Interactive reporting path: after the URL, the wizard prompts for the optional
     # ingest token. When the operator pastes one (their Worker has an INGEST_TOKEN
     # write gate), it is persisted on state and later written to
     # ALFRED_TELEMETRY_TOKEN, the var proof_telemetry.py reads.
     state = _state_with(init_mod, tmp_path)
-    # Sequence: opt-in yes, URL, ingest token.
+    # Sequence: accept sharing, URL, ingest token.
     answers = iter(["y", "https://w.example.com/ingest", "shared-secret"])
     monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
     init_mod.step_8b_telemetry(state, non_interactive=False)
@@ -497,7 +498,7 @@ def test_telemetry_step_interactive_token_is_skippable(init_mod, tmp_path, monke
     # write gate, so pressing enter at the token prompt leaves the token empty and
     # ALFRED_TELEMETRY_TOKEN is not written, while telemetry stays opted in.
     state = _state_with(init_mod, tmp_path)
-    # Sequence: opt-in yes, URL, blank token (press enter to skip).
+    # Sequence: accept sharing, URL, blank token (press enter to skip).
     answers = iter(["y", "https://w.example.com/ingest", ""])
     monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
     init_mod.step_8b_telemetry(state, non_interactive=False)
@@ -510,7 +511,7 @@ def test_telemetry_step_interactive_token_is_skippable(init_mod, tmp_path, monke
 
 
 def test_parse_consent_strict_truthy_only(init_mod):
-    # Explicit opt-in: real bool True or a recognized truthy string.
+    # Explicit enabled: real bool True or a recognized truthy string.
     for value in [True, "1", "true", "TRUE", "Yes", " on ", "yes"]:
         assert init_mod.parse_consent(value) is True, f"{value!r} should opt in"
 
@@ -528,17 +529,17 @@ def test_parse_consent_rejects_non_string_non_bool(init_mod):
 
 def test_config_override_telemetry_quoted_false_stays_off(init_mod, tmp_path):
     # Regression for the Greptile CRITICAL: a quoted "false" in config (common
-    # copy-paste) must NOT silently enable telemetry. Off-by-default is airtight.
+    # copy-paste) must opt out.
     state = _state_with(init_mod, tmp_path)
     state.telemetry_enabled = False
     init_mod.apply_config_overrides(state, {"telemetry_enabled": "false"})
     assert state.telemetry_enabled is False
     out = init_mod.env_assignments_for(state)
-    assert "ALFRED_TELEMETRY_ENABLED" not in out
+    assert out["ALFRED_TELEMETRY_ENABLED"] == "0"
 
 
 def test_config_override_telemetry_string_true_opts_in(init_mod, tmp_path):
-    # A quoted "true" is an explicit opt-in and normalizes to the wire "1".
+    # A quoted "true" keeps telemetry enabled and normalizes to the wire "1".
     state = _state_with(init_mod, tmp_path)
     init_mod.apply_config_overrides(
         state,

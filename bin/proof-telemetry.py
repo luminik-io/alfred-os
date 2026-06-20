@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Scheduler-facing wrapper for the opt-in proof-telemetry reporter.
+"""Scheduler-facing wrapper for the anonymous proof-telemetry reporter.
 
-This is the script a launchd/cron entry points at. It is a hard NO-OP unless
-the operator has opted in by setting ``ALFRED_TELEMETRY_ENABLED=1``. With the
-switch off (the default) it prints a one-line sentinel and exits 0 without
-generating an install id, reading the brain, or touching the network.
+This is the script a launchd/cron entry points at. The reporter is enabled by
+default once an ingest endpoint is configured. Operators can opt out by setting
+``ALFRED_TELEMETRY_ENABLED=0`` or by running ``alfred telemetry off``. With the
+switch off it prints a one-line sentinel and exits 0 without generating an
+install id, reading the brain, or touching the network.
 
-Mirrors the off-by-default posture of ``memory-harvest.py`` and the opt-in
-``damian`` runner: the scheduler entry can be present and loaded, yet the job
-does nothing until the operator deliberately turns it on.
+The scheduler entry can be present and loaded. If no ingest URL is configured,
+the job reports a clean no-url sentinel and sends nothing.
 
 Exit code is always 0. Telemetry is best-effort; a failure here must never
 surface as a scheduler error or break anything else on the host.
@@ -22,7 +22,7 @@ sees a recognized sentinel instead of an accidental ``[PROOF-TELEMETRY-SENT]``
 
 Sentinels (printed to stdout, picked up by log scrapers):
 
-    [PROOF-TELEMETRY-DISABLED]      master switch off (the default)
+    [PROOF-TELEMETRY-DISABLED]      master switch explicitly off
     [PROOF-TELEMETRY-DOCTOR-OK]     doctor fast path, enabled and config present
     [PROOF-TELEMETRY-NO-URL]        enabled but ALFRED_TELEMETRY_URL unset
     [PROOF-TELEMETRY-NO-INSTALL-ID] enabled but the install id could not be
@@ -68,7 +68,7 @@ def _doctor_fast_path() -> int:
 
     The fast path does no payload build, no brain read, and no network POST:
 
-      * switch off (the default)  -> ``[PROOF-TELEMETRY-DISABLED]`` (⚪ disabled)
+      * switch explicitly off      -> ``[PROOF-TELEMETRY-DISABLED]`` (disabled)
       * enabled but URL unset      -> ``[PROOF-TELEMETRY-NO-URL]`` (a real,
         actionable config gap the operator should see)
       * enabled and URL present    -> ``[PROOF-TELEMETRY-DOCTOR-OK]`` (✅ ok)
@@ -95,12 +95,12 @@ def main(argv: list[str] | None = None) -> int:
     if os.environ.get("ALFRED_DOCTOR") == "1":
         return _doctor_fast_path()
 
-    parser = argparse.ArgumentParser(description="Opt-in proof-telemetry reporter.")
+    parser = argparse.ArgumentParser(description="Anonymous proof-telemetry reporter.")
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Build the payload and print it, but never POST. Useful to see "
-        "exactly what would be sent before opting in.",
+        "exactly what would be sent.",
     )
     args = parser.parse_args(argv)
 

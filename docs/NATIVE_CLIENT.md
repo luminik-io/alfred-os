@@ -15,10 +15,9 @@ reactions, search, mobile push, and shared context. The native client should
 make Alfred easier to trust and repair: setup checks, health, logs, approvals,
 memory review, safe pause/resume, dry-run launch, and recovery.
 
-The client must not become a hosted gateway, a shadow database, or a softer
-copy of Slack. It reads and writes through the same local APIs, state files,
-and CLI commands you can inspect by hand. Users should be able to run
-Alfred with or without the client.
+The client reads and writes through the same local APIs, state files, and CLI
+commands Alfred already uses. Users should be able to run Alfred with or
+without the client, and Slack remains the collaboration surface.
 
 ## Product Principles
 
@@ -346,13 +345,13 @@ Distribution sequence:
 Two Hermes Desktop projects are useful reference points:
 
 - `dodo-reach/hermes-desktop`: the strongest lesson is restraint. The app keeps
-  the host as source of truth and avoids a gateway, mirror, or extra sync layer.
+  the host as source of truth and keeps sync layers out of the critical path.
 - `fathah/hermes-desktop`: the strongest lesson is guided setup. A local client
   can make install, providers, memory, tools, schedules, and logs approachable.
 - `Ivy-Interactive/Ivy-Tendril`: the strongest lesson is plan lifecycle
   legibility. Borrow the durable plan states, per-project verification
   profiles, plan health doctor, repair/prune workflow, and recommendations
-  inbox. Do not borrow a second scheduler, hosted gateway, or heavyweight
-  database as the source of truth.
+  inbox. Keep Alfred's existing scheduler and local state as the source of
+  truth.
 
 Alfred should borrow these ideas while staying Slack-native.

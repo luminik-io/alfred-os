@@ -36,6 +36,32 @@ commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
 `alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
 want `main`, framework edits, or Linux.
 
+## Install Alfred Desktop
+
+The core fleet runs without a UI. Alfred Desktop is the native Mac/Linux app for
+watching the fleet, reviewing plans, checking memory candidates, and running safe
+local repairs.
+
+1. Finish the core install above.
+2. Start the local API:
+
+   ```sh
+   alfred serve --port 7010 --no-browser
+   ```
+
+3. Download the signed Mac package or Linux build from [Download](/download/).
+
+For source builds:
+
+```sh
+cd clients/desktop
+npm install
+npm run tauri dev
+```
+
+The desktop app reads the same `$ALFRED_HOME` state and GitHub records as the
+CLI. You can keep using Alfred entirely from the terminal when you prefer.
+
 Starter fleet for one repo or an explicit comma-separated repo list:
 
 ```sh

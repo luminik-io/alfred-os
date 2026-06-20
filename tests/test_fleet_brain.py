@@ -530,6 +530,35 @@ def test_count_github_items_authored_only_past_500_cap(brain: FleetBrain) -> Non
     )
 
 
+def test_count_github_items_agent_labeled_only_past_500_cap(brain: FleetBrain) -> None:
+    agent_issues = 525
+    unlabeled_issues = 125
+    n = 0
+    for _ in range(agent_issues):
+        n += 1
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="issue",
+            state="open",
+            labels=["agent:implement"],
+            url=f"u/{n}",
+        )
+    for _ in range(unlabeled_issues):
+        n += 1
+        brain.upsert_github_item(
+            repo="org/api",
+            number=n,
+            kind="issue",
+            state="open",
+            labels=["bug"],
+            url=f"u/{n}",
+        )
+
+    assert brain.count_github_items(kind="issue") == agent_issues + unlabeled_issues
+    assert brain.count_github_items(kind="issue", agent_labeled_only=True) == agent_issues
+
+
 def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
     total = 555
     for n in range(total):

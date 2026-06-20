@@ -12,7 +12,7 @@ workspaces; the assistant needs an explicit repo list either way.
 
 ## The Shape
 
-1. Run the dry-run example.
+1. Run a side-effect-safe dry-run example.
 2. Install prerequisites.
 3. Let the human complete browser auth.
 4. Configure explicit repos with the starter fleet.

@@ -123,6 +123,9 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
     prs_opened: 5,
     prs_merged: -3,
     prs_reviewed: 2.7,
+    issues_opened: 11,
+    files_changed: 77,
+    lines_changed: 123,
     loc_added: 999999999,
     repo: "should-be-ignored",
   });
@@ -130,10 +133,21 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
   assert.deepEqual(out.value, {
     install_id: "abcdef12",
     period: "2026-06",
-    counts: { prs_opened: 5, prs_merged: 0, prs_reviewed: 2, loc_added: 100000 },
+    counts: {
+      prs_opened: 5,
+      prs_merged: 0,
+      prs_reviewed: 2,
+      issues_opened: 11,
+      files_changed: 77,
+      lines_changed: 123,
+      loc_added: 100000,
+    },
   });
   // No extra keys leaked from the raw payload.
   assert.deepEqual(Object.keys(out.value.counts).sort(), [
+    "files_changed",
+    "issues_opened",
+    "lines_changed",
     "loc_added",
     "prs_merged",
     "prs_opened",
@@ -197,6 +211,9 @@ test("normalizePayload clamps prs_merged/prs_reviewed to prs_opened server-side"
     prs_opened: 0,
     prs_merged: 0,
     prs_reviewed: 0,
+    issues_opened: 0,
+    files_changed: 100,
+    lines_changed: 0,
     loc_added: 100,
   });
 
@@ -213,6 +230,9 @@ test("normalizePayload clamps prs_merged/prs_reviewed to prs_opened server-side"
     prs_opened: 10,
     prs_merged: 7,
     prs_reviewed: 4,
+    issues_opened: 0,
+    files_changed: 800,
+    lines_changed: 0,
     loc_added: 800,
   });
 });
@@ -236,6 +256,7 @@ test("ingest folds the first send into empty totals", async () => {
   assert.equal(agg.prs_opened, 10);
   assert.equal(agg.prs_merged, 7);
   assert.equal(agg.prs_reviewed, 4);
+  assert.equal(agg.files_changed, 1200);
   assert.equal(agg.loc_added, 1200);
   assert.equal(agg.installs, 1);
   assert.equal(agg.updated_at, FIXED.toISOString());
@@ -862,6 +883,9 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
       prs_opened: 9,
       prs_merged: 6,
       prs_reviewed: 3,
+      issues_opened: 5,
+      files_changed: 800,
+      lines_changed: 1200,
       loc_added: 800,
     }),
     env,
@@ -882,6 +906,9 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
     prs_opened: 9,
     prs_merged: 6,
     prs_reviewed: 3,
+    issues_opened: 5,
+    files_changed: 800,
+    lines_changed: 1200,
     loc_added: 800,
     installs: 1,
     updated_at: stats.updated_at,
@@ -1281,6 +1308,9 @@ test("GET /stats on an empty store returns zeroed totals", async () => {
     prs_opened: 0,
     prs_merged: 0,
     prs_reviewed: 0,
+    issues_opened: 0,
+    files_changed: 0,
+    lines_changed: 0,
     loc_added: 0,
     installs: 0,
     updated_at: null,

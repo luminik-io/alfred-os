@@ -2,9 +2,9 @@
 
 Alfred Desktop (`clients/desktop`) is a native Mac/Linux control surface for a local Alfred install. It is the optional `client` tier of the [layered install](INSTALL_TIERS.md): the core fleet and CLI run fully standalone without it.
 
-Slack stays Alfred's collaboration surface. The desktop app is for local trust and repair: what needs attention, which plans are waiting, why a run failed, which memory candidates are ready, and which local actions are safe to run next. It is a thin control plane, not a second runtime, and it never becomes a chat app or a hosted gateway.
+Slack stays Alfred's collaboration surface. The desktop app is for local trust and repair: what needs attention, which plans are waiting, why a run failed, which memory candidates are ready, and which local actions are safe to run next. It is a thin local control surface, not a second runtime, and it never becomes a chat app.
 
-For the design rationale and the Slack boundary, see [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md). For the JSON API it reads, see [`SERVE.md`](SERVE.md). This page is the user-facing tour of the control surface and how to build installers.
+For the design rationale and the Slack boundary, see [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md). For the JSON API it reads, see [`SERVE.md`](SERVE.md). This page is the user-facing tour of the desktop app and how to build installers.
 
 ## The control surface
 
@@ -22,7 +22,7 @@ Plans carry their origin so the Slack collaboration trail stays visible while th
 
 ## How it talks to the fleet
 
-The client reads the fleet's own state over the `alfred serve` JSON API and runs a small set of safe local actions through a native command allowlist. It introduces no public port, no relay, and no shadow database; `$ALFRED_HOME` remains the single source of truth.
+The client reads the fleet's own state over the `alfred serve` JSON API and runs a small set of safe local actions through a native command allowlist. It opens no public port, and `$ALFRED_HOME` remains the single source of truth.
 
 - **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
 - **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.

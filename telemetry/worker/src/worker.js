@@ -37,7 +37,7 @@
  * part of the storage key, so a calendar rollover can never re-add a constant
  * lifetime total.
  *
- * Abuse posture (be honest about a public community counter). /ingest:
+ * Abuse posture (be honest about a public aggregate counter). /ingest:
  *   - Rejects "simple" requests: the body MUST be Content-Type application/json.
  *     A text/plain or form POST (which a browser can send cross-origin WITHOUT a
  *     CORS preflight) is refused, so a hidden cross-origin browser POST cannot
@@ -63,8 +63,9 @@
  * What is stored (the ENTIRE stored shape):
  *   key "install:<id>" -> JSON latest snapshot for one install, the single
  *                         record per install. Replaced on every report:
- *                         { prs_opened, prs_merged, prs_reviewed, loc_added,
- *                           seen_at }. Its presence also IS the distinct-install
+ *                         { prs_opened, prs_merged, prs_reviewed,
+ *                           issues_opened, files_changed, lines_changed,
+ *                           loc_added, seen_at }. Its presence also IS the distinct-install
  *                         marker, so there is no separate "known install" key.
  *                         These per-install records are the ONLY source of
  *                         truth: /stats sums them on read.
@@ -120,7 +121,15 @@
 // cap is also the primary bound on how much one forged install_id can inflate
 // the aggregate. Tuned well above any believable single-host lifetime output.
 const MAX_PER_FIELD = 100000;
-const COUNT_FIELDS = ["prs_opened", "prs_merged", "prs_reviewed", "loc_added"];
+const COUNT_FIELDS = [
+  "prs_opened",
+  "prs_merged",
+  "prs_reviewed",
+  "issues_opened",
+  "files_changed",
+  "lines_changed",
+  "loc_added",
+];
 
 // install_id is operator-generated and opaque. Bound its length and charset so
 // a malformed or hostile value cannot blow up a KV key.
@@ -133,6 +142,9 @@ const EMPTY_AGG = {
   prs_opened: 0,
   prs_merged: 0,
   prs_reviewed: 0,
+  issues_opened: 0,
+  files_changed: 0,
+  lines_changed: 0,
   loc_added: 0,
   installs: 0,
   updated_at: null,
@@ -234,6 +246,22 @@ export function clampDependentPrCounts(counts) {
   return out;
 }
 
+function normalizeCountFields(raw) {
+  const counts = {};
+  for (const field of COUNT_FIELDS) {
+    counts[field] = clampCount(raw && raw[field]);
+  }
+  // `loc_added` was the original wire name for file touches. Keep it as an alias
+  // so older reporters and newer UI code agree on the same file-count total.
+  if (raw && raw.files_changed === undefined && raw.loc_added !== undefined) {
+    counts.files_changed = counts.loc_added;
+  }
+  if (raw && raw.loc_added === undefined && raw.files_changed !== undefined) {
+    counts.loc_added = counts.files_changed;
+  }
+  return counts;
+}
+
 /**
  * Validate and normalize an ingest payload. Returns { ok, value } or
  * { ok: false, error }. Never throws on bad input.
@@ -250,10 +278,7 @@ export function normalizePayload(raw) {
   // default to "lifetime" otherwise; it never becomes part of a storage key.
   const rawPeriod = typeof raw.period === "string" ? raw.period : "";
   const period = PERIOD_RE.test(rawPeriod) ? rawPeriod : "lifetime";
-  const counts = {};
-  for (const field of COUNT_FIELDS) {
-    counts[field] = clampCount(raw[field]);
-  }
+  const counts = normalizeCountFields(raw);
   // Enforce the subset invariant server-side: prs_merged/prs_reviewed may never
   // exceed prs_opened. A buggy or hostile open-write client could POST
   // prs_opened:0 with prs_merged>0; clamp it here so the normalized counts that
@@ -277,10 +302,7 @@ function installKey(installId) {
  * derived total. Unknown/negative/non-numeric counts become 0.
  */
 function normalizeSnapshot(stored) {
-  const clamped = {};
-  for (const field of COUNT_FIELDS) {
-    clamped[field] = clampCount(stored && stored[field]);
-  }
+  const clamped = normalizeCountFields(stored);
   // Re-enforce the subset invariant on read too: a hand-edited or legacy record
   // with prs_merged/prs_reviewed above prs_opened must not poison the derived
   // total. clampDependentPrCounts caps each dependent counter at prs_opened.
@@ -348,7 +370,7 @@ export async function computeTotals(kv) {
  * a TTL of STATS_CACHE_TTL_SECONDS: a hit avoids re-listing every install, a
  * miss recomputes from scratch and refreshes it. The cache is NEVER written by
  * /ingest, so it cannot race a write; the worst it can do is serve a value up to
- * the TTL stale, which for a vanity counter is fine. Setting the TTL to 0
+ * the TTL stale, which is fine for an aggregate counter. Setting the TTL to 0
  * disables the cache and always recomputes.
  */
 export async function readStats(kv, env) {
@@ -412,10 +434,7 @@ export async function ingest(kv, payload, now = new Date()) {
   // prs_opened. This runs even if a caller reached ingest with counts that did
   // not pass through normalizePayload, so the per-install record the aggregate
   // sums can never reflect an invariant-violating payload.
-  const clamped = {};
-  for (const field of COUNT_FIELDS) {
-    clamped[field] = clampCount(counts[field]);
-  }
+  const clamped = normalizeCountFields(counts);
   const snapshot = clampDependentPrCounts(clamped);
   snapshot.seen_at = iso;
 
@@ -441,6 +460,9 @@ function publicView(agg) {
     prs_opened: agg.prs_opened,
     prs_merged: agg.prs_merged,
     prs_reviewed: agg.prs_reviewed,
+    issues_opened: agg.issues_opened,
+    files_changed: agg.files_changed,
+    lines_changed: agg.lines_changed,
     loc_added: agg.loc_added,
     installs: agg.installs,
     updated_at: agg.updated_at,
@@ -544,7 +566,7 @@ function checkOrigin(request, env) {
 
 /**
  * Ingest write gate. When INGEST_TOKEN is configured on the Worker, /ingest
- * must present a matching `X-Ingest-Token` header (opted-in hosts send their
+ * must present a matching `X-Ingest-Token` header (reporting machines send their
  * ALFRED_TELEMETRY_TOKEN there). When INGEST_TOKEN is unset the counter is
  * deliberately open to server-side writes (the application/json + Origin lock,
  * rate limit, per-install count cap, and latest-wins idempotency are the
@@ -582,7 +604,7 @@ function checkIngestToken(request, env) {
 // set INGEST_TOKEN. An atomic limiter (the Workers Rate Limiting binding or a
 // Durable Object) was considered and deliberately NOT adopted: the binding's
 // fixed 10s/60s period cannot express this env-configurable per-hour window,
-// and a Durable Object is unwarranted weight for a soft speed bump on an opt-in
+// and a Durable Object is unwarranted weight for a soft speed bump on a
 // free-tier counter whose abuse bound does not depend on the limiter.
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
 const RATE_LIMIT_MAX_PER_WINDOW = 60;

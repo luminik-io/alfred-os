@@ -1,13 +1,13 @@
 # Alfred proof-telemetry Worker
 
 A tiny Cloudflare Worker that collects **anonymous, aggregate-only** usage
-counts from Alfred installs that have opted in, and serves the public totals to
-the marketing site's `/impact` counter.
+counts from reporting Alfred machines, and serves the public totals to the
+marketing site's `/impact` counter.
 
-It is the server half of an opt-in feature. The install half (the agent-side
-reporter) is **off by default** and sends nothing unless you set
-`ALFRED_TELEMETRY_ENABLED=1`. See [`docs/TELEMETRY.md`](../../docs/TELEMETRY.md)
-for the full privacy contract.
+It is the server half of Alfred's aggregate usage counter. The agent-side
+reporter sends only when `ALFRED_TELEMETRY_URL` is configured; set
+`ALFRED_TELEMETRY_ENABLED=0` to opt out. See
+[`docs/TELEMETRY.md`](../../docs/TELEMETRY.md) for the full contract.
 
 This Worker is **not deployed by the Alfred project**. You deploy your own copy
 under your own Cloudflare account if you want to run a counter. Nothing here
@@ -30,7 +30,10 @@ phones home to a Luminik-operated endpoint.
   "prs_opened": 42,
   "prs_merged": 31,
   "prs_reviewed": 18,
-  "loc_added": 12873
+  "issues_opened": 19,
+  "files_changed": 1287,
+  "lines_changed": 0,
+  "loc_added": 1287
 }
 ```
 
@@ -41,9 +44,12 @@ phones home to a Luminik-operated endpoint.
 - `period`: advisory metadata only. The reporter sends `"lifetime"`. It is NOT
   part of any storage key, so a calendar rollover can never re-add a constant
   total. A missing or malformed value defaults to `"lifetime"`.
-- The four count fields are non-negative integers, the install's cumulative
+- The count fields are non-negative integers, the install's cumulative
   lifetime total (not an increment). The Worker clamps each to `[0, 100000]`
   (the per-install cap) and ignores any other field in the body.
+- `loc_added` is a legacy alias for `files_changed`. If one is missing, the
+  Worker copies the other so old and new reporters aggregate the same file
+  count.
 
 ### What the Worker stores (the entire stored shape)
 
@@ -51,8 +57,8 @@ All state lives in one Workers KV namespace bound as `TELEMETRY`:
 
 | Key | Value | Why it exists |
 | --- | --- | --- |
-| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It is the only source of truth: `/stats` sums these on read. Its presence is also the distinct-install marker (no separate key). |
-| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 60s, the Cloudflare KV minimum). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
+| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, files_changed, lines_changed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It is the only source of truth: `/stats` sums these on read. Its presence is also the distinct-install marker (no separate key). |
+| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, files_changed, lines_changed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 60s, the Cloudflare KV minimum). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
 
 **Never stored, never logged:** IP addresses, user agents, repo names, file
 paths, code, commit text, handles, or anything that identifies a person or
@@ -85,7 +91,7 @@ guarantee and what lets an install safely post every day.
 
 ### Write protection and the abuse surface
 
-This Worker backs a *public vanity counter*, so be honest with yourself about
+This Worker backs a public aggregate counter, so be honest with yourself about
 what it can and cannot guarantee. The controls, in layers:
 
 1. **No "simple" requests.** `/ingest` requires `Content-Type: application/json`
@@ -101,7 +107,7 @@ what it can and cannot guarantee. The controls, in layers:
    CORS is scoped to `ALLOWED_ORIGIN` on `GET /stats` only.
 3. **Optional shared token.** Set `INGEST_TOKEN` (prefer
    `wrangler secret put INGEST_TOKEN`) and every ingest must send a matching
-   `X-Ingest-Token` header. Opted-in hosts put their value in
+   `X-Ingest-Token` header. Reporting machines put their value in
    `ALFRED_TELEMETRY_TOKEN`. This is the difference between a private counter
    (only your hosts can write) and an open one.
 4. **Per-IP rate limit (best-effort).** A coarse fixed-window counter (default
@@ -124,7 +130,7 @@ what it can and cannot guarantee. The controls, in layers:
    they cannot inflate it.
 
 **Residual surface, stated plainly:** with `INGEST_TOKEN` unset the counter is a
-fully public community counter, open to server-side writes by design. The
+fully public aggregate counter, open to server-side writes by design. The
 content-type gate and Origin allowlist stop browsers, but they do not gate
 `curl`/`python`: a determined actor who rotates IPs and generates fresh
 `install_id`s can still push numbers up. The hard bound on how far does **not**
@@ -137,8 +143,8 @@ each capped and idempotent, not by how fast they can POST. The IP rate limit is
 a speed bump that makes that more expensive, not the thing that bounds the
 total. Together with the site's display threshold these keep the open counter
 best-effort, not verified. If the counter's credibility matters, **set
-`INGEST_TOKEN`** so only your opted-in hosts can write (the hard gate). If you
-intentionally run it fully open, present the numbers as best-effort and
+`INGEST_TOKEN`** so only your reporting machines can write (the hard gate). If
+you intentionally run it fully open, present the numbers as best-effort and
 unverified.
 
 ### Concurrency note
@@ -157,7 +163,7 @@ dropping one install's delta. Deriving on read removes that failure mode without
 a Durable Object. The `stats:cache` key bounds the per-read list cost and is only
 a read optimization (short TTL, never written by `/ingest`), so it cannot
 introduce a write race; at worst it serves a value up to `STATS_CACHE_TTL_SECONDS`
-old, which is fine for a vanity counter.
+old, which is fine for an aggregate counter.
 
 The **one** remaining read-modify-write is the per-IP rate-limit counter
 (`rl:<h>:<win>`), and it is deliberately best-effort. KV has no atomic increment,
@@ -170,8 +176,8 @@ inflation is bounded **without** it by the per-install idempotent upsert, the
 ceiling. We considered making it atomic and chose not to: the Cloudflare Workers
 Rate Limiting binding only supports a fixed 10s or 60s period and so cannot
 express this env-configurable per-hour window, and a Durable Object is
-unwarranted weight (and complexity) for a soft speed bump on an opt-in,
-free-tier counter whose abuse bound does not depend on the limiter. Operators who
+unwarranted weight (and complexity) for a soft speed bump on a free-tier counter
+whose abuse bound does not depend on the limiter. Operators who
 need a hard write gate set `INGEST_TOKEN`.
 
 ## Deploy steps
@@ -198,7 +204,7 @@ You need a Cloudflare account (the free plan is enough) and
      `https://alfred.example.com`. This is the CORS allow-origin for `/stats`.
    - the two KV ids from step 1.
 
-3. **(Recommended) Set a write token** so only your own opted-in hosts can post
+3. **(Recommended) Set a write token** so only your own reporting machines can post
    to the counter. Skip this only if you want a fully open public counter:
 
    ```sh
@@ -231,26 +237,22 @@ You need a Cloudflare account (the free plan is enough) and
    Wrangler prints the Worker URL, e.g.
    `https://alfred-proof-telemetry.<your-subdomain>.workers.dev`.
 
-5. **Wire the install reporter** (only on hosts you want reporting). The
-   reporter is a hard no-op unless `ALFRED_TELEMETRY_ENABLED=1`, so that master
-   switch MUST be set or nothing is ever sent:
+5. **Wire the install reporter** on each machine you want counted:
 
    ```sh
    # in ~/.alfredrc on that host
-   ALFRED_TELEMETRY_ENABLED=1   # master on-switch; without it the reporter sends nothing
    ALFRED_TELEMETRY_URL=https://alfred-proof-telemetry.<your-subdomain>.workers.dev/ingest
+   # optional: set to 0 to opt out
+   ALFRED_TELEMETRY_ENABLED=1
    # only if you set INGEST_TOKEN above; must match it exactly
    ALFRED_TELEMETRY_TOKEN=the-same-random-value
    ```
 
-   **Supported path: opt in through `alfred-init`.** Running `alfred-init` and
-   answering yes to the telemetry prompt sets all three vars above for you AND
-   writes the `alfred.proof-telemetry` job row into `agents.conf`, so the
-   reporter is scheduled to run (it posts once a day). Setting the env
-   vars by hand without that scheduler row means the switch is on but nothing
-   ever fires the reporter, so no reports are sent. Re-running `alfred-init`
-   later and answering no removes the opt-in; you can also disable any time by
-   removing `ALFRED_TELEMETRY_ENABLED` from `~/.alfredrc`.
+   **Supported path: use `alfred-init`.** Running `alfred-init` can write the
+   endpoint and the `alfred.proof-telemetry` job row into `agents.conf`, so the
+   reporter is scheduled to run once a day. Setting the env vars by hand without
+   that scheduler row means nothing fires the reporter. Use
+   `alfred telemetry off` to opt out later.
 
 6. **Point the site counter at the read endpoint:** set the build-time env var
    when building the site:
@@ -266,7 +268,7 @@ You need a Cloudflare account (the free plan is enough) and
 # INGEST_TOKEN; without it a token-protected Worker returns 401.
 curl -sX POST https://<your-worker-url>/ingest \
   -H 'Content-Type: application/json' \
-  -d '{"install_id":"smoke-test-0001","period":"lifetime","prs_opened":3,"prs_merged":2,"prs_reviewed":1,"loc_added":120}'
+  -d '{"install_id":"smoke-test-0001","period":"lifetime","prs_opened":3,"prs_merged":2,"prs_reviewed":1,"issues_opened":4,"files_changed":120,"lines_changed":0,"loc_added":120}'
 
 # Read the public totals back.
 curl -s https://<your-worker-url>/stats

@@ -2,34 +2,58 @@
 /**
  * ImpactCounter.astro
  *
- * Public impact counter fed by the opt-in telemetry Worker's GET /stats
- * endpoint. Renders anonymous totals from installs that opt in to report.
- *
- * Deliberately NOT on the homepage: at launch the community totals may be low
- * or the install may not have configured a public collector. This component
- * lives on /impact and is built to be honest about an empty start:
- *
- *   - The endpoint comes from PUBLIC_ALFRED_TELEMETRY_STATS_URL. The safe
- *     default is empty, so a fork that does not run a collector simply shows the
- *     neutral fallback and never points at a Luminik-operated host.
- *   - Numbers are fetched CLIENT-SIDE, so the static build never depends on a
- *     live endpoint and never bakes a stale number into HTML.
- *   - Below a small threshold (or with no endpoint, or on any fetch error), it
- *     shows a direct waiting state instead of broken zeros.
- *
- * No PII is involved: /stats returns only aggregate totals.
+ * Shows aggregate Alfred usage totals. The page can pass a seed from the first
+ * reporter, then the browser replaces it with live Worker /stats data when a
+ * PUBLIC_ALFRED_TELEMETRY_STATS_URL is configured.
  */
 
-interface Props {
-  /** Hide the live numbers until the PR-opened total reaches this floor. */
-  threshold?: number;
-  /** Render without its own card chrome when placed inside an existing panel. */
-  variant?: "card" | "plain";
+interface CounterTotals {
+  installs?: number;
+  prs_opened?: number;
+  prs_merged?: number;
+  prs_reviewed?: number;
+  loc_added?: number;
+  files_changed?: number;
+  issues_opened?: number;
+  lines_changed?: number;
+  updated_at?: string | null;
 }
 
-const { threshold = 50, variant = "card" } = Astro.props;
+interface Props {
+  /** Keep showing the seed/fallback until a live payload clears this floor. */
+  threshold?: number;
+  /** Render without card chrome when placed inside an existing panel. */
+  variant?: "card" | "plain";
+  /** Static first-reporter totals used before a live endpoint responds. */
+  seed?: CounterTotals;
+}
 
-// Build-time public env var. Empty default keeps forks safe and offline.
+const { threshold = 0, variant = "card", seed = {} } = Astro.props;
+const numberOrZero = (value: unknown) => {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+const seedTotals = {
+  installs: numberOrZero(seed.installs),
+  prs_opened: numberOrZero(seed.prs_opened),
+  prs_merged: numberOrZero(seed.prs_merged),
+  prs_reviewed: numberOrZero(seed.prs_reviewed),
+  files_changed: numberOrZero(seed.files_changed ?? seed.loc_added),
+  issues_opened: numberOrZero(seed.issues_opened),
+  lines_changed: numberOrZero(seed.lines_changed),
+  updated_at: seed.updated_at ?? null,
+};
+const hasSeed =
+  seedTotals.installs > 0 ||
+  seedTotals.prs_opened > 0 ||
+  seedTotals.prs_merged > 0 ||
+  seedTotals.prs_reviewed > 0 ||
+  seedTotals.files_changed > 0 ||
+  seedTotals.issues_opened > 0 ||
+  seedTotals.lines_changed > 0;
+const fmt = (n: number) => n.toLocaleString("en-US");
+
+// Build-time public env var. Empty default keeps forks offline.
 const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim();
 ---
 
@@ -37,46 +61,46 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
   class:list={["impact", variant === "plain" && "impact--plain", "m-reveal"]}
   data-stats-url={statsUrl}
   data-threshold={String(threshold)}
-  aria-label="Public usage counter from opted-in Alfred installs"
+  data-seed={JSON.stringify(seedTotals)}
+  aria-label="Aggregate Alfred usage totals"
 >
-  {/* Neutral fallback, shown until client-side fetch confirms numbers above the
-      threshold. This is the SSR/initial state, so no-JS and pre-fetch both land
-      here rather than on a zero. */}
-  <div class="impact__fallback" data-impact-fallback>
-    <p class="impact__warming m-mono">Community counter waiting for reports.</p>
+  <div class="impact__fallback" data-impact-fallback hidden={hasSeed}>
+    <p class="impact__warming m-mono">No reporting machines yet.</p>
     <p class="impact__sub">
-      Once a telemetry endpoint is configured and opted-in installs report,
-      this panel shows aggregate PR totals and a coarse changed-file count.
+      Aggregate totals appear here when Alfred has a telemetry endpoint to read from.
     </p>
   </div>
 
-  {/* Live panel, revealed by the script only when totals clear the threshold. */}
-  <div class="impact__live" data-impact-live hidden>
-    <p class="impact__line">
-      Alfred has opened
-      <span class="impact__num" data-field="prs_opened">0</span> pull requests
-      and merged
-      <span class="impact__num" data-field="prs_merged">0</span>
-      across
-      <span class="impact__num" data-field="installs">0</span> installs.
-    </p>
+  <div class="impact__live" data-impact-live hidden={!hasSeed}>
+    <div class="impact__main">
+      <span class="impact__num impact__num--main" data-field="prs_merged">{fmt(seedTotals.prs_merged)}</span>
+      <p>PRs merged by Alfred</p>
+    </div>
     <div class="impact__grid" role="list">
       <div class="impact__cell" role="listitem">
-        <span class="impact__cellnum" data-field="prs_reviewed">0</span>
-        <span class="impact__celllbl">terminal PRs</span>
+        <span class="impact__cellnum" data-field="installs">{fmt(seedTotals.installs)}</span>
+        <span class="impact__celllbl">machines reporting</span>
       </div>
       <div class="impact__cell" role="listitem">
-        <span class="impact__cellnum" data-field="files_changed">0</span>
-        <span class="impact__celllbl">changed files proxy</span>
+        <span class="impact__cellnum" data-field="lines_changed">{fmt(seedTotals.lines_changed)}</span>
+        <span class="impact__celllbl">lines changed</span>
+      </div>
+      <div class="impact__cell" role="listitem">
+        <span class="impact__cellnum" data-field="issues_opened">{fmt(seedTotals.issues_opened)}</span>
+        <span class="impact__celllbl">issues opened</span>
+      </div>
+      <div class="impact__cell" role="listitem">
+        <span class="impact__cellnum" data-field="files_changed">{fmt(seedTotals.files_changed)}</span>
+        <span class="impact__celllbl">files changed</span>
       </div>
     </div>
-    <p class="impact__foot m-mono m-mute" data-impact-updated></p>
+    <p class="impact__foot m-mono m-mute" data-impact-updated>
+      {seedTotals.updated_at ? `Updated ${seedTotals.updated_at.slice(0, 10)}` : ""}
+    </p>
   </div>
 </section>
 
 <script>
-  // Reveal the live numbers only when the endpoint is set AND the totals clear
-  // the threshold. Any failure leaves the neutral fallback in place.
   function initImpactCounter() {
     document
       .querySelectorAll<HTMLElement>(".impact")
@@ -85,44 +109,40 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
 
   function initImpactCounterRoot(root: HTMLElement) {
     const url = (root.dataset.statsUrl || "").trim();
-    const threshold = Number(root.dataset.threshold || "50");
-    if (!url) return; // no collector configured; keep the fallback
+    if (!url) return;
 
+    const threshold = Number(root.dataset.threshold || "0");
     const fallback = root.querySelector<HTMLElement>("[data-impact-fallback]");
     const live = root.querySelector<HTMLElement>("[data-impact-live]");
     if (!fallback || !live) return;
 
     const fmt = (n: number) => n.toLocaleString("en-US");
+    const setField = (field: string, value: number) => {
+      root.querySelectorAll<HTMLElement>(`[data-field="${field}"]`).forEach((el) => {
+        el.textContent = fmt(Number.isFinite(value) && value > 0 ? value : 0);
+      });
+    };
 
-    // Bound the request so a slow or hung /stats can never hold the connection
-    // open on a long-lived tab. On timeout the fetch aborts and we fall through
-    // to the .catch below, leaving the neutral fallback in place.
     const controller = new AbortController();
-    const TIMEOUT_MS = 5000;
-    const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = window.setTimeout(() => controller.abort(), 5000);
 
     fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
       .then((data) => {
+        const merged = Number(data?.prs_merged ?? 0);
         const opened = Number(data?.prs_opened ?? 0);
-        if (!Number.isFinite(opened) || opened < threshold) {
-          return; // below the proof floor; stay neutral
-        }
-        const fields = ["prs_opened", "prs_merged", "prs_reviewed", "installs"];
-        for (const field of fields) {
-          const value = Number(data?.[field] ?? 0);
-          root
-            .querySelectorAll<HTMLElement>(`[data-field="${field}"]`)
-            .forEach((el) => {
-              el.textContent = fmt(Number.isFinite(value) ? value : 0);
-            });
-        }
-        const filesChanged = Number(data?.files_changed ?? data?.loc_added ?? 0);
-        root
-          .querySelectorAll<HTMLElement>('[data-field="files_changed"]')
-          .forEach((el) => {
-            el.textContent = fmt(Number.isFinite(filesChanged) ? filesChanged : 0);
-          });
+        const installs = Number(data?.installs ?? 0);
+        const proofFloor = Math.max(merged, opened, installs);
+        if (!Number.isFinite(proofFloor) || proofFloor < threshold) return;
+
+        setField("prs_opened", opened);
+        setField("prs_merged", merged);
+        setField("prs_reviewed", Number(data?.prs_reviewed ?? 0));
+        setField("installs", installs);
+        setField("files_changed", Number(data?.files_changed ?? data?.loc_added ?? 0));
+        setField("issues_opened", Number(data?.issues_opened ?? 0));
+        setField("lines_changed", Number(data?.lines_changed ?? 0));
+
         const updated = root.querySelector<HTMLElement>("[data-impact-updated]");
         if (updated && typeof data?.updated_at === "string") {
           const when = new Date(data.updated_at);
@@ -134,8 +154,7 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
         live.hidden = false;
       })
       .catch(() => {
-        // Network error, parse error, or timeout abort: keep the neutral
-        // fallback, never show a broken or zeroed counter.
+        // Keep the seeded numbers or the fallback.
       })
       .finally(() => {
         window.clearTimeout(timer);
@@ -152,10 +171,9 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
 <style>
   .impact {
     border: 1px solid var(--alfred-border);
-    border-radius: 14px;
+    border-radius: var(--radius);
     background: var(--alfred-surface);
-    padding: 32px 28px;
-    text-align: center;
+    padding: 28px;
   }
   .impact--plain {
     border: 0;
@@ -175,27 +193,37 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
     line-height: 1.6;
     margin: 0;
   }
-  .impact__line {
-    color: var(--alfred-text-bright);
-    font-size: clamp(20px, 3vw, 28px);
-    line-height: 1.4;
-    margin: 0 0 24px;
+  .impact__main {
+    text-align: center;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--alfred-border);
+    margin-bottom: 18px;
+  }
+  .impact__main p {
+    margin: 8px 0 0;
+    color: var(--alfred-mute);
+    font-size: 14px;
   }
   .impact__num {
     color: var(--alfred-accent);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
+  .impact__num--main {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(48px, 8vw, 84px);
+    line-height: 1;
+  }
   .impact__grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 18px;
-    max-width: 420px;
-    margin: 0 auto 18px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
   }
   .impact__cell {
+    min-width: 0;
     border: 1px solid var(--alfred-border);
-    border-radius: 10px;
+    border-radius: var(--radius);
     padding: 16px 12px;
     display: flex;
     flex-direction: column;
@@ -212,7 +240,20 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
     font-size: 13px;
   }
   .impact__foot {
-    margin-top: 6px;
+    margin-top: 14px;
     font-size: 12px;
+  }
+  @media (max-width: 760px) {
+    .impact__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 460px) {
+    .impact {
+      padding: 22px;
+    }
+    .impact__grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

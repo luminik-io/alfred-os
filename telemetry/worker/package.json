@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Cloudflare Worker for Alfred anonymous usage telemetry.",
+  "description": "Cloudflare Worker for Alfred anonymous usage totals.",
   "license": "MIT",
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",

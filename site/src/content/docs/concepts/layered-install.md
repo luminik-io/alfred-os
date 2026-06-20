@@ -3,7 +3,7 @@ title: Layered install
 description: The core fleet runs standalone and headless. Alfred Desktop and the Slack agent are optional surfaces on top.
 ---
 
-Alfred installs in three tiers. Only the first is required. Alfred Desktop and the Slack agent are optional surfaces that talk to the core through local APIs and state files you can inspect by hand.
+Alfred installs in three tiers. Only the first is required. Alfred Desktop and the Slack agent are optional surfaces that talk to the core through local APIs and state files.
 
 ```mermaid
 flowchart TB
@@ -15,7 +15,7 @@ flowchart TB
     end
 
     subgraph client["client (optional)"]
-        desktop["Tauri desktop control plane<br/>clients/desktop"]
+        desktop["Alfred Desktop<br/>clients/desktop"]
     end
 
     subgraph slack["slack (optional)"]
@@ -56,11 +56,11 @@ alfred serve --port 7010 --no-browser
 
 It binds to `127.0.0.1` by default. Binding to `0.0.0.0` is allowed but discouraged, since the dashboard exposes paths and event payloads that may carry repo context.
 
-## client: the desktop control plane
+## client: the desktop app
 
 Alfred Desktop (Tauri, under `clients/desktop`) is a thin local control surface, not a second runtime. It is for trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet. Inbox shows the decision queue, Ask holds planning intake, Work manages the queue and shipped board, Agents handles roster/activity/memory, and Setup handles repair checks.
 
-The client talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. No public port, no relay, no shadow database. You can run Alfred entirely without it.
+The client talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port and keeps `$ALFRED_HOME` as the source of truth. You can run Alfred entirely without it.
 
 ```sh
 alfred serve --port 7010 --no-browser   # or let Setup start it

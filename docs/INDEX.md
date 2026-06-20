@@ -15,12 +15,12 @@ Current map of the public docs. Trust code first, then this index.
 - [`INSTALL_TIME.md`](INSTALL_TIME.md): honest read on existing-setup (30 min) and fresh-machine (60 to 120 min) install duration.
 - [`../BOOTSTRAP.md`](../BOOTSTRAP.md): full operations setup for a first fleet.
 - [`TUTORIAL.md`](TUTORIAL.md): build the Echo example agent end-to-end.
-- [`DRY_RUN.md`](DRY_RUN.md): watch a full firing lifecycle with no LLM call, no spend, and no side effects.
+- [`DRY_RUN.md`](DRY_RUN.md): watch a side-effect-safe firing lifecycle before trusting scheduled work.
 
 ## Operating Model
 
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md): design rationale for host scheduling, worktrees, IAM, spend guards, and plan review.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md): the diagram companion. Mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack conversational flow, the desktop control plane, the disk guardian, and the layered install and distribution.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md): the diagram companion. Mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack conversational flow, the desktop app, the disk guardian, and the layered install and distribution.
 - [`AGENTS.md`](AGENTS.md): default agent roles, codenames, and how custom codenames map to stable role scripts.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.

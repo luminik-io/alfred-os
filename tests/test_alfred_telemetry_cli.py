@@ -40,7 +40,7 @@ def test_telemetry_status_reads_managed_files(tmp_path):
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
-    assert payload["enabled"] is False
+    assert payload["enabled"] is True
     assert payload["endpoint"] == ""
     assert payload["scheduler_row"] == "missing"
 
@@ -123,7 +123,7 @@ def test_telemetry_off_removes_later_init_block_telemetry_values(tmp_path):
     agents_conf = tmp_path / "agents.conf"
     agents_conf.write_text(
         "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
-        "alfred.proof-telemetry\tAnonymous usage telemetry (opt-in)\n",
+        "alfred.proof-telemetry\tAnonymous usage totals\n",
         encoding="utf-8",
     )
 

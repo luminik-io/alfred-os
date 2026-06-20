@@ -105,7 +105,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
 - Batman execute-after-approval: once a bundle plan is approved, Batman files the approved per-repo child issues and reports status rather than stopping at the plan.
 - [`alfred serve`](/concepts/architecture/) v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
-- `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` you can publish on your own site. The canonical site also has `/impact/`, a separate opt-in usage counter backed by the telemetry collector.
+- `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` you can publish on your own site. The canonical site also has `/impact/`, backed by aggregate usage totals and public GitHub examples.
 - Concept pages covering state, memory, engine routing, the connector protocol, and the approval gate.
 
 ### v0.3.0 and earlier

@@ -1,10 +1,11 @@
-"""Opt-in, off-by-default anonymous proof-telemetry reporter.
+"""Anonymous proof-telemetry reporter.
 
 This module is the install half of the proof counter. It does **nothing**
-unless the operator has explicitly opted in by setting
-``ALFRED_TELEMETRY_ENABLED=1``. With that unset (the default) every public
-entry point here is a hard no-op: no file is written, no network call is made,
-no ``install_id`` is generated.
+when the operator opts out by setting ``ALFRED_TELEMETRY_ENABLED=0`` (or
+``false``, ``no``, ``off``, ``disabled``). With the switch left unset, the
+reporter is eligible to run, but a report is still sent only when
+``ALFRED_TELEMETRY_URL`` is configured. Without a URL, no file is written, no
+network call is made, and no ``install_id`` is generated.
 
 When enabled, ``report_once`` derives a small anonymous aggregate from the
 local fleet-brain counts and POSTs it to a configured endpoint. It is
@@ -20,10 +21,13 @@ What is sent (the entire payload)::
       "prs_opened":   <int>,
       "prs_merged":   <int>,
       "prs_reviewed": <int>,
-      "loc_added":    <int>
+      "issues_opened": <int>,
+      "files_changed": <int>,
+      "lines_changed": <int>,
+      "loc_added":     <int>  # legacy alias for files_changed
     }
 
-The four counts are CUMULATIVE LIFETIME totals (everything the local brain has
+The counts are CUMULATIVE LIFETIME totals (everything the local brain has
 ever cached), not a per-run or per-month delta. The agent/worker contract is
 "latest-wins per install": the Worker keys exactly ONE record on ``install_id``
 and replaces it on every report, and the public total is DERIVED on read by
@@ -41,12 +45,12 @@ a person or machine. The ``install_id`` is random and has no link to identity;
 it exists only so the server can de-duplicate re-sends and count distinct
 installs.
 
-Configuration (all read from the environment, never hardcoded):
+Configuration (all read from the environment):
 
-    ALFRED_TELEMETRY_ENABLED   "1" to opt in. Anything else (including unset)
-                               is OFF. This is the single master switch.
-    ALFRED_TELEMETRY_URL       Ingest endpoint. Required when enabled; if unset
-                               the reporter no-ops rather than guessing a host.
+    ALFRED_TELEMETRY_ENABLED   Opt-out switch. ``0``, ``false``, ``no``,
+                               ``off``, or ``disabled`` is OFF. Unset is ON.
+    ALFRED_TELEMETRY_URL       Ingest endpoint. Required to send; if unset the
+                               reporter no-ops rather than guessing a host.
     ALFRED_TELEMETRY_TOKEN     Optional shared ingest token. When the collector
                                is configured with INGEST_TOKEN, set this to the
                                same value; it is sent as the X-Ingest-Token
@@ -71,7 +75,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# The single master switch. Off unless this is exactly "1".
+# The single master switch. On unless explicitly disabled.
 ENABLE_ENV = "ALFRED_TELEMETRY_ENABLED"
 URL_ENV = "ALFRED_TELEMETRY_URL"
 # Optional shared ingest token. Sent as X-Ingest-Token when set, so a collector
@@ -97,27 +101,34 @@ _COUNT_PAGE = 1000
 _COUNT_HARD_LIMIT = _MAX_PER_FIELD
 
 _HTTP_TIMEOUT_SECONDS = 8
+_DISABLED_VALUES = {"0", "false", "no", "off", "disabled"}
 
 
 @dataclass(frozen=True)
 class TelemetryCounts:
-    """The four anonymous aggregate counts a host reports."""
+    """The anonymous aggregate counts a host reports."""
 
     prs_opened: int = 0
     prs_merged: int = 0
     prs_reviewed: int = 0
+    issues_opened: int = 0
+    files_changed: int = 0
+    lines_changed: int = 0
     loc_added: int = 0
 
 
 def is_enabled(env: Mapping[str, str] | None = None) -> bool:
-    """True only when the operator has explicitly opted in.
+    """False only when the operator has explicitly opted out.
 
-    The default (env var unset, or any value other than ``"1"``) is OFF. This
-    is intentionally strict: a typo like ``ALFRED_TELEMETRY_ENABLED=true`` does
-    NOT turn telemetry on, so an install never reports by accident.
+    Unset is enabled. A configured endpoint is still required before anything is
+    sent; ``report_once`` returns ``no_url`` without generating an install id
+    when the endpoint is missing.
     """
     source = env if env is not None else os.environ
-    return source.get(ENABLE_ENV, "").strip() == "1"
+    raw = source.get(ENABLE_ENV)
+    if raw is None:
+        return True
+    return raw.strip().lower() not in _DISABLED_VALUES
 
 
 def telemetry_url(env: Mapping[str, str] | None = None) -> str:
@@ -292,6 +303,7 @@ def _count_rows(
 # branch prefix. These are used only by the LIST FALLBACK path here; the real
 # brain filters in SQL via count_github_items(authored_only=True).
 _AGENT_AUTHORED_LABEL = "agent:authored"
+_AGENT_LABEL_PREFIX = "agent:"
 _AGENT_BRANCH_PREFIXES = (
     "alfred/",
     "alfred-nightly/",
@@ -325,7 +337,23 @@ def _row_is_agent_authored(row: Any) -> bool:
     return any(head_ref.startswith(prefix) for prefix in _AGENT_BRANCH_PREFIXES)
 
 
-def _count_github_items(brain: Any, *, authored_only: bool = False, **filters: Any) -> int:
+def _row_is_agent_labeled(row: Any) -> bool:
+    """True when a github_items row carries any ``agent:*`` label."""
+
+    labels = getattr(row, "labels", None) or []
+    try:
+        return any(str(label).startswith(_AGENT_LABEL_PREFIX) for label in labels)
+    except TypeError:
+        return False
+
+
+def _count_github_items(
+    brain: Any,
+    *,
+    authored_only: bool = False,
+    agent_labeled_only: bool = False,
+    **filters: Any,
+) -> int:
     """Exact count of github_items, preferring the brain's COUNT(*) method.
 
     Uses ``brain.count_github_items(**filters)`` when available (a SQL
@@ -340,32 +368,44 @@ def _count_github_items(brain: Any, *, authored_only: bool = False, **filters: A
     True)``); brains/test-doubles that lack the flag are filtered row-by-row via
     ``_row_is_agent_authored`` on the list-fallback path, so the public counter
     never reports PRs the fleet did not open regardless of brain vintage.
+
+    When ``agent_labeled_only`` is set, the count is restricted to rows carrying
+    any ``agent:*`` label. This is the issue-count signal; issues do not have a
+    PR head branch, and they normally carry role labels rather than
+    ``agent:authored``.
     """
     counter = getattr(brain, "count_github_items", None)
+    predicate = _row_is_agent_authored if authored_only else None
+    if agent_labeled_only:
+        predicate = _row_is_agent_labeled
     if callable(counter):
         try:
-            total = int(counter(authored_only=authored_only, **filters))
+            total = int(
+                counter(
+                    authored_only=authored_only,
+                    agent_labeled_only=agent_labeled_only,
+                    **filters,
+                )
+            )
         except TypeError:
-            # Older brain whose count_github_items predates the authored_only
-            # flag. Fall through to the list-based, row-filtered fallback below
-            # rather than counting unauthored PRs. The authored filter is passed
-            # as a PREDICATE so pagination keys on the RAW page size, never on the
-            # post-filter match count (which would stop early and undercount).
-            if authored_only:
+            # Older brain whose count_github_items predates authored_only or
+            # agent_labeled_only. Fall through to the list-based, row-filtered
+            # fallback rather than overcounting.
+            if predicate is not None:
                 return _count_rows(
                     lambda n: brain.list_github_items(limit=n, **filters),
-                    _row_is_agent_authored,
+                    predicate,
                 )
             total = int(counter(**filters))
         return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
-    if authored_only:
+    if predicate is not None:
         # No SQL COUNT path on this brain: page the list and filter via the
         # predicate. Continuation is decided on the raw fetched count, so the
         # discarded operator rows cannot make a full page look short and stop the
         # count before every authored row is seen.
         return _count_rows(
             lambda n: brain.list_github_items(limit=n, **filters),
-            _row_is_agent_authored,
+            predicate,
         )
     return _count_rows(lambda n: brain.list_github_items(limit=n, **filters))
 
@@ -410,11 +450,15 @@ def derive_counts(brain: Any) -> TelemetryCounts:
       prs_reviewed that subset whose state is terminal (merged or closed); a PR
                    reaching a terminal state went through review in Alfred's
                    flow. Conservative: never exceeds prs_opened.
-      loc_added    a file-delta proxy: the count of file_touches rows (one per
-                   repo file an agent added/modified). The brain does not store
-                   per-line LOC, so this is a file-delta count, documented as
-                   such in docs/TELEMETRY.md. The field keeps the wire name
-                   ``loc_added`` for forward compatibility.
+      issues_opened rows in github_items where kind == "issue" and the labels
+                   include any ``agent:*`` label.
+      files_changed a file-delta proxy: the count of file_touches rows (one per
+                   repo file an agent added/modified). The brain stores file
+                   touches, not true line counts.
+      lines_changed true changed-line totals when available. Today the local
+                   brain does not store per-line additions/deletions, so this is
+                   reported as 0 until that signal exists locally.
+      loc_added    legacy wire alias for files_changed.
 
     Any query failure yields zeroes for the affected fields rather than raising.
     The base ``prs_opened`` query is load-bearing: ``prs_merged`` and
@@ -428,6 +472,9 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     prs_opened = 0
     prs_merged = 0
     prs_reviewed = 0
+    issues_opened = 0
+    files_changed = 0
+    lines_changed = 0
     loc_added = 0
 
     # Distinguish "the brain genuinely has 0 PRs" from "the base PR query
@@ -489,7 +536,17 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         prs_merged = prs_opened
 
     try:
-        loc_added = _count_file_touches(brain)
+        issues_opened = _count_github_items(
+            brain,
+            kind="issue",
+            agent_labeled_only=True,
+        )
+    except Exception as exc:  # fail-soft by contract: never raise on a bad read
+        logger.debug("telemetry: issue count derivation failed: %s", exc)
+
+    try:
+        files_changed = _count_file_touches(brain)
+        loc_added = files_changed
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         logger.debug("telemetry: file-touch count derivation failed: %s", exc)
 
@@ -497,6 +554,9 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         prs_opened=_clamp(prs_opened),
         prs_merged=_clamp(prs_merged),
         prs_reviewed=_clamp(prs_reviewed),
+        issues_opened=_clamp(issues_opened),
+        files_changed=_clamp(files_changed),
+        lines_changed=_clamp(lines_changed),
         loc_added=_clamp(loc_added),
     )
 
@@ -509,6 +569,9 @@ def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict
         "prs_opened": _clamp(counts.prs_opened),
         "prs_merged": _clamp(counts.prs_merged),
         "prs_reviewed": _clamp(counts.prs_reviewed),
+        "issues_opened": _clamp(counts.issues_opened),
+        "files_changed": _clamp(counts.files_changed or counts.loc_added),
+        "lines_changed": _clamp(counts.lines_changed),
         "loc_added": _clamp(counts.loc_added),
     }
 
@@ -562,7 +625,7 @@ def report_once(
     only output; this function never raises and never prints.
 
     Status ``status`` values:
-      ``disabled``        the master switch is off (the default). Nothing happened.
+      ``disabled``        the master switch is explicitly off. Nothing happened.
       ``no_url``          enabled but ``ALFRED_TELEMETRY_URL`` is unset. No-op.
       ``no_install_id``   enabled, but the install id could not be persisted, so
                           we skip the report rather than POST with an ephemeral
@@ -611,6 +674,9 @@ def report_once(
                 "prs_opened": payload["prs_opened"],
                 "prs_merged": payload["prs_merged"],
                 "prs_reviewed": payload["prs_reviewed"],
+                "issues_opened": payload["issues_opened"],
+                "files_changed": payload["files_changed"],
+                "lines_changed": payload["lines_changed"],
                 "loc_added": payload["loc_added"],
             },
         }

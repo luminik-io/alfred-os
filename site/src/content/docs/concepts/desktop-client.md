@@ -1,6 +1,6 @@
 ---
 title: Alfred Desktop
-description: The Tauri Mac/Linux control surface over alfred serve, with native installers and no hosted gateway.
+description: The Tauri Mac/Linux app over alfred serve, with native installers and safe local actions.
 ---
 
 Alfred Desktop (`clients/desktop`) is a native Mac/Linux control surface for a
@@ -15,7 +15,7 @@ It is a thin control surface, not a second runtime.
 
 Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md) and [`docs/NATIVE_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/NATIVE_CLIENT.md).
 
-## The control plane
+## The local control surface
 
 ```mermaid
 flowchart TB
@@ -55,10 +55,10 @@ flowchart TB
 
 ## Boundary
 
-The client reads and writes the same local surfaces you can inspect by
-hand: `$ALFRED_HOME`, `alfred serve`, the Alfred CLI, GitHub issue and PR
-links, Slack plan threads, and the local fleet brain. It introduces no hosted
-gateway, public port, shadow database, or separate scheduler.
+The client reads and writes the same local surfaces Alfred already uses:
+`$ALFRED_HOME`, `alfred serve`, the Alfred CLI, GitHub issue and PR
+links, Slack plan threads, and the local fleet brain. It opens no public port and
+does not add a separate scheduler.
 
 The boundary is enforced in the Tauri layer. The fetch command only allows
 Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or

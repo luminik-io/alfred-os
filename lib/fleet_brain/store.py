@@ -338,6 +338,7 @@ class Store(Protocol):
         state: GitHubItemState | None = None,
         bundle_slug: str | None = None,
         authored_only: bool = False,
+        agent_labeled_only: bool = False,
     ) -> int: ...
 
     def upsert_bundle_item(self, item: BundleItem) -> BundleItem: ...
@@ -1011,6 +1012,7 @@ class SQLiteStore:
         state: GitHubItemState | None = None,
         bundle_slug: str | None = None,
         authored_only: bool = False,
+        agent_labeled_only: bool = False,
     ) -> int:
         wheres: list[str] = []
         params: list[object] = []
@@ -1030,6 +1032,10 @@ class SQLiteStore:
             authored_sql, authored_params = _authored_predicate()
             wheres.append(authored_sql)
             params.extend(authored_params)
+        if agent_labeled_only:
+            agent_sql, agent_params = _agent_labeled_predicate()
+            wheres.append(agent_sql)
+            params.extend(agent_params)
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         sql = f"SELECT COUNT(*) FROM github_items {where_clause}"
         with self._connect() as conn:
@@ -1228,6 +1234,12 @@ def _authored_predicate() -> tuple[str, list[object]]:
         # then append a trailing wildcard for "starts with".
         params.append(f"{_glob_escape(prefix)}*")
     return "(" + " OR ".join(clauses) + ")", params
+
+
+def _agent_labeled_predicate() -> tuple[str, list[object]]:
+    """Build a SQL fragment that matches rows with any ``agent:*`` label."""
+
+    return "labels_json GLOB ?", ['*"agent:[^"]*"*']
 
 
 def _glob_escape(text: str) -> str:

@@ -680,6 +680,7 @@ class FleetBrain:
         state: GitHubItemState | None = None,
         bundle_slug: str | None = None,
         authored_only: bool = False,
+        agent_labeled_only: bool = False,
     ) -> int:
         """Exact COUNT(*) of github_items, unbounded by the list 500-row cap.
 
@@ -694,6 +695,10 @@ class FleetBrain:
         just Alfred's), so proof-telemetry passes this to avoid claiming PRs the
         fleet did not open. The filter is a SQL predicate on already-stored
         columns, so it stays an exact COUNT(*).
+
+        ``agent_labeled_only=True`` restricts the count to rows with any
+        ``agent:*`` label. Proof telemetry uses this for issue counts, where the
+        public signal is the issue label rather than a branch name.
         """
         return self.store.count_github_items(
             repo=repo,
@@ -701,6 +706,7 @@ class FleetBrain:
             state=state,
             bundle_slug=bundle_slug,
             authored_only=authored_only,
+            agent_labeled_only=agent_labeled_only,
         )
 
     def list_bundle_items(

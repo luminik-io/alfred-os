@@ -68,8 +68,7 @@ Subcommands today:
                               posts only the delta since the last sweep.
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes.
-  alfred telemetry ...        Inspect or change the opt-in usage
-                              telemetry reporter.
+  alfred telemetry ...        Inspect or change anonymous usage totals.
 
 The runner-level fleet gate file lives at
 ``$ALFRED_HOME/state/fleet/enabled.txt``. Listed codenames are enabled.
@@ -123,7 +122,7 @@ SECONDARY_CLAUDE_DIR = Path.home() / ".claude-secondary"
 TELEMETRY_LABEL = "alfred.proof-telemetry"
 TELEMETRY_ROW = (
     f"{TELEMETRY_LABEL}\tproof-telemetry.py\tcron:9:10\tno\t"
-    "alfred.proof-telemetry\tAnonymous usage telemetry (opt-in)"
+    "alfred.proof-telemetry\tAnonymous usage totals"
 )
 TELEMETRY_ENV_KEYS = (
     "ALFRED_TELEMETRY_ENABLED",
@@ -137,6 +136,7 @@ TELEMETRY_RC_BANNER_RE = re.compile(
     re.MULTILINE,
 )
 TELEMETRY_SOURCE_MARKER = "source-repo.txt"
+TELEMETRY_DISABLED_VALUES = {"0", "false", "no", "off", "disabled"}
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
@@ -355,7 +355,7 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
     return 0
 
 
-# ----- opt-in usage telemetry -----
+# ----- anonymous usage totals -----
 
 
 def _alfredrc_path(raw: str | None = None) -> Path:
@@ -393,6 +393,13 @@ def _telemetry_values(alfredrc: Path) -> dict[str, str]:
         if key in os.environ:
             values[key] = os.environ[key]
     return values
+
+
+def _telemetry_enabled(values: dict[str, str]) -> bool:
+    raw = values.get("ALFRED_TELEMETRY_ENABLED")
+    if raw is None:
+        return True
+    return raw.strip().lower() not in TELEMETRY_DISABLED_VALUES
 
 
 def _quote_env_value(value: str) -> str:
@@ -609,7 +616,7 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
     alfredrc = _alfredrc_path(args.alfredrc)
     conf = _telemetry_agents_conf_path(args.agents_conf)
     values = _telemetry_values(alfredrc)
-    enabled = values.get("ALFRED_TELEMETRY_ENABLED", "").strip() == "1"
+    enabled = _telemetry_enabled(values)
     url = values.get("ALFRED_TELEMETRY_URL", "").strip()
     token = values.get("ALFRED_TELEMETRY_TOKEN", "").strip()
     install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
@@ -636,10 +643,10 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
     )
     print("public page: https://alfred.luminik.io/impact/")
     if enabled and not url:
-        print("warning: telemetry is enabled but ALFRED_TELEMETRY_URL is unset", file=sys.stderr)
+        print("warning: telemetry is on but ALFRED_TELEMETRY_URL is unset", file=sys.stderr)
     if enabled and payload["scheduler_row"] != "present":
         print(
-            "warning: usage telemetry is not scheduled; run `alfred telemetry on --url ...`",
+            "warning: usage totals are not scheduled; run `alfred telemetry on --url ...`",
             file=sys.stderr,
         )
     return 0
@@ -1954,14 +1961,14 @@ def main(argv: list[str] | None = None) -> int:
     p_enabled = sub.add_parser("enabled-agents", help="print the list of enabled codenames")
     p_enabled.set_defaults(func=cmd_enabled_agents)
 
-    p_telemetry = sub.add_parser("telemetry", help="manage opt-in usage telemetry")
+    p_telemetry = sub.add_parser("telemetry", help="manage anonymous usage totals")
     telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)
-    p_telemetry_status = telemetry_sub.add_parser("status", help="show usage telemetry state")
+    p_telemetry_status = telemetry_sub.add_parser("status", help="show usage total reporting state")
     p_telemetry_status.add_argument("--json", action="store_true")
     p_telemetry_status.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_status.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_status.set_defaults(func=cmd_telemetry_status)
-    p_telemetry_on = telemetry_sub.add_parser("on", help="enable usage telemetry")
+    p_telemetry_on = telemetry_sub.add_parser("on", help="enable anonymous usage totals")
     p_telemetry_on.add_argument("--url", help="HTTPS collector /ingest URL")
     p_telemetry_on.add_argument("--token", help="optional collector ingest token")
     p_telemetry_on.add_argument(
@@ -1972,12 +1979,12 @@ def main(argv: list[str] | None = None) -> int:
     p_telemetry_on.add_argument(
         "--schedule",
         default="cron:9:10",
-        help="agents.conf cadence for the usage telemetry reporter (default: cron:9:10)",
+        help="agents.conf cadence for the usage total reporter (default: cron:9:10)",
     )
     p_telemetry_on.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_on.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_on.set_defaults(func=cmd_telemetry_on)
-    p_telemetry_off = telemetry_sub.add_parser("off", help="disable usage telemetry")
+    p_telemetry_off = telemetry_sub.add_parser("off", help="disable anonymous usage totals")
     p_telemetry_off.add_argument(
         "--forget-endpoint",
         action="store_true",

@@ -46,8 +46,8 @@ Full implementation note and build commands: [`docs/NATIVE_CLIENT.md`](https://g
 
 ## Boundary
 
-The client should read and write through the same local surfaces you can inspect
-by hand:
+The client should read and write through the same local surfaces Alfred already
+uses:
 
 - `$ALFRED_HOME`
 - `alfred serve`
@@ -56,8 +56,8 @@ by hand:
 - Slack plan threads
 - the local fleet brain
 
-It should not introduce a hosted gateway, public port, shadow database, or
-separate scheduler. Alfred should still work perfectly from Slack and the CLI
+It opens no public port and keeps Alfred's existing scheduler and local state as
+the source of truth. Alfred should still work perfectly from Slack and the CLI
 when the client is not running.
 
 ## Product Shape

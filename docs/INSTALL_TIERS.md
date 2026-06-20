@@ -5,7 +5,7 @@ Alfred installs in three tiers. Only the first is required. The other two are op
 | Tier | What it is | Required? | Needs a desktop? |
 |---|---|---|---|
 | `core` | Fleet, Alfred CLI, host scheduler, `alfred serve` JSON API | Yes | No (headless, Linux-friendly) |
-| `client` | Tauri desktop control plane (`clients/desktop`) | No | Yes |
+| `client` | Alfred Desktop (`clients/desktop`) | No | Yes |
 | `slack` | Planning listener + issue bridge | No | No |
 
 For the architecture behind these tiers, see [`ARCHITECTURE.md`](ARCHITECTURE.md). For the from-zero walkthrough of `core`, see [`../INSTALL.md`](../INSTALL.md). This page is the tier map; it does not replace the install walkthrough.
@@ -45,7 +45,7 @@ exposes paths and event payloads that may carry repo URLs or other operator
 context. The fleet runs fine without `serve` ever starting; it is only needed
 when you want the dashboard or Alfred Desktop.
 
-## `client`: the desktop control plane
+## `client`: the desktop app
 
 Alfred Desktop is an optional Tauri app under `clients/desktop`. It is a thin local control surface and installer, not a second Alfred runtime. Slack remains the collaboration surface; the client is for local trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet.
 
