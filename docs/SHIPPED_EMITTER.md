@@ -18,7 +18,7 @@ The canonical Alfred repository does not render an operator's local emitted feed
 
 The canonical site also has an aggregate-only Luminik product snapshot at
 `site/src/data/luminik-product-proof.json`. It is deliberately not a list of
-PRs. The refresh script reads an operator-provided repo list and writes only
+PRs. The refresh script reads a configured repo list and writes only
 counts:
 
 ```sh
@@ -34,8 +34,9 @@ On the canonical site, `.github/workflows/site.yml` refreshes this aggregate
 snapshot on every main-branch deploy, every manual site dispatch, and the daily
 site build when `ALFRED_PRODUCT_PROOF_REPOS` is set as a repository variable.
 Private repo access comes from the `ALFRED_PRODUCT_PROOF_TOKEN` Actions secret.
-If those are not configured, the workflow keeps using the committed seed file
-so forks and public PR previews still build.
+When the repo list is configured, that secret is required on main-branch site
+builds. Without it, the workflow fails instead of deploying stale totals. Forks
+and public PR previews keep using the committed seed file.
 
 ## The emitter (`bin/alfred-shipped-public.py`)
 

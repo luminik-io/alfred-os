@@ -51,8 +51,6 @@ interface Props {
 
 const { proof } = Astro.props;
 const fmt = (n: number) => n.toLocaleString("en-US");
-const day = (raw: string) => new Date(raw).toISOString().slice(0, 10);
-const generated = day(proof.generated_at);
 const maxTrend = Math.max(...proof.trend.map((item) => item.prs_merged), 1);
 const windowLabel = `Last ${proof.window.days} days`;
 
@@ -88,8 +86,7 @@ const metrics = [
     </div>
     <p>
       Recent public Alfred work from{" "}
-      <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>,
-      updated {generated}.
+      <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>.
     </p>
   </div>
 

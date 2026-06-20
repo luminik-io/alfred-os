@@ -30,7 +30,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
       <h2 class="m-display-md">PRs merged by week.</h2>
     </div>
     <p>
-      Weekly bars show the cadence behind the aggregate total.
+      Each bar is one week in the current window.
     </p>
   </div>
 
@@ -118,6 +118,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     font-weight: 700;
     line-height: 1;
     font-variant-numeric: tabular-nums;
+    text-align: center;
   }
   .trend-chart__bar {
     display: block;
@@ -141,6 +142,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     text-overflow: ellipsis;
     white-space: nowrap;
     align-self: end;
+    text-align: center;
     min-height: 20px;
     transition: color 180ms ease;
   }

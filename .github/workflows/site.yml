@@ -65,8 +65,8 @@ jobs:
         # in Actions config; the generated JSON contains counts, not repo names.
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::ALFRED_PRODUCT_PROOF_REPOS is set, but ALFRED_PRODUCT_PROOF_TOKEN is missing. Keeping the committed aggregate seed."
-            exit 0
+            echo "::error::ALFRED_PRODUCT_PROOF_REPOS is set, but ALFRED_PRODUCT_PROOF_TOKEN is missing. Add the secret or unset the repo list so the public site cannot deploy stale product proof."
+            exit 1
           fi
           npm run proof:product
 
