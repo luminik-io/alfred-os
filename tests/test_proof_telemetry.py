@@ -459,7 +459,11 @@ def test_derive_counts_maps_states_correctly():
             FakePR("closed"),
             FakePR("unknown"),
         ],
-        issues=[FakeIssue(), FakeIssue(labels=["agent:bundle:billing"]), FakeIssue(labels=["help wanted"])],
+        issues=[
+            FakeIssue(),
+            FakeIssue(labels=["agent:bundle:billing"]),
+            FakeIssue(labels=["help wanted"]),
+        ],
         touches=[FakeTouch()] * 7,
     )
     counts = pt.derive_counts(brain)

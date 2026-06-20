@@ -1324,13 +1324,13 @@ def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
                 "Disable any time with `alfred telemetry off`."
             )
         elif state.telemetry_enabled and not state.telemetry_url:
-            warn("Telemetry is selected, but no telemetry_url was provided; no report is scheduled.")
+            warn(
+                "Telemetry is selected, but no telemetry_url was provided; no report is scheduled."
+            )
         else:
             ok("Telemetry opted out.")
         return
-    share = ask_yes_no(
-        "Share anonymous usage totals?", default=state.telemetry_enabled
-    )
+    share = ask_yes_no("Share anonymous usage totals?", default=state.telemetry_enabled)
     if not share:
         state.telemetry_enabled = False
         state.telemetry_url = ""

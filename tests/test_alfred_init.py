@@ -413,7 +413,9 @@ def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_p
     assert "s3cret" not in out
 
 
-def test_telemetry_step_non_interactive_flag_without_url_prints_no_report(init_mod, tmp_path, capsys):
+def test_telemetry_step_non_interactive_flag_without_url_prints_no_report(
+    init_mod, tmp_path, capsys
+):
     # telemetry_enabled set but no URL: generated config writes nothing and the
     # reporter no-ops, so the status must say no report is scheduled.
     state = _state_with(init_mod, tmp_path)
