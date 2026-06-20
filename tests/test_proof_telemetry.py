@@ -1145,6 +1145,16 @@ def test_legacy_persisted_telemetry_token_is_hosted_default_only(tmp_path, monke
     assert pt.telemetry_token({}, endpoint="https://custom.example.com/ingest") == ""
 
 
+def test_persist_token_removes_token_when_endpoint_marker_write_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    marker = tmp_path / "state" / "telemetry-token-endpoint"
+    marker.mkdir(parents=True)
+
+    assert not pt.persist_token("custom-token", endpoint="https://custom.example.com/ingest")
+
+    assert not (tmp_path / "state" / "telemetry-token").exists()
+
+
 def test_trusted_telemetry_token_reads_env():
     assert pt.trusted_telemetry_token({}) == ""
     assert pt.trusted_telemetry_token({pt.TRUSTED_TOKEN_ENV: " trusted "}) == "trusted"

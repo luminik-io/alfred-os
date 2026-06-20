@@ -77,6 +77,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -291,20 +292,27 @@ def persist_token(
     if not token or "\n" in token or "\r" in token:
         return False
     target = path or _token_path()
+    endpoint_path = _token_endpoint_path() if endpoint is not None else None
     try:
+        if endpoint_path is not None:
+            assert endpoint is not None
+            endpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(endpoint_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(_normalize_endpoint(endpoint) + "\n")
+            os.chmod(endpoint_path, 0o600)
         target.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(token + "\n")
         os.chmod(target, 0o600)
-        if endpoint is not None:
-            endpoint_path = _token_endpoint_path()
-            fd = os.open(endpoint_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(_normalize_endpoint(endpoint) + "\n")
-            os.chmod(endpoint_path, 0o600)
     except OSError as exc:
         logger.debug("telemetry: could not persist install token: %s", exc)
+        with suppress(OSError):
+            target.unlink()
+        if endpoint_path is not None:
+            with suppress(OSError):
+                endpoint_path.unlink()
         return False
     return True
 

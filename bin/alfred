@@ -441,6 +441,10 @@ def _telemetry_state_token_endpoint_path() -> Path:
     return agent_runner.STATE_ROOT / TELEMETRY_TOKEN_ENDPOINT_FILENAME
 
 
+def _telemetry_state_install_id_path() -> Path:
+    return agent_runner.STATE_ROOT / "telemetry-install-id"
+
+
 def _telemetry_state_token_exists() -> bool:
     try:
         return bool(_telemetry_state_token_path().read_text(encoding="utf-8").strip())
@@ -465,6 +469,16 @@ def _delete_telemetry_state_token() -> bool:
     except OSError:
         pass
     return removed
+
+
+def _delete_telemetry_install_id() -> bool:
+    try:
+        _telemetry_state_install_id_path().unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
 
 
 def _quote_env_value(value: str) -> str:
@@ -753,6 +767,7 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
         values["ALFRED_TELEMETRY_TOKEN"] = token
     if args.clear_token:
         _delete_telemetry_state_token()
+        _delete_telemetry_install_id()
     _write_telemetry_rc_block(alfredrc, values)
     _ensure_telemetry_scheduler_row(conf, args.schedule)
     print("alfred: telemetry enabled")
@@ -2085,7 +2100,7 @@ def main(argv: list[str] | None = None) -> int:
     p_telemetry_on.add_argument(
         "--clear-token",
         action="store_true",
-        help="do not keep an existing telemetry token when enabling",
+        help="reset the persisted telemetry token and install id when enabling",
     )
     p_telemetry_on.add_argument(
         "--schedule",

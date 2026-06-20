@@ -188,6 +188,33 @@ def test_telemetry_on_uses_default_endpoint_from_alfredrc(tmp_path):
     assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
 
 
+def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{DEFAULT_TELEMETRY_URL}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(
+        tmp_path,
+        "on",
+        "--clear-token",
+        alfredrc=alfredrc,
+        agents_conf=agents_conf,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not token.exists()
+    assert not token_endpoint.exists()
+    assert not install_id.exists()
+    assert "ALFRED_TELEMETRY_TOKEN" not in alfredrc.read_text(encoding="utf-8")
+
+
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
     alfredrc = tmp_path / ".alfredrc"
     agents_conf = tmp_path / "agents.conf"

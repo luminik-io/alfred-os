@@ -275,10 +275,13 @@ TOKEN="$(
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
 )"
 
-# Send a sample payload.
+# Send a sample payload. If TRUSTED_COUNTS_ONLY=1, set TRUSTED_TOKEN to the
+# same secret stored as TRUSTED_INGEST_TOKEN. Omit the trusted header only when
+# you want to verify that anonymous reports do not move public totals.
 curl -sX POST https://<your-worker-url>/ingest \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $TOKEN" \
+  -H "X-Alfred-Trusted-Token: $TRUSTED_TOKEN" \
   -d '{"install_id":"smoke-test-0001","period":"lifetime","prs_opened":3,"prs_merged":2,"prs_reviewed":1,"issues_opened":4,"issues_closed":3,"files_changed":120,"lines_changed":0,"loc_added":120}'
 
 # Read the public totals back.
