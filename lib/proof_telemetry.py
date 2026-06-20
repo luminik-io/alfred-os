@@ -819,7 +819,8 @@ def register_install(
 ) -> str | None:
     """Register this install with the hosted collector and persist its token."""
     register_url = register_url_for_ingest(ingest_url)
-    request = requester or (lambda u, p: _post_json(u, p))
+    trusted_token = trusted_telemetry_token_for_url(ingest_url)
+    request = requester or (lambda u, p: _post_json(u, p, trusted_token=trusted_token))
     ok, body = request(register_url, {"install_id": install_id})
     if not ok:
         return None

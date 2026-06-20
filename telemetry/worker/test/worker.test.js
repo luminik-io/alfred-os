@@ -1327,12 +1327,15 @@ test("the token check runs before the body is parsed (no work for unauthorized c
   assert.equal(res.status, 401);
 });
 
-function registerReq(body = {}) {
-  return new Request("https://telemetry.example.com/register", {
+function registerReq(body = {}, token, trustedToken) {
+  const init = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  });
+  };
+  if (token !== undefined) init.headers["X-Ingest-Token"] = token;
+  if (trustedToken !== undefined) init.headers["X-Alfred-Trusted-Token"] = trustedToken;
+  return new Request("https://telemetry.example.com/register", init);
 }
 
 test("register issues a per-install token and stores only its hash", async () => {
@@ -1379,6 +1382,69 @@ test("POST /register returns 409 for an already-registered install", async () =>
   const second = await worker.fetch(registerReq({ install_id: "install-reg004" }), env);
   assert.equal(second.status, 409);
   assert.match((await second.json()).error, /already registered/);
+});
+
+test("POST /register can rotate an existing token with the current install token", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1" };
+  const first = await (await worker.fetch(registerReq({ install_id: "install-reg005" }), env)).json();
+
+  const rotated = await worker.fetch(
+    registerReq({ install_id: "install-reg005" }, first.token),
+    env,
+  );
+  assert.equal(rotated.status, 200);
+  const rotatedBody = await rotated.json();
+  assert.ok(rotatedBody.token);
+  assert.notEqual(rotatedBody.token, first.token);
+
+  const stale = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg005" }, first.token),
+    env,
+  );
+  assert.equal(stale.status, 401);
+  const ok = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg005" }, rotatedBody.token),
+    env,
+  );
+  assert.equal(ok.status, 200);
+});
+
+test("POST /register can recover a hosted trusted reporter with the trusted token", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const first = await (await worker.fetch(registerReq({ install_id: "install-reg006" }), env)).json();
+
+  const withoutProof = await worker.fetch(registerReq({ install_id: "install-reg006" }), env);
+  assert.equal(withoutProof.status, 409);
+
+  const wrongTrusted = await worker.fetch(
+    registerReq({ install_id: "install-reg006" }, undefined, "wrong-secret"),
+    env,
+  );
+  assert.equal(wrongTrusted.status, 401);
+
+  const recovered = await worker.fetch(
+    registerReq({ install_id: "install-reg006" }, undefined, "trusted-secret"),
+    env,
+  );
+  assert.equal(recovered.status, 200);
+  const recoveredBody = await recovered.json();
+  assert.ok(recoveredBody.token);
+  assert.notEqual(recoveredBody.token, first.token);
+
+  const stale = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg006" }, first.token),
+    env,
+  );
+  assert.equal(stale.status, 401);
+  const ok = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg006" }, recoveredBody.token),
+    env,
+  );
+  assert.equal(ok.status, 200);
 });
 
 test("ingest requires the registered install token when REQUIRE_INSTALL_TOKEN is set", async () => {

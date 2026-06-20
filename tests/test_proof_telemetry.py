@@ -1122,6 +1122,36 @@ def test_trusted_telemetry_token_is_scoped_to_hosted_collector():
     assert pt.trusted_telemetry_token_for_url("https://custom.example.com/ingest", env) == ""
 
 
+def test_register_install_sends_trusted_token_only_to_hosted_collector(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    monkeypatch.setenv(pt.TRUSTED_TOKEN_ENV, "trusted-secret")
+    captured = []
+
+    def fake_post_json(url, payload, **kwargs):
+        captured.append((url, payload, kwargs.get("trusted_token", "")))
+        return True, {"install_id": payload["install_id"], "token": "install-token"}
+
+    monkeypatch.setattr(pt, "_post_json", fake_post_json)
+
+    hosted = pt.register_install(pt.DEFAULT_INGEST_URL, "install-reg-recover")
+    custom = pt.register_install("https://custom.example.com/ingest", "install-reg-custom")
+
+    assert hosted == "install-token"
+    assert custom == "install-token"
+    assert captured == [
+        (
+            pt.register_url_for_ingest(pt.DEFAULT_INGEST_URL),
+            {"install_id": "install-reg-recover"},
+            "trusted-secret",
+        ),
+        (
+            "https://custom.example.com/register",
+            {"install_id": "install-reg-custom"},
+            "",
+        ),
+    ]
+
+
 def test_post_sends_token_header_when_set(monkeypatch):
     captured = {}
 

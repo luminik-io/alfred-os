@@ -381,7 +381,7 @@ async function sha256Hex(value) {
   return hex;
 }
 
-export async function registerInstall(kv, raw, now = new Date()) {
+export async function registerInstall(kv, raw, now = new Date(), opts = {}) {
   if (raw !== null && (typeof raw !== "object" || Array.isArray(raw))) {
     return { ok: false, status: 400, error: "body must be a JSON object" };
   }
@@ -391,7 +391,7 @@ export async function registerInstall(kv, raw, now = new Date()) {
     return { ok: false, status: 400, error: "install_id missing or malformed" };
   }
   const existing = await kv.get(authKey(installId), { type: "json" });
-  if (existing && typeof existing === "object") {
+  if (existing && typeof existing === "object" && opts.replaceExisting !== true) {
     return { ok: false, status: 409, error: "install already registered" };
   }
   const token = randomToken(32);
@@ -1014,7 +1014,17 @@ export default {
       } catch {
         return jsonResponse({ error: "invalid JSON" }, 400, env);
       }
-      const registered = await registerInstall(kv, raw);
+      const requestedId = raw && typeof raw.install_id === "string" ? raw.install_id : "";
+      const trustedAuth = checkTrustedReporterToken(request, env);
+      if (!trustedAuth.ok) {
+        return jsonResponse({ error: trustedAuth.error }, trustedAuth.status, env);
+      }
+      let replaceExisting = trustedAuth.trusted === true;
+      if (!replaceExisting && INSTALL_ID_RE.test(requestedId)) {
+        const installAuth = await checkInstallToken(kv, request, env, requestedId);
+        replaceExisting = installAuth.ok === true;
+      }
+      const registered = await registerInstall(kv, raw, new Date(), { replaceExisting });
       if (!registered.ok) {
         return jsonResponse({ error: registered.error }, registered.status || 400, env);
       }
