@@ -493,14 +493,15 @@ export async function computeTotals(kv, env) {
         const name = entry && entry.name;
         if (typeof name !== "string") continue;
         const installId = name.slice(ACTIVITY_PREFIX.length);
-        if (!installId || countedInstalls.has(installId)) continue;
-        countedInstalls.add(installId);
-        totals.installs += 1;
+        if (!installId) continue;
         const stored = await kv.get(name, { type: "json" });
         const seenAt = stored && typeof stored.seen_at === "string" ? stored.seen_at : null;
         if (seenAt && (totals.updated_at === null || seenAt > totals.updated_at)) {
           totals.updated_at = seenAt;
         }
+        if (countedInstalls.has(installId)) continue;
+        countedInstalls.add(installId);
+        totals.installs += 1;
       }
       if (listed && listed.list_complete === false && listed.cursor) {
         cursor = listed.cursor;

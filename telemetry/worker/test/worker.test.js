@@ -1552,6 +1552,29 @@ test("trusted-counts mode keeps trusted totals after an untrusted refresh", asyn
   assert.equal(stats.files_changed, 50);
 });
 
+test("trusted-counts mode uses active refreshes for updated_at without double-counting installs", async () => {
+  const kv = makeKV();
+  const trustedAt = new Date("2026-06-15T00:00:00.000Z");
+  const activeAt = new Date("2026-06-16T00:00:00.000Z");
+  const payload = normalizePayload(SAMPLE_PAYLOAD).value;
+
+  await ingest(kv, payload, trustedAt, {
+    trustedReporter: true,
+    trustedCountsOnly: true,
+  });
+  await ingest(
+    kv,
+    normalizePayload({ ...SAMPLE_PAYLOAD, prs_opened: 99999 }).value,
+    activeAt,
+    { trustedCountsOnly: true },
+  );
+
+  const stats = await computeTotals(kv, { TRUSTED_COUNTS_ONLY: "1" });
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.updated_at, activeAt.toISOString());
+});
+
 test("a wrong trusted collector token is rejected", async () => {
   const env = {
     TELEMETRY: makeKV(),
