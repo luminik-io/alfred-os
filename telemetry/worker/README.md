@@ -249,11 +249,10 @@ You need a Cloudflare account (the free plan is enough) and
    ALFRED_TELEMETRY_TOKEN=the-same-random-value
    ```
 
-   **Supported path: use `alfred-init`.** Running `alfred-init` can write the
-   endpoint and the `alfred.proof-telemetry` job row into `agents.conf`, so the
-   reporter is scheduled to run once a day. Setting the env vars by hand without
-   that scheduler row means nothing fires the reporter. Use
-   `alfred telemetry off` to opt out later.
+   **Supported path: use `alfred telemetry`.** `alfred telemetry on` writes the
+   endpoint and re-enables reporting. `alfred telemetry off` opts out later.
+   The `luminik.eng.proof-telemetry` scheduler row can stay installed; with no
+   endpoint or after opt-out, it exits cleanly and sends nothing.
 
 6. **Point the site counter at the read endpoint:** set the build-time env var
    when building the site:

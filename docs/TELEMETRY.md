@@ -16,9 +16,10 @@ alfred telemetry on --url https://your-worker.example.com/ingest
 alfred telemetry off
 ```
 
-`alfred telemetry off` writes `ALFRED_TELEMETRY_ENABLED=0` and removes the
-scheduler row. `alfred telemetry on` writes the endpoint, re-enables reporting,
-and adds the `alfred.proof-telemetry` scheduler row.
+`alfred telemetry on` writes the endpoint and re-enables reporting. `alfred
+telemetry off` writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can stay
+installed; with telemetry off or no endpoint configured, the reporter exits
+cleanly and sends nothing.
 
 If your collector uses an ingest token:
 
