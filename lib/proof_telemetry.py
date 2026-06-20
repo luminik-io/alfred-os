@@ -125,6 +125,7 @@ class TelemetryCounts:
     files_changed: int | None = None
     lines_changed: int = 0
     loc_added: int = 0
+    read_complete: bool = True
 
 
 def is_enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -188,6 +189,16 @@ def _install_id_path() -> Path:
     return root / "state" / _INSTALL_ID_FILENAME
 
 
+def load_persisted_install_id(path: Path | None = None) -> str | None:
+    """Return the existing install id without creating a new one."""
+    target = path or _install_id_path()
+    try:
+        existing = target.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return existing or None
+
+
 def load_or_create_persisted_install_id(path: Path | None = None) -> str | None:
     """Return a STABLE, PERSISTED random install id, or ``None`` if it cannot
     be persisted.
@@ -210,12 +221,9 @@ def load_or_create_persisted_install_id(path: Path | None = None) -> str | None:
     honest. See ``report_once``.
     """
     target = path or _install_id_path()
-    try:
-        existing = target.read_text(encoding="utf-8").strip()
-        if existing:
-            return existing
-    except OSError:
-        pass
+    existing = load_persisted_install_id(target)
+    if existing:
+        return existing
     new_id = secrets.token_urlsafe(16)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -477,7 +485,11 @@ def derive_counts(brain: Any) -> TelemetryCounts:
                    reported as 0 until that signal exists locally.
       loc_added    legacy wire alias for files_changed.
 
-    Any query failure yields zeroes for the affected fields rather than raising.
+    Any query failure yields zeroes for the affected fields and marks the read
+    incomplete rather than raising. ``report_once`` skips posting incomplete
+    reads so a temporary local brain failure cannot overwrite a previous
+    non-zero public contribution with fallback zeroes.
+
     The base ``prs_opened`` query is load-bearing: ``prs_merged`` and
     ``prs_reviewed`` are defined as subsets of it, so a FAILED base query (which
     leaves ``prs_opened`` at 0) must suppress the dependent counts. Otherwise the
@@ -494,6 +506,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     files_changed = 0
     lines_changed = 0
     loc_added = 0
+    read_complete = True
 
     # Distinguish "the brain genuinely has 0 PRs" from "the base PR query
     # failed". On failure, prs_opened stays 0 AND we suppress the dependent
@@ -503,6 +516,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         prs_opened = _count_github_items(brain, kind="pr", authored_only=True)
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         prs_opened_failed = True
+        read_complete = False
         logger.debug("telemetry: PR-opened count derivation failed: %s", exc)
 
     # Count merged and terminal (merged|closed) PRs with a state filter so each
@@ -532,10 +546,12 @@ def derive_counts(brain: Any) -> TelemetryCounts:
                 )
             except Exception as exc:  # fail-soft by contract
                 logger.debug("telemetry: PR-state count derivation failed: %s", exc)
+                read_complete = False
                 prs_merged = 0
                 prs_reviewed = 0
         except Exception as exc:  # fail-soft by contract: never raise on a bad read
             logger.debug("telemetry: PR-state count derivation failed: %s", exc)
+            read_complete = False
             prs_merged = 0
             prs_reviewed = 0
 
@@ -566,6 +582,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
             agent_labeled_only=True,
         )
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
+        read_complete = False
         logger.debug("telemetry: issue count derivation failed: %s", exc)
 
     if issues_closed > issues_opened:
@@ -575,6 +592,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         files_changed = _count_file_touches(brain)
         loc_added = files_changed
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
+        read_complete = False
         logger.debug("telemetry: file-touch count derivation failed: %s", exc)
 
     return TelemetryCounts(
@@ -586,6 +604,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         files_changed=_clamp(files_changed),
         lines_changed=_clamp(lines_changed),
         loc_added=_clamp(loc_added),
+        read_complete=read_complete,
     )
 
 
@@ -603,6 +622,15 @@ def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict
         "files_changed": _clamp(files_changed),
         "lines_changed": _clamp(counts.lines_changed),
         "loc_added": _clamp(counts.loc_added),
+    }
+
+
+def build_tombstone_payload(install_id: str, period: str | None = None) -> dict[str, Any]:
+    """Build a request asking the collector to remove this install's record."""
+    return {
+        "install_id": install_id,
+        "period": period or _LIFETIME_PERIOD,
+        "tombstone": True,
     }
 
 
@@ -660,6 +688,8 @@ def report_once(
       ``no_install_id``   enabled, but the install id could not be persisted, so
                           we skip the report rather than POST with an ephemeral
                           id that would inflate the distinct-install count.
+      ``stale_counts``    enabled, but local count reads were incomplete, so the
+                          previous accepted report is left in place.
       ``sent``            payload posted and the server accepted it.
       ``failed``          enabled and attempted, but the post did not succeed.
       ``error``           an unexpected internal error, swallowed.
@@ -690,6 +720,8 @@ def report_once(
             return {"status": "no_install_id", "sent": False}
         period = current_period(now)
         counts = derive_counts(brain)
+        if not counts.read_complete:
+            return {"status": "stale_counts", "sent": False}
         payload = build_payload(install_id, counts, period)
         # Default poster carries the optional ingest token; an injected poster
         # (tests) keeps the simple (url, payload) signature.
@@ -713,4 +745,34 @@ def report_once(
         }
     except Exception as exc:  # fail-soft by contract: a telemetry hiccup is silent
         logger.debug("telemetry: report_once swallowed error: %s", exc)
+        return {"status": "error", "sent": False}
+
+
+def clear_report(
+    *,
+    env: Mapping[str, str] | None = None,
+    install_id: str | None = None,
+    poster: Callable[[str, dict[str, Any]], bool] | None = None,
+) -> dict[str, Any]:
+    """Ask the collector to remove this install's previous contribution.
+
+    This is used by ``alfred telemetry off`` before the local switch is written.
+    It never creates an install id: if no durable id exists, there is no known
+    remote record to clear.
+    """
+    source = env if env is not None else os.environ
+    url = telemetry_url(source)
+    if not url:
+        return {"status": "no_url", "sent": False}
+    resolved_install_id = install_id or load_persisted_install_id()
+    if not resolved_install_id:
+        return {"status": "no_install_id", "sent": False}
+    try:
+        payload = build_tombstone_payload(resolved_install_id)
+        token = telemetry_token(source)
+        send = poster or (lambda u, p: _post(u, p, token=token))
+        ok = bool(send(url, payload))
+        return {"status": "sent" if ok else "failed", "sent": ok}
+    except Exception as exc:  # fail-soft by contract
+        logger.debug("telemetry: clear_report swallowed error: %s", exc)
         return {"status": "error", "sent": False}

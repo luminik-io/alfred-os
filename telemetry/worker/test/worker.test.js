@@ -15,6 +15,7 @@ import worker, {
   clampDependentPrCounts,
   normalizePayload,
   ingest,
+  forgetInstall,
   computeTotals,
   hashIp,
 } from "../src/worker.js";
@@ -114,6 +115,18 @@ test("normalizePayload defaults a missing or malformed period to 'lifetime'", ()
 
   const goodPeriod = normalizePayload({ install_id: "a".repeat(8), period: "lifetime" });
   assert.equal(goodPeriod.value.period, "lifetime");
+});
+
+test("normalizePayload accepts a tombstone for an existing install id", () => {
+  const payload = normalizePayload({
+    install_id: "install-delete0",
+    period: "lifetime",
+    tombstone: true,
+  });
+  assert.equal(payload.ok, true);
+  assert.equal(payload.value.tombstone, true);
+  assert.equal(payload.value.install_id, "install-delete0");
+  assert.equal(payload.value.counts, undefined);
 });
 
 test("normalizePayload clamps all count fields and keeps id/period", () => {
@@ -380,6 +393,26 @@ test("ingest counts distinct installs and sums across them", async () => {
   assert.equal(agg.prs_reviewed, 3);
   assert.equal(agg.loc_added, 100);
   assert.equal(agg.installs, 2, "two distinct installs counted");
+});
+
+test("forgetInstall removes an install from public totals", async () => {
+  const kv = makeKV();
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-delete1", prs_opened: 8, prs_merged: 5 }).value,
+    FIXED,
+  );
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-delete2", prs_opened: 3, prs_merged: 1 }).value,
+    FIXED,
+  );
+
+  await forgetInstall(kv, "install-delete1");
+  const totals = await totalsOf(kv);
+  assert.equal(totals.prs_opened, 3);
+  assert.equal(totals.prs_merged, 1);
+  assert.equal(totals.installs, 1);
 });
 
 // --------------------------------------------------------------------------
@@ -794,6 +827,29 @@ test("a new ingest invalidates the stats cache so the next /stats recomputes", a
   const body = await res.json();
   assert.equal(body.prs_opened, 10, "recomputed total reflects both installs");
   assert.equal(body.installs, 2);
+});
+
+test("POST /ingest tombstone removes an install and invalidates cached stats", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-delete3", prs_opened: 7, prs_merged: 4 }).value,
+    FIXED,
+  );
+  await worker.fetch(req("GET", "/stats"), env); // populate cache
+  assert.equal(kv.store.has("stats:cache"), true);
+
+  const res = await worker.fetch(
+    req("POST", "/ingest", { install_id: "install-delete3", tombstone: true }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(kv.store.has("install:install-delete3"), false);
+  assert.equal(kv.store.has("stats:cache"), false);
+  const body = await res.json();
+  assert.equal(body.totals.prs_opened, 0);
+  assert.equal(body.totals.installs, 0);
 });
 
 test("STATS_CACHE_TTL_SECONDS=0 disables the cache (always recompute)", async () => {

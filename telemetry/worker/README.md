@@ -17,7 +17,7 @@ phones home to a Luminik-operated endpoint.
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/ingest` | `POST` | One install reports its cumulative lifetime counts. The Worker keeps exactly one record per install (latest-wins) and writes only that install's key. Server-to-server only: requires `application/json`, no browser CORS, Origin allowlist, optional shared token, per-IP rate limit. |
+| `/ingest` | `POST` | One install reports its cumulative lifetime counts, or asks to remove its stored record during opt-out. The Worker keeps exactly one record per install (latest-wins) and writes only that install's key. Server-to-server only: requires `application/json`, no browser CORS, Origin allowlist, optional shared token, per-IP rate limit. |
 | `/stats` | `GET` | Returns the public totals, **derived on read** by summing every install's latest counts (behind a short cache). The only route with browser CORS, scoped to your site origin. |
 | `/` | `GET` | A small JSON service descriptor. |
 
@@ -51,6 +51,8 @@ phones home to a Luminik-operated endpoint.
 - `loc_added` is a legacy alias for `files_changed`. If one is missing, the
   Worker copies the other so old and new reporters aggregate the same file
   count.
+- `tombstone: true` with an `install_id` removes that install's stored record.
+  `alfred telemetry off` sends this before writing the local opt-out.
 
 ### What the Worker stores (the entire stored shape)
 
@@ -250,9 +252,10 @@ You need a Cloudflare account (the free plan is enough) and
    ```
 
    **Supported path: use `alfred telemetry`.** `alfred telemetry on` writes the
-   endpoint and re-enables reporting. `alfred telemetry off` opts out later.
-   The `proof-telemetry` scheduler row can stay installed; with no
-   endpoint or after opt-out, it exits cleanly and sends nothing.
+   endpoint and re-enables reporting. `alfred telemetry off` removes this
+   install's stored record, then opts out locally. The `proof-telemetry`
+   scheduler row can stay installed; with no endpoint or after opt-out, it exits
+   cleanly and sends nothing.
 
 6. **Point the site counter at the read endpoint:** set the build-time env var
    when building the site:

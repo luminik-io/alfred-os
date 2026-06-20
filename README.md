@@ -246,6 +246,8 @@ Alfred can report anonymous aggregate counts for the public
 [Impact](https://alfred.luminik.io/impact/) page. Reporting is on when an ingest
 endpoint is configured. Turn it off any time with `alfred telemetry off` or
 `ALFRED_TELEMETRY_ENABLED=0`. If no endpoint is configured, nothing is sent.
+When an install has already reported, `alfred telemetry off` asks the collector
+to remove that install's stored record before writing the local opt-out.
 
 Alfred reports counts only. It does not send repo names, file paths, code,
 prompts, titles, branches, people, hostnames, or billing data. A reporting
@@ -273,6 +275,9 @@ Turn reporting off:
 ```sh
 alfred telemetry off
 ```
+
+If this install has already reported, the command asks the collector to remove
+the stored record before it writes the local opt-out.
 
 Inspect local state:
 

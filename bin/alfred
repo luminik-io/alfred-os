@@ -693,10 +693,19 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
     return 0
 
 
+def _clear_previous_telemetry_report(values: dict[str, str]) -> dict[str, object]:
+    try:
+        import proof_telemetry
+    except Exception as exc:
+        return {"status": "error", "sent": False, "error": str(exc)}
+    return proof_telemetry.clear_report(env=values)
+
+
 def cmd_telemetry_off(args: argparse.Namespace) -> int:
     alfredrc = _alfredrc_path(args.alfredrc)
     conf = _telemetry_agents_conf_path(args.agents_conf)
     current = _telemetry_values(alfredrc)
+    clear_result = _clear_previous_telemetry_report(current)
     values = {"ALFRED_TELEMETRY_ENABLED": "0"}
     if not args.forget_endpoint and current.get("ALFRED_TELEMETRY_URL"):
         values["ALFRED_TELEMETRY_URL"] = current["ALFRED_TELEMETRY_URL"]
@@ -708,6 +717,10 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
     if args.delete_install_id and install_id_path.exists():
         install_id_path.unlink()
     print("alfred: telemetry disabled")
+    if clear_result.get("status") == "sent":
+        print("alfred: cleared previous usage totals")
+    elif clear_result.get("status") not in {"no_url", "no_install_id"}:
+        print("warning: could not clear previous usage totals", file=sys.stderr)
     print(f"alfred: wrote {alfredrc}")
     print(f"alfred: {'removed' if removed else 'no'} scheduler row at {conf}")
     print(_telemetry_deploy_hint(conf))

@@ -450,17 +450,16 @@ def test_report_once_is_fail_soft_on_poster_exception(tmp_path, monkeypatch):
 
 def test_report_once_is_fail_soft_on_brain_error(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    # Brain raises on both queries; derive_counts swallows -> zero counts, and
-    # the report still sends (zeros are harmless and the server clamps).
+    # Brain raises on local reads; report_once must not overwrite a previously
+    # accepted non-zero report with fallback zeroes.
     brain = FakeBrain(raise_on={"prs", "touches"})
     poster = RecordingPoster(ok=True)
     env = {pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"}
 
     result = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
-    assert result["status"] == "sent"
-    _, payload = poster.calls[0]
-    assert payload["prs_opened"] == 0
-    assert payload["loc_added"] == 0
+    assert result["status"] == "stale_counts"
+    assert result["sent"] is False
+    assert poster.calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +556,7 @@ def test_derive_counts_suppresses_dependents_when_base_query_fails():
     assert counts.prs_reviewed == 0, "dependent count must be suppressed on base failure"
     # An independent field (file touches) is unaffected by the PR failure.
     assert counts.loc_added == 4
+    assert counts.read_complete is False
 
 
 def test_derive_counts_real_zero_is_distinct_from_failure():
@@ -569,6 +569,7 @@ def test_derive_counts_real_zero_is_distinct_from_failure():
     assert counts.prs_merged == 0
     assert counts.prs_reviewed == 0
     assert counts.loc_added == 2
+    assert counts.read_complete is True
 
 
 def test_derive_counts_falls_back_when_brain_has_no_state_kwarg():
@@ -865,6 +866,15 @@ def test_build_payload_preserves_explicit_zero_files_changed():
     assert payload["loc_added"] == 9
 
 
+def test_build_tombstone_payload_contains_no_counts():
+    payload = pt.build_tombstone_payload("id-token")
+    assert payload == {
+        "install_id": "id-token",
+        "period": "lifetime",
+        "tombstone": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # ingest token (optional shared write gate)
 # ---------------------------------------------------------------------------
@@ -915,6 +925,45 @@ def test_post_omits_token_header_when_unset(monkeypatch):
     monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
     pt._post("https://w.example.com/ingest", {"x": 1})
     assert "X-ingest-token" not in captured["headers"]
+
+
+def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    poster = RecordingPoster(ok=True)
+
+    result = pt.clear_report(
+        env={pt.URL_ENV: "https://telemetry.example.com/ingest"},
+        poster=poster,
+    )
+
+    assert result == {"status": "sent", "sent": True}
+    assert poster.calls == [
+        (
+            "https://telemetry.example.com/ingest",
+            {
+                "install_id": "existing-token",
+                "period": "lifetime",
+                "tombstone": True,
+            },
+        )
+    ]
+
+
+def test_clear_report_does_not_create_install_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+
+    result = pt.clear_report(
+        env={pt.URL_ENV: "https://telemetry.example.com/ingest"},
+        poster=poster,
+    )
+
+    assert result == {"status": "no_install_id", "sent": False}
+    assert poster.calls == []
+    assert not (tmp_path / "state" / "telemetry-install-id").exists()
 
 
 # ---------------------------------------------------------------------------

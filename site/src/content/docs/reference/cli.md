@@ -178,8 +178,9 @@ unless `--force` is passed. `labels` creates or checks the
 canonical GitHub labels needed by the lifecycle state machine, Batman planning,
 and issue-claim overrides. `telemetry` controls anonymous usage totals:
 `status` shows local state, `on` writes the managed `.alfredrc` block, and
-`off` writes the opt-out flag. The scheduler row can stay installed; without an
-endpoint, or after opt-out, it exits cleanly and sends nothing.
+`off` clears the previous report and writes the opt-out flag. The scheduler row
+can stay installed; without an endpoint, or after opt-out, it exits cleanly and
+sends nothing.
 `shipped` reports merged PRs, issues, LOC, and
 model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
 values.

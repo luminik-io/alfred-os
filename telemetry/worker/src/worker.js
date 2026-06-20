@@ -294,6 +294,12 @@ export function normalizePayload(raw) {
   // default to "lifetime" otherwise; it never becomes part of a storage key.
   const rawPeriod = typeof raw.period === "string" ? raw.period : "";
   const period = PERIOD_RE.test(rawPeriod) ? rawPeriod : "lifetime";
+  if (raw.tombstone === true) {
+    return {
+      ok: true,
+      value: { install_id: installId, period, tombstone: true },
+    };
+  }
   const counts = normalizeCountFields(raw);
   // Enforce subset invariants server-side. A buggy or hostile open-write client
   // could POST dependent counters above their base count; clamp them here so the
@@ -476,6 +482,15 @@ export async function ingest(kv, payload, now = new Date()) {
   }
 
   return snapshot;
+}
+
+export async function forgetInstall(kv, installId) {
+  await kv.delete(installKey(installId));
+  try {
+    await kv.delete(STATS_CACHE_KEY);
+  } catch {
+    /* cache invalidation is best-effort; ignore */
+  }
 }
 
 function publicView(agg) {
@@ -778,6 +793,11 @@ export default {
       const parsed = normalizePayload(raw);
       if (!parsed.ok) {
         return jsonResponse({ error: parsed.error }, 400, env);
+      }
+      if (parsed.value.tombstone) {
+        await forgetInstall(kv, parsed.value.install_id);
+        const totals = await computeTotals(kv);
+        return jsonResponse({ ok: true, totals: publicView(totals) }, 200, env);
       }
       await ingest(kv, parsed.value);
       // Report the fresh derived total back. ingest just invalidated the stats

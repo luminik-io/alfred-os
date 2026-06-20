@@ -17,9 +17,10 @@ alfred telemetry off
 ```
 
 `alfred telemetry on` writes the endpoint and re-enables reporting. `alfred
-telemetry off` writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can stay
-installed; with telemetry off or no endpoint configured, the reporter exits
-cleanly and sends nothing.
+telemetry off` asks the collector to remove this install's previous record, then
+writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can stay installed; with
+telemetry off or no endpoint configured, the reporter exits cleanly and sends
+nothing.
 
 If your collector uses an ingest token:
 
@@ -69,7 +70,8 @@ titles, branch names, people, hostnames, or billing data.
 The bundled Cloudflare Worker lives in
 [`telemetry/worker/`](../telemetry/worker/):
 
-- `POST /ingest` stores one latest record per install id.
+- `POST /ingest` stores one latest record per install id. A tombstone payload
+  removes that install's record when the user turns telemetry off.
 - `GET /stats` returns aggregate totals and the number of active installs that
   have sent a report.
 

@@ -6,9 +6,38 @@ import json
 import os
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _capture_server():
+    received: list[dict[str, object]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            size = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(size).decode("utf-8")
+            received.append(
+                {
+                    "path": self.path,
+                    "token": self.headers.get("X-Ingest-Token"),
+                    "body": json.loads(raw),
+                }
+            )
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"ok":true}')
+
+        def log_message(self, *args):  # pragma: no cover - keep test output quiet
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, received
 
 
 def _run(tmp_path: Path, *args: str, alfredrc: Path | None = None, agents_conf: Path | None = None):
@@ -126,6 +155,46 @@ def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
     assert "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest" in rc_text
     assert "ALFRED_TELEMETRY_TOKEN" not in rc_text
     assert "alfred.proof-telemetry" not in agents_conf.read_text(encoding="utf-8")
+
+
+def test_telemetry_off_clears_previous_usage_totals(tmp_path):
+    server, received = _capture_server()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
+        alfredrc = tmp_path / ".alfredrc"
+        alfredrc.write_text(
+            "ALFRED_TELEMETRY_ENABLED=1\n"
+            f"ALFRED_TELEMETRY_URL={endpoint}\n"
+            "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+            encoding="utf-8",
+        )
+        agents_conf = tmp_path / "agents.conf"
+        agents_conf.write_text(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous usage totals\n",
+            encoding="utf-8",
+        )
+        install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
+        install_id.parent.mkdir(parents=True)
+        install_id.write_text("install-cli-test\n", encoding="utf-8")
+
+        result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+
+        assert result.returncode == 0, result.stderr
+        assert "cleared previous usage totals" in result.stdout
+        assert received == [
+            {
+                "path": "/ingest",
+                "token": "shared-secret",
+                "body": {
+                    "install_id": "install-cli-test",
+                    "period": "lifetime",
+                    "tombstone": True,
+                },
+            }
+        ]
+    finally:
+        server.shutdown()
 
 
 def test_telemetry_off_removes_later_init_block_telemetry_values(tmp_path):
