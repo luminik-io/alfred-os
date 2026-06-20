@@ -45,6 +45,23 @@ def test_telemetry_status_reads_managed_files(tmp_path):
     assert payload["scheduler_row"] == "missing"
 
 
+def test_telemetry_status_honors_commented_opt_out(tmp_path):
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(
+        "ALFRED_TELEMETRY_ENABLED=0 # opt out\n"
+        "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
+        encoding="utf-8",
+    )
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["enabled"] is False
+    assert payload["endpoint"] == "https://telemetry.example.com/ingest"
+
+
 def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_path):
     alfredrc = tmp_path / ".alfredrc"
     alfredrc.write_text(

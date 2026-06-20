@@ -141,6 +141,15 @@ ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
 
+
+def _switch_value(raw: str) -> str:
+    value = raw.strip()
+    comment_at = value.find("#")
+    if comment_at > 0 and value[comment_at - 1].isspace():
+        value = value[:comment_at].strip()
+    return value.lower()
+
+
 DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
     "lucius": {"script": "lucius.py", "schedule": "interval:1200", "role": "feature dev"},
     "drake": {"script": "drake.py", "schedule": "interval:7200", "role": "issue planner"},
@@ -399,7 +408,7 @@ def _telemetry_enabled(values: dict[str, str]) -> bool:
     raw = values.get("ALFRED_TELEMETRY_ENABLED")
     if raw is None:
         return True
-    return raw.strip().lower() not in TELEMETRY_DISABLED_VALUES
+    return _switch_value(raw) not in TELEMETRY_DISABLED_VALUES
 
 
 def _quote_env_value(value: str) -> str:

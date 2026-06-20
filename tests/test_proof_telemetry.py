@@ -326,7 +326,17 @@ def test_enabled_when_env_unset():
 
 
 def test_disabled_for_explicit_opt_out_values():
-    for value in ["0", "false", "False", "no", "off", "disabled", " DISABLED "]:
+    for value in [
+        "0",
+        "false",
+        "False",
+        "no",
+        "off",
+        "disabled",
+        " DISABLED ",
+        "0 # opt out",
+        "false # disable reporting",
+    ]:
         env = {pt.ENABLE_ENV: value}
         assert pt.is_enabled(env) is False, f"{value!r} must opt out"
 

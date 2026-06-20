@@ -105,6 +105,14 @@ _HTTP_TIMEOUT_SECONDS = 8
 _DISABLED_VALUES = {"0", "false", "no", "off", "disabled"}
 
 
+def _switch_value(raw: str) -> str:
+    value = raw.strip()
+    comment_at = value.find("#")
+    if comment_at > 0 and value[comment_at - 1].isspace():
+        value = value[:comment_at].strip()
+    return value.lower()
+
+
 @dataclass(frozen=True)
 class TelemetryCounts:
     """The anonymous aggregate counts a host reports."""
@@ -130,7 +138,7 @@ def is_enabled(env: Mapping[str, str] | None = None) -> bool:
     raw = source.get(ENABLE_ENV)
     if raw is None:
         return True
-    return raw.strip().lower() not in _DISABLED_VALUES
+    return _switch_value(raw) not in _DISABLED_VALUES
 
 
 def telemetry_url(env: Mapping[str, str] | None = None) -> str:
