@@ -12,20 +12,20 @@
  *                  (keyed by install_id) and replaces it on every trusted report
  *                  (latest-wins upsert). In hosted trusted-counts mode,
  *                  untrusted reports write only an active-install marker, never
- *                  the progress record. That keeps anonymous adoption visible
- *                  without allowing an anonymous client to inflate or erase
- *                  trusted shipped-work totals. Re-sending the same lifetime
- *                  total is idempotent: the stored record is replaced with an
- *                  identical value, so the derived total is unchanged, forever,
+ *                  the progress record. That keeps local activity refreshes
+ *                  separate from public proof, so an anonymous client cannot
+ *                  inflate or erase trusted shipped-work totals. Re-sending the
+ *                  same lifetime total is idempotent: the stored record is
+ *                  replaced with an identical value, so the derived total is unchanged, forever,
  *                  no matter how many times or for how long an install reports.
  *                  Browser-hostile by design: simple requests are rejected,
  *                  cross-origin browser writes are blocked, hosted writes use
  *                  per-install tokens, and hosted progress totals can require a
  *                  trusted collector token. Self-hosted collectors can use one
  *                  shared INGEST_TOKEN instead.
- *   GET  /stats    returns the public totals plus a distinct-install count. The
+ *   GET  /stats    returns the public totals plus a trusted-install count. The
  *                  totals are DERIVED ON READ: the Worker lists install:* keys
- *                  for trusted progress totals. In hosted trusted-counts mode,
+ *                  for trusted public totals. In hosted trusted-counts mode,
  *                  active:* keys can refresh the timestamp for a trusted
  *                  install, but anonymous active markers are not public proof.
  *                  Nothing is ever

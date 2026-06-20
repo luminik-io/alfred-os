@@ -746,7 +746,9 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
     alfredrc = _alfredrc_path(args.alfredrc)
     conf = _telemetry_agents_conf_path(args.agents_conf)
     current = _telemetry_values(alfredrc)
-    url = (args.url or current.get("ALFRED_TELEMETRY_URL") or _default_telemetry_url(current)).strip()
+    url = (
+        args.url or current.get("ALFRED_TELEMETRY_URL") or _default_telemetry_url(current)
+    ).strip()
     if not url:
         print("alfred telemetry on: no telemetry collector configured", file=sys.stderr)
         return 2
@@ -762,13 +764,12 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
         "ALFRED_TELEMETRY_ENABLED": "1",
         "ALFRED_TELEMETRY_URL": url,
     }
-    token = (args.token or current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
-    if token and not args.clear_token:
+    replacement_token = (args.token or "").strip()
+    token = (replacement_token or current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
+    if token and (not args.clear_token or replacement_token):
         values["ALFRED_TELEMETRY_TOKEN"] = token
     if args.clear_token:
-        clear_result = _clear_previous_telemetry_report(
-            {**current, "ALFRED_TELEMETRY_URL": url}
-        )
+        clear_result = _clear_previous_telemetry_report({**current, "ALFRED_TELEMETRY_URL": url})
         clear_status = str(clear_result.get("status") or "")
         clear_done = clear_status in {"sent", "no_url", "no_install_id"}
         _delete_telemetry_state_token()
