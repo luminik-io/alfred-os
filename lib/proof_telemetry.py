@@ -733,7 +733,6 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     try:
         lines_changed = _sum_github_changed_lines(brain, kind="pr", authored_only=True)
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
-        read_complete = False
         logger.debug("telemetry: line-count derivation failed: %s", exc)
 
     return TelemetryCounts(

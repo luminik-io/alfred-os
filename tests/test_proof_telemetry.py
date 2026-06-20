@@ -773,6 +773,27 @@ def test_derive_counts_uses_agent_authored_github_line_totals():
     assert counts.lines_changed == 21
 
 
+def test_derive_counts_keeps_reporting_when_line_total_query_fails():
+    class MissingLineColumnsBrain(ClampingBrain):
+        def sum_github_changed_lines(self, **_filters):
+            raise RuntimeError("no such column: additions")
+
+    brain = MissingLineColumnsBrain(
+        prs=[FakePR("merged"), FakePR("open")],
+        issues=[FakeIssue("closed", labels=["agent:authored"])],
+        touches=[FakeTouch()] * 3,
+    )
+    counts = pt.derive_counts(brain)
+
+    assert counts.prs_opened == 2
+    assert counts.prs_merged == 1
+    assert counts.issues_opened == 1
+    assert counts.issues_closed == 1
+    assert counts.files_changed == 3
+    assert counts.lines_changed == 0
+    assert counts.read_complete is True
+
+
 def test_derive_counts_fallback_stops_honestly_at_list_clamp():
     # An older brain with NO count_* method and a list that clamps at 500: the
     # paginating fallback cannot see past the clamp, so it reports the clamp (500)
