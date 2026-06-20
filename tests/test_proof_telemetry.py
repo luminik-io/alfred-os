@@ -370,7 +370,11 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     brain = FakeBrain(
         prs=[FakePR("merged"), FakePR("merged"), FakePR("closed"), FakePR("open")],
-        issues=[FakeIssue(), FakeIssue(labels=["agent:triage"]), FakeIssue(labels=["bug"])],
+        issues=[
+            FakeIssue(),
+            FakeIssue("closed", labels=["agent:triage"]),
+            FakeIssue("closed", labels=["bug"]),
+        ],
         touches=[FakeTouch(), FakeTouch(), FakeTouch()],
     )
     poster = RecordingPoster(ok=True)
@@ -392,6 +396,7 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
         "prs_merged",
         "prs_reviewed",
         "issues_opened",
+        "issues_closed",
         "files_changed",
         "lines_changed",
         "loc_added",
@@ -404,6 +409,7 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     # reviewed = merged + closed (terminal), never exceeds opened.
     assert payload["prs_reviewed"] == 3
     assert payload["issues_opened"] == 2
+    assert payload["issues_closed"] == 1
     assert payload["files_changed"] == 3
     assert payload["lines_changed"] == 0
     assert payload["loc_added"] == 3
@@ -461,8 +467,8 @@ def test_derive_counts_maps_states_correctly():
         ],
         issues=[
             FakeIssue(),
-            FakeIssue(labels=["agent:bundle:billing"]),
-            FakeIssue(labels=["help wanted"]),
+            FakeIssue("closed", labels=["agent:bundle:billing"]),
+            FakeIssue("closed", labels=["help wanted"]),
         ],
         touches=[FakeTouch()] * 7,
     )
@@ -471,6 +477,7 @@ def test_derive_counts_maps_states_correctly():
     assert counts.prs_merged == 2
     assert counts.prs_reviewed == 3  # 2 merged + 1 closed
     assert counts.issues_opened == 2
+    assert counts.issues_closed == 1
     assert counts.files_changed == 7
     assert counts.lines_changed == 0
     assert counts.loc_added == 7
@@ -761,6 +768,35 @@ def test_derive_counts_clamps_dependents_to_zero_when_opened_is_zero():
     assert counts.prs_reviewed == 0, "reviewed must be clamped to opened even when opened is 0"
 
 
+class ClosedIssueRaceBrain:
+    """Brain that reports closed agent issues during an opened-count race."""
+
+    def count_github_items(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+    ):
+        if kind == "issue":
+            if state is None:
+                return 0
+            if state == "closed":
+                return 5
+        return 0
+
+    def count_file_touches(self):
+        return 0
+
+
+def test_derive_counts_clamps_closed_issues_to_opened_issues():
+    brain = ClosedIssueRaceBrain()
+    counts = pt.derive_counts(brain)
+    assert counts.issues_opened == 0
+    assert counts.issues_closed == 0
+
+
 # ---------------------------------------------------------------------------
 # current_period: stable lifetime bucket (no calendar dependence)
 # ---------------------------------------------------------------------------
@@ -782,6 +818,7 @@ def test_build_payload_clamps_negatives_and_caps():
         prs_merged=10,
         prs_reviewed=pt._MAX_PER_FIELD + 1,
         issues_opened=11,
+        issues_closed=12,
         files_changed=22,
         lines_changed=33,
         loc_added=0,
@@ -791,6 +828,7 @@ def test_build_payload_clamps_negatives_and_caps():
     assert payload["prs_merged"] == 10
     assert payload["prs_reviewed"] == pt._MAX_PER_FIELD
     assert payload["issues_opened"] == 11
+    assert payload["issues_closed"] == 12
     assert payload["files_changed"] == 22
     assert payload["lines_changed"] == 33
     assert payload["loc_added"] == 0

@@ -124,6 +124,7 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
     prs_merged: -3,
     prs_reviewed: 2.7,
     issues_opened: 11,
+    issues_closed: 12,
     files_changed: 77,
     lines_changed: 123,
     loc_added: 999999999,
@@ -138,6 +139,7 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
       prs_merged: 0,
       prs_reviewed: 2,
       issues_opened: 11,
+      issues_closed: 11,
       files_changed: 77,
       lines_changed: 123,
       loc_added: 100000,
@@ -146,6 +148,7 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
   // No extra keys leaked from the raw payload.
   assert.deepEqual(Object.keys(out.value.counts).sort(), [
     "files_changed",
+    "issues_closed",
     "issues_opened",
     "lines_changed",
     "loc_added",
@@ -195,15 +198,16 @@ test("clampDependentPrCounts leaves a valid subset payload unchanged", () => {
   assert.notStrictEqual(out, input);
 });
 
-test("normalizePayload clamps prs_merged/prs_reviewed to prs_opened server-side", () => {
-  // A hostile or buggy open-write client POSTs opened:0 with merged>0. The
-  // Worker's normalization must clamp the dependent counters to opened.
+test("normalizePayload clamps dependent counters server-side", () => {
+  // A hostile or buggy open-write client POSTs opened:0 with dependent counts
+  // above it. The Worker's normalization must clamp the dependent counters.
   const out = normalizePayload({
     install_id: "abcdef12",
     period: "lifetime",
     prs_opened: 0,
     prs_merged: 5,
     prs_reviewed: 3,
+    issues_closed: 5,
     loc_added: 100,
   });
   assert.equal(out.ok, true);
@@ -212,25 +216,29 @@ test("normalizePayload clamps prs_merged/prs_reviewed to prs_opened server-side"
     prs_merged: 0,
     prs_reviewed: 0,
     issues_opened: 0,
+    issues_closed: 0,
     files_changed: 100,
     lines_changed: 0,
     loc_added: 100,
   });
 
-  // A normal subset payload (merged/reviewed <= opened) is unchanged.
+  // A normal subset payload is unchanged.
   const valid = normalizePayload({
     install_id: "abcdef12",
     period: "lifetime",
     prs_opened: 10,
     prs_merged: 7,
     prs_reviewed: 4,
+    issues_opened: 3,
+    issues_closed: 2,
     loc_added: 800,
   });
   assert.deepEqual(valid.value.counts, {
     prs_opened: 10,
     prs_merged: 7,
     prs_reviewed: 4,
-    issues_opened: 0,
+    issues_opened: 3,
+    issues_closed: 2,
     files_changed: 800,
     lines_changed: 0,
     loc_added: 800,
@@ -906,6 +914,7 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
       prs_merged: 6,
       prs_reviewed: 3,
       issues_opened: 5,
+      issues_closed: 4,
       files_changed: 800,
       lines_changed: 1200,
       loc_added: 800,
@@ -929,6 +938,7 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
     prs_merged: 6,
     prs_reviewed: 3,
     issues_opened: 5,
+    issues_closed: 4,
     files_changed: 800,
     lines_changed: 1200,
     loc_added: 800,
@@ -1331,6 +1341,7 @@ test("GET /stats on an empty store returns zeroed totals", async () => {
     prs_merged: 0,
     prs_reviewed: 0,
     issues_opened: 0,
+    issues_closed: 0,
     files_changed: 0,
     lines_changed: 0,
     loc_added: 0,

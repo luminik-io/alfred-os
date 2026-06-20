@@ -22,6 +22,7 @@ What is sent (the entire payload)::
       "prs_merged":   <int>,
       "prs_reviewed": <int>,
       "issues_opened": <int>,
+      "issues_closed": <int>,
       "files_changed": <int>,
       "lines_changed": <int>,
       "loc_added":     <int>  # legacy alias for files_changed
@@ -112,6 +113,7 @@ class TelemetryCounts:
     prs_merged: int = 0
     prs_reviewed: int = 0
     issues_opened: int = 0
+    issues_closed: int = 0
     files_changed: int | None = None
     lines_changed: int = 0
     loc_added: int = 0
@@ -425,7 +427,7 @@ def _count_file_touches(brain: Any, **filters: Any) -> int:
 
 
 def derive_counts(brain: Any) -> TelemetryCounts:
-    """Roll the local fleet-brain rows up into the four anonymous counts.
+    """Roll the local fleet-brain rows up into anonymous aggregate counts.
 
     Pure read: queries the brain, returns counts, touches nothing else. Counts
     are CUMULATIVE LIFETIME totals (the Worker treats them as such, latest-wins
@@ -452,6 +454,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
                    flow. Conservative: never exceeds prs_opened.
       issues_opened rows in github_items where kind == "issue" and the labels
                    include any ``agent:*`` label.
+      issues_closed that subset whose state == "closed".
       files_changed a file-delta proxy: the count of file_touches rows (one per
                    repo file an agent added/modified). The brain stores file
                    touches, not true line counts.
@@ -473,6 +476,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     prs_merged = 0
     prs_reviewed = 0
     issues_opened = 0
+    issues_closed = 0
     files_changed = 0
     lines_changed = 0
     loc_added = 0
@@ -541,8 +545,17 @@ def derive_counts(brain: Any) -> TelemetryCounts:
             kind="issue",
             agent_labeled_only=True,
         )
+        issues_closed = _count_github_items(
+            brain,
+            kind="issue",
+            state="closed",
+            agent_labeled_only=True,
+        )
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         logger.debug("telemetry: issue count derivation failed: %s", exc)
+
+    if issues_closed > issues_opened:
+        issues_closed = issues_opened
 
     try:
         files_changed = _count_file_touches(brain)
@@ -555,6 +568,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         prs_merged=_clamp(prs_merged),
         prs_reviewed=_clamp(prs_reviewed),
         issues_opened=_clamp(issues_opened),
+        issues_closed=_clamp(issues_closed),
         files_changed=_clamp(files_changed),
         lines_changed=_clamp(lines_changed),
         loc_added=_clamp(loc_added),
@@ -571,6 +585,7 @@ def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict
         "prs_merged": _clamp(counts.prs_merged),
         "prs_reviewed": _clamp(counts.prs_reviewed),
         "issues_opened": _clamp(counts.issues_opened),
+        "issues_closed": _clamp(counts.issues_closed),
         "files_changed": _clamp(files_changed),
         "lines_changed": _clamp(counts.lines_changed),
         "loc_added": _clamp(counts.loc_added),
@@ -676,6 +691,7 @@ def report_once(
                 "prs_merged": payload["prs_merged"],
                 "prs_reviewed": payload["prs_reviewed"],
                 "issues_opened": payload["issues_opened"],
+                "issues_closed": payload["issues_closed"],
                 "files_changed": payload["files_changed"],
                 "lines_changed": payload["lines_changed"],
                 "loc_added": payload["loc_added"],

@@ -31,6 +31,7 @@ phones home to a Luminik-operated endpoint.
   "prs_merged": 31,
   "prs_reviewed": 18,
   "issues_opened": 19,
+  "issues_closed": 14,
   "files_changed": 1287,
   "lines_changed": 0,
   "loc_added": 1287
@@ -57,8 +58,8 @@ All state lives in one Workers KV namespace bound as `TELEMETRY`:
 
 | Key | Value | Why it exists |
 | --- | --- | --- |
-| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, files_changed, lines_changed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It is the only source of truth: `/stats` sums these on read. Its presence is also the distinct-install marker (no separate key). |
-| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, files_changed, lines_changed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 60s, the Cloudflare KV minimum). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
+| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It is the only source of truth: `/stats` sums these on read. Its presence is also the distinct-install marker (no separate key). |
+| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 60s, the Cloudflare KV minimum). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
 
 **Never stored, never logged:** IP addresses, user agents, repo names, file
 paths, code, commit text, handles, or anything that identifies a person or
@@ -268,7 +269,7 @@ You need a Cloudflare account (the free plan is enough) and
 # INGEST_TOKEN; without it a token-protected Worker returns 401.
 curl -sX POST https://<your-worker-url>/ingest \
   -H 'Content-Type: application/json' \
-  -d '{"install_id":"smoke-test-0001","period":"lifetime","prs_opened":3,"prs_merged":2,"prs_reviewed":1,"issues_opened":4,"files_changed":120,"lines_changed":0,"loc_added":120}'
+  -d '{"install_id":"smoke-test-0001","period":"lifetime","prs_opened":3,"prs_merged":2,"prs_reviewed":1,"issues_opened":4,"issues_closed":3,"files_changed":120,"lines_changed":0,"loc_added":120}'
 
 # Read the public totals back.
 curl -s https://<your-worker-url>/stats

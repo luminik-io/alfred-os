@@ -37,6 +37,7 @@ Sent once a day when an endpoint is configured:
 - lifetime Alfred-authored PRs merged
 - lifetime Alfred-authored PRs that reached merged or closed state
 - lifetime issues with an `agent:*` label
+- lifetime issues with an `agent:*` label that reached closed state
 - lifetime changed-file count
 - lifetime changed-line count when the local brain has line counts
 

@@ -64,7 +64,7 @@
  *   key "install:<id>" -> JSON latest snapshot for one install, the single
  *                         record per install. Replaced on every report:
  *                         { prs_opened, prs_merged, prs_reviewed,
- *                           issues_opened, files_changed, lines_changed,
+ *                           issues_opened, issues_closed, files_changed, lines_changed,
  *                           loc_added, seen_at }. Its presence also IS the distinct-install
  *                         marker, so there is no separate "known install" key.
  *                         These per-install records are the ONLY source of
@@ -126,6 +126,7 @@ const COUNT_FIELDS = [
   "prs_merged",
   "prs_reviewed",
   "issues_opened",
+  "issues_closed",
   "files_changed",
   "lines_changed",
   "loc_added",
@@ -143,6 +144,7 @@ const EMPTY_AGG = {
   prs_merged: 0,
   prs_reviewed: 0,
   issues_opened: 0,
+  issues_closed: 0,
   files_changed: 0,
   lines_changed: 0,
   loc_added: 0,
@@ -246,6 +248,20 @@ export function clampDependentPrCounts(counts) {
   return out;
 }
 
+function clampDependentIssueCounts(counts) {
+  const opened = clampCount(counts && counts.issues_opened);
+  const closed = clampCount(counts && counts.issues_closed);
+  return {
+    ...counts,
+    issues_opened: opened,
+    issues_closed: closed > opened ? opened : closed,
+  };
+}
+
+function clampDependentCounts(counts) {
+  return clampDependentIssueCounts(clampDependentPrCounts(counts));
+}
+
 function normalizeCountFields(raw) {
   const counts = {};
   for (const field of COUNT_FIELDS) {
@@ -279,11 +295,11 @@ export function normalizePayload(raw) {
   const rawPeriod = typeof raw.period === "string" ? raw.period : "";
   const period = PERIOD_RE.test(rawPeriod) ? rawPeriod : "lifetime";
   const counts = normalizeCountFields(raw);
-  // Enforce the subset invariant server-side: prs_merged/prs_reviewed may never
-  // exceed prs_opened. A buggy or hostile open-write client could POST
-  // prs_opened:0 with prs_merged>0; clamp it here so the normalized counts that
-  // flow into the stored record can never violate the invariant.
-  const invariant = clampDependentPrCounts(counts);
+  // Enforce subset invariants server-side. A buggy or hostile open-write client
+  // could POST dependent counters above their base count; clamp them here so the
+  // normalized counts that flow into the stored record can never violate the
+  // invariant.
+  const invariant = clampDependentCounts(counts);
   return {
     ok: true,
     value: { install_id: installId, period, counts: invariant },
@@ -303,10 +319,10 @@ function installKey(installId) {
  */
 function normalizeSnapshot(stored) {
   const clamped = normalizeCountFields(stored);
-  // Re-enforce the subset invariant on read too: a hand-edited or legacy record
-  // with prs_merged/prs_reviewed above prs_opened must not poison the derived
-  // total. clampDependentPrCounts caps each dependent counter at prs_opened.
-  const out = clampDependentPrCounts(clamped);
+  // Re-enforce subset invariants on read too: a hand-edited or legacy record
+  // with dependent counts above their base count must not poison the derived
+  // total.
+  const out = clampDependentCounts(clamped);
   out.seen_at =
     stored && typeof stored.seen_at === "string" ? stored.seen_at : null;
   return out;
@@ -390,6 +406,8 @@ export async function readStats(kv, env) {
       const hasLocAdded = Object.prototype.hasOwnProperty.call(cached, "loc_added");
       if (!hasFilesChanged && hasLocAdded) totals.files_changed = totals.loc_added;
       if (!hasLocAdded && hasFilesChanged) totals.loc_added = totals.files_changed;
+      const clean = clampDependentCounts(totals);
+      for (const field of COUNT_FIELDS) totals[field] = clean[field];
       const installs = Number(cached.installs);
       totals.installs =
         Number.isFinite(installs) && installs > 0 ? Math.floor(installs) : 0;
@@ -442,7 +460,7 @@ export async function ingest(kv, payload, now = new Date()) {
   // not pass through normalizePayload, so the per-install record the aggregate
   // sums can never reflect an invariant-violating payload.
   const clamped = normalizeCountFields(counts);
-  const snapshot = clampDependentPrCounts(clamped);
+  const snapshot = clampDependentCounts(clamped);
   snapshot.seen_at = iso;
 
   // The entire write: replace this install's record. No shared-state read,
@@ -468,6 +486,7 @@ function publicView(agg) {
     prs_merged: agg.prs_merged,
     prs_reviewed: agg.prs_reviewed,
     issues_opened: agg.issues_opened,
+    issues_closed: agg.issues_closed,
     files_changed: agg.files_changed,
     lines_changed: agg.lines_changed,
     loc_added: agg.loc_added,

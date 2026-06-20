@@ -40,6 +40,7 @@ Once a day, Alfred posts this JSON to `ALFRED_TELEMETRY_URL`:
   "prs_merged": 31,
   "prs_reviewed": 18,
   "issues_opened": 19,
+  "issues_closed": 14,
   "files_changed": 1287,
   "lines_changed": 0,
   "loc_added": 1287
@@ -48,12 +49,13 @@ Once a day, Alfred posts this JSON to `ALFRED_TELEMETRY_URL`:
 
 | Field | Meaning |
 | --- | --- |
-| `install_id` | Random local token stored at `$ALFRED_HOME/state/telemetry-install-id`. It lets the collector replace the same machine's latest report instead of double-counting it. |
+| `install_id` | Random local token stored at `$ALFRED_HOME/state/telemetry-install-id`. It lets the collector replace the same install's latest report instead of double-counting it. |
 | `period` | Always `lifetime`. |
 | `prs_opened` | Lifetime Alfred-authored PRs cached in the local fleet brain. |
 | `prs_merged` | Lifetime Alfred-authored PRs that merged. |
 | `prs_reviewed` | Lifetime Alfred-authored PRs that reached merged or closed state. |
 | `issues_opened` | Lifetime issues with an `agent:*` label. |
+| `issues_closed` | Lifetime issues with an `agent:*` label that reached closed state. |
 | `files_changed` | Lifetime file-touch count from the local fleet brain. |
 | `lines_changed` | Lifetime changed-line total when the local brain has line counts. Current local reporters send `0` because the brain stores file touches, not additions/deletions. |
 | `loc_added` | Historical wire alias for `files_changed`. |
