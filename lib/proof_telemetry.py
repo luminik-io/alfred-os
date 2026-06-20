@@ -98,6 +98,7 @@ DEFAULT_INGEST_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
 # travels with the rest of the runtime state and survives restarts.
 _INSTALL_ID_FILENAME = "telemetry-install-id"
 _TOKEN_FILENAME = "telemetry-token"
+_TOKEN_ENDPOINT_FILENAME = "telemetry-token-endpoint"
 
 # Defensive bounds mirrored from the Worker. The server clamps too, but a
 # well-behaved client should not send absurd values in the first place.
@@ -166,13 +167,17 @@ def telemetry_url(env: Mapping[str, str] | None = None) -> str:
     return DEFAULT_INGEST_URL
 
 
-def telemetry_token(env: Mapping[str, str] | None = None) -> str:
+def telemetry_token(
+    env: Mapping[str, str] | None = None,
+    *,
+    endpoint: str | None = None,
+) -> str:
     """Optional shared ingest token, or empty string when unset."""
     source = env if env is not None else os.environ
     configured = source.get(TOKEN_ENV, "").strip()
     if configured:
         return configured
-    return load_persisted_token() or ""
+    return load_persisted_token(endpoint=endpoint) or ""
 
 
 def trusted_telemetry_token(env: Mapping[str, str] | None = None) -> str:
@@ -181,23 +186,12 @@ def trusted_telemetry_token(env: Mapping[str, str] | None = None) -> str:
     return source.get(TRUSTED_TOKEN_ENV, "").strip()
 
 
-def configured_telemetry_token(env: Mapping[str, str] | None = None) -> str:
-    """Explicit shared ingest token from the environment, not persisted state."""
-    source = env if env is not None else os.environ
-    return source.get(TOKEN_ENV, "").strip()
-
-
 def default_telemetry_url(env: Mapping[str, str] | None = None) -> str:
     source = env if env is not None else os.environ
     configured = source.get(DEFAULT_URL_ENV)
     if configured is not None:
         return configured.strip()
     return DEFAULT_INGEST_URL
-
-
-def uses_default_collector(url: str, env: Mapping[str, str] | None = None) -> bool:
-    default = default_telemetry_url(env)
-    return bool(default) and url.rstrip("/") == default.rstrip("/")
 
 
 def _clamp(value: int, *, max_value: int = _MAX_PER_FIELD) -> int:
@@ -242,16 +236,43 @@ def _token_path() -> Path:
     return root / "state" / _TOKEN_FILENAME
 
 
-def load_persisted_token(path: Path | None = None) -> str | None:
+def _token_endpoint_path() -> Path:
+    alfred_home = os.environ.get("ALFRED_HOME")
+    root = Path(alfred_home).expanduser() if alfred_home else Path.home() / ".alfred"
+    return root / "state" / _TOKEN_ENDPOINT_FILENAME
+
+
+def _normalize_endpoint(value: str) -> str:
+    return value.strip().rstrip("/")
+
+
+def load_persisted_token(
+    path: Path | None = None,
+    *,
+    endpoint: str | None = None,
+) -> str | None:
     target = path or _token_path()
     try:
         existing = target.read_text(encoding="utf-8").strip()
     except OSError:
         return None
+    if endpoint is not None:
+        marker_path = _token_endpoint_path()
+        try:
+            token_endpoint = marker_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            token_endpoint = DEFAULT_INGEST_URL
+        if _normalize_endpoint(token_endpoint) != _normalize_endpoint(endpoint):
+            return None
     return existing or None
 
 
-def persist_token(token: str, path: Path | None = None) -> bool:
+def persist_token(
+    token: str,
+    path: Path | None = None,
+    *,
+    endpoint: str | None = None,
+) -> bool:
     if not token or "\n" in token or "\r" in token:
         return False
     target = path or _token_path()
@@ -261,6 +282,12 @@ def persist_token(token: str, path: Path | None = None) -> bool:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(token + "\n")
         os.chmod(target, 0o600)
+        if endpoint is not None:
+            endpoint_path = _token_endpoint_path()
+            fd = os.open(endpoint_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(_normalize_endpoint(endpoint) + "\n")
+            os.chmod(endpoint_path, 0o600)
     except OSError as exc:
         logger.debug("telemetry: could not persist install token: %s", exc)
         return False
@@ -788,7 +815,7 @@ def register_install(
         return None
     if not token:
         return None
-    if not persist_token(token):
+    if not persist_token(token, endpoint=ingest_url):
         return None
     return token
 
@@ -874,8 +901,7 @@ def report_once(
         payload = build_payload(install_id, counts, period)
         # Default poster carries the optional ingest token; an injected poster
         # (tests) keeps the simple (url, payload) signature.
-        use_default = uses_default_collector(url, source)
-        token = telemetry_token(source) if use_default else configured_telemetry_token(source)
+        token = telemetry_token(source, endpoint=url)
         trusted_token = trusted_telemetry_token(source)
         if not token:
             register = registrar or register_install
@@ -926,8 +952,7 @@ def clear_report(
         return {"status": "no_install_id", "sent": False}
     try:
         payload = build_tombstone_payload(resolved_install_id)
-        use_default = uses_default_collector(url, source)
-        token = telemetry_token(source) if use_default else configured_telemetry_token(source)
+        token = telemetry_token(source, endpoint=url)
         trusted_token = trusted_telemetry_token(source)
         if not token:
             register = registrar or register_install

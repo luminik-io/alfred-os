@@ -582,6 +582,28 @@ def test_report_once_custom_url_registers_even_with_persisted_hosted_token(tmp_p
     assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
 
 
+def test_report_once_default_url_registers_even_with_persisted_custom_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    assert pt.persist_token(
+        "custom-token",
+        endpoint="https://custom.example.com/ingest",
+    )
+
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "hosted-install-token"
+
+    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result["status"] == "sent"
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == pt.DEFAULT_INGEST_URL
+    assert poster.calls and poster.calls[0][0] == pt.DEFAULT_INGEST_URL
+
+
 def test_report_once_custom_url_uses_explicit_shared_token_without_registration(
     tmp_path, monkeypatch
 ):
@@ -1067,6 +1089,24 @@ def test_telemetry_token_reads_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     assert pt.telemetry_token({}) == ""
     assert pt.telemetry_token({pt.TOKEN_ENV: " tok "}) == "tok"
+
+
+def test_persisted_telemetry_token_is_endpoint_scoped(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+
+    assert pt.persist_token("custom-token", endpoint="https://custom.example.com/ingest")
+
+    assert pt.telemetry_token({}, endpoint="https://custom.example.com/ingest/") == "custom-token"
+    assert pt.telemetry_token({}, endpoint=pt.DEFAULT_INGEST_URL) == ""
+
+
+def test_legacy_persisted_telemetry_token_is_hosted_default_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+
+    assert pt.persist_token("legacy-hosted-token")
+
+    assert pt.telemetry_token({}, endpoint=pt.DEFAULT_INGEST_URL) == "legacy-hosted-token"
+    assert pt.telemetry_token({}, endpoint="https://custom.example.com/ingest") == ""
 
 
 def test_trusted_telemetry_token_reads_env():
