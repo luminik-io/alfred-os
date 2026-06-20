@@ -144,12 +144,14 @@ p { margin: 0; }
   h1 { letter-spacing: 0; }
 }
 
-/* Ensure huge display headlines never overflow on narrow screens. */
+/* Display headlines should wrap at natural word boundaries. Browser
+   hyphenation makes hero copy look broken, especially in launch screenshots. */
 h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-  hyphens: auto;
-  -webkit-hyphens: auto;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-wrap: balance;
+  hyphens: none;
+  -webkit-hyphens: none;
 }
 
 .m-eyebrow {
