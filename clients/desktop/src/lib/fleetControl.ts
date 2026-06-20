@@ -23,6 +23,26 @@ export type FleetControlRow = {
 // Service-state map keyed by codename, derived from `alfred status --json`.
 export type FleetServiceState = Record<string, AlfredStatusAgent>;
 
+const AGENT_ORDER: Record<string, number> = {
+  batman: 10,
+  lucius: 20,
+  drake: 30,
+  rasalghul: 40,
+  bane: 50,
+  nightwing: 60,
+  robin: 70,
+  damian: 80,
+  huntress: 90,
+  gordon: 100,
+  automerge: 110,
+  "agent-cleanup": 120,
+  cleanup: 120,
+  "memory-harvest": 130,
+  "fleet-doctor": 140,
+  "code-map-refresh": 150,
+  "proof-telemetry": 160,
+};
+
 /**
  * Parse the stdout of `alfred status --json` into a codename->agent map. Returns
  * an empty map for any output that is missing, malformed, or not the expected
@@ -98,7 +118,14 @@ export function buildFleetRows(
     seen.add(short);
   }
 
-  return rows.sort((a, b) => a.codename.localeCompare(b.codename));
+  return rows.sort(compareFleetRows);
+}
+
+function compareFleetRows(a: FleetControlRow, b: FleetControlRow): number {
+  const ao = AGENT_ORDER[a.codename] ?? 10_000;
+  const bo = AGENT_ORDER[b.codename] ?? 10_000;
+  if (ao !== bo) return ao - bo;
+  return a.codename.localeCompare(b.codename);
 }
 
 function toRow(

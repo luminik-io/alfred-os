@@ -35,6 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
+from .agent_profiles import profile_payload, sort_codenames
 from .plan_approvals import (
     DECISION_APPROVE,
     decision_for_issue,
@@ -90,6 +91,12 @@ class AgentSummary:
     paused: bool = False
     paused_since: str | None = None
     loaded: bool = True
+    display_name: str | None = None
+    role_title: str | None = None
+    purpose: str | None = None
+    theme: str | None = None
+    theme_label: str | None = None
+    theme_accent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -187,13 +194,14 @@ class FilesystemReader:
     # -- public API ---------------------------------------------------------
 
     def list_agents(self) -> list[AgentSummary]:
-        codenames = sorted(self._iter_codenames())
+        codenames = sort_codenames(list(self._iter_codenames()))
         out: list[AgentSummary] = []
         for codename in codenames:
             firings = self._iter_firings_for(codename, limit=1)
             last = firings[0] if firings else None
             firings_today = self._firings_today(codename)
             paused, paused_since = self._pause_state(codename)
+            profile = profile_payload(codename)
             if last is None:
                 out.append(
                     AgentSummary(
@@ -206,6 +214,7 @@ class FilesystemReader:
                         paused=paused,
                         paused_since=paused_since,
                         loaded=not paused,
+                        **profile,
                     )
                 )
                 continue
@@ -220,6 +229,7 @@ class FilesystemReader:
                     paused=paused,
                     paused_since=paused_since,
                     loaded=not paused,
+                    **profile,
                 )
             )
         return out

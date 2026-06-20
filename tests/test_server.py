@@ -69,7 +69,10 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
 
     status = client.get("/api/status")
     assert status.status_code == 200
-    assert status.json()["agents"][0]["codename"] == "batman"
+    batman = status.json()["agents"][0]
+    assert batman["codename"] == "batman"
+    assert batman["display_name"] == "Batman"
+    assert batman["role_title"] == "Architect"
 
     firings = client.get("/api/firings", params={"codename": "batman"})
     assert firings.status_code == 200
@@ -120,6 +123,27 @@ def test_api_status_reports_paused_state_from_marker(tmp_path: Path) -> None:
     # A paused agent is unloaded from the scheduler by ``alfred pause``.
     assert by_codename["bane"]["loaded"] is False
     assert by_codename["bane"]["paused_since"] == "2026-05-30T09:00:00Z"
+
+
+def test_api_status_orders_and_profiles_core_agents(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    for codename in ("rasalghul", "lucius", "drake", "batman"):
+        _write_jsonl(
+            state / codename / "events" / f"2026-05-30-1000-{codename}.jsonl",
+            [{"ts": "2026-05-30T10:00:00Z", "event": "firing_complete"}],
+        )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    agents = client.get("/api/status").json()["agents"]
+    assert [agent["codename"] for agent in agents[:4]] == [
+        "batman",
+        "lucius",
+        "drake",
+        "rasalghul",
+    ]
+    assert agents[0]["role_title"] == "Architect"
+    assert agents[1]["role_title"] == "Senior Developer"
+    assert agents[2]["role_title"] == "Planner"
 
 
 def test_api_memory_candidates_promote_and_reject(

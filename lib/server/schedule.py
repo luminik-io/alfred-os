@@ -30,6 +30,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from .agent_profiles import profile_order, profile_payload
+
 logger = logging.getLogger(__name__)
 
 # Weekday names indexed by launchd's convention (0 = Sunday). Used only to
@@ -62,6 +64,12 @@ class ScheduledRun:
     cadence: str  # human string, e.g. "every 15m", "daily 07:00"
     next_fire_at: str | None
     raw_schedule: str
+    display_name: str | None = None
+    role_title: str | None = None
+    purpose: str | None = None
+    theme: str | None = None
+    theme_label: str | None = None
+    theme_accent: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -132,7 +140,14 @@ def upcoming_runs(
 
     # Soonest next-fire first; interval rows (no timestamp) fall to the end,
     # ordered by codename so the list is stable across polls.
-    runs.sort(key=lambda r: (r.next_fire_at is None, r.next_fire_at or "", r.codename))
+    runs.sort(
+        key=lambda r: (
+            r.next_fire_at is None,
+            r.next_fire_at or "",
+            profile_order(r.codename),
+            r.codename,
+        )
+    )
     return runs[: max(1, limit)]
 
 
@@ -146,6 +161,7 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     schedule = fields[2].strip()
     role = fields[6].strip() if len(fields) >= 7 else ""
     codename = _codename_from_label(label)
+    profile = profile_payload(codename)
 
     if schedule.startswith("interval:"):
         seconds = _coerce_int(schedule[len("interval:") :])
@@ -160,6 +176,7 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
             # show the cadence rather than a guessed (likely wrong) timestamp.
             next_fire_at=None,
             raw_schedule=schedule,
+            **profile,
         )
 
     if schedule.startswith("cron:"):
@@ -176,6 +193,7 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
                 cadence=f"daily {hour:02d}:{minute:02d}",
                 next_fire_at=next_fire.isoformat(timespec="seconds"),
                 raw_schedule=schedule,
+                **profile,
             )
         if len(parts) == 3:
             weekday = _coerce_int(parts[0])
@@ -193,6 +211,7 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
                 cadence=f"{day_name} {hour:02d}:{minute:02d}",
                 next_fire_at=next_fire.isoformat(timespec="seconds"),
                 raw_schedule=schedule,
+                **profile,
             )
 
     # Unknown shape: skip rather than guess.

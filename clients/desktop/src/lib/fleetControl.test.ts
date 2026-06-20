@@ -102,6 +102,20 @@ describe("buildFleetRows", () => {
     expect(robin?.consecutiveFailures).toBe(3);
   });
 
+  it("uses Alfred's role order instead of alphabetic codename order", () => {
+    const rows = buildFleetRows(
+      [agent("rasalghul"), agent("drake"), agent("lucius"), agent("batman")],
+      {},
+    );
+
+    expect(rows.map((row) => row.codename)).toEqual([
+      "batman",
+      "lucius",
+      "drake",
+      "rasalghul",
+    ]);
+  });
+
   it("marks agents with no service state as unknown", () => {
     const rows = buildFleetRows([agent("lucius")], {});
     expect(rows[0].service).toBe("unknown");
