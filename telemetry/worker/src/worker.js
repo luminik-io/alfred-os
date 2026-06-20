@@ -406,8 +406,6 @@ export async function readStats(kv, env) {
       const hasLocAdded = Object.prototype.hasOwnProperty.call(cached, "loc_added");
       if (!hasFilesChanged && hasLocAdded) totals.files_changed = totals.loc_added;
       if (!hasLocAdded && hasFilesChanged) totals.loc_added = totals.files_changed;
-      const clean = clampDependentCounts(totals);
-      for (const field of COUNT_FIELDS) totals[field] = clean[field];
       const installs = Number(cached.installs);
       totals.installs =
         Number.isFinite(installs) && installs > 0 ? Math.floor(installs) : 0;

@@ -716,6 +716,39 @@ test("GET /stats writes a derived-totals cache and serves it on the next read", 
   assert.equal((await second.json()).prs_opened, 999, "served from cache");
 });
 
+test("GET /stats cache hit preserves aggregate totals above the per-install cap", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 120000,
+      prs_merged: 110000,
+      prs_reviewed: 115000,
+      issues_opened: 130000,
+      issues_closed: 125000,
+      files_changed: 140000,
+      lines_changed: 150000,
+      loc_added: 140000,
+      installs: 2,
+      updated_at: FIXED.toISOString(),
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.prs_opened, 120000);
+  assert.equal(stats.prs_merged, 110000);
+  assert.equal(stats.prs_reviewed, 115000);
+  assert.equal(stats.issues_opened, 130000);
+  assert.equal(stats.issues_closed, 125000);
+  assert.equal(stats.files_changed, 140000);
+  assert.equal(stats.lines_changed, 150000);
+  assert.equal(stats.loc_added, 140000);
+  assert.equal(stats.installs, 2);
+});
+
 test("GET /stats preserves legacy cached loc_added as files_changed", async () => {
   const kv = makeKV();
   const env = { TELEMETRY: kv };
