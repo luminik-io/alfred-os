@@ -133,7 +133,7 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
         const opened = Number(data?.prs_opened ?? 0);
         const installs = Number(data?.installs ?? 0);
         const proofFloor = Math.max(merged, opened, installs);
-        if (!Number.isFinite(proofFloor) || proofFloor < threshold) return;
+        if (!Number.isFinite(proofFloor) || proofFloor <= 0 || proofFloor < threshold) return;
 
         setField("prs_opened", opened);
         setField("prs_merged", merged);
