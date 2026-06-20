@@ -383,6 +383,13 @@ export async function readStats(kv, env) {
         const n = Number(cached[field]);
         totals[field] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
       }
+      const hasFilesChanged = Object.prototype.hasOwnProperty.call(
+        cached,
+        "files_changed",
+      );
+      const hasLocAdded = Object.prototype.hasOwnProperty.call(cached, "loc_added");
+      if (!hasFilesChanged && hasLocAdded) totals.files_changed = totals.loc_added;
+      if (!hasLocAdded && hasFilesChanged) totals.loc_added = totals.files_changed;
       const installs = Number(cached.installs);
       totals.installs =
         Number.isFinite(installs) && installs > 0 ? Math.floor(installs) : 0;

@@ -708,6 +708,28 @@ test("GET /stats writes a derived-totals cache and serves it on the next read", 
   assert.equal((await second.json()).prs_opened, 999, "served from cache");
 });
 
+test("GET /stats preserves legacy cached loc_added as files_changed", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 3,
+      prs_merged: 2,
+      prs_reviewed: 1,
+      loc_added: 321,
+      installs: 1,
+      updated_at: FIXED.toISOString(),
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.files_changed, 321);
+  assert.equal(stats.loc_added, 321);
+});
+
 test("a new ingest invalidates the stats cache so the next /stats recomputes", async () => {
   const kv = makeKV();
   const env = { TELEMETRY: kv };
