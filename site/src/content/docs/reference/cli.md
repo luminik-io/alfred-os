@@ -150,7 +150,7 @@ alfred codex status
 alfred codex probe
 alfred auth status
 alfred telemetry status
-alfred telemetry on --url https://your-worker.example.com/ingest
+alfred telemetry on
 alfred telemetry off
 alfred labels bootstrap <repo>|--all [--check] [--force]
 alfred labels check <repo>|--all

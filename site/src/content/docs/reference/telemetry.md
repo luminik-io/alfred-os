@@ -3,16 +3,15 @@ title: Telemetry
 description: Aggregate usage-count reference for Alfred.
 ---
 
-Alfred can send anonymous aggregate usage totals to an ingest endpoint you
-configure. Reporting is enabled unless you opt out, but nothing is sent until
-`ALFRED_TELEMETRY_URL` exists. The totals can power public counters that show
-how Alfred is being used without exposing private work.
+Alfred can send anonymous aggregate usage totals to the public impact counter.
+Reporting is enabled unless you opt out and uses Alfred's hosted collector by
+default. Set `ALFRED_TELEMETRY_URL` only when you want a self-hosted collector.
 
 ## CLI
 
 ```sh
 alfred telemetry status
-alfred telemetry on --url https://your-worker.example.com/ingest
+alfred telemetry on
 alfred telemetry off
 ```
 
@@ -24,14 +23,14 @@ alfred telemetry on \
   --token the-same-value-as-the-collector
 ```
 
-`alfred telemetry on` writes the endpoint and re-enables reporting. `alfred
-telemetry off` writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can stay
-installed; with telemetry off or no endpoint configured, the reporter exits
-cleanly and sends nothing.
+`alfred telemetry on` writes the hosted endpoint and schedules the reporter.
+`alfred telemetry off` writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can
+stay installed; with telemetry off, the reporter exits cleanly and sends
+nothing.
 
 ## Payload
 
-Sent once a day when an endpoint is configured:
+Sent once a day:
 
 - random install token
 - lifetime Alfred-authored PRs opened
@@ -47,12 +46,13 @@ people, hostnames, or billing data are sent.
 
 ## Public Counter
 
-Site counters can use build-time seed totals and replace them with live
-aggregate totals from `PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
+Site counters use build-time seed totals and replace them with live aggregate
+totals from Alfred's hosted collector. Set `PUBLIC_ALFRED_TELEMETRY_STATS_URL`
+only when building a fork or private counter.
 
 Build-time seed totals can include line counts from GitHub. Anonymous local
-reporters send `lines_changed: 0` until Alfred stores per-line
-additions/deletions in the local fleet brain.
+reporters send changed-line totals when the local fleet brain has cached GitHub
+additions and deletions.
 
 The public GitHub examples on `/impact/` are separate. They use public GitHub
 metadata for `luminik-io/alfred-os`.
@@ -64,10 +64,16 @@ The bundled collector lives in
 It exposes:
 
 - `POST /ingest` for active installs
+- `POST /register` for per-install write tokens
 - `GET /stats` for aggregate public totals
 
-Use `INGEST_TOKEN` on the Worker and the matching `ALFRED_TELEMETRY_TOKEN` on
-your Alfred installs when only your own hosts should write to the counter.
+Use `REQUIRE_INSTALL_TOKEN=1` for per-install write tokens, or `INGEST_TOKEN`
+with `ALFRED_TELEMETRY_TOKEN` when a private self-hosted counter should use one
+shared token.
+
+The hosted public counter uses a private trusted-reporter token for PR, issue,
+file, and line totals. Anonymous installs can still show active usage, but they
+cannot move those progress numbers.
 
 Full implementation contract:
 [`docs/TELEMETRY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TELEMETRY.md).

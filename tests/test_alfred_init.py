@@ -175,11 +175,10 @@ def test_render_agents_conf_includes_batman(init_mod, tmp_path):
     )
 
 
-def test_render_agents_conf_omits_telemetry_row_by_default(init_mod, tmp_path):
-    # No endpoint: the generated agents.conf must NOT schedule proof-telemetry.
+def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)
-    assert "proof-telemetry" not in text
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10" in text
 
 
 def test_render_agents_conf_omits_telemetry_row_without_url(init_mod, tmp_path):
@@ -306,11 +305,11 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_env_assignments_telemetry_off_by_default(init_mod, tmp_path):
+def test_env_assignments_telemetry_on_by_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path)
     out = init_mod.env_assignments_for(state)
-    assert "ALFRED_TELEMETRY_ENABLED" not in out
-    assert "ALFRED_TELEMETRY_URL" not in out
+    assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
+    assert out["ALFRED_TELEMETRY_URL"] == init_mod.DEFAULT_TELEMETRY_URL
 
 
 def test_env_assignments_telemetry_needs_both_flag_and_url(init_mod, tmp_path):
@@ -331,21 +330,21 @@ def test_env_assignments_telemetry_written_when_opted_in(init_mod, tmp_path):
     assert out["ALFRED_TELEMETRY_URL"] == "https://worker.example.com/ingest"
 
 
-def test_telemetry_step_non_interactive_without_url_schedules_nothing(init_mod, tmp_path):
+def test_telemetry_step_non_interactive_without_url_uses_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path)
+    state.telemetry_url = ""
     init_mod.step_8b_telemetry(state, non_interactive=True)
     assert state.telemetry_enabled is True
-    assert state.telemetry_url == ""
+    assert state.telemetry_url == init_mod.DEFAULT_TELEMETRY_URL
 
 
-def test_telemetry_step_non_interactive_default_prints_no_report(init_mod, tmp_path, capsys):
-    # The default keeps telemetry selected, but with no URL nothing is scheduled.
+def test_telemetry_step_non_interactive_default_prints_hosted_counter(init_mod, tmp_path, capsys):
     state = _state_with(init_mod, tmp_path)
     init_mod.step_8b_telemetry(state, non_interactive=True)
     captured = capsys.readouterr()
     out = captured.out + captured.err
-    assert "No telemetry endpoint set" in out
-    assert "no report is scheduled" in out
+    assert "alfred-proof-telemetry.luminik.workers.dev" in out
+    assert "no report is scheduled" not in out
 
 
 def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_path, capsys):
@@ -363,7 +362,7 @@ def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_pat
     out = capsys.readouterr().out
     # Honest status: the status line names the endpoint host and never claims
     # telemetry was opted out.
-    assert "endpoint configured" in out
+    assert "Anonymous totals will use" in out
     # The printed endpoint label is the exact, token-safe scheme://host/path. We
     # assert the full label string (not a bare-host substring) and confirm its
     # parsed host so the check is structural, never URL-substring sanitization.
@@ -394,7 +393,7 @@ def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_p
     )
     init_mod.step_8b_telemetry(state, non_interactive=True)
     out = capsys.readouterr().out
-    assert "endpoint configured" in out
+    assert "Anonymous totals will use" in out
     # The label must keep the host but strip every secret. Assert structurally on
     # the parsed label (host present, no userinfo, empty query) rather than a
     # bare-host substring check, and confirm the label appears verbatim in the
@@ -413,23 +412,18 @@ def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_p
     assert "s3cret" not in out
 
 
-def test_telemetry_step_non_interactive_flag_without_url_prints_no_report(
-    init_mod, tmp_path, capsys
-):
-    # telemetry_enabled set but no URL: generated config writes nothing and the
-    # reporter no-ops, so the status must say no report is scheduled.
+def test_telemetry_step_non_interactive_flag_without_url_uses_default(init_mod, tmp_path, capsys):
     state = _state_with(init_mod, tmp_path)
     state.telemetry_enabled = True
     state.telemetry_url = ""
     init_mod.step_8b_telemetry(state, non_interactive=True)
     captured = capsys.readouterr()
     combined = captured.out + captured.err
-    assert "no report is scheduled" in combined
-    assert "endpoint configured" not in combined
-    # Consistent with the generated config: nothing is written or scheduled.
+    assert "alfred-proof-telemetry.luminik.workers.dev" in combined
+    assert "no report is scheduled" not in combined
     env = init_mod.env_assignments_for(state)
-    assert "ALFRED_TELEMETRY_ENABLED" not in env
-    assert "proof-telemetry" not in init_mod.render_agents_conf(state)
+    assert env["ALFRED_TELEMETRY_URL"] == init_mod.DEFAULT_TELEMETRY_URL
+    assert "proof-telemetry" in init_mod.render_agents_conf(state)
 
 
 def test_telemetry_endpoint_label_strips_secrets(init_mod):
@@ -478,38 +472,27 @@ def test_config_override_telemetry_opt_in(init_mod, tmp_path):
     assert state.telemetry_url == "https://w.example.com/ingest"
 
 
-def test_telemetry_step_interactive_collects_optional_token(init_mod, tmp_path, monkeypatch):
-    # Interactive reporting path: after the URL, the wizard prompts for the optional
-    # ingest token. When the operator pastes one (their Worker has an INGEST_TOKEN
-    # write gate), it is persisted on state and later written to
-    # ALFRED_TELEMETRY_TOKEN, the var proof_telemetry.py reads.
+def test_telemetry_step_interactive_uses_hosted_default(init_mod, tmp_path, monkeypatch):
     state = _state_with(init_mod, tmp_path)
-    # Sequence: accept sharing, URL, ingest token.
-    answers = iter(["y", "https://w.example.com/ingest", "shared-secret"])
+    answers = iter(["y"])
     monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
     init_mod.step_8b_telemetry(state, non_interactive=False)
     assert state.telemetry_enabled is True
-    assert state.telemetry_url == "https://w.example.com/ingest"
-    assert state.telemetry_token == "shared-secret"
-    out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_TELEMETRY_TOKEN"] == "shared-secret"
-
-
-def test_telemetry_step_interactive_token_is_skippable(init_mod, tmp_path, monkeypatch):
-    # Opting in WITHOUT a token must still work: the default public Worker has no
-    # write gate, so pressing enter at the token prompt leaves the token empty and
-    # ALFRED_TELEMETRY_TOKEN is not written, while telemetry stays opted in.
-    state = _state_with(init_mod, tmp_path)
-    # Sequence: accept sharing, URL, blank token (press enter to skip).
-    answers = iter(["y", "https://w.example.com/ingest", ""])
-    monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
-    init_mod.step_8b_telemetry(state, non_interactive=False)
-    assert state.telemetry_enabled is True
-    assert state.telemetry_url == "https://w.example.com/ingest"
-    assert state.telemetry_token == ""
+    assert state.telemetry_url == init_mod.DEFAULT_TELEMETRY_URL
     out = init_mod.env_assignments_for(state)
     assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
-    assert "ALFRED_TELEMETRY_TOKEN" not in out
+    assert out["ALFRED_TELEMETRY_URL"] == init_mod.DEFAULT_TELEMETRY_URL
+
+
+def test_telemetry_step_interactive_opt_out(init_mod, tmp_path, monkeypatch):
+    state = _state_with(init_mod, tmp_path)
+    answers = iter(["n"])
+    monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
+    init_mod.step_8b_telemetry(state, non_interactive=False)
+    assert state.telemetry_enabled is False
+    assert state.telemetry_url == ""
+    out = init_mod.env_assignments_for(state)
+    assert out["ALFRED_TELEMETRY_ENABLED"] == "0"
 
 
 def test_parse_consent_strict_truthy_only(init_mod):

@@ -4,8 +4,8 @@ Covers the reporting guarantees:
 
 * Explicit opt-out: no send, no install-id file, no network when the master
   switch is set to a disabled value.
-* Missing endpoint: no send, no install-id file, no network when no ingest URL
-  is configured.
+* Default collector: with no custom URL, Alfred uses the hosted collector unless
+  ALFRED_DEFAULT_TELEMETRY_URL is explicitly set empty.
 * Correct, bounded payload shape when enabled.
 * Fail-soft: a network error never raises; it returns a ``failed`` status.
 * Idempotent-friendly install id: stable across calls, regenerated only when
@@ -63,8 +63,19 @@ class FakePR:
     ``head_ref`` to exercise the branch-prefix path.
     """
 
-    def __init__(self, state: str, *, authored: bool = True, labels=None, head_ref=None) -> None:
+    def __init__(
+        self,
+        state: str,
+        *,
+        authored: bool = True,
+        labels=None,
+        head_ref=None,
+        additions: int = 0,
+        deletions: int = 0,
+    ) -> None:
         self.state = state
+        self.additions = additions
+        self.deletions = deletions
         if labels is not None or head_ref is not None:
             self.labels = list(labels or [])
             self.head_ref = head_ref
@@ -202,6 +213,26 @@ class ClampingBrain:
 
     def count_file_touches(self):
         return len(self._touches)  # exact COUNT(*), no cap
+
+    def sum_github_changed_lines(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+    ):
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        if authored_only:
+            rows = _authored(rows)
+        if agent_labeled_only:
+            rows = _agent_labeled(rows)
+        return sum(max(0, int(getattr(row, "additions", 0))) for row in rows) + sum(
+            max(0, int(getattr(row, "deletions", 0))) for row in rows
+        )
 
 
 class ClampingNoCountBrain:
@@ -397,6 +428,42 @@ def test_direct_dry_run_loads_alfredrc_opt_out(tmp_path):
     assert not (alfred_home / "state" / "telemetry-install-id").exists()
 
 
+def test_script_prefers_checkout_lib_over_stale_alfred_home_lib(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    stale_lib = alfred_home / "lib"
+    home.mkdir()
+    stale_lib.mkdir(parents=True)
+    (stale_lib / "proof_telemetry.py").write_text(
+        "def is_enabled():\n"
+        "    return True\n"
+        "def telemetry_url():\n"
+        "    return ''\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(alfred_home)
+    env["ALFRED_DOCTOR"] = "1"
+    env.pop("PYTHONPATH", None)
+    for key in (pt.ENABLE_ENV, pt.URL_ENV, pt.TOKEN_ENV, pt.DEFAULT_URL_ENV):
+        env.pop(key, None)
+
+    result = subprocess.run(
+        [sys.executable, str(_REPO / "bin" / "proof-telemetry.py")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+
+    assert result.returncode == 0
+    assert "[PROOF-TELEMETRY-DOCTOR-OK]" in result.stdout
+    assert "[PROOF-TELEMETRY-NO-URL]" not in result.stdout
+
+
 def test_cli_maps_stale_counts_to_non_error_sentinel(monkeypatch, capsys):
     monkeypatch.setattr(pt, "report_once", lambda: {"status": "stale_counts", "sent": False})
 
@@ -407,9 +474,26 @@ def test_cli_maps_stale_counts_to_non_error_sentinel(monkeypatch, capsys):
     assert "[PROOF-TELEMETRY-ERROR]" not in out
 
 
-def test_report_once_enabled_without_url_is_a_no_op():
+def test_report_once_enabled_with_default_url_registers_and_sends(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     poster = RecordingPoster()
-    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "install-token"
+
+    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster, registrar=registrar)
+    assert result["status"] == "sent"
+    assert result["sent"] is True
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == pt.DEFAULT_INGEST_URL
+    assert poster.calls and poster.calls[0][0] == pt.DEFAULT_INGEST_URL
+
+
+def test_report_once_enabled_without_default_url_is_a_no_op():
+    poster = RecordingPoster()
+    result = pt.report_once(env={pt.DEFAULT_URL_ENV: ""}, brain=FakeBrain(), poster=poster)
     assert result["status"] == "no_url"
     assert result["sent"] is False
     assert poster.calls == []
@@ -570,6 +654,19 @@ def test_derive_counts_uses_exact_count_methods_over_list():
     counts = pt.derive_counts(brain)
     assert counts.prs_opened == 1234
     assert counts.loc_added == 999
+
+
+def test_derive_counts_uses_agent_authored_github_line_totals():
+    brain = ClampingBrain(
+        prs=[
+            FakePR("merged", additions=10, deletions=3),
+            FakePR("open", additions=7, deletions=1),
+            FakePR("merged", authored=False, additions=999, deletions=999),
+        ],
+        touches=[FakeTouch()] * 2,
+    )
+    counts = pt.derive_counts(brain)
+    assert counts.lines_changed == 21
 
 
 def test_derive_counts_fallback_stops_honestly_at_list_clamp():
@@ -920,9 +1017,15 @@ def test_build_tombstone_payload_contains_no_counts():
 # ---------------------------------------------------------------------------
 # ingest token (optional shared write gate)
 # ---------------------------------------------------------------------------
-def test_telemetry_token_reads_env():
+def test_telemetry_token_reads_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     assert pt.telemetry_token({}) == ""
     assert pt.telemetry_token({pt.TOKEN_ENV: " tok "}) == "tok"
+
+
+def test_trusted_telemetry_token_reads_env():
+    assert pt.trusted_telemetry_token({}) == ""
+    assert pt.trusted_telemetry_token({pt.TRUSTED_TOKEN_ENV: " trusted "}) == "trusted"
 
 
 def test_post_sends_token_header_when_set(monkeypatch):
@@ -948,6 +1051,34 @@ def test_post_sends_token_header_when_set(monkeypatch):
     assert captured["headers"].get("X-ingest-token") == "s3cr3t"
 
 
+def test_post_sends_trusted_token_header_when_set(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["headers"] = dict(req.headers)
+        return FakeResp()
+
+    monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
+    ok = pt._post(
+        "https://w.example.com/ingest",
+        {"x": 1},
+        token="install-token",
+        trusted_token="trusted-token",
+    )
+    assert ok is True
+    assert captured["headers"].get("X-ingest-token") == "install-token"
+    assert captured["headers"].get("X-alfred-trusted-token") == "trusted-token"
+
+
 def test_post_omits_token_header_when_unset(monkeypatch):
     captured = {}
 
@@ -967,6 +1098,7 @@ def test_post_omits_token_header_when_unset(monkeypatch):
     monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
     pt._post("https://w.example.com/ingest", {"x": 1})
     assert "X-ingest-token" not in captured["headers"]
+    assert "X-alfred-trusted-token" not in captured["headers"]
 
 
 def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeypatch):
@@ -1130,10 +1262,23 @@ def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(monkeypatch, 
     assert "DISABLED]" in out
 
 
-def test_doctor_fast_path_enabled_without_url_emits_no_url(monkeypatch, capsys):
+def test_doctor_fast_path_enabled_without_url_uses_default_collector(monkeypatch, capsys):
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.delenv(pt.URL_ENV, raising=False)
+    monkeypatch.delenv(pt.DEFAULT_URL_ENV, raising=False)
+    monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
+    rc = cli.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[PROOF-TELEMETRY-DOCTOR-OK]" in out
+
+
+def test_doctor_fast_path_enabled_with_default_disabled_emits_no_url(monkeypatch, capsys):
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
+    monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
+    monkeypatch.delenv(pt.URL_ENV, raising=False)
+    monkeypatch.setenv(pt.DEFAULT_URL_ENV, "")
     monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
     rc = cli.main([])
     out = capsys.readouterr().out
@@ -1160,6 +1305,7 @@ def test_doctor_fast_path_takes_precedence_over_dry_run(monkeypatch, capsys):
     # doctor sweep never builds a payload or reads the brain.
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
+    monkeypatch.setenv(pt.DEFAULT_URL_ENV, "")
     rc = cli.main(["--dry-run"])
     out = capsys.readouterr().out
     assert rc == 0

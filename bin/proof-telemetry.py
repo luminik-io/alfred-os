@@ -2,13 +2,14 @@
 """Scheduler-facing wrapper for the anonymous proof-telemetry reporter.
 
 This is the script a launchd/cron entry points at. The reporter is enabled by
-default once an ingest endpoint is configured. Operators can opt out by setting
+default once an ingest endpoint is configured. Users can opt out by setting
 ``ALFRED_TELEMETRY_ENABLED=0`` or by running ``alfred telemetry off``. With the
 switch off it prints a one-line sentinel and exits 0 without generating an
 install id, reading the brain, or touching the network.
 
-The scheduler entry can be present and loaded. If no ingest URL is configured,
-the job reports a clean no-url sentinel and sends nothing.
+The scheduler entry can be present and loaded. If no custom ingest URL is
+configured, the job uses Alfred's hosted collector unless the hosted default is
+explicitly disabled.
 
 Exit code is always 0. Telemetry is best-effort; a failure here must never
 surface as a scheduler error or break anything else on the host.
@@ -24,7 +25,7 @@ Sentinels (printed to stdout, picked up by log scrapers):
 
     [PROOF-TELEMETRY-DISABLED]      master switch explicitly off
     [PROOF-TELEMETRY-DOCTOR-OK]     doctor fast path, enabled and config present
-    [PROOF-TELEMETRY-NO-URL]        enabled but ALFRED_TELEMETRY_URL unset
+    [PROOF-TELEMETRY-NO-URL]        enabled but no collector URL is available
     [PROOF-TELEMETRY-NO-INSTALL-ID] enabled but the install id could not be
                                     persisted; report skipped so an ephemeral id
                                     does not inflate the install count
@@ -43,9 +44,14 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-for candidate in (HERE.parent / "lib", Path(os.environ.get("ALFRED_HOME", "")) / "lib"):
-    if candidate.exists() and str(candidate) not in sys.path:
-        sys.path.insert(0, str(candidate))
+# Add fallback install libs first, then the library beside this script, so a
+# worktree run always exercises the matching checkout instead of a stale
+# ~/.alfred/lib copy.
+for candidate in (Path(os.environ.get("ALFRED_HOME", "")) / "lib", HERE.parent / "lib"):
+    if candidate.exists():
+        path = str(candidate.resolve())
+        sys.path[:] = [entry for entry in sys.path if entry != path]
+        sys.path.insert(0, path)
 
 
 _SENTINELS = {
@@ -105,8 +111,8 @@ def _doctor_fast_path() -> int:
     The fast path does no payload build, no brain read, and no network POST:
 
       * switch explicitly off      -> ``[PROOF-TELEMETRY-DISABLED]`` (disabled)
-      * enabled but URL unset      -> ``[PROOF-TELEMETRY-NO-URL]`` (a real,
-        actionable config gap the operator should see)
+      * enabled but URL unavailable -> ``[PROOF-TELEMETRY-NO-URL]`` (usually
+        because ALFRED_DEFAULT_TELEMETRY_URL was set empty)
       * enabled and URL present    -> ``[PROOF-TELEMETRY-DOCTOR-OK]`` (✅ ok)
     """
     try:
@@ -119,7 +125,7 @@ def _doctor_fast_path() -> int:
         print(f"{_SENTINELS['disabled']} (doctor: switch is off)")
         return 0
     if not proof_telemetry.telemetry_url():
-        print(f"{_SENTINELS['no_url']} (doctor: enabled but ALFRED_TELEMETRY_URL unset)")
+        print(f"{_SENTINELS['no_url']} (doctor: enabled but no collector URL available)")
         return 0
     print(f"{_SENTINELS['doctor_ok']} (doctor: enabled, config present, no report sent)")
     return 0
@@ -151,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:
         # Dry-run still respects the master switch for the network call, but
-        # always shows the operator what the payload would look like. It only
+        # always shows the user what the payload would look like. It only
         # generates/reads an install id when already enabled.
         if not proof_telemetry.is_enabled():
             print(f"{_SENTINELS['disabled']} (dry-run: nothing generated, switch is off)")
@@ -168,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"{_SENTINELS['no_url'] if not proof_telemetry.telemetry_url() else '[PROOF-TELEMETRY-DRY-RUN]'}"
             )
-            # install_id is the operator's own token; safe to show locally.
+            # install_id is the local install token; safe to show locally.
             print(payload)
         except Exception as exc:  # dry-run is best-effort; never raise
             print(f"{_SENTINELS['error']} dry-run failed: {exc}")

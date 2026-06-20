@@ -171,6 +171,14 @@ OPT_IN_ROLES = {"cross_repo_coordinator"}
 # string) is OFF. This is intentionally strict so a quoted "false" in a YAML or
 # JSON config never silently enables telemetry the way bool("false") would.
 _TRUTHY_CONSENT = {"1", "true", "yes", "on"}
+DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
+
+
+def default_telemetry_url() -> str:
+    override = os.environ.get("ALFRED_DEFAULT_TELEMETRY_URL")
+    if override is not None:
+        return override.strip()
+    return DEFAULT_TELEMETRY_URL
 
 
 def parse_consent(value: object) -> bool:
@@ -349,7 +357,7 @@ class WizardState:
     role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
     telemetry_enabled: bool = True  # anonymous proof telemetry is opt-out
-    telemetry_url: str = ""  # ingest endpoint, only written when telemetry_enabled
+    telemetry_url: str = field(default_factory=default_telemetry_url)
     telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
 
     def codename_for(self, role: str) -> str:
@@ -719,9 +727,9 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
             out[f"ALFRED_{default_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
-    # Anonymous proof-telemetry is opt-out. We write the enable var only when a
-    # URL exists, because without a URL there is nothing to report. A "no" answer
-    # writes ALFRED_TELEMETRY_ENABLED=0 below so the opt-out is explicit.
+    # Anonymous proof-telemetry is opt-out. New installs use Alfred's hosted
+    # collector by default; a "no" answer writes ALFRED_TELEMETRY_ENABLED=0 so
+    # the opt-out is explicit.
     if state.telemetry_enabled and state.telemetry_url:
         out["ALFRED_TELEMETRY_ENABLED"] = "1"
         out["ALFRED_TELEMETRY_URL"] = state.telemetry_url
@@ -1304,11 +1312,7 @@ def step_8_schedule(state: WizardState, *, non_interactive: bool) -> None:
 
 
 def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
-    """Prompt for anonymous proof-telemetry. Default is YES, with opt-out.
-
-    Sending still needs an ingest URL. With no URL, the reporter is a clean
-    no-op and no scheduler row is written.
-    """
+    """Prompt for anonymous proof-telemetry. Default is YES, with opt-out."""
     step("Anonymous usage totals")
     note(
         "Alfred can share anonymous aggregate counts: PRs opened, PRs merged, "
@@ -1316,15 +1320,15 @@ def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
     )
     note("Never sent: repo names, code, paths, prompts, titles, people, or hostnames.")
     note("Turn it off any time with `alfred telemetry off`.")
+    if state.telemetry_enabled and not state.telemetry_url:
+        state.telemetry_url = default_telemetry_url()
     if non_interactive:
         if state.telemetry_enabled and state.telemetry_url:
             ok(
-                "Telemetry endpoint configured; sending anonymous totals to "
+                "Anonymous totals will use "
                 f"{telemetry_endpoint_label(state.telemetry_url)}. "
                 "Disable any time with `alfred telemetry off`."
             )
-        elif state.telemetry_enabled and not state.telemetry_url:
-            ok("No telemetry endpoint set; no report is scheduled.")
         else:
             ok("Telemetry opted out.")
         return
@@ -1334,27 +1338,9 @@ def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
         state.telemetry_url = ""
         ok("Telemetry opted out.")
         return
-    url = (
-        state.telemetry_url
-        or ask("Telemetry ingest URL (blank to skip)", state.telemetry_url).strip()
-    )
-    if not url:
-        state.telemetry_url = ""
-        warn("No URL given; no report is scheduled.")
-        return
-    # Optional shared ingest token. The default public Worker has no write gate,
-    # so this is skippable (press enter). Only matters when the operator's Worker
-    # is configured with an INGEST_TOKEN; then reports without the matching token
-    # are rejected. A config-supplied token (state.telemetry_token) is respected.
-    note("If your collector sets an INGEST_TOKEN write gate, paste it here. Otherwise press enter.")
-    token = (
-        state.telemetry_token
-        or ask("Telemetry ingest token (optional, blank to skip)", state.telemetry_token).strip()
-    )
     state.telemetry_enabled = True
-    state.telemetry_url = url
-    state.telemetry_token = token
-    ok("Telemetry endpoint configured. Disable any time with `alfred telemetry off`.")
+    state.telemetry_url = state.telemetry_url or default_telemetry_url()
+    ok("Telemetry enabled. Disable any time with `alfred telemetry off`.")
 
 
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
@@ -1594,8 +1580,9 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       ``role_codename``; value is in ``agents.conf`` schedule format
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
     - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): configure
-      anonymous proof-telemetry non-interactively. Reporting is opt-out, but
-      still needs ``telemetry_url`` before anything is scheduled or sent.
+      anonymous proof-telemetry non-interactively. Reporting is opt-out and
+      uses Alfred's hosted collector by default. ``telemetry_url`` overrides it
+      for self-hosted collectors.
       ``telemetry_enabled`` is parsed strictly (see ``parse_consent``): a
       quoted ``"false"`` opts out.
     - ``telemetry_token`` (str): optional shared ingest token sent as
@@ -1661,8 +1648,8 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                 warn(f"--config role_schedule: unknown agent {raw_key!r}; ignored")
                 continue
             state.role_to_schedule[role] = str(raw_schedule)
-    # Telemetry opt-out. A missing key keeps the default (enabled), but a URL is
-    # still required before anything is scheduled or sent.
+    # Telemetry opt-out. A missing key keeps the default: enabled, using
+    # Alfred's hosted collector unless telemetry_url overrides it.
     # parse_consent is strict: a quoted "false"/"0"/"no" (or anything that is
     # not a recognized truthy token) opts out, unlike bool("false") which is
     # True.

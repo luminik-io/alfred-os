@@ -441,6 +441,8 @@ class FleetBrain:
         head_ref: str | None = None,
         base_ref: str | None = None,
         bundle_slug: str | None = None,
+        additions: int = 0,
+        deletions: int = 0,
     ) -> GitHubItem:
         """Cache one GitHub issue or PR row.
 
@@ -475,6 +477,8 @@ class FleetBrain:
             head_ref=head_ref,
             base_ref=base_ref,
             bundle_slug=resolved_bundle,
+            additions=max(0, int(additions or 0)),
+            deletions=max(0, int(deletions or 0)),
         )
         persisted = self.store.upsert_github_item(item)
         if persisted.bundle_slug:
@@ -701,6 +705,30 @@ class FleetBrain:
         public signal is the issue label rather than a branch name.
         """
         return self.store.count_github_items(
+            repo=repo,
+            kind=kind,
+            state=state,
+            bundle_slug=bundle_slug,
+            authored_only=authored_only,
+            agent_labeled_only=agent_labeled_only,
+        )
+
+    def sum_github_changed_lines(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+    ) -> int:
+        """Sum additions + deletions from cached GitHub PR rows.
+
+        Proof telemetry uses this with ``kind="pr"`` and
+        ``authored_only=True`` so the line-count metric is anchored to the same
+        Alfred-authored PR subset as the PR counters.
+        """
+        return self.store.sum_github_changed_lines(
             repo=repo,
             kind=kind,
             state=state,

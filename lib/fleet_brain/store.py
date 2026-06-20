@@ -143,6 +143,8 @@ class GitHubItem:
     head_ref: str | None = None
     base_ref: str | None = None
     bundle_slug: str | None = None
+    additions: int = 0
+    deletions: int = 0
 
 
 @dataclass(frozen=True)
@@ -332,6 +334,16 @@ class Store(Protocol):
     ) -> list[GitHubItem]: ...
 
     def count_github_items(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+    ) -> int: ...
+
+    def sum_github_changed_lines(
         self,
         repo: str | None = None,
         kind: GitHubItemKind | None = None,
@@ -937,8 +949,9 @@ class SQLiteStore:
             conn.execute(
                 "INSERT INTO github_items "
                 "(id, repo, number, kind, state, title, url, labels_json, updated_at, "
-                " last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug, "
+                " additions, deletions) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (id) DO UPDATE SET "
                 "  state = excluded.state, "
                 "  title = excluded.title, "
@@ -950,7 +963,9 @@ class SQLiteStore:
                 "  merged_at = excluded.merged_at, "
                 "  head_ref = excluded.head_ref, "
                 "  base_ref = excluded.base_ref, "
-                "  bundle_slug = excluded.bundle_slug",
+                "  bundle_slug = excluded.bundle_slug, "
+                "  additions = excluded.additions, "
+                "  deletions = excluded.deletions",
                 (
                     item.id,
                     item.repo,
@@ -967,6 +982,8 @@ class SQLiteStore:
                     item.head_ref,
                     item.base_ref,
                     item.bundle_slug,
+                    max(0, int(item.additions)),
+                    max(0, int(item.deletions)),
                 ),
             )
         return item
@@ -996,7 +1013,8 @@ class SQLiteStore:
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         sql = (
             "SELECT id, repo, number, kind, state, title, url, labels_json, updated_at, "
-            "last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug "
+            "last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug, "
+            "additions, deletions "
             f"FROM github_items {where_clause} "
             "ORDER BY updated_at DESC LIMIT ?"
         )
@@ -1041,6 +1059,43 @@ class SQLiteStore:
         with self._connect() as conn:
             (total,) = conn.execute(sql, params).fetchone()
             return int(total)
+
+    def sum_github_changed_lines(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+    ) -> int:
+        wheres: list[str] = []
+        params: list[object] = []
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if kind:
+            wheres.append("kind = ?")
+            params.append(kind)
+        if state:
+            wheres.append("state = ?")
+            params.append(state)
+        if bundle_slug:
+            wheres.append("bundle_slug = ?")
+            params.append(bundle_slug)
+        if authored_only:
+            authored_sql, authored_params = _authored_predicate()
+            wheres.append(authored_sql)
+            params.extend(authored_params)
+        if agent_labeled_only:
+            agent_sql, agent_params = _agent_labeled_predicate()
+            wheres.append(agent_sql)
+            params.extend(agent_params)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = f"SELECT COALESCE(SUM(additions + deletions), 0) FROM github_items {where_clause}"
+        with self._connect() as conn:
+            (total,) = conn.execute(sql, params).fetchone()
+            return max(0, int(total or 0))
 
     # ----- bundle items -------------------------------------------------
 
@@ -1344,6 +1399,8 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         head_ref,
         base_ref,
         bundle_slug,
+        additions,
+        deletions,
     ) = row
     return GitHubItem(
         id=item_id,
@@ -1361,6 +1418,8 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         head_ref=head_ref,
         base_ref=base_ref,
         bundle_slug=bundle_slug,
+        additions=max(0, int(additions or 0)),
+        deletions=max(0, int(deletions or 0)),
     )
 
 

@@ -77,9 +77,11 @@ const hasSeed =
   seedTotals.lines_changed > 0;
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-// Build-time public env var. Empty default keeps forks offline. A parent can
-// disable live fetches when its seed has a different reporting window.
-const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim() : "";
+// Official site default, with a build-time override for forks or previews.
+const defaultStatsUrl = "https://alfred-proof-telemetry.luminik.workers.dev/stats";
+const statsUrl = live
+  ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? defaultStatsUrl).trim()
+  : "";
 ---
 
 <section
@@ -92,7 +94,7 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
   <div class="impact__fallback" data-impact-fallback hidden={hasSeed}>
     <p class="impact__warming m-mono">No active Alfred installs yet.</p>
     <p class="impact__sub">
-      Totals appear after the first install has a telemetry endpoint configured.
+      Totals appear after the first active install reports.
     </p>
   </div>
 
@@ -117,6 +119,19 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
       <div class="impact__cell" role="listitem">
         <span class="impact__cellnum" data-field="files_changed">{fmt(seedTotals.files_changed)}</span>
         <span class="impact__celllbl">files changed</span>
+      </div>
+      <div
+        class="impact__cell"
+        role="listitem"
+        data-impact-pr-lifecycle
+        hidden={hasSeedLineDelta}
+      >
+        <span class="impact__cellnum impact__pair">
+          <span data-field="prs_opened">{fmt(seedTotals.prs_opened)}</span>
+          <span class="impact__slash">/</span>
+          <span data-field="prs_reviewed">{fmt(seedTotals.prs_reviewed)}</span>
+        </span>
+        <span class="impact__celllbl">PRs opened / reviewed</span>
       </div>
       <div
         class="impact__cell impact__cell--muted"
@@ -191,12 +206,16 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
         setField("prs_merged", merged);
         setField("installs", installs);
         setField("files_changed", filesChanged);
+        setField("prs_opened", Number(data?.prs_opened ?? 0));
+        setField("prs_reviewed", Number(data?.prs_reviewed ?? 0));
         setField("issues_opened", issuesOpened);
         setField("lines_changed", Number(data?.lines_changed ?? 0));
         if (data?.issues_closed !== undefined) setField("issues_closed", Number(data.issues_closed ?? 0));
         const lineDelta = root.querySelector<HTMLElement>("[data-impact-line-delta]");
+        const prLifecycle = root.querySelector<HTMLElement>("[data-impact-pr-lifecycle]");
         const hasLineDelta = data?.lines_added !== undefined || data?.lines_removed !== undefined;
         if (lineDelta) lineDelta.hidden = !hasLineDelta;
+        if (prLifecycle) prLifecycle.hidden = hasLineDelta;
         if (data?.lines_added !== undefined) setField("lines_added", Number(data.lines_added ?? 0));
         if (data?.lines_removed !== undefined) setField("lines_removed", Number(data.lines_removed ?? 0));
 
@@ -290,6 +309,9 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  .impact__cell[hidden] {
+    display: none;
   }
   .impact__cell--muted {
     background: color-mix(in srgb, var(--alfred-surface) 82%, transparent);

@@ -15,6 +15,7 @@ import worker, {
   clampDependentPrCounts,
   normalizePayload,
   ingest,
+  registerInstall,
   forgetInstall,
   computeTotals,
   hashIp,
@@ -85,6 +86,25 @@ test("clampCount truncates floats and caps at the max", () => {
   assert.equal(clampCount(3.9), 3);
   assert.equal(clampCount(100000), 100000);
   assert.equal(clampCount(999999999), 100000);
+});
+
+test("normalizePayload allows larger changed-line totals than row counts", () => {
+  const out = normalizePayload({
+    install_id: "line-count01",
+    period: "lifetime",
+    prs_opened: 1,
+    lines_changed: 321752,
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.value.counts.lines_changed, 321752);
+  assert.equal(
+    normalizePayload({
+      install_id: "line-count02",
+      period: "lifetime",
+      lines_changed: 999999999,
+    }).value.counts.lines_changed,
+    5000000,
+  );
 });
 
 // --------------------------------------------------------------------------
@@ -891,9 +911,10 @@ function makeTtlRecordingKV() {
   return kv;
 }
 
-test("stats cache write uses the default 60s TTL and is accepted by KV", async () => {
+test("stats cache write uses the free-tier-friendly default TTL", async () => {
   // Default (no STATS_CACHE_TTL_SECONDS): the put must use a TTL >= 60 so KV
-  // accepts it and the cache actually populates.
+  // accepts it and the cache actually populates. Hosted Alfred uses 300s so a
+  // continuously hit public page stays below the free KV list/day cap.
   const kv = makeTtlRecordingKV();
   const env = { TELEMETRY: kv };
   await ingest(
@@ -906,8 +927,26 @@ test("stats cache write uses the default 60s TTL and is accepted by KV", async (
   assert.ok(kv.store.has("stats:cache"), "cache populated under the default TTL");
   assert.ok(kv.putTtls.length >= 1, "a cache put was attempted");
   for (const ttl of kv.putTtls) {
-    assert.ok(ttl >= 60, `stats-cache TTL ${ttl} must be >= the 60s KV minimum`);
+    assert.equal(ttl, 300, "default stats-cache TTL is 300s");
   }
+});
+
+test("GET /stats allows short public response caching", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv, ALLOWED_ORIGIN: "https://alfred.luminik.io" };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-cache-hdr", prs_opened: 5 }).value,
+    FIXED,
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+
+  assert.equal(res.status, 200);
+  assert.equal(
+    res.headers.get("Cache-Control"),
+    "public, max-age=60, stale-while-revalidate=240",
+  );
 });
 
 test("a sub-60 STATS_CACHE_TTL_SECONDS is clamped up to 60 (KV would reject below)", async () => {
@@ -983,11 +1022,11 @@ test("GET /stats sums many installs derived-on-read (no incremented aggregate)",
 // --------------------------------------------------------------------------
 // fetch: HTTP surface
 // --------------------------------------------------------------------------
-function req(method, path, body) {
-  const init = { method };
+function req(method, path, body, headers = {}) {
+  const init = { method, headers: { ...headers } };
   if (body !== undefined) {
     init.body = typeof body === "string" ? body : JSON.stringify(body);
-    init.headers = { "Content-Type": "application/json" };
+    init.headers = { "Content-Type": "application/json", ...headers };
   }
   return new Request(`https://telemetry.example.com${path}`, init);
 }
@@ -1015,7 +1054,10 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
   assert.equal(postBody.ok, true);
   assert.equal(postBody.totals.prs_opened, 9);
 
-  const getRes = await worker.fetch(req("GET", "/stats"), env);
+  const getRes = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "https://alfred.example.com" }),
+    env,
+  );
   assert.equal(getRes.status, 200);
   assert.equal(
     getRes.headers.get("Access-Control-Allow-Origin"),
@@ -1052,7 +1094,10 @@ test("POST /ingest rejects malformed bodies with 400", async () => {
 
 test("OPTIONS preflight on /stats returns the scoped CORS origin", async () => {
   const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
-  const res = await worker.fetch(req("OPTIONS", "/stats"), env);
+  const res = await worker.fetch(
+    req("OPTIONS", "/stats", undefined, { Origin: "https://alfred.example.com" }),
+    env,
+  );
   assert.equal(res.status, 204);
   assert.equal(
     res.headers.get("Access-Control-Allow-Origin"),
@@ -1061,6 +1106,26 @@ test("OPTIONS preflight on /stats returns the scoped CORS origin", async () => {
   // Only GET is advertised for the read endpoint; POST is not a browser caller.
   assert.match(res.headers.get("Access-Control-Allow-Methods") || "", /GET/);
   assert.doesNotMatch(res.headers.get("Access-Control-Allow-Methods") || "", /POST/);
+});
+
+test("GET /stats allows localhost preview origins", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "http://127.0.0.1:4327" }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), "http://127.0.0.1:4327");
+});
+
+test("GET /stats does not allow arbitrary browser origins", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "https://random.example.com" }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), null);
 });
 
 test("OPTIONS preflight on /ingest carries NO allow-origin (browser POST blocked)", async () => {
@@ -1179,10 +1244,11 @@ test("ingest allows a server-side caller (no Origin header) regardless of ALLOWE
 // --------------------------------------------------------------------------
 // /ingest write gate: optional shared token
 // --------------------------------------------------------------------------
-function ingestReq(body, token) {
+function ingestReq(body, token, trustedToken) {
   const init = { method: "POST", body: JSON.stringify(body) };
   init.headers = { "Content-Type": "application/json" };
   if (token !== undefined) init.headers["X-Ingest-Token"] = token;
+  if (trustedToken !== undefined) init.headers["X-Alfred-Trusted-Token"] = trustedToken;
   return new Request("https://telemetry.example.com/ingest", init);
 }
 
@@ -1234,6 +1300,121 @@ test("the token check runs before the body is parsed (no work for unauthorized c
   });
   const res = await worker.fetch(badBody, env);
   assert.equal(res.status, 401);
+});
+
+function registerReq(body = {}) {
+  return new Request("https://telemetry.example.com/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+test("register issues a per-install token and stores only its hash", async () => {
+  const kv = makeKV();
+  const result = await registerInstall(kv, { install_id: "install-reg001" }, FIXED);
+  assert.equal(result.ok, true);
+  assert.equal(result.install_id, "install-reg001");
+  assert.ok(result.token.length >= 32);
+
+  const stored = JSON.parse(kv.store.get("auth:install-reg001"));
+  assert.equal(typeof stored.token_sha256, "string");
+  assert.notEqual(stored.token_sha256, result.token);
+  assert.equal(stored.created_at, FIXED.toISOString());
+});
+
+test("POST /register returns credentials for the install", async () => {
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(registerReq({ install_id: "install-reg002" }), env);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.install_id, "install-reg002");
+  assert.ok(body.token);
+  assert.equal(body.ingest, "/ingest");
+});
+
+test("ingest requires the registered install token when REQUIRE_INSTALL_TOKEN is set", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1" };
+
+  const missing = await worker.fetch(ingestReq(SAMPLE_PAYLOAD), env);
+  assert.equal(missing.status, 401);
+
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+  const wrong = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, "wrong-token"), env);
+  assert.equal(wrong.status, 401);
+
+  const ok = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token), env);
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).ok, true);
+});
+
+test("registered install token gates tombstone deletes too", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1" };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+  await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token), env);
+
+  const badDelete = await worker.fetch(
+    ingestReq({ install_id: SAMPLE_PAYLOAD.install_id, tombstone: true }, "wrong-token"),
+    env,
+  );
+  assert.equal(badDelete.status, 401);
+  assert.equal((await worker.fetch(req("GET", "/stats"), env).then((r) => r.json())).installs, 1);
+
+  const goodDelete = await worker.fetch(
+    ingestReq({ install_id: SAMPLE_PAYLOAD.install_id, tombstone: true }, registered.token),
+    env,
+  );
+  assert.equal(goodDelete.status, 200);
+  assert.equal((await worker.fetch(req("GET", "/stats"), env).then((r) => r.json())).installs, 0);
+});
+
+test("trusted-counts mode ignores untrusted self-reported progress totals", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1", TRUSTED_COUNTS_ONLY: "1" };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token), env);
+  assert.equal(res.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 0);
+  assert.equal(stats.prs_merged, 0);
+  assert.equal(stats.files_changed, 0);
+});
+
+test("trusted-counts mode accepts progress totals from the trusted collector token", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token, "trusted-secret"), env);
+  assert.equal(res.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.prs_merged, 2);
+  assert.equal(stats.files_changed, 50);
+});
+
+test("a wrong trusted collector token is rejected", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token, "wrong-secret"), env);
+  assert.equal(res.status, 401);
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 0);
 });
 
 // --------------------------------------------------------------------------

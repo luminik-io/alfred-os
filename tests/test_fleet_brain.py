@@ -90,6 +90,38 @@ def test_fleetbrain_creates_db_file(tmp_path: Path) -> None:
     assert db.exists()
 
 
+def test_ensure_schema_adds_github_line_columns_to_existing_table(db_path: Path) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE github_items (
+                id TEXT NOT NULL PRIMARY KEY,
+                repo TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                state TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                url TEXT NOT NULL DEFAULT '',
+                labels_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                closed_at TEXT,
+                merged_at TEXT,
+                head_ref TEXT,
+                base_ref TEXT,
+                bundle_slug TEXT
+            )
+            """
+        )
+        conn.commit()
+        ensure_schema(conn)
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(github_items)")}
+        assert {"additions", "deletions"}.issubset(cols)
+    finally:
+        conn.close()
+
+
 def test_memory_doctor_warns_for_v2_database_missing_additive_tables(tmp_path: Path) -> None:
     from fleet_brain.doctor import run_memory_doctor
 
@@ -383,6 +415,8 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
         labels=["agent:bundle:billing", "agent:authored"],
         head_ref="lucius/42",
         base_ref="main",
+        additions=12,
+        deletions=3,
     )
     assert item.id == "org/api#42:pr"
     assert item.bundle_slug == "billing"
@@ -390,11 +424,46 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
     items = brain.list_github_items(repo="org/api", kind="pr", state="open")
     assert len(items) == 1
     assert items[0].labels == ["agent:authored", "agent:bundle:billing"]
+    assert items[0].additions == 12
+    assert items[0].deletions == 3
 
     bundle_items = brain.list_bundle_items(bundle_slug="billing")
     assert len(bundle_items) == 1
     assert bundle_items[0].repo == "org/api"
     assert bundle_items[0].item_kind == "pr"
+
+
+def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> None:
+    brain.upsert_github_item(
+        repo="org/api",
+        number=1,
+        kind="pr",
+        state="merged",
+        labels=["agent:authored"],
+        additions=10,
+        deletions=2,
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=2,
+        kind="pr",
+        state="open",
+        head_ref="lucius/2",
+        additions=5,
+        deletions=1,
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=3,
+        kind="pr",
+        state="merged",
+        head_ref="feature/human",
+        additions=1000,
+        deletions=1000,
+    )
+    assert brain.sum_github_changed_lines(kind="pr") == 2018
+    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 18
+    assert brain.sum_github_changed_lines(kind="pr", state="merged", authored_only=True) == 12
 
 
 def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:

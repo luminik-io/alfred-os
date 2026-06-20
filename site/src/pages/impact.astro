@@ -12,7 +12,10 @@ const linesChanged = productProof.summary.lines_added + productProof.summary.lin
 const productTrend = Array.isArray((productProof as { trend?: unknown }).trend)
   ? (productProof as { trend: Array<{ week: string; prs_merged: number }> }).trend
   : [];
-const telemetryStatsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim();
+const defaultTelemetryStatsUrl = "https://alfred-proof-telemetry.luminik.workers.dev/stats";
+const telemetryStatsUrl = (
+  import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? defaultTelemetryStatsUrl
+).trim();
 const hasLiveTelemetry = telemetryStatsUrl.length > 0;
 const hasPublicActivity =
   proof.prs.length > 0 ||
@@ -74,11 +77,10 @@ const hasPublicActivity =
     <section class="m-section impact-section">
       <div class="m-container impact-live-section">
         <div class="impact-live-section__copy">
-          <span class="m-eyebrow">LIVE USAGE</span>
-          <h2 class="m-display-md">Alfred installs in use.</h2>
+          <span class="m-eyebrow">LIVE TOTALS</span>
+          <h2 class="m-display-md">Alfred at work.</h2>
           <p>
-            Anonymous totals from Alfred installs with a telemetry endpoint configured
-            and usage sharing left on.
+            Usage sharing keeps this page current as Alfred runs in the background.
           </p>
         </div>
         <ImpactCounter threshold={1} />

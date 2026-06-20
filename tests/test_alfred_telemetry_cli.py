@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
 
 
 def _capture_server(*, status: int = 200):
@@ -52,7 +53,13 @@ def _run(tmp_path: Path, *args: str, alfredrc: Path | None = None, agents_conf: 
         "ALFRED_HOME": str(alfred_home),
         "PYTHONPATH": str(ROOT / "lib"),
     }
-    for key in ("ALFRED_TELEMETRY_ENABLED", "ALFRED_TELEMETRY_URL", "ALFRED_TELEMETRY_TOKEN"):
+    for key in (
+        "ALFRED_TELEMETRY_ENABLED",
+        "ALFRED_TELEMETRY_URL",
+        "ALFRED_TELEMETRY_TOKEN",
+        "ALFRED_TELEMETRY_TRUSTED_TOKEN",
+        "ALFRED_DEFAULT_TELEMETRY_URL",
+    ):
         env.pop(key, None)
     cmd = [sys.executable, str(ROOT / "bin" / "alfred"), "telemetry", *args]
     if alfredrc is not None:
@@ -71,8 +78,9 @@ def test_telemetry_status_reads_managed_files(tmp_path):
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert payload["enabled"] is True
-    assert payload["endpoint"] == ""
+    assert payload["endpoint"] == DEFAULT_TELEMETRY_URL
     assert payload["scheduler_row"] == "missing"
+    assert payload["trusted_token_configured"] is False
 
 
 def test_telemetry_status_honors_commented_opt_out(tmp_path):
@@ -131,7 +139,39 @@ def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_pa
     assert payload["enabled"] is True
     assert payload["endpoint"] == "https://telemetry.example.com/ingest"
     assert payload["token_configured"] is True
+    assert payload["trusted_token_configured"] is False
     assert payload["scheduler_row"] == "present"
+
+
+def test_telemetry_status_reports_trusted_token_without_printing_it(tmp_path):
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(
+        "ALFRED_TELEMETRY_TRUSTED_TOKEN=trusted-secret\n",
+        encoding="utf-8",
+    )
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["trusted_token_configured"] is True
+    assert "trusted-secret" not in result.stdout
+
+
+def test_telemetry_on_uses_hosted_default_without_url(tmp_path):
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "on", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert "ALFRED_TELEMETRY_ENABLED=1" in rc_text
+    assert f"ALFRED_TELEMETRY_URL={DEFAULT_TELEMETRY_URL}" in rc_text
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\t" in agents_conf.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):

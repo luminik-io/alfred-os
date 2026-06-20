@@ -205,6 +205,18 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Terraform local state and provider cache. Lock files stay committed.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars.local
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
 # Local Alfred scratch worktrees
 .worktrees/
 

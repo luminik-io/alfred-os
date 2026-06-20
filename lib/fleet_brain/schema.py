@@ -41,7 +41,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 4
+SCHEMA_VERSION: Final[int] = 5
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -162,6 +162,8 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         head_ref     TEXT,
         base_ref     TEXT,
         bundle_slug  TEXT,
+        additions    INTEGER NOT NULL DEFAULT 0,
+        deletions    INTEGER NOT NULL DEFAULT 0,
         CHECK (kind IN ('issue', 'pr')),
         CHECK (state IN ('open', 'closed', 'merged', 'unknown'))
     )
@@ -301,6 +303,8 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     with conn:
         for stmt in _CREATE_STATEMENTS:
             conn.execute(stmt)
+        _add_column_if_missing(conn, "github_items", "additions", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "github_items", "deletions", "INTEGER NOT NULL DEFAULT 0")
         # Record the schema version, idempotently. A row with the
         # current version means "we have run ensure_schema at least
         # once at this code revision".

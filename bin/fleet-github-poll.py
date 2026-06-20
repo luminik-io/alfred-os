@@ -93,7 +93,7 @@ def _poll_kind(
             "--limit",
             str(limit),
             "--json",
-            "number,title,state,labels,updatedAt,closedAt,mergedAt,url,headRefName,baseRefName",
+            "number,title,state,labels,updatedAt,closedAt,mergedAt,url,headRefName,baseRefName,additions,deletions",
         ]
     rows = _gh_json(cmd, runner)
     for row in rows:
@@ -113,6 +113,8 @@ def _poll_kind(
             head_ref=row.get("headRefName"),
             base_ref=row.get("baseRefName"),
             bundle_slug=_bundle_slug(labels),
+            additions=_non_negative_int(row.get("additions")),
+            deletions=_non_negative_int(row.get("deletions")),
         )
     return len(rows)
 
@@ -201,6 +203,14 @@ def _parse_ts(raw: object) -> datetime | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
+
+
+def _non_negative_int(raw: object) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, value)
 
 
 def build_parser() -> argparse.ArgumentParser:
