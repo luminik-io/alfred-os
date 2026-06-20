@@ -61,7 +61,8 @@ All state lives in one Workers KV namespace bound as `TELEMETRY`:
 | Key | Value | Why it exists |
 | --- | --- | --- |
 | `auth:<install_id>` | `{token_sha256, created_at}` | Per-install write credential for the hosted collector. The raw token is returned once from `/register` and is never stored by the Worker. |
-| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, seen_at}` | The single latest snapshot for one install, replaced on every report. It is the only source of truth: `/stats` sums these on read. Its presence is also the distinct-install marker (no separate key). |
+| `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, seen_at, trusted_reporter}` | The single latest progress snapshot for one install. `/stats` sums these on read for shipped-work totals. In trusted-counts mode, untrusted reports never write this key. |
+| `active:<install_id>` | `{seen_at}` | Active-install marker used in trusted-counts mode. Anonymous installs can show adoption without writing progress totals. |
 | `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 300s). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
 
 **Never stored, never logged:** IP addresses, user agents, repo names, file
@@ -70,11 +71,13 @@ install.
 
 ### Data model: latest-wins per install, totals derived on read (no double count, no lost count)
 
-The Worker stores **one record per install**, keyed by `install_id`, and
-replaces it on every report. `/ingest` writes **only** that one install's key:
-there is no shared running aggregate. The public total is **derived on read** by
-`/stats`, which lists the `install:*` keys and sums each install's latest counts
-(behind a short cache). So:
+The Worker stores **one latest progress record per trusted install**, keyed by
+`install_id`, and replaces it on every trusted report. `/ingest` writes only the
+current install's key: either `install:<id>` for trusted progress or `active:<id>`
+for anonymous activity in hosted trusted-counts mode. There is no shared running
+aggregate. The public progress total is **derived on read** by `/stats`, which
+lists the `install:*` keys and sums each install's latest counts (behind a short
+cache). So:
 
 - The first report from an install contributes its full counts to the sum.
 - A re-send of the same lifetime total replaces the record with an identical
@@ -153,11 +156,12 @@ and `INGEST_TOKEN` unset, those numbers are best-effort self-reports.
 ### Concurrency note
 
 The **counts** have no cross-request read-modify-write to race. `/ingest` writes
-only its own `install:<id>` key (an idempotent latest-wins upsert), and `/stats`
-derives the total by summing those keys on read. Two installs posting in the same
-instant write disjoint keys, so neither can clobber the other and no count is
-ever lost. The public total is, by construction, always the sum of every
-install's latest stored value.
+only its own `install:<id>` or `active:<id>` key (an idempotent latest-wins
+upsert), and `/stats` derives progress totals by summing `install:*` on read. Two
+installs posting in the same instant write disjoint keys, so neither can clobber
+the other and no count is ever lost. In trusted-counts mode, an untrusted refresh
+for a trusted install updates only `active:<id>`, so it cannot erase or inflate
+that install's trusted progress record.
 
 An earlier design kept a single incremented `agg` key (`agg += new - prior`).
 That was racy: Cloudflare KV has no atomic read-modify-write, so two concurrent

@@ -8,27 +8,30 @@
  *                    raw token is returned once and stays on the local install.
  *                    Hosted Alfred uses this path before the first report.
  *   POST /ingest   one install reports its CUMULATIVE LIFETIME counts. The
- *                  Worker stores exactly ONE record per install (keyed by
- *                  install_id) and replaces it on every report (latest-wins
- *                  upsert). That upsert is the WHOLE write: ingest touches only
- *                  this one install's key and never a shared running total, so
- *                  two concurrent ingests write disjoint keys and can never lose
- *                  each other's counts. Re-sending the same lifetime total is
- *                  idempotent: the stored record is replaced with an identical
- *                  value, so the derived total is unchanged, forever, no matter
- *                  how many times or for how long an install reports.
+ *                  Worker stores one latest progress record per trusted install
+ *                  (keyed by install_id) and replaces it on every trusted report
+ *                  (latest-wins upsert). In hosted trusted-counts mode,
+ *                  untrusted reports write only an active-install marker, never
+ *                  the progress record. That keeps anonymous adoption visible
+ *                  without allowing an anonymous client to inflate or erase
+ *                  trusted shipped-work totals. Re-sending the same lifetime
+ *                  total is idempotent: the stored record is replaced with an
+ *                  identical value, so the derived total is unchanged, forever,
+ *                  no matter how many times or for how long an install reports.
  *                  Browser-hostile by design: simple requests are rejected,
  *                  cross-origin browser writes are blocked, hosted writes use
  *                  per-install tokens, and hosted progress totals can require a
  *                  trusted collector token. Self-hosted collectors can use one
  *                  shared INGEST_TOKEN instead.
  *   GET  /stats    returns the public totals plus a distinct-install count. The
- *                  totals are DERIVED ON READ: the Worker lists the install:*
- *                  keys and sums each install's stored latest counts. Nothing is
- *                  ever incremented, so the public total always equals the sum
- *                  of installs' latest lifetime values by construction, with no
- *                  read-modify-write race to lose counts. A short KV-backed
- *                  cache (STATS_CACHE_TTL_SECONDS) bounds the per-read list cost.
+ *                  totals are DERIVED ON READ: the Worker lists install:* keys
+ *                  for trusted progress totals and active:* keys for anonymous
+ *                  activity in hosted trusted-counts mode. Nothing is ever
+ *                  incremented, so the public progress total always equals the
+ *                  sum of trusted installs' latest lifetime values by
+ *                  construction, with no read-modify-write race to lose counts.
+ *                  A short KV-backed cache (STATS_CACHE_TTL_SECONDS) bounds the
+ *                  per-read list cost.
  *                  This is the only route with browser CORS, scoped to
  *                  ALLOWED_ORIGIN so the marketing site can read it.
  *
@@ -82,11 +85,14 @@
  *                         record per install. Replaced on every report:
  *                         { prs_opened, prs_merged, prs_reviewed,
  *                           issues_opened, issues_closed, files_changed, lines_changed,
- *                           loc_added, seen_at, trusted_reporter }. Its presence
- *                         also IS the distinct-install marker, so there is no
- *                         separate "known install" key.
- *                         These per-install records are the ONLY source of
- *                         truth: /stats sums them on read.
+ *                           loc_added, seen_at, trusted_reporter }. These
+ *                         records are the ONLY source of shipped-work totals:
+ *                         /stats sums them on read. In trusted-counts mode,
+ *                         untrusted reports never write this key.
+ *   key "active:<id>"  -> JSON active-install marker:
+ *                         { seen_at }. In trusted-counts mode this lets
+ *                         anonymous installs count as active installs without
+ *                         writing progress totals. It stores no counts.
  *   key "stats:cache"  -> OPTIONAL short-lived cache of the derived totals, so a
  *                         burst of /stats reads does not re-list every install
  *                         each time. JSON { ...totals, installs, updated_at }
@@ -111,8 +117,8 @@
  * never resolves it to anything.
  *
  * Concurrency: the COUNTS have no cross-request read-modify-write to race. Each
- * /ingest writes only its own install:<id> key (an idempotent latest-wins
- * upsert), and /stats DERIVES the total by summing those keys. Two installs
+ * /ingest writes only its own install:<id> or active:<id> key (an idempotent
+ * latest-wins upsert), and /stats DERIVES the total by summing those keys. Two installs
  * posting in the same instant write disjoint keys, so neither can clobber the
  * other and no count is ever lost; the public total is, by construction, always
  * the sum of every install's latest stored value. The "stats:cache" key is only
@@ -175,10 +181,11 @@ const EMPTY_AGG = {
   updated_at: null,
 };
 
-// Prefix for the per-install records. Listing this prefix yields every install,
-// which is what /stats sums on read. Kept as a constant so the list() prefix and
-// the per-key builder cannot drift apart.
+// Prefixes for per-install records. /stats sums install:* for progress totals
+// and, in trusted-counts mode, also counts active:* markers for anonymous active
+// installs that are not allowed to write progress totals.
 const INSTALL_PREFIX = "install:";
+const ACTIVITY_PREFIX = "active:";
 const AUTH_PREFIX = "auth:";
 const TRUSTED_INGEST_HEADER = "X-Alfred-Trusted-Token";
 
@@ -340,10 +347,14 @@ export function normalizePayload(raw) {
   };
 }
 
-// One record per install, keyed by install_id. Replaced on every report
-// (latest-wins). Its presence is also the distinct-install marker.
+// One progress record per install, keyed by install_id. Replaced on each
+// count-bearing report (latest-wins).
 function installKey(installId) {
   return `${INSTALL_PREFIX}${installId}`;
+}
+
+function activityKey(installId) {
+  return `${ACTIVITY_PREFIX}${installId}`;
 }
 
 function authKey(installId) {
@@ -415,13 +426,13 @@ function trustedCountsOnly(env) {
 }
 
 /**
- * Compute the public totals by listing every install:* record and summing its
- * stored latest counts. This is the ONLY source of the public number, and it is
- * race-free: it reads independent per-install keys and never any shared running
- * total, so concurrent ingests can never make it lose a count. The returned
- * shape matches EMPTY_AGG: { ...COUNT_FIELDS, installs, updated_at }, where
- * `installs` is the distinct record count and `updated_at` is the most recent
- * `seen_at` across all records.
+ * Compute the public totals by listing every install:* progress record and, in
+ * trusted-counts mode, every active:* marker. install:* is the ONLY source of
+ * shipped-work totals. active:* only contributes to the active-install count,
+ * so anonymous hosted reports cannot move PR/issue/file/line numbers. The
+ * returned shape matches EMPTY_AGG: { ...COUNT_FIELDS, installs, updated_at },
+ * where `installs` is the distinct install count and `updated_at` is the most
+ * recent `seen_at` across all records.
  *
  * Cost: one list() per 1000 keys plus one get() per install. For the expected
  * scale (tens to low-hundreds of installs)
@@ -432,6 +443,7 @@ function trustedCountsOnly(env) {
 export async function computeTotals(kv, env) {
   const totals = { ...EMPTY_AGG };
   const countsNeedTrust = trustedCountsOnly(env);
+  const countedInstalls = new Set();
   let cursor;
   // Bound the number of list pages we will walk so a pathologically large
   // namespace (far beyond any believable opt-in fleet) cannot run the read
@@ -447,6 +459,8 @@ export async function computeTotals(kv, env) {
       const stored = await kv.get(name, { type: "json" });
       if (!stored || typeof stored !== "object") continue;
       const snap = normalizeSnapshot(stored);
+      const installId = name.slice(INSTALL_PREFIX.length);
+      countedInstalls.add(installId);
       totals.installs += 1;
       if (!countsNeedTrust || snap.trusted_reporter) {
         for (const field of COUNT_FIELDS) {
@@ -466,13 +480,38 @@ export async function computeTotals(kv, env) {
       break;
     }
   }
+  if (countsNeedTrust) {
+    cursor = undefined;
+    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      const listed = await kv.list({ prefix: ACTIVITY_PREFIX, cursor });
+      const keys = (listed && listed.keys) || [];
+      for (const entry of keys) {
+        const name = entry && entry.name;
+        if (typeof name !== "string") continue;
+        const installId = name.slice(ACTIVITY_PREFIX.length);
+        if (!installId || countedInstalls.has(installId)) continue;
+        countedInstalls.add(installId);
+        totals.installs += 1;
+        const stored = await kv.get(name, { type: "json" });
+        const seenAt = stored && typeof stored.seen_at === "string" ? stored.seen_at : null;
+        if (seenAt && (totals.updated_at === null || seenAt > totals.updated_at)) {
+          totals.updated_at = seenAt;
+        }
+      }
+      if (listed && listed.list_complete === false && listed.cursor) {
+        cursor = listed.cursor;
+      } else {
+        break;
+      }
+    }
+  }
   return totals;
 }
 
 /**
- * Read the public totals, derived from the per-install records, behind a short
- * KV-backed cache. The cache (STATS_CACHE_KEY) is a pure read optimization with
- * a TTL of STATS_CACHE_TTL_SECONDS: a hit avoids re-listing every install, a
+ * Read the public totals behind a short KV-backed cache. The cache
+ * (STATS_CACHE_KEY) is a pure read optimization with a TTL of
+ * STATS_CACHE_TTL_SECONDS: a hit avoids re-listing install/activity records, a
  * miss recomputes from scratch and refreshes it. The cache is NEVER written by
  * /ingest, so it cannot race a write; the worst it can do is serve a value up to
  * the TTL stale, which is fine for an aggregate counter. Setting the TTL to 0
@@ -541,6 +580,23 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
   const { install_id: installId, counts } = payload;
 
   const iso = now.toISOString();
+  const isTrustedReporter = opts.trustedReporter === true;
+  const countsNeedTrust = opts.trustedCountsOnly === true;
+  if (countsNeedTrust && !isTrustedReporter) {
+    const snapshot = { seen_at: iso };
+    await kv.put(activityKey(installId), JSON.stringify(snapshot));
+    try {
+      await kv.delete(STATS_CACHE_KEY);
+    } catch {
+      /* cache invalidation is best-effort; ignore */
+    }
+    return {
+      ...normalizeCountFields({}),
+      seen_at: iso,
+      trusted_reporter: false,
+    };
+  }
+
   // Clamp every field (non-negative integer, capped) AND re-enforce the subset
   // invariant on the STORED record: prs_merged/prs_reviewed never exceed
   // prs_opened. This runs even if a caller reached ingest with counts that did
@@ -549,11 +605,14 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
   const clamped = normalizeCountFields(counts);
   const snapshot = clampDependentCounts(clamped);
   snapshot.seen_at = iso;
-  snapshot.trusted_reporter = opts.trustedReporter === true;
+  snapshot.trusted_reporter = isTrustedReporter;
 
   // The entire write: replace this install's record. No shared-state read,
   // no read-modify-write, nothing another ingest could clobber.
   await kv.put(installKey(installId), JSON.stringify(snapshot));
+  if (countsNeedTrust) {
+    await kv.put(activityKey(installId), JSON.stringify({ seen_at: iso }));
+  }
 
   // Invalidate the derived-stats cache so the next /stats recomputes and this
   // report shows up promptly rather than waiting out the TTL. Best-effort: if
@@ -570,6 +629,7 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
 
 export async function forgetInstall(kv, installId) {
   await kv.delete(installKey(installId));
+  await kv.delete(activityKey(installId));
   try {
     await kv.delete(STATS_CACHE_KEY);
   } catch {
@@ -1013,6 +1073,7 @@ export default {
       }
       await ingest(kv, parsed.value, new Date(), {
         trustedReporter: trustedAuth.trusted || sharedAuth.configured,
+        trustedCountsOnly: trustedCountsOnly(env),
       });
       // Report the fresh derived total back. ingest just invalidated the stats
       // cache, so this recomputes from the install records and includes the

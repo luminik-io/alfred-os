@@ -1402,6 +1402,31 @@ test("trusted-counts mode accepts progress totals from the trusted collector tok
   assert.equal(stats.files_changed, 50);
 });
 
+test("trusted-counts mode keeps trusted totals after an untrusted refresh", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const trusted = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token, "trusted-secret"), env);
+  assert.equal(trusted.status, 200);
+
+  const untrustedRefresh = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, prs_opened: 99999, prs_merged: 99999 }, registered.token),
+    env,
+  );
+  assert.equal(untrustedRefresh.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.prs_merged, 2);
+  assert.equal(stats.files_changed, 50);
+});
+
 test("a wrong trusted collector token is rejected", async () => {
   const env = {
     TELEMETRY: makeKV(),

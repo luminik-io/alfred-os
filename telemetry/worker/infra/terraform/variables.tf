@@ -5,9 +5,8 @@ variable "cloudflare_api_token" {
 }
 
 variable "cloudflare_account_id" {
-  description = "Cloudflare account ID for Luminik."
+  description = "Cloudflare account ID. Pass via terraform.tfvars or TF_VAR_cloudflare_account_id."
   type        = string
-  default     = "e41ffc04445fd1e1805f2c8c04d16e35"
 }
 
 variable "worker_name" {
