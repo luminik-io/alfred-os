@@ -53,27 +53,38 @@ const { proof } = Astro.props;
 const fmt = (n: number) => n.toLocaleString("en-US");
 const maxTrend = Math.max(...proof.trend.map((item) => item.prs_merged), 1);
 const windowLabel = `Last ${proof.window.days} days`;
+const hasAlfredRows =
+  proof.prs.length > 0 ||
+  proof.issues.length > 0 ||
+  proof.summary.prs_merged > 0 ||
+  proof.summary.issues_opened > 0 ||
+  proof.summary.issues_triaged > 0;
+const activity = hasAlfredRows || !proof.summary.repo_activity
+  ? proof.summary
+  : proof.summary.repo_activity;
+const metricDetail = hasAlfredRows ? windowLabel : "Repo total";
+const codeDetail = hasAlfredRows ? "Listed PRs" : "Repo total";
 
 const metrics = [
   {
     label: "PRs merged",
-    value: fmt(proof.summary.prs_merged),
-    detail: windowLabel,
+    value: fmt(activity.prs_merged),
+    detail: metricDetail,
   },
   {
     label: "Issues opened",
-    value: fmt(proof.summary.issues_opened),
-    detail: windowLabel,
+    value: fmt(activity.issues_opened),
+    detail: metricDetail,
   },
   {
     label: "Lines added",
-    value: fmt(proof.summary.lines_added),
-    detail: "Listed PRs",
+    value: fmt(activity.lines_added),
+    detail: codeDetail,
   },
   {
     label: "Files changed",
-    value: fmt(proof.summary.files_changed),
-    detail: "Listed PRs",
+    value: fmt(activity.files_changed),
+    detail: codeDetail,
   },
 ];
 ---
@@ -100,73 +111,77 @@ const metrics = [
     ))}
   </div>
 
-  <div class="proof-layout">
-    <section class="proof-panel" aria-label="Weekly merged pull requests">
-      <div class="proof-panel__head">
-        <h3 class="m-h3">Weekly PRs merged</h3>
-        <span class="m-mono m-mute">Last {proof.window.days} days</span>
-      </div>
-      <div class="trend" role="list">
-        {proof.trend.length > 0 ? (
-          proof.trend.map((item) => (
-            <div class="trend__row" role="listitem">
-              <span class="trend__week m-mono">{item.week}</span>
-              <span class="trend__bar" style={`--w:${Math.max(8, Math.round((item.prs_merged / maxTrend) * 100))}%`}>
-                <span></span>
-              </span>
-              <span class="trend__count">{fmt(item.prs_merged)}</span>
-            </div>
-          ))
-        ) : (
-          <p class="proof-empty">No public PRs in the last {proof.window.days} days.</p>
-        )}
-      </div>
-    </section>
+  {hasAlfredRows ? (
+    <>
+      <div class="proof-layout">
+        <section class="proof-panel" aria-label="Weekly merged pull requests">
+          <div class="proof-panel__head">
+            <h3 class="m-h3">Weekly PRs merged</h3>
+            <span class="m-mono m-mute">Last {proof.window.days} days</span>
+          </div>
+          <div class="trend" role="list">
+            {proof.trend.length > 0 ? (
+              proof.trend.map((item) => (
+                <div class="trend__row" role="listitem">
+                  <span class="trend__week m-mono">{item.week}</span>
+                  <span class="trend__bar" style={`--w:${Math.max(8, Math.round((item.prs_merged / maxTrend) * 100))}%`}>
+                    <span></span>
+                  </span>
+                  <span class="trend__count">{fmt(item.prs_merged)}</span>
+                </div>
+              ))
+            ) : (
+              <p class="proof-empty">No public PRs in the last {proof.window.days} days.</p>
+            )}
+          </div>
+        </section>
 
-    <section class="proof-panel" aria-label="Recently opened issues">
-      <div class="proof-panel__head">
-        <h3 class="m-h3">Recent Alfred issues</h3>
-        <span class="m-mono m-mute">{fmt(proof.summary.issues_triaged)} triaged</span>
+        <section class="proof-panel" aria-label="Recently opened issues">
+          <div class="proof-panel__head">
+            <h3 class="m-h3">Recent Alfred issues</h3>
+            <span class="m-mono m-mute">{fmt(proof.summary.issues_triaged)} triaged</span>
+          </div>
+          <div class="issue-list">
+            {proof.issues.length > 0 ? (
+              proof.issues.slice(0, 5).map((issue) => (
+                <a class="issue-row" href={issue.url} rel="noopener noreferrer">
+                  <span class="issue-row__num m-mono">#{issue.number}</span>
+                  <span class="issue-row__title">{issue.title}</span>
+                </a>
+              ))
+            ) : (
+              <p class="proof-empty">No public issues in the last {proof.window.days} days.</p>
+            )}
+          </div>
+        </section>
       </div>
-      <div class="issue-list">
-        {proof.issues.length > 0 ? (
-          proof.issues.slice(0, 5).map((issue) => (
-            <a class="issue-row" href={issue.url} rel="noopener noreferrer">
-              <span class="issue-row__num m-mono">#{issue.number}</span>
-              <span class="issue-row__title">{issue.title}</span>
-            </a>
-          ))
-        ) : (
-          <p class="proof-empty">No public issues in the last {proof.window.days} days.</p>
-        )}
-      </div>
-    </section>
-  </div>
 
-  <section class="proof-panel proof-panel--wide" aria-label="Recent merged pull requests">
-    <div class="proof-panel__head">
-      <h3 class="m-h3">Recent merged PRs</h3>
-      <span class="m-mono m-mute">GitHub links</span>
-    </div>
-    <div class="pr-list">
-      {proof.prs.length > 0 ? (
-        proof.prs.map((pr) => (
-          <a class="pr-row" href={pr.url} rel="noopener noreferrer">
-            <span class="pr-row__num m-mono">#{pr.number}</span>
-            <span class="pr-row__title">{pr.title}</span>
-            <span class="pr-row__stats m-mono">
-              +{fmt(pr.lines_added)} / -{fmt(pr.lines_removed)}, {fmt(pr.files_changed)} files
-            </span>
-          </a>
-        ))
-      ) : (
-        <p class="proof-empty">No public PRs in the last {proof.window.days} days.</p>
-      )}
-    </div>
-  </section>
+      <section class="proof-panel proof-panel--wide" aria-label="Recent merged pull requests">
+        <div class="proof-panel__head">
+          <h3 class="m-h3">Recent merged PRs</h3>
+          <span class="m-mono m-mute">GitHub links</span>
+        </div>
+        <div class="pr-list">
+          {proof.prs.length > 0 ? (
+            proof.prs.map((pr) => (
+              <a class="pr-row" href={pr.url} rel="noopener noreferrer">
+                <span class="pr-row__num m-mono">#{pr.number}</span>
+                <span class="pr-row__title">{pr.title}</span>
+                <span class="pr-row__stats m-mono">
+                  +{fmt(pr.lines_added)} / -{fmt(pr.lines_removed)}, {fmt(pr.files_changed)} files
+                </span>
+              </a>
+            ))
+          ) : (
+            <p class="proof-empty">No public PRs in the last {proof.window.days} days.</p>
+          )}
+        </div>
+      </section>
+    </>
+  ) : null}
 
   <p class="proof-note">
-    Line counts come from GitHub additions and deletions on listed PRs.
+    Line counts come from GitHub additions and deletions.
   </p>
 </section>
 

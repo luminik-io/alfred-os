@@ -19,7 +19,10 @@ const hasPublicActivity =
   proof.issues.length > 0 ||
   proof.summary.prs_merged > 0 ||
   proof.summary.issues_opened > 0 ||
-  proof.summary.issues_triaged > 0;
+  proof.summary.issues_triaged > 0 ||
+  Number(proof.summary.repo_activity?.prs_merged ?? 0) > 0 ||
+  Number(proof.summary.repo_activity?.issues_opened ?? 0) > 0 ||
+  Number(proof.summary.repo_activity?.files_changed ?? 0) > 0;
 ---
 
 <MarketingLayout
