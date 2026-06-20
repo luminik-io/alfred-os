@@ -3,7 +3,7 @@
   "source": {
     "repo": "luminik-io/alfred-os",
     "url": "https://github.com/luminik-io/alfred-os",
-    "note": "Public Alfred activity from GitHub. PRs require an Alfred branch prefix or shipped label, and Dependabot is excluded. Issues require an agent:* label. The committed JSON is a seed; main-branch site builds refresh it before deploy."
+    "note": "Public Alfred activity from GitHub. Dependabot is excluded. The committed JSON is a seed; main-branch site builds refresh it before deploy."
   },
   "window": {
     "days": 30,

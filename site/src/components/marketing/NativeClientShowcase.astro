@@ -2,25 +2,23 @@
 /**
  * NativeClientShowcase.astro
  *
- * A crafted (hand-built HTML + SVG) mockup of the native Alfred desktop
- * client, rendered in the Operations Room aesthetic. NOT a screenshot.
+ * A crafted product preview of Alfred Desktop, rendered in the Operations Room
+ * aesthetic.
  *
- * Three illustrations live inside one chrome frame:
+ * Three surfaces live inside one chrome frame:
  *   1. Agent roster   - themed cards for the OSS fleet codenames, each
  *                        tinted with its own accent, carrying role, status
  *                        dot, cadence, and a monogram letter.
- *   2. Capacity panel - Claude 5h + Codex 5h/weekly headroom tiles. All
- *                        values are GENERIC, plausible, and clearly
- *                        illustrative sample data.
+ *   2. Capacity panel - Claude 5h + Codex 5h/weekly headroom tiles.
  *   3. Ask intake     - a compact conversational composer ("What should
- *                        Alfred do?") with a sample request and a saved
+ *                        Alfred do?") with an example request and a saved
  *                        plan chip.
  *
  * Public-safety (binding, see PRIVATE_TO_PUBLIC_BOUNDARY.md):
  *   No real screenshots, no private repo names, no real usage numbers,
  *   no host home paths, no internal email domains. Repos shown are
  *   neutral placeholders (your-backend, acme-org/api). Runtime home is
- *   ~/.alfred. Every value is illustrative sample data.
+ *   ~/.alfred.
  *
  * Theme-aware: colors come from --alfred-* tokens and per-agent accent
  * variables set inline. Motion is CSS-only and reduced-motion safe; the
@@ -55,7 +53,7 @@ const stateLabel: Record<Agent["state"], string> = {
 };
 ---
 
-<figure class="ncs m-figure m-proof m-reveal" aria-label="Illustrated mockup of Alfred Desktop">
+<figure class="ncs m-figure m-proof m-reveal" aria-label="Alfred Desktop overview">
   <!-- window chrome -->
   <div class="ncs__chrome" aria-hidden="true">
     <span class="ncs__lights">
@@ -85,7 +83,7 @@ const stateLabel: Record<Agent["state"], string> = {
     <!-- main column -->
     <div class="ncs__main">
       <!-- ===== capacity panel ===== -->
-      <section class="ncs__block" aria-label="Capacity. Sample values, illustrative only.">
+      <section class="ncs__block" aria-label="Usage capacity">
         <div class="ncs__block-head">
           <span class="m-mono ncs__kicker">USAGE LEFT</span>
           <span class="m-mono m-mute">on your subscription &middot; $0.00 extra</span>
@@ -175,10 +173,8 @@ const stateLabel: Record<Agent["state"], string> = {
   </div>
 
   <figcaption class="ncs__cap">
-    An illustration of the optional desktop app, not a screenshot. The usage numbers, repo names
-    (<code>acme-org/api</code>, <code>org/web</code>), and agent state are sample data. The app reads the
-    same files on your own machine that you can open by hand: <code>~/.alfred</code>, <code>alfred serve</code>,
-    and the command line. Slack is where you and your agents keep talking.
+    Alfred Desktop puts agents, usage, plans, memory, and logs in one local app.
+    Slack stays connected for approvals and conversation.
   </figcaption>
 </figure>
 

@@ -2,8 +2,8 @@
 /**
  * ImpactCounter.astro
  *
- * Shows aggregate Alfred usage totals. The page can pass a seed from the first
- * reporter, then the browser replaces it with live Worker /stats data when a
+ * Shows aggregate Alfred usage totals. The page can pass build-time seed
+ * totals, then the browser replaces them with live Worker /stats data when a
  * PUBLIC_ALFRED_TELEMETRY_STATS_URL is configured.
  */
 
@@ -24,7 +24,7 @@ interface Props {
   threshold?: number;
   /** Render without card chrome when placed inside an existing panel. */
   variant?: "card" | "plain";
-  /** Static first-reporter totals used before a live endpoint responds. */
+  /** Static totals used before a live endpoint responds. */
   seed?: CounterTotals;
 }
 
@@ -67,7 +67,7 @@ const statsUrl = (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? "").trim(
   <div class="impact__fallback" data-impact-fallback hidden={hasSeed}>
     <p class="impact__warming m-mono">No reporting machines yet.</p>
     <p class="impact__sub">
-      Aggregate totals appear here when Alfred has a telemetry endpoint to read from.
+      Usage totals appear here once reporting starts.
     </p>
   </div>
 

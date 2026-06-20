@@ -129,8 +129,7 @@ const proof = {
     note:
       "Aggregate-only snapshot from GitHub data visible to the site build token. " +
       "The source repos stay in Actions config and are not committed here. " +
-      "PRs count when they carry an agent label or known Alfred branch prefix. " +
-      "Issues count when they carry an agent:* label.",
+      "PRs and issues count only when they carry configured Alfred signals.",
   },
   window: {
     days: DAYS,

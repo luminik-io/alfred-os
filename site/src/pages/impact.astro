@@ -1,13 +1,11 @@
 ---
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 import Hero from "../components/marketing/Hero.astro";
-import SectionHeader from "../components/marketing/SectionHeader.astro";
 import ImpactCounter from "../components/marketing/ImpactCounter.astro";
 import ImpactProofBoard from "../components/marketing/ImpactProofBoard.astro";
 import proof from "../data/impact-proof.json";
 import productProof from "../data/luminik-product-proof.json";
 
-const fmt = (n: number) => n.toLocaleString("en-US");
 const productProofGenerated = productProof.generated_at.slice(0, 10);
 const linesChanged = productProof.summary.lines_added + productProof.summary.lines_removed;
 ---
@@ -18,69 +16,31 @@ const linesChanged = productProof.summary.lines_added + productProof.summary.lin
   path="/impact/"
 >
   <Hero
-    eyebrow="ALFRED IN USE"
+    eyebrow="ALFRED IMPACT"
     headline="What Alfred has shipped."
-    sub={`In the last ${productProof.window.days} days, Alfred has helped ship real product work across Luminik repos. This page starts with the Luminik machine as the first reporter; more reporting machines can roll into the same aggregate counter.`}
+    sub="Merged PRs, issues opened, lines changed, files changed, and reporting machines. Updated daily."
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
-    secondaryCta={{ label: "Read telemetry docs", href: "/reference/telemetry/" }}
+    secondaryCta={{ label: "How reporting works", href: "/reference/telemetry/" }}
   >
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
         <span class="m-eyebrow">LAST {productProof.window.days} DAYS</span>
         <span class="m-mono m-mute">updated {productProofGenerated}</span>
       </div>
-      <div class="hero-proof">
-        <span>{fmt(productProof.summary.agent_prs_merged)}</span>
-        <p>PRs merged by Alfred</p>
-      </div>
-      <div class="hero-proof__grid">
-        <div>
-          <span>{fmt(linesChanged)}</span>
-          <p>lines changed</p>
-        </div>
-        <div>
-          <span>1</span>
-          <p>machine reporting</p>
-        </div>
-      </div>
+      <ImpactCounter
+        variant="plain"
+        seed={{
+          installs: 1,
+          prs_merged: productProof.summary.agent_prs_merged,
+          issues_opened: productProof.summary.agent_issues_opened,
+          lines_changed: linesChanged,
+          files_changed: productProof.summary.files_changed,
+          updated_at: productProof.generated_at,
+        }}
+      />
     </div>
   </Hero>
-
-  <section class="m-section m-section--soft">
-    <div class="m-container product-proof">
-      <div class="product-proof__copy">
-        <SectionHeader
-          eyebrow="SHIPPING TOTALS"
-          title="The first reporter is already live."
-          lede={`These numbers come from the Alfred setup running on this machine across ${productProof.summary.repos_scanned} Luminik product repos. The site build refreshes them automatically from GitHub, and the published file keeps aggregate totals only.`}
-          reveal={false}
-        />
-        <p class="product-proof__note">
-          Anonymous usage reporting is on by default when an endpoint is configured.
-          Turn it off with <span class="m-mono">alfred telemetry off</span>. Alfred sends
-          counts, not repo names, code, prompts, titles, branches, or people.
-        </p>
-      </div>
-      <div class="product-proof__panel" aria-label="Aggregate Alfred shipping metrics">
-        <div class="product-proof__head">
-          <span class="m-eyebrow">LAST {productProof.window.days} DAYS</span>
-          <span class="m-mono m-mute">updated {productProofGenerated}</span>
-        </div>
-        <ImpactCounter
-          variant="plain"
-          seed={{
-            installs: 1,
-            prs_merged: productProof.summary.agent_prs_merged,
-            issues_opened: productProof.summary.agent_issues_opened,
-            lines_changed: linesChanged,
-            files_changed: productProof.summary.files_changed,
-            updated_at: productProof.generated_at,
-          }}
-        />
-      </div>
-    </div>
-  </section>
 
   <section class="m-section">
     <div class="m-container">
@@ -103,77 +63,8 @@ const linesChanged = productProof.summary.lines_added + productProof.summary.lin
     padding-bottom: 12px;
     border-bottom: 1px solid var(--alfred-border);
   }
-  .hero-proof {
-    text-align: center;
-    padding: 12px 0 4px;
-  }
-  .hero-proof span,
-  .hero-proof__grid span {
-    color: var(--alfred-accent);
-    font-family: var(--font-display);
-    font-size: clamp(42px, 7vw, 72px);
-    font-weight: 700;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-  }
-  .hero-proof p,
-  .hero-proof__grid p {
-    margin-top: 8px;
-    color: var(--alfred-mute);
-    font-size: 13px;
-  }
-  .hero-proof__grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .hero-proof__grid div {
-    border: 1px solid var(--alfred-border);
-    border-radius: var(--radius);
-    padding: 14px 12px;
-    text-align: center;
-  }
-  .hero-proof__grid span {
-    font-size: 24px;
-  }
-  .product-proof {
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 40px;
-    align-items: center;
-  }
-  .product-proof__copy :global(.m-section-header) {
-    margin-bottom: 18px;
-  }
-  .product-proof__note {
-    color: var(--alfred-text);
-    font-size: 15px;
-    line-height: 1.6;
-  }
-  .product-proof__panel {
-    min-width: 0;
-    padding: 22px;
-    border: 1px solid var(--alfred-border-strong);
-    border-radius: var(--radius);
-    background: var(--alfred-black);
-    box-shadow: 0 24px 90px rgba(0, 0, 0, 0.22);
-  }
-  .product-proof__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--alfred-border);
-  }
-  @media (max-width: 980px) {
-    .product-proof {
-      grid-template-columns: 1fr;
-    }
-  }
   @media (max-width: 520px) {
-    .impact-panel__head,
-    .product-proof__head {
+    .impact-panel__head {
       align-items: flex-start;
       flex-direction: column;
     }

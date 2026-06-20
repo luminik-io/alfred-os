@@ -246,27 +246,9 @@ Alfred can report anonymous aggregate counts for the public
 endpoint is configured. Turn it off any time with `alfred telemetry off` or
 `ALFRED_TELEMETRY_ENABLED=0`. If no endpoint is configured, nothing is sent.
 
-The payload is intentionally small:
-
-```json
-{
-  "install_id": "a-random-opaque-token",
-  "period": "lifetime",
-  "prs_opened": 42,
-  "prs_merged": 31,
-  "prs_reviewed": 18,
-  "issues_opened": 19,
-  "files_changed": 1287,
-  "lines_changed": 0,
-  "loc_added": 1287
-}
-```
-
-`loc_added` is the historical wire alias for `files_changed`. Local reporters
-send `lines_changed: 0` until Alfred stores per-line additions/deletions in the
-fleet brain. Alfred never sends repo names, file paths, code, prompts, titles,
-branches, people, hostnames, or billing data. A reporting failure never breaks a
-firing.
+Alfred reports counts only. It does not send repo names, file paths, code,
+prompts, titles, branches, people, hostnames, or billing data. A reporting
+failure never breaks a firing.
 
 Configure or change the endpoint:
 

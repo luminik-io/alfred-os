@@ -5,7 +5,8 @@ description: Aggregate usage-count reference for Alfred.
 
 Alfred can send anonymous aggregate usage totals to an ingest endpoint you
 configure. Reporting is enabled unless you opt out, but nothing is sent until
-`ALFRED_TELEMETRY_URL` exists.
+`ALFRED_TELEMETRY_URL` exists. The totals help the Impact page show how Alfred
+is being used without exposing private work.
 
 ## CLI
 
@@ -44,13 +45,12 @@ people, hostnames, or billing data are sent.
 
 ## Public Counter
 
-The `/impact/` page shows the first reporter from Luminik's Alfred setup and can
-replace those seed numbers with live aggregate totals from
-`PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
+The `/impact/` page can use build-time seed totals and replace them with live
+aggregate totals from `PUBLIC_ALFRED_TELEMETRY_STATS_URL`.
 
-Today, the Luminik seed has line counts from GitHub. Anonymous local reporters
-send `lines_changed: 0` until Alfred stores per-line additions/deletions in the
-local fleet brain.
+Build-time seed totals can include line counts from GitHub. Anonymous local
+reporters send `lines_changed: 0` until Alfred stores per-line
+additions/deletions in the local fleet brain.
 
 The public GitHub examples on `/impact/` are separate. They use public GitHub
 metadata for `luminik-io/alfred-os`.

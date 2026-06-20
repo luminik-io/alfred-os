@@ -1,7 +1,8 @@
 # Telemetry
 
 Alfred can send anonymous aggregate usage totals to an ingest endpoint you
-configure. Those totals power the public Impact page.
+configure. Those totals power the public Impact page, so people can see how
+Alfred is being used without exposing private work.
 
 The reporter is enabled unless you opt out, but it sends only when
 `ALFRED_TELEMETRY_URL` is set. Without an endpoint, the scheduled reporter exits

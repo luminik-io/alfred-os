@@ -61,24 +61,24 @@ const hasRuntimeProof =
 
 const metrics = [
   {
-    label: "Alfred PRs merged",
+    label: "PRs merged",
     value: fmt(proof.summary.prs_merged),
-    detail: "Public links",
+    detail: "Open-source examples",
   },
   {
-    label: "Alfred issues opened",
+    label: "Issues opened",
     value: fmt(proof.summary.issues_opened),
-    detail: "Public issues",
+    detail: "Open-source examples",
   },
   {
     label: "Lines added",
     value: fmt(proof.summary.lines_added),
-    detail: "On listed PRs",
+    detail: "Listed PRs",
   },
   {
     label: "Files changed",
     value: fmt(proof.summary.files_changed),
-    detail: "On listed PRs",
+    detail: "Listed PRs",
   },
 ];
 ---
@@ -87,24 +87,20 @@ const metrics = [
   <div class="proof-board__meta">
     <div>
       <span class="m-eyebrow">OPEN-SOURCE REPO</span>
-      <h2 class="m-display-md">Public Alfred examples.</h2>
+      <h2 class="m-display-md">Open-source activity.</h2>
     </div>
     <p>
-      Last {proof.window.days} days from{" "}
-      <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>.
-      PRs appear here when GitHub carries a clear Alfred branch or label.
-      Issues appear when the repo labels them for an Alfred agent.
-      Updated {generated}.
+      Latest public Alfred examples from{" "}
+      <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>,
+      updated {generated}.
     </p>
   </div>
 
   {!hasRuntimeProof && proof.summary.repo_activity ? (
     <div class="proof-callout" role="note">
-      <span class="m-eyebrow">NO LINKED PRS YET</span>
+      <span class="m-eyebrow">NO PUBLIC EXAMPLES YET</span>
       <p>
-        The last {proof.window.days} days have no public Alfred PR or issue links yet.
-        The repo still merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during the same period.
-        Public links appear here when the repo carries a clear Alfred signal.
+        No public Alfred examples were found in the last {proof.window.days} days.
       </p>
     </div>
   ) : null}
@@ -137,14 +133,14 @@ const metrics = [
             </div>
           ))
         ) : (
-          <p class="proof-empty">No linked public PRs in the last {proof.window.days} days.</p>
+          <p class="proof-empty">No public Alfred PRs in the last {proof.window.days} days.</p>
         )}
       </div>
     </section>
 
     <section class="proof-panel" aria-label="Recently opened issues">
       <div class="proof-panel__head">
-        <h3 class="m-h3">Recent agent-labeled issues</h3>
+        <h3 class="m-h3">Recent Alfred issues</h3>
         <span class="m-mono m-mute">{fmt(proof.summary.issues_triaged)} triaged</span>
       </div>
       <div class="issue-list">
@@ -156,7 +152,7 @@ const metrics = [
             </a>
           ))
         ) : (
-          <p class="proof-empty">No linked public issues in the last {proof.window.days} days.</p>
+          <p class="proof-empty">No public Alfred issues in the last {proof.window.days} days.</p>
         )}
       </div>
     </section>
@@ -179,19 +175,13 @@ const metrics = [
           </a>
         ))
       ) : (
-        <p class="proof-empty">No linked public PRs in the last {proof.window.days} days.</p>
+        <p class="proof-empty">No public Alfred PRs in the last {proof.window.days} days.</p>
       )}
     </div>
   </section>
 
   <p class="proof-note">
     Line counts come from GitHub additions and deletions on listed PRs.
-    GitHub includes generated files and lockfiles in those stats.
-    {proof.summary.repo_activity ? (
-      <>
-        {" "}The whole public repo merged {fmt(proof.summary.repo_activity.prs_merged)} PRs during this period. This board shows the subset with a clear Alfred signal.
-      </>
-    ) : null}
   </p>
 </section>
 
