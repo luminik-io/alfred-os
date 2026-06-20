@@ -512,11 +512,24 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     )
     poster = RecordingPoster(ok=True)
     env = {pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"}
+    registrar_calls = []
 
-    result = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "custom-install-token"
+
+    result = pt.report_once(
+        env=env,
+        brain=brain,
+        poster=poster,
+        registrar=registrar,
+        now=FIXED,
+    )
 
     assert result["status"] == "sent"
     assert result["sent"] is True
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == "https://telemetry.example.com/ingest"
     assert len(poster.calls) == 1
     url, payload = poster.calls[0]
     assert url == "https://telemetry.example.com/ingest"
@@ -547,6 +560,42 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     assert payload["lines_changed"] == 0
     assert payload["loc_added"] == 3
     assert isinstance(payload["install_id"], str) and payload["install_id"]
+
+
+def test_report_once_custom_url_registers_even_with_persisted_hosted_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    assert pt.persist_token("hosted-token")
+
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "custom-install-token"
+
+    env = {pt.URL_ENV: "https://custom.example.com/ingest"}
+    result = pt.report_once(env=env, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result["status"] == "sent"
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == "https://custom.example.com/ingest"
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
+
+
+def test_report_once_custom_url_uses_explicit_shared_token_without_registration(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+
+    def registrar(url, install_id):
+        raise AssertionError("custom URL with explicit shared token should not register")
+
+    env = {pt.URL_ENV: "https://custom.example.com/ingest", pt.TOKEN_ENV: "shared-token"}
+    result = pt.report_once(env=env, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result["status"] == "sent"
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
 
 
 def test_report_once_failed_post_returns_failed_not_raised(tmp_path, monkeypatch):
@@ -1104,13 +1153,20 @@ def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeyp
     install_id_path.parent.mkdir()
     install_id_path.write_text("existing-token\n", encoding="utf-8")
     poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "delete-token"
 
     result = pt.clear_report(
         env={pt.URL_ENV: "https://telemetry.example.com/ingest"},
         poster=poster,
+        registrar=registrar,
     )
 
     assert result == {"status": "sent", "sent": True}
+    assert registrar_calls == [("https://telemetry.example.com/ingest", "existing-token")]
     assert poster.calls == [
         (
             "https://telemetry.example.com/ingest",

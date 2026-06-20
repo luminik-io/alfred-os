@@ -181,6 +181,12 @@ def trusted_telemetry_token(env: Mapping[str, str] | None = None) -> str:
     return source.get(TRUSTED_TOKEN_ENV, "").strip()
 
 
+def configured_telemetry_token(env: Mapping[str, str] | None = None) -> str:
+    """Explicit shared ingest token from the environment, not persisted state."""
+    source = env if env is not None else os.environ
+    return source.get(TOKEN_ENV, "").strip()
+
+
 def default_telemetry_url(env: Mapping[str, str] | None = None) -> str:
     source = env if env is not None else os.environ
     configured = source.get(DEFAULT_URL_ENV)
@@ -868,9 +874,10 @@ def report_once(
         payload = build_payload(install_id, counts, period)
         # Default poster carries the optional ingest token; an injected poster
         # (tests) keeps the simple (url, payload) signature.
-        token = telemetry_token(source)
+        use_default = uses_default_collector(url, source)
+        token = telemetry_token(source) if use_default else configured_telemetry_token(source)
         trusted_token = trusted_telemetry_token(source)
-        if uses_default_collector(url, source) and not token:
+        if not token:
             register = registrar or register_install
             token = register(url, install_id) or ""
             if not token:
@@ -902,6 +909,7 @@ def clear_report(
     env: Mapping[str, str] | None = None,
     install_id: str | None = None,
     poster: Callable[[str, dict[str, Any]], bool] | None = None,
+    registrar: Callable[[str, str], str | None] | None = None,
 ) -> dict[str, Any]:
     """Ask the collector to remove this install's previous contribution.
 
@@ -918,10 +926,14 @@ def clear_report(
         return {"status": "no_install_id", "sent": False}
     try:
         payload = build_tombstone_payload(resolved_install_id)
-        token = telemetry_token(source)
+        use_default = uses_default_collector(url, source)
+        token = telemetry_token(source) if use_default else configured_telemetry_token(source)
         trusted_token = trusted_telemetry_token(source)
-        if uses_default_collector(url, source) and not token:
-            return {"status": "no_token", "sent": False}
+        if not token:
+            register = registrar or register_install
+            token = register(url, resolved_install_id) or ""
+            if not token:
+                return {"status": "no_token", "sent": False}
         send = poster or (lambda u, p: _post(u, p, token=token, trusted_token=trusted_token))
         ok = bool(send(url, payload))
         return {"status": "sent" if ok else "failed", "sent": ok}
