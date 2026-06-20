@@ -294,6 +294,12 @@ def _count_rows(
             # previous request: it has hit its own internal cap (or a list clamp).
             # Honest stop. The exact count_* path avoids this; see the docstring.
             return matched
+        if limit >= _COUNT_HARD_LIMIT:
+            # The caller has observed the largest raw prefix we are willing to
+            # request. A sparse predicate can keep matched far below the hard
+            # cap even when raw history is huge; do not keep growing the raw
+            # request past the same ceiling we apply to reported fields.
+            return matched
         last_raw = got
         limit += _COUNT_PAGE
 

@@ -691,6 +691,20 @@ def test_count_rows_keys_continuation_on_raw_page_not_filtered_matches():
     )
 
 
+def test_count_rows_stops_sparse_predicate_at_raw_hard_cap():
+    calls: list[int] = []
+
+    def lister(limit: int):
+        calls.append(limit)
+        return [FakePR("open", authored=False)] * limit
+
+    total = pt._count_rows(lister, pt._row_is_agent_authored)
+
+    assert total == 0
+    assert calls[-1] == pt._COUNT_HARD_LIMIT
+    assert all(limit <= pt._COUNT_HARD_LIMIT for limit in calls)
+
+
 def test_derive_counts_no_early_stop_when_filter_removes_rows_list_fallback():
     # End-to-end via derive_counts. A brain with NO count_* method holds more than
     # one page of PRs, half authored and half operator-opened. The list fallback
