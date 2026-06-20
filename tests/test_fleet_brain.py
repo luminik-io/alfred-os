@@ -34,6 +34,7 @@ sys.path.insert(0, str(_REPO / "lib"))
 from fleet_brain import FileTouch, FleetBrain, Lesson, SQLiteStore  # noqa: E402
 from fleet_brain.schema import (  # noqa: E402
     SCHEMA_VERSION,
+    _add_column_if_missing,
     applied_version,
     ensure_schema,
 )
@@ -120,6 +121,26 @@ def test_ensure_schema_adds_github_line_columns_to_existing_table(db_path: Path)
         assert {"additions", "deletions"}.issubset(cols)
     finally:
         conn.close()
+
+
+def test_add_column_if_missing_tolerates_concurrent_duplicate_column() -> None:
+    class RacingConnection:
+        def __init__(self) -> None:
+            self.alter_attempts = 0
+
+        def execute(self, sql: str):
+            if sql.startswith("PRAGMA table_info"):
+                return [(0, "id")]
+            if sql.startswith("ALTER TABLE"):
+                self.alter_attempts += 1
+                raise sqlite3.OperationalError("duplicate column name: additions")
+            raise AssertionError(sql)
+
+    conn = RacingConnection()
+
+    _add_column_if_missing(conn, "github_items", "additions", "INTEGER NOT NULL DEFAULT 0")
+
+    assert conn.alter_attempts == 1
 
 
 def test_memory_doctor_warns_for_v2_database_missing_additive_tables(tmp_path: Path) -> None:

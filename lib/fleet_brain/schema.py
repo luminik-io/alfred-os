@@ -329,11 +329,19 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, dd
     """Future migration helper. Reserved for v1.x additive changes.
 
     Inspects ``PRAGMA table_info`` and runs ``ALTER TABLE ... ADD
-    COLUMN`` only when the column is absent. Kept private because
-    callers should add new tables instead of mutating old ones until
-    the v2 PGLite/AGE upgrade lands a real migration framework.
+    COLUMN`` only when the column is absent. A concurrent Alfred process
+    may add the same column between the PRAGMA read and ALTER; SQLite
+    reports that as ``duplicate column name``, which is safe to ignore.
+    Kept private because callers should add new tables instead of
+    mutating old ones until a real migration framework lands.
     """
     cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column in cols:
         return
-    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    except sqlite3.OperationalError as exc:
+        message = str(exc).lower()
+        if "duplicate column name" in message and column.lower() in message:
+            return
+        raise
