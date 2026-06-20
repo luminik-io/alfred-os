@@ -919,14 +919,17 @@ def report_once(
         # (tests) keeps the simple (url, payload) signature.
         token = telemetry_token(source, endpoint=url)
         trusted_token = trusted_telemetry_token_for_url(url, source)
+        registration_failed = False
         if not token:
             register = registrar or register_install
             token = register(url, install_id) or ""
             if not token:
-                return {"status": "failed", "sent": False, "registration": "failed"}
+                if is_official_hosted_collector(url):
+                    return {"status": "failed", "sent": False, "registration": "failed"}
+                registration_failed = True
         send = poster or (lambda u, p: _post(u, p, token=token, trusted_token=trusted_token))
         ok = bool(send(url, payload))
-        return {
+        result = {
             "status": "sent" if ok else "failed",
             "sent": ok,
             "period": period,
@@ -941,6 +944,9 @@ def report_once(
                 "loc_added": payload["loc_added"],
             },
         }
+        if registration_failed:
+            result["registration"] = "failed"
+        return result
     except Exception as exc:  # fail-soft by contract: a telemetry hiccup is silent
         logger.debug("telemetry: report_once swallowed error: %s", exc)
         return {"status": "error", "sent": False}
@@ -973,7 +979,7 @@ def clear_report(
         if not token:
             register = registrar or register_install
             token = register(url, resolved_install_id) or ""
-            if not token:
+            if not token and is_official_hosted_collector(url):
                 return {"status": "no_token", "sent": False}
         send = poster or (lambda u, p: _post(u, p, token=token, trusted_token=trusted_token))
         ok = bool(send(url, payload))

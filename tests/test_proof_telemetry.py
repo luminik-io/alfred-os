@@ -582,6 +582,42 @@ def test_report_once_custom_url_registers_even_with_persisted_hosted_token(tmp_p
     assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
 
 
+def test_report_once_custom_url_falls_back_when_registration_is_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return None
+
+    result = pt.report_once(
+        env={pt.URL_ENV: "https://custom.example.com/ingest"},
+        brain=FakeBrain(),
+        poster=poster,
+        registrar=registrar,
+    )
+
+    assert result["status"] == "sent"
+    assert result["sent"] is True
+    assert result["registration"] == "failed"
+    assert len(registrar_calls) == 1
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
+
+
+def test_report_once_hosted_registration_failure_does_not_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+
+    def registrar(_url, _install_id):
+        return None
+
+    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result == {"status": "failed", "sent": False, "registration": "failed"}
+    assert poster.calls == []
+
+
 def test_report_once_default_url_registers_even_with_persisted_custom_token(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     assert pt.persist_token(
@@ -1255,6 +1291,45 @@ def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeyp
             },
         )
     ]
+
+
+def test_clear_report_custom_url_falls_back_when_registration_is_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return None
+
+    result = pt.clear_report(
+        env={pt.URL_ENV: "https://custom.example.com/ingest"},
+        poster=poster,
+        registrar=registrar,
+    )
+
+    assert result == {"status": "sent", "sent": True}
+    assert registrar_calls == [("https://custom.example.com/ingest", "existing-token")]
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
+
+
+def test_clear_report_hosted_registration_failure_returns_no_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    poster = RecordingPoster(ok=True)
+
+    def registrar(_url, _install_id):
+        return None
+
+    result = pt.clear_report(env={}, poster=poster, registrar=registrar)
+
+    assert result == {"status": "no_token", "sent": False}
+    assert poster.calls == []
 
 
 def test_clear_report_does_not_create_install_id(tmp_path, monkeypatch):
