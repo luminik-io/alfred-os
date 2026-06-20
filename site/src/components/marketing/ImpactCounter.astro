@@ -15,6 +15,9 @@ interface CounterTotals {
   loc_added?: number;
   files_changed?: number;
   issues_opened?: number;
+  issues_closed?: number;
+  lines_added?: number;
+  lines_removed?: number;
   lines_changed?: number;
   updated_at?: string | null;
 }
@@ -42,6 +45,9 @@ const seedTotals = {
   prs_reviewed: numberOrZero(seed.prs_reviewed),
   files_changed: numberOrZero(seed.files_changed ?? seed.loc_added),
   issues_opened: numberOrZero(seed.issues_opened),
+  issues_closed: numberOrZero(seed.issues_closed),
+  lines_added: numberOrZero(seed.lines_added),
+  lines_removed: numberOrZero(seed.lines_removed),
   lines_changed: numberOrZero(seed.lines_changed),
   updated_at: seed.updated_at ?? null,
 };
@@ -52,6 +58,9 @@ const hasSeed =
   seedTotals.prs_reviewed > 0 ||
   seedTotals.files_changed > 0 ||
   seedTotals.issues_opened > 0 ||
+  seedTotals.issues_closed > 0 ||
+  seedTotals.lines_added > 0 ||
+  seedTotals.lines_removed > 0 ||
   seedTotals.lines_changed > 0;
 const fmt = (n: number) => n.toLocaleString("en-US");
 
@@ -65,12 +74,12 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
   data-stats-url={statsUrl}
   data-threshold={String(threshold)}
   data-seed={JSON.stringify(seedTotals)}
-  aria-label="Aggregate Alfred usage totals"
+  aria-label="Alfred impact totals"
 >
   <div class="impact__fallback" data-impact-fallback hidden={hasSeed}>
-    <p class="impact__warming m-mono">No reporting machines yet.</p>
+    <p class="impact__warming m-mono">No active Alfred installs yet.</p>
     <p class="impact__sub">
-      Numbers appear here once reporting starts.
+      Totals appear after the first install shares anonymous counts.
     </p>
   </div>
 
@@ -79,27 +88,43 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
       <span class="impact__num impact__num--main" data-field="prs_merged">{fmt(seedTotals.prs_merged)}</span>
       <p>PRs merged</p>
     </div>
-    <div class="impact__grid" role="list">
+    <div class="impact__stack" role="list">
       <div class="impact__cell" role="listitem">
-        <span class="impact__cellnum" data-field="installs">{fmt(seedTotals.installs)}</span>
-        <span class="impact__celllbl">machines reporting</span>
+        <span class="impact__cellnum impact__pair">
+          <span data-field="issues_opened">{fmt(seedTotals.issues_opened)}</span>
+          <span class="impact__slash">/</span>
+          <span data-field="issues_closed">{fmt(seedTotals.issues_closed)}</span>
+        </span>
+        <span class="impact__celllbl">issues opened / closed</span>
       </div>
       <div class="impact__cell" role="listitem">
         <span class="impact__cellnum" data-field="lines_changed">{fmt(seedTotals.lines_changed)}</span>
         <span class="impact__celllbl">lines changed</span>
       </div>
       <div class="impact__cell" role="listitem">
-        <span class="impact__cellnum" data-field="issues_opened">{fmt(seedTotals.issues_opened)}</span>
-        <span class="impact__celllbl">issues opened</span>
-      </div>
-      <div class="impact__cell" role="listitem">
         <span class="impact__cellnum" data-field="files_changed">{fmt(seedTotals.files_changed)}</span>
         <span class="impact__celllbl">files changed</span>
       </div>
+      <div class="impact__cell impact__cell--muted" role="listitem">
+        <span class="impact__cellnum impact__pair impact__pair--small">
+          <span>+<span data-field="lines_added">{fmt(seedTotals.lines_added)}</span></span>
+          <span class="impact__slash">/</span>
+          <span>-<span data-field="lines_removed">{fmt(seedTotals.lines_removed)}</span></span>
+        </span>
+        <span class="impact__celllbl">added / removed</span>
+      </div>
     </div>
-    <p class="impact__foot m-mono m-mute" data-impact-updated>
-      {seedTotals.updated_at ? `Updated ${seedTotals.updated_at.slice(0, 10)}` : ""}
-    </p>
+    <div class="impact__foot">
+      <span>
+        <strong data-field="installs">{fmt(seedTotals.installs)}</strong>
+        <span data-impact-install-label>
+          {seedTotals.installs === 1 ? " active Alfred install" : " active Alfred installs"}
+        </span>
+      </span>
+      <span class="m-mono m-mute" data-impact-updated>
+        {seedTotals.updated_at ? `Updated ${seedTotals.updated_at.slice(0, 10)}` : ""}
+      </span>
+    </div>
   </div>
 </section>
 
@@ -133,18 +158,25 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
       .then((data) => {
         const merged = Number(data?.prs_merged ?? 0);
-        const opened = Number(data?.prs_opened ?? 0);
         const installs = Number(data?.installs ?? 0);
-        const proofFloor = Math.max(merged, opened, installs);
+        const filesChanged = Number(data?.files_changed ?? data?.loc_added ?? 0);
+        const issuesOpened = Number(data?.issues_opened ?? 0);
+        const proofFloor = Math.max(merged, installs, filesChanged, issuesOpened);
         if (!Number.isFinite(proofFloor) || proofFloor <= 0 || proofFloor < threshold) return;
 
-        setField("prs_opened", opened);
         setField("prs_merged", merged);
-        setField("prs_reviewed", Number(data?.prs_reviewed ?? 0));
         setField("installs", installs);
-        setField("files_changed", Number(data?.files_changed ?? data?.loc_added ?? 0));
-        setField("issues_opened", Number(data?.issues_opened ?? 0));
+        setField("files_changed", filesChanged);
+        setField("issues_opened", issuesOpened);
         setField("lines_changed", Number(data?.lines_changed ?? 0));
+        if (data?.issues_closed !== undefined) setField("issues_closed", Number(data.issues_closed ?? 0));
+        if (data?.lines_added !== undefined) setField("lines_added", Number(data.lines_added ?? 0));
+        if (data?.lines_removed !== undefined) setField("lines_removed", Number(data.lines_removed ?? 0));
+
+        const installLabel = root.querySelector<HTMLElement>("[data-impact-install-label]");
+        if (installLabel) {
+          installLabel.textContent = installs === 1 ? " active Alfred install" : " active Alfred installs";
+        }
 
         const updated = root.querySelector<HTMLElement>("[data-impact-updated]");
         if (updated && typeof data?.updated_at === "string") {
@@ -198,9 +230,9 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
   }
   .impact__main {
     text-align: center;
-    padding-bottom: 18px;
+    padding-bottom: 20px;
     border-bottom: 1px solid var(--alfred-border);
-    margin-bottom: 18px;
+    margin-bottom: 16px;
   }
   .impact__main p {
     margin: 8px 0 0;
@@ -215,12 +247,12 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
   .impact__num--main {
     display: block;
     font-family: var(--font-display);
-    font-size: clamp(48px, 8vw, 84px);
+    font-size: clamp(54px, 8vw, 86px);
     line-height: 1;
   }
-  .impact__grid {
+  .impact__stack {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
   .impact__cell {
@@ -232,31 +264,64 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
     flex-direction: column;
     gap: 6px;
   }
+  .impact__cell--muted {
+    background: color-mix(in srgb, var(--alfred-surface) 82%, transparent);
+  }
   .impact__cellnum {
     color: var(--alfred-text-bright);
-    font-size: 24px;
+    font-size: clamp(22px, 3vw, 28px);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
+    line-height: 1.08;
   }
   .impact__celllbl {
     color: var(--alfred-mute);
     font-size: 13px;
   }
+  .impact__pair {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .impact__pair--small {
+    font-size: clamp(18px, 2vw, 22px);
+  }
+  .impact__slash {
+    color: var(--alfred-mute);
+    font-weight: 500;
+  }
   .impact__foot {
-    margin-top: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .impact__foot {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--alfred-border);
+    color: var(--alfred-mute);
     font-size: 12px;
   }
-  @media (max-width: 760px) {
-    .impact__grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+  .impact__foot strong {
+    color: var(--alfred-text-bright);
+    font-weight: 700;
   }
-  @media (max-width: 460px) {
+  @media (max-width: 640px) {
     .impact {
       padding: 22px;
     }
-    .impact__grid {
+    .impact__stack {
       grid-template-columns: 1fr;
+    }
+    .impact__pair {
+      flex-wrap: wrap;
+      white-space: normal;
+    }
+    .impact__foot {
+      align-items: flex-start;
+      flex-direction: column;
     }
   }
 </style>

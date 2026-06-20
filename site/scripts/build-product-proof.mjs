@@ -59,8 +59,11 @@ const from = new Date(now.getTime() - DAYS * 24 * 60 * 60 * 1000);
 const dateOnly = (date) => date.toISOString().slice(0, 10);
 const toDate = dateOnly(new Date(now.getTime() + 24 * 60 * 60 * 1000));
 const windowRange = `${dateOnly(from)}..${toDate}`;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const rows = [];
+const agentPrMergedDates = [];
 
 for (const [repoIndex, repo] of REPOS.entries()) {
   const prs = (await searchGitHub(`repo:${repo} is:pr is:merged merged:${windowRange}`)).filter(
@@ -84,6 +87,7 @@ for (const [repoIndex, repo] of REPOS.entries()) {
   const agentPrs = prs.filter(isAgentPr);
   const agentIssuesOpened = openedIssues.filter(isAgentIssue);
   const agentIssuesClosed = closedIssues.filter(isAgentIssue);
+  agentPrMergedDates.push(...agentPrs.map((pr) => pr.mergedAt).filter(Boolean));
   rows.push({
     agent_prs_merged: agentPrs.length,
     agent_issues_opened: agentIssuesOpened.length,
@@ -137,6 +141,7 @@ const proof = {
     to: now.toISOString(),
   },
   summary,
+  trend: buildWeeklyTrend(agentPrMergedDates),
 };
 
 mkdirSync(dirname(OUT), { recursive: true });
@@ -242,6 +247,30 @@ function sum(items, field) {
 function isWithinWindow(value) {
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) && timestamp >= from.getTime() && timestamp <= now.getTime();
+}
+
+function buildWeeklyTrend(values) {
+  const bucketCount = Math.max(1, Math.ceil(DAYS / 7));
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const start = new Date(from.getTime() + index * WEEK_MS);
+    return {
+      week: shortDate(start),
+      prs_merged: 0,
+    };
+  });
+  for (const value of values) {
+    const timestamp = new Date(value).getTime();
+    if (!Number.isFinite(timestamp) || timestamp < from.getTime() || timestamp > now.getTime()) {
+      continue;
+    }
+    const index = Math.min(bucketCount - 1, Math.floor((timestamp - from.getTime()) / WEEK_MS));
+    buckets[index].prs_merged += 1;
+  }
+  return buckets;
+}
+
+function shortDate(date) {
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
 }
 
 function csvEnv(name, fallback, { lowercase = true } = {}) {

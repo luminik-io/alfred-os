@@ -107,7 +107,7 @@ h1, h2, h3, h4 {
   color: var(--alfred-text-bright);
   margin: 0;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 p { margin: 0; }
@@ -319,7 +319,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 20px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .m-brand:hover { text-decoration: none; }
 
@@ -522,7 +522,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   font-weight: 700;
   font-size: 44px;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--alfred-text-bright);
 }
 .m-stat__num .m-stat__plus { color: var(--alfred-accent); }

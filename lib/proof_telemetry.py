@@ -112,7 +112,7 @@ class TelemetryCounts:
     prs_merged: int = 0
     prs_reviewed: int = 0
     issues_opened: int = 0
-    files_changed: int = 0
+    files_changed: int | None = None
     lines_changed: int = 0
     loc_added: int = 0
 
@@ -563,6 +563,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
 
 def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict[str, Any]:
     """Assemble the exact JSON body that goes on the wire. No extra keys."""
+    files_changed = counts.files_changed if counts.files_changed is not None else counts.loc_added
     return {
         "install_id": install_id,
         "period": period,
@@ -570,7 +571,7 @@ def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict
         "prs_merged": _clamp(counts.prs_merged),
         "prs_reviewed": _clamp(counts.prs_reviewed),
         "issues_opened": _clamp(counts.issues_opened),
-        "files_changed": _clamp(counts.files_changed or counts.loc_added),
+        "files_changed": _clamp(files_changed),
         "lines_changed": _clamp(counts.lines_changed),
         "loc_added": _clamp(counts.loc_added),
     }

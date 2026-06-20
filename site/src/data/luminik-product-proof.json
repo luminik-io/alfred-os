@@ -1,24 +1,46 @@
 {
-  "generated_at": "2026-06-19T16:18:15.432Z",
+  "generated_at": "2026-06-20T11:13:17.794Z",
   "source": {
     "label": "Luminik product setup",
     "note": "Aggregate-only snapshot from GitHub data visible to the site build token. The source repos stay in Actions config and are not committed here. PRs and issues count only when they carry configured Alfred signals."
   },
   "window": {
     "days": 30,
-    "from": "2026-05-20T16:18:15.432Z",
-    "to": "2026-06-19T16:18:15.432Z"
+    "from": "2026-05-21T11:13:17.794Z",
+    "to": "2026-06-20T11:13:17.794Z"
   },
   "summary": {
     "repos_scanned": 9,
-    "agent_prs_merged": 304,
-    "agent_issues_opened": 490,
-    "agent_issues_closed": 593,
-    "lines_added": 85200,
-    "lines_removed": 14859,
-    "files_changed": 1069,
-    "total_prs_merged": 1080,
-    "total_issues_opened": 517,
-    "total_issues_closed": 629
-  }
+    "agent_prs_merged": 142,
+    "agent_issues_opened": 442,
+    "agent_issues_closed": 410,
+    "lines_added": 40004,
+    "lines_removed": 10830,
+    "files_changed": 554,
+    "total_prs_merged": 942,
+    "total_issues_opened": 469,
+    "total_issues_closed": 447
+  },
+  "trend": [
+    {
+      "week": "May 21",
+      "prs_merged": 83
+    },
+    {
+      "week": "May 28",
+      "prs_merged": 30
+    },
+    {
+      "week": "Jun 4",
+      "prs_merged": 3
+    },
+    {
+      "week": "Jun 11",
+      "prs_merged": 16
+    },
+    {
+      "week": "Jun 18",
+      "prs_merged": 10
+    }
+  ]
 }

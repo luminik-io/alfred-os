@@ -3,11 +3,15 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
 import Hero from "../components/marketing/Hero.astro";
 import ImpactCounter from "../components/marketing/ImpactCounter.astro";
 import ImpactProofBoard from "../components/marketing/ImpactProofBoard.astro";
+import ImpactTrend from "../components/marketing/ImpactTrend.astro";
 import proof from "../data/impact-proof.json";
 import productProof from "../data/luminik-product-proof.json";
 
 const productProofGenerated = productProof.generated_at.slice(0, 10);
 const linesChanged = productProof.summary.lines_added + productProof.summary.lines_removed;
+const productTrend = Array.isArray((productProof as { trend?: unknown }).trend)
+  ? (productProof as { trend: Array<{ week: string; prs_merged: number }> }).trend
+  : [];
 const hasPublicActivity =
   proof.prs.length > 0 ||
   proof.issues.length > 0 ||
@@ -23,8 +27,8 @@ const hasPublicActivity =
 >
   <Hero
     eyebrow="ALFRED IMPACT"
-    headline="What Alfred has shipped."
-    sub="Daily totals for PRs merged, issues opened, lines changed, files touched, and machines reporting."
+    headline="What Alfred shipped."
+    sub="Last 30 days: merged PRs, issues moved, and code changed across repos where Alfred is working. Updated daily from GitHub."
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
     secondaryCta={{ label: "Telemetry details", href: "/reference/telemetry/" }}
@@ -40,6 +44,9 @@ const hasPublicActivity =
           installs: 1,
           prs_merged: productProof.summary.agent_prs_merged,
           issues_opened: productProof.summary.agent_issues_opened,
+          issues_closed: productProof.summary.agent_issues_closed,
+          lines_added: productProof.summary.lines_added,
+          lines_removed: productProof.summary.lines_removed,
           lines_changed: linesChanged,
           files_changed: productProof.summary.files_changed,
           updated_at: productProof.generated_at,
@@ -48,6 +55,14 @@ const hasPublicActivity =
       />
     </div>
   </Hero>
+
+  {productTrend.length > 0 ? (
+    <section class="m-section impact-section">
+      <div class="m-container">
+        <ImpactTrend trend={productTrend} />
+      </div>
+    </section>
+  ) : null}
 
   {hasPublicActivity ? (
     <section class="m-section">
@@ -77,6 +92,9 @@ const hasPublicActivity =
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0;
+  }
+  .impact-section {
+    padding-top: 72px;
   }
   @media (max-width: 520px) {
     .impact-panel__head {

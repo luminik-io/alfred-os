@@ -106,10 +106,16 @@ const hasPanel = Astro.slots.has("panel");
     color: var(--alfred-text-bright);
   }
 
+  .hero__copy,
+  .hero__panel {
+    min-width: 0;
+  }
+
   .hero__sub {
     margin-top: 24px;
     color: var(--alfred-text);
     max-width: 58ch;
+    overflow-wrap: anywhere;
   }
 
   .hero__ctas {

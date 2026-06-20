@@ -344,7 +344,7 @@ def test_telemetry_step_non_interactive_default_prints_no_report(init_mod, tmp_p
     init_mod.step_8b_telemetry(state, non_interactive=True)
     captured = capsys.readouterr()
     out = captured.out + captured.err
-    assert "no telemetry_url was provided" in out
+    assert "No telemetry endpoint set" in out
     assert "no report is scheduled" in out
 
 

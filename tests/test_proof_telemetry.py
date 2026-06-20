@@ -796,6 +796,13 @@ def test_build_payload_clamps_negatives_and_caps():
     assert payload["loc_added"] == 0
 
 
+def test_build_payload_preserves_explicit_zero_files_changed():
+    counts = pt.TelemetryCounts(files_changed=0, loc_added=9)
+    payload = pt.build_payload("id-token", counts, "lifetime")
+    assert payload["files_changed"] == 0
+    assert payload["loc_added"] == 9
+
+
 # ---------------------------------------------------------------------------
 # ingest token (optional shared write gate)
 # ---------------------------------------------------------------------------

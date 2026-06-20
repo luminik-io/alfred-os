@@ -1,0 +1,130 @@
+---
+interface TrendItem {
+  week: string;
+  prs_merged: number;
+}
+
+interface Props {
+  trend: TrendItem[];
+}
+
+const { trend } = Astro.props;
+const numberOrZero = (value: unknown) => {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+const safeTrend = trend
+  .map((item) => ({ week: item.week, prs_merged: numberOrZero(item.prs_merged) }))
+  .filter((item) => item.week);
+const maxTrend = Math.max(...safeTrend.map((item) => item.prs_merged), 1);
+const fmt = (n: number) => n.toLocaleString("en-US");
+---
+
+<section class="trend-panel" aria-label="Weekly merged pull requests">
+  <div class="trend-panel__head">
+    <div>
+      <span class="m-eyebrow">WEEK BY WEEK</span>
+      <h2 class="m-display-md">Shipping cadence.</h2>
+    </div>
+    <p>
+      A merged PR is the clearest unit of progress. This view shows how Alfred's
+      GitHub work moved through the last 30 days.
+    </p>
+  </div>
+
+  <div class="trend-chart" role="list">
+    {safeTrend.map((item) => (
+      <div class="trend-chart__item" role="listitem">
+        <span class="trend-chart__count">{fmt(item.prs_merged)}</span>
+        <span class="trend-chart__bar" style={`--h:${Math.max(8, Math.round((item.prs_merged / maxTrend) * 100))}%`}></span>
+        <span class="trend-chart__week m-mono">{item.week}</span>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+  .trend-panel {
+    display: grid;
+    gap: 28px;
+    padding: 28px;
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: var(--radius);
+    background: var(--alfred-surface);
+  }
+  .trend-panel__head {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.7fr);
+    gap: 24px;
+    align-items: end;
+  }
+  .trend-panel__head h2 {
+    margin-top: 12px;
+  }
+  .trend-panel__head p {
+    color: var(--alfred-text);
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  .trend-chart {
+    height: 260px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 18px;
+    align-items: end;
+    padding-top: 8px;
+  }
+  .trend-chart__item {
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .trend-chart__count {
+    color: var(--alfred-text-bright);
+    font-family: var(--font-display);
+    font-size: clamp(22px, 3vw, 32px);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .trend-chart__bar {
+    display: block;
+    min-height: 10px;
+    height: var(--h);
+    border-radius: 8px 8px 3px 3px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 35%),
+      linear-gradient(180deg, var(--alfred-accent), rgba(0, 229, 199, 0.24));
+    box-shadow: 0 20px 40px -24px rgba(0, 229, 199, 0.7);
+  }
+  .trend-chart__week {
+    color: var(--alfred-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @media (max-width: 760px) {
+    .trend-panel {
+      padding: 22px;
+    }
+    .trend-panel__head {
+      grid-template-columns: 1fr;
+    }
+    .trend-chart {
+      height: 220px;
+      gap: 12px;
+    }
+  }
+  @media (max-width: 480px) {
+    .trend-chart {
+      height: 190px;
+      gap: 8px;
+    }
+    .trend-chart__week {
+      font-size: 10px;
+    }
+  }
+</style>
