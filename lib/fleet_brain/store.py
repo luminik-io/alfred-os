@@ -143,8 +143,8 @@ class GitHubItem:
     head_ref: str | None = None
     base_ref: str | None = None
     bundle_slug: str | None = None
-    additions: int = 0
-    deletions: int = 0
+    additions: int | None = 0
+    deletions: int | None = 0
 
 
 @dataclass(frozen=True)
@@ -964,8 +964,14 @@ class SQLiteStore:
                 "  head_ref = excluded.head_ref, "
                 "  base_ref = excluded.base_ref, "
                 "  bundle_slug = excluded.bundle_slug, "
-                "  additions = excluded.additions, "
-                "  deletions = excluded.deletions",
+                "  additions = CASE "
+                "    WHEN ? IS NULL THEN github_items.additions "
+                "    ELSE excluded.additions "
+                "  END, "
+                "  deletions = CASE "
+                "    WHEN ? IS NULL THEN github_items.deletions "
+                "    ELSE excluded.deletions "
+                "  END",
                 (
                     item.id,
                     item.repo,
@@ -982,8 +988,10 @@ class SQLiteStore:
                     item.head_ref,
                     item.base_ref,
                     item.bundle_slug,
-                    max(0, int(item.additions)),
-                    max(0, int(item.deletions)),
+                    max(0, int(item.additions)) if item.additions is not None else 0,
+                    max(0, int(item.deletions)) if item.deletions is not None else 0,
+                    item.additions,
+                    item.deletions,
                 ),
             )
         return item

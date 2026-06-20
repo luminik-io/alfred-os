@@ -433,6 +433,44 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
     assert bundle_items[0].item_kind == "pr"
 
 
+def test_github_item_preserves_line_totals_when_updates_omit_them(
+    brain: FleetBrain,
+) -> None:
+    brain.upsert_github_item(
+        repo="org/api",
+        number=43,
+        kind="pr",
+        state="open",
+        additions=12,
+        deletions=3,
+    )
+
+    brain.upsert_github_item(
+        repo="org/api",
+        number=43,
+        kind="pr",
+        state="merged",
+    )
+
+    items = brain.list_github_items(repo="org/api", kind="pr", state="merged")
+    assert len(items) == 1
+    assert items[0].additions == 12
+    assert items[0].deletions == 3
+
+    brain.upsert_github_item(
+        repo="org/api",
+        number=43,
+        kind="pr",
+        state="merged",
+        additions=0,
+        deletions=0,
+    )
+
+    items = brain.list_github_items(repo="org/api", kind="pr", state="merged")
+    assert items[0].additions == 0
+    assert items[0].deletions == 0
+
+
 def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> None:
     brain.upsert_github_item(
         repo="org/api",

@@ -189,30 +189,74 @@ def test_telemetry_on_uses_default_endpoint_from_alfredrc(tmp_path):
 
 
 def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
+    server, received = _capture_server()
+    url = f"http://127.0.0.1:{server.server_port}/ingest"
     state = tmp_path / "alfred" / "state"
     state.mkdir(parents=True)
     token = state / "telemetry-token"
     token_endpoint = state / "telemetry-token-endpoint"
     install_id = state / "telemetry-install-id"
     token.write_text("old-token\n", encoding="utf-8")
-    token_endpoint.write_text(f"{DEFAULT_TELEMETRY_URL}\n", encoding="utf-8")
+    token_endpoint.write_text(f"{url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
     alfredrc = tmp_path / ".alfredrc"
     agents_conf = tmp_path / "agents.conf"
 
-    result = _run(
-        tmp_path,
-        "on",
-        "--clear-token",
-        alfredrc=alfredrc,
-        agents_conf=agents_conf,
-    )
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--url",
+            url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        server.shutdown()
 
     assert result.returncode == 0, result.stderr
     assert not token.exists()
     assert not token_endpoint.exists()
     assert not install_id.exists()
     assert "ALFRED_TELEMETRY_TOKEN" not in alfredrc.read_text(encoding="utf-8")
+    assert received[0]["path"] == "/ingest"
+    assert received[0]["token"] == "old-token"
+    assert received[0]["body"]["install_id"] == "old-install-id"
+    assert received[0]["body"]["tombstone"] is True
+
+
+def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
+    server, _received = _capture_server(status=500)
+    url = f"http://127.0.0.1:{server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={url}\n", encoding="utf-8")
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert not token.exists()
+    assert not token_endpoint.exists()
+    assert install_id.read_text(encoding="utf-8").strip() == "old-install-id"
+    assert "kept install id" in result.stderr
 
 
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):

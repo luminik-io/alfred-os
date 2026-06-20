@@ -766,8 +766,19 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
     if token and not args.clear_token:
         values["ALFRED_TELEMETRY_TOKEN"] = token
     if args.clear_token:
+        clear_result = _clear_previous_telemetry_report(
+            {**current, "ALFRED_TELEMETRY_URL": url}
+        )
+        clear_status = str(clear_result.get("status") or "")
+        clear_done = clear_status in {"sent", "no_url", "no_install_id"}
         _delete_telemetry_state_token()
-        _delete_telemetry_install_id()
+        if clear_done:
+            _delete_telemetry_install_id()
+        else:
+            print(
+                "warning: kept install id so previous usage totals can be cleared later",
+                file=sys.stderr,
+            )
     _write_telemetry_rc_block(alfredrc, values)
     _ensure_telemetry_scheduler_row(conf, args.schedule)
     print("alfred: telemetry enabled")

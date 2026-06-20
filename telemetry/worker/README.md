@@ -288,12 +288,17 @@ curl -sX POST https://<your-worker-url>/ingest \
 curl -s https://<your-worker-url>/stats
 ```
 
-To clear the smoke-test data, delete the `install:<your-install-id>` record from
-the KV namespace in the dashboard, or
-`wrangler kv key delete --binding TELEMETRY install:smoke-test-0001`. The total
-is derived from the install records, so removing the record removes its
-contribution; the short-lived `stats:cache` key expires on its own (or delete it
-to recompute immediately).
+To clear the smoke-test data, send a tombstone with the issued token:
+
+```sh
+curl -sX POST https://<your-worker-url>/ingest \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"install_id":"smoke-test-0001","period":"lifetime","tombstone":true}'
+```
+
+The tombstone removes the install record, active marker, registration token, and
+cached totals for that install id.
 
 ## Local development
 

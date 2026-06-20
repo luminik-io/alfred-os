@@ -441,8 +441,8 @@ class FleetBrain:
         head_ref: str | None = None,
         base_ref: str | None = None,
         bundle_slug: str | None = None,
-        additions: int = 0,
-        deletions: int = 0,
+        additions: int | None = None,
+        deletions: int | None = None,
     ) -> GitHubItem:
         """Cache one GitHub issue or PR row.
 
@@ -477,8 +477,8 @@ class FleetBrain:
             head_ref=head_ref,
             base_ref=base_ref,
             bundle_slug=resolved_bundle,
-            additions=max(0, int(additions or 0)),
-            deletions=max(0, int(deletions or 0)),
+            additions=max(0, int(additions)) if additions is not None else None,
+            deletions=max(0, int(deletions)) if deletions is not None else None,
         )
         persisted = self.store.upsert_github_item(item)
         if persisted.bundle_slug:
