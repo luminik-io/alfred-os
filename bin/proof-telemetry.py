@@ -28,6 +28,8 @@ Sentinels (printed to stdout, picked up by log scrapers):
     [PROOF-TELEMETRY-NO-INSTALL-ID] enabled but the install id could not be
                                     persisted; report skipped so an ephemeral id
                                     does not inflate the install count
+    [PROOF-TELEMETRY-STALE-COUNTS]  local brain read was incomplete; previous
+                                    accepted totals stay in place
     [PROOF-TELEMETRY-SENT]          payload posted and accepted
     [PROOF-TELEMETRY-FAILED]        enabled and attempted, post did not succeed
     [PROOF-TELEMETRY-ERROR]         unexpected internal error, swallowed
@@ -51,6 +53,7 @@ _SENTINELS = {
     "doctor_ok": "[PROOF-TELEMETRY-DOCTOR-OK]",
     "no_url": "[PROOF-TELEMETRY-NO-URL]",
     "no_install_id": "[PROOF-TELEMETRY-NO-INSTALL-ID]",
+    "stale_counts": "[PROOF-TELEMETRY-STALE-COUNTS]",
     "sent": "[PROOF-TELEMETRY-SENT]",
     "failed": "[PROOF-TELEMETRY-FAILED]",
     "error": "[PROOF-TELEMETRY-ERROR]",

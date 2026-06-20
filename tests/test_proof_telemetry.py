@@ -397,6 +397,16 @@ def test_direct_dry_run_loads_alfredrc_opt_out(tmp_path):
     assert not (alfred_home / "state" / "telemetry-install-id").exists()
 
 
+def test_cli_maps_stale_counts_to_non_error_sentinel(monkeypatch, capsys):
+    monkeypatch.setattr(pt, "report_once", lambda: {"status": "stale_counts", "sent": False})
+
+    assert cli.main([]) == 0
+
+    out = capsys.readouterr().out
+    assert "[PROOF-TELEMETRY-STALE-COUNTS]" in out
+    assert "[PROOF-TELEMETRY-ERROR]" not in out
+
+
 def test_report_once_enabled_without_url_is_a_no_op():
     poster = RecordingPoster()
     result = pt.report_once(env={}, brain=FakeBrain(), poster=poster)
