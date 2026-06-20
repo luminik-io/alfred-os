@@ -5,7 +5,9 @@ Alfred ships a single-host memory layer: a runner can call
 firings learned, and `memory.reflect(...)` afterwards to file new
 ones. The default backend is the in-tree
 [`fleet_brain`](./FLEET_BRAIN.md) SQLite store. Nothing leaves the
-host, no telemetry, no cloud sync.
+host by default, and no raw lessons, prompts, paths, or candidate text are
+uploaded. If you configure Alfred's optional usage counter, it sends aggregate
+counts only and can be disabled with `alfred telemetry off`.
 
 This doc covers the **provider layer** above the brain: how to chain
 multiple memory backends so an agent reads from the fleet-brain first

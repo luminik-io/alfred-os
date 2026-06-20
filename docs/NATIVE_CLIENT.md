@@ -262,20 +262,40 @@ The client uses these local API contracts today:
 
 ```text
 GET  /api/status
+GET  /api/schedule
 GET  /api/actions
+GET  /api/shipped
 GET  /api/usage             # served; backs the capacity rail
 GET  /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET  /api/firings
 GET  /api/firings/{firing_id}
+GET  /api/firings/{firing_id}/tail
 GET  /api/plans
+GET  /api/plans/drafts
 GET  /api/plans/{plan_id}
 POST /api/plans/{plan_id}/convert-followup
 POST /api/plans/{plan_id}/mark-handled
+POST /api/plans/{plan_id}/discard
+POST /api/plans/{plan_id}/decision
+POST /api/plans/{plan_id}/file-issue
+POST /api/plans/draft
+POST /api/compose/converse
+POST /api/compose/converse/stream
 GET  /api/memory/candidates
 POST /api/memory/candidates/{id}/promote
 POST /api/memory/candidates/{id}/reject
-GET  /api/planning-drafts
-GET  /api/slack/threads
+POST /api/queue
+GET  /api/setup/status
+GET  /api/setup/repos
+POST /api/setup/repos
+GET  /api/setup/playbooks
+POST /api/setup/playbook
+POST /api/setup/demo
+POST /api/setup/demo/clear
+GET  /api/slack/trusted-users
+POST /api/slack/trusted-users
+POST /api/slack/trusted-users/{user_id}/remove
+POST /api/conversation/control
 ```
 
 `GET /api/usage` is served by `alfred serve` today and backs the capacity rail.

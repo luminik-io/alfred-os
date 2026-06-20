@@ -100,6 +100,8 @@ export const GET: APIRoute = async ({ site }) => {
     "  Claude Code or Codex CLI subscriptions; usage comes from those",
     "  subscriptions.",
     "- Sends no repo names, code, prompts, titles, branches, or people in usage totals.",
+    "  Usage totals are sent only when `ALFRED_TELEMETRY_URL` is configured;",
+    "  opt out with `alfred telemetry off` or `ALFRED_TELEMETRY_ENABLED=0`.",
     "- Does not act without an issue label or a configured approval path.",
     "  Batman defaults to plan-only mode, can file children after configured",
     "  approval, and can be set to file immediately when you explicitly opt in.",

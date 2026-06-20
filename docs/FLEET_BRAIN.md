@@ -2,7 +2,12 @@
 
 Alfred's brain is the per-host store of what the fleet has learned. Engine-aware firings that know their target repo can read from it (recall) and write to it (reflect). The next firing starts with the lessons relevant to its codename and repo prepended to the prompt.
 
-The brain is a single SQLite file in your `$ALFRED_HOME`. It never leaves your machine. The only outbound surface is the prompt context Alfred prepends to a firing, which goes to Claude Code or Codex on your existing CLI auth. No telemetry, no phone-home, no cloud sync.
+The brain is a single SQLite file in your `$ALFRED_HOME`. Raw lessons, prompts,
+paths, candidate text, and firing history stay on your machine. The normal
+outbound surface is the prompt context Alfred prepends to a firing, which goes
+to Claude Code or Codex on your existing CLI auth. If you configure Alfred's
+optional usage counter, it sends aggregate counts only and can be disabled with
+`alfred telemetry off`.
 
 ## Why it exists
 

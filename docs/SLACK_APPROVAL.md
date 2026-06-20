@@ -1,10 +1,10 @@
 # Slack approval gate
 
 Alfred agents can pause in plan mode and wait for an explicit go/no-go from
-the operator before writing any code. The gate lives in
+the configured approver before writing any code. The gate lives in
 [`lib/slack_approval.py`](../lib/slack_approval.py). It posts the plan to a
 Slack channel, polls reactions on that one message, and resolves only when
-the configured operator reacts with an approve or reject emoji.
+the configured approver reacts with an approve or reject emoji.
 
 This guide walks through the full setup. If you already have a Slack bot
 token wired up via [`docs/SLACK_SETUP.md`](SLACK_SETUP.md), skip to
