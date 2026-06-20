@@ -1119,10 +1119,7 @@ def test_trusted_telemetry_token_is_scoped_to_hosted_collector():
 
     assert pt.trusted_telemetry_token_for_url(pt.DEFAULT_INGEST_URL, env) == "trusted"
     assert pt.trusted_telemetry_token_for_url(f"{pt.DEFAULT_INGEST_URL}/", env) == "trusted"
-    assert (
-        pt.trusted_telemetry_token_for_url("https://custom.example.com/ingest", env)
-        == ""
-    )
+    assert pt.trusted_telemetry_token_for_url("https://custom.example.com/ingest", env) == ""
 
 
 def test_post_sends_token_header_when_set(monkeypatch):
