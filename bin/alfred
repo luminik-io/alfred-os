@@ -756,7 +756,7 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
     current = _telemetry_values(alfredrc)
     clear_result = _clear_previous_telemetry_report(current)
     clear_status = str(clear_result.get("status") or "")
-    clear_done = clear_status in {"sent", "no_url", "no_install_id", "no_token"}
+    clear_done = clear_status in {"sent", "no_url", "no_install_id"}
     values = {"ALFRED_TELEMETRY_ENABLED": "0"}
     keeps_endpoint = not args.forget_endpoint and bool(current.get("ALFRED_TELEMETRY_URL"))
     if not args.forget_endpoint and current.get("ALFRED_TELEMETRY_URL"):
