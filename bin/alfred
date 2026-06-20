@@ -719,18 +719,31 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
     _write_telemetry_rc_block(alfredrc, values)
     removed = _remove_telemetry_scheduler_row(conf)
     install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
+    install_id_action = "none"
     if args.delete_install_id and install_id_path.exists():
-        install_id_path.unlink()
+        if clear_done:
+            install_id_path.unlink()
+            install_id_action = "removed"
+        else:
+            install_id_action = "kept"
     print("alfred: telemetry disabled")
     if clear_status == "sent":
         print("alfred: cleared previous usage totals")
     elif not clear_done:
         print("warning: could not clear previous usage totals", file=sys.stderr)
+    if install_id_action == "kept":
+        print(
+            "warning: kept install id so previous usage totals can be cleared later",
+            file=sys.stderr,
+        )
     print(f"alfred: wrote {alfredrc}")
     print(f"alfred: {'removed' if removed else 'no'} scheduler row at {conf}")
     print(_telemetry_deploy_hint(conf))
     if args.delete_install_id:
-        print(f"alfred: removed install id at {install_id_path}")
+        if install_id_action == "none":
+            print(f"alfred: no install id at {install_id_path}")
+        else:
+            print(f"alfred: {install_id_action} install id at {install_id_path}")
     return 0
 
 

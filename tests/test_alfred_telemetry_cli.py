@@ -232,6 +232,81 @@ def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
         server.shutdown()
 
 
+def test_telemetry_off_deletes_install_id_after_clear_succeeds(tmp_path):
+    server, _received = _capture_server()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
+        alfredrc = tmp_path / ".alfredrc"
+        alfredrc.write_text(
+            "ALFRED_TELEMETRY_ENABLED=1\n"
+            f"ALFRED_TELEMETRY_URL={endpoint}\n"
+            "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+            encoding="utf-8",
+        )
+        agents_conf = tmp_path / "agents.conf"
+        agents_conf.write_text(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous usage totals\n",
+            encoding="utf-8",
+        )
+        install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
+        install_id.parent.mkdir(parents=True)
+        install_id.write_text("install-cli-test\n", encoding="utf-8")
+
+        result = _run(
+            tmp_path,
+            "off",
+            "--delete-install-id",
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "removed install id" in result.stdout
+        assert not install_id.exists()
+    finally:
+        server.shutdown()
+
+
+def test_telemetry_off_preserves_install_id_when_clear_fails(tmp_path):
+    server, _received = _capture_server(status=500)
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
+        alfredrc = tmp_path / ".alfredrc"
+        alfredrc.write_text(
+            "ALFRED_TELEMETRY_ENABLED=1\n"
+            f"ALFRED_TELEMETRY_URL={endpoint}\n"
+            "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+            encoding="utf-8",
+        )
+        agents_conf = tmp_path / "agents.conf"
+        agents_conf.write_text(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous usage totals\n",
+            encoding="utf-8",
+        )
+        install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
+        install_id.parent.mkdir(parents=True)
+        install_id.write_text("install-cli-test\n", encoding="utf-8")
+
+        result = _run(
+            tmp_path,
+            "off",
+            "--delete-install-id",
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+
+        assert result.returncode == 0
+        assert "kept install id" in result.stderr
+        assert install_id.exists()
+        rc_text = alfredrc.read_text(encoding="utf-8")
+        assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
+        assert "ALFRED_TELEMETRY_TOKEN=shared-secret" in rc_text
+    finally:
+        server.shutdown()
+
+
 def test_telemetry_off_removes_later_init_block_telemetry_values(tmp_path):
     alfredrc = tmp_path / ".alfredrc"
     alfredrc.write_text(
