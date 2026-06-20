@@ -33,6 +33,8 @@ interface Props {
   live?: boolean;
   /** Show the updated date in the counter footer. */
   showUpdated?: boolean;
+  /** Show the active install count in the counter footer. */
+  showInstalls?: boolean;
 }
 
 const {
@@ -41,6 +43,7 @@ const {
   seed = {},
   live = true,
   showUpdated = true,
+  showInstalls = true,
 } = Astro.props;
 const numberOrZero = (value: unknown) => {
   const n = Number(value ?? 0);
@@ -59,6 +62,8 @@ const seedTotals = {
   lines_changed: numberOrZero(seed.lines_changed),
   updated_at: seed.updated_at ?? null,
 };
+const hasSeedLineDelta = seed.lines_added !== undefined || seed.lines_removed !== undefined;
+const showFooter = showInstalls || showUpdated;
 const hasSeed =
   seedTotals.installs > 0 ||
   seedTotals.prs_opened > 0 ||
@@ -113,7 +118,12 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
         <span class="impact__cellnum" data-field="files_changed">{fmt(seedTotals.files_changed)}</span>
         <span class="impact__celllbl">files changed</span>
       </div>
-      <div class="impact__cell impact__cell--muted" role="listitem">
+      <div
+        class="impact__cell impact__cell--muted"
+        role="listitem"
+        data-impact-line-delta
+        hidden={!hasSeedLineDelta}
+      >
         <span class="impact__cellnum impact__pair impact__pair--small">
           <span>+<span data-field="lines_added">{fmt(seedTotals.lines_added)}</span></span>
           <span class="impact__slash">/</span>
@@ -122,19 +132,23 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
         <span class="impact__celllbl">added / removed</span>
       </div>
     </div>
-    <div class="impact__foot">
-      <span>
-        <strong data-field="installs">{fmt(seedTotals.installs)}</strong>
-        <span data-impact-install-label>
-          {seedTotals.installs === 1 ? " active Alfred install" : " active Alfred installs"}
-        </span>
-      </span>
-      {showUpdated ? (
-        <span class="m-mono m-mute" data-impact-updated>
-          {seedTotals.updated_at ? `Updated ${seedTotals.updated_at.slice(0, 10)}` : ""}
-        </span>
-      ) : null}
-    </div>
+    {showFooter ? (
+      <div class="impact__foot">
+        {showInstalls ? (
+          <span data-impact-installs>
+            <strong data-field="installs">{fmt(seedTotals.installs)}</strong>
+            <span data-impact-install-label>
+              {seedTotals.installs === 1 ? " active Alfred install" : " active Alfred installs"}
+            </span>
+          </span>
+        ) : null}
+        {showUpdated ? (
+          <span class="m-mono m-mute" data-impact-updated>
+            {seedTotals.updated_at ? `Updated ${seedTotals.updated_at.slice(0, 10)}` : ""}
+          </span>
+        ) : null}
+      </div>
+    ) : null}
   </div>
 </section>
 
@@ -180,6 +194,9 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
         setField("issues_opened", issuesOpened);
         setField("lines_changed", Number(data?.lines_changed ?? 0));
         if (data?.issues_closed !== undefined) setField("issues_closed", Number(data.issues_closed ?? 0));
+        const lineDelta = root.querySelector<HTMLElement>("[data-impact-line-delta]");
+        const hasLineDelta = data?.lines_added !== undefined || data?.lines_removed !== undefined;
+        if (lineDelta) lineDelta.hidden = !hasLineDelta;
         if (data?.lines_added !== undefined) setField("lines_added", Number(data.lines_added ?? 0));
         if (data?.lines_removed !== undefined) setField("lines_removed", Number(data.lines_removed ?? 0));
 

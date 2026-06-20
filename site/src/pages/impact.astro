@@ -46,7 +46,6 @@ const hasPublicActivity =
       <ImpactCounter
         variant="plain"
         seed={{
-          installs: 1,
           prs_merged: productProof.summary.agent_prs_merged,
           issues_opened: productProof.summary.agent_issues_opened,
           issues_closed: productProof.summary.agent_issues_closed,
@@ -58,6 +57,7 @@ const hasPublicActivity =
         }}
         live={false}
         showUpdated={false}
+        showInstalls={false}
       />
     </div>
   </Hero>
