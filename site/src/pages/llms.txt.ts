@@ -28,7 +28,7 @@ export const GET: APIRoute = async ({ site }) => {
     new URL(`${import.meta.env.BASE_URL}${id}/`.replace(/\/{2,}/g, "/"), origin).href;
   const root = docs.find((d) => d.id === "");
   const summary =
-	    root?.data.description ??
+    root?.data.description ??
     "Autonomous coding agents that keep development moving while you are away. Claude Code and Codex agents run by launchd or systemd on a Mac or Linux box you choose.";
 
   const lines: string[] = [

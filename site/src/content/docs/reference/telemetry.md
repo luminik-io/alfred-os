@@ -62,11 +62,11 @@ The bundled collector lives in
 [`telemetry/worker/`](https://github.com/luminik-io/alfred-os/tree/main/telemetry/worker).
 It exposes:
 
-- `POST /ingest` for reporting installs
+- `POST /ingest` for active installs
 - `GET /stats` for aggregate public totals
 
 Use `INGEST_TOKEN` on the Worker and the matching `ALFRED_TELEMETRY_TOKEN` on
-reporting installs when only your own hosts should write to the counter.
+your Alfred installs when only your own hosts should write to the counter.
 
 Full implementation contract:
 [`docs/TELEMETRY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TELEMETRY.md).

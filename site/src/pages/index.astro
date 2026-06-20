@@ -327,7 +327,7 @@ const why = [
           alt="Slack message from the Alfred bot summarising one private Luminik setup: 153 PRs merged, 44 issues opened, 144 issues closed, and 44,351 lines added across six repos."
           tag="daily summary"
           meta="2026-05-20 20:45 CET"
-          caption="A private Luminik setup summary across six repos. It is shown as a product example; the impact page shows current aggregate totals and public links."
+          caption="A real Luminik setup summary across six repos. The impact page keeps the current totals up to date."
         />
       </div>
 
@@ -352,8 +352,8 @@ const why = [
     <div class="m-container">
       <SectionHeader
         eyebrow="GET STARTED"
-        title="Try a safe diagnostic run first."
-        lede="Check the fleet wiring on your machine before scheduled agents touch real work."
+        title="Check the wiring before real work starts."
+        lede="Run doctor for setup health, then dry-run one agent to see the path it would take without touching GitHub, Slack, an engine, or your files."
       />
       <CodeBlock
         title="terminal"
@@ -370,7 +370,7 @@ const why = [
           "  role: feature dev",
           "  mode: safe simulation",
           "  would: resolve config, acquire the agent lock, run preflight, and enter the runner",
-          "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files",
+          "  would not: mutate GitHub, post Slack, invoke an engine, or edit files",
         ]}
       />
     </div>

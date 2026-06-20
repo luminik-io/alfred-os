@@ -186,7 +186,7 @@ alfred dry-run lucius
 ```
 
 Dry-run is a diagnostic path. It resolves the codename and prints the firing
-steps without touching the scheduler, GitHub, Slack, LLMs, or local files. See
+steps without touching the scheduler, GitHub, Slack, engines, or local files. See
 [`docs/DRY_RUN.md`](docs/DRY_RUN.md) for the exact boundary.
 
 ## System shape
@@ -211,7 +211,8 @@ runner applies safety rails, and the LLM CLI only receives the bounded task.
 
 ## Design notes
 
-Most agent frameworks (crewAI, MetaGPT, OpenHands, AutoGPT-style loops) assume one long-running Python process, in-memory state, and a human at a REPL. Wrong shape for unattended work:
+Many agent harnesses assume one long-running process, in-memory state, and a
+human at a prompt. That is the wrong shape for unattended engineering work:
 
 - Long-running loops have no failure isolation. One bad run trashes the others.
 - In-memory state can't survive an OS reboot. A long-lived host restarts every few weeks.
