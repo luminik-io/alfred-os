@@ -251,7 +251,7 @@ You need a Cloudflare account (the free plan is enough) and
 
    **Supported path: use `alfred telemetry`.** `alfred telemetry on` writes the
    endpoint and re-enables reporting. `alfred telemetry off` opts out later.
-   The `luminik.eng.proof-telemetry` scheduler row can stay installed; with no
+   The `proof-telemetry` scheduler row can stay installed; with no
    endpoint or after opt-out, it exits cleanly and sends nothing.
 
 6. **Point the site counter at the read endpoint:** set the build-time env var
