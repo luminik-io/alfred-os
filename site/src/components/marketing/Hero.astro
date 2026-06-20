@@ -31,15 +31,11 @@ const hasPanel = Astro.slots.has("panel");
 
 <section class={`hero ${hasPanel ? "hero--split" : "hero--solo"}`}>
   <div class="m-ambient" aria-hidden="true"></div>
-  {/* Cinematic fleet layer: a calm horizon sweep plus a few drifting
-      status pings. Pure CSS, no JS, reduced-motion safe. Reads as "the
-      fleet is working in the background" without competing with
-      the headline. */}
+  {/* Cinematic fleet layer: a calm horizon sweep. Pure CSS, no JS,
+      reduced-motion safe. Reads as "the fleet is working in the background"
+      without competing with the headline. */}
   <div class="hero-fleet" aria-hidden="true">
     <span class="hero-fleet__sweep"></span>
-    <span class="hero-fleet__ping hero-fleet__ping--1"></span>
-    <span class="hero-fleet__ping hero-fleet__ping--2"></span>
-    <span class="hero-fleet__ping hero-fleet__ping--3"></span>
   </div>
   <div class="m-container hero__inner">
     <div class="hero__copy">
@@ -147,9 +143,8 @@ const hasPanel = Astro.slots.has("panel");
   /* ───────────────────────────────────────────────────────────────
      Cinematic fleet layer. Sits above .m-ambient (the drifting grid)
      and below the hero copy. A faint horizon sweep crosses the hero on
-     a long loop, and three accent pings breathe at fixed points, like
-     agents reporting in. Everything is decorative, low-opacity, and
-     no-ops under prefers-reduced-motion.
+     a long loop. It is decorative, low-opacity, and no-ops under
+     prefers-reduced-motion.
      ─────────────────────────────────────────────────────────────── */
   .hero-fleet {
     position: absolute;
@@ -192,29 +187,6 @@ const hasPanel = Astro.slots.has("panel");
     100% { transform: translateX(440%); opacity: 0; }
   }
 
-  .hero-fleet__ping {
-    position: absolute;
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    /* Per-ping ring colour: the keyframes read this triplet via rgba(), so
-       each ping's expanding ring matches its own dot instead of a hard-coded
-       cyan that overrode the blue dot's ring. */
-    --ping-ring: 0, 229, 199;
-    background: var(--alfred-accent);
-    box-shadow: 0 0 0 0 rgba(var(--ping-ring), 0.55);
-    opacity: 0.5;
-    animation: hero-ping 4.4s ease-out infinite;
-  }
-  .hero-fleet__ping--1 { top: 22%; left: 64%; animation-delay: 0s; }
-  .hero-fleet__ping--2 { top: 58%; left: 78%; animation-delay: 1.5s; background: var(--alfred-blue); --ping-ring: 87, 137, 255; }
-  .hero-fleet__ping--3 { top: 40%; left: 88%; animation-delay: 2.9s; }
-  @keyframes hero-ping {
-    0%   { box-shadow: 0 0 0 0 rgba(var(--ping-ring), 0.5); opacity: 0.6; }
-    70%  { box-shadow: 0 0 0 16px rgba(var(--ping-ring), 0); opacity: 0.2; }
-    100% { box-shadow: 0 0 0 0 rgba(var(--ping-ring), 0); opacity: 0.6; }
-  }
-
   /* Calm staged entrance for the hero copy + panel. Each lifts in once on
      load. Tiny, single-shot, and disabled under reduced motion. */
   .hero__copy > * {
@@ -231,8 +203,7 @@ const hasPanel = Astro.slots.has("panel");
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .hero-fleet__sweep,
-    .hero-fleet__ping { animation: none; }
+    .hero-fleet__sweep { animation: none; }
     .hero-fleet__sweep { opacity: 0; }
     .hero__copy > *,
     .hero__panel { animation: none; }

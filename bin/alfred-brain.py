@@ -55,9 +55,10 @@ Subcommands:
     alfred-brain.py export [--out PATH]
         Write a JSON snapshot to PATH (default: stdout).
 
-Pure stdlib. The brain is local-only: this CLI never makes a network
-call. If something here writes outside ``$ALFRED_FLEET_BRAIN_DB`` /
-``$ALFRED_HOME``, it's a bug.
+Pure stdlib. Core fleet-brain commands are local-only and write only inside
+``$ALFRED_FLEET_BRAIN_DB`` / ``$ALFRED_HOME``. The Redis subcommands are the
+exception: they call the configured Redis Agent Memory Server endpoint because
+that bridge is explicit and optional.
 
 The wrapper ``bin/alfred`` exposes this as ``alfred brain status``.
 """

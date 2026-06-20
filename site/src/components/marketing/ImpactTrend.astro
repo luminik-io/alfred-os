@@ -23,21 +23,33 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 <section class="trend-panel" aria-label="Weekly merged pull requests">
   <div class="trend-panel__head">
     <div>
-      <span class="m-eyebrow">WEEK BY WEEK</span>
-      <h2 class="m-display-md">Shipping cadence.</h2>
+      <span class="m-eyebrow">LAST 30 DAYS</span>
+      <h2 class="m-display-md">PRs merged by week.</h2>
     </div>
     <p>
-      A merged PR is the clearest unit of progress. This view shows how Alfred's
-      GitHub work moved through the last 30 days.
+      This chart shows when Alfred's work landed during the same 30-day window
+      as the totals above.
     </p>
   </div>
 
   <div class="trend-chart" role="list">
-    {safeTrend.map((item) => (
-      <div class="trend-chart__item" role="listitem">
-        <span class="trend-chart__count">{fmt(item.prs_merged)}</span>
-        <span class="trend-chart__bar" style={`--h:${Math.max(8, Math.round((item.prs_merged / maxTrend) * 100))}%`}></span>
+    {safeTrend.map((item, index) => (
+      <div
+        class="trend-chart__item"
+        role="listitem"
+        tabindex="0"
+        aria-label={`${fmt(item.prs_merged)} PRs merged in the week starting ${item.week}`}
+        style={`--h:${Math.max(8, Math.round((item.prs_merged / maxTrend) * 100))}%;--i:${index};`}
+      >
+        <span class="trend-chart__plot">
+          <span class="trend-chart__count">{fmt(item.prs_merged)}</span>
+          <span class="trend-chart__bar"></span>
+        </span>
         <span class="trend-chart__week m-mono">{item.week}</span>
+        <span class="trend-chart__tip" aria-hidden="true">
+          <strong>{fmt(item.prs_merged)}</strong> PRs merged<br />
+          Week of {item.week}
+        </span>
       </div>
     ))}
   </div>
@@ -71,13 +83,25 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 18px;
-    align-items: end;
+    align-items: stretch;
     padding-top: 8px;
   }
   .trend-chart__item {
+    position: relative;
     min-width: 0;
     height: 100%;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) 20px;
+    gap: 12px;
+    border-radius: var(--radius);
+    outline: none;
+    transform: translateY(0);
+    transition: transform 180ms ease;
+  }
+  .trend-chart__plot {
+    position: relative;
     display: flex;
+    min-height: 0;
     flex-direction: column;
     justify-content: flex-end;
     gap: 10px;
@@ -94,17 +118,81 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     display: block;
     min-height: 10px;
     height: var(--h);
+    flex: 0 0 auto;
     border-radius: 8px 8px 3px 3px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 35%),
       linear-gradient(180deg, var(--alfred-accent), rgba(0, 229, 199, 0.24));
     box-shadow: 0 20px 40px -24px rgba(0, 229, 199, 0.7);
+    transform: scaleY(0);
+    transform-origin: bottom;
+    animation: trend-grow 680ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation-delay: calc(var(--i) * 70ms);
+    transition: filter 180ms ease, box-shadow 180ms ease, transform 180ms ease;
   }
   .trend-chart__week {
     color: var(--alfred-mute);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    align-self: end;
+    min-height: 20px;
+    transition: color 180ms ease;
+  }
+  .trend-chart__tip {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--h) + 56px);
+    z-index: 2;
+    min-width: max-content;
+    padding: 9px 10px;
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 6px;
+    background: color-mix(in oklab, var(--alfred-surface-2) 92%, transparent);
+    color: var(--alfred-text);
+    font-size: 12px;
+    line-height: 1.4;
+    box-shadow: 0 18px 50px -26px rgba(0, 0, 0, 0.8);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(6px);
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+  .trend-chart__tip strong {
+    color: var(--alfred-text-bright);
+    font-weight: 700;
+  }
+  .trend-chart__item:hover,
+  .trend-chart__item:focus-visible {
+    transform: translateY(-4px);
+  }
+  .trend-chart__item:hover .trend-chart__bar,
+  .trend-chart__item:focus-visible .trend-chart__bar {
+    filter: saturate(1.2) brightness(1.08);
+    box-shadow: 0 26px 54px -24px rgba(0, 229, 199, 0.92);
+  }
+  .trend-chart__item:hover .trend-chart__week,
+  .trend-chart__item:focus-visible .trend-chart__week {
+    color: var(--alfred-text-bright);
+  }
+  .trend-chart__item:hover .trend-chart__tip,
+  .trend-chart__item:focus-visible .trend-chart__tip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .trend-chart__item:focus-visible {
+    outline: 2px solid var(--alfred-accent);
+    outline-offset: 8px;
+  }
+  @keyframes trend-grow {
+    from {
+      opacity: 0.3;
+      transform: scaleY(0);
+    }
+    to {
+      opacity: 1;
+      transform: scaleY(1);
+    }
   }
   @media (max-width: 760px) {
     .trend-panel {
@@ -125,6 +213,25 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     }
     .trend-chart__week {
       font-size: 10px;
+    }
+    .trend-chart__tip {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .trend-chart__item,
+    .trend-chart__bar,
+    .trend-chart__week,
+    .trend-chart__tip {
+      animation: none;
+      transition: none;
+    }
+    .trend-chart__bar {
+      transform: none;
+    }
+    .trend-chart__item:hover,
+    .trend-chart__item:focus-visible {
+      transform: none;
     }
   }
 </style>

@@ -22,13 +22,13 @@ const hasPublicActivity =
 
 <MarketingLayout
   title="Impact | Alfred"
-  description="A running record of what Alfred has shipped: merged PRs, issues moved, files changed, lines changed, and public examples."
+  description="A running record of what Alfred has shipped: merged PRs, issues opened and closed, files changed, lines changed, and public examples."
   path="/impact/"
 >
   <Hero
     eyebrow="ALFRED IMPACT"
     headline="What Alfred shipped."
-    sub="Last 30 days: merged PRs, issues moved, and code changed across repos where Alfred is working. Updated daily from GitHub."
+    sub="Last 30 days: PRs merged, issues opened and closed, and code changed across repos where Alfred is working. Updated daily from GitHub."
     headlineSize="lg"
     primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
     secondaryCta={{ label: "Telemetry details", href: "/reference/telemetry/" }}
@@ -52,6 +52,7 @@ const hasPublicActivity =
           updated_at: productProof.generated_at,
         }}
         live={false}
+        showUpdated={false}
       />
     </div>
   </Hero>

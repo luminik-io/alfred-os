@@ -25,7 +25,7 @@ flowchart LR
     runner <--> state
 ```
 
-State outside your filesystem becomes another service to run. Alfred keeps its state in plain JSON files under `$ALFRED_HOME/state/`. No Redis, no SQS, no Postgres, and no required external agent gateway.
+State outside your filesystem becomes another service to run. Alfred keeps operational state in plain JSON files under `$ALFRED_HOME/state/`, and durable lessons in the local fleet-brain SQLite file. No required Redis, no SQS, no Postgres, and no required external agent gateway.
 
 ## One firing, end to end
 

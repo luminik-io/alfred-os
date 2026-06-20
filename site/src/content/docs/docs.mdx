@@ -31,7 +31,10 @@ You do not sit in front of Claude or Codex and keep prompting every step. You gi
 
 That work needs durable coordination: Slack threads and specs that can become scoped GitHub issues, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a Mac or Linux box you choose and uses CLI auth you already pay for.
 
-The starter fleet is intentionally narrow: Lucius implements scoped issues, Drake plans smaller work, Ras al Ghul reviews PRs, and agent-cleanup clears stale local state. The full roster adds Batman as the architect for cross-repo work, plus Bane, Nightwing, and other specialists.
+Batman is the architect for cross-repo work. Lucius implements scoped issues.
+Drake plans smaller work. A starter install can begin with Lucius, Drake, Ras
+al Ghul, and agent-cleanup, then enable Batman once multi-repo work becomes
+recurring. The full roster adds Bane, Nightwing, and other specialists.
 
 Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 

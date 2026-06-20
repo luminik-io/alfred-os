@@ -60,9 +60,10 @@ make_worktree, slack_post`) still work because the package's
 | `metadata.py` | `agent_role`, `codename_with_role`, `commit_trailer`, `HandoffTable`, `load_prompt`. |
 | `orchestrator.py` | `preflight` + `PreflightSpec`, LLM tier routing (`route_llm`, `get_tier_from_labels`), optional brain/event-stream/best-of-N shims. |
 
-That loop runs without a memory database, MCP server, skill registry, or
-dashboard service. Those companion tools can sit around Alfred, but they stay
-outside the core scheduled engineering fleet. See
+That loop runs without a required external memory database, MCP server, skill
+registry, or dashboard service. The built-in fleet brain is a local SQLite file
+under `ALFRED_HOME`; optional companion tools can sit around Alfred, but they
+stay outside the core scheduled engineering fleet. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 
 ## Why this shape
@@ -70,7 +71,7 @@ outside the core scheduled engineering fleet. See
 Alfred is built for one operator. One always-on Mac or Debian/Ubuntu host, one Claude Code or Codex CLI account, one founder merging the PRs. Every design decision falls out of those three constraints.
 
 - **No GitHub Actions for the agent loop.** Earlier versions ran each agent as a workflow file (`agent-feature.yml`, `agent-tests.yml`, etc.) that called `anthropic-ai/claude-code-action`. That setup needed a paid Anthropic API key, doubled the spend, and made the Mac's existing Pro subscription dead weight. It was retired on 2026-04-24.
-- **No cloud queue, no shared service.** The fleet writes to plain JSON files in `~/.alfred/state/`. There is no Redis, no SQS, no Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.
+- **No cloud queue, no shared service.** The fleet writes operational state to plain JSON files in `~/.alfred/state/`, and durable lessons to the local fleet-brain SQLite file. There is no required Redis, SQS, or Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.
 - **No multi-tenancy.** Hardcoding "your account, your repos, your channel" is fine when the user is the maintainer.
 
 ## The codename pattern

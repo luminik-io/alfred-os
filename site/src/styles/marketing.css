@@ -235,6 +235,15 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   text-decoration: none;
 }
 
+.m-btn:focus-visible {
+  outline: 2px solid var(--alfred-accent);
+  outline-offset: 3px;
+}
+
+.m-btn:active {
+  transform: translateY(0) scale(0.985);
+}
+
 .m-btn--ghost {
   background: transparent;
   color: var(--alfred-text-bright);
@@ -244,6 +253,10 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-btn--ghost:hover {
   background: var(--alfred-surface-2);
   color: var(--alfred-text-bright);
+}
+
+.m-btn--ghost:active {
+  background: color-mix(in oklab, var(--alfred-surface-2) 86%, var(--alfred-accent));
 }
 
 .m-link {
@@ -666,12 +679,28 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   -webkit-backdrop-filter: blur(18px);
 }
 
+.m-nav-group[open] .m-nav-menu {
+  animation: m-menu-enter 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes m-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 .m-nav-menu a {
   display: grid;
   gap: 2px;
   padding: 11px 12px;
   border-radius: 6px;
   color: var(--alfred-text);
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
 .m-nav-menu a:hover,
@@ -679,6 +708,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-nav-menu a[aria-current="page"] {
   background: var(--alfred-surface-2);
   color: var(--alfred-text-bright);
+  transform: translateX(2px);
 }
 
 .m-nav-menu small {
@@ -694,6 +724,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   border-radius: var(--radius);
 }
 .m-nav__cta:hover { border-color: var(--alfred-accent); color: var(--alfred-accent) !important; }
+.m-nav__cta:active { transform: scale(0.98); }
 
 .m-menu-button {
   display: none;
@@ -761,6 +792,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.44);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  animation: m-mobile-menu-enter 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .m-mobile-menu[hidden] {
@@ -776,6 +808,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   border-radius: 6px;
   color: var(--alfred-text);
   font-weight: 600;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
 .m-mobile-menu__section {
@@ -806,6 +839,7 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   color: var(--alfred-text-bright);
   background: var(--alfred-surface);
   text-decoration: none;
+  transform: translateX(2px);
 }
 
 .m-mobile-menu a[aria-current="page"]::after {
@@ -819,6 +853,17 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-mobile-menu__repo {
   margin-top: 4px;
   border: 1px solid var(--alfred-border);
+}
+
+@keyframes m-mobile-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 860px) {
@@ -985,7 +1030,19 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
 .m-nav summary[aria-current="page"]::after { transform: scaleX(1); }
 @media (prefers-reduced-motion: reduce) {
   .m-nav > a::after,
-  .m-nav summary::after { transition: none; }
+  .m-nav summary::after,
+  .m-nav-menu a,
+  .m-mobile-menu,
+  .m-mobile-menu a {
+    animation: none;
+    transition: none;
+  }
+  .m-nav-menu a:hover,
+  .m-nav-menu a:focus-visible,
+  .m-mobile-menu a:hover,
+  .m-mobile-menu a:focus-visible {
+    transform: none;
+  }
 }
 
 /* Subtle accent pulse on the GitHub star icon to draw the eye. */
@@ -1026,7 +1083,12 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   transform: translateY(-1px);
   box-shadow: 0 10px 30px -8px rgba(0, 229, 199, 0.5);
 }
+.m-btn:not(.m-btn--ghost):active {
+  transform: translateY(0) scale(0.985);
+  box-shadow: 0 6px 18px -10px rgba(0, 229, 199, 0.45);
+}
 @media (prefers-reduced-motion: reduce) {
   .m-btn { transition: none; }
-  .m-btn:hover { transform: none; }
+  .m-btn:hover,
+  .m-btn:active { transform: none; }
 }

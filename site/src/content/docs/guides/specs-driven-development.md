@@ -8,8 +8,8 @@ intent that an agent can read before it acts: a GitHub issue, a spec file, a
 roadmap, an `AGENTS.md` or `CLAUDE.md` file, or a dedicated specs repo.
 
 Specs-driven Alfred means the important context lives outside the chat
-transcript. Agents read the spec, turn it into scoped GitHub work, execute in
-clean worktrees, and return PRs, reviews, tests, and Slack reports.
+transcript. Agents read the spec, turn it into scoped implementation tasks,
+execute in clean worktrees, and return PRs, reviews, tests, and Slack reports.
 
 Full GitHub guide: [`docs/SPECS_DRIVEN_DEVELOPMENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SPECS_DRIVEN_DEVELOPMENT.md).
 

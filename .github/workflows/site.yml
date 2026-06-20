@@ -63,7 +63,12 @@ jobs:
           GH_TOKEN: ${{ secrets.ALFRED_PRODUCT_PROOF_TOKEN }}
         # Private/product proof is aggregate-only. The repo list and token stay
         # in Actions config; the generated JSON contains counts, not repo names.
-        run: npm run proof:product
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::ALFRED_PRODUCT_PROOF_REPOS is set, but ALFRED_PRODUCT_PROOF_TOKEN is missing. Keeping the committed aggregate seed."
+            exit 0
+          fi
+          npm run proof:product
 
       - name: Build site
         working-directory: site

@@ -115,6 +115,11 @@ export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
 export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ```
 
+Keep `fleet` first unless you have a very specific reason. The default
+reflection mode stores engine-proposed memories as reviewable fleet-brain
+candidates before they can enter recall. A Redis-only chain can recall from
+Redis, but it cannot stage those local review candidates.
+
 Check the bridge before putting it in the provider chain:
 
 ```sh
@@ -206,7 +211,7 @@ Now `ALFRED_MEMORY_PROVIDERS=fleet,team_wiki` works.
   base. It is **not** bundled with Alfred. The shim only knows the
   path the operator gives it; if the binary is missing, recall
   returns empty and the chain keeps working.
-- Nothing in the memory layer phones home. The fleet-brain is a
+- Nothing in the default memory layer phones home. The fleet-brain is a
   SQLite file under `$ALFRED_HOME`; the gbrain shim invokes a
   subprocess the operator already installed locally.
 - The `redis` provider only runs when the operator opts in by env.

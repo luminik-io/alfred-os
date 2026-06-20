@@ -31,9 +31,17 @@ interface Props {
   seed?: CounterTotals;
   /** Fetch the public telemetry endpoint when configured. */
   live?: boolean;
+  /** Show the updated date in the counter footer. */
+  showUpdated?: boolean;
 }
 
-const { threshold = 0, variant = "card", seed = {}, live = true } = Astro.props;
+const {
+  threshold = 0,
+  variant = "card",
+  seed = {},
+  live = true,
+  showUpdated = true,
+} = Astro.props;
 const numberOrZero = (value: unknown) => {
   const n = Number(value ?? 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -121,9 +129,11 @@ const statsUrl = live ? (import.meta.env.PUBLIC_ALFRED_TELEMETRY_STATS_URL ?? ""
           {seedTotals.installs === 1 ? " active Alfred install" : " active Alfred installs"}
         </span>
       </span>
-      <span class="m-mono m-mute" data-impact-updated>
-        {seedTotals.updated_at ? `Updated ${seedTotals.updated_at.slice(0, 10)}` : ""}
-      </span>
+      {showUpdated ? (
+        <span class="m-mono m-mute" data-impact-updated>
+          {seedTotals.updated_at ? `Updated ${seedTotals.updated_at.slice(0, 10)}` : ""}
+        </span>
+      ) : null}
     </div>
   </div>
 </section>
