@@ -122,6 +122,7 @@ def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_pa
     assert "ALFRED_TELEMETRY_ENABLED=1" in rc_text
     assert "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest" in rc_text
     assert "ALFRED_TELEMETRY_TOKEN='shared secret'" in rc_text
+    assert alfredrc.stat().st_mode & 0o777 == 0o600
     conf_text = agents_conf.read_text(encoding="utf-8")
     assert conf_text.count("alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\t") == 1
 

@@ -438,7 +438,13 @@ def _write_telemetry_rc_block(path: Path, values: dict[str, str]) -> None:
         new_text = "\n\n".join(parts) + "\n"
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(new_text, encoding="utf-8")
+    tmp = path.with_name(f"{path.name}.tmp")
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, new_text.encode("utf-8"))
+    finally:
+        os.close(fd)
+    os.replace(tmp, path)
     with contextlib.suppress(OSError):
         path.chmod(0o600)
 
