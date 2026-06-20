@@ -226,6 +226,52 @@ def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
     assert received[0]["body"]["tombstone"] is True
 
 
+def test_telemetry_on_clear_token_clears_previous_endpoint_before_switching(tmp_path):
+    old_server, old_received = _capture_server()
+    new_server, new_received = _capture_server()
+    old_url = f"http://127.0.0.1:{old_server.server_port}/ingest"
+    new_url = f"http://127.0.0.1:{new_server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={old_url}\n", encoding="utf-8")
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--url",
+            new_url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        old_server.shutdown()
+        new_server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert len(old_received) == 1
+    assert new_received == []
+    assert old_received[0]["path"] == "/ingest"
+    assert old_received[0]["token"] == "old-token"
+    assert old_received[0]["body"]["install_id"] == "old-install-id"
+    assert old_received[0]["body"]["tombstone"] is True
+    assert not token.exists()
+    assert not token_endpoint.exists()
+    assert not install_id.exists()
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={new_url}" in rc_text
+    assert old_url not in rc_text
+
+
 def test_telemetry_on_clear_token_keeps_explicit_replacement_token(tmp_path):
     server, received = _capture_server()
     url = f"http://127.0.0.1:{server.server_port}/ingest"

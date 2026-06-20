@@ -769,7 +769,10 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
     if token and (not args.clear_token or replacement_token):
         values["ALFRED_TELEMETRY_TOKEN"] = token
     if args.clear_token:
-        clear_result = _clear_previous_telemetry_report({**current, "ALFRED_TELEMETRY_URL": url})
+        clear_values = dict(current)
+        if not clear_values.get("ALFRED_TELEMETRY_URL"):
+            clear_values["ALFRED_TELEMETRY_URL"] = url
+        clear_result = _clear_previous_telemetry_report(clear_values)
         clear_status = str(clear_result.get("status") or "")
         clear_done = clear_status in {"sent", "no_url", "no_install_id"}
         _delete_telemetry_state_token()
