@@ -19,6 +19,7 @@ import worker, {
   forgetInstall,
   computeTotals,
   hashIp,
+  STATS_CACHE_SCHEMA_VERSION,
 } from "../src/worker.js";
 
 // --------------------------------------------------------------------------
@@ -774,6 +775,7 @@ test("GET /stats writes a derived-totals cache and serves it on the next read", 
       loc_added: 0,
       installs: 1,
       updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
     }),
   );
   const second = await worker.fetch(req("GET", "/stats"), env);
@@ -796,6 +798,7 @@ test("GET /stats cache hit preserves aggregate totals above the per-install cap"
       loc_added: 140000,
       installs: 2,
       updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
     }),
   );
 
@@ -825,6 +828,7 @@ test("GET /stats preserves legacy cached loc_added as files_changed", async () =
       loc_added: 321,
       installs: 1,
       updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
     }),
   );
 
@@ -833,6 +837,31 @@ test("GET /stats preserves legacy cached loc_added as files_changed", async () =
 
   assert.equal(stats.files_changed, 321);
   assert.equal(stats.loc_added, 321);
+});
+
+test("GET /stats ignores stale schema cache entries after a deploy", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-cacheversion", prs_opened: 4 }).value,
+    FIXED,
+  );
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 999,
+      installs: 99,
+      updated_at: "2026-01-01T00:00:00.000Z",
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION - 1,
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.prs_opened, 4);
+  assert.equal(stats.installs, 1);
 });
 
 test("a new ingest invalidates the stats cache so the next /stats recomputes", async () => {
@@ -1494,7 +1523,7 @@ test("registered install token gates tombstone deletes too", async () => {
   assert.notEqual(reRegistered.token, registered.token);
 });
 
-test("trusted-counts mode ignores untrusted self-reported progress totals", async () => {
+test("trusted-counts mode ignores untrusted public totals", async () => {
   const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1", TRUSTED_COUNTS_ONLY: "1" };
   const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
 
@@ -1502,7 +1531,7 @@ test("trusted-counts mode ignores untrusted self-reported progress totals", asyn
   assert.equal(res.status, 200);
 
   const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
-  assert.equal(stats.installs, 1);
+  assert.equal(stats.installs, 0);
   assert.equal(stats.prs_opened, 0);
   assert.equal(stats.prs_merged, 0);
   assert.equal(stats.files_changed, 0);
@@ -1544,6 +1573,47 @@ test("trusted-counts mode keeps trusted totals after an untrusted refresh", asyn
     env,
   );
   assert.equal(untrustedRefresh.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.prs_merged, 2);
+  assert.equal(stats.files_changed, 50);
+});
+
+test("trusted-counts mode ignores a distinct untrusted fake install", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const trustedInstall = await (
+    await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)
+  ).json();
+  const fakeInstall = await (
+    await worker.fetch(registerReq({ install_id: "install-fake001" }), env)
+  ).json();
+
+  const trusted = await worker.fetch(
+    ingestReq(SAMPLE_PAYLOAD, trustedInstall.token, "trusted-secret"),
+    env,
+  );
+  assert.equal(trusted.status, 200);
+
+  const fake = await worker.fetch(
+    ingestReq(
+      {
+        install_id: "install-fake001",
+        prs_opened: 99999,
+        prs_merged: 99999,
+        loc_added: 99999,
+      },
+      fakeInstall.token,
+    ),
+    env,
+  );
+  assert.equal(fake.status, 200);
 
   const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
   assert.equal(stats.installs, 1);

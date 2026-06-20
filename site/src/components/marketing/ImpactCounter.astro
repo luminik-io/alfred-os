@@ -33,7 +33,7 @@ interface Props {
   live?: boolean;
   /** Show the updated date in the counter footer. */
   showUpdated?: boolean;
-  /** Show the active install count in the counter footer. */
+  /** Show the verified machine count in the counter footer. */
   showInstalls?: boolean;
 }
 
@@ -92,9 +92,9 @@ const statsUrl = live
   aria-label="Alfred impact totals"
 >
   <div class="impact__fallback" data-impact-fallback hidden={hasSeed}>
-    <p class="impact__warming m-mono">No active Alfred installs yet.</p>
+    <p class="impact__warming m-mono">No verified Alfred reports yet.</p>
     <p class="impact__sub">
-      Totals appear after the first active install reports.
+      Totals appear after Alfred sends a verified report.
     </p>
   </div>
 
@@ -153,7 +153,7 @@ const statsUrl = live
           <span data-impact-installs>
             <strong data-field="installs">{fmt(seedTotals.installs)}</strong>
             <span data-impact-install-label>
-              {seedTotals.installs === 1 ? " active Alfred install" : " active Alfred installs"}
+              {seedTotals.installs === 1 ? " Alfred machine" : " Alfred machines"}
             </span>
           </span>
         ) : null}
@@ -221,7 +221,7 @@ const statsUrl = live
 
         const installLabel = root.querySelector<HTMLElement>("[data-impact-install-label]");
         if (installLabel) {
-          installLabel.textContent = installs === 1 ? " active Alfred install" : " active Alfred installs";
+          installLabel.textContent = installs === 1 ? " Alfred machine" : " Alfred machines";
         }
 
         const updated = root.querySelector<HTMLElement>("[data-impact-updated]");

@@ -25,8 +25,10 @@
  *                  shared INGEST_TOKEN instead.
  *   GET  /stats    returns the public totals plus a distinct-install count. The
  *                  totals are DERIVED ON READ: the Worker lists install:* keys
- *                  for trusted progress totals and active:* keys for anonymous
- *                  activity in hosted trusted-counts mode. Nothing is ever
+ *                  for trusted progress totals. In hosted trusted-counts mode,
+ *                  active:* keys can refresh the timestamp for a trusted
+ *                  install, but anonymous active markers are not public proof.
+ *                  Nothing is ever
  *                  incremented, so the public progress total always equals the
  *                  sum of trusted installs' latest lifetime values by
  *                  construction, with no read-modify-write race to lose counts.
@@ -56,17 +58,15 @@
  *   - Hosted writes use per-install tokens: /register stores only a token hash,
  *     and /ingest verifies the local token on each report. Self-hosted
  *     collectors can set INGEST_TOKEN when one shared token is preferred.
- *   - The hosted public progress counters can be locked to trusted reporters
- *     with TRUSTED_COUNTS_ONLY=1. Normal anonymous installs still count as
- *     active installs, but their self-reported PR/line totals do not move the
- *     public impact numbers unless the request carries the trusted collector
- *     token. This avoids pretending an open-source anonymous client can keep a
- *     secret.
+ *   - The hosted public counters can be locked to trusted reporters with
+ *     TRUSTED_COUNTS_ONLY=1. Anonymous reports can refresh local activity, but
+ *     public PR, issue, file, line, and machine totals only move when the
+ *     request carries the trusted collector token. This avoids pretending an
+ *     open-source client can keep a global secret.
  *   - A coarse per-IP rate limit and a per-install count cap (MAX_PER_FIELD)
  *     bound open-write self-hosted collectors. In hosted mode,
- *     TRUSTED_COUNTS_ONLY prevents untrusted anonymous installs from moving the
- *     progress totals at all. The latest-wins idempotency means a re-send never
- *     inflates.
+ *     TRUSTED_COUNTS_ONLY prevents untrusted reports from moving the public
+ *     totals at all. The latest-wins idempotency means a re-send never inflates.
  *   With both REQUIRE_INSTALL_TOKEN and INGEST_TOKEN unset the counter is open
  *   to server-side writes by design (CORS does not gate curl/python); see
  *   README.md for the residual surface and why the caps keep it
@@ -89,10 +89,11 @@
  *                         records are the ONLY source of shipped-work totals:
  *                         /stats sums them on read. In trusted-counts mode,
  *                         untrusted reports never write this key.
- *   key "active:<id>"  -> JSON active-install marker:
- *                         { seen_at }. In trusted-counts mode this lets
- *                         anonymous installs count as active installs without
- *                         writing progress totals. It stores no counts.
+ *   key "active:<id>"  -> JSON activity marker:
+ *                         { seen_at }. In trusted-counts mode this can refresh
+ *                         updated_at for an already-trusted install without
+ *                         writing progress totals. It stores no counts and does
+ *                         not make an anonymous install public proof.
  *   key "stats:cache"  -> OPTIONAL short-lived cache of the derived totals, so a
  *                         burst of /stats reads does not re-list every install
  *                         each time. JSON { ...totals, installs, updated_at }
@@ -118,10 +119,11 @@
  *
  * Concurrency: the COUNTS have no cross-request read-modify-write to race. Each
  * /ingest writes only its own install:<id> or active:<id> key (an idempotent
- * latest-wins upsert), and /stats DERIVES the total by summing those keys. Two installs
- * posting in the same instant write disjoint keys, so neither can clobber the
- * other and no count is ever lost; the public total is, by construction, always
- * the sum of every install's latest stored value. The "stats:cache" key is only
+ * latest-wins upsert), and /stats DERIVES the public totals from trusted
+ * install records. Two installs posting in the same instant write disjoint
+ * keys, so neither can clobber the other and no count is ever lost; the public
+ * total is, by construction, always the sum of every trusted install's latest
+ * stored value. The "stats:cache" key is only
  * a read-side optimization with a short TTL and is never written by /ingest, so
  * it cannot introduce a write race either. The historical incremental-aggregate
  * design (a single "agg" key updated as agg += new - prior) was removed for
@@ -182,12 +184,13 @@ const EMPTY_AGG = {
 };
 
 // Prefixes for per-install records. /stats sums install:* for progress totals
-// and, in trusted-counts mode, also counts active:* markers for anonymous active
-// installs that are not allowed to write progress totals.
+// and, in trusted-counts mode, reads active:* markers only to refresh the
+// timestamp for trusted installs already counted from install:* records.
 const INSTALL_PREFIX = "install:";
 const ACTIVITY_PREFIX = "active:";
 const AUTH_PREFIX = "auth:";
 const TRUSTED_INGEST_HEADER = "X-Alfred-Trusted-Token";
+export const STATS_CACHE_SCHEMA_VERSION = 2;
 
 // Short-lived cache of the derived totals. Purely a read optimization so a burst
 // of /stats reads does not re-list every install each time; it is never written
@@ -431,9 +434,10 @@ function trustedCountsOnly(env) {
 
 /**
  * Compute the public totals by listing every install:* progress record and, in
- * trusted-counts mode, every active:* marker. install:* is the ONLY source of
- * shipped-work totals. active:* only contributes to the active-install count,
- * so anonymous hosted reports cannot move PR/issue/file/line numbers. The
+ * trusted-counts mode, only trusting records written by a trusted collector.
+ * install:* is the ONLY source of shipped-work totals. active:* can refresh
+ * `updated_at` for a trusted install, but anonymous active markers are not
+ * public proof and do not change public totals. The
  * returned shape matches EMPTY_AGG: { ...COUNT_FIELDS, installs, updated_at },
  * where `installs` is the distinct install count and `updated_at` is the most
  * recent `seen_at` across all records.
@@ -463,13 +467,12 @@ export async function computeTotals(kv, env) {
       const stored = await kv.get(name, { type: "json" });
       if (!stored || typeof stored !== "object") continue;
       const snap = normalizeSnapshot(stored);
+      if (countsNeedTrust && !snap.trusted_reporter) continue;
       const installId = name.slice(INSTALL_PREFIX.length);
       countedInstalls.add(installId);
       totals.installs += 1;
-      if (!countsNeedTrust || snap.trusted_reporter) {
-        for (const field of COUNT_FIELDS) {
-          totals[field] += snap[field];
-        }
+      for (const field of COUNT_FIELDS) {
+        totals[field] += snap[field];
       }
       if (
         snap.seen_at &&
@@ -494,14 +497,12 @@ export async function computeTotals(kv, env) {
         if (typeof name !== "string") continue;
         const installId = name.slice(ACTIVITY_PREFIX.length);
         if (!installId) continue;
+        if (!countedInstalls.has(installId)) continue;
         const stored = await kv.get(name, { type: "json" });
         const seenAt = stored && typeof stored.seen_at === "string" ? stored.seen_at : null;
         if (seenAt && (totals.updated_at === null || seenAt > totals.updated_at)) {
           totals.updated_at = seenAt;
         }
-        if (countedInstalls.has(installId)) continue;
-        countedInstalls.add(installId);
-        totals.installs += 1;
       }
       if (listed && listed.list_complete === false && listed.cursor) {
         cursor = listed.cursor;
@@ -526,7 +527,11 @@ export async function readStats(kv, env) {
   const ttl = statsCacheTtl(env);
   if (ttl > 0) {
     const cached = await kv.get(STATS_CACHE_KEY, { type: "json" });
-    if (cached && typeof cached === "object") {
+    if (
+      cached &&
+      typeof cached === "object" &&
+      cached.cache_schema_version === STATS_CACHE_SCHEMA_VERSION
+    ) {
       const totals = { ...EMPTY_AGG };
       for (const field of COUNT_FIELDS) {
         const n = Number(cached[field]);
@@ -552,9 +557,16 @@ export async function readStats(kv, env) {
     // Refresh the cache. Best-effort: a failed cache write only costs a recompute
     // next read, never correctness.
     try {
-      await kv.put(STATS_CACHE_KEY, JSON.stringify(totals), {
-        expirationTtl: ttl,
-      });
+      await kv.put(
+        STATS_CACHE_KEY,
+        JSON.stringify({
+          ...totals,
+          cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
+        }),
+        {
+          expirationTtl: ttl,
+        },
+      );
     } catch {
       /* cache write is best-effort; ignore */
     }

@@ -62,8 +62,8 @@ All state lives in one Workers KV namespace bound as `TELEMETRY`:
 | --- | --- | --- |
 | `auth:<install_id>` | `{token_sha256, created_at}` | Per-install write credential for the hosted collector. The raw token is returned once from `/register` and is never stored by the Worker. |
 | `install:<install_id>` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, seen_at, trusted_reporter}` | The single latest progress snapshot for one install. `/stats` sums these on read for shipped-work totals. In trusted-counts mode, untrusted reports never write this key. |
-| `active:<install_id>` | `{seen_at}` | Active-install marker used in trusted-counts mode. Anonymous installs can show adoption without writing progress totals. |
-| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, installs, updated_at}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 300s). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. |
+| `active:<install_id>` | `{seen_at}` | Activity marker used in trusted-counts mode. It can refresh `updated_at` for an already-trusted install without writing progress totals. It does not make an anonymous install public proof. |
+| `stats:cache` | `{prs_opened, prs_merged, prs_reviewed, issues_opened, issues_closed, files_changed, lines_changed, loc_added, installs, updated_at, cache_schema_version}` | Optional short-lived cache of the derived totals (TTL `STATS_CACHE_TTL_SECONDS`, default 300s). A pure read optimization so a burst of `/stats` reads does not re-list every install. Never written by `/ingest`; deleting it only forces a recompute. Old schema versions are ignored after deploys. |
 
 **Never stored, never logged:** IP addresses, user agents, repo names, file
 paths, code, commit text, handles, or anything that identifies a person or
@@ -74,10 +74,10 @@ install.
 The Worker stores **one latest progress record per trusted install**, keyed by
 `install_id`, and replaces it on every trusted report. `/ingest` writes only the
 current install's key: either `install:<id>` for trusted progress or `active:<id>`
-for anonymous activity in hosted trusted-counts mode. There is no shared running
+for activity in hosted trusted-counts mode. There is no shared running
 aggregate. The public progress total is **derived on read** by `/stats`, which
-lists the `install:*` keys and sums each install's latest counts (behind a short
-cache). So:
+lists the trusted `install:*` keys and sums each install's latest counts (behind
+a short cache). So:
 
 - The first report from an install contributes its full counts to the sum.
 - A re-send of the same lifetime total replaces the record with an identical
@@ -115,13 +115,12 @@ what it can and cannot guarantee. The controls, in layers:
 3. **Per-install tokens.** Set `REQUIRE_INSTALL_TOKEN=1` and installs must call
    `/register` before `/ingest`. The Worker stores only a hash of the returned
    token. Alfred stores the raw token locally and sends it with each report.
-4. **Trusted progress totals.** Set `TRUSTED_COUNTS_ONLY=1` on the hosted
+4. **Trusted public totals.** Set `TRUSTED_COUNTS_ONLY=1` on the hosted
    collector and store `TRUSTED_INGEST_TOKEN` as a Worker secret. Anonymous
-   installs still count as active installs, but their self-reported PR, issue,
-   file, and line totals do not move the public impact numbers unless the
-   request carries `X-Alfred-Trusted-Token`. This is the important guardrail for
-   a public OSS project: the client is open-source, so it cannot keep a global
-   secret.
+   reports can be accepted, but public PR, issue, file, line, and machine totals
+   only move when the request carries `X-Alfred-Trusted-Token`. This is the
+   important guardrail for a public OSS project: the client is open-source, so it
+   cannot keep a global secret.
 5. **Optional shared token.** Set `INGEST_TOKEN` (prefer
    `wrangler secret put INGEST_TOKEN`) when a self-hosted collector should use
    one shared token instead of per-install registration.
@@ -148,10 +147,10 @@ what it can and cannot guarantee. The controls, in layers:
 
 **Residual surface, stated plainly:** per-install tokens block unauthenticated
 overwrites and casual server-side writes, but they are not remote attestation.
-For the hosted public counter, keep `TRUSTED_COUNTS_ONLY=1` so anonymous installs
-can show adoption without being able to alter progress totals. If you turn that
-off, or intentionally run a self-hosted collector with both `REQUIRE_INSTALL_TOKEN`
-and `INGEST_TOKEN` unset, those numbers are best-effort self-reports.
+For the hosted public counter, keep `TRUSTED_COUNTS_ONLY=1` so the public Impact
+page moves only from verified reports. If you turn that off, or intentionally
+run a self-hosted collector with both `REQUIRE_INSTALL_TOKEN` and `INGEST_TOKEN`
+unset, those numbers are best-effort self-reports.
 
 ### Concurrency note
 

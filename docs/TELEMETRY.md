@@ -68,21 +68,20 @@ titles, branch names, people, hostnames, or billing data.
 The bundled Cloudflare Worker lives in
 [`telemetry/worker/`](../telemetry/worker/):
 
-- `POST /ingest` stores one latest record per install id. A tombstone payload
-  removes that install's record when the user turns telemetry off.
+- `POST /ingest` stores one latest record per verified install id. A tombstone
+  payload removes that install's record when the user turns telemetry off.
 - `POST /register` issues the per-install write token used by Alfred's hosted
   collector. The token is stored locally at `$ALFRED_HOME/state/telemetry-token`.
-- `GET /stats` returns aggregate totals and the number of active installs that
-  have sent a report.
+- `GET /stats` returns the public aggregate totals.
 
 The Worker derives totals by summing current install records. It does not keep
 per-install history. Use `REQUIRE_INSTALL_TOKEN=1` for per-install tokens, or
 `INGEST_TOKEN` when you want one shared token for a private self-hosted
 collector.
 
-For the hosted public counter, Alfred keeps progress totals behind a trusted
-collector token. Anonymous installs can show active usage, but they cannot move
-public PR, issue, file, or line totals without that private token.
+For the hosted public counter, Alfred keeps every public Impact total behind a
+trusted collector token. Anonymous reports can be accepted by the hosted
+collector, but they do not move public PR, issue, file, line, or machine totals.
 
 ## Local Preview
 

@@ -28,7 +28,7 @@ variable "require_install_token" {
 }
 
 variable "trusted_counts_only" {
-  description = "When true, anonymous installs count as active installs but only trusted reporters can move PR/issue/file/line totals."
+  description = "When true, only trusted reporters can move public PR/issue/file/line/machine totals."
   type        = bool
   default     = true
 }

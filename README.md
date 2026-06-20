@@ -251,9 +251,9 @@ install's stored record before writing the local opt-out.
 
 Alfred reports counts only. It does not send repo names, file paths, code,
 prompts, titles, branches, people, hostnames, or billing data. A reporting
-failure never breaks a firing. On Alfred's hosted counter, anonymous installs
-can show active usage; public PR, issue, file, and line totals require a private
-trusted reporter token, so a random install cannot move those numbers.
+failure never breaks a firing. On Alfred's hosted counter, every public Impact
+total requires a private trusted reporter token, so a random install cannot move
+the public numbers.
 
 Enable it explicitly or repair the scheduler row:
 

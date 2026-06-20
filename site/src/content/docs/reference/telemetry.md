@@ -63,7 +63,7 @@ The bundled collector lives in
 [`telemetry/worker/`](https://github.com/luminik-io/alfred-os/tree/main/telemetry/worker).
 It exposes:
 
-- `POST /ingest` for active installs
+- `POST /ingest` for install reports
 - `POST /register` for per-install write tokens
 - `GET /stats` for aggregate public totals
 
@@ -71,9 +71,9 @@ Use `REQUIRE_INSTALL_TOKEN=1` for per-install write tokens, or `INGEST_TOKEN`
 with `ALFRED_TELEMETRY_TOKEN` when a private self-hosted counter should use one
 shared token.
 
-The hosted public counter uses a private trusted-reporter token for PR, issue,
-file, and line totals. Anonymous installs can still show active usage, but they
-cannot move those progress numbers.
+The hosted public counter uses a private trusted-reporter token for every public
+Impact total. Anonymous reports can be accepted by the collector, but they
+cannot move PR, issue, file, line, or machine totals.
 
 Full implementation contract:
 [`docs/TELEMETRY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/TELEMETRY.md).
