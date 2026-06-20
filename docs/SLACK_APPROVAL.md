@@ -131,8 +131,8 @@ The secret id is configurable via `ALFRED_SLACK_BOT_TOKEN_SECRET_ID`
 (default `alfred/slack-bot-token`) and the region via
 `ALFRED_SLACK_BOT_TOKEN_SECRET_REGION` (default `us-east-1`).
 
-`boto3` is an optional dependency; install with
-`pip install alfred-os[aws]` or `pip install boto3`.
+`boto3` ships with the standard Alfred package. If you build a stripped-down
+environment by hand, install it with `pip install boto3`.
 
 ### Option C: pre-seeded disk cache
 
@@ -161,14 +161,13 @@ thread without getting approval authority:
 export ALFRED_TRUSTED_SLACK_USER_IDS=U045TEAM1,U078TEAM2
 ```
 
-## 4. Install `slack-sdk`
+## 4. Check `slack-sdk`
 
-The default Slack client wraps `slack_sdk.WebClient`. It is an optional
-dependency declared under the `[slack]` extra:
+The default Slack client wraps `slack_sdk.WebClient`. `slack-sdk` ships with
+the standard Alfred package. If you build a stripped-down environment by hand,
+install it directly:
 
 ```sh
-pip install 'alfred-os[slack]'
-# or
 pip install slack-sdk
 ```
 

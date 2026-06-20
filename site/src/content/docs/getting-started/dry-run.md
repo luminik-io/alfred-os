@@ -55,7 +55,7 @@ A runner that sees `--dry-run` calls `agent_runner.set_dry_run()`, which writes 
 
 Everything inside Alfred runs for real: the lock, preflight narration, event log, prompt construction, and the runner's own result-branching logic. Calls to the outside world stay stubbed.
 
-Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper in `lib/agent_runner.py`:
+Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper in the `agent_runner` package:
 
 | Boundary | Dry-run behaviour |
 |---|---|

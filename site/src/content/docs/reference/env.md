@@ -3,7 +3,7 @@ title: Environment variables
 description: Every env var the framework reads, what defaults to what, where each is honoured.
 ---
 
-The framework is env-driven so a fresh user can clone + run without editing source. Every variable listed here is honoured by `agent_runner.py`, `install.sh`, `deploy.sh`, or the rendered scheduler units.
+The framework is env-driven so a fresh user can clone + run without editing source. Every variable listed here is honoured by the `agent_runner` package, `install.sh`, `deploy.sh`, or the rendered scheduler units.
 
 For the local config template, see [`.alfredrc.example`](https://github.com/luminik-io/alfred-os/blob/main/.alfredrc.example).
 
@@ -28,7 +28,8 @@ For the local config template, see [`.alfredrc.example`](https://github.com/lumi
 | Var | Used by | Default |
 |---|---|---|
 | `ALFRED_HOME` | everything | `$HOME/.alfred` |
-| `WORKSPACE_ROOT` | `agent_runner.WORKSPACE = WORKSPACE_ROOT/product` | `$HOME/code` |
+| `WORKSPACE_ROOT` | parent of repo checkouts; combined with `WORKSPACE_SUBDIR` by `agent_runner.WORKSPACE` | `$HOME/code` |
+| `WORKSPACE_SUBDIR` | subdirectory under `WORKSPACE_ROOT`; set to an empty string for repos directly under `WORKSPACE_ROOT` | `product` |
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
 | `CLAUDE_CONFIG_DIR` | `claude` auth profile selection | Set by `alfred claude` for scheduled agents |
 | `CODEX_BIN` | `agent_runner.codex_invoke` | `codex` (PATH) |
@@ -159,4 +160,4 @@ Override these to deploy under a custom domain (e.g. `ALFRED_OS_SITE_URL=https:/
 
 ## Reading the source
 
-The path-resolution block at the top of [`lib/agent_runner.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py) is the canonical contract. Every other config file (`install.sh`, `_template.plist`, `agents.conf`) renders into the same env-var shape.
+[`lib/agent_runner/paths.py`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner/paths.py) is the canonical path contract. Every other config file (`install.sh`, `_template.plist`, `agents.conf`) renders into the same env-var shape.

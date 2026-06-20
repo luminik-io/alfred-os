@@ -14,7 +14,7 @@ Everything above the scheduler is portable Python and Bash. The host-scheduler d
 ```mermaid
 flowchart TB
     subgraph portable["Portable core (every host)"]
-        runner["lib/agent_runner.py"]
+        runner["lib/agent_runner/"]
         bins["bin/{role}.py"]
         tests["tests/"]
         doctor["bin/doctor.sh"]

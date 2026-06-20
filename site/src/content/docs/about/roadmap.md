@@ -89,7 +89,7 @@ public download path for desktop artifacts.
 
 Substrate, observability, planning, approval, memory, and connector primitives. Merged to `main` on 2026-05-23 and now forms the base for the next quarter of work.
 
-- `lib/agent_runner.py` decomposed into a 10-file `lib/agent_runner/` package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
+- The old single-file runner decomposed into a focused `lib/agent_runner/` package (preflight, lock, spend, engines, gh, Slack, event log, commit trailers, transcripts, dedup). Public imports are preserved through `from agent_runner import ...`.
 - `alfred-metrics` CLI: per-agent firings, cost, success rate, p50/p95 turn count from on-disk state.
 - `alfred-logs` CLI: tail and filter per-firing transcripts without grepping `state/` by hand.
 - `alfred-label-state` CLI: read-only inspector for the issue-claim state machine across all configured repos.

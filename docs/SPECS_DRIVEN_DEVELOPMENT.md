@@ -179,7 +179,7 @@ Then edit the seeded prompts under `~/.alfred/prompts/` to mention the specs
 checkout:
 
 ```md
-Read product intent from ~/code/product/specs before filing issues or reviewing
+Read product intent from your specs repo before filing issues or reviewing
 PRs. Treat code as truth when specs and implementation disagree.
 ```
 

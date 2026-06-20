@@ -19,7 +19,7 @@
     SMOKE_ECS_SERVICES          comma-sep ECS services to verify before running
     SMOKE_TARGET_GROUPS         comma-sep ALB target groups to verify
     SMOKE_TEST_DIR              path to the Playwright project (e.g.
-                                ${WORKSPACE_ROOT}/product/orchestrator/tools/smoke)
+                                ${WORKSPACE_ROOT}/tools/smoke)
     SMOKE_SECRET_ID             AWS Secrets Manager id for the seeded test
                                 account (returns JSON with email + password)
     SMOKE_S3_BUCKET             S3 bucket for failure screenshots

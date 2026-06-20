@@ -101,4 +101,4 @@ Both tracked in [Roadmap](/about/roadmap/) under "in-flight."
 
 - [Slack setup](/guides/slack/): webhook creation, AWS storage, optional bot-token path.
 - [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_SETUP.md): the full guide.
-- [`agent_runner.slack_post`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner.py): the source.
+- [`agent_runner.slack_post`](https://github.com/luminik-io/alfred-os/blob/main/lib/agent_runner/notify.py): the source.

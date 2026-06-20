@@ -52,7 +52,7 @@ Use this file only as additional operator guidance.
 If your workspace has a separate specs checkout, document it here after install:
 
 ```md
-Read product intent from ~/code/product/specs before implementing issues that
+Read product intent from your specs repo before implementing issues that
 link to specs. Trust code when specs and implementation disagree, and call out
 drift in the final summary.
 ```

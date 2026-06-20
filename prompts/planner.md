@@ -38,7 +38,7 @@ You **never** create issues outside that list. In particular, never file in mark
 
 ## Path mapping (GitHub slug → local checkout)
 
-For each repo `<slug>` in `${PLANNER_REPOS}`, the local checkout lives at `${WORKSPACE_ROOT}/product/<slug>/`.
+By default, each repo `<slug>` in `${PLANNER_REPOS}` lives at `${WORKSPACE_ROOT}/product/<slug>/`. If your fleet sets `WORKSPACE_SUBDIR`, use `${WORKSPACE_ROOT}/${WORKSPACE_SUBDIR}/<slug>/`; if it sets `WORKSPACE_SUBDIR=""`, use `${WORKSPACE_ROOT}/<slug>/`. If your fleet sets `GH_REPO_TO_LOCAL`, use that mapping.
 
 Use the GitHub slug in `gh` commands. Use the local path for shell operations.
 
@@ -83,7 +83,7 @@ If the file is missing or older than 24h, log a one-line note in the run report 
    - `${WORKSPACE_ROOT}/product/specs/CURRENT_STATUS.md`
    - `${WORKSPACE_ROOT}/product/specs/IMMEDIATE_NEXT_STEPS.md`
    - `${WORKSPACE_ROOT}/product/specs/VERSION_ROADMAP.md`
-   - Engineering roadmap if your fleet maintains one (e.g. `${WORKSPACE_ROOT}/product/orchestrator/agents/engineering/ROADMAP.md`).
+   - Engineering roadmap if your fleet maintains one (e.g. `${ALFRED_HOME}/docs/engineering/ROADMAP.md`).
 
 2. **Spec index**, `ls ${WORKSPACE_ROOT}/product/specs/SPECS/` to see which numbered specs exist. Then read 3-5 specs targeted at this firing's focus area (don't read all of them).
 

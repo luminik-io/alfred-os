@@ -17,7 +17,7 @@ Acknowledgement target: 72 hours. Patch target for critical / high severity: 14 
 
 In scope:
 
-- `lib/agent_runner.py`
+- `lib/agent_runner/`
 - `bin/`
 - `examples/bin/label_state.py`
 - `examples/git-hooks/pre-push`

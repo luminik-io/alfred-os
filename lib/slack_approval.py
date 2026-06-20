@@ -18,9 +18,8 @@ The module is intentionally narrow:
   ``default_token_resolvers()``.
 - The Slack client is behind a ``SlackClient`` ``Protocol`` so tests can
   inject a fake without touching the network. The default implementation
-  wraps ``slack_sdk.WebClient`` and is loaded lazily; ``slack-sdk`` is an
-  optional dependency declared under the ``[slack]`` extra in
-  ``pyproject.toml``.
+  wraps ``slack_sdk.WebClient`` and is loaded lazily; ``slack-sdk`` ships with
+  the standard Alfred package.
 
 Configuration is via env vars (12-factor):
 
@@ -211,10 +210,10 @@ def aws_secrets_token_resolver(
     """Strategy 2 (opt-in): read the bot token from AWS Secrets Manager.
 
     Disabled by default. Set ``ALFRED_SECRETS_BACKEND=aws`` to enable.
-    ``boto3`` is an optional dependency declared under the ``[aws]``
-    extra; if the gate is configured to use AWS but ``boto3`` is not
-    installed, this resolver logs a warning and returns ``None`` (the
-    chain continues; the gate fails loud only if every strategy misses).
+    ``boto3`` ships with the standard Alfred package. If the gate is
+    configured to use AWS but ``boto3`` is not installed, this resolver logs a
+    warning and returns ``None`` (the chain continues; the gate fails loud only
+    if every strategy misses).
     """
     if (os.environ.get(backend_env) or "").strip().lower() != "aws":
         return None
@@ -227,7 +226,7 @@ def aws_secrets_token_resolver(
         except ImportError:
             logger.warning(
                 "ALFRED_SECRETS_BACKEND=aws but boto3 is not installed; "
-                "install alfred-os[aws] to enable. Falling through."
+                "install boto3 to enable AWS Secrets Manager. Falling through."
             )
             return None
     try:
@@ -322,8 +321,7 @@ def default_slack_client(token: str | None = None) -> SlackClient:
     except ImportError as e:
         raise ImportError(
             "slack-sdk is not installed but the Slack approval gate was "
-            "requested. Install with `pip install alfred-os[slack]` or "
-            "`pip install slack-sdk`."
+            "requested. Install it with `pip install slack-sdk`."
         ) from e
     resolved = token or resolve_bot_token()
     if not resolved:

@@ -33,7 +33,7 @@ pre-commit install
 ## What we accept
 
 - **Bug fixes**: always welcome. File the bug first if you didn't.
-- **Test coverage**: always welcome. Alfred aims for 100% on `agent_runner.py` over time.
+- **Test coverage**: always welcome. Alfred aims for 100% on the `agent_runner` package over time.
 - **Doc fixes / clarifications**: always welcome.
 - **New examples** under `examples/bin/`: welcome if they show a useful pattern not already covered.
 - **In-flight roadmap items**: welcome if you've sketched the design in the related issue first.

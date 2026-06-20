@@ -152,7 +152,8 @@ export ALFRED_SECRETS_BACKEND=aws
 Required Slack scopes (in addition to `chat:write`): `reactions:read`,
 `channels:read`, `groups:read`. Add `channels:history` and `groups:history`
 when you want Alfred to capture replies from approval threads.
-Install the optional `[slack]` extra (`pip install 'alfred-os[slack]'`).
+`slack-sdk` ships with the standard Alfred package. If you build a stripped-down
+environment by hand, install it directly with `pip install slack-sdk`.
 
 Full walkthrough at [`docs/SLACK_APPROVAL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/SLACK_APPROVAL.md):
 app manifest snippet, env var reference, fallback strategy ordering,
