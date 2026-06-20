@@ -69,7 +69,7 @@ npm run tauri -- build
 
 | Host | Artifacts |
 |---|---|
-| macOS | `.app` and `.dmg` |
+| macOS 11+ on Apple silicon | `.app` and `.dmg` |
 | Linux | `.AppImage` and `.deb` |
 
 Continuous integration builds the client with `--no-bundle` to prove the native binary compiles without requiring code signing, DMG packaging, or Linux package artifacts:

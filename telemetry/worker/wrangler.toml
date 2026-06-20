@@ -22,7 +22,7 @@ account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
 ALLOWED_ORIGIN = "https://alfred.example.com"
 
 # Optional shared write gate for POST /ingest. When set, every ingest must send
-# a matching `X-Ingest-Token` header (reporting machines put their value in
+# a matching `X-Ingest-Token` header (reporting installs put their value in
 # ALFRED_TELEMETRY_TOKEN). Leave it UNSET for a fully open public counter; the
 # CORS lock, per-IP rate limit, and per-install latest-wins idempotency still
 # apply. Prefer a Worker SECRET over a plaintext var here:

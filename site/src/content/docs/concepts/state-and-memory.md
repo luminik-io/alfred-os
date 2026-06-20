@@ -3,7 +3,7 @@ title: State and memory
 description: What Alfred remembers between firings, what it forgets, and where every byte of that memory lives on disk.
 ---
 
-Alfred is built on the premise that the host filesystem is a fine state store for a single-person fleet. Every firing reads its inputs from scratch, writes its outputs to plain JSON or JSONL files under `$ALFRED_HOME/state/`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete `$ALFRED_HOME/state/`, the next firing rebuilds whatever it still needs.
+Alfred is built on the premise that the host filesystem is a fine state store for a single-person fleet. Every firing reads its inputs from scratch, writes operational JSON or JSONL under `$ALFRED_HOME/state/`, writes durable lessons to `$ALFRED_HOME/fleet-brain.db`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete both, Alfred rebuilds whatever it still can from GitHub and local config.
 
 This page is the map of that directory and the contract each file carries. Full doc at [`docs/STATE_AND_MEMORY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_AND_MEMORY.md).
 
@@ -79,13 +79,13 @@ $ALFRED_HOME/state/
 | Engine session id from `claude -p` | written to the result; not resumed | n/a | n/a |
 | Lessons in the fleet brain | yes | yes | yes |
 
-The contract is intentionally narrow: anything an agent must remember between firings is a JSON or JSONL file on disk. Anything else is reconstructed from GitHub, the repo checkout, or your `~/.alfredrc`.
+The contract is intentionally narrow: operational state is JSON or JSONL on disk, while durable lessons live in the local fleet-brain SQLite file. Anything else is reconstructed from GitHub, the repo checkout, or your `~/.alfredrc`.
 
 ## The fleet brain
 
 The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, preferred PR style).
 
-That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine, then record any durable lessons the engine returns in a machine-readable reflection block.
+That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine. If the engine returns a machine-readable memory reflection block, Alfred strips it from the user-facing result and queues those entries as reviewable candidates by default. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are intentional.
 
 The same brain stores recent file touches when an agent or outbox import knows
 which repo-relative paths changed. Use `alfred brain files <repo>` to inspect

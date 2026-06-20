@@ -91,9 +91,9 @@ does not want to tail logs.
 1. Stabilize JSON APIs in `alfred serve`. Done.
 2. Ship a Tauri shell for Mac/Linux with safe local follow-up actions, runtime launch, a curated command console, status/auth/agent checks, memory checks, Redis checks, and dry-run launch. Done.
 3. Add deeper guided install and broader write actions with command previews.
-4. Package signed Mac builds and Linux artifacts. Done.
+4. Package signed macOS builds and Linux artifacts. Done.
 
-The client builds native installers locally: `npm run tauri -- build` produces `.app`/`.dmg` on macOS and `.AppImage`/`.deb` on Linux from the Tauri bundle config. CI builds with `--no-bundle` to prove the binary compiles without code signing. Public releases start as draft GitHub Releases; signed desktop assets are attached before publish. See [Alfred Desktop](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
+The client builds native installers locally: `npm run tauri -- build` produces `.app`/`.dmg` on macOS 11+ Apple silicon and `.AppImage`/`.deb` on Linux from the Tauri bundle config. CI builds with `--no-bundle` to prove the binary compiles without code signing. Public releases start as draft GitHub Releases; signed macOS assets and Linux packages are attached before publish. See [Alfred Desktop](/concepts/desktop-client/) for the tab-by-tab control surface and build steps.
 
 The direct-host model is inspired by Hermes Desktop's strongest lesson: keep
 the host as the source of truth and avoid a second sync layer.

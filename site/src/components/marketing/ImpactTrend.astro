@@ -109,6 +109,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     flex-direction: column;
     justify-content: flex-end;
     gap: 10px;
+    padding-top: 34px;
   }
   .trend-chart__count {
     color: var(--alfred-text-bright);
@@ -121,7 +122,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
   .trend-chart__bar {
     display: block;
     min-height: 10px;
-    height: var(--h);
+    height: min(var(--h), calc(100% - 40px));
     flex: 0 0 auto;
     border-radius: 8px 8px 3px 3px;
     background:

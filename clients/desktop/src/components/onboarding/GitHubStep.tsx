@@ -73,7 +73,7 @@ export function GitHubStep({
               <strong className="text-foreground">Connect GitHub</strong>
               <span>
                 {connected
-                  ? github?.detail || "Sign in once so Alfred can read and file GitHub work."
+                  ? github?.detail || "Sign in once so Alfred can read and file issues and pull requests."
                   : "Connect to the local runtime first, then Alfred can read your GitHub sign-in."}
               </span>
             </span>

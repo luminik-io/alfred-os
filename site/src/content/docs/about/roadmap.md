@@ -19,14 +19,14 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 ### v0.5.1: 2026-06-17
 
 Reliability, first-run trust polish, the first packaged native client, and the
-public download path for signed desktop artifacts.
+public download path for desktop artifacts.
 
 - Public download page: `/download/` links to stable latest-release assets for
   `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
 - Native runtime alignment: `alfred serve` defaults to 7010, Alfred Desktop
   stops probing legacy 7000 after a 7010 failure, and stale saved 7000 URLs are
   normalized before any browser or Tauri request.
-- Launch polish: the docs/site describe signed macOS and Linux artifacts, the
+- Launch polish: the docs/site describe signed macOS artifacts and Linux packages, the
   current Inbox / Ask / Work / Agents / Setup app IA, and the desktop health
   pill now says "Needs attention" consistently.
 - Audit cleanup: high-severity frontend audit findings were cleared across the
@@ -76,8 +76,8 @@ public download path for signed desktop artifacts.
   `alfred serve`, preview Redis AMS sync, queue failure-pattern memories, and
   can convert trusted follow-ups into planning drafts or mark them handled
   without bypassing Slack approval.
-- Signed desktop packages: the release pipeline publishes a signed and
-  notarized macOS DMG plus app zip, and Linux AppImage and Debian artifacts
+- Desktop packages: the release pipeline publishes a signed and notarized
+  macOS DMG plus app zip, and Linux AppImage and Debian artifacts
   under stable release asset names.
 - Goal contract design: `docs/GOALS.md` defines durable goals in Alfred
   across Slack, CLI, native client, planner, evaluator, and memory. Engine

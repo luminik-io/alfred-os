@@ -67,7 +67,7 @@ The bundled Cloudflare Worker lives in
 [`telemetry/worker/`](../telemetry/worker/):
 
 - `POST /ingest` stores one latest record per install id.
-- `GET /stats` returns aggregate totals and the number of reporting machines.
+- `GET /stats` returns aggregate totals and the number of reporting installs.
 
 The Worker derives totals by summing current install records. It does not keep
 per-install history. Use `INGEST_TOKEN` when you want only your own machines to

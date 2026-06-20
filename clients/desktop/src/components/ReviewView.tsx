@@ -168,7 +168,7 @@ export function ReviewView({
   const summary = snapshot
     ? [
         filteredDigest.length
-          ? `Shipped ${filteredDigest.length} ${filteredDigest.length === 1 ? "thing" : "things"} overnight.`
+          ? `Shipped ${filteredDigest.length} ${filteredDigest.length === 1 ? "update" : "updates"} overnight.`
           : null,
         liveRunSummary,
         activeThreadSummary,

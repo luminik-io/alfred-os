@@ -64,7 +64,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`../SECURITY.md`](../SECURITY.md)
 - [`../SUPPORT.md`](../SUPPORT.md)
 - [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)
-- [`RELEASING.md`](RELEASING.md): the tag-to-publish release process, including the draft-release gate for signed desktop assets.
+- [`RELEASING.md`](RELEASING.md): the tag-to-publish release process, including the draft-release gate for desktop assets.
 
 ## Tests
 

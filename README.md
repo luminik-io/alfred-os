@@ -7,11 +7,11 @@
 [![CI](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred-os/actions/workflows/ci.yml)
 [![Site](https://github.com/luminik-io/alfred-os/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![macOS](https://img.shields.io/badge/macOS-10.15%2B-black?logo=apple)
+![macOS](https://img.shields.io/badge/macOS-11%2B-black?logo=apple)
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**Autonomous coding agents that keep development moving while you are away.**
+**Local coding agents that turn Slack requests, specs, and labeled issues into pull requests, reviews, safe merges, and Slack updates.**
 
 Alfred keeps engineering work moving when you are not sitting at the keyboard.
 It turns Slack requests, rough plans, specs, and GitHub issues into scoped
@@ -128,7 +128,7 @@ work from `main` or run the Linux installer.
 Alfred Desktop is optional. It connects to the local runtime over
 `alfred serve`; it does not run agents by itself.
 
-- macOS: download the signed, notarized DMG from
+- macOS 11+ on Apple silicon: download the signed, notarized DMG from
   [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
 - Linux: download the AppImage or `.deb` from the same page.
 - Local development: `cd clients/desktop && npm install && npm run tauri dev`.
@@ -371,7 +371,7 @@ Alfred has a deliberate shape. The boundaries below are intentional.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
 The engineering fleet, local memory, reliability governor, `alfred serve`, and
-the signed Mac/Linux desktop app all ship in v0.5.1. Content, sales, and ops
+the signed macOS desktop app plus Linux desktop packages all ship in v0.5.1. Content, sales, and ops
 departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
@@ -380,7 +380,7 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted
 workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling,
 Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
-v0.5.1 carries the first signed native Mac and Linux desktop app (built with Tauri),
+v0.5.1 carries the first signed macOS desktop app and Linux desktop packages (built with Tauri),
 live Claude and Codex subscription usage in that app, a single-repo
 approval gate, a disk guardian that pauses your agents cleanly when the
 disk is nearly full, a Slack planning path that turns an approved draft into a

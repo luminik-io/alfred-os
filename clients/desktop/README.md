@@ -122,7 +122,7 @@ version. Outputs land under `src-tauri/target/release/bundle/`:
 
 | Platform | Artifacts | Path |
 | --- | --- | --- |
-| macOS | `.dmg`, `.app` | `bundle/dmg/`, `bundle/macos/` |
+| macOS 11+ on Apple silicon | `.dmg`, `.app` | `bundle/dmg/`, `bundle/macos/` |
 | Linux | `.AppImage`, `.deb` | `bundle/appimage/`, `bundle/deb/` |
 
 You can only build a platform's installers on that platform: build the macOS
@@ -146,7 +146,7 @@ at the latest release without a site change for every version:
 
 On first launch:
 
-- **macOS:** the release `.dmg` and `.app.zip` are Developer ID signed,
+- **macOS 11+ on Apple silicon:** the release `.dmg` and `.app.zip` are Developer ID signed,
   notarized, and stapled. Open the DMG, drag Alfred to Applications, and launch
   it normally. If you build an unsigned app locally, right-click (or
   Control-click) the app and choose **Open** once.
@@ -157,14 +157,14 @@ On first launch:
 ## Releases
 
 Releases start in the public `Release` workflow
-(`.github/workflows/release.yml`) and finish after the signed desktop assets are
+(`.github/workflows/release.yml`) and finish after the desktop assets are
 attached to that draft release.
 
 - **Tag a release:** push a tag matching `v*.*.*`, e.g.
   `git tag v0.5.0 && git push origin v0.5.0`. The public workflow creates or
   updates a **draft** GitHub Release and prints the source tarball checksum for
   the Homebrew formula.
-- **Attach desktop assets:** run the signed desktop release pipeline for the
+- **Attach desktop assets:** run the desktop release pipeline for the
   same tag and confirm `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and
   `Alfred.deb` are present on the draft before publishing it.
 - **Dry run:** trigger the public release workflow manually

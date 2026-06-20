@@ -47,9 +47,9 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
    ```
 
 3. Watch the `Release` workflow. It verifies `VERSION`, extracts notes from `CHANGELOG.md`, creates the GitHub Release as a **draft**, and prints the source tarball sha256 for Homebrew. The draft is not public yet, by design.
-4. Run the signed desktop release workflow against the tag so the signed `.dmg`
-   / `.AppImage` / `.deb` assets attach to the draft release. The release body
-   claims a signed download, so the assets must be attached before anyone can
+4. Run the desktop release workflow against the tag so the signed and notarized
+   macOS assets plus Linux `.AppImage` / `.deb` assets attach to the draft release. The release body
+   claims a desktop download, so the assets must be attached before anyone can
    read that claim. The download page expects these stable asset names on the
    release: `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and
    `Alfred.deb`.

@@ -84,7 +84,7 @@ The contract is intentionally narrow: operational state is JSON or JSONL on disk
 
 The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, the operator's preferred PR style).
 
-That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine, then record any durable lessons the engine returns in a machine-readable reflection block.
+That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine. If the engine returns a machine-readable memory reflection block, Alfred strips it from the user-facing result and queues those entries as reviewable candidates by default. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are intentional.
 
 The same brain stores recent file touches when an agent or outbox import knows
 which repo-relative paths changed. Use `alfred brain files <repo>` to inspect

@@ -238,8 +238,9 @@ def invoke_agent_engine(prompt: str, *,
 
 The OSS streaming variant currently delegates to `claude_invoke()` while preserving the future call shape. `codex_invoke()` shells out to `codex exec`, rejects unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`), defaults to `read-only` + `approval_policy=never`, and writes final-message/stdout/stderr artifacts to `$ALFRED_HOME/state/codex/<agent>/<YYYY-MM>/`.
 When `memory_repo` is provided, `invoke_agent_engine()` prepends local
-fleet-brain recall context and records any machine-readable memory reflection
-block returned by the engine.
+fleet-brain recall context. If the engine returns a machine-readable memory
+reflection block, Alfred strips it from the user-facing result and queues those
+entries as reviewable candidates by default.
 
 ## Event log + commit trailer + handoff table
 

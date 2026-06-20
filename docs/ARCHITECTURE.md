@@ -325,7 +325,7 @@ flowchart TD
     ci -.->|secret scan gate| ghrel
 ```
 
-- **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` builds `.app` and `.dmg` on macOS, plus `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging. Public releases start as drafts; signed desktop assets are attached before publish (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
+- **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` builds `.app` and `.dmg` on macOS 11+ Apple silicon, plus `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging. Public releases start as drafts; signed macOS assets and Linux packages are attached before publish (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
 - **Tag-triggered release.** `.github/workflows/release.yml` runs on a `v*.*.*` tag (or `workflow_dispatch`). It verifies the tag matches the `VERSION` file, extracts the matching `CHANGELOG.md` section as release notes, creates or edits the GitHub Release, and prints the source-tarball `sha256` for the Homebrew formula (`Formula/alfred-os.rb`).
 - **Secret-scan gate.** `.github/workflows/gitleaks.yml` runs the free gitleaks binary (no org license needed) on every push and PR to `main`, scanning full history with `.gitleaks.toml`. The same scan runs on the internal repo, so nothing with a leaked secret reaches a release.
 

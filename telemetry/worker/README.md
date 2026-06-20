@@ -1,7 +1,7 @@
 # Alfred proof-telemetry Worker
 
 A tiny Cloudflare Worker that collects **anonymous, aggregate-only** usage
-counts from reporting Alfred machines, and serves the public totals to the
+counts from reporting Alfred installs, and serves the public totals to the
 marketing site's `/impact` counter.
 
 It is the server half of Alfred's aggregate usage counter. The agent-side
@@ -143,7 +143,7 @@ each capped and idempotent, not by how fast they can POST. The IP rate limit is
 a speed bump that makes that more expensive, not the thing that bounds the
 total. Together with the site's display threshold these keep the open counter
 best-effort, not verified. If the counter's credibility matters, **set
-`INGEST_TOKEN`** so only your reporting machines can write (the hard gate). If
+`INGEST_TOKEN`** so only your configured installs can write (the hard gate). If
 you intentionally run it fully open, present the numbers as best-effort and
 unverified.
 
@@ -204,7 +204,7 @@ You need a Cloudflare account (the free plan is enough) and
      `https://alfred.example.com`. This is the CORS allow-origin for `/stats`.
    - the two KV ids from step 1.
 
-3. **(Recommended) Set a write token** so only your own reporting machines can post
+3. **(Recommended) Set a write token** so only your own configured installs can post
    to the counter. Skip this only if you want a fully open public counter:
 
    ```sh

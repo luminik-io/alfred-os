@@ -27,8 +27,8 @@ export function WelcomeStep({
           Wake up to shipped work you can trust.
         </h2>
         <p className="text-base text-muted-foreground">
-          Alfred runs your own Claude Code and Codex to ship GitHub work overnight. Let's connect
-          it. About two minutes.
+          Alfred runs your own Claude Code and Codex to open pull requests, handle reviews, and
+          report back in Slack. Let's connect it. About two minutes.
         </p>
       </div>
       <div className="mx-auto flex flex-wrap items-center justify-center gap-2">

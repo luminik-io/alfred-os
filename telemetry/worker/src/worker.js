@@ -573,7 +573,7 @@ function checkOrigin(request, env) {
 
 /**
  * Ingest write gate. When INGEST_TOKEN is configured on the Worker, /ingest
- * must present a matching `X-Ingest-Token` header (reporting machines send their
+ * must present a matching `X-Ingest-Token` header (reporting installs send their
  * ALFRED_TELEMETRY_TOKEN there). When INGEST_TOKEN is unset the counter is
  * deliberately open to server-side writes (the application/json + Origin lock,
  * rate limit, per-install count cap, and latest-wins idempotency are the

@@ -88,7 +88,7 @@ jobs:
           # signed .dmg/.AppImage/.deb assets are attached LATER by the internal
           # signed-desktop-release workflow run against this tag. Keeping the
           # release a draft means the download claim is never public until a
-          # human has attached the signed assets and pressed Publish. Do NOT add
+          # human has attached the desktop assets and pressed Publish. Do NOT add
           # --latest here: --latest publishes, which defeats the draft gate.
           #
           # On the EDIT path we deliberately do NOT pass --draft. A rerun
