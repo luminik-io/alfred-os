@@ -484,6 +484,7 @@ class SlackPlanningListener:
             if turn.action in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
                 return self._complete_issue_clarification(event, turn)
             if turn.action in {
+                ACTION_DRY_RUN_AGENT,
                 ACTION_RUN_AGENT,
                 ACTION_PAUSE_AGENT,
                 ACTION_RESUME_AGENT,
@@ -546,7 +547,7 @@ class SlackPlanningListener:
         agent = turn.agent or resolve_agent_codename(event.text, allow_all=allow_all)
         schedule = turn.schedule
         if turn.action == ACTION_SCHEDULE_AGENT and not schedule:
-            schedule = event.text.strip() if agent else ""
+            schedule = event.text.strip() if turn.agent else ""
         intent = Intent(
             action=turn.action,
             agent=agent,
@@ -565,6 +566,8 @@ class SlackPlanningListener:
             agent=intent.agent,
             schedule=intent.schedule,
         )
+        if intent.action == ACTION_DRY_RUN_AGENT:
+            return self._answer_dry_run_agent(event, intent)
         return self._propose_intent_action(event, intent)
 
     def _handle_plan_revision(

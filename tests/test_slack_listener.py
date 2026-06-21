@@ -1741,6 +1741,134 @@ def test_conversation_thread_reply_can_complete_agent_clarification(tmp_path: Pa
     assert "daily@09:00" in poster.messages[-1]["text"]
 
 
+def test_conversation_thread_schedule_asks_cadence_after_agent_reply(tmp_path: Path) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "schedule_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule",
+                "ts": "1716480950.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    agent_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleAgentReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480951.000001",
+                "thread_ts": "1716480950.000001",
+            },
+        }
+    )
+    assert agent_reply.action == "intent_clarify"
+    assert "What cadence should `batman` use?" in poster.messages[-1]["text"]
+
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "daily@09:00",
+                "ts": "1716480952.000001",
+                "thread_ts": "1716480950.000001",
+            },
+        }
+    )
+    assert cadence_reply.action == "intent_confirmation_posted"
+    assert "batman" in poster.messages[-1]["text"]
+    assert "daily@09:00" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_reply_can_complete_dry_run_clarification(tmp_path: Path) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action="dry-run",
+            text=f"*Dry run for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "dry_run_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvDryRunClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> dry run",
+                "ts": "1716480960.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvDryRunTargetReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480961.000001",
+                "thread_ts": "1716480960.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_dry_run_agent"
+    assert control.calls == ["dry-run batman"]
+    assert "I ran the dry-run for `batman`." in poster.messages[-1]["text"]
+
+
 def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
     poster = CardPoster()
     listener = SlackPlanningListener(
