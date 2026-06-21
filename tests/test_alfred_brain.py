@@ -244,6 +244,33 @@ def test_cli_redis_status_json(
     assert payload["response"]["status"] == "healthy"
 
 
+def test_cli_ams_status_json(
+    cli_mod: ModuleType,
+    brain_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class FakeRedis:
+        def health(self) -> dict[str, object]:
+            return {
+                "ok": True,
+                "base_url": "http://127.0.0.1:8088",
+                "namespace": "alfred",
+                "response": {"status": "healthy"},
+            }
+
+    monkeypatch.setattr(cli_mod, "_build_redis_provider", lambda: FakeRedis())
+    monkeypatch.delenv("ALFRED_AMS_PORT", raising=False)
+
+    rc = cli_mod.main(["ams-status", "--json"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["base_url"] == "http://127.0.0.1:8088"
+    assert payload["embedding_model"] == "ollama/mxbai-embed-large"
+    assert payload["health"]["ok"] is True
+
+
 def test_cli_redis_sync_pushes_reviewed_lessons(
     cli_mod: ModuleType,
     brain_db: Path,

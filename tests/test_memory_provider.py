@@ -31,7 +31,9 @@ sys.path.insert(0, str(_REPO / "lib"))
 
 from fleet_brain import FleetBrain, Lesson, Severity, SQLiteStore  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
+from memory.ams_server import AMS_DEFAULTS, AmsServerConfig, ams_server_env  # noqa: E402
 from memory.config import (  # noqa: E402
+    DEFAULT_PROVIDER_NAMES,
     PROVIDER_REGISTRY,
     build_chain,
     load_provider,
@@ -340,6 +342,20 @@ def test_redis_provider_from_env() -> None:
     assert provider.timeout_s == 1.5
 
 
+def test_redis_provider_default_url_matches_ams_config() -> None:
+    provider = RedisAgentMemoryProvider.from_env(env={})
+
+    assert provider.base_url == "http://127.0.0.1:8088"
+
+
+def test_redis_provider_default_url_honors_ams_host_and_port() -> None:
+    provider = RedisAgentMemoryProvider.from_env(
+        env={"ALFRED_AMS_HOST": "127.0.0.2", "ALFRED_AMS_PORT": "9090"}
+    )
+
+    assert provider.base_url == "http://127.0.0.2:9090"
+
+
 def test_redis_provider_recall_posts_search_payload() -> None:
     calls: list[dict[str, object]] = []
 
@@ -574,10 +590,14 @@ def test_build_chain_empty_returns_null() -> None:
     assert isinstance(build_chain([], env={}), NullMemoryProvider)
 
 
-def test_load_provider_unset_defaults_to_fleet(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_provider_unset_defaults_to_redis_then_fleet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("ALFRED_MEMORY_PROVIDERS", raising=False)
     out = load_provider(env={})
-    assert isinstance(out, FleetBrainProvider)
+    assert DEFAULT_PROVIDER_NAMES == ["redis", "fleet"]
+    assert isinstance(out, ChainedMemoryProvider)
+    assert [provider.name for provider in out.providers] == ["redis", "fleet"]
 
 
 def test_load_provider_explicit_empty_is_null() -> None:
@@ -618,6 +638,55 @@ def test_registry_is_open_for_extension() -> None:
     out = build_chain(["custom"], env={}, registry=registry)
     assert isinstance(out, _Custom)
     assert isinstance(out, MemoryProvider)
+
+
+# ---------------------------------------------------------------------------
+# AMS server config
+# ---------------------------------------------------------------------------
+
+
+def test_ams_defaults_are_loopback_and_free_local_embeddings() -> None:
+    cfg = AmsServerConfig.from_env(env={})
+
+    assert cfg.host == "127.0.0.1"
+    assert cfg.port == 8088
+    assert cfg.base_url == "http://127.0.0.1:8088"
+    assert cfg.embedding_model == "ollama/mxbai-embed-large"
+    assert cfg.embedding_dimensions == 1024
+    assert cfg.forgetting_enabled is False
+    assert cfg.long_term_memory is True
+    assert cfg.port == AMS_DEFAULTS["port"]
+
+
+def test_ams_env_overrides_are_tolerant() -> None:
+    cfg = AmsServerConfig.from_env(
+        env={
+            "ALFRED_AMS_HOST": "127.0.0.2",
+            "ALFRED_AMS_PORT": "not-a-port",
+            "ALFRED_AMS_EMBEDDING_MODEL": "ollama/nomic-embed-text",
+            "ALFRED_AMS_EMBEDDING_DIM": "768",
+            "ALFRED_AMS_FORGETTING": "yes",
+        }
+    )
+
+    assert cfg.host == "127.0.0.2"
+    assert cfg.port == 8088
+    assert cfg.embedding_model == "ollama/nomic-embed-text"
+    assert cfg.embedding_dimensions == 768
+    assert cfg.forgetting_enabled is True
+
+
+def test_ams_server_env_matches_upstream_settings_names() -> None:
+    env = ams_server_env(env={})
+
+    assert env["REDIS_URL"] == "redis://127.0.0.1:6379/0"
+    assert env["AUTH_MODE"] == "disabled"
+    assert env["LONG_TERM_MEMORY"] == "true"
+    assert env["EMBEDDING_MODEL"] == "ollama/mxbai-embed-large"
+    assert env["GENERATION_MODEL"] == "ollama/mxbai-embed-large"
+    assert env["REDISVL_VECTOR_DIMENSIONS"] == "1024"
+    assert env["FORGETTING_ENABLED"] == "false"
+    assert env["OLLAMA_API_BASE"] == "http://127.0.0.1:11434"
 
 
 # ---------------------------------------------------------------------------

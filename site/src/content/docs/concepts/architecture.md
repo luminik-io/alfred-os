@@ -25,7 +25,10 @@ flowchart LR
     runner <--> state
 ```
 
-State outside your filesystem becomes another service to run. Alfred keeps operational state in plain JSON files under `$ALFRED_HOME/state/`, and durable lessons in the local fleet-brain SQLite file. No required Redis, no SQS, no Postgres, and no required external agent gateway.
+Alfred keeps operational state in plain JSON files under `$ALFRED_HOME/state/`,
+uses FleetBrain for local review and reliability rows, and uses a loopback
+Redis Agent Memory Server for recalled lessons. No SQS, Postgres, hosted memory
+database, or external agent gateway is required.
 
 ## One firing, end to end
 

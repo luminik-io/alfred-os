@@ -38,7 +38,7 @@ recurring. The full roster adds Bane, Nightwing, and other specialists.
 
 Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
-`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, hosted memory database, skill registry, or dashboard service is required. Local fleet-brain memory ships with Alfred and stays on the host.
+`ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`. No external agent gateway, hosted memory database, skill registry, or dashboard service is required. Redis Agent Memory runs locally for recalled lessons, and FleetBrain stays on the host for review and reliability state.
 
 ```mermaid
 flowchart TB
@@ -48,7 +48,7 @@ flowchart TB
     engine["claude -p or codex exec<br/><i>the LLM work, in a fresh subprocess</i>"]
     gh["GitHub<br/><i>issues, specs, PRs, labels</i>"]
     slack["Slack channel<br/><i>your read surface</i>"]
-    state[("$ALFRED_HOME/state/<br/><i>JSON + local SQLite</i>")]
+    state[("$ALFRED_HOME/state + Redis Agent Memory<br/><i>JSON · FleetBrain · loopback Redis</i>")]
 
     scheduler --> role --> runner --> engine
     runner -- "claim / release / PR" --> gh
@@ -166,7 +166,7 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.5.1. Alfred ships a local coding-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, memory promotion, repeated-failure classification, the reliability governor, optional Redis AMS memory, planning-memory recall, and a native Mac/Linux client with a public download page.
+Latest release: v0.5.1. Alfred ships a local coding-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, fleet-brain GitHub polling, worker heartbeats, Redis-backed memory recall, reviewable memory promotion, repeated-failure classification, the reliability governor, planning-memory recall, and a native Mac/Linux client with a public download page.
 
 Public releases keep native download assets behind a draft-release gate until
 the desktop packages are attached. The design boundary is stable: one person,

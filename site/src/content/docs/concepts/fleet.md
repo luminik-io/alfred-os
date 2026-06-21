@@ -128,10 +128,11 @@ The default install is engineering-only. Future categories are tracked in [`ROAD
 ## Memory
 
 Every engine-aware codename that knows its target repo can recall what earlier
-firings learned about that repo, file class, or issue type. The store is a
-single SQLite file in your `$ALFRED_HOME`; it never leaves the host. The next
-firing prepends the relevant lessons to its prompt context, so the fleet stops
-rediscovering the same conventions on every run.
+firings learned about that repo, file class, or issue type. Redis Agent Memory
+runs on loopback by default, and FleetBrain keeps the review queue and
+operational ledger under `$ALFRED_HOME`. The next firing prepends relevant
+lessons to its prompt context, so the fleet stops rediscovering the same
+conventions on every run.
 
 - Recall (read): the runner asks the configured memory provider for the latest
   lessons before invoking the engine.
@@ -146,23 +147,21 @@ repo-relative paths changed by a firing or PR. `alfred brain files your-org/api`
 answers the practical question "what did the fleet touch here recently?"
 without requiring a hosted dashboard or external index.
 
-The shipping default is the in-tree `fleet_brain` SQLite provider. If you
-maintain a separate personal knowledge base, you can chain it as a fallback:
+The default memory stack is Redis Agent Memory Server for recalled lessons,
+with FleetBrain behind it as the local review queue and reliability ledger. If
+you maintain a separate personal knowledge base, chain it behind the default
+stack:
 
 ```sh
-ALFRED_MEMORY_PROVIDERS=fleet,gbrain
+ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain
 ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 ```
 
-The chain consults `fleet` first and falls through to `gbrain` only when the
-fleet-brain has nothing for that `(codename, repo)`. The `gbrain` provider is
-read-only and not bundled; it is your optional personal knowledge
-base CLI, and the shim degrades to empty when the binary is missing.
+The `gbrain` provider is read-only and not bundled; it is your personal
+knowledge base CLI, and the shim degrades to empty when the binary is missing.
 
-If you already run Redis Agent Memory Server locally, add it as an optional
-provider with `ALFRED_MEMORY_PROVIDERS=fleet,redis` and
-`ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000`. Alfred does not install or
-start Redis for you.
+If you run Agent Memory Server on a different endpoint, set
+`ALFRED_REDIS_MEMORY_URL`. Leave it unset to use the bundled loopback server.
 
 Set `ALFRED_MEMORY_PROVIDERS=null` to turn memory off. Full reference:
 [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md)

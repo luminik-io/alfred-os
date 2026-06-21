@@ -109,7 +109,7 @@ Trusted users can inspect the same local planning queue from Slack:
 | `memory reject <id>` | Operator-only. Rejects a noisy candidate. |
 | `memory harvest` | Previews repeated-failure lessons from the reliability governor. |
 | `memory harvest now` | Operator-only. Queues harvested lessons as reviewable candidates. |
-| `memory redis` | Checks the optional Redis Agent Memory Server bridge. |
+| `memory redis` | Checks the Redis Agent Memory Server. |
 | `memory sync` | Previews reviewed-lesson sync to Redis AMS. |
 | `memory sync now` | Operator-only. Writes reviewed lessons to Redis AMS. |
 

@@ -20,7 +20,7 @@ registry, never by editing this file -- Open-Closed.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -46,6 +46,11 @@ class FleetBrainProvider:
 
     brain: FleetBrain = field(default_factory=FleetBrain)
     name: str = "fleet"
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> FleetBrainProvider:
+        """Build the local operational ledger from the same env map as config."""
+        return cls(brain=FleetBrain.from_env(env))
 
     def recall(
         self,

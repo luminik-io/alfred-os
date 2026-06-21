@@ -239,9 +239,10 @@ alfred brain export --out ~/alfred-brain.json
 alfred mcp serve
 ```
 
-Runtime memory is on by default through the local `fleet` provider. Set
-`ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall and reflection. Engine
-written lessons enter the review queue by default; set
+Runtime memory is on by default through `redis,fleet`: Redis Agent Memory
+Server handles recalled lessons, and FleetBrain keeps local review and
+reliability state. Set `ALFRED_MEMORY_PROVIDERS=null` to disable prompt recall
+and reflection. Engine-written lessons enter the review queue by default; set
 `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are
 intentional.
 

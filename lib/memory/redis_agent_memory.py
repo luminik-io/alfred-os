@@ -1,8 +1,8 @@
-"""Optional Redis Agent Memory Server provider.
+"""Redis Agent Memory Server provider.
 
-This adapter keeps Redis AMS outside the default install. Operators who
-already run https://github.com/redis/agent-memory-server can add it to
-the provider chain with ``ALFRED_MEMORY_PROVIDERS=fleet,redis``.
+This adapter is Alfred's primary semantic memory client. A fresh install
+talks to the bundled loopback AMS by default; ``ALFRED_REDIS_MEMORY_URL``
+can point it at a different endpoint.
 
 The provider is deliberately tolerant: recall failures return ``[]``;
 reflect failures raise :class:`NotImplementedError` so a chained writer
@@ -23,22 +23,35 @@ from urllib.request import Request, urlopen
 
 from fleet_brain import Lesson, Severity, new_id
 
+from .ams_server import DEFAULT_HOST, DEFAULT_PORT
+
 __all__ = ["RedisAgentMemoryProvider"]
 
 _LOG = logging.getLogger(__name__)
 
 _JSON = "application/json"
-_DEFAULT_URL = "http://127.0.0.1:8000"
-_DEFAULT_TIMEOUT_S = 5.0
+_DEFAULT_TIMEOUT_S = 2.0
+_AMS_DEFAULT_HOST = DEFAULT_HOST
+_AMS_DEFAULT_PORT = DEFAULT_PORT
 
 Transport = Callable[[str, str, dict[str, Any] | None, dict[str, str], float], Any]
+
+
+def _ams_default_url(envmap: Mapping[str, str]) -> str:
+    host = (envmap.get("ALFRED_AMS_HOST") or "").strip() or _AMS_DEFAULT_HOST
+    port_raw = (envmap.get("ALFRED_AMS_PORT") or "").strip()
+    try:
+        port = int(port_raw) if port_raw else _AMS_DEFAULT_PORT
+    except ValueError:
+        port = _AMS_DEFAULT_PORT
+    return f"http://{host}:{port}"
 
 
 @dataclass
 class RedisAgentMemoryProvider:
     """Bridge Alfred's memory Protocol to Redis Agent Memory Server."""
 
-    base_url: str = _DEFAULT_URL
+    base_url: str = f"http://{_AMS_DEFAULT_HOST}:{_AMS_DEFAULT_PORT}"
     token: str | None = None
     namespace: str = "alfred"
     user_id: str | None = None
@@ -60,7 +73,9 @@ class RedisAgentMemoryProvider:
         except ValueError:
             timeout = _DEFAULT_TIMEOUT_S
         return cls(
-            base_url=(envmap.get("ALFRED_REDIS_MEMORY_URL") or _DEFAULT_URL).rstrip("/"),
+            base_url=(envmap.get("ALFRED_REDIS_MEMORY_URL") or _ams_default_url(envmap)).rstrip(
+                "/"
+            ),
             token=(envmap.get("ALFRED_REDIS_MEMORY_TOKEN") or "").strip() or None,
             namespace=(envmap.get("ALFRED_REDIS_MEMORY_NAMESPACE") or "alfred").strip() or "alfred",
             user_id=(envmap.get("ALFRED_REDIS_MEMORY_USER_ID") or "").strip() or None,

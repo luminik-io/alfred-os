@@ -1,4 +1,4 @@
-# alfred-os operator config — example.
+# Alfred operator config example.
 #
 # Copy to ~/.alfredrc (already done by install.sh on a fresh setup),
 # fill in the values, and your shell rc will source it on every new session.
@@ -130,3 +130,29 @@ WORKSPACE_ROOT=
 # Comma-separated repos for `alfred shipped` daily/weekly reports. Bare names
 # resolve through GH_ORG; owner/repo slugs work as-is.
 # ALFRED_SHIPPED_SUMMARY_REPOS=backend,frontend,mobile
+
+# ----------------------------------------------------------------------
+# Memory
+# ----------------------------------------------------------------------
+
+# Runtime memory defaults to Redis Agent Memory first, then FleetBrain.
+# Redis stores recalled semantic lessons. FleetBrain stays local for
+# reviewable candidates, firing logs, GitHub cache, worker heartbeats,
+# reliability reports, and telemetry inputs.
+# ALFRED_MEMORY_PROVIDERS=redis,fleet
+
+# Local Redis Agent Memory Server defaults. The installer provisions Redis
+# Stack, Ollama, the mxbai-embed-large embedding model, and agent-memory when
+# possible. Override these only if you run the server elsewhere.
+# ALFRED_AMS_HOST=127.0.0.1
+# ALFRED_AMS_PORT=8088
+# ALFRED_AMS_REDIS_URL=redis://127.0.0.1:6379/0
+# ALFRED_AMS_EMBEDDING_MODEL=ollama/mxbai-embed-large
+# ALFRED_AMS_EMBEDDING_DIM=1024
+# ALFRED_AMS_AUTH_MODE=disabled
+
+# Client-side Redis memory settings. Leave URL unset to use ALFRED_AMS_HOST
+# and ALFRED_AMS_PORT.
+# ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8088
+# ALFRED_REDIS_MEMORY_NAMESPACE=alfred
+# ALFRED_REDIS_MEMORY_SEARCH_MODE=hybrid

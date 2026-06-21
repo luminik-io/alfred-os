@@ -3,7 +3,12 @@ title: State and memory
 description: What Alfred remembers between firings, what it forgets, and where every byte of that memory lives on disk.
 ---
 
-Alfred is built on the premise that the host filesystem is a fine state store for a single-person fleet. Every firing reads its inputs from scratch, writes operational JSON or JSONL under `$ALFRED_HOME/state/`, writes durable lessons to `$ALFRED_HOME/fleet-brain.db`, and exits. There is no daemon holding state in RAM, no required Redis, no Postgres, no shared cluster. If you delete both, Alfred rebuilds whatever it still can from GitHub and local config.
+Alfred is built on the premise that the host filesystem is a fine operational
+state store for a single-person fleet. Every firing reads its inputs from
+scratch, writes operational JSON or JSONL under `$ALFRED_HOME/state/`, and keeps
+review and reliability rows in `$ALFRED_HOME/fleet-brain.db`. Recalled lessons
+live in the local Redis Agent Memory Server by default. If you delete local
+state, Alfred rebuilds whatever it still can from GitHub and local config.
 
 This page is the map of that directory and the contract each file carries. Full doc at [`docs/STATE_AND_MEMORY.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/STATE_AND_MEMORY.md).
 
@@ -77,15 +82,25 @@ $ALFRED_HOME/state/
 | In-flight worktree | no (removed on exit) | n/a | n/a |
 | Process state, in-memory caches | no | no | n/a |
 | Engine session id from `claude -p` | written to the result; not resumed | n/a | n/a |
-| Lessons in the fleet brain | yes | yes | yes |
+| Recalled lessons in Redis Agent Memory | yes | yes | yes |
+| FleetBrain review and reliability ledger | yes | yes | yes |
 
-The contract is intentionally narrow: operational state is JSON or JSONL on disk, while durable lessons live in the local fleet-brain SQLite file. Anything else is reconstructed from GitHub, the repo checkout, or your `~/.alfredrc`.
+The contract is intentionally narrow: operational state is JSON or JSONL on
+disk, recalled lessons live in Redis Agent Memory, and FleetBrain keeps the
+local review and reliability ledger. Anything else is reconstructed from
+GitHub, the repo checkout, or your `~/.alfredrc`.
 
-## The fleet brain
+## Memory and FleetBrain
 
 The state files above are operational memory. They tell Alfred what is blocked, what is paused, what spend is left, and which worktree to clean up. They are not where the fleet remembers *lessons* (repo conventions, recurring bugs, preferred PR style).
 
-That role belongs to the fleet brain: a single SQLite file under `$ALFRED_HOME/fleet-brain.db` with a `reflect` / `recall` API. Engine-aware runners that know their target repo recall up to three lessons before invoking the engine. If the engine returns a machine-readable memory reflection block, Alfred strips it from the user-facing result and queues those entries as reviewable candidates by default. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are intentional.
+That role starts with Redis Agent Memory Server. Engine-aware runners that know
+their target repo recall a small set of relevant lessons before invoking the
+engine. If the engine returns a machine-readable memory reflection block,
+Alfred strips it from the user-facing result and queues those entries as
+reviewable candidates in FleetBrain by default. Set
+`ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are
+intentional.
 
 The same brain stores recent file touches when an agent or outbox import knows
 which repo-relative paths changed. Use `alfred brain files <repo>` to inspect
@@ -98,9 +113,15 @@ summarized with `alfred brain governor`. The governor classifies local setup
 problems, provider limits, auth failures, timeouts, and agent-quality loops,
 then returns a read-only action list for you and the dashboard.
 
-The brain ships on by default through the local `fleet` provider. Set `ALFRED_MEMORY_PROVIDERS=null` to disable it, `ALFRED_MEMORY_PROVIDERS=fleet,gbrain` to add a read-only fallback provider, or `ALFRED_MEMORY_PROVIDERS=fleet,redis` to consult an already-running Redis Agent Memory Server. See [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md) for the full design, schema, and CLI.
+The default provider chain is `redis,fleet`: Redis Agent Memory Server handles
+recalled lessons, and FleetBrain keeps the local review and reliability ledger.
+Set `ALFRED_MEMORY_PROVIDERS=null` to disable runtime recall and reflection, or
+`ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain` to add a read-only personal
+knowledge base behind the default stack. See
+[`docs/MEMORY_PROVIDERS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MEMORY_PROVIDERS.md)
+for the provider chain.
 
-The optional `memory-harvest.py` scheduled wrapper runs the same safe loop as
+The `memory-harvest.py` scheduled wrapper runs the same safe loop as
 `memory harvest now`: repeated failure patterns become reviewable candidates,
 not trusted lessons. Slack remains the review surface for `memory`,
 `memory promote <id>`, and `memory reject <id>`.
@@ -109,7 +130,9 @@ Use `alfred brain doctor` for a read-only health check, `alfred brain governor`
 for the current action queue, and `alfred mcp serve` when a local MCP client
 needs read-only memory access.
 
-The brain v1 store is dependency-inverted on a `Store` Protocol, so a future PGLite or graph-backed implementation drops in without touching agent runners.
+FleetBrain is dependency-inverted on a `Store` Protocol, so operational storage
+can change without touching agent runners. Runtime lesson recall goes through
+the memory provider chain, with Redis Agent Memory first by default.
 
 ## Privacy model
 

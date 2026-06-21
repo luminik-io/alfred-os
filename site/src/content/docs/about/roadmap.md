@@ -38,16 +38,16 @@ public download path for desktop artifacts.
 - Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
 - Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
 - Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into review actions; `alfred brain harvest` turns those patterns into reviewable lesson candidates when you apply it.
-- Optional Redis AMS provider and sync: `ALFRED_MEMORY_PROVIDERS=fleet,redis` lets advanced users test external semantic memory without changing the default local install; `alfred brain redis-status` and `alfred brain redis-sync` make the bridge inspectable and explicit.
+- Redis Agent Memory is the primary lesson store: the default provider chain is `redis,fleet`, `alfred brain ams-status` checks the local server, and `alfred brain redis-sync` carries older reviewed FleetBrain lessons into Redis.
 - Slack memory curation: trusted users can run `memory` from Slack to review
   pending candidates and promotion suggestions, `remember [repo:] <lesson>` to
   stage a reviewable candidate from conversation, and approver-only
   `memory promote <id>` / `memory reject <id>` to decide what enters recall.
   `memory harvest` / `memory harvest now` handle repeated-failure candidates,
-  while `memory redis` and `memory sync` keep Redis AMS explicit rather than ambient.
-- Scheduled memory harvest: optional `memory-harvest.py` can run from
-  launchd/systemd, queue repeated-failure candidates automatically, and notify
-  Slack only when there is something to review.
+  while `memory redis` and `memory sync` keep the memory server inspectable.
+- Scheduled memory harvest: `memory-harvest.py` can run from launchd/systemd,
+  queue repeated-failure candidates automatically, and notify Slack only when
+  there is something to review.
 - Planning memory loop: the Planning tab recalls promoted repo lessons while drafting, embeds prompt-safe hints into saved specs, and proposes reviewable spec-to-issue memory candidates when a spec is saved.
 - `alfred serve` control-surface polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
 - Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.
@@ -98,9 +98,8 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - `slack_approval`: reaction-based approval gate. An agent posts a proposal, the configured approver reacts with the configured emoji, the agent proceeds.
 - `slop-detector`: PR-time linter for AI-authored prose patterns. Used by the new `curator` codename.
 - `curator` codename: documentation hygiene agent. Runs slop-detector against docs PRs, flags drift between code and docs.
-- fleet-brain v1: a SQLite-backed memory layer. Per-fleet, local, zero external dependency. Backs the `MemoryProvider` protocol.
-- fleet-brain reliability tools: reviewable memory candidates, failure-event history, `alfred brain doctor`, and a read-only memory MCP bridge.
-- `MemoryProvider` protocol plus `gbrain` bridge: agents read and write to a memory store through a stable interface; the OSS reference is fleet-brain, and you can drop in your own.
+- FleetBrain operational ledger: reviewable memory candidates, failure-event history, worker heartbeats, GitHub cache, `alfred brain doctor`, and a read-only memory MCP bridge.
+- `MemoryProvider` protocol plus `gbrain` bridge: agents read and write through a stable interface, Redis handles recalled lessons, and operators can add read-only fallbacks.
 - `alfred spec`: template and lint helpers for specs-driven development.
 - `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
 - Batman execute-after-approval: once a bundle plan is approved, Batman files the approved per-repo child issues and reports status rather than stopping at the plan.
@@ -119,8 +118,7 @@ Items with active work and a committed IC.
 - **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
 - **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day window covering firings, success rate, and unattended hours. People who want a public usage page can render this on their own site. IC: core. Effort: S. Issue: TBD.
 - **Alfred Desktop v2.** Keep Slack as the collaboration surface and build on the packaged Tauri shell with guided setup repair, release/update status, lock recovery, safer command previews, and a first-class Goals inbox with evidence. No extra gateway, no local mirror, no second source of truth. Keep `alfred serve` JSON APIs stable so the Tauri shell stays thin. IC: core. Effort: M. Issue: TBD.
-- **fleet-brain v2.** Keep SQLite as the default local store and add optional graph/vector recall for deeper search across lessons, failures, files, bundles, and follow-ups. Expose the same memory through a local MCP adapter. IC: core. Effort: L. Issue: TBD.
-- **Memory quality loop v2.** Improve duplicate collapse, evidence ranking, stale lesson retirement, and approved follow-up execution for governor findings before a lesson can shape future runs. IC: core. Effort: M. Issue: TBD.
+- **Memory quality loop v2.** Improve duplicate collapse, evidence ranking, stale lesson retirement, and approved follow-up execution before a lesson can shape future runs. IC: core. Effort: M. Issue: TBD.
 
 ## Next (next quarter)
 
@@ -150,7 +148,7 @@ Decisions considered and left out. Listed so contributors do not re-pitch them.
 - **Plugin or skill marketplace bundled into Alfred.** Considered and decided against. Skills are user-installed Claude Code skills; a bundled marketplace would push maintenance onto the framework. The convention-only resolver stays.
 - **Hosted Alfred SaaS.** Not on the roadmap. Alfred is self-hosted by design; multi-tenant is a different product.
 - **First-class GitHub App** instead of local `gh` auth. Larger onboarding surface; deferred until there is demonstrated demand.
-- **Pluggable spend backends** (filesystem, sqlite, Redis). Single-host is the design, so this stays speculative.
+- **Pluggable spend backends** (filesystem, SQLite, Redis). Single-host is the design, so this stays speculative.
 - **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience but the install story is fine.
 
 ## Design boundaries

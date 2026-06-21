@@ -103,7 +103,7 @@ def test_invoke_agent_engine_prepends_memory_and_records_reflection(monkeypatch)
 
     assert engine_used == "claude"
     assert result.result_text == "done"
-    assert "Local Alfred memory" in captured["prompt"]
+    assert "Alfred memory" in captured["prompt"]
     assert "GraphQL schema" in captured["prompt"]
     assert "ALFRED_MEMORY_REFLECTIONS_JSON" in captured["prompt"]
     assert provider.brain.candidates[0]["body"] == "Use the API fixture factory."
