@@ -100,13 +100,13 @@ class RedisAgentMemoryProvider:
             "text": text,
             "limit": max(1, int(limit)),
             "search_mode": self.search_mode,
-            "namespace": self.namespace,
+            "namespace": {"eq": self.namespace},
         }
         required_topics = _scope_topics(codename=codename, repo=repo)
         if required_topics:
-            payload["topics"] = required_topics
+            payload["topics"] = {"all": required_topics}
         if self.user_id:
-            payload["user_id"] = self.user_id
+            payload["user_id"] = {"eq": self.user_id}
         try:
             response = self._request("POST", "/v1/long-term-memory/search", payload)
         except Exception as exc:

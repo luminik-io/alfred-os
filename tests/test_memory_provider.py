@@ -444,9 +444,9 @@ def test_redis_provider_recall_posts_search_payload() -> None:
     assert payload["text"] == "plans"
     assert payload["limit"] == 2
     assert payload["search_mode"] == "semantic"
-    assert payload["namespace"] == "alfred"
-    assert payload["topics"] == ["codename:batman", "repo:acme/app"]
-    assert payload["user_id"] == "operator"
+    assert payload["namespace"] == {"eq": "alfred"}
+    assert payload["topics"] == {"all": ["codename:batman", "repo:acme/app"]}
+    assert payload["user_id"] == {"eq": "operator"}
     assert "filters" not in payload
     headers = calls[0]["headers"]
     assert isinstance(headers, dict)
