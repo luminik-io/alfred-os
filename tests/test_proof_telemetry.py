@@ -70,12 +70,24 @@ class FakePR:
         authored: bool = True,
         labels=None,
         head_ref=None,
+        changed_files: int = 0,
         additions: int = 0,
         deletions: int = 0,
+        created_at: datetime | None = None,
+        closed_at: datetime | None = None,
+        merged_at: datetime | None = None,
     ) -> None:
         self.state = state
+        self.changed_files = changed_files
         self.additions = additions
         self.deletions = deletions
+        self.created_at = created_at or datetime(2026, 6, 1, tzinfo=UTC)
+        self.merged_at = merged_at or (
+            datetime(2026, 6, 10, tzinfo=UTC) if state == "merged" else None
+        )
+        self.closed_at = closed_at or (
+            datetime(2026, 6, 10, tzinfo=UTC) if state in {"merged", "closed"} else None
+        )
         if labels is not None or head_ref is not None:
             self.labels = list(labels or [])
             self.head_ref = head_ref
@@ -88,14 +100,26 @@ class FakePR:
 
 
 class FakeTouch:
-    pass
+    def __init__(self, touched_at: datetime | None = None) -> None:
+        self.touched_at = touched_at or datetime(2026, 6, 5, tzinfo=UTC)
 
 
 class FakeIssue:
-    def __init__(self, state: str = "open", *, labels=None) -> None:
+    def __init__(
+        self,
+        state: str = "open",
+        *,
+        labels=None,
+        created_at: datetime | None = None,
+        closed_at: datetime | None = None,
+    ) -> None:
         self.state = state
         self.labels = list(labels if labels is not None else ["agent:implement"])
         self.head_ref = None
+        self.created_at = created_at or datetime(2026, 6, 2, tzinfo=UTC)
+        self.closed_at = closed_at or (
+            datetime(2026, 6, 11, tzinfo=UTC) if state == "closed" else None
+        )
 
 
 def _authored(prs):
@@ -233,6 +257,34 @@ class ClampingBrain:
         return sum(max(0, int(getattr(row, "additions", 0))) for row in rows) + sum(
             max(0, int(getattr(row, "deletions", 0))) for row in rows
         )
+
+
+class GitHubFileCountsBrain(ClampingBrain):
+    def sum_github_changed_files(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+        merged_since=None,
+        **_filters,
+    ):
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        if authored_only:
+            rows = _authored(rows)
+        if agent_labeled_only:
+            rows = _agent_labeled(rows)
+        if merged_since is not None:
+            rows = [
+                p
+                for p in rows
+                if p.merged_at is not None and p.merged_at.astimezone(UTC) >= merged_since
+            ]
+        return sum(max(0, int(getattr(row, "changed_files", 0) or 0)) for row in rows)
 
 
 class ClampingNoCountBrain:
@@ -546,6 +598,7 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
         "files_changed",
         "lines_changed",
         "loc_added",
+        "last_30_days",
     }
     # Period is the stable lifetime bucket, not a calendar month, so a calendar
     # rollover never re-adds the cumulative total on the Worker.
@@ -559,6 +612,16 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     assert payload["files_changed"] == 3
     assert payload["lines_changed"] == 0
     assert payload["loc_added"] == 3
+    assert payload["last_30_days"] == {
+        "window_days": 30,
+        "prs_opened": 4,
+        "prs_merged": 2,
+        "prs_reviewed": 3,
+        "issues_opened": 2,
+        "issues_closed": 1,
+        "files_changed": 3,
+        "lines_changed": 0,
+    }
     assert isinstance(payload["install_id"], str) and payload["install_id"]
 
 
@@ -771,6 +834,84 @@ def test_derive_counts_uses_agent_authored_github_line_totals():
     )
     counts = pt.derive_counts(brain)
     assert counts.lines_changed == 21
+
+
+def test_derive_counts_prefers_agent_authored_github_file_totals():
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR("merged", changed_files=4),
+            FakePR("open", changed_files=2),
+            FakePR("merged", authored=False, changed_files=200),
+        ],
+        touches=[FakeTouch()] * 999,
+    )
+
+    counts = pt.derive_counts(brain)
+
+    assert counts.files_changed == 4
+    assert counts.loc_added == 4
+
+
+def test_derive_counts_falls_back_to_file_touches_when_github_file_totals_are_empty():
+    brain = GitHubFileCountsBrain(
+        prs=[FakePR("merged", changed_files=0)],
+        touches=[FakeTouch()] * 7,
+    )
+
+    counts = pt.derive_counts(brain)
+
+    assert counts.files_changed == 7
+    assert counts.loc_added == 7
+
+
+def test_derive_window_counts_prefers_agent_authored_github_file_totals():
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR(
+                "merged",
+                changed_files=4,
+                merged_at=datetime(2026, 6, 10, tzinfo=UTC),
+            ),
+            FakePR(
+                "merged",
+                changed_files=9,
+                merged_at=datetime(2026, 4, 10, tzinfo=UTC),
+            ),
+            FakePR(
+                "merged",
+                authored=False,
+                changed_files=200,
+                merged_at=datetime(2026, 6, 10, tzinfo=UTC),
+            ),
+        ],
+        touches=[FakeTouch()] * 999,
+    )
+
+    counts = pt.derive_window_counts(brain, now=now)
+
+    assert counts.files_changed == 4
+
+
+def test_derive_window_counts_falls_back_to_file_touches_when_github_files_are_empty():
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR(
+                "merged",
+                changed_files=0,
+                merged_at=datetime(2026, 6, 10, tzinfo=UTC),
+            ),
+        ],
+        touches=[
+            FakeTouch(touched_at=datetime(2026, 6, 12, tzinfo=UTC)),
+            FakeTouch(touched_at=datetime(2026, 4, 12, tzinfo=UTC)),
+        ],
+    )
+
+    counts = pt.derive_window_counts(brain, now=now)
+
+    assert counts.files_changed == 1
 
 
 def test_derive_counts_marks_line_field_stale_when_line_total_query_fails():

@@ -79,7 +79,7 @@ def _poll_kind(
             "--limit",
             str(limit),
             "--json",
-            "number,title,state,labels,updatedAt,closedAt,url",
+            "number,title,state,labels,createdAt,updatedAt,closedAt,url",
         ]
     else:
         cmd = [
@@ -93,7 +93,7 @@ def _poll_kind(
             "--limit",
             str(limit),
             "--json",
-            "number,title,state,labels,updatedAt,closedAt,mergedAt,url,headRefName,baseRefName,additions,deletions",
+            "number,title,state,labels,createdAt,updatedAt,closedAt,mergedAt,url,headRefName,baseRefName,changedFiles,additions,deletions",
         ]
     rows = _gh_json(cmd, runner)
     for row in rows:
@@ -106,6 +106,7 @@ def _poll_kind(
             title=str(row.get("title") or ""),
             url=str(row.get("url") or ""),
             labels=labels,
+            created_at=_parse_ts(row.get("createdAt")),
             updated_at=_parse_ts(row.get("updatedAt")) or now,
             last_seen_at=now,
             closed_at=_parse_ts(row.get("closedAt")),
@@ -113,6 +114,7 @@ def _poll_kind(
             head_ref=row.get("headRefName"),
             base_ref=row.get("baseRefName"),
             bundle_slug=_bundle_slug(labels),
+            changed_files=_optional_non_negative_int(row, "changedFiles"),
             additions=_optional_non_negative_int(row, "additions"),
             deletions=_optional_non_negative_int(row, "deletions"),
         )

@@ -31,6 +31,8 @@ interface Props {
   seed?: CounterTotals;
   /** Fetch the public telemetry endpoint when configured. */
   live?: boolean;
+  /** Which live stats object to render. */
+  liveWindow?: "lifetime" | "last_30_days";
   /** Show the updated date in the counter footer. */
   showUpdated?: boolean;
   /** Show the active install count in the counter footer. */
@@ -42,6 +44,7 @@ const {
   variant = "card",
   seed = {},
   live = true,
+  liveWindow = "lifetime",
   showUpdated = true,
   showInstalls = true,
 } = Astro.props;
@@ -87,6 +90,7 @@ const statsUrl = live
 <section
   class:list={["impact", variant === "plain" && "impact--plain"]}
   data-stats-url={statsUrl}
+  data-live-window={liveWindow}
   data-threshold={String(threshold)}
   data-seed={JSON.stringify(seedTotals)}
   aria-label="Alfred impact totals"
@@ -176,6 +180,7 @@ const statsUrl = live
 
   function initImpactCounterRoot(root: HTMLElement) {
     const url = (root.dataset.statsUrl || "").trim();
+    const liveWindow = root.dataset.liveWindow || "lifetime";
     if (!url) return;
 
     const threshold = Number(root.dataset.threshold || "0");
@@ -209,28 +214,30 @@ const statsUrl = live
     fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
       .then((data) => {
-        const merged = Number(data?.prs_merged ?? 0);
+        if (liveWindow === "last_30_days" && !data?.last_30_days) return;
+        const source = liveWindow === "last_30_days" ? data.last_30_days : data;
+        const merged = Number(source?.prs_merged ?? 0);
         const installs = Number(data?.installs ?? 0);
-        const filesChanged = Number(data?.files_changed ?? data?.loc_added ?? 0);
-        const issuesOpened = Number(data?.issues_opened ?? 0);
+        const filesChanged = Number(source?.files_changed ?? source?.loc_added ?? 0);
+        const issuesOpened = Number(source?.issues_opened ?? 0);
         const proofFloor = Math.max(merged, installs, filesChanged, issuesOpened);
         if (!Number.isFinite(proofFloor) || proofFloor <= 0 || proofFloor < threshold) return;
 
         setField("prs_merged", merged);
         setField("installs", installs);
         setField("files_changed", filesChanged);
-        setField("prs_opened", Number(data?.prs_opened ?? 0));
-        setField("prs_reviewed", Number(data?.prs_reviewed ?? 0));
+        setField("prs_opened", Number(source?.prs_opened ?? 0));
+        setField("prs_reviewed", Number(source?.prs_reviewed ?? 0));
         setField("issues_opened", issuesOpened);
-        setField("lines_changed", Number(data?.lines_changed ?? 0));
-        if (data?.issues_closed !== undefined) setField("issues_closed", Number(data.issues_closed ?? 0));
+        setField("lines_changed", Number(source?.lines_changed ?? 0));
+        if (source?.issues_closed !== undefined) setField("issues_closed", Number(source.issues_closed ?? 0));
         const lineDelta = root.querySelector<HTMLElement>("[data-impact-line-delta]");
         const prLifecycle = root.querySelector<HTMLElement>("[data-impact-pr-lifecycle]");
-        const hasLineDelta = data?.lines_added !== undefined || data?.lines_removed !== undefined;
+        const hasLineDelta = source?.lines_added !== undefined || source?.lines_removed !== undefined;
         if (lineDelta) lineDelta.hidden = !hasLineDelta;
         if (prLifecycle) prLifecycle.hidden = hasLineDelta;
-        if (data?.lines_added !== undefined) setField("lines_added", Number(data.lines_added ?? 0));
-        if (data?.lines_removed !== undefined) setField("lines_removed", Number(data.lines_removed ?? 0));
+        if (source?.lines_added !== undefined) setField("lines_added", Number(source.lines_added ?? 0));
+        if (source?.lines_removed !== undefined) setField("lines_removed", Number(source.lines_removed ?? 0));
 
         const installLabel = root.querySelector<HTMLElement>("[data-impact-install-label]");
         if (installLabel) {

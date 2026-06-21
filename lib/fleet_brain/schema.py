@@ -41,7 +41,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 5
+SCHEMA_VERSION: Final[int] = 7
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -155,6 +155,7 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         title        TEXT    NOT NULL DEFAULT '',
         url          TEXT    NOT NULL DEFAULT '',
         labels_json  TEXT    NOT NULL DEFAULT '[]',
+        created_at   TEXT,
         updated_at   TEXT    NOT NULL,
         last_seen_at TEXT    NOT NULL,
         closed_at    TEXT,
@@ -162,6 +163,8 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         head_ref     TEXT,
         base_ref     TEXT,
         bundle_slug  TEXT,
+        changed_files INTEGER NOT NULL DEFAULT 0,
+        file_metrics_seen_at TEXT,
         additions    INTEGER NOT NULL DEFAULT 0,
         deletions    INTEGER NOT NULL DEFAULT 0,
         line_metrics_seen_at TEXT,
@@ -307,6 +310,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         _add_column_if_missing(conn, "github_items", "additions", "INTEGER NOT NULL DEFAULT 0")
         _add_column_if_missing(conn, "github_items", "deletions", "INTEGER NOT NULL DEFAULT 0")
         _add_column_if_missing(conn, "github_items", "line_metrics_seen_at", "TEXT")
+        _add_column_if_missing(conn, "github_items", "created_at", "TEXT")
+        _add_column_if_missing(conn, "github_items", "changed_files", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "github_items", "file_metrics_seen_at", "TEXT")
         # Record the schema version, idempotently. A row with the
         # current version means "we have run ensure_schema at least
         # once at this code revision".

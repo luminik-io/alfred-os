@@ -35,7 +35,7 @@ const hasPublicActivity =
   <Hero
     eyebrow="ALFRED IMPACT"
     headline="Alfred's shipping record."
-    sub="Last 30 days from Luminik's Alfred setup: merged PRs, issues opened and closed, and code changed."
+    sub="Live last-30-day totals from verified Alfred reports: merged PRs, issues opened and closed, files changed, and lines changed."
     headlineSize="lg"
     primaryCta={{ label: "Download", href: "/download/" }}
     secondaryCta={{ label: "Telemetry details", href: "/reference/telemetry/" }}
@@ -43,7 +43,7 @@ const hasPublicActivity =
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
         <span class="impact-panel__window">Last {productProof.window.days} days</span>
-        <span class="m-mono m-mute">Luminik's setup</span>
+        <span class="m-mono m-mute">verified reports</span>
       </div>
       <ImpactCounter
         variant="plain"
@@ -57,7 +57,8 @@ const hasPublicActivity =
           files_changed: productProof.summary.files_changed,
           updated_at: productProof.generated_at,
         }}
-        live={false}
+        live={true}
+        liveWindow="last_30_days"
         showUpdated={false}
         showInstalls={false}
       />
@@ -77,10 +78,10 @@ const hasPublicActivity =
       <div class="m-container impact-live-section">
         <div class="impact-live-section__copy">
           <span class="m-eyebrow">LIVE TOTALS</span>
-          <h2 class="m-display-md">Live Alfred totals.</h2>
+          <h2 class="m-display-md">All-time Alfred totals.</h2>
           <p>
-            Alfred reports add merged PRs, issues, files, and lines changed
-            as Alfred runs on Macs and Linux boxes.
+            A Mac mini, spare MacBook, Linux box, or server can report aggregate
+            Alfred progress while it runs. Active installs appear at the end.
           </p>
         </div>
         <ImpactCounter threshold={1} />

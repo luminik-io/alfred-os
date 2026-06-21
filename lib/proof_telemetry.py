@@ -79,7 +79,7 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +142,21 @@ class TelemetryCounts:
     loc_added: int = 0
     read_complete: bool = True
     stale_fields: tuple[str, ...] = ()
+    last_30_days: TelemetryWindowCounts | None = None
+
+
+@dataclass(frozen=True)
+class TelemetryWindowCounts:
+    """Rolling-window counts sent alongside lifetime totals."""
+
+    window_days: int = 30
+    prs_opened: int = 0
+    prs_merged: int = 0
+    prs_reviewed: int = 0
+    issues_opened: int = 0
+    issues_closed: int = 0
+    files_changed: int = 0
+    lines_changed: int = 0
 
 
 def is_enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -585,7 +600,219 @@ def _sum_github_changed_lines(brain: Any, **filters: Any) -> int:
     return total if total < _MAX_LINES_CHANGED else _MAX_LINES_CHANGED
 
 
-def derive_counts(brain: Any) -> TelemetryCounts:
+def _sum_github_changed_files(brain: Any, **filters: Any) -> int | None:
+    summer = getattr(brain, "sum_github_changed_files", None)
+    if not callable(summer):
+        return None
+    total = int(summer(**filters))
+    return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+
+
+def _row_after(row: Any, field: str, since: datetime) -> bool:
+    value = getattr(row, field, None)
+    if not isinstance(value, datetime):
+        return False
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC) >= since
+
+
+def _count_github_items_window(
+    brain: Any,
+    *,
+    since_field: str,
+    since: datetime,
+    authored_only: bool = False,
+    agent_labeled_only: bool = False,
+    **filters: Any,
+) -> int:
+    """Count GitHub rows in a real date window.
+
+    New fleet-brain stores do this in SQL. Test doubles and older stores fall
+    back to row filtering over the list surface.
+    """
+    counter = getattr(brain, "count_github_items", None)
+    since_kw = {f"{since_field.removesuffix('_at')}_since": since}
+    if callable(counter):
+        try:
+            total = int(
+                counter(
+                    authored_only=authored_only,
+                    agent_labeled_only=agent_labeled_only,
+                    **filters,
+                    **since_kw,
+                )
+            )
+            return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+        except TypeError:
+            pass
+
+    def predicate(row: Any) -> bool:
+        expected_state = filters.get("state")
+        if expected_state is not None and getattr(row, "state", None) != expected_state:
+            return False
+        if authored_only and not _row_is_agent_authored(row):
+            return False
+        if agent_labeled_only and not _row_is_agent_labeled(row):
+            return False
+        return _row_after(row, since_field, since)
+
+    def lister(limit: int) -> list[Any]:
+        try:
+            return brain.list_github_items(limit=limit, **filters)
+        except TypeError:
+            fallback_filters = dict(filters)
+            fallback_filters.pop("state", None)
+            return brain.list_github_items(limit=limit, **fallback_filters)
+
+    return _count_rows(
+        lister,
+        predicate,
+    )
+
+
+def _count_file_touches_window(brain: Any, *, since: datetime) -> int:
+    counter = getattr(brain, "count_file_touches", None)
+    if callable(counter):
+        try:
+            total = int(counter(touched_since=since))
+            return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+        except TypeError:
+            pass
+    return _count_rows(
+        lambda n: brain.list_file_touches(limit=n),
+        lambda row: _row_after(row, "touched_at", since),
+    )
+
+
+def _sum_github_changed_files_window(brain: Any, *, since: datetime) -> int | None:
+    summer = getattr(brain, "sum_github_changed_files", None)
+    if callable(summer):
+        try:
+            total = int(
+                summer(
+                    kind="pr",
+                    state="merged",
+                    authored_only=True,
+                    merged_since=since,
+                )
+            )
+            return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+        except TypeError:
+            pass
+    return None
+
+
+def _sum_github_changed_lines_window(brain: Any, *, since: datetime) -> int:
+    summer = getattr(brain, "sum_github_changed_lines", None)
+    if callable(summer):
+        try:
+            total = int(
+                summer(
+                    kind="pr",
+                    state="merged",
+                    authored_only=True,
+                    merged_since=since,
+                )
+            )
+            return total if total < _MAX_LINES_CHANGED else _MAX_LINES_CHANGED
+        except TypeError:
+            pass
+    lister = brain.list_github_items
+    try:
+        rows = lister(kind="pr", state="merged", limit=_COUNT_HARD_LIMIT)
+    except TypeError:
+        rows = [
+            row
+            for row in lister(kind="pr", limit=_COUNT_HARD_LIMIT)
+            if getattr(row, "state", None) == "merged"
+        ]
+    total = 0
+    for row in rows:
+        if not _row_is_agent_authored(row) or not _row_after(row, "merged_at", since):
+            continue
+        total += max(0, int(getattr(row, "additions", 0) or 0))
+        total += max(0, int(getattr(row, "deletions", 0) or 0))
+    return total if total < _MAX_LINES_CHANGED else _MAX_LINES_CHANGED
+
+
+def derive_window_counts(
+    brain: Any,
+    *,
+    now: datetime | None = None,
+    window_days: int = 30,
+) -> TelemetryWindowCounts:
+    """Derive real rolling-window counts from timestamped GitHub rows."""
+    anchor = now or datetime.now(UTC)
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=UTC)
+    anchor = anchor.astimezone(UTC)
+    since = anchor - timedelta(days=window_days)
+    prs_opened = _count_github_items_window(
+        brain,
+        kind="pr",
+        authored_only=True,
+        since_field="created_at",
+        since=since,
+    )
+    prs_merged = _count_github_items_window(
+        brain,
+        kind="pr",
+        state="merged",
+        authored_only=True,
+        since_field="merged_at",
+        since=since,
+    )
+    prs_closed = _count_github_items_window(
+        brain,
+        kind="pr",
+        state="closed",
+        authored_only=True,
+        since_field="closed_at",
+        since=since,
+    )
+    issues_opened = _count_github_items_window(
+        brain,
+        kind="issue",
+        agent_labeled_only=True,
+        since_field="created_at",
+        since=since,
+    )
+    issues_closed = _count_github_items_window(
+        brain,
+        kind="issue",
+        state="closed",
+        agent_labeled_only=True,
+        since_field="closed_at",
+        since=since,
+    )
+    try:
+        window_lines_changed = _sum_github_changed_lines_window(brain, since=since)
+    except Exception as exc:
+        logger.debug("telemetry: rolling line-count derivation failed: %s", exc)
+        window_lines_changed = 0
+    try:
+        window_files_changed = _sum_github_changed_files_window(brain, since=since)
+        if window_files_changed is None or window_files_changed == 0:
+            window_file_touches = _count_file_touches_window(brain, since=since)
+            if window_files_changed is None or window_file_touches > 0:
+                window_files_changed = window_file_touches
+    except Exception as exc:
+        logger.debug("telemetry: rolling file-count derivation failed: %s", exc)
+        window_files_changed = 0
+    return TelemetryWindowCounts(
+        window_days=window_days,
+        prs_opened=_clamp(prs_opened),
+        prs_merged=_clamp(prs_merged),
+        prs_reviewed=_clamp(prs_merged + prs_closed),
+        issues_opened=_clamp(issues_opened),
+        issues_closed=_clamp(issues_closed),
+        files_changed=_clamp(window_files_changed),
+        lines_changed=_clamp(window_lines_changed, max_value=_MAX_LINES_CHANGED),
+    )
+
+
+def derive_counts(brain: Any, *, now: datetime | None = None) -> TelemetryCounts:
     """Roll the local fleet-brain rows up into anonymous aggregate counts.
 
     Pure read: queries the brain, returns counts, touches nothing else. Counts
@@ -645,6 +872,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     files_changed = 0
     lines_changed = 0
     loc_added = 0
+    last_30_days: TelemetryWindowCounts | None = None
     read_complete = True
     stale_fields: set[str] = set()
 
@@ -729,11 +957,25 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         issues_closed = issues_opened
 
     try:
-        files_changed = _count_file_touches(brain)
+        files_changed_from_github = _sum_github_changed_files(
+            brain,
+            kind="pr",
+            state="merged",
+            authored_only=True,
+        )
+        if files_changed_from_github is None or files_changed_from_github == 0:
+            file_touches = _count_file_touches(brain)
+            files_changed = (
+                file_touches
+                if files_changed_from_github is None or file_touches > 0
+                else files_changed_from_github
+            )
+        else:
+            files_changed = files_changed_from_github
         loc_added = files_changed
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         read_complete = False
-        logger.debug("telemetry: file-touch count derivation failed: %s", exc)
+        logger.debug("telemetry: file-count derivation failed: %s", exc)
 
     try:
         lines_changed = _sum_github_changed_lines(brain, kind="pr", authored_only=True)
@@ -749,6 +991,12 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         stale_fields.add("lines_changed")
         logger.debug("telemetry: line-count derivation failed: %s", exc)
 
+    try:
+        last_30_days = derive_window_counts(brain, now=now)
+    except Exception as exc:  # fail-soft by contract
+        read_complete = False
+        logger.debug("telemetry: rolling-window derivation failed: %s", exc)
+
     return TelemetryCounts(
         prs_opened=_clamp(prs_opened),
         prs_merged=_clamp(prs_merged),
@@ -760,6 +1008,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         loc_added=_clamp(loc_added),
         read_complete=read_complete,
         stale_fields=tuple(sorted(stale_fields)),
+        last_30_days=last_30_days,
     )
 
 
@@ -780,6 +1029,18 @@ def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict
     }
     if counts.stale_fields:
         payload["stale_fields"] = list(counts.stale_fields)
+    if counts.last_30_days is not None:
+        window = counts.last_30_days
+        payload["last_30_days"] = {
+            "window_days": int(window.window_days),
+            "prs_opened": _clamp(window.prs_opened),
+            "prs_merged": _clamp(window.prs_merged),
+            "prs_reviewed": _clamp(window.prs_reviewed),
+            "issues_opened": _clamp(window.issues_opened),
+            "issues_closed": _clamp(window.issues_closed),
+            "files_changed": _clamp(window.files_changed),
+            "lines_changed": _clamp(window.lines_changed, max_value=_MAX_LINES_CHANGED),
+        }
     return payload
 
 
@@ -812,7 +1073,10 @@ def _post_json(
     allow_plain_success: bool = False,
 ) -> tuple[bool, dict[str, Any]]:
     body = json.dumps(payload).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Alfred-Telemetry/1.0 (+https://alfred.luminik.io)",
+    }
     if token:
         headers["X-Ingest-Token"] = token
     if trusted_token:
@@ -943,7 +1207,7 @@ def report_once(
             # public install count, so skip the report. Next run retries.
             return {"status": "no_install_id", "sent": False}
         period = current_period(now)
-        counts = derive_counts(brain)
+        counts = derive_counts(brain, now=now)
         if not counts.read_complete:
             return {"status": "stale_counts", "sent": False}
         payload = build_payload(install_id, counts, period)
@@ -976,6 +1240,8 @@ def report_once(
                 "loc_added": payload["loc_added"],
             },
         }
+        if "last_30_days" in payload:
+            result["last_30_days"] = payload["last_30_days"]
         if registration_failed:
             result["registration"] = "failed"
         return result

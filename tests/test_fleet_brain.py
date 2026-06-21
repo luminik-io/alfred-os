@@ -118,7 +118,13 @@ def test_ensure_schema_adds_github_line_columns_to_existing_table(db_path: Path)
         conn.commit()
         ensure_schema(conn)
         cols = {row[1] for row in conn.execute("PRAGMA table_info(github_items)")}
-        assert {"additions", "deletions", "line_metrics_seen_at"}.issubset(cols)
+        assert {
+            "additions",
+            "deletions",
+            "line_metrics_seen_at",
+            "changed_files",
+            "file_metrics_seen_at",
+        }.issubset(cols)
     finally:
         conn.close()
 
@@ -436,6 +442,7 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
         labels=["agent:bundle:billing", "agent:authored"],
         head_ref="lucius/42",
         base_ref="main",
+        changed_files=4,
         additions=12,
         deletions=3,
     )
@@ -445,6 +452,8 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
     items = brain.list_github_items(repo="org/api", kind="pr", state="open")
     assert len(items) == 1
     assert items[0].labels == ["agent:authored", "agent:bundle:billing"]
+    assert items[0].changed_files == 4
+    assert items[0].file_metrics_seen_at is not None
     assert items[0].additions == 12
     assert items[0].deletions == 3
     assert items[0].line_metrics_seen_at is not None
@@ -463,6 +472,7 @@ def test_github_item_preserves_line_totals_when_updates_omit_them(
         number=43,
         kind="pr",
         state="open",
+        changed_files=4,
         additions=12,
         deletions=3,
     )
@@ -476,9 +486,12 @@ def test_github_item_preserves_line_totals_when_updates_omit_them(
 
     items = brain.list_github_items(repo="org/api", kind="pr", state="merged")
     assert len(items) == 1
+    assert items[0].changed_files == 4
     assert items[0].additions == 12
     assert items[0].deletions == 3
+    file_marker = items[0].file_metrics_seen_at
     marker = items[0].line_metrics_seen_at
+    assert file_marker is not None
     assert marker is not None
 
     brain.upsert_github_item(
@@ -486,11 +499,15 @@ def test_github_item_preserves_line_totals_when_updates_omit_them(
         number=43,
         kind="pr",
         state="merged",
+        changed_files=0,
         additions=0,
         deletions=0,
     )
 
     items = brain.list_github_items(repo="org/api", kind="pr", state="merged")
+    assert items[0].changed_files == 0
+    assert items[0].file_metrics_seen_at is not None
+    assert items[0].file_metrics_seen_at >= file_marker
     assert items[0].additions == 0
     assert items[0].deletions == 0
     assert items[0].line_metrics_seen_at is not None
@@ -504,6 +521,7 @@ def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> Non
         kind="pr",
         state="merged",
         labels=["agent:authored"],
+        changed_files=4,
         additions=10,
         deletions=2,
     )
@@ -513,6 +531,7 @@ def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> Non
         kind="pr",
         state="open",
         head_ref="lucius/2",
+        changed_files=2,
         additions=5,
         deletions=1,
     )
@@ -522,12 +541,16 @@ def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> Non
         kind="pr",
         state="merged",
         head_ref="feature/human",
+        changed_files=200,
         additions=1000,
         deletions=1000,
     )
     assert brain.sum_github_changed_lines(kind="pr") == 2018
     assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 18
     assert brain.sum_github_changed_lines(kind="pr", state="merged", authored_only=True) == 12
+    assert brain.sum_github_changed_files(kind="pr") == 206
+    assert brain.sum_github_changed_files(kind="pr", authored_only=True) == 6
+    assert brain.sum_github_changed_files(kind="pr", state="merged", authored_only=True) == 4
 
 
 def test_sum_github_changed_lines_skips_historical_unknown_line_metrics(
@@ -546,11 +569,13 @@ def test_sum_github_changed_lines_skips_historical_unknown_line_metrics(
         kind="pr",
         state="open",
         labels=["agent:authored"],
+        changed_files=6,
         additions=20,
         deletions=3,
     )
 
     assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 23
+    assert brain.sum_github_changed_files(kind="pr", authored_only=True) == 6
 
     brain.upsert_github_item(
         repo="org/api",
@@ -558,11 +583,13 @@ def test_sum_github_changed_lines_skips_historical_unknown_line_metrics(
         kind="pr",
         state="open",
         labels=["agent:authored"],
+        changed_files=0,
         additions=0,
         deletions=0,
     )
 
     assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 23
+    assert brain.sum_github_changed_files(kind="pr", authored_only=True) == 6
 
 
 def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:

@@ -159,6 +159,15 @@ const COUNT_FIELDS = [
   "lines_changed",
   "loc_added",
 ];
+const WINDOW_COUNT_FIELDS = [
+  "prs_opened",
+  "prs_merged",
+  "prs_reviewed",
+  "issues_opened",
+  "issues_closed",
+  "files_changed",
+  "lines_changed",
+];
 const FIELD_MAXIMUMS = {
   lines_changed: MAX_LINES_CHANGED,
 };
@@ -171,6 +180,17 @@ const INSTALL_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 // part of a storage key, but we still bound it defensively.
 const PERIOD_RE = /^[A-Za-z0-9_-]{1,32}$/;
 
+const EMPTY_WINDOW = {
+  window_days: 30,
+  prs_opened: 0,
+  prs_merged: 0,
+  prs_reviewed: 0,
+  issues_opened: 0,
+  issues_closed: 0,
+  files_changed: 0,
+  lines_changed: 0,
+};
+
 const EMPTY_AGG = {
   prs_opened: 0,
   prs_merged: 0,
@@ -180,6 +200,7 @@ const EMPTY_AGG = {
   files_changed: 0,
   lines_changed: 0,
   loc_added: 0,
+  last_30_days: { ...EMPTY_WINDOW },
   installs: 0,
   updated_at: null,
 };
@@ -191,7 +212,7 @@ const INSTALL_PREFIX = "install:";
 const ACTIVITY_PREFIX = "active:";
 const AUTH_PREFIX = "auth:";
 const TRUSTED_INGEST_HEADER = "X-Alfred-Trusted-Token";
-export const STATS_CACHE_SCHEMA_VERSION = 2;
+export const STATS_CACHE_SCHEMA_VERSION = 3;
 
 // Short-lived cache of the derived totals. Purely a read optimization so a burst
 // of /stats reads does not re-list every install each time; it is never written
@@ -317,6 +338,17 @@ function normalizeCountFields(raw) {
   return counts;
 }
 
+function normalizeWindowCounts(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = { ...EMPTY_WINDOW };
+  const windowDays = clampCount(raw.window_days, 366);
+  out.window_days = windowDays > 0 ? windowDays : 30;
+  for (const field of WINDOW_COUNT_FIELDS) {
+    out[field] = clampCount(raw[field], FIELD_MAXIMUMS[field] || MAX_PER_FIELD);
+  }
+  return out;
+}
+
 function normalizeStaleFields(raw) {
   if (!raw || !Array.isArray(raw.stale_fields)) return [];
   const out = [];
@@ -350,6 +382,7 @@ export function normalizePayload(raw) {
     };
   }
   const counts = normalizeCountFields(raw);
+  const last30Days = normalizeWindowCounts(raw.last_30_days);
   const staleFields = normalizeStaleFields(raw);
   // Enforce subset invariants server-side. A buggy or hostile open-write client
   // could POST dependent counters above their base count; clamp them here so the
@@ -360,6 +393,9 @@ export function normalizePayload(raw) {
     ok: true,
     value: { install_id: installId, period, counts: invariant },
   };
+  if (last30Days) {
+    value.value.last_30_days = last30Days;
+  }
   if (staleFields.length > 0) {
     value.value.stale_fields = staleFields;
   }
@@ -436,6 +472,7 @@ function normalizeSnapshot(stored) {
   // with dependent counts above their base count must not poison the derived
   // total.
   const out = clampDependentCounts(clamped);
+  out.last_30_days = normalizeWindowCounts(stored && stored.last_30_days) || { ...EMPTY_WINDOW };
   out.seen_at =
     stored && typeof stored.seen_at === "string" ? stored.seen_at : null;
   out.trusted_reporter = Boolean(stored && stored.trusted_reporter === true);
@@ -465,7 +502,7 @@ function trustedCountsOnly(env) {
  * we follow it so a namespace larger than one page is summed in full.
  */
 export async function computeTotals(kv, env) {
-  const totals = { ...EMPTY_AGG };
+  const totals = { ...EMPTY_AGG, last_30_days: { ...EMPTY_WINDOW } };
   const countsNeedTrust = trustedCountsOnly(env);
   const countedInstalls = new Set();
   let cursor;
@@ -489,6 +526,12 @@ export async function computeTotals(kv, env) {
       totals.installs += 1;
       for (const field of COUNT_FIELDS) {
         totals[field] += snap[field];
+      }
+      if (snap.last_30_days && typeof snap.last_30_days === "object") {
+        totals.last_30_days.window_days = clampCount(snap.last_30_days.window_days, 366) || 30;
+        for (const field of WINDOW_COUNT_FIELDS) {
+          totals.last_30_days[field] += snap.last_30_days[field];
+        }
       }
       if (
         snap.seen_at &&
@@ -548,7 +591,7 @@ export async function readStats(kv, env) {
       typeof cached === "object" &&
       cached.cache_schema_version === STATS_CACHE_SCHEMA_VERSION
     ) {
-      const totals = { ...EMPTY_AGG };
+      const totals = { ...EMPTY_AGG, last_30_days: { ...EMPTY_WINDOW } };
       for (const field of COUNT_FIELDS) {
         const n = Number(cached[field]);
         totals[field] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
@@ -560,6 +603,8 @@ export async function readStats(kv, env) {
       const hasLocAdded = Object.prototype.hasOwnProperty.call(cached, "loc_added");
       if (!hasFilesChanged && hasLocAdded) totals.files_changed = totals.loc_added;
       if (!hasLocAdded && hasFilesChanged) totals.loc_added = totals.files_changed;
+      const cachedWindow = normalizeWindowCounts(cached.last_30_days);
+      totals.last_30_days = cachedWindow || { ...EMPTY_WINDOW };
       const installs = Number(cached.installs);
       totals.installs =
         Number.isFinite(installs) && installs > 0 ? Math.floor(installs) : 0;
@@ -625,6 +670,7 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
     }
     return {
       ...normalizeCountFields({}),
+      last_30_days: { ...EMPTY_WINDOW },
       seen_at: iso,
       trusted_reporter: false,
     };
@@ -637,6 +683,7 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
   // sums can never reflect an invariant-violating payload.
   const clamped = normalizeCountFields(counts);
   const snapshot = clampDependentCounts(clamped);
+  snapshot.last_30_days = normalizeWindowCounts(payload.last_30_days) || { ...EMPTY_WINDOW };
   const staleFields = Array.isArray(payload.stale_fields) ? payload.stale_fields : [];
   if (staleFields.includes("lines_changed")) {
     let previous = null;
@@ -645,8 +692,10 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
     } catch {
       previous = null;
     }
+    const previousSnapshot = normalizeSnapshot(previous);
+    const canPreservePrevious = !countsNeedTrust || previousSnapshot.trusted_reporter === true;
     snapshot.lines_changed = clampCount(
-      previous && previous.lines_changed,
+      canPreservePrevious ? previousSnapshot.lines_changed : 0,
       FIELD_MAXIMUMS.lines_changed,
     );
   }
@@ -694,6 +743,7 @@ function publicView(agg) {
     files_changed: agg.files_changed,
     lines_changed: agg.lines_changed,
     loc_added: agg.loc_added,
+    last_30_days: normalizeWindowCounts(agg.last_30_days) || { ...EMPTY_WINDOW },
     installs: agg.installs,
     updated_at: agg.updated_at,
   };

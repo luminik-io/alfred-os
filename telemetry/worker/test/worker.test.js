@@ -205,6 +205,38 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
   ]);
 });
 
+test("normalizePayload accepts and clamps rolling 30-day counts", () => {
+  const out = normalizePayload({
+    install_id: "rolling-window1",
+    period: "lifetime",
+    prs_opened: 10,
+    prs_merged: 9,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 9,
+      prs_reviewed: 5,
+      issues_opened: 3,
+      issues_closed: 7,
+      files_changed: 12,
+      lines_changed: 987654321,
+      repo: "ignored",
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.value.last_30_days, {
+    window_days: 30,
+    prs_opened: 4,
+    prs_merged: 9,
+    prs_reviewed: 5,
+    issues_opened: 3,
+    issues_closed: 7,
+    files_changed: 12,
+    lines_changed: 5000000,
+  });
+});
+
 // --------------------------------------------------------------------------
 // clampDependentPrCounts: server-side subset invariant (Codex finding).
 // prs_merged/prs_reviewed are subsets of prs_opened and may never exceed it.
@@ -315,6 +347,58 @@ test("ingest folds the first send into empty totals", async () => {
   assert.equal(agg.loc_added, 1200);
   assert.equal(agg.installs, 1);
   assert.equal(agg.updated_at, FIXED.toISOString());
+});
+
+test("ingest stores rolling 30-day counts and derived stats sum them", async () => {
+  const kv = makeKV();
+  const a = normalizePayload({
+    install_id: "install-rollinga",
+    period: "lifetime",
+    prs_opened: 100,
+    prs_merged: 80,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 10,
+      prs_merged: 8,
+      prs_reviewed: 9,
+      issues_opened: 6,
+      issues_closed: 5,
+      files_changed: 21,
+      lines_changed: 2000,
+    },
+  }).value;
+  const b = normalizePayload({
+    install_id: "install-rollingb",
+    period: "lifetime",
+    prs_opened: 40,
+    prs_merged: 20,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 2,
+      prs_reviewed: 3,
+      issues_opened: 1,
+      issues_closed: 1,
+      files_changed: 7,
+      lines_changed: 500,
+    },
+  }).value;
+
+  await ingest(kv, a, FIXED, { trustedCountsOnly: true, trustedReporter: true });
+  await ingest(kv, b, FIXED, { trustedCountsOnly: true, trustedReporter: true });
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_merged, 100);
+  assert.deepEqual(agg.last_30_days, {
+    window_days: 30,
+    prs_opened: 14,
+    prs_merged: 10,
+    prs_reviewed: 12,
+    issues_opened: 7,
+    issues_closed: 6,
+    files_changed: 28,
+    lines_changed: 2500,
+  });
 });
 
 test("ingest is idempotent: re-sending the same period does not double count", async () => {
@@ -689,6 +773,44 @@ test("ingest preserves stale line totals while updating fresh counts", async () 
   const agg = await totalsOf(kv);
   assert.equal(agg.prs_opened, 6);
   assert.equal(agg.lines_changed, 1200);
+});
+
+test("trusted-counts stale lines never promote an earlier untrusted total", async () => {
+  const kv = makeKV();
+  const untrusted = normalizePayload({
+    install_id: "install-staleuntrusted",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 999999,
+    loc_added: 20,
+  }).value;
+  const trustedStale = normalizePayload({
+    install_id: "install-staleuntrusted",
+    period: "lifetime",
+    prs_opened: 6,
+    prs_merged: 5,
+    lines_changed: 0,
+    loc_added: 30,
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, untrusted, FIXED, {
+    trustedCountsOnly: false,
+    trustedReporter: false,
+  });
+  await ingest(kv, trustedStale, FIXED, {
+    trustedCountsOnly: true,
+    trustedReporter: true,
+  });
+
+  const snapshot = JSON.parse(kv.store.get("install:install-staleuntrusted"));
+  assert.equal(snapshot.trusted_reporter, true);
+  assert.equal(snapshot.lines_changed, 0);
+
+  const agg = await totalsOf(kv, { TRUSTED_COUNTS_ONLY: "1" });
+  assert.equal(agg.prs_opened, 6);
+  assert.equal(agg.lines_changed, 0);
 });
 
 test("ingest never pushes a total negative on a downward correction", async () => {
@@ -1160,6 +1282,16 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
     files_changed: 800,
     lines_changed: 1200,
     loc_added: 800,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 0,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
     installs: 1,
     updated_at: stats.updated_at,
   });
@@ -1915,6 +2047,16 @@ test("GET /stats on an empty store returns zeroed totals", async () => {
     files_changed: 0,
     lines_changed: 0,
     loc_added: 0,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 0,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
     installs: 0,
     updated_at: null,
   });
