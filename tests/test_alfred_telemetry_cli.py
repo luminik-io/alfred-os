@@ -159,6 +159,24 @@ def test_telemetry_status_reports_trusted_token_without_printing_it(tmp_path):
     assert "trusted-secret" not in result.stdout
 
 
+def test_telemetry_status_reads_trusted_token_from_alfred_home_env(tmp_path):
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir()
+    (alfred_home / ".env").write_text(
+        "ALFRED_TELEMETRY_TRUSTED_TOKEN=trusted-secret\n",
+        encoding="utf-8",
+    )
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["trusted_token_configured"] is True
+    assert "trusted-secret" not in result.stdout
+
+
 def test_telemetry_on_uses_hosted_default_without_url(tmp_path):
     alfredrc = tmp_path / ".alfredrc"
     agents_conf = tmp_path / "agents.conf"

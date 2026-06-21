@@ -480,6 +480,39 @@ def test_direct_dry_run_loads_alfredrc_opt_out(tmp_path):
     assert not (alfred_home / "state" / "telemetry-install-id").exists()
 
 
+def test_cli_loads_trusted_token_from_alfred_home_env(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    (home / ".alfredrc").write_text(
+        f"{pt.ENABLE_ENV}=1\n{pt.URL_ENV}={pt.DEFAULT_INGEST_URL}\n",
+        encoding="utf-8",
+    )
+    (alfred_home / ".env").write_text(
+        f"{pt.TRUSTED_TOKEN_ENV}=trusted-secret\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv(pt.TRUSTED_TOKEN_ENV, raising=False)
+    captured: dict[str, str] = {}
+
+    def fake_report_once():
+        captured["trusted"] = os.environ.get(pt.TRUSTED_TOKEN_ENV, "")
+        return {"status": "disabled", "sent": False}
+
+    monkeypatch.setattr(pt, "report_once", fake_report_once)
+
+    try:
+        assert cli.main([]) == 0
+        assert captured["trusted"] == "trusted-secret"
+    finally:
+        os.environ.pop(pt.ENABLE_ENV, None)
+        os.environ.pop(pt.URL_ENV, None)
+        os.environ.pop(pt.TRUSTED_TOKEN_ENV, None)
+
+
 def test_script_prefers_checkout_lib_over_stale_alfred_home_lib(tmp_path):
     home = tmp_path / "home"
     alfred_home = tmp_path / "alfred"

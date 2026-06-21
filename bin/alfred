@@ -402,7 +402,8 @@ def _read_alfredrc_values(path: Path) -> dict[str, str]:
 
 
 def _telemetry_values(alfredrc: Path) -> dict[str, str]:
-    values = _read_alfredrc_values(alfredrc)
+    values = _read_alfredrc_values(_alfred_home_path() / ".env")
+    values.update(_read_alfredrc_values(alfredrc))
     for key in (
         *TELEMETRY_ENV_KEYS,
         TELEMETRY_TRUSTED_TOKEN_ENV,

@@ -70,14 +70,7 @@ def _valid_env_key(key: str) -> bool:
     return bool(key) and not key[0].isdigit() and all(ch.isalnum() or ch == "_" for ch in key)
 
 
-def _load_alfredrc_env() -> None:
-    """Load ``~/.alfredrc`` for direct CLI invocations.
-
-    Scheduled runs go through ``agent-launch``, which already exports this file.
-    Direct commands such as ``proof-telemetry.py --dry-run`` need the same view
-    of the opt-out switch without forcing users to invoke the launcher.
-    """
-    path = Path.home() / ".alfredrc"
+def _load_env_file(path: Path) -> None:
     if not path.exists():
         return
     for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -97,6 +90,18 @@ def _load_alfredrc_env() -> None:
         if not quoted_single:
             value = value.replace("${HOME}", str(Path.home())).replace("$HOME", str(Path.home()))
         os.environ[key] = value
+
+
+def _load_alfredrc_env() -> None:
+    """Load local Alfred env files for direct CLI invocations.
+
+    Scheduled runs go through ``agent-launch``, which already exports this file.
+    Direct commands such as ``proof-telemetry.py --dry-run`` need the same view
+    of the opt-out switch without forcing users to invoke the launcher.
+    """
+    _load_env_file(Path.home() / ".alfredrc")
+    alfred_home = Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred"))
+    _load_env_file(alfred_home / ".env")
 
 
 def _doctor_fast_path() -> int:
