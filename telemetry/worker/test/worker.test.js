@@ -750,6 +750,16 @@ test("ingest preserves stale line totals while updating fresh counts", async () 
     prs_merged: 3,
     lines_changed: 1200,
     loc_added: 20,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 20,
+      lines_changed: 900,
+    },
   }).value;
   const staleLines = normalizePayload({
     install_id: "install-staleln",
@@ -758,6 +768,16 @@ test("ingest preserves stale line totals while updating fresh counts", async () 
     prs_merged: 5,
     lines_changed: 0,
     loc_added: 30,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 6,
+      prs_merged: 5,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 30,
+      lines_changed: 0,
+    },
     stale_fields: ["lines_changed"],
   }).value;
 
@@ -769,10 +789,12 @@ test("ingest preserves stale line totals while updating fresh counts", async () 
   assert.equal(snapshot.prs_merged, 5);
   assert.equal(snapshot.loc_added, 30);
   assert.equal(snapshot.lines_changed, 1200);
+  assert.equal(snapshot.last_30_days.lines_changed, 900);
 
   const agg = await totalsOf(kv);
   assert.equal(agg.prs_opened, 6);
   assert.equal(agg.lines_changed, 1200);
+  assert.equal(agg.last_30_days.lines_changed, 900);
 });
 
 test("trusted-counts stale lines never promote an earlier untrusted total", async () => {
@@ -784,6 +806,10 @@ test("trusted-counts stale lines never promote an earlier untrusted total", asyn
     prs_merged: 3,
     lines_changed: 999999,
     loc_added: 20,
+    last_30_days: {
+      window_days: 30,
+      lines_changed: 888888,
+    },
   }).value;
   const trustedStale = normalizePayload({
     install_id: "install-staleuntrusted",
@@ -792,6 +818,12 @@ test("trusted-counts stale lines never promote an earlier untrusted total", asyn
     prs_merged: 5,
     lines_changed: 0,
     loc_added: 30,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 6,
+      prs_merged: 5,
+      lines_changed: 0,
+    },
     stale_fields: ["lines_changed"],
   }).value;
 
@@ -807,10 +839,12 @@ test("trusted-counts stale lines never promote an earlier untrusted total", asyn
   const snapshot = JSON.parse(kv.store.get("install:install-staleuntrusted"));
   assert.equal(snapshot.trusted_reporter, true);
   assert.equal(snapshot.lines_changed, 0);
+  assert.equal(snapshot.last_30_days.lines_changed, 0);
 
   const agg = await totalsOf(kv, { TRUSTED_COUNTS_ONLY: "1" });
   assert.equal(agg.prs_opened, 6);
   assert.equal(agg.lines_changed, 0);
+  assert.equal(agg.last_30_days.lines_changed, 0);
 });
 
 test("ingest never pushes a total negative on a downward correction", async () => {
@@ -1006,6 +1040,45 @@ test("GET /stats preserves legacy cached loc_added as files_changed", async () =
 
   assert.equal(stats.files_changed, 321);
   assert.equal(stats.loc_added, 321);
+});
+
+test("GET /stats does not cap already-aggregated rolling totals from cache", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 250000,
+      prs_merged: 240000,
+      prs_reviewed: 250000,
+      issues_opened: 260000,
+      issues_closed: 255000,
+      files_changed: 270000,
+      lines_changed: 6100000,
+      loc_added: 270000,
+      last_30_days: {
+        window_days: 30,
+        prs_opened: 150000,
+        prs_merged: 140000,
+        prs_reviewed: 145000,
+        issues_opened: 160000,
+        issues_closed: 155000,
+        files_changed: 170000,
+        lines_changed: 5900000,
+      },
+      installs: 3,
+      updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.last_30_days.prs_opened, 150000);
+  assert.equal(stats.last_30_days.issues_opened, 160000);
+  assert.equal(stats.last_30_days.files_changed, 170000);
+  assert.equal(stats.last_30_days.lines_changed, 5900000);
 });
 
 test("GET /stats ignores stale schema cache entries after a deploy", async () => {

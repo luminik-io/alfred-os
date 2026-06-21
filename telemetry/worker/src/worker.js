@@ -349,6 +349,18 @@ function normalizeWindowCounts(raw) {
   return out;
 }
 
+function normalizeAggregateWindowCounts(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = { ...EMPTY_WINDOW };
+  const windowDays = clampCount(raw.window_days, 366);
+  out.window_days = windowDays > 0 ? windowDays : 30;
+  for (const field of WINDOW_COUNT_FIELDS) {
+    const n = Number(raw[field]);
+    out[field] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+  return out;
+}
+
 function normalizeStaleFields(raw) {
   if (!raw || !Array.isArray(raw.stale_fields)) return [];
   const out = [];
@@ -603,7 +615,7 @@ export async function readStats(kv, env) {
       const hasLocAdded = Object.prototype.hasOwnProperty.call(cached, "loc_added");
       if (!hasFilesChanged && hasLocAdded) totals.files_changed = totals.loc_added;
       if (!hasLocAdded && hasFilesChanged) totals.loc_added = totals.files_changed;
-      const cachedWindow = normalizeWindowCounts(cached.last_30_days);
+      const cachedWindow = normalizeAggregateWindowCounts(cached.last_30_days);
       totals.last_30_days = cachedWindow || { ...EMPTY_WINDOW };
       const installs = Number(cached.installs);
       totals.installs =
@@ -698,6 +710,10 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
       canPreservePrevious ? previousSnapshot.lines_changed : 0,
       FIELD_MAXIMUMS.lines_changed,
     );
+    snapshot.last_30_days.lines_changed = clampCount(
+      canPreservePrevious ? previousSnapshot.last_30_days.lines_changed : 0,
+      FIELD_MAXIMUMS.lines_changed,
+    );
   }
   snapshot.seen_at = iso;
   snapshot.trusted_reporter = isTrustedReporter;
@@ -743,7 +759,7 @@ function publicView(agg) {
     files_changed: agg.files_changed,
     lines_changed: agg.lines_changed,
     loc_added: agg.loc_added,
-    last_30_days: normalizeWindowCounts(agg.last_30_days) || { ...EMPTY_WINDOW },
+    last_30_days: normalizeAggregateWindowCounts(agg.last_30_days) || { ...EMPTY_WINDOW },
     installs: agg.installs,
     updated_at: agg.updated_at,
   };
