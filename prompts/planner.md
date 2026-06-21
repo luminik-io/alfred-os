@@ -64,7 +64,7 @@ Every firing, before walking specs, batch-read the code map (if your fleet runs 
 
 ```
 cat ${ALFRED_HOME}/state/code-map.json 2>/dev/null \
-  | jq '{generated_at, repos: (.repos | to_entries | map({repo: .key, endpoints: (.value.endpoints | length), routes: (.value.routes | length), files: (.value.graph_summary.files // 0), symbols: (.value.graph_summary.symbols // 0), imports: (.value.graph_summary.imports // 0), partial: (.value.graph_summary.truncated // false)})), n_drift: (.contract_drift | length), drift: .contract_drift}'
+  | jq '{generated_at, repos: (.repos | to_entries | map({repo: .key, endpoints: (.value.endpoints | length), routes: (.value.routes | length), files: (.value.graph_summary.files // 0), symbols: (.value.graph_summary.symbols // 0), imports: (.value.graph_summary.imports // 0), partial: (.value.graph_summary.truncated // false), file_sample: (.value.files // [] | map({path, symbols: ([.symbols[]?.name] | .[0:8])}) | .[0:25]), import_sample: (.value.edges // [] | map(select(.kind == "import") | {from, to}) | .[0:40])})), n_drift: (.contract_drift | length), drift: .contract_drift}'
 ```
 
 If your fleet runs a code-map refresher, this file contains source files, public-ish symbols, imports, server endpoints, client API calls, and a `contract_drift` list of client calls without a matching server endpoint.
