@@ -1112,14 +1112,13 @@ class SQLiteStore:
             params.extend(agent_params)
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         sql = (
-            "SELECT COALESCE(SUM(additions + deletions), 0), "
-            "SUM(CASE WHEN line_metrics_seen_at IS NULL THEN 1 ELSE 0 END) "
+            "SELECT COALESCE(SUM(CASE "
+            "WHEN line_metrics_seen_at IS NULL THEN 0 "
+            "ELSE additions + deletions END), 0) "
             f"FROM github_items {where_clause}"
         )
         with self._connect() as conn:
-            total, unknown = conn.execute(sql, params).fetchone()
-            if int(unknown or 0) > 0:
-                raise RuntimeError("github line metrics incomplete")
+            (total,) = conn.execute(sql, params).fetchone()
             return max(0, int(total or 0))
 
     # ----- bundle items -------------------------------------------------

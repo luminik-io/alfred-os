@@ -530,7 +530,7 @@ def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> Non
     assert brain.sum_github_changed_lines(kind="pr", state="merged", authored_only=True) == 12
 
 
-def test_sum_github_changed_lines_rejects_partial_line_metric_backfill(
+def test_sum_github_changed_lines_skips_historical_unknown_line_metrics(
     brain: FleetBrain,
 ) -> None:
     brain.upsert_github_item(
@@ -540,9 +540,17 @@ def test_sum_github_changed_lines_rejects_partial_line_metric_backfill(
         state="open",
         labels=["agent:authored"],
     )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=5,
+        kind="pr",
+        state="open",
+        labels=["agent:authored"],
+        additions=20,
+        deletions=3,
+    )
 
-    with pytest.raises(RuntimeError, match="line metrics incomplete"):
-        brain.sum_github_changed_lines(kind="pr", authored_only=True)
+    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 23
 
     brain.upsert_github_item(
         repo="org/api",
@@ -554,7 +562,7 @@ def test_sum_github_changed_lines_rejects_partial_line_metric_backfill(
         deletions=0,
     )
 
-    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 0
+    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 23
 
 
 def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
