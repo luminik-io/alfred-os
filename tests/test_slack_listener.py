@@ -1869,6 +1869,71 @@ def test_conversation_thread_reply_can_complete_dry_run_clarification(tmp_path: 
     assert "I ran the dry-run for `batman`." in poster.messages[-1]["text"]
 
 
+def test_conversation_thread_completed_dry_run_allows_later_read_only_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        action = text.split()[0]
+        return SimpleNamespace(
+            handled=True,
+            action=action,
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine(
+            {"action": "dry_run_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvCompletedDryRunRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> dry run Batman",
+                "ts": "1716480962.000001",
+            },
+        }
+    )
+    assert root.action == "intent_dry_run_agent"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.2})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvCompletedDryRunRunsReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "runs",
+                "ts": "1716480963.000001",
+                "thread_ts": "1716480962.000001",
+            },
+        }
+    )
+
+    assert reply.action == "conversation_control_runs"
+    assert control.calls == ["dry-run batman", "runs"]
+    assert "Which agent should I dry-run?" not in poster.messages[-1]["text"]
+
+
 def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
     poster = CardPoster()
     listener = SlackPlanningListener(

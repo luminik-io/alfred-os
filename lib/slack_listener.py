@@ -857,6 +857,7 @@ class SlackPlanningListener:
                 event.conversation_id,
                 text=event.text,
                 action=intent.action,
+                agent=intent.agent,
             )
             return self._answer_dry_run_agent(event, intent)
         if intent.action in {
