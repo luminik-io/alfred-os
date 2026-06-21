@@ -221,25 +221,20 @@ def _git_head(repo_path: Path) -> str:
         return ""
 
 
-def _iter_source_files(repo_path: Path) -> list[Path]:
+def _iter_source_files(repo_path: Path) -> tuple[list[Path], bool]:
     if not repo_path.is_dir():
-        return []
+        return [], False
     files: list[Path] = []
-    for path in repo_path.rglob("*"):
-        if len(files) >= MAX_GRAPH_FILES:
-            break
-        if not path.is_file():
-            continue
-        if path.suffix not in SOURCE_SUFFIXES:
-            continue
-        try:
-            rel = path.relative_to(repo_path)
-        except ValueError:
-            continue
-        if any(part in SKIP_DIRS for part in rel.parts):
-            continue
-        files.append(path)
-    return sorted(files)
+    for root, dirs, filenames in os.walk(repo_path):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        for filename in sorted(filenames):
+            path = Path(root) / filename
+            if path.suffix not in SOURCE_SUFFIXES:
+                continue
+            files.append(path)
+            if len(files) > MAX_GRAPH_FILES:
+                return files[:MAX_GRAPH_FILES], True
+    return files, False
 
 
 def _language_for(path: Path) -> str:
@@ -258,7 +253,11 @@ def _extract_imports(language: str, text: str) -> list[str]:
             for match in pattern.finditer(line):
                 value = match.group(1).strip()
                 if language == "python" and "," in value:
-                    values = [part.strip().split(" ", 1)[0] for part in value.split(",")]
+                    values = [
+                        re.sub(r"\s+as\s+\w+$", "", part.strip()) for part in value.split(",")
+                    ]
+                elif language == "python":
+                    values = [re.sub(r"\s+as\s+\w+$", "", value)]
                 else:
                     values = [value]
                 for item in values:
@@ -298,25 +297,7 @@ def _extract_symbols(language: str, text: str) -> list[dict[str, Any]]:
 def scan_repo_graph(repo_path: Path) -> dict[str, Any]:
     files: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
-    truncated = False
-
-    source_files = _iter_source_files(repo_path)
-    if repo_path.is_dir():
-        # If there are more source files than the configured cap, rglob stops
-        # early. Count one extra cheaply enough to mark the graph as partial.
-        source_seen = 0
-        for path in repo_path.rglob("*"):
-            if path.is_file() and path.suffix in SOURCE_SUFFIXES:
-                try:
-                    rel = path.relative_to(repo_path)
-                except ValueError:
-                    continue
-                if any(part in SKIP_DIRS for part in rel.parts):
-                    continue
-                source_seen += 1
-                if source_seen > MAX_GRAPH_FILES:
-                    truncated = True
-                    break
+    source_files, truncated = _iter_source_files(repo_path)
 
     for source_file in source_files:
         rel_path = str(source_file.relative_to(repo_path))

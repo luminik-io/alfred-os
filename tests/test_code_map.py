@@ -37,6 +37,7 @@ def test_scan_repo_graph_extracts_files_symbols_and_import_edges(tmp_path: Path)
     (tmp_path / "src" / "main.py").write_text(
         """
 import os, sys
+import numpy as np
 from alfred.runner import main
 
 class Batman:
@@ -62,9 +63,11 @@ export function render(run: Run) {
 
     assert graph["graph_summary"]["files"] == 2
     assert graph["graph_summary"]["symbols"] == 3
-    assert graph["graph_summary"]["imports"] == 5
+    assert graph["graph_summary"]["imports"] == 6
     assert graph["graph_summary"]["languages"] == {"python": 1, "typescript": 1}
     assert {"from": "src/main.py", "to": "os", "kind": "import"} in graph["edges"]
+    assert {"from": "src/main.py", "to": "numpy", "kind": "import"} in graph["edges"]
+    assert {"from": "src/main.py", "to": "numpy as np", "kind": "import"} not in graph["edges"]
     assert {"from": "src/main.py", "to": "alfred.runner", "kind": "import"} in graph["edges"]
     assert {"from": "src/panel.ts", "to": "./view", "kind": "import"} in graph["edges"]
 
@@ -76,6 +79,26 @@ export function render(run: Run) {
     assert ("src/main.py", "Batman") in symbols
     assert ("src/main.py", "plan_work") in symbols
     assert ("src/panel.ts", "render") in symbols
+
+
+def test_scan_repo_graph_prunes_skip_dirs_and_marks_truncation(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(cmr, "MAX_GRAPH_FILES", 2)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("import os\n", encoding="utf-8")
+    (tmp_path / "src" / "b.py").write_text("import sys\n", encoding="utf-8")
+    (tmp_path / "src" / "c.py").write_text("import json\n", encoding="utf-8")
+    (tmp_path / "node_modules" / "pkg").mkdir(parents=True)
+    (tmp_path / "node_modules" / "pkg" / "skip.ts").write_text(
+        "import { hidden } from 'hidden'\n",
+        encoding="utf-8",
+    )
+
+    graph = cmr.scan_repo_graph(tmp_path)
+
+    assert graph["graph_summary"]["files"] == 2
+    assert graph["graph_summary"]["truncated"] is True
+    assert all("node_modules" not in file_info["path"] for file_info in graph["files"])
+    assert all(edge["to"] != "hidden" for edge in graph["edges"])
 
 
 def test_scan_backend_includes_repo_graph_next_to_endpoints(tmp_path: Path) -> None:
