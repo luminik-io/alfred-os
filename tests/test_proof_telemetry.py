@@ -1276,9 +1276,7 @@ def test_post_accepts_plain_2xx_body(monkeypatch):
         def __exit__(self, *a):
             return False
 
-    monkeypatch.setattr(
-        pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp()
-    )
+    monkeypatch.setattr(pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp())
 
     assert pt._post("https://w.example.com/ingest", {"x": 1}) is True
 
@@ -1296,9 +1294,7 @@ def test_post_json_still_requires_json_by_default(monkeypatch):
         def __exit__(self, *a):
             return False
 
-    monkeypatch.setattr(
-        pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp()
-    )
+    monkeypatch.setattr(pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp())
 
     ok, body = pt._post_json("https://w.example.com/register", {"install_id": "id"})
 
