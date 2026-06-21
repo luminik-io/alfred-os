@@ -526,6 +526,8 @@ class SlackPlanningListener:
             unsupported_assignment_agent = ""
             if turn.action == ACTION_ASSIGN and not agent:
                 agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+                if not agent and not unsupported_assignment_agent:
+                    agent, unsupported_assignment_agent = resolve_assignment_agent(turn.text)
 
         params = {
             "raw_text": event.text.strip(),
