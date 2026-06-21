@@ -165,8 +165,8 @@ Rules:
 - Planning memory may appear as advisory hints when memory is enabled, but the
   current Slack thread and readiness findings still win.
 - Chat intake never files issues, opens PRs, merges, or approves execution.
-- A draft can graduate into a GitHub issue only through an explicit trusted-user
-  action outside the listener.
+- A draft can graduate into a GitHub issue only through an explicit action by
+  the Slack user set in `ALFRED_OPERATOR_SLACK_USER_ID`, outside the listener.
 
 ## Tone
 
