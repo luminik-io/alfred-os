@@ -126,8 +126,8 @@ const why = [
 
 const heroImpactStats = [
   {
-    label: "PRs merged",
-    value: productProof.summary.agent_prs_merged.toLocaleString("en-US"),
+    label: "files changed",
+    value: productProof.summary.files_changed.toLocaleString("en-US"),
   },
   {
     label: "issues closed",
@@ -156,7 +156,11 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
-    <div slot="panel" class="hero-impact" aria-label="Alfred impact in the last 30 days">
+    <div
+      slot="panel"
+      class="hero-impact"
+      aria-label={`Alfred impact in the last ${productProof.window.days} days`}
+    >
       <div class="hero-impact__head">
         <span class="m-eyebrow">LAST {productProof.window.days} DAYS</span>
         <span class="m-mono m-mute">{productProof.summary.repos_scanned} repos</span>
