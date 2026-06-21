@@ -1920,6 +1920,77 @@ def test_conversation_thread_clarification_reply_can_supply_assignment_agent(
     assert "Lucius \\u00b7 Senior Developer" not in card
 
 
+def test_conversation_thread_lane_then_repo_preserves_root_issue(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "assign_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneThenRepoRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign issue #4",
+                "ts": "1716480937.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    lane = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneThenRepoLane",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480938.000001",
+                "thread_ts": "1716480937.000001",
+            },
+        }
+    )
+    assert lane.action == "intent_clarify"
+
+    repo = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneThenRepoRepo",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend",
+                "ts": "1716480939.000001",
+                "thread_ts": "1716480937.000001",
+            },
+        }
+    )
+
+    assert repo.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "acme-io/acme-backend#4" in card
+    assert "Batman \\u00b7 Architect" in card
+
+
 def test_conversation_thread_unsupported_assignment_reply_asks_for_lane(
     tmp_path: Path,
 ) -> None:

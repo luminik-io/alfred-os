@@ -543,7 +543,7 @@ class SlackPlanningListener:
                 f"`{repo}#{issue}`?"
             )
         record_text = event.text
-        if turn.action == ACTION_ASSIGN and clarification and unsupported_assignment_agent:
+        if turn.action == ACTION_ASSIGN and clarification:
             record_text = f"{turn.text}\n{event.text}"
 
         intent = Intent(
