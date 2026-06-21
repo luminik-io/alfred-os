@@ -132,9 +132,8 @@ _NON_ACTIONABLE_FAILURE_SUBTYPES = {
 class FleetBrain:
     """Local procedural-memory layer for the Alfred fleet.
 
-    Operates on a SQLite file by default; inject a custom
-    :class:`Store` (Dependency Inversion) for tests or for a future
-    Postgres-backed implementation.
+    Operates on a SQLite file by default; tests can inject a custom
+    :class:`Store` through the constructor.
 
     Method names map to the operator-facing verbs:
 
@@ -1048,7 +1047,7 @@ class FleetBrain:
 
         ``alfred brain export`` writes this to disk. Restoring is
         currently manual: re-run reflect/firing_log/note_repo on the
-        target host. A round-trip ``import`` lives in the v2 roadmap.
+        target host.
         """
         from .schema import SCHEMA_VERSION
 

@@ -505,9 +505,9 @@ class SQLiteStore:
     ) -> list[Lesson]:
         """Return the most relevant lessons, most-recent first.
 
-        v1 relevance is a literal substring match on ``body`` when
-        ``query`` is given. Vector / semantic recall is deferred to
-        v2 — see ``docs/FLEET_BRAIN.md``.
+        The local SQLite ledger uses literal substring matching on
+        ``body`` when ``query`` is given. Redis Agent Memory provides
+        semantic recall in the default runtime provider chain.
 
         Either ``codename`` or ``repo`` may be ``None`` to widen the
         scope.
