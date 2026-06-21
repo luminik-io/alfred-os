@@ -376,6 +376,23 @@ def test_trusted_explicit_approval_creates_issue(tmp_path: Path) -> None:
     assert record.metadata["bridge_issue_url"] == "https://github.com/acme-org/api/issues/42"
 
 
+def test_operator_mention_form_can_approve_issue(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(
+        tmp_path,
+        creator=creator,
+        trusted=("U1",),
+        operator="<@u1>",
+    )
+    _seed_draft(listener, tmp_path, user="U1")
+
+    result = listener.handle_payload(_reply("ship it", event_id="000002a", user="U1"))
+
+    assert result.handled is True
+    assert result.action == "issue_created"
+    assert len(creator.calls) == 1
+
+
 def test_conversion_registers_status_thread(tmp_path: Path) -> None:
     creator = RecordingCreator()
     listener, _poster, _registry = _make_listener(tmp_path, creator=creator)

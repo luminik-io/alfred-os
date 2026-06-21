@@ -73,7 +73,7 @@ from slack_intent import (
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
 from slack_thread_status import SlackThreadStatusTracker
-from slack_trust import SlackTrustStore
+from slack_trust import SlackTrustStore, normalize_slack_user_id
 from spec_helper import IssueDraft
 
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
@@ -240,7 +240,7 @@ class SlackPlanningListener:
                 poster=poster,
             )
         )
-        operator = operator_user_id_from_env()
+        operator = normalize_slack_user_id(operator_user_id_from_env())
         self._operator_user_id = operator
         self._static_trusted_user_ids = (
             set(trusted_user_ids) if trusted_user_ids is not None else None

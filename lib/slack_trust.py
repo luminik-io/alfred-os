@@ -28,7 +28,7 @@ ENV_OPERATOR_USER_ID = "ALFRED_OPERATOR_SLACK_USER_ID"
 ENV_TRUSTED_USER_IDS = "ALFRED_TRUSTED_SLACK_USER_IDS"
 
 _USER_ID_RE = re.compile(r"^[UW][A-Z0-9]{1,32}$")
-_MENTION_RE = re.compile(r"^<@(?P<id>[UW][A-Z0-9]{1,32})(?:\|[^>]+)?>$")
+_MENTION_RE = re.compile(r"^<@(?P<id>[UW][A-Z0-9]{1,32})(?:\|[^>]+)?>$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
