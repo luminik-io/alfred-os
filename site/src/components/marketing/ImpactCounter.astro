@@ -220,7 +220,16 @@ const statsUrl = live
         const installs = Number(data?.installs ?? 0);
         const filesChanged = Number(source?.files_changed ?? source?.loc_added ?? 0);
         const issuesOpened = Number(source?.issues_opened ?? 0);
-        const proofFloor = Math.max(merged, installs, filesChanged, issuesOpened);
+        const rollingProgress = Math.max(
+          merged,
+          filesChanged,
+          issuesOpened,
+          Number(source?.issues_closed ?? 0),
+          Number(source?.lines_changed ?? 0),
+          Number(source?.prs_opened ?? 0),
+          Number(source?.prs_reviewed ?? 0),
+        );
+        const proofFloor = liveWindow === "last_30_days" ? rollingProgress : Math.max(rollingProgress, installs);
         if (!Number.isFinite(proofFloor) || proofFloor <= 0 || proofFloor < threshold) return;
 
         setField("prs_merged", merged);
