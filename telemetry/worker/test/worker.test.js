@@ -844,6 +844,59 @@ test("stale rolling line totals expire when the rolling window has no activity",
   assert.equal(agg.last_30_days.lines_changed, 0);
 });
 
+test("stale rolling line totals do not overwrite fresh lifetime lines", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-stalewindow-fresh-lifetime",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const staleRollingOnly = normalizePayload({
+    install_id: "install-stalewindow-fresh-lifetime",
+    period: "lifetime",
+    prs_opened: 5,
+    prs_merged: 4,
+    lines_changed: 1500,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 1,
+      prs_merged: 1,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 4,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED, {
+    trustedCountsOnly: true,
+    trustedReporter: true,
+  });
+  await ingest(kv, staleRollingOnly, FIXED, {
+    trustedCountsOnly: true,
+    trustedReporter: true,
+  });
+
+  const snapshot = JSON.parse(kv.store.get("install:install-stalewindow-fresh-lifetime"));
+  assert.equal(snapshot.lines_changed, 1500);
+  assert.equal(snapshot.last_30_days.lines_changed, 900);
+
+  const agg = await totalsOf(kv, { TRUSTED_COUNTS_ONLY: "1" });
+  assert.equal(agg.lines_changed, 1500);
+  assert.equal(agg.last_30_days.lines_changed, 900);
+});
+
 test("trusted-counts stale lines never promote an earlier untrusted total", async () => {
   const kv = makeKV();
   const untrusted = normalizePayload({

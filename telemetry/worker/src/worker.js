@@ -709,10 +709,12 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
     const hasRollingActivity = WINDOW_COUNT_FIELDS.some(
       (field) => field !== "lines_changed" && snapshot.last_30_days[field] > 0,
     );
-    snapshot.lines_changed = clampCount(
-      canPreservePrevious ? previousSnapshot.lines_changed : 0,
-      FIELD_MAXIMUMS.lines_changed,
-    );
+    if (snapshot.lines_changed === 0) {
+      snapshot.lines_changed = clampCount(
+        canPreservePrevious ? previousSnapshot.lines_changed : 0,
+        FIELD_MAXIMUMS.lines_changed,
+      );
+    }
     snapshot.last_30_days.lines_changed = clampCount(
       canPreservePrevious && hasRollingActivity ? previousSnapshot.last_30_days.lines_changed : 0,
       FIELD_MAXIMUMS.lines_changed,
