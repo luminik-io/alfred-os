@@ -460,6 +460,77 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
         server.shutdown()
 
 
+def test_telemetry_off_uses_saved_endpoint_when_hosted_default_is_disabled(tmp_path):
+    server, received = _capture_server()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
+        alfredrc = tmp_path / ".alfredrc"
+        alfredrc.write_text(
+            "ALFRED_TELEMETRY_ENABLED=1\n"
+            "ALFRED_DEFAULT_TELEMETRY_URL=\n"
+            "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+            encoding="utf-8",
+        )
+        agents_conf = tmp_path / "agents.conf"
+        agents_conf.write_text(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous usage totals\n",
+            encoding="utf-8",
+        )
+        install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
+        install_id.parent.mkdir(parents=True)
+        install_id.write_text("install-cli-test\n", encoding="utf-8")
+        token = tmp_path / "alfred" / "state" / "telemetry-token"
+        token_endpoint = tmp_path / "alfred" / "state" / "telemetry-token-endpoint"
+        token.write_text("persisted-install-token\n", encoding="utf-8")
+        token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
+
+        result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+
+        assert result.returncode == 0, result.stderr
+        assert "cleared previous usage totals" in result.stdout
+        assert not token.exists()
+        assert not token_endpoint.exists()
+        assert received == [
+            {
+                "path": "/ingest",
+                "token": "shared-secret",
+                "body": {
+                    "install_id": "install-cli-test",
+                    "period": "lifetime",
+                    "tombstone": True,
+                },
+            }
+        ]
+    finally:
+        server.shutdown()
+
+
+def test_telemetry_off_keeps_saved_token_when_no_clear_url_exists(tmp_path):
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(
+        "ALFRED_TELEMETRY_ENABLED=1\n"
+        "ALFRED_DEFAULT_TELEMETRY_URL=\n"
+        "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+        encoding="utf-8",
+    )
+    agents_conf = tmp_path / "agents.conf"
+    agents_conf.write_text(
+        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tAnonymous usage totals\n",
+        encoding="utf-8",
+    )
+    token = tmp_path / "alfred" / "state" / "telemetry-token"
+    token.parent.mkdir(parents=True)
+    token.write_text("persisted-install-token\n", encoding="utf-8")
+
+    result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    assert token.exists()
+    assert token.read_text(encoding="utf-8").strip() == "persisted-install-token"
+
+
 def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
     server, received = _capture_server(status=500)
     try:
