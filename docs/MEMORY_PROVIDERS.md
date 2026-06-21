@@ -26,7 +26,7 @@ of these is true:
 - You want to disable runtime recall and reflection without ripping out the
   call sites (set `ALFRED_MEMORY_PROVIDERS=null`).
 - You're writing a custom provider for a downstream fleet, such as a
-  team wiki shim) and want to chain it behind Redis or FleetBrain.
+  team wiki shim, and want to chain it behind Redis or FleetBrain.
 - You run Redis Agent Memory Server on a different loopback port or host and
   want Alfred to use that endpoint.
 
