@@ -2312,6 +2312,118 @@ def test_conversation_thread_schedule_asks_cadence_after_agent_reply(tmp_path: P
     assert "daily@09:00" in poster.messages[-1]["text"]
 
 
+def test_conversation_thread_schedule_normalizes_human_cadence_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {"action": "schedule_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleHumanCadenceRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule Batman",
+                "ts": "1716480953.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleHumanCadenceReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "every 20 minutes",
+                "ts": "1716480954.000001",
+                "thread_ts": "1716480953.000001",
+            },
+        }
+    )
+
+    assert cadence_reply.action == "intent_confirmation_posted"
+    assert "batman" in poster.messages[-1]["text"]
+    assert "20m" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_reasks_for_invalid_cadence_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {"action": "schedule_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleBadCadenceRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule Batman",
+                "ts": "1716480955.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleBadCadenceReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "when the queue gets busy",
+                "ts": "1716480956.000001",
+                "thread_ts": "1716480955.000001",
+            },
+        }
+    )
+
+    assert cadence_reply.action == "intent_clarify"
+    assert "What cadence should `batman` use?" in poster.messages[-1]["text"]
+    assert "Confirm reschedule" not in poster.messages[-1]["text"]
+
+
 def test_conversation_thread_reply_can_complete_dry_run_clarification(tmp_path: Path) -> None:
     poster = CardPoster()
     control = SimpleNamespace(calls=[])

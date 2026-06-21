@@ -582,7 +582,7 @@ class SlackPlanningListener:
         agent = turn.agent or resolve_agent_codename(event.text, allow_all=allow_all)
         schedule = turn.schedule
         if turn.action == ACTION_SCHEDULE_AGENT and not schedule:
-            schedule = event.text.strip() if turn.agent else ""
+            schedule = _normalize_schedule_reply(event.text) if turn.agent else ""
         intent = Intent(
             action=turn.action,
             agent=agent,
@@ -2341,6 +2341,47 @@ def _is_read_only_control_text(text: str) -> bool:
             return True
         return subcommand == "redis" and not (len(args) > 1 and args[1].lower() == "sync")
     return False
+
+
+_SCHEDULE_REPLY_RE = re.compile(
+    r"^(?:every\s+)?(?P<num>[1-9][0-9]*)\s*"
+    r"(?P<unit>s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$"
+)
+
+
+def _normalize_schedule_reply(text: str) -> str:
+    """Return a scheduler-safe cadence token from a Slack clarification reply."""
+    value = re.sub(r"\s+", " ", (text or "").strip().lower()).rstrip(".")
+    if not value:
+        return ""
+    if re.match(r"^[1-9][0-9]*[smhd]$", value):
+        return value
+    if value.startswith(("daily@", "weekly@", "interval:", "cron:")):
+        return value if " " not in value else ""
+    match = _SCHEDULE_REPLY_RE.match(value)
+    if not match:
+        return ""
+    suffix = {
+        "s": "s",
+        "sec": "s",
+        "secs": "s",
+        "second": "s",
+        "seconds": "s",
+        "m": "m",
+        "min": "m",
+        "mins": "m",
+        "minute": "m",
+        "minutes": "m",
+        "h": "h",
+        "hr": "h",
+        "hrs": "h",
+        "hour": "h",
+        "hours": "h",
+        "d": "d",
+        "day": "d",
+        "days": "d",
+    }[match.group("unit")]
+    return f"{match.group('num')}{suffix}"
 
 
 def render_draft_ack(result: Any) -> str:
