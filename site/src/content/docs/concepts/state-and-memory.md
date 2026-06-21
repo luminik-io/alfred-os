@@ -123,8 +123,8 @@ for the provider chain.
 
 The `memory-harvest.py` scheduled wrapper runs the same safe loop as
 `memory harvest now`: repeated failure patterns become reviewable candidates,
-not trusted lessons. Slack remains the review surface for `memory`,
-`memory promote <id>`, and `memory reject <id>`.
+not trusted lessons. Slack remains the review surface for `memory` and the
+approve/reject actions.
 
 Use `alfred brain doctor` for a read-only health check, `alfred brain governor`
 for the current action queue, and `alfred mcp serve` when a local MCP client
