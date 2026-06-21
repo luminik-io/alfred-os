@@ -717,9 +717,10 @@ function configuredStatsOrigins(env) {
 function isLocalDevOrigin(origin) {
   try {
     const url = new URL(origin);
+    const hostname = url.hostname.replace(/^\[(.*)\]$/, "$1");
     return (
       url.protocol === "http:" &&
-      ["localhost", "127.0.0.1", "::1"].includes(url.hostname)
+      ["localhost", "127.0.0.1", "::1"].includes(hostname)
     );
   } catch {
     return false;

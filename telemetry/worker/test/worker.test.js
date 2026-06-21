@@ -1205,6 +1205,16 @@ test("GET /stats allows localhost preview origins", async () => {
   assert.equal(res.headers.get("Access-Control-Allow-Origin"), "http://127.0.0.1:4327");
 });
 
+test("GET /stats allows bracketed IPv6 localhost preview origins", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "http://[::1]:4327" }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), "http://[::1]:4327");
+});
+
 test("GET /stats does not allow arbitrary browser origins", async () => {
   const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
   const res = await worker.fetch(
