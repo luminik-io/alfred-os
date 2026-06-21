@@ -293,6 +293,32 @@ def test_api_memory_candidate_value_error_is_bad_request(
     _assert_no_exc_leak(body, marker)
 
 
+def test_api_memory_candidate_colon_id_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+
+    class Brain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def promote_memory_candidate(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("invalid id must not reach FleetBrain")
+
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (Brain(), None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/memory/candidates/lesson:memory_candidate:abc/promote",
+        json={"reviewer": "operator", "note": "bad"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "memory candidate id is invalid"
+
+
 def test_api_memory_candidate_unknown_id_is_not_found(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

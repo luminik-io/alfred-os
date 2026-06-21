@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 # real cause in the runtime logs.
 _GENERIC_ERROR = "internal error"
 
-_MEMORY_ID_RE = re.compile(r"^[A-Za-z0-9:_-]{1,128}$")
+_MEMORY_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _LOCAL_CLIENT_USER_ID = "ULOCALCLIENT"
 
 # Header the native client attaches to every state-mutating POST. It carries
