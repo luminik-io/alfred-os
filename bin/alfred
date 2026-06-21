@@ -433,6 +433,19 @@ def _telemetry_effective_url(values: dict[str, str]) -> str:
     return configured or _default_telemetry_url(values)
 
 
+def _telemetry_previous_clear_url(values: dict[str, str]) -> str:
+    configured = values.get("ALFRED_TELEMETRY_URL", "").strip()
+    if configured:
+        return configured
+    try:
+        token_endpoint = _telemetry_state_token_endpoint_path().read_text(
+            encoding="utf-8"
+        ).strip()
+    except OSError:
+        token_endpoint = ""
+    return token_endpoint or _default_telemetry_url(values)
+
+
 def _telemetry_state_token_path() -> Path:
     return agent_runner.STATE_ROOT / TELEMETRY_TOKEN_FILENAME
 
@@ -771,7 +784,7 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
     if args.clear_token:
         clear_values = dict(current)
         if not clear_values.get("ALFRED_TELEMETRY_URL"):
-            clear_values["ALFRED_TELEMETRY_URL"] = url
+            clear_values["ALFRED_TELEMETRY_URL"] = _telemetry_previous_clear_url(current)
         clear_result = _clear_previous_telemetry_report(clear_values)
         clear_status = str(clear_result.get("status") or "")
         clear_done = clear_status in {"sent", "no_url", "no_install_id"}

@@ -7,7 +7,6 @@ import ImpactTrend from "../components/marketing/ImpactTrend.astro";
 import proof from "../data/impact-proof.json";
 import productProof from "../data/luminik-product-proof.json";
 
-const productProofGenerated = productProof.generated_at.slice(0, 10);
 const linesChanged = productProof.summary.lines_added + productProof.summary.lines_removed;
 const productTrend = Array.isArray((productProof as { trend?: unknown }).trend)
   ? (productProof as { trend: Array<{ week: string; prs_merged: number }> }).trend
@@ -35,16 +34,16 @@ const hasPublicActivity =
 >
   <Hero
     eyebrow="ALFRED IMPACT"
-    headline="What Alfred shipped."
-    sub="Last 30 days: merged PRs, opened and closed issues, and code changed across repos where Alfred is working."
+    headline="Alfred's shipping record."
+    sub="Last 30 days from Luminik's Alfred setup: merged PRs, issues opened and closed, and code changed."
     headlineSize="lg"
-    primaryCta={{ label: "View GitHub", href: "https://github.com/luminik-io/alfred-os" }}
+    primaryCta={{ label: "Download", href: "/download/" }}
     secondaryCta={{ label: "Telemetry details", href: "/reference/telemetry/" }}
   >
     <div slot="panel" class="impact-panel">
       <div class="impact-panel__head">
         <span class="impact-panel__window">Last {productProof.window.days} days</span>
-        <span class="m-mono m-mute">updated {productProofGenerated}</span>
+        <span class="m-mono m-mute">Luminik's setup</span>
       </div>
       <ImpactCounter
         variant="plain"
@@ -78,10 +77,10 @@ const hasPublicActivity =
       <div class="m-container impact-live-section">
         <div class="impact-live-section__copy">
           <span class="m-eyebrow">LIVE TOTALS</span>
-          <h2 class="m-display-md">Alfred at work.</h2>
+          <h2 class="m-display-md">Live Alfred totals.</h2>
           <p>
-            Public totals come from verified Alfred reports: PRs merged, issues
-            moved, files touched, and lines changed.
+            Alfred reports add merged PRs, issues, files, and lines changed
+            as Alfred runs on Macs and Linux boxes.
           </p>
         </div>
         <ImpactCounter threshold={1} />

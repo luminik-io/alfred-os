@@ -33,7 +33,7 @@ interface Props {
   live?: boolean;
   /** Show the updated date in the counter footer. */
   showUpdated?: boolean;
-  /** Show the verified machine count in the counter footer. */
+  /** Show the active install count in the counter footer. */
   showInstalls?: boolean;
 }
 
@@ -85,7 +85,7 @@ const statsUrl = live
 ---
 
 <section
-  class:list={["impact", variant === "plain" && "impact--plain", "m-reveal"]}
+  class:list={["impact", variant === "plain" && "impact--plain"]}
   data-stats-url={statsUrl}
   data-threshold={String(threshold)}
   data-seed={JSON.stringify(seedTotals)}
@@ -153,7 +153,7 @@ const statsUrl = live
           <span data-impact-installs>
             <strong data-field="installs">{fmt(seedTotals.installs)}</strong>
             <span data-impact-install-label>
-              {seedTotals.installs === 1 ? " Alfred machine" : " Alfred machines"}
+              {seedTotals.installs === 1 ? " active Alfred install" : " active Alfred installs"}
             </span>
           </span>
         ) : null}
@@ -184,6 +184,19 @@ const statsUrl = live
     if (!fallback || !live) return;
 
     const fmt = (n: number) => n.toLocaleString("en-US");
+    const formatUpdated = (value: string) => {
+      const when = new Date(value);
+      if (Number.isNaN(when.getTime())) return "";
+      const now = new Date();
+      if (when.toDateString() === now.toDateString()) return "Updated today";
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      if (when.toDateString() === yesterday.toDateString()) return "Updated yesterday";
+      return `Updated ${new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+      }).format(when)}`;
+    };
     const setField = (field: string, value: number) => {
       root.querySelectorAll<HTMLElement>(`[data-field="${field}"]`).forEach((el) => {
         el.textContent = fmt(Number.isFinite(value) && value > 0 ? value : 0);
@@ -221,15 +234,12 @@ const statsUrl = live
 
         const installLabel = root.querySelector<HTMLElement>("[data-impact-install-label]");
         if (installLabel) {
-          installLabel.textContent = installs === 1 ? " Alfred machine" : " Alfred machines";
+          installLabel.textContent = installs === 1 ? " active Alfred install" : " active Alfred installs";
         }
 
         const updated = root.querySelector<HTMLElement>("[data-impact-updated]");
         if (updated && typeof data?.updated_at === "string") {
-          const when = new Date(data.updated_at);
-          if (!Number.isNaN(when.getTime())) {
-            updated.textContent = `Updated ${when.toISOString().slice(0, 10)}`;
-          }
+          updated.textContent = formatUpdated(data.updated_at);
         }
         fallback.hidden = true;
         live.hidden = false;

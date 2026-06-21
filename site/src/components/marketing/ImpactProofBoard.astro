@@ -62,8 +62,10 @@ const hasAlfredRows =
 const activity = hasAlfredRows || !proof.summary.repo_activity
   ? proof.summary
   : proof.summary.repo_activity;
-const metricDetail = hasAlfredRows ? windowLabel : "Repo total";
-const codeDetail = hasAlfredRows ? "Listed PRs" : "Repo total";
+const metricDetail = hasAlfredRows ? windowLabel : "repo activity";
+const codeDetail = hasAlfredRows ? "listed PRs" : "repo activity";
+const sectionLabel = hasAlfredRows ? "Public Alfred shipping record" : "Public repo activity";
+const heading = hasAlfredRows ? "Open-source Alfred work." : "Open-source repo activity.";
 
 const metrics = [
   {
@@ -89,15 +91,16 @@ const metrics = [
 ];
 ---
 
-<section class="proof-board" aria-label="Public Alfred shipping record">
+<section class="proof-board" aria-label={sectionLabel}>
   <div class="proof-board__meta">
     <div>
       <span class="m-eyebrow">OPEN-SOURCE REPO</span>
-      <h2 class="m-display-md">Open-source activity.</h2>
+      <h2 class="m-display-md">{heading}</h2>
     </div>
     <p>
-      Recent public Alfred work from{" "}
+      {hasAlfredRows ? "Recent public Alfred work from " : "Recent activity in "}
       <a href={proof.source.url} rel="noopener noreferrer">{proof.source.repo}</a>.
+      {!hasAlfredRows ? " Alfred examples appear here once public PRs or issues carry Alfred labels." : ""}
     </p>
   </div>
 
