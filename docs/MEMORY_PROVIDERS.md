@@ -70,7 +70,7 @@ chain wrapper catches it and tries the next writer.
 |---|---|---|---|
 | `redis` | `lib/memory/redis_agent_memory.py` | yes | Primary semantic memory client. Defaults to the bundled loopback Agent Memory Server. |
 | `fleet` | `lib/memory/providers.py` | yes | Local operational ledger and review queue. SQLite under `$ALFRED_HOME`. |
-| `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into the operator's personal knowledge base CLI. Not bundled functionality. |
+| `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into a personal knowledge base CLI. Not bundled functionality. |
 | `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Used when `ALFRED_MEMORY_PROVIDERS=null` or the env var is explicitly empty. |
 
 ## Configuration
@@ -90,7 +90,7 @@ ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 # Redis Agent Memory Server. Leave URL unset to use ALFRED_AMS_HOST/PORT.
 ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8088
 ALFRED_REDIS_MEMORY_NAMESPACE=alfred
-ALFRED_REDIS_MEMORY_USER_ID=operator-id
+ALFRED_REDIS_MEMORY_USER_ID=local-user
 ALFRED_REDIS_MEMORY_TOKEN=
 ALFRED_REDIS_MEMORY_SEARCH_MODE=semantic
 
@@ -127,7 +127,7 @@ export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 
 Keep `fleet` in the chain unless you are deliberately running without the local
 review queue and operational ledger. The default reflection mode stores
-engine-proposed memories as reviewable FleetBrain candidates before they enter
+agent-proposed memories as reviewable FleetBrain candidates before they enter
 recall. Redis is the promoted lesson store; FleetBrain is the queue and ledger.
 
 `ALFRED_MEMORY_REFLECTION_MODE` controls how model-generated reflections are
@@ -245,4 +245,4 @@ Now `ALFRED_MEMORY_PROVIDERS=redis,fleet,team_wiki` works.
 - **Per-provider limits.** `limit` is passed verbatim to every
   provider in the chain; a smarter chain could split the budget.
 - **Cache.** No caching between calls. Each provider is hit fresh on
-  every `recall`. Good enough at single-host single-operator scale.
+  every `recall`. Good enough for a single-host Alfred install.

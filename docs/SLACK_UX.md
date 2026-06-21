@@ -89,7 +89,7 @@ Rules:
   before collecting trusted replies. Captured context is also written to
   `$ALFRED_HOME/state/followups/` and appears in the local Plans inbox as a
   `needs follow-up` item.
-- From the local Plans detail page, an operator can convert a captured
+- From the local Plans detail page, a trusted user can convert a captured
   follow-up into a scoped planning draft for the next pass, or mark it handled.
   Both actions archive the original follow-up and remain local-only.
 
@@ -102,29 +102,28 @@ Trusted users can inspect the same local planning queue from Slack:
 | `plans` | Shows the newest saved plans, Slack drafts, and captured follow-ups. |
 | `plan <id>` | Shows source, status, parent link, repos, readiness, preview, and next actions. |
 | `draft <id>` | Converts a captured follow-up into a local planning draft with memory recall and readiness checks. |
-| `handled <id>` | Operator-only. Archives a captured follow-up without creating a draft. |
+| `handled <id>` | Trusted-user command. Archives a captured follow-up without creating a draft. |
 | `memory` / `memories` | Shows pending memory candidates and suggested promotions. |
 | `remember [repo:] <lesson>` / `memory remember ...` | Queues a reviewable memory candidate from Slack. |
-| `memory promote <id>` | Operator-only. Promotes a candidate into future recall. |
-| `memory reject <id>` | Operator-only. Rejects a noisy candidate. |
+| `memory promote <id>` | Trusted-user command. Approves a candidate for future recall. |
+| `memory reject <id>` | Trusted-user command. Rejects a noisy candidate. |
 | `memory harvest` | Previews repeated-failure lessons from the reliability governor. |
-| `memory harvest now` | Operator-only. Queues harvested lessons as reviewable candidates. |
+| `memory harvest now` | Trusted-user command. Queues harvested lessons as reviewable candidates. |
 | `memory redis` | Checks the Redis Agent Memory Server. |
 | `memory sync` | Previews reviewed-lesson sync to Redis AMS. |
-| `memory sync now` | Operator-only. Writes reviewed lessons to Redis AMS. |
+| `memory sync now` | Trusted-user command. Writes reviewed lessons to Redis AMS. |
 
 These commands do not start work, approve execution, file GitHub issues, or
 merge PRs. They are the Slack-native bridge between "someone replied with useful
 context" and "Alfred has a scoped draft for the next pass." `remember ...` and
-`memory remember ...` stage candidates only; they never become prompt context
-until the operator runs `memory promote <id>`. Scheduled `memory-harvest.py`
-runs follow the same rule: they only stage repeated-failure candidates for
-review.
+`memory remember ...` stage candidates only; they enter future recall after a
+trusted user reviews and approves them. Scheduled `memory-harvest.py` runs
+follow the same rule: they only stage repeated-failure candidates for review.
 
 When a Slack-created draft is already scoped enough to be implementation-ready,
 Alfred also queues a reviewable `slack-planning` memory candidate automatically.
 That candidate records the local draft id and evidence, but it is still only a
-candidate. It enters recall only after review and promotion.
+candidate. It enters recall only after review and approval.
 Set `ALFRED_SLACK_MEMORY_CANDIDATES=0` to disable this automatic queueing.
 
 ## DM And App Mention Intake
@@ -149,10 +148,10 @@ open questions: none
 
 Rules:
 
-- Only configured operator/trusted users can create drafts or amend threads.
-- The operator can add or remove local Slack collaborators with `trust <@user>`
+- Only configured trusted users can create drafts or amend threads.
+- A trusted admin can add or remove local Slack collaborators with `trust <@user>`
   and `untrust <@user>`. Trusted collaborators can steer plans and create
-  drafts; execution approval still belongs to the operator.
+  drafts; execution approval still belongs to the trusted admin.
 - If trusted users are not configured, Alfred ignores every event.
 - Intake creates local draft JSON under `$ALFRED_HOME/state/planning-drafts/`.
 - Replies in the intake thread revise the same saved draft, regenerate the issue
@@ -164,7 +163,7 @@ Rules:
 - Planning memory may appear as advisory hints when memory is enabled, but the
   current Slack thread and readiness findings still win.
 - Chat intake never files issues, opens PRs, merges, or approves execution.
-- A draft can graduate into a GitHub issue only through an explicit operator
+- A draft can graduate into a GitHub issue only through an explicit trusted-user
   action outside the listener.
 
 ## Tone
@@ -210,4 +209,4 @@ Alfred should sound like a calm engineering lead:
 - Raw JSON, raw timestamps, or local filesystem paths as the main content.
 - A long plan excerpt without the decision, scope, and next action above it.
 - A PR notification without issue and thread links.
-- Audience-specific wording when the feature is for every operator.
+- Audience-specific wording when the feature is for every trusted user.
