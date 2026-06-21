@@ -434,13 +434,15 @@ def _telemetry_effective_url(values: dict[str, str]) -> str:
 
 
 def _telemetry_previous_clear_url(values: dict[str, str]) -> str:
-    configured = values.get("ALFRED_TELEMETRY_URL", "").strip()
-    if configured:
-        return configured
     try:
         token_endpoint = _telemetry_state_token_endpoint_path().read_text(encoding="utf-8").strip()
     except OSError:
         token_endpoint = ""
+    if token_endpoint and _telemetry_state_token_exists():
+        return token_endpoint
+    configured = values.get("ALFRED_TELEMETRY_URL", "").strip()
+    if configured:
+        return configured
     return token_endpoint or _default_telemetry_url(values)
 
 
@@ -800,6 +802,9 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
             retry_token = token or _read_telemetry_state_token()
             if retry_token and not replacement_token:
                 values["ALFRED_TELEMETRY_TOKEN"] = retry_token
+                retry_url = str(clear_values.get("ALFRED_TELEMETRY_URL") or "").strip()
+                if retry_url:
+                    values["ALFRED_TELEMETRY_URL"] = retry_url
             print(
                 "warning: kept install id and token so previous usage totals can be cleared later",
                 file=sys.stderr,
