@@ -105,20 +105,20 @@ Trusted users can inspect the same local planning queue from Slack:
 | `handled <id>` | Trusted-user command. Archives a captured follow-up without creating a draft. |
 | `memory` / `memories` | Shows pending memory candidates and suggested promotions. |
 | `remember [repo:] <lesson>` / `memory remember ...` | Queues a reviewable memory candidate from Slack. |
-| `memory promote <id>` | Trusted-user command. Approves a candidate for future recall. |
-| `memory reject <id>` | Trusted-user command. Rejects a noisy candidate. |
+| `memory promote <id>` | Configured-approver command. Approves a candidate for future recall. |
+| `memory reject <id>` | Configured-approver command. Rejects a noisy candidate. |
 | `memory harvest` | Previews repeated-failure lessons from the reliability governor. |
-| `memory harvest now` | Trusted-user command. Queues harvested lessons as reviewable candidates. |
+| `memory harvest now` | Configured-approver command. Queues harvested lessons as reviewable candidates. |
 | `memory redis` | Checks the Redis Agent Memory Server. |
 | `memory sync` | Previews reviewed-lesson sync to Redis AMS. |
-| `memory sync now` | Trusted-user command. Writes reviewed lessons to Redis AMS. |
+| `memory sync now` | Configured-approver command. Writes reviewed lessons to Redis AMS. |
 
 These commands do not start work, approve execution, file GitHub issues, or
 merge PRs. They are the Slack-native bridge between "someone replied with useful
 context" and "Alfred has a scoped draft for the next pass." `remember ...` and
 `memory remember ...` stage candidates only; they enter future recall after a
-trusted user reviews and approves them. Scheduled `memory-harvest.py` runs
-follow the same rule: they only stage repeated-failure candidates for review.
+configured approver reviews and approves them. Scheduled `memory-harvest.py`
+runs follow the same rule: they only stage repeated-failure candidates for review.
 
 When a Slack-created draft is already scoped enough to be implementation-ready,
 Alfred also queues a reviewable `slack-planning` memory candidate automatically.
