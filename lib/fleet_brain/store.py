@@ -145,6 +145,7 @@ class GitHubItem:
     bundle_slug: str | None = None
     additions: int | None = 0
     deletions: int | None = 0
+    line_metrics_seen_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -945,13 +946,16 @@ class SQLiteStore:
     # ----- GitHub state -------------------------------------------------
 
     def upsert_github_item(self, item: GitHubItem) -> GitHubItem:
+        line_metrics_seen_at = (
+            item.last_seen_at if item.additions is not None or item.deletions is not None else None
+        )
         with self._connect() as conn, conn:
             conn.execute(
                 "INSERT INTO github_items "
                 "(id, repo, number, kind, state, title, url, labels_json, updated_at, "
                 " last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug, "
-                " additions, deletions) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " additions, deletions, line_metrics_seen_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (id) DO UPDATE SET "
                 "  state = excluded.state, "
                 "  title = excluded.title, "
@@ -971,6 +975,10 @@ class SQLiteStore:
                 "  deletions = CASE "
                 "    WHEN ? IS NULL THEN github_items.deletions "
                 "    ELSE excluded.deletions "
+                "  END, "
+                "  line_metrics_seen_at = CASE "
+                "    WHEN ? IS NULL AND ? IS NULL THEN github_items.line_metrics_seen_at "
+                "    ELSE excluded.line_metrics_seen_at "
                 "  END",
                 (
                     item.id,
@@ -990,6 +998,9 @@ class SQLiteStore:
                     item.bundle_slug,
                     max(0, int(item.additions)) if item.additions is not None else 0,
                     max(0, int(item.deletions)) if item.deletions is not None else 0,
+                    _to_iso(line_metrics_seen_at) if line_metrics_seen_at else None,
+                    item.additions,
+                    item.deletions,
                     item.additions,
                     item.deletions,
                 ),
@@ -1022,7 +1033,7 @@ class SQLiteStore:
         sql = (
             "SELECT id, repo, number, kind, state, title, url, labels_json, updated_at, "
             "last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug, "
-            "additions, deletions "
+            "additions, deletions, line_metrics_seen_at "
             f"FROM github_items {where_clause} "
             "ORDER BY updated_at DESC LIMIT ?"
         )
@@ -1100,9 +1111,15 @@ class SQLiteStore:
             wheres.append(agent_sql)
             params.extend(agent_params)
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
-        sql = f"SELECT COALESCE(SUM(additions + deletions), 0) FROM github_items {where_clause}"
+        sql = (
+            "SELECT COALESCE(SUM(additions + deletions), 0), "
+            "SUM(CASE WHEN line_metrics_seen_at IS NULL THEN 1 ELSE 0 END) "
+            f"FROM github_items {where_clause}"
+        )
         with self._connect() as conn:
-            (total,) = conn.execute(sql, params).fetchone()
+            total, unknown = conn.execute(sql, params).fetchone()
+            if int(unknown or 0) > 0:
+                raise RuntimeError("github line metrics incomplete")
             return max(0, int(total or 0))
 
     # ----- bundle items -------------------------------------------------
@@ -1409,6 +1426,7 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         bundle_slug,
         additions,
         deletions,
+        line_metrics_seen_at,
     ) = row
     return GitHubItem(
         id=item_id,
@@ -1428,6 +1446,7 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         bundle_slug=bundle_slug,
         additions=max(0, int(additions or 0)),
         deletions=max(0, int(deletions or 0)),
+        line_metrics_seen_at=_from_iso(line_metrics_seen_at) if line_metrics_seen_at else None,
     )
 
 

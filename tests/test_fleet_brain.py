@@ -118,7 +118,7 @@ def test_ensure_schema_adds_github_line_columns_to_existing_table(db_path: Path)
         conn.commit()
         ensure_schema(conn)
         cols = {row[1] for row in conn.execute("PRAGMA table_info(github_items)")}
-        assert {"additions", "deletions"}.issubset(cols)
+        assert {"additions", "deletions", "line_metrics_seen_at"}.issubset(cols)
     finally:
         conn.close()
 
@@ -447,6 +447,7 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
     assert items[0].labels == ["agent:authored", "agent:bundle:billing"]
     assert items[0].additions == 12
     assert items[0].deletions == 3
+    assert items[0].line_metrics_seen_at is not None
 
     bundle_items = brain.list_bundle_items(bundle_slug="billing")
     assert len(bundle_items) == 1
@@ -477,6 +478,8 @@ def test_github_item_preserves_line_totals_when_updates_omit_them(
     assert len(items) == 1
     assert items[0].additions == 12
     assert items[0].deletions == 3
+    marker = items[0].line_metrics_seen_at
+    assert marker is not None
 
     brain.upsert_github_item(
         repo="org/api",
@@ -490,6 +493,8 @@ def test_github_item_preserves_line_totals_when_updates_omit_them(
     items = brain.list_github_items(repo="org/api", kind="pr", state="merged")
     assert items[0].additions == 0
     assert items[0].deletions == 0
+    assert items[0].line_metrics_seen_at is not None
+    assert items[0].line_metrics_seen_at >= marker
 
 
 def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> None:
@@ -523,6 +528,33 @@ def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> Non
     assert brain.sum_github_changed_lines(kind="pr") == 2018
     assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 18
     assert brain.sum_github_changed_lines(kind="pr", state="merged", authored_only=True) == 12
+
+
+def test_sum_github_changed_lines_rejects_partial_line_metric_backfill(
+    brain: FleetBrain,
+) -> None:
+    brain.upsert_github_item(
+        repo="org/api",
+        number=4,
+        kind="pr",
+        state="open",
+        labels=["agent:authored"],
+    )
+
+    with pytest.raises(RuntimeError, match="line metrics incomplete"):
+        brain.sum_github_changed_lines(kind="pr", authored_only=True)
+
+    brain.upsert_github_item(
+        repo="org/api",
+        number=4,
+        kind="pr",
+        state="open",
+        labels=["agent:authored"],
+        additions=0,
+        deletions=0,
+    )
+
+    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 0
 
 
 def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:

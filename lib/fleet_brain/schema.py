@@ -164,6 +164,7 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         bundle_slug  TEXT,
         additions    INTEGER NOT NULL DEFAULT 0,
         deletions    INTEGER NOT NULL DEFAULT 0,
+        line_metrics_seen_at TEXT,
         CHECK (kind IN ('issue', 'pr')),
         CHECK (state IN ('open', 'closed', 'merged', 'unknown'))
     )
@@ -305,6 +306,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             conn.execute(stmt)
         _add_column_if_missing(conn, "github_items", "additions", "INTEGER NOT NULL DEFAULT 0")
         _add_column_if_missing(conn, "github_items", "deletions", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "github_items", "line_metrics_seen_at", "TEXT")
         # Record the schema version, idempotently. A row with the
         # current version means "we have run ensure_schema at least
         # once at this code revision".
