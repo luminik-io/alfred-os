@@ -53,8 +53,9 @@ in depth.
 - **`claude -p`**: Claude Code's non-interactive subprocess mode, the surface
   Alfred uses to invoke Claude with a prompt and capture an AgentResult.
   See also: [Claude Code and Codex](/guides/claude-code/).
-- **code-map**: JSON snapshot of every watched repo's files, language, and
-  size, written to `$ALFRED_HOME/state/code-map.json` by `code-map-refresh`.
+- **code-map**: JSON snapshot of every watched repo's source files, symbols,
+  imports, API calls, server routes, and contract drift, written to
+  `$ALFRED_HOME/state/code-map.json` by `code-map-refresh`.
   See also: [Alfred on a monorepo](/guides/monorepo/).
 - **Codex**: OpenAI's local coding agent, supported as an engine alongside
   Claude Code and selectable per agent via `ALFRED_<AGENT>_ENGINE`.

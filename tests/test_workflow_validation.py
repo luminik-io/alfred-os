@@ -148,6 +148,8 @@ def test_validate_changed_workflows_fails_closed_when_actionlint_missing(tmp_pat
     workflows = worktree / ".github" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(workflow_validation_module, "ACTIONLINT_EXTRA_PATHS", ())
 
     def fake_run(cmd, **_kwargs):
         if "diff" in cmd:
@@ -161,6 +163,37 @@ def test_validate_changed_workflows_fails_closed_when_actionlint_missing(tmp_pat
     assert result.ok is False
     assert result.files == (".github/workflows/ci.yml",)
     assert result.reason == "actionlint missing"
+
+
+def test_validate_changed_workflows_finds_local_actionlint_on_bare_path(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    actionlint = home / ".local" / "bin" / "actionlint"
+    actionlint.parent.mkdir(parents=True)
+    actionlint.write_text("#!/bin/sh\n", encoding="utf-8")
+    actionlint.chmod(0o755)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(workflow_validation_module.shutil, "which", lambda _binary: None)
+
+    worktree = tmp_path / "repo"
+    workflows = worktree / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(list(cmd))
+        if cmd[0:3] == ["git", "symbolic-ref", "--quiet"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="origin/main\n")
+        if "diff" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout=".github/workflows/ci.yml\n")
+        if cmd == [str(actionlint), ".github/workflows/ci.yml"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        raise AssertionError(f"unexpected command: {cmd}")
+
+    result = validate_changed_workflows(worktree, run_cmd=fake_run)
+
+    assert result.ok is True
+    assert [str(actionlint), ".github/workflows/ci.yml"] in calls
 
 
 def test_validate_changed_workflows_passes_with_actionlint(tmp_path):

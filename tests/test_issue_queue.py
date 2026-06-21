@@ -203,7 +203,7 @@ def test_slack_queue_arm_rejected_for_non_operator(monkeypatch):
     result = handler.handle("queue org/repo#7", trusted=True, actor_user_id="UTEAM")
     assert result.handled is True
     assert result.action == "queue_rejected"
-    assert "Only the operator can queue work for Alfred" in result.text
+    assert "Only the configured approver can queue work for Alfred" in result.text
     # The gate must short-circuit before any label mutation.
     assert calls == []
 
@@ -242,7 +242,7 @@ def test_slack_assign_rejected_for_non_operator(monkeypatch):
 
     assert result.handled is True
     assert result.action == "assign_rejected"
-    assert "Only the operator" in result.text
+    assert "Only the configured approver" in result.text
 
 
 def test_slack_assign_allowed_for_operator(monkeypatch):

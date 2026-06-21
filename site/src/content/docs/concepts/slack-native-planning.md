@@ -50,7 +50,8 @@ amendments into child issues so the PR work does not drift from the discussion.
 With the optional Slack planning listener running, trusted users can DM Alfred
 or mention it in a channel with rough work. Alfred saves a local draft, scores
 readiness, asks concrete missing-scope questions, and registers the thread so
-follow-up replies stay attached to the draft.
+follow-up replies stay attached to the draft. In channels, mention Alfred on
+the first message; replies in that thread can continue without another mention.
 
 ```text
 title: improve billing retry copy

@@ -340,8 +340,8 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, dd
     COLUMN`` only when the column is absent. A concurrent Alfred process
     may add the same column between the PRAGMA read and ALTER; SQLite
     reports that as ``duplicate column name``, which is safe to ignore.
-    Kept private because callers should add new tables instead of
-    mutating old ones until a real migration framework lands.
+    Kept private because callers should prefer new tables over mutating
+    old rows unless an additive migration is unavoidable.
     """
     cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column in cols:

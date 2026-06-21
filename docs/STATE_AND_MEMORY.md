@@ -19,7 +19,7 @@ This page maps the local state files, the fleet-brain database, and the contract
 $ALFRED_HOME/state/
 ├── global-blocked-until.json     fleet-wide rate-limit block
 ├── paused-repos.json             repos the operator manually paused
-├── code-map.json                 cross-repo HEAD SHAs and file index
+├── code-map.json                 cross-repo files, symbols, imports, routes
 ├── slack-webhook.cache           30-day cache of the resolved webhook URL
 ├── _paused/                      per-agent pause markers
 ├── fleet/
@@ -45,7 +45,7 @@ $ALFRED_HOME/state/
 
 **`paused-repos.json`** is the operator's manual repo pause list. `alfred status` reads it, `set_repo_paused()` writes it. Every consumer's `pick_*` helper skips paused repos. Missing or malformed file is treated as "no repos paused" (fail-open).
 
-**`code-map.json`** is the cross-repo index that `code-map-refresh` writes every six hours. Drake and code-map-aware review prompts read it for repo HEAD SHAs and a light file inventory. Safe to delete; the next `code-map-refresh` firing rebuilds it.
+**`code-map.json`** is the cross-repo map that `code-map-refresh` writes every six hours. Drake, Batman, and code-map-aware review prompts read it for repo HEAD SHAs, source files, public-ish symbols, imports, API calls, server routes, and contract drift. It is advisory and local. Safe to delete; the next `code-map-refresh` firing rebuilds it.
 
 **`slack-webhook.cache`** stores the resolved Slack incoming-webhook URL with a 30-day TTL. Lets agents avoid an AWS Secrets Manager round-trip every firing.
 

@@ -172,6 +172,10 @@ approval gate. Registered Batman plan replies also write revision artifacts
 under `$ALFRED_HOME/state/plan-revisions/` and update the local thread status
 as `revised` or `needs_resolution`.
 
+In a channel, mention Alfred on the first message. Once Alfred claims that
+thread, trusted replies in the same thread can continue without another
+mention.
+
 1. Same Slack app → **Settings → Basic Information**.
 2. Scroll to **App-Level Tokens** → **Generate Token and Scopes**.
 3. Name it (e.g. `socket-mode`), add scope `connections:write`.

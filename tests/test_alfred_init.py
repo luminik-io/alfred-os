@@ -1022,6 +1022,7 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
     alfredrc.write_text("GH_ORG=acme\n")
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
     monkeypatch.setenv("ALFREDRC", str(alfredrc))
+    monkeypatch.delenv("GH_ORG", raising=False)
     monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
     monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
 

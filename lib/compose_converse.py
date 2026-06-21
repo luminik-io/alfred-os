@@ -296,6 +296,7 @@ def load_code_map(code_map_path: Path | None) -> str:
             endpoints = info.get("endpoints") or []
             routes = info.get("routes") or []
             calls = info.get("api_calls") or []
+            graph_summary = info.get("graph_summary") or {}
             counts = []
             if endpoints:
                 counts.append(f"{len(endpoints)} server endpoints")
@@ -303,12 +304,45 @@ def load_code_map(code_map_path: Path | None) -> str:
                 counts.append(f"{len(routes)} routes")
             if calls:
                 counts.append(f"{len(calls)} client API calls")
+            if isinstance(graph_summary, dict):
+                files = _optional_positive_int(graph_summary.get("files"))
+                symbols = _optional_positive_int(graph_summary.get("symbols"))
+                imports = _optional_positive_int(graph_summary.get("imports"))
+                if files:
+                    counts.append(f"{files} files")
+                if symbols:
+                    counts.append(f"{symbols} symbols")
+                if imports:
+                    counts.append(f"{imports} imports")
+                languages = graph_summary.get("languages")
+                if isinstance(languages, dict) and languages:
+                    language_bits = [
+                        f"{language}:{count}"
+                        for language, count in sorted(languages.items())
+                        if count
+                    ]
+                    if language_bits:
+                        counts.append("languages: " + ", ".join(language_bits))
+                if graph_summary.get("truncated") is True:
+                    counts.append("partial graph")
             if counts:
                 lines.append(f"- `{slug}`: " + ", ".join(counts))
     drift = data.get("contract_drift")
     if isinstance(drift, list) and drift:
         lines.append(f"Contract drift entries: {len(drift)} (advisory).")
     return "\n".join(lines) or "Code map present but empty."
+
+
+def _optional_positive_int(value: object) -> int:
+    if value is None:
+        return 0
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return 0
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, coerced)
 
 
 def build_prompt(

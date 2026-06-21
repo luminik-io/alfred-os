@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from collections.abc import Callable, Sequence
@@ -10,6 +11,11 @@ from pathlib import Path
 
 RunCmd = Callable[..., subprocess.CompletedProcess]
 DEFAULT_WORKFLOW_BASE = "origin/main"
+ACTIONLINT_EXTRA_PATHS = (
+    "~/.local/bin/actionlint",
+    "/opt/homebrew/bin/actionlint",
+    "/usr/local/bin/actionlint",
+)
 
 
 @dataclass(frozen=True)
@@ -87,6 +93,19 @@ def _remote_default_ref(worktree: Path, *, run_cmd: RunCmd) -> str:
     return "origin/main"
 
 
+def _resolve_actionlint(actionlint_bin: str | None = None) -> str | None:
+    if actionlint_bin:
+        return actionlint_bin
+    found = shutil.which("actionlint")
+    if found:
+        return found
+    for raw in ACTIONLINT_EXTRA_PATHS:
+        candidate = Path(os.path.expanduser(raw))
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def changed_workflow_files(
     worktree: Path,
     *,
@@ -142,7 +161,7 @@ def validate_changed_workflows(
     if not files:
         return WorkflowValidationResult(ok=True)
 
-    actionlint = actionlint_bin or shutil.which("actionlint")
+    actionlint = _resolve_actionlint(actionlint_bin)
     if not actionlint:
         return WorkflowValidationResult(
             ok=False,

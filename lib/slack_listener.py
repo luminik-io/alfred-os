@@ -44,7 +44,7 @@ from slack_approval import (
     resolve_bot_token,
     trusted_feedback_user_ids_from_env,
 )
-from slack_control import SlackControlHandler, is_control_message
+from slack_control import SlackControlHandler, is_control_message, parse_control_command
 from slack_format import github_issue_link, github_url_link
 from slack_intent import (
     ACTION_ASSIGN,
@@ -61,9 +61,14 @@ from slack_intent import (
     RepoCatalog,
     ambient_enabled,
     ambient_engages,
+    clarify_for_agent_action,
+    clarify_for_mutating,
     classify_intent,
     default_intent_engine_invoke,
     looks_like_followup_reference,
+    resolve_agent_codename,
+    resolve_assignment_agent,
+    resolve_issue,
 )
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
@@ -306,9 +311,11 @@ class SlackPlanningListener:
         if event.is_reaction:
             return ListenerResult(False, "ignored", "reaction is not on a registered thread")
         if event.is_direct_intake:
-            return self._handle_direct_intake(event)
+            result = self._handle_direct_intake(event)
+            return self._remember_conversation_root(event, result)
         if event.is_plain_channel_message:
-            return self._maybe_handle_ambient(event)
+            result = self._maybe_handle_ambient(event)
+            return self._remember_conversation_root(event, result)
         return ListenerResult(False, "ignored", "message is not a registered thread or intake")
 
     def _handle_thread_reaction(
@@ -343,6 +350,8 @@ class SlackPlanningListener:
         )
         if record.kind == "draft":
             return self._handle_draft_revision(event, record, feedback)
+        if record.kind == "conversation":
+            return self._handle_conversation_thread_reply(event)
         if record.kind == "plan":
             return self._handle_plan_revision(event, record, feedback, feedback_path)
         if record.kind in {"report", "pr", "followup"}:
@@ -380,6 +389,227 @@ class SlackPlanningListener:
             action = "captured_plan_feedback"
         self._post_thread_ack(event.channel, event.root_ts, ack or "*Feedback captured*")
         return ListenerResult(True, action, thread_kind=record.kind)
+
+    def _remember_conversation_root(
+        self, event: SlackInputEvent, result: ListenerResult
+    ) -> ListenerResult:
+        """Keep top-level Alfred-started Slack threads conversational.
+
+        A trusted top-level mention or Alfred-addressed ambient message can start
+        with a status question, clarification, or confirmation card rather than
+        a planning draft. Register that root so later replies in the same thread
+        do not need another @mention. We intentionally do not claim a pre-existing
+        human-owned thread when the first Alfred mention happened as a reply.
+        """
+        if not result.handled or event.is_reaction or event.is_thread_reply:
+            return result
+        if result.action.startswith("draft_"):
+            return result
+        if not (event.is_direct_intake or event.is_plain_channel_message):
+            return result
+        self.registry.register(
+            SlackThreadRecord(
+                kind="conversation",
+                channel=event.channel,
+                thread_ts=event.root_ts,
+                codename="slack",
+                title=_thread_title_from_text(event.text),
+                status="open",
+                metadata={
+                    "source": "slack-conversation",
+                    "last_action": result.action,
+                    "origin_event_type": event.event_type,
+                    "requested_by": event.user,
+                },
+            )
+        )
+        self._mirror_context_to_thread(event)
+        return result
+
+    def _mirror_context_to_thread(self, event: SlackInputEvent) -> None:
+        thread_conversation_id = f"thread:{event.channel}:{event.root_ts}"
+        if event.conversation_id == thread_conversation_id:
+            return
+        root_text = (event.text or "").strip()
+        root_turn = next(
+            (
+                turn
+                for turn in reversed(self._conversation.recent(event.conversation_id))
+                if turn.text == root_text
+            ),
+            None,
+        )
+        if root_turn is None:
+            return
+        self._conversation.record(
+            thread_conversation_id,
+            text=root_turn.text,
+            action=root_turn.action,
+            repo=root_turn.repo,
+            issue=root_turn.issue,
+            agent=root_turn.agent,
+            schedule=root_turn.schedule,
+        )
+
+    def _handle_conversation_thread_reply(self, event: SlackInputEvent) -> ListenerResult:
+        """Route trusted replies in an Alfred-started thread without re-mentioning."""
+        routed = self._maybe_route_intent(event)
+        if routed is not None:
+            return routed
+
+        if _is_read_only_control_text(event.text):
+            control = self.control_handler.handle(
+                event.text,
+                trusted=True,
+                actor_user_id=event.user,
+            )
+            if control.handled:
+                self._post_thread_ack(event.channel, event.root_ts, control.text)
+                return ListenerResult(
+                    True,
+                    f"conversation_control_{control.action}",
+                    detail=control.detail,
+                )
+
+        clarified = self._maybe_complete_thread_clarification(event)
+        if clarified is not None:
+            return clarified
+
+        return ListenerResult(False, "ignored", "conversation reply is not actionable")
+
+    def _maybe_complete_thread_clarification(
+        self,
+        event: SlackInputEvent,
+    ) -> ListenerResult | None:
+        """Use a Slack thread reply to complete Alfred's pending clarification."""
+        for turn in reversed(self._conversation.recent(event.conversation_id)):
+            if turn.action in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
+                return self._complete_issue_clarification(event, turn)
+            if turn.action in {
+                ACTION_DRY_RUN_AGENT,
+                ACTION_RUN_AGENT,
+                ACTION_PAUSE_AGENT,
+                ACTION_RESUME_AGENT,
+                ACTION_SCHEDULE_AGENT,
+            }:
+                return self._complete_agent_clarification(event, turn)
+        return None
+
+    def _complete_issue_clarification(
+        self,
+        event: SlackInputEvent,
+        turn,
+    ) -> ListenerResult | None:
+        if turn.repo and turn.issue is not None:
+            if turn.action != ACTION_ASSIGN or turn.agent:
+                return None
+            agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+            if not agent and not unsupported_assignment_agent:
+                return None
+            repo = turn.repo
+            issue = turn.issue
+            candidates: list[str] = []
+        else:
+            repo, candidates = self._repo_catalog.resolve(event.text)
+            issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
+            if issue_repo and issue_repo != repo:
+                repo = issue_repo
+                candidates = []
+            repo = repo or turn.repo
+            if repo and issue is None and turn.issue is None:
+                issue, issue_repo = resolve_issue(turn.text, repo=repo)
+                if issue_repo and issue_repo != repo:
+                    repo = issue_repo
+                    candidates = []
+            issue = issue if issue is not None else turn.issue
+            agent = turn.agent
+            unsupported_assignment_agent = ""
+            if turn.action == ACTION_ASSIGN and not agent:
+                agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+                if not agent and not unsupported_assignment_agent:
+                    agent, unsupported_assignment_agent = resolve_assignment_agent(turn.text)
+
+        params = {
+            "raw_text": event.text.strip(),
+            "clarification_root": turn.text,
+        }
+        if unsupported_assignment_agent:
+            params["unsupported_assignment_agent"] = unsupported_assignment_agent
+        clarification = clarify_for_mutating(turn.action, repo, issue, candidates)
+        if turn.action == ACTION_ASSIGN and not clarification and unsupported_assignment_agent:
+            clarification = (
+                "I can route GitHub issues to Batman · Architect or "
+                "Lucius · Senior Developer. Which lane should handle "
+                f"`{repo}#{issue}`?"
+            )
+        record_text = event.text
+        if turn.action == ACTION_ASSIGN and clarification:
+            record_text = f"{turn.text}\n{event.text}"
+
+        intent = Intent(
+            action=turn.action,
+            repo=repo,
+            issue=issue,
+            agent=agent,
+            params=params,
+            confidence=1.0,
+            clarification=clarification,
+        )
+        self._conversation.record(
+            event.conversation_id,
+            text=record_text,
+            action=intent.action,
+            repo=intent.repo,
+            issue=intent.issue,
+            agent=intent.agent,
+            schedule=intent.schedule,
+        )
+        return self._propose_intent_action(event, intent)
+
+    def _complete_agent_clarification(
+        self,
+        event: SlackInputEvent,
+        turn,
+    ) -> ListenerResult | None:
+        if turn.agent and (turn.action != ACTION_SCHEDULE_AGENT or turn.schedule):
+            return None
+
+        allow_all = turn.action in {
+            ACTION_DRY_RUN_AGENT,
+            ACTION_PAUSE_AGENT,
+            ACTION_RESUME_AGENT,
+        }
+        agent = turn.agent or resolve_agent_codename(event.text, allow_all=allow_all)
+        schedule = turn.schedule
+        if turn.action == ACTION_SCHEDULE_AGENT and not schedule:
+            if turn.agent:
+                schedule = _normalize_schedule_reply(event.text)
+            else:
+                agent, schedule = _resolve_schedule_reply_agent_and_cadence(
+                    event.text,
+                    agent=agent,
+                )
+        intent = Intent(
+            action=turn.action,
+            agent=agent,
+            schedule=schedule,
+            params={
+                "raw_text": event.text.strip(),
+                "clarification_root": turn.text,
+            },
+            confidence=1.0,
+            clarification=clarify_for_agent_action(turn.action, agent, schedule),
+        )
+        self._conversation.record(
+            event.conversation_id,
+            text=event.text,
+            action=intent.action,
+            agent=intent.agent,
+            schedule=intent.schedule,
+        )
+        if intent.action == ACTION_DRY_RUN_AGENT:
+            return self._answer_dry_run_agent(event, intent)
+        return self._propose_intent_action(event, intent)
 
     def _handle_plan_revision(
         self,
@@ -668,6 +898,7 @@ class SlackPlanningListener:
                 event.conversation_id,
                 text=event.text,
                 action=intent.action,
+                agent=intent.agent,
             )
             return self._answer_dry_run_agent(event, intent)
         if intent.action in {
@@ -685,6 +916,8 @@ class SlackPlanningListener:
                 action=intent.action,
                 repo=intent.repo,
                 issue=intent.issue,
+                agent=intent.agent,
+                schedule=intent.schedule,
             )
             return self._propose_intent_action(event, intent)
         # plan_request / unknown / anything low-confidence: fall through to the
@@ -717,13 +950,13 @@ class SlackPlanningListener:
         resolved_issue = intent.issue if intent.issue is not None else prev_issue
         # Re-derive the clarification against the now-augmented entities so a
         # borrowed-but-still-incomplete target still asks rather than guesses.
-        from slack_intent import _clarify_for_mutating
-
-        clarification = _clarify_for_mutating(intent.action, prev_repo, resolved_issue, [])
+        clarification = clarify_for_mutating(intent.action, prev_repo, resolved_issue, [])
         return Intent(
             action=intent.action,
             repo=prev_repo,
             issue=resolved_issue,
+            agent=intent.agent,
+            schedule=intent.schedule,
             params=params,
             confidence=intent.confidence,
             clarification=clarification,
@@ -770,10 +1003,11 @@ class SlackPlanningListener:
         if routed is not None:
             return routed
 
-        # A channel message may still LEAD with a literal control verb (e.g.
+        # A channel message may still use a read-only literal command (e.g.
         # "status"); honor that as a backcompat fallback when the router is
-        # disabled or cannot classify the text.
-        if is_control_message(event.text):
+        # disabled or cannot classify the text. Mutating controls stay behind
+        # the confirmation-card path.
+        if _is_read_only_control_text(event.text):
             control = self.control_handler.handle(
                 event.text,
                 trusted=True,
@@ -1007,7 +1241,8 @@ class SlackPlanningListener:
             return ListenerResult(False, "intent_invalid", "confirmed action missing repo/issue")
 
         if action == ACTION_ASSIGN:
-            assignment = assign_issue(repo, issue)
+            target_agent = str(metadata.get("agent") or "").strip()
+            assignment = assign_issue(repo, issue, target_agent=target_agent)
             self.registry.mark_status(record, "confirmed" if assignment.ok else "failed")
             if not assignment.ok:
                 reason = assignment.error or assignment.detail
@@ -1806,7 +2041,9 @@ def _short_plain(value: str, limit: int) -> str:
     cleaned = re.sub(r"\s+", " ", value).strip()
     if len(cleaned) <= limit:
         return cleaned
-    return cleaned[: max(0, limit - 1)].rstrip() + "..."
+    if limit <= 3:
+        return cleaned[: max(0, limit)]
+    return cleaned[: limit - 3].rstrip() + "..."
 
 
 def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:
@@ -1959,6 +2196,19 @@ def render_intent_confirmation(intent: Intent) -> tuple[str, list[dict]]:
             ],
         },
     ]
+    if intent.action == ACTION_ASSIGN and intent.agent:
+        blocks.insert(
+            2,
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Assigned lane*\n{_assignment_agent_display(intent.agent)}",
+                    }
+                ],
+            },
+        )
     if raw_text:
         blocks.append(
             {
@@ -2010,6 +2260,15 @@ def _intent_action_target_display(intent: Intent) -> str:
         return "`unknown issue`"
     target = _intent_action_target(intent)
     return f"`{target}`" if target != "unknown target" else target
+
+
+def _assignment_agent_display(agent: str) -> str:
+    normalized = agent.strip().lower()
+    if normalized in {"architect", "batman", "bruce"}:
+        return "Batman · Architect"
+    if normalized in {"developer", "lucius", "senior dev", "senior developer"}:
+        return "Lucius · Senior Developer"
+    return agent
 
 
 def _control_command_for_agent_intent(action: str) -> str:
@@ -2070,6 +2329,97 @@ def _status_query_plan(text: str) -> tuple[str, str]:
     if any(cue in normalized for cue in blocked_cues):
         return "plans", "Here's what's in the planning inbox right now:"
     return "status", "Here's where the fleet stands:"
+
+
+def _is_read_only_control_text(text: str) -> bool:
+    """True when a leading-verb Slack command is safe to run without a card."""
+    command = parse_control_command(text)
+    if command is None:
+        return False
+    if command.verb in {"status", "runs", "plans", "plan", "trusted", "help", "dry-run"}:
+        return True
+    if command.verb == "schedule":
+        return command.arg == "list" or command.arg.startswith("show ")
+    if command.verb == "memory":
+        args = command.arg.split()
+        subcommand = args[0].lower() if args else "review"
+        if subcommand in {"review", "queue", "candidates", "candidate", "promotions", "promotable"}:
+            return True
+        return subcommand == "redis" and not (len(args) > 1 and args[1].lower() == "sync")
+    return False
+
+
+_SCHEDULE_REPLY_RE = re.compile(
+    r"^(?:every\s+)?(?P<num>[1-9][0-9]*)\s*"
+    r"(?P<unit>s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$"
+)
+
+
+def _normalize_schedule_reply(text: str) -> str:
+    """Return a scheduler-safe cadence token from a Slack clarification reply."""
+    value = re.sub(r"\s+", " ", (text or "").strip().lower()).rstrip(".")
+    if not value:
+        return ""
+    if re.match(r"^[1-9][0-9]*[smhd]$", value):
+        return value
+    if value.startswith(("daily@", "weekly@", "interval:", "cron:")):
+        return value if " " not in value else ""
+    match = _SCHEDULE_REPLY_RE.match(value)
+    if not match:
+        return ""
+    suffix = {
+        "s": "s",
+        "sec": "s",
+        "secs": "s",
+        "second": "s",
+        "seconds": "s",
+        "m": "m",
+        "min": "m",
+        "mins": "m",
+        "minute": "m",
+        "minutes": "m",
+        "h": "h",
+        "hr": "h",
+        "hrs": "h",
+        "hour": "h",
+        "hours": "h",
+        "d": "d",
+        "day": "d",
+        "days": "d",
+    }[match.group("unit")]
+    return f"{match.group('num')}{suffix}"
+
+
+def _resolve_schedule_reply_agent_and_cadence(
+    text: str,
+    *,
+    agent: str = "",
+) -> tuple[str, str]:
+    """Resolve agent/cadence from a schedule clarification reply."""
+    direct = _normalize_schedule_reply(text)
+    if direct:
+        return agent, direct
+    if not agent:
+        agent = _custom_schedule_reply_agent(text)
+    words = re.sub(r"\s+", " ", (text or "").strip()).split()
+    for drop_count in range(1, min(len(words), 4) + 1):
+        cadence = _normalize_schedule_reply(" ".join(words[drop_count:]))
+        if cadence:
+            return agent, cadence
+    return agent, ""
+
+
+def _custom_schedule_reply_agent(text: str) -> str:
+    """Return a custom codename from '<codename> <cadence>' replies."""
+    words = re.sub(r"\s+", " ", (text or "").strip().lower()).split()
+    if len(words) < 2:
+        return ""
+    candidate = words[0].strip("`'\".,:;")
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{1,31}", candidate):
+        return ""
+    if candidate in {"every", "daily", "weekly", "interval", "cron"}:
+        return ""
+    return candidate
 
 
 def render_draft_ack(result: Any) -> str:
@@ -2892,6 +3242,18 @@ def _control_result_failed(control: Any) -> bool:
 
 def _safe_event_id(event_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", event_id).strip("_") or "event"
+
+
+def _thread_title_from_text(text: str, *, limit: int = 90) -> str:
+    cleaned = re.sub(r"<@[A-Z0-9]+>", "", text or "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return "Slack conversation"
+    if len(cleaned) <= limit:
+        return cleaned
+    if limit <= 3:
+        return cleaned[: max(0, limit)]
+    return cleaned[: limit - 3].rstrip() + "..."
 
 
 def _default_state_root() -> Path:

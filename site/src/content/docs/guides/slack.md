@@ -92,7 +92,8 @@ Required only for Socket Mode planning intake. Trusted users can DM or mention
 Alfred with rough work, and Alfred saves a local draft plus readiness questions.
 Registered plan/report threads can also capture trusted replies as context for
 the next pass. Chat text never approves execution; the reaction gate remains
-the only approval signal.
+the only approval signal. In channels, mention Alfred on the first message;
+trusted replies in that thread can continue without another mention.
 
 ```sh
 SLACK_APP_TOKEN=xapp-1-...

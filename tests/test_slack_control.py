@@ -451,7 +451,7 @@ def test_non_operator_cannot_mark_followup_handled(tmp_path: Path) -> None:
     result = handler.handle(f"handled {followup.stem}", trusted=True, actor_user_id="UTEAM")
 
     assert result.action == "handled_rejected"
-    assert "Only the operator" in result.text
+    assert "Only the configured approver" in result.text
     assert followup.exists()
 
 
@@ -695,7 +695,7 @@ def test_memory_promote_requires_operator() -> None:
     result = handler.handle("memory promote 101", trusted=True, actor_user_id="UTEAM")
 
     assert result.action == "memory_promote_rejected"
-    assert "Only the operator" in result.text
+    assert "Only the configured approver" in result.text
     assert runner.calls == []
 
 
@@ -973,7 +973,7 @@ def test_run_is_operator_only() -> None:
     )
 
     assert result.action == "run_rejected"
-    assert "Only the operator" in result.text
+    assert "Only the configured approver" in result.text
     assert runner.calls == []
 
 
@@ -1177,7 +1177,7 @@ def test_non_operator_cannot_change_trusted_collaborators(tmp_path: Path) -> Non
     result = handler.handle("trust <@U2DEF>", trusted=True, actor_user_id="UTEAM1")
 
     assert result.action == "trust_rejected"
-    assert "Only the operator" in result.text
+    assert "Only the configured approver" in result.text
     assert store.list_local() == ()
 
 

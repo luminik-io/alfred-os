@@ -220,11 +220,15 @@ or ahead.
 ## Code-map awareness
 
 `code-map-refresh` scans every repo named in `ALFRED_CODE_MAP_REPOS` and
-writes `$ALFRED_HOME/state/code-map.json`. The map is path-oriented: it
-records files, language, size, and a short summary per repo. The current
-implementation walks the tree; it does not split a monorepo into per-package
-sub-maps. That means Drake and code-map-aware review prompts see one big
-flat map for the whole monorepo rather than a `packages/ui`-scoped view.
+writes `$ALFRED_HOME/state/code-map.json`. The map records source files,
+public-ish symbols, imports, API calls, server routes, and contract drift.
+It is a local planning aid for Drake, Batman, and code review prompts. It is
+not a compiler and it does not replace reading the diff.
+
+The current implementation walks the tree; it does not split a monorepo into
+per-package sub-maps. That means Drake and code-map-aware review prompts see
+one big flat map for the whole monorepo rather than a `packages/ui`-scoped
+view.
 
 In practice this is fine for the planner: Drake reads the map plus the
 acceptance criteria and writes an issue. It is less useful for a strict

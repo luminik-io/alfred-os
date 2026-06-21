@@ -3,6 +3,7 @@
 
 Produces ${ALFRED_HOME}/state/code-map.json with per-repo HEAD SHA, plus
 optional per-repo extracts:
+  - local repo graph: source files, public-ish symbols, imports, import edges
   - JAX-RS endpoints (Kotlin/Quarkus)
   - Hono / TS sub-router routes
   - Frontend / mobile / sidecar API calls
@@ -19,9 +20,12 @@ Configuration via env vars (all optional - omit a slot to skip that scan):
                                 contributes to contract_drift's server set)
   ALFRED_CODE_MAP_CLIENT_REPOS comma-separated frontend/mobile/etc dirs that
                                 emit api_calls (matched against server set)
+  ALFRED_CODE_MAP_MAX_FILES    per-repo source-file cap for graph indexing
+                                (default 2000)
 
-Honest scope: regex-based, not tree-sitter. Loud false positives, quiet
-false negatives, drift is advisory, not a gate.
+Honest scope: regex-based, not tree-sitter. The graph is a local planning map,
+not a compiler. Loud false positives, quiet false negatives, drift is advisory,
+not a gate.
 """
 
 from __future__ import annotations
@@ -61,6 +65,20 @@ CLIENT_REPOS = [
     r.strip() for r in os.environ.get("ALFRED_CODE_MAP_CLIENT_REPOS", "").split(",") if r.strip()
 ]
 
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(1, value)
+
+
+MAX_GRAPH_FILES = _env_int("ALFRED_CODE_MAP_MAX_FILES", 2000)
+
 PREFLIGHT = PreflightSpec(
     agent=AGENT,
     bins=["git", "grep"],
@@ -82,6 +100,117 @@ ROUTE_MOUNT_RE = re.compile(r"\b(\w+)\.route\(\s*[`'\"]([^'\"`]+)[`'\"]\s*,\s*(\
 SUBROUTER_HANDLER_RE = re.compile(
     r"\b(\w+)\.(get|post|put|delete|patch|all)\(\s*[`'\"]([^'\"`]+)[`'\"]"
 )
+SOURCE_SUFFIXES = {
+    ".go",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".kts",
+    ".py",
+    ".rs",
+    ".swift",
+    ".ts",
+    ".tsx",
+}
+SKIP_DIRS = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "target",
+}
+
+
+def _should_skip_dir(name: str) -> bool:
+    return name.startswith(".") or name in SKIP_DIRS
+
+
+LANG_BY_SUFFIX = {
+    ".go": "go",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".py": "python",
+    ".rs": "rust",
+    ".swift": "swift",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+}
+IMPORT_PATTERNS = {
+    "go": [
+        re.compile(r'^\s*import\s+"([^"]+)"'),
+        re.compile(r'^\s*"([^"]+)"\s*$'),
+    ],
+    "javascript": [
+        re.compile(r'^\s*import(?:\s+type)?(?:.+?\s+from\s+)?[\'"]([^\'"]+)[\'"]'),
+        re.compile(r'\brequire\(\s*[\'"]([^\'"]+)[\'"]\s*\)'),
+    ],
+    "kotlin": [re.compile(r"^\s*import\s+([A-Za-z0-9_.*]+)")],
+    "python": [
+        re.compile(r"^\s*import\s+([A-Za-z0-9_., ]+)"),
+        re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+import\s+"),
+    ],
+    "rust": [
+        re.compile(r"^\s*use\s+([^;]+);"),
+        re.compile(r"^\s*extern\s+crate\s+([A-Za-z0-9_]+);"),
+    ],
+    "swift": [re.compile(r"^\s*import\s+([A-Za-z0-9_]+)")],
+    "typescript": [
+        re.compile(r'^\s*import(?:\s+type)?(?:.+?\s+from\s+)?[\'"]([^\'"]+)[\'"]'),
+        re.compile(r'\brequire\(\s*[\'"]([^\'"]+)[\'"]\s*\)'),
+    ],
+}
+SYMBOL_PATTERNS = {
+    "go": [
+        re.compile(r"^\s*func\s+(?:\([^)]+\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\("),
+        re.compile(r"^\s*type\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:struct|interface)\b"),
+    ],
+    "javascript": [
+        re.compile(
+            r"^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)"
+        ),
+        re.compile(r"^\s*export\s+(?:default\s+)?class\s+([A-Za-z_$][A-Za-z0-9_$]*)"),
+        re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*="),
+    ],
+    "kotlin": [
+        re.compile(
+            r"^\s*(?:data\s+|sealed\s+)?(?:class|interface|object)\s+([A-Za-z_][A-Za-z0-9_]*)"
+        ),
+        re.compile(r"^\s*(?:suspend\s+)?fun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
+    ],
+    "python": [
+        re.compile(r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\b"),
+        re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
+    ],
+    "rust": [
+        re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("),
+        re.compile(r"^\s*(?:pub\s+)?(?:struct|enum|trait)\s+([A-Za-z_][A-Za-z0-9_]*)"),
+    ],
+    "swift": [
+        re.compile(
+            r"^\s*(?:public\s+|private\s+|internal\s+|open\s+)?(?:class|struct|enum|protocol)\s+([A-Za-z_][A-Za-z0-9_]*)"
+        ),
+        re.compile(
+            r"^\s*(?:public\s+|private\s+|internal\s+|open\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("
+        ),
+    ],
+    "typescript": [
+        re.compile(
+            r"^\s*export\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)"
+        ),
+        re.compile(
+            r"^\s*export\s+(?:default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][A-Za-z0-9_$]*)"
+        ),
+        re.compile(r"^\s*export\s+(?:interface|type)\s+([A-Za-z_$][A-Za-z0-9_$]*)"),
+        re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*="),
+    ],
+}
 
 
 def _git_head(repo_path: Path) -> str:
@@ -98,12 +227,138 @@ def _git_head(repo_path: Path) -> str:
         return ""
 
 
+def _iter_source_files(repo_path: Path) -> tuple[list[Path], bool]:
+    if not repo_path.is_dir():
+        return [], False
+    files: list[Path] = []
+    for root, dirs, filenames in os.walk(repo_path):
+        dirs[:] = sorted(d for d in dirs if not _should_skip_dir(d))
+        for filename in sorted(filenames):
+            path = Path(root) / filename
+            if path.suffix not in SOURCE_SUFFIXES:
+                continue
+            files.append(path)
+            if len(files) > MAX_GRAPH_FILES:
+                return files[:MAX_GRAPH_FILES], True
+    return files, False
+
+
+def _language_for(path: Path) -> str:
+    return LANG_BY_SUFFIX.get(path.suffix, "unknown")
+
+
+def _extract_imports(language: str, text: str) -> list[str]:
+    patterns = IMPORT_PATTERNS.get(language, [])
+    imports: list[str] = []
+    seen: set[str] = set()
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(("#", "//", "*")):
+            continue
+        for pattern in patterns:
+            for match in pattern.finditer(line):
+                value = match.group(1).strip()
+                if language == "python" and "," in value:
+                    values = [
+                        re.sub(r"\s+as\s+\w+$", "", part.strip()) for part in value.split(",")
+                    ]
+                elif language == "python":
+                    values = [re.sub(r"\s+as\s+\w+$", "", value)]
+                else:
+                    values = [value]
+                for item in values:
+                    if not item or item in seen:
+                        continue
+                    seen.add(item)
+                    imports.append(item)
+        if len(imports) >= 80:
+            break
+    return imports
+
+
+def _extract_symbols(language: str, text: str) -> list[dict[str, Any]]:
+    patterns = SYMBOL_PATTERNS.get(language, [])
+    symbols: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for line_idx, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip()
+        if stripped.startswith(("#", "//", "*")):
+            continue
+        for pattern in patterns:
+            match = pattern.search(line)
+            if not match:
+                continue
+            name = match.group(1).strip()
+            key = (name, line_idx)
+            if key in seen:
+                continue
+            seen.add(key)
+            symbols.append({"name": name, "line": line_idx})
+            break
+        if len(symbols) >= 40:
+            break
+    return symbols
+
+
+def scan_repo_graph(repo_path: Path) -> dict[str, Any]:
+    files: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    source_files, truncated = _iter_source_files(repo_path)
+
+    for source_file in source_files:
+        rel_path = str(source_file.relative_to(repo_path))
+        language = _language_for(source_file)
+        try:
+            text = source_file.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            text = source_file.read_text(errors="ignore")
+        except OSError:
+            continue
+        imports = _extract_imports(language, text)
+        symbols = _extract_symbols(language, text)
+        files.append(
+            {
+                "path": rel_path,
+                "language": language,
+                "symbols": symbols,
+                "imports": imports,
+            }
+        )
+        for target in imports[:80]:
+            edges.append({"from": rel_path, "to": target, "kind": "import"})
+
+    language_counts: dict[str, int] = {}
+    for file_info in files:
+        language = str(file_info.get("language") or "unknown")
+        language_counts[language] = language_counts.get(language, 0) + 1
+
+    return {
+        "files": files,
+        "edges": edges,
+        "graph_summary": {
+            "files": len(files),
+            "symbols": sum(len(file_info.get("symbols", [])) for file_info in files),
+            "imports": len(edges),
+            "languages": dict(sorted(language_counts.items())),
+            "truncated": truncated,
+        },
+    }
+
+
+def _with_repo_graph(repo_path: Path, data: dict[str, Any]) -> dict[str, Any]:
+    graph = scan_repo_graph(repo_path)
+    return {**data, **graph}
+
+
 def scan_backend(repo_path: Path) -> dict[str, Any]:
     src_root = repo_path / "api" / "src" / "main" / "kotlin"
     endpoints: list[dict[str, Any]] = []
 
     if not src_root.is_dir():
-        return {"head_sha": _git_head(repo_path), "endpoints": [], "flyway_head": None}
+        return _with_repo_graph(
+            repo_path,
+            {"head_sha": _git_head(repo_path), "endpoints": [], "flyway_head": None},
+        )
 
     for kt_file in src_root.rglob("*.kt"):
         try:
@@ -178,11 +433,14 @@ def scan_backend(repo_path: Path) -> dict[str, Any]:
             seen.add(key)
             unique.append(ep)
 
-    return {
-        "head_sha": _git_head(repo_path),
-        "endpoints": unique,
-        "flyway_head": flyway_head,
-    }
+    return _with_repo_graph(
+        repo_path,
+        {
+            "head_sha": _git_head(repo_path),
+            "endpoints": unique,
+            "flyway_head": flyway_head,
+        },
+    )
 
 
 def scan_client_repo(repo_path: Path, src_subdir: str = "src") -> dict[str, Any]:
@@ -190,7 +448,7 @@ def scan_client_repo(repo_path: Path, src_subdir: str = "src") -> dict[str, Any]
     api_calls: list[dict[str, Any]] = []
 
     if not src_root.is_dir():
-        return {"head_sha": _git_head(repo_path), "api_calls": []}
+        return _with_repo_graph(repo_path, {"head_sha": _git_head(repo_path), "api_calls": []})
 
     for ts_file in src_root.rglob("*"):
         if not ts_file.is_file():
@@ -238,7 +496,7 @@ def scan_client_repo(repo_path: Path, src_subdir: str = "src") -> dict[str, Any]
                 }
             )
 
-    return {"head_sha": _git_head(repo_path), "api_calls": api_calls}
+    return _with_repo_graph(repo_path, {"head_sha": _git_head(repo_path), "api_calls": api_calls})
 
 
 def scan_sidecar_routes(repo_path: Path) -> dict[str, Any]:
@@ -253,7 +511,10 @@ def scan_sidecar_routes(repo_path: Path) -> dict[str, Any]:
     routes: list[dict[str, Any]] = []
 
     if not src_root.is_dir():
-        return {"head_sha": _git_head(repo_path), "routes": [], "api_calls": []}
+        return _with_repo_graph(
+            repo_path,
+            {"head_sha": _git_head(repo_path), "routes": [], "api_calls": []},
+        )
 
     ts_files = [
         f
@@ -313,11 +574,14 @@ def scan_sidecar_routes(repo_path: Path) -> dict[str, Any]:
 
     client_data = scan_client_repo(repo_path)
 
-    return {
-        "head_sha": _git_head(repo_path),
-        "routes": unique,
-        "api_calls": client_data["api_calls"],
-    }
+    return _with_repo_graph(
+        repo_path,
+        {
+            "head_sha": _git_head(repo_path),
+            "routes": unique,
+            "api_calls": client_data["api_calls"],
+        },
+    )
 
 
 def _normalize_path(path: str) -> str:
@@ -379,7 +643,8 @@ def build_code_map() -> dict[str, Any]:
     for repo in REPOS:
         if repo in repos:
             continue
-        repos[repo] = {"head_sha": _git_head(WORKSPACE / local_repo_dir(repo))}
+        repo_path = WORKSPACE / local_repo_dir(repo)
+        repos[repo] = _with_repo_graph(repo_path, {"head_sha": _git_head(repo_path)})
 
     code_map = {
         "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

@@ -64,15 +64,16 @@ Every firing, before walking specs, batch-read the code map (if your fleet runs 
 
 ```
 cat ${ALFRED_HOME}/state/code-map.json 2>/dev/null \
-  | jq '{generated_at, n_endpoints: (.repos | to_entries | map(.value.endpoints | length) | add), n_drift: (.contract_drift | length), drift: .contract_drift}'
+  | jq '{generated_at, repos: (.repos | to_entries | map({repo: .key, endpoints: (.value.endpoints | length), routes: (.value.routes | length), files: (.value.graph_summary.files // 0), symbols: (.value.graph_summary.symbols // 0), imports: (.value.graph_summary.imports // 0), partial: (.value.graph_summary.truncated // false), file_sample: (.value.files // [] | map({path, symbols: ([.symbols[]?.name] | .[0:8])}) | .[0:25]), import_sample: (.value.edges // [] | map(select(.kind == "import") | {from, to}) | .[0:40])})), n_drift: (.contract_drift | length), drift: .contract_drift}'
 ```
 
-If your fleet runs a code-map refresher, this file contains every server endpoint, every client API call, and a `contract_drift` list of client calls without a matching server endpoint.
+If your fleet runs a code-map refresher, this file contains source files, public-ish symbols, imports, server endpoints, client API calls, and a `contract_drift` list of client calls without a matching server endpoint.
 
 Use it to:
 
 - **Skip candidates that are already covered.** If a candidate would file an issue for "add `GET /v1/foo`" and `code-map.json` shows the server already exposes that endpoint, dedupe-reject (do not file).
 - **Surface drift items as candidate issues.** A non-empty `contract_drift` entry is a confirmed bug, file `fix(<repo>)` issues for any drift entries that aren't already in the open-issues list.
+- **Check blast radius before filing.** If a spec points at a symbol or module, use the imports and file list to name the repos and files likely to change. Do not invent paths the map does not show.
 - **Refuse acceptance criteria that contradict reality.** If a spec says "frontend calls `/v1/users/me/preferences`" but code-map shows the server never exposes that path, flag the spec as drift (file in the specs repo) rather than asking the feature-dev agent to "implement" against a phantom contract.
 
 If the file is missing or older than 24h, log a one-line note in the run report (`code-map stale`) and continue, do not block the firing.
