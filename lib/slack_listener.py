@@ -59,11 +59,13 @@ from slack_intent import (
     ConversationContext,
     Intent,
     RepoCatalog,
+    _clarify_for_mutating,
     ambient_enabled,
     ambient_engages,
     classify_intent,
     default_intent_engine_invoke,
     looks_like_followup_reference,
+    resolve_issue,
 )
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
@@ -449,6 +451,9 @@ class SlackPlanningListener:
         routed = self._maybe_route_intent(event)
         if routed is not None:
             return routed
+        clarified = self._maybe_complete_thread_clarification(event)
+        if clarified is not None:
+            return clarified
 
         if _is_read_only_control_text(event.text):
             control = self.control_handler.handle(
@@ -465,6 +470,46 @@ class SlackPlanningListener:
                 )
 
         return ListenerResult(False, "ignored", "conversation reply is not actionable")
+
+    def _maybe_complete_thread_clarification(
+        self,
+        event: SlackInputEvent,
+    ) -> ListenerResult | None:
+        """Use a Slack thread reply to complete Alfred's pending clarification."""
+        for turn in reversed(self._conversation.recent(event.conversation_id)):
+            if turn.action not in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
+                continue
+            if turn.repo and turn.issue is not None:
+                return None
+
+            repo, candidates = self._repo_catalog.resolve(event.text)
+            issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
+            if issue_repo and issue_repo != repo:
+                repo = issue_repo
+                candidates = []
+            repo = repo or turn.repo
+            issue = issue if issue is not None else turn.issue
+
+            intent = Intent(
+                action=turn.action,
+                repo=repo,
+                issue=issue,
+                params={
+                    "raw_text": event.text.strip(),
+                    "clarification_root": turn.text,
+                },
+                confidence=1.0,
+                clarification=_clarify_for_mutating(turn.action, repo, issue, candidates),
+            )
+            self._conversation.record(
+                event.conversation_id,
+                text=event.text,
+                action=intent.action,
+                repo=intent.repo,
+                issue=intent.issue,
+            )
+            return self._propose_intent_action(event, intent)
+        return None
 
     def _handle_plan_revision(
         self,
