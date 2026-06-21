@@ -150,9 +150,10 @@ open questions: none
 Rules:
 
 - Only configured trusted users can create drafts or amend threads.
-- A trusted admin can add or remove local Slack collaborators with `trust <@user>`
-  and `untrust <@user>`. Trusted collaborators can steer plans and create
-  drafts; execution approval still belongs to the trusted admin.
+- Trusted collaborators can steer plans and create drafts. The Slack user set in
+  `ALFRED_OPERATOR_SLACK_USER_ID` is the only person who can add or remove local
+  collaborators with `trust <@user>` and `untrust <@user>`, and approve
+  execution.
 - If trusted users are not configured, Alfred ignores every event.
 - Intake creates local draft JSON under `$ALFRED_HOME/state/planning-drafts/`.
 - Replies in the intake thread revise the same saved draft, regenerate the issue
