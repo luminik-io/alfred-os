@@ -1447,6 +1447,58 @@ def test_top_level_mention_keeps_thread_conversational_without_remention(
     assert poster.messages[-1]["thread_ts"] == "1716480700.000001"
 
 
+def test_conversation_thread_fallback_allows_only_read_only_controls(tmp_path: Path) -> None:
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Fleet status",
+            status="open",
+        )
+    )
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action=text.split()[0],
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "unknown", "confidence": 0.2}),
+        repo_catalog=_intent_catalog(),
+    )
+
+    read_only = listener.handle_payload(
+        _thread_reply("runs", event_id="EvConversationRuns", user="U1")
+    )
+    mutating = listener.handle_payload(
+        _thread_reply(
+            "hold acme-io/acme-backend#8",
+            event_id="EvConversationHold",
+            user="U1",
+        )
+    )
+
+    assert read_only.handled is True
+    assert read_only.action == "conversation_control_runs"
+    assert mutating.handled is False
+    assert "not actionable" in mutating.detail
+    assert control.calls == ["runs"]
+
+
 def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
     poster = CardPoster()
     listener = SlackPlanningListener(

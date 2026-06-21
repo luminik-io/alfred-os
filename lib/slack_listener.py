@@ -44,7 +44,7 @@ from slack_approval import (
     resolve_bot_token,
     trusted_feedback_user_ids_from_env,
 )
-from slack_control import SlackControlHandler, is_control_message
+from slack_control import SlackControlHandler, is_control_message, parse_control_command
 from slack_format import github_issue_link, github_url_link
 from slack_intent import (
     ACTION_ASSIGN,
@@ -426,7 +426,7 @@ class SlackPlanningListener:
         if routed is not None:
             return routed
 
-        if is_control_message(event.text):
+        if _is_read_only_control_text(event.text):
             control = self.control_handler.handle(
                 event.text,
                 trusted=True,
@@ -2131,6 +2131,24 @@ def _status_query_plan(text: str) -> tuple[str, str]:
     if any(cue in normalized for cue in blocked_cues):
         return "plans", "Here's what's in the planning inbox right now:"
     return "status", "Here's where the fleet stands:"
+
+
+def _is_read_only_control_text(text: str) -> bool:
+    """True when a leading-verb Slack command is safe to run without a card."""
+    command = parse_control_command(text)
+    if command is None:
+        return False
+    if command.verb in {"status", "runs", "plans", "plan", "trusted", "help", "dry-run"}:
+        return True
+    if command.verb == "schedule":
+        return command.arg == "list" or command.arg.startswith("show ")
+    if command.verb == "memory":
+        args = command.arg.split()
+        subcommand = args[0].lower() if args else "review"
+        if subcommand in {"review", "queue", "candidates", "candidate", "promotions", "promotable"}:
+            return True
+        return subcommand == "redis" and not (len(args) > 1 and args[1].lower() == "sync")
+    return False
 
 
 def render_draft_ack(result: Any) -> str:
