@@ -652,6 +652,41 @@ def resolve_agent_codename(
     return ""
 
 
+def resolve_assignment_agent(text: str, *, model_agent: str = "") -> str:
+    """Resolve the requested issue-assignment lane, if the operator named one."""
+    candidates = (model_agent, text)
+    aliases = {
+        "batman": (
+            "architect",
+            "batman",
+            "bruce",
+            "large feature",
+            "large-feature",
+            "multi repo",
+            "multi-repo",
+        ),
+        "lucius": (
+            "developer",
+            "implementation",
+            "implementation agent",
+            "lucius",
+            "lucius fox",
+            "senior dev",
+            "senior developer",
+            "single repo",
+            "single-repo",
+        ),
+    }
+    for raw in candidates:
+        normalized = _normalize(raw)
+        if not normalized:
+            continue
+        for agent, names in aliases.items():
+            if normalized == agent or any(_contains_token(normalized, name) for name in names):
+                return agent
+    return ""
+
+
 def _agent_candidate(raw: str, *, allow_all: bool, allow_custom: bool) -> str:
     value = (raw or "").strip()
     if not value:
@@ -851,12 +886,21 @@ def classify_intent(
         )
 
     if action in MUTATING_ACTIONS:
+        model_agent = ""
+        agent = ""
+        if action == ACTION_ASSIGN:
+            model_agent = str(
+                parsed.get("agent") or parsed.get("codename") or parsed.get("target") or ""
+            ).strip()
+            if model_agent:
+                params["model_agent"] = model_agent
+            agent = resolve_assignment_agent(text, model_agent=model_agent)
         clarification = clarify_for_mutating(action, repo, issue, candidates)
         return Intent(
             action=action,
             repo=repo,
             issue=issue,
-            agent="",
+            agent=agent,
             schedule="",
             params=params,
             confidence=confidence,

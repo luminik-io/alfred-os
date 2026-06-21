@@ -1091,8 +1091,8 @@ def test_conversational_assign_posts_confirmation_then_executes(
 
     calls: list[dict] = []
 
-    def _capture(repo, number):
-        calls.append({"repo": repo, "number": number})
+    def _capture(repo, number, *, target_agent=""):
+        calls.append({"repo": repo, "number": number, "target_agent": target_agent})
         return SimpleNamespace(
             ok=True,
             detail=f"{repo}#{number} assigned to Lucius by adding `agent:implement`.",
@@ -1131,9 +1131,68 @@ def test_conversational_assign_posts_confirmation_then_executes(
     )
     assert confirmed.handled is True
     assert confirmed.action == "intent_assign_issue"
-    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12}]
+    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "target_agent": ""}]
     assert (
         "<https://github.com/acme-io/acme-frontend/issues/12|acme-io/acme-frontend#12>"
         in poster.messages[-1]["text"]
     )
     assert "assigned to Lucius" in poster.messages[-1]["text"]
+
+
+def test_conversational_assign_to_named_role_passes_target_agent(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    monkeypatch.setenv("ALFRED_SLACK_AMBIENT", "1")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+
+    import issue_assignment
+
+    calls: list[dict] = []
+
+    def _capture(repo, number, *, target_agent=""):
+        calls.append({"repo": repo, "number": number, "target_agent": target_agent})
+        return SimpleNamespace(
+            ok=True,
+            detail=f"{repo}#{number} assigned to Batman · Architect by adding `agent:large-feature`.",
+            error="",
+        )
+
+    monkeypatch.setattr(issue_assignment, "assign_issue", _capture)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "agent": "architect",
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+        ambient_channels=("C-FLEET",),
+    )
+
+    posted = listener.handle_payload(
+        _channel_msg(
+            "Alfred, assign acme-io/acme-frontend#12 to Batman",
+            user="UFOUNDER",
+        )
+    )
+    assert posted.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "Batman \\u00b7 Architect" in card
+
+    confirmed = listener.handle_payload(
+        _reaction(reaction="white_check_mark", ts=poster.card_ts(), user="UFOUNDER")
+    )
+    assert confirmed.handled is True
+    assert confirmed.action == "intent_assign_issue"
+    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "target_agent": "batman"}]
+    assert "Batman" in poster.messages[-1]["text"]

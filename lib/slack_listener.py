@@ -508,12 +508,18 @@ class SlackPlanningListener:
             repo = issue_repo
             candidates = []
         repo = repo or turn.repo
+        if repo and issue is None and turn.issue is None:
+            issue, issue_repo = resolve_issue(turn.text, repo=repo)
+            if issue_repo and issue_repo != repo:
+                repo = issue_repo
+                candidates = []
         issue = issue if issue is not None else turn.issue
 
         intent = Intent(
             action=turn.action,
             repo=repo,
             issue=issue,
+            agent=turn.agent,
             params={
                 "raw_text": event.text.strip(),
                 "clarification_root": turn.text,
@@ -1199,7 +1205,8 @@ class SlackPlanningListener:
             return ListenerResult(False, "intent_invalid", "confirmed action missing repo/issue")
 
         if action == ACTION_ASSIGN:
-            assignment = assign_issue(repo, issue)
+            target_agent = str(metadata.get("agent") or "").strip()
+            assignment = assign_issue(repo, issue, target_agent=target_agent)
             self.registry.mark_status(record, "confirmed" if assignment.ok else "failed")
             if not assignment.ok:
                 reason = assignment.error or assignment.detail
@@ -2153,6 +2160,19 @@ def render_intent_confirmation(intent: Intent) -> tuple[str, list[dict]]:
             ],
         },
     ]
+    if intent.action == ACTION_ASSIGN and intent.agent:
+        blocks.insert(
+            2,
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Assigned lane*\n{_assignment_agent_display(intent.agent)}",
+                    }
+                ],
+            },
+        )
     if raw_text:
         blocks.append(
             {
@@ -2204,6 +2224,15 @@ def _intent_action_target_display(intent: Intent) -> str:
         return "`unknown issue`"
     target = _intent_action_target(intent)
     return f"`{target}`" if target != "unknown target" else target
+
+
+def _assignment_agent_display(agent: str) -> str:
+    normalized = agent.strip().lower()
+    if normalized in {"architect", "batman", "bruce"}:
+        return "Batman · Architect"
+    if normalized in {"developer", "lucius", "senior dev", "senior developer"}:
+        return "Lucius · Senior Developer"
+    return agent
 
 
 def _control_command_for_agent_intent(action: str) -> str:
