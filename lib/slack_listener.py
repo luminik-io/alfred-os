@@ -501,24 +501,32 @@ class SlackPlanningListener:
         turn,
     ) -> ListenerResult | None:
         if turn.repo and turn.issue is not None:
-            return None
-
-        repo, candidates = self._repo_catalog.resolve(event.text)
-        issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
-        if issue_repo and issue_repo != repo:
-            repo = issue_repo
-            candidates = []
-        repo = repo or turn.repo
-        if repo and issue is None and turn.issue is None:
-            issue, issue_repo = resolve_issue(turn.text, repo=repo)
+            if turn.action != ACTION_ASSIGN or turn.agent:
+                return None
+            agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+            if not agent and not unsupported_assignment_agent:
+                return None
+            repo = turn.repo
+            issue = turn.issue
+            candidates: list[str] = []
+        else:
+            repo, candidates = self._repo_catalog.resolve(event.text)
+            issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
             if issue_repo and issue_repo != repo:
                 repo = issue_repo
                 candidates = []
-        issue = issue if issue is not None else turn.issue
-        agent = turn.agent
-        unsupported_assignment_agent = ""
-        if turn.action == ACTION_ASSIGN and not agent:
-            agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+            repo = repo or turn.repo
+            if repo and issue is None and turn.issue is None:
+                issue, issue_repo = resolve_issue(turn.text, repo=repo)
+                if issue_repo and issue_repo != repo:
+                    repo = issue_repo
+                    candidates = []
+            issue = issue if issue is not None else turn.issue
+            agent = turn.agent
+            unsupported_assignment_agent = ""
+            if turn.action == ACTION_ASSIGN and not agent:
+                agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+
         params = {
             "raw_text": event.text.strip(),
             "clarification_root": turn.text,

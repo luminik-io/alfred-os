@@ -700,12 +700,36 @@ def _assignment_agent_from_text(
         for name in (agent, *names):
             if any(_contains_token(normalized, f"{prefix} {name}") for prefix in prefixes):
                 return agent
+    exact = _known_assignment_agent(text, aliases)
+    if exact:
+        return exact
     match = re.search(
         r"\b(?:to|with)(?:\s+the)?\s+([a-z][a-z0-9._-]*)\b",
         normalized,
     )
     if match:
-        return match.group(1)
+        return _known_assignment_agent(match.group(1), aliases)
+    return ""
+
+
+def _known_assignment_agent(
+    value: str,
+    aliases: dict[str, tuple[str, ...]],
+) -> str:
+    normalized = _normalize(value)
+    if not normalized:
+        return ""
+    collapsed = re.sub(r"[^a-z0-9._-]+", "", normalized)
+    for agent, names in aliases.items():
+        if normalized == agent or collapsed == agent:
+            return agent
+        if normalized in names:
+            return agent
+    for agent, names in _AGENT_ALIASES.items():
+        if normalized == agent or collapsed == agent:
+            return agent
+        if normalized in names:
+            return agent
     return ""
 
 

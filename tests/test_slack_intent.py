@@ -162,6 +162,26 @@ def test_assign_issue_explicit_unsupported_lane_asks() -> None:
     assert "Lucius" in intent.clarification
 
 
+def test_assign_issue_to_fix_phrase_does_not_become_lane() -> None:
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 to fix the login bug",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == "lucius"
+    assert intent.needs_clarification is False
+
+
 def test_run_agent_classifies_as_confirmable_mutation() -> None:
     intent = classify_intent(
         "can you run Batman now?",

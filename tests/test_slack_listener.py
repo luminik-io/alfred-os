@@ -1973,6 +1973,26 @@ def test_conversation_thread_unsupported_assignment_reply_asks_for_lane(
     assert "Batman" in poster.messages[-1]["text"]
     assert "Lucius" in poster.messages[-1]["text"]
 
+    lane_reply = listener.handle_payload(
+        {
+            "event_id": "EvUnsupportedLaneResolved",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480940.000001",
+                "thread_ts": "1716480938.000001",
+            },
+        }
+    )
+
+    assert lane_reply.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "acme-io/acme-backend#4" in card
+    assert "Batman \\u00b7 Architect" in card
+
 
 def test_conversation_thread_reply_can_complete_agent_clarification(tmp_path: Path) -> None:
     poster = CardPoster()
