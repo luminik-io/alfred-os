@@ -1006,9 +1006,7 @@ def test_ambient_mutating_intent_only_posts_card_never_executes(
     assert record.status == "awaiting_confirmation"
 
 
-def test_ambient_control_fallback_blocks_mutating_commands(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_ambient_control_fallback_blocks_mutating_commands(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
     monkeypatch.setenv("ALFRED_SLACK_AMBIENT", "1")
 
