@@ -96,20 +96,17 @@ class RedisAgentMemoryProvider:
         limit: int = 5,
     ) -> list[Lesson]:
         text = (query or " ".join(x for x in (codename, repo) if x) or "alfred").strip()
-        filters: dict[str, Any] = {
-            "namespace": {"eq": self.namespace},
-        }
         payload: dict[str, Any] = {
             "text": text,
             "limit": max(1, int(limit)),
             "search_mode": self.search_mode,
-            "filters": filters,
+            "namespace": self.namespace,
         }
         required_topics = _scope_topics(codename=codename, repo=repo)
         if required_topics:
-            filters["topics"] = {"all": required_topics}
+            payload["topics"] = required_topics
         if self.user_id:
-            filters["user_id"] = {"eq": self.user_id}
+            payload["user_id"] = self.user_id
         try:
             response = self._request("POST", "/v1/long-term-memory/search", payload)
         except Exception as exc:
