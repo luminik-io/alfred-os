@@ -387,6 +387,7 @@ def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
     assert token_endpoint.read_text(encoding="utf-8").strip() == url
     assert install_id.read_text(encoding="utf-8").strip() == "old-install-id"
     assert "kept install id and token" in result.stderr
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in alfredrc.read_text(encoding="utf-8")
 
 
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):

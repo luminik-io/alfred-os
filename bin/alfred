@@ -463,6 +463,13 @@ def _telemetry_state_token_exists() -> bool:
         return False
 
 
+def _read_telemetry_state_token() -> str:
+    try:
+        return _telemetry_state_token_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def _delete_telemetry_state_token() -> bool:
     removed = False
     try:
@@ -790,6 +797,9 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
             _delete_telemetry_state_token()
             _delete_telemetry_install_id()
         else:
+            retry_token = token or _read_telemetry_state_token()
+            if retry_token and not replacement_token:
+                values["ALFRED_TELEMETRY_TOKEN"] = retry_token
             print(
                 "warning: kept install id and token so previous usage totals can be cleared later",
                 file=sys.stderr,
