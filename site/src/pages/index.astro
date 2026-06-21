@@ -124,6 +124,23 @@ const why = [
   },
 ];
 
+const heroImpactStats = [
+  {
+    label: "PRs merged",
+    value: productProof.summary.agent_prs_merged.toLocaleString("en-US"),
+  },
+  {
+    label: "issues closed",
+    value: productProof.summary.agent_issues_closed.toLocaleString("en-US"),
+  },
+  {
+    label: "lines changed",
+    value: (productProof.summary.lines_added + productProof.summary.lines_removed).toLocaleString("en-US"),
+  },
+];
+
+const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
+
 ---
 
 <MarketingLayout
@@ -139,16 +156,42 @@ const why = [
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred-os" }}
   >
-    <div slot="panel" class="hero-panel">
-      <div class="hero-panel__head">
-        <span class="m-eyebrow">EXAMPLE STATUS</span>
-        <span class="m-mono m-mute">your machine</span>
+    <div slot="panel" class="hero-impact" aria-label="Alfred impact in the last 30 days">
+      <div class="hero-impact__head">
+        <span class="m-eyebrow">LAST {productProof.window.days} DAYS</span>
+        <span class="m-mono m-mute">{productProof.summary.repos_scanned} repos</span>
       </div>
-      <MetricRow label="agents" value="21" countTo={21} state="live" />
-      <MetricRow label="repos" value="9" countTo={9} state="live" />
-      <MetricRow label="last run" value="recent" glyph="arrow" state="info" />
-      <MetricRow label="open PRs" value="4" countTo={4} state="warn" />
-      <MetricRow label="errors" value="0" state="live" />
+
+      <div class="hero-impact__primary">
+        <strong>{productProof.summary.agent_prs_merged.toLocaleString("en-US")}</strong>
+        <span>PRs merged by Alfred-driven work</span>
+      </div>
+
+      <div class="hero-impact__stats" role="list">
+        {heroImpactStats.map((stat) => (
+          <div class="hero-impact__stat" role="listitem">
+            <strong>{stat.value}</strong>
+            <span>{stat.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div class="hero-flow" aria-label="Alfred work loop">
+        <div class="hero-flow__track" aria-hidden="true">
+          <span class="hero-flow__pulse"></span>
+        </div>
+        <ol>
+          {heroFlow.map((step) => (
+            <li>{step}</li>
+          ))}
+        </ol>
+      </div>
+
+      <div class="hero-agents" aria-label="Primary Alfred agents">
+        <span><strong>Batman</strong> Architect</span>
+        <span><strong>Lucius</strong> Senior dev</span>
+        <span><strong>Drake</strong> Planner</span>
+      </div>
     </div>
   </Hero>
 
@@ -404,14 +447,162 @@ const why = [
 </MarketingLayout>
 
 <style>
-  .hero-panel { display: flex; flex-direction: column; }
-  .hero-panel__head {
+  .hero-impact {
+    display: grid;
+    gap: 18px;
+  }
+  .hero-impact__head {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding-bottom: 12px;
-    margin-bottom: 6px;
     border-bottom: 1px solid var(--alfred-border);
+    gap: 16px;
+  }
+  .hero-impact__primary {
+    display: grid;
+    gap: 8px;
+  }
+  .hero-impact__primary strong {
+    display: block;
+    color: var(--alfred-accent);
+    font-size: clamp(56px, 8vw, 86px);
+    line-height: 0.92;
+    letter-spacing: 0;
+    font-weight: 750;
+  }
+  .hero-impact__primary span {
+    color: var(--alfred-text-bright);
+    font-size: 18px;
+    line-height: 1.35;
+    font-weight: 600;
+  }
+  .hero-impact__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    border-block: 1px solid var(--alfred-border);
+  }
+  .hero-impact__stat {
+    min-width: 0;
+    padding: 14px 12px;
+    border-right: 1px solid var(--alfred-border);
+  }
+  .hero-impact__stat:last-child { border-right: none; }
+  .hero-impact__stat strong {
+    display: block;
+    color: var(--alfred-text-bright);
+    font-size: 21px;
+    line-height: 1.1;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .hero-impact__stat span {
+    display: block;
+    margin-top: 6px;
+    color: var(--alfred-mute);
+    font-size: 12px;
+    line-height: 1.35;
+    text-transform: lowercase;
+  }
+  .hero-flow {
+    position: relative;
+    padding-top: 12px;
+  }
+  .hero-flow__track {
+    position: absolute;
+    top: 23px;
+    left: 10px;
+    right: 10px;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(0,229,199,0.18), rgba(87,137,255,0.28), rgba(0,229,199,0.18));
+    overflow: hidden;
+  }
+  .hero-flow__pulse {
+    position: absolute;
+    inset-block: -1px;
+    width: 34%;
+    background: linear-gradient(90deg, transparent, var(--alfred-accent), transparent);
+    animation: hero-flow-pulse 4.5s ease-in-out infinite;
+  }
+  .hero-flow ol {
+    position: relative;
+    z-index: 1;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .hero-flow li {
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--alfred-text);
+    font-size: 12px;
+    line-height: 1.25;
+    text-align: center;
+  }
+  .hero-flow li::before {
+    content: "";
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--alfred-surface);
+    border: 2px solid var(--alfred-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--alfred-accent) 12%, transparent);
+  }
+  .hero-agents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .hero-agents span {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--alfred-border);
+    border-radius: 999px;
+    color: var(--alfred-text);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .hero-agents strong {
+    color: var(--alfred-text-bright);
+    font-weight: 700;
+  }
+  @keyframes hero-flow-pulse {
+    0% { transform: translateX(-110%); opacity: 0; }
+    12% { opacity: 1; }
+    88% { opacity: 1; }
+    100% { transform: translateX(310%); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-flow__pulse { animation: none; opacity: 0; }
+  }
+  @media (max-width: 480px) {
+    .hero-impact__head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .hero-impact__stats {
+      grid-template-columns: 1fr;
+    }
+    .hero-impact__stat {
+      border-right: none;
+      border-bottom: 1px solid var(--alfred-border);
+    }
+    .hero-impact__stat:last-child { border-bottom: none; }
+    .hero-flow ol {
+      grid-template-columns: repeat(5, minmax(42px, 1fr));
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
   }
 
   .job-grid {
