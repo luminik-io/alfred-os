@@ -1499,6 +1499,66 @@ def test_conversation_thread_fallback_allows_only_read_only_controls(tmp_path: P
     assert control.calls == ["runs"]
 
 
+def test_conversation_thread_reply_can_borrow_root_target(tmp_path: Path) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(
+        handle=lambda text, **_: SimpleNamespace(
+            handled=True, action=text.split()[0], text=f"*Answer for* `{text}`", detail=""
+        )
+    )
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 4,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    first = listener.handle_payload(
+        {
+            "event_id": "EvThreadRootTarget",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> can you arm acme-io/acme-backend#4",
+                "ts": "1716480900.000001",
+            },
+        }
+    )
+
+    assert first.action == "intent_confirmation_posted"
+
+    listener._intent_engine = _intent_engine({"action": "queue_issue", "confidence": 0.8})
+    second = listener.handle_payload(
+        {
+            "event_id": "EvThreadBorrowTarget",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "yes, do it",
+                "ts": "1716480901.000001",
+                "thread_ts": "1716480900.000001",
+            },
+        }
+    )
+
+    assert second.action == "intent_confirmation_posted"
+    assert "acme-io/acme-backend#4" in poster.messages[-1]["text"]
+
+
 def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
     poster = CardPoster()
     listener = SlackPlanningListener(
