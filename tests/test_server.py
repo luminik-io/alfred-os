@@ -235,6 +235,10 @@ def test_api_memory_candidates_promote_and_reject(
     assert rows[0]["created_at"].endswith("+00:00")
     assert brain.calls[0] == ("list", ("candidate", 50))
 
+    retired = client.get("/api/memory/candidates?status=retired")
+    assert retired.status_code == 200
+    assert brain.calls[1] == ("list", ("retired", 50))
+
     promoted = client.post(
         f"/api/memory/candidates/{candidate_id}/promote",
         json={"reviewer": "operator", "note": "useful"},
