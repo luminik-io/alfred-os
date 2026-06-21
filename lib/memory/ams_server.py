@@ -26,7 +26,7 @@ DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 DEFAULT_AUTH_MODE = "disabled"
 DEFAULT_EMBEDDING_MODEL = "ollama/mxbai-embed-large"
 DEFAULT_EMBEDDING_DIMENSIONS = 1024
-DEFAULT_GENERATION_MODEL = "ollama/llama3.2"
+DEFAULT_GENERATION_MODEL = "ollama/llama3.2:1b"
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_LONG_TERM_MEMORY = True
 DEFAULT_COMPACTION_INTERVAL_SECONDS = 600
@@ -129,6 +129,8 @@ class AmsServerConfig:
             "REDISVL_VECTOR_DIMENSIONS": str(self.embedding_dimensions),
             "EMBEDDING_DIMENSIONS": str(self.embedding_dimensions),
             "GENERATION_MODEL": self.generation_model,
+            "FAST_MODEL": self.generation_model,
+            "SLOW_MODEL": self.generation_model,
             "INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY": "false",
             "FORGETTING_ENABLED": _as_str_bool(self.forgetting_enabled),
             "COMPACTION_EVERY_MINUTES": str(max(1, self.compaction_interval_seconds // 60)),

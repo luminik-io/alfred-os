@@ -56,7 +56,7 @@ class RedisAgentMemoryProvider:
     namespace: str = "alfred"
     user_id: str | None = None
     timeout_s: float = _DEFAULT_TIMEOUT_S
-    search_mode: str = "hybrid"
+    search_mode: str = "semantic"
     transport: Transport | None = None
     name: str = "redis"
 
@@ -83,8 +83,8 @@ class RedisAgentMemoryProvider:
             namespace=(envmap.get("ALFRED_REDIS_MEMORY_NAMESPACE") or "alfred").strip() or "alfred",
             user_id=(envmap.get("ALFRED_REDIS_MEMORY_USER_ID") or "").strip() or None,
             timeout_s=timeout,
-            search_mode=(envmap.get("ALFRED_REDIS_MEMORY_SEARCH_MODE") or "hybrid").strip()
-            or "hybrid",
+            search_mode=(envmap.get("ALFRED_REDIS_MEMORY_SEARCH_MODE") or "semantic").strip()
+            or "semantic",
         )
 
     def recall(

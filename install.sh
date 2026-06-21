@@ -262,7 +262,7 @@ install_linux_packages() {
   if ! command -v redis-stack-server >/dev/null 2>&1; then
     note "installing Redis Stack from packages.redis.io"
     if curl -fsSL https://packages.redis.io/gpg \
-      | ${SUDO} gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg 2>/dev/null; then
+      | ${SUDO} gpg --batch --yes --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg 2>/dev/null; then
       local redis_codename="bookworm"
       if [[ -r /etc/os-release ]]; then
         # shellcheck disable=SC1091
@@ -291,7 +291,7 @@ install_linux_packages() {
         rm -f "$ollama_install"
       else
         rm -f "$ollama_install"
-        warn "Ollama install failed; install Ollama and run 'ollama pull mxbai-embed-large' and 'ollama pull llama3.2'."
+        warn "Ollama install failed; install Ollama and run 'ollama pull mxbai-embed-large' and 'ollama pull llama3.2:1b'."
       fi
     else
       warn "Ollama is not installed. Install it manually, or re-run with ALFRED_INSTALL_OLLAMA=1 to use Ollama's official install script."
@@ -427,7 +427,7 @@ else
 fi
 
 if command -v ollama >/dev/null 2>&1; then
-  for ollama_model in mxbai-embed-large llama3.2; do
+  for ollama_model in mxbai-embed-large llama3.2:1b; do
     if ollama list 2>/dev/null | grep -q "^${ollama_model}"; then
       ok "$ollama_model already pulled"
     elif ollama pull "$ollama_model" >/dev/null 2>&1; then

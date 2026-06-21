@@ -340,6 +340,13 @@ def test_redis_provider_from_env() -> None:
     assert provider.namespace == "team"
     assert provider.user_id == "operator"
     assert provider.timeout_s == 1.5
+    assert provider.search_mode == "semantic"
+
+
+def test_redis_provider_search_mode_overridable() -> None:
+    provider = RedisAgentMemoryProvider.from_env(env={"ALFRED_REDIS_MEMORY_SEARCH_MODE": "keyword"})
+
+    assert provider.search_mode == "keyword"
 
 
 def test_redis_provider_default_url_matches_ams_config() -> None:
@@ -403,6 +410,7 @@ def test_redis_provider_recall_posts_search_payload() -> None:
     assert isinstance(payload, dict)
     assert payload["text"] == "plans"
     assert payload["limit"] == 2
+    assert payload["search_mode"] == "semantic"
     assert payload["namespace"] == {"eq": "alfred"}
     assert payload["topics"] == {"all": ["codename:batman", "repo:acme/app"]}
     headers = calls[0]["headers"]
@@ -685,7 +693,7 @@ def test_ams_defaults_are_loopback_and_free_local_embeddings() -> None:
     assert cfg.port == 8088
     assert cfg.base_url == "http://127.0.0.1:8088"
     assert cfg.embedding_model == "ollama/mxbai-embed-large"
-    assert cfg.generation_model == "ollama/llama3.2"
+    assert cfg.generation_model == "ollama/llama3.2:1b"
     assert cfg.embedding_dimensions == 1024
     assert cfg.forgetting_enabled is False
     assert cfg.long_term_memory is True
@@ -720,7 +728,9 @@ def test_ams_server_env_matches_upstream_settings_names() -> None:
     assert env["DISABLE_AUTH"] == "true"
     assert env["LONG_TERM_MEMORY"] == "true"
     assert env["EMBEDDING_MODEL"] == "ollama/mxbai-embed-large"
-    assert env["GENERATION_MODEL"] == "ollama/llama3.2"
+    assert env["GENERATION_MODEL"] == "ollama/llama3.2:1b"
+    assert env["FAST_MODEL"] == "ollama/llama3.2:1b"
+    assert env["SLOW_MODEL"] == "ollama/llama3.2:1b"
     assert env["REDISVL_VECTOR_DIMENSIONS"] == "1024"
     assert env["FORGETTING_ENABLED"] == "false"
     assert env["OLLAMA_API_BASE"] == "http://127.0.0.1:11434"

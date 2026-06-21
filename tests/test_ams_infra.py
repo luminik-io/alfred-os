@@ -74,10 +74,11 @@ def test_installer_provisions_ams_dependencies() -> None:
 
     assert "redis-stack/redis-stack" in text
     assert "redis-stack-server" in text
+    assert "gpg --batch --yes --dearmor" in text
     assert "ollama" in text
     assert "uv tool install --python 3.12" in text
     assert "agent-memory-server.git" in text
-    assert "mxbai-embed-large llama3.2" in text
+    assert "mxbai-embed-large llama3.2:1b" in text
     assert 'ollama pull "$ollama_model"' in text
     assert "Deploy also starts the local Redis Agent Memory Server" in text
     apt_line = next(line for line in text.splitlines() if "local apt_pkgs=" in line)
