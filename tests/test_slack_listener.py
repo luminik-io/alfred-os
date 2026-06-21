@@ -1686,6 +1686,61 @@ def test_conversation_thread_reply_can_complete_clarification(tmp_path: Path) ->
     assert "acme-io/acme-backend#4" in poster.messages[-1]["text"]
 
 
+def test_conversation_thread_reply_can_complete_agent_clarification(tmp_path: Path) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {"action": "schedule_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvAgentClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule Batman",
+                "ts": "1716480940.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvAgentClarifyReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "daily@09:00",
+                "ts": "1716480941.000001",
+                "thread_ts": "1716480940.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_confirmation_posted"
+    assert "Confirm reschedule" in poster.messages[-1]["text"]
+    assert "batman" in poster.messages[-1]["text"]
+    assert "daily@09:00" in poster.messages[-1]["text"]
+
+
 def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
     poster = CardPoster()
     listener = SlackPlanningListener(

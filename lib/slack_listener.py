@@ -59,12 +59,14 @@ from slack_intent import (
     ConversationContext,
     Intent,
     RepoCatalog,
+    _clarify_for_agent_action,
     _clarify_for_mutating,
     ambient_enabled,
     ambient_engages,
     classify_intent,
     default_intent_engine_invoke,
     looks_like_followup_reference,
+    resolve_agent_codename,
     resolve_issue,
 )
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
@@ -444,6 +446,8 @@ class SlackPlanningListener:
             action=root_turn.action,
             repo=root_turn.repo,
             issue=root_turn.issue,
+            agent=root_turn.agent,
+            schedule=root_turn.schedule,
         )
 
     def _handle_conversation_thread_reply(self, event: SlackInputEvent) -> ListenerResult:
@@ -477,39 +481,91 @@ class SlackPlanningListener:
     ) -> ListenerResult | None:
         """Use a Slack thread reply to complete Alfred's pending clarification."""
         for turn in reversed(self._conversation.recent(event.conversation_id)):
-            if turn.action not in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
-                continue
-            if turn.repo and turn.issue is not None:
-                return None
-
-            repo, candidates = self._repo_catalog.resolve(event.text)
-            issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
-            if issue_repo and issue_repo != repo:
-                repo = issue_repo
-                candidates = []
-            repo = repo or turn.repo
-            issue = issue if issue is not None else turn.issue
-
-            intent = Intent(
-                action=turn.action,
-                repo=repo,
-                issue=issue,
-                params={
-                    "raw_text": event.text.strip(),
-                    "clarification_root": turn.text,
-                },
-                confidence=1.0,
-                clarification=_clarify_for_mutating(turn.action, repo, issue, candidates),
-            )
-            self._conversation.record(
-                event.conversation_id,
-                text=event.text,
-                action=intent.action,
-                repo=intent.repo,
-                issue=intent.issue,
-            )
-            return self._propose_intent_action(event, intent)
+            if turn.action in {ACTION_ASSIGN, ACTION_QUEUE, ACTION_HOLD}:
+                return self._complete_issue_clarification(event, turn)
+            if turn.action in {
+                ACTION_RUN_AGENT,
+                ACTION_PAUSE_AGENT,
+                ACTION_RESUME_AGENT,
+                ACTION_SCHEDULE_AGENT,
+            }:
+                return self._complete_agent_clarification(event, turn)
         return None
+
+    def _complete_issue_clarification(
+        self,
+        event: SlackInputEvent,
+        turn,
+    ) -> ListenerResult | None:
+        if turn.repo and turn.issue is not None:
+            return None
+
+        repo, candidates = self._repo_catalog.resolve(event.text)
+        issue, issue_repo = resolve_issue(event.text, repo=repo or turn.repo)
+        if issue_repo and issue_repo != repo:
+            repo = issue_repo
+            candidates = []
+        repo = repo or turn.repo
+        issue = issue if issue is not None else turn.issue
+
+        intent = Intent(
+            action=turn.action,
+            repo=repo,
+            issue=issue,
+            params={
+                "raw_text": event.text.strip(),
+                "clarification_root": turn.text,
+            },
+            confidence=1.0,
+            clarification=_clarify_for_mutating(turn.action, repo, issue, candidates),
+        )
+        self._conversation.record(
+            event.conversation_id,
+            text=event.text,
+            action=intent.action,
+            repo=intent.repo,
+            issue=intent.issue,
+            agent=intent.agent,
+            schedule=intent.schedule,
+        )
+        return self._propose_intent_action(event, intent)
+
+    def _complete_agent_clarification(
+        self,
+        event: SlackInputEvent,
+        turn,
+    ) -> ListenerResult | None:
+        if turn.agent and (turn.action != ACTION_SCHEDULE_AGENT or turn.schedule):
+            return None
+
+        allow_all = turn.action in {
+            ACTION_DRY_RUN_AGENT,
+            ACTION_PAUSE_AGENT,
+            ACTION_RESUME_AGENT,
+        }
+        agent = turn.agent or resolve_agent_codename(event.text, allow_all=allow_all)
+        schedule = turn.schedule
+        if turn.action == ACTION_SCHEDULE_AGENT and not schedule:
+            schedule = event.text.strip() if agent else ""
+        intent = Intent(
+            action=turn.action,
+            agent=agent,
+            schedule=schedule,
+            params={
+                "raw_text": event.text.strip(),
+                "clarification_root": turn.text,
+            },
+            confidence=1.0,
+            clarification=_clarify_for_agent_action(turn.action, agent, schedule),
+        )
+        self._conversation.record(
+            event.conversation_id,
+            text=event.text,
+            action=intent.action,
+            agent=intent.agent,
+            schedule=intent.schedule,
+        )
+        return self._propose_intent_action(event, intent)
 
     def _handle_plan_revision(
         self,
@@ -815,6 +871,8 @@ class SlackPlanningListener:
                 action=intent.action,
                 repo=intent.repo,
                 issue=intent.issue,
+                agent=intent.agent,
+                schedule=intent.schedule,
             )
             return self._propose_intent_action(event, intent)
         # plan_request / unknown / anything low-confidence: fall through to the

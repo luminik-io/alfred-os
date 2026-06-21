@@ -282,15 +282,18 @@ _FOLLOWUP_REFERENCE_CUES: tuple[str, ...] = (
 class ConversationTurn:
     """One recorded turn: what the operator said and what we interpreted.
 
-    Pure data. ``repo`` / ``issue`` are the resolved entities (if any) so a
-    later follow-up can refer back to them. ``ts`` is a monotonic-ish epoch
-    used only for TTL expiry; it carries no Slack semantics.
+    Pure data. ``repo`` / ``issue`` and ``agent`` / ``schedule`` are the
+    resolved entities (if any) so a later follow-up can refer back to them.
+    ``ts`` is a monotonic-ish epoch used only for TTL expiry; it carries no
+    Slack semantics.
     """
 
     text: str
     action: str
     repo: str = ""
     issue: int | None = None
+    agent: str = ""
+    schedule: str = ""
     ts: float = 0.0
 
 
@@ -331,6 +334,8 @@ class ConversationContext:
         action: str,
         repo: str = "",
         issue: int | None = None,
+        agent: str = "",
+        schedule: str = "",
     ) -> None:
         """Append an interpreted turn for ``conversation_id`` (bounded)."""
         if not conversation_id:
@@ -342,6 +347,8 @@ class ConversationContext:
                 action=action,
                 repo=repo or "",
                 issue=issue,
+                agent=agent or "",
+                schedule=schedule or "",
                 ts=self._now(),
             )
         )
