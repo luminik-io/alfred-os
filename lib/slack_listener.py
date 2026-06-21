@@ -542,6 +542,9 @@ class SlackPlanningListener:
                 "Lucius · Senior Developer. Which lane should handle "
                 f"`{repo}#{issue}`?"
             )
+        record_text = event.text
+        if turn.action == ACTION_ASSIGN and clarification and unsupported_assignment_agent:
+            record_text = f"{turn.text}\n{event.text}"
 
         intent = Intent(
             action=turn.action,
@@ -554,7 +557,7 @@ class SlackPlanningListener:
         )
         self._conversation.record(
             event.conversation_id,
-            text=event.text,
+            text=record_text,
             action=intent.action,
             repo=intent.repo,
             issue=intent.issue,
