@@ -443,8 +443,10 @@ def test_redis_provider_recall_posts_search_payload() -> None:
     assert payload["text"] == "plans"
     assert payload["limit"] == 2
     assert payload["search_mode"] == "semantic"
-    assert payload["namespace"] == {"eq": "alfred"}
-    assert payload["topics"] == {"all": ["codename:batman", "repo:acme/app"]}
+    assert payload["filters"] == {
+        "namespace": {"eq": "alfred"},
+        "topics": {"all": ["codename:batman", "repo:acme/app"]},
+    }
     headers = calls[0]["headers"]
     assert isinstance(headers, dict)
     assert headers["Authorization"] == "Bearer secret"
