@@ -952,6 +952,36 @@ def test_derive_counts_marks_line_field_stale_when_authored_prs_have_default_zer
     assert counts.stale_fields == ("lines_changed",)
 
 
+def test_derive_counts_marks_line_field_stale_when_rolling_lines_are_missing():
+    class MissingRollingLineBrain(GitHubFileCountsBrain):
+        def sum_github_changed_lines(self, **filters):
+            if filters.get("merged_since") is not None:
+                return 0
+            return super().sum_github_changed_lines(**filters)
+
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = MissingRollingLineBrain(
+        prs=[
+            FakePR(
+                "merged",
+                additions=100,
+                deletions=20,
+                changed_files=3,
+                merged_at=datetime(2026, 6, 18, tzinfo=UTC),
+            )
+        ],
+    )
+
+    counts = pt.derive_counts(brain, now=now)
+
+    assert counts.lines_changed == 120
+    assert counts.last_30_days is not None
+    assert counts.last_30_days.prs_merged == 1
+    assert counts.last_30_days.files_changed == 3
+    assert counts.last_30_days.lines_changed == 0
+    assert counts.stale_fields == ("lines_changed",)
+
+
 def test_report_once_does_not_zero_lines_when_line_total_query_fails(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
 

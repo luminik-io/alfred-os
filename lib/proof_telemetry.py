@@ -978,8 +978,8 @@ def derive_counts(brain: Any, *, now: datetime | None = None) -> TelemetryCounts
         logger.debug("telemetry: file-count derivation failed: %s", exc)
 
     try:
-        lines_changed = _sum_github_changed_lines(brain, kind="pr", authored_only=True)
         line_summer = getattr(brain, "sum_github_changed_lines", None)
+        lines_changed = _sum_github_changed_lines(brain, kind="pr", authored_only=True)
         if callable(line_summer) and prs_opened > 0 and lines_changed == 0:
             stale_fields.add("lines_changed")
             logger.debug(
@@ -993,6 +993,19 @@ def derive_counts(brain: Any, *, now: datetime | None = None) -> TelemetryCounts
 
     try:
         last_30_days = derive_window_counts(brain, now=now)
+        if (
+            callable(line_summer)
+            and last_30_days.lines_changed == 0
+            and (
+                last_30_days.prs_opened > 0
+                or last_30_days.prs_merged > 0
+                or last_30_days.prs_reviewed > 0
+                or last_30_days.issues_opened > 0
+                or last_30_days.issues_closed > 0
+                or last_30_days.files_changed > 0
+            )
+        ):
+            stale_fields.add("lines_changed")
     except Exception as exc:  # fail-soft by contract
         read_complete = False
         logger.debug("telemetry: rolling-window derivation failed: %s", exc)
