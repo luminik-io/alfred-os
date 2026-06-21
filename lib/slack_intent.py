@@ -724,15 +724,20 @@ def _known_assignment_agent(
     if not normalized:
         return ""
     collapsed = re.sub(r"[^a-z0-9._-]+", "", normalized)
+    compact = re.sub(r"[^a-z0-9]+", "", normalized)
     for agent, names in aliases.items():
         if normalized == agent or collapsed == agent:
             return agent
-        if normalized in names:
+        if normalized in names or compact in {
+            re.sub(r"[^a-z0-9]+", "", _normalize(name)) for name in names
+        }:
             return agent
     for agent, names in _AGENT_ALIASES.items():
         if normalized == agent or collapsed == agent:
             return agent
-        if normalized in names:
+        if normalized in names or compact in {
+            re.sub(r"[^a-z0-9]+", "", _normalize(name)) for name in names
+        }:
             return agent
     return ""
 

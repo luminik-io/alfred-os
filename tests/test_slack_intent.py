@@ -141,6 +141,13 @@ def test_assign_issue_text_lane_beats_conflicting_model_lane() -> None:
     assert intent.needs_clarification is False
 
 
+def test_assignment_lane_reply_tolerates_sentence_punctuation() -> None:
+    assert resolve_assignment_agent("Batman.") == ("batman", "")
+    assert resolve_assignment_agent("the architect.") == ("batman", "")
+    assert resolve_assignment_agent("Lucius.") == ("lucius", "")
+    assert resolve_assignment_agent("the senior developer.") == ("lucius", "")
+
+
 def test_assign_issue_ignores_model_lane_without_explicit_text() -> None:
     intent = classify_intent(
         "assign acme-io/acme-backend#12",
