@@ -162,6 +162,7 @@ const COUNT_FIELDS = [
 const FIELD_MAXIMUMS = {
   lines_changed: MAX_LINES_CHANGED,
 };
+const STALE_COUNT_FIELDS = new Set(["lines_changed"]);
 
 // install_id is client-generated and opaque. Bound its length and charset so
 // a malformed or hostile value cannot blow up a KV key.
@@ -316,6 +317,16 @@ function normalizeCountFields(raw) {
   return counts;
 }
 
+function normalizeStaleFields(raw) {
+  if (!raw || !Array.isArray(raw.stale_fields)) return [];
+  const out = [];
+  for (const field of raw.stale_fields) {
+    if (typeof field !== "string" || !STALE_COUNT_FIELDS.has(field)) continue;
+    if (!out.includes(field)) out.push(field);
+  }
+  return out;
+}
+
 /**
  * Validate and normalize an ingest payload. Returns { ok, value } or
  * { ok: false, error }. Never throws on bad input.
@@ -339,15 +350,20 @@ export function normalizePayload(raw) {
     };
   }
   const counts = normalizeCountFields(raw);
+  const staleFields = normalizeStaleFields(raw);
   // Enforce subset invariants server-side. A buggy or hostile open-write client
   // could POST dependent counters above their base count; clamp them here so the
   // normalized counts that flow into the stored record can never violate the
   // invariant.
   const invariant = clampDependentCounts(counts);
-  return {
+  const value = {
     ok: true,
     value: { install_id: installId, period, counts: invariant },
   };
+  if (staleFields.length > 0) {
+    value.value.stale_fields = staleFields;
+  }
+  return value;
 }
 
 // One progress record per install, keyed by install_id. Replaced on each
@@ -621,6 +637,19 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
   // sums can never reflect an invariant-violating payload.
   const clamped = normalizeCountFields(counts);
   const snapshot = clampDependentCounts(clamped);
+  const staleFields = Array.isArray(payload.stale_fields) ? payload.stale_fields : [];
+  if (staleFields.includes("lines_changed")) {
+    let previous = null;
+    try {
+      previous = await kv.get(installKey(installId), { type: "json" });
+    } catch {
+      previous = null;
+    }
+    snapshot.lines_changed = clampCount(
+      previous && previous.lines_changed,
+      FIELD_MAXIMUMS.lines_changed,
+    );
+  }
   snapshot.seen_at = iso;
   snapshot.trusted_reporter = isTrustedReporter;
 

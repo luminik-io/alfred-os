@@ -108,6 +108,19 @@ test("normalizePayload allows larger changed-line totals than row counts", () =>
   );
 });
 
+test("normalizePayload carries recognized stale fields only", () => {
+  const out = normalizePayload({
+    install_id: "stale-lines1",
+    period: "lifetime",
+    prs_opened: 3,
+    lines_changed: 0,
+    stale_fields: ["lines_changed", "lines_changed", "prs_opened", 42],
+  });
+
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.value.stale_fields, ["lines_changed"]);
+});
+
 // --------------------------------------------------------------------------
 // normalizePayload
 // --------------------------------------------------------------------------
@@ -642,6 +655,40 @@ test("install-keyed model: the per-install record is replaced, not appended", as
   assert.equal(installRecords.length, 1, "exactly one record per install");
   const snapshot = JSON.parse(kv.store.get("install:install-replace0"));
   assert.equal(snapshot.prs_opened, 12, "the record holds the latest cumulative total");
+});
+
+test("ingest preserves stale line totals while updating fresh counts", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-staleln",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    loc_added: 20,
+  }).value;
+  const staleLines = normalizePayload({
+    install_id: "install-staleln",
+    period: "lifetime",
+    prs_opened: 6,
+    prs_merged: 5,
+    lines_changed: 0,
+    loc_added: 30,
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED);
+  await ingest(kv, staleLines, FIXED);
+
+  const snapshot = JSON.parse(kv.store.get("install:install-staleln"));
+  assert.equal(snapshot.prs_opened, 6);
+  assert.equal(snapshot.prs_merged, 5);
+  assert.equal(snapshot.loc_added, 30);
+  assert.equal(snapshot.lines_changed, 1200);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_opened, 6);
+  assert.equal(agg.lines_changed, 1200);
 });
 
 test("ingest never pushes a total negative on a downward correction", async () => {

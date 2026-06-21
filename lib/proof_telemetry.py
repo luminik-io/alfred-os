@@ -141,6 +141,7 @@ class TelemetryCounts:
     lines_changed: int = 0
     loc_added: int = 0
     read_complete: bool = True
+    stale_fields: tuple[str, ...] = ()
 
 
 def is_enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -617,9 +618,10 @@ def derive_counts(brain: Any) -> TelemetryCounts:
                    repo file an agent added/modified).
       lines_changed additions + deletions from cached GitHub PR rows, filtered
                    to the same agent-authored PR subset as prs_opened. If
-                   authored PRs exist but the line total is still zero, the read
-                   is treated as incomplete so a migration/default-zero cache
-                   cannot overwrite a previous non-zero public total.
+                   authored PRs exist but the line total is unavailable or still
+                   zero, the field is marked stale so the collector can preserve
+                   the previous per-install line total while accepting the fresh
+                   PR/issue/file counts.
       loc_added    legacy wire alias for files_changed.
 
     Any query failure yields zeroes for the affected fields and marks the read
@@ -644,6 +646,7 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     lines_changed = 0
     loc_added = 0
     read_complete = True
+    stale_fields: set[str] = set()
 
     # Distinguish "the brain genuinely has 0 PRs" from "the base PR query
     # failed". On failure, prs_opened stays 0 AND we suppress the dependent
@@ -736,14 +739,14 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         lines_changed = _sum_github_changed_lines(brain, kind="pr", authored_only=True)
         line_summer = getattr(brain, "sum_github_changed_lines", None)
         if callable(line_summer) and prs_opened > 0 and lines_changed == 0:
-            read_complete = False
+            stale_fields.add("lines_changed")
             logger.debug(
                 "telemetry: line-count derivation returned zero for %s "
                 "authored PRs; waiting for GitHub poller refresh",
                 prs_opened,
             )
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
-        read_complete = False
+        stale_fields.add("lines_changed")
         logger.debug("telemetry: line-count derivation failed: %s", exc)
 
     return TelemetryCounts(
@@ -756,13 +759,14 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         lines_changed=_clamp(lines_changed, max_value=_MAX_LINES_CHANGED),
         loc_added=_clamp(loc_added),
         read_complete=read_complete,
+        stale_fields=tuple(sorted(stale_fields)),
     )
 
 
 def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict[str, Any]:
     """Assemble the exact JSON body that goes on the wire. No extra keys."""
     files_changed = counts.files_changed if counts.files_changed is not None else counts.loc_added
-    return {
+    payload = {
         "install_id": install_id,
         "period": period,
         "prs_opened": _clamp(counts.prs_opened),
@@ -774,6 +778,9 @@ def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict
         "lines_changed": _clamp(counts.lines_changed, max_value=_MAX_LINES_CHANGED),
         "loc_added": _clamp(counts.loc_added),
     }
+    if counts.stale_fields:
+        payload["stale_fields"] = list(counts.stale_fields)
+    return payload
 
 
 def build_tombstone_payload(install_id: str, period: str | None = None) -> dict[str, Any]:

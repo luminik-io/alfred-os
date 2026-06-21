@@ -773,7 +773,7 @@ def test_derive_counts_uses_agent_authored_github_line_totals():
     assert counts.lines_changed == 21
 
 
-def test_derive_counts_marks_read_stale_when_line_total_query_fails():
+def test_derive_counts_marks_line_field_stale_when_line_total_query_fails():
     class MissingLineColumnsBrain(ClampingBrain):
         def sum_github_changed_lines(self, **_filters):
             raise RuntimeError("no such column: additions")
@@ -791,10 +791,11 @@ def test_derive_counts_marks_read_stale_when_line_total_query_fails():
     assert counts.issues_closed == 1
     assert counts.files_changed == 3
     assert counts.lines_changed == 0
-    assert counts.read_complete is False
+    assert counts.read_complete is True
+    assert counts.stale_fields == ("lines_changed",)
 
 
-def test_derive_counts_marks_read_stale_when_authored_prs_have_default_zero_lines():
+def test_derive_counts_marks_line_field_stale_when_authored_prs_have_default_zero_lines():
     brain = ClampingBrain(
         prs=[FakePR("merged", additions=0, deletions=0)],
         touches=[FakeTouch()] * 2,
@@ -806,7 +807,8 @@ def test_derive_counts_marks_read_stale_when_authored_prs_have_default_zero_line
     assert counts.prs_merged == 1
     assert counts.files_changed == 2
     assert counts.lines_changed == 0
-    assert counts.read_complete is False
+    assert counts.read_complete is True
+    assert counts.stale_fields == ("lines_changed",)
 
 
 def test_report_once_does_not_zero_lines_when_line_total_query_fails(tmp_path, monkeypatch):
@@ -825,9 +827,11 @@ def test_report_once_does_not_zero_lines_when_line_total_query_fails(tmp_path, m
         now=FIXED,
     )
 
-    assert result["status"] == "stale_counts"
-    assert result["sent"] is False
-    assert poster.calls == []
+    assert result["status"] == "sent"
+    assert result["sent"] is True
+    assert poster.calls
+    assert poster.calls[0][1]["stale_fields"] == ["lines_changed"]
+    assert poster.calls[0][1]["lines_changed"] == 0
 
 
 def test_derive_counts_fallback_stops_honestly_at_list_clamp():
