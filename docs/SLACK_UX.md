@@ -157,6 +157,8 @@ Rules:
 - Intake creates local draft JSON under `$ALFRED_HOME/state/planning-drafts/`.
 - Replies in the intake thread revise the same saved draft, regenerate the issue
   body and spec body, rerun readiness checks, and append a revision entry.
+- In channels, the root message needs to mention Alfred. After Alfred registers
+  that thread, trusted replies in the same thread can omit the mention.
 - `open questions: none` clears previously captured questions after the thread
   has resolved them.
 - Planning memory may appear as advisory hints when memory is enabled, but the

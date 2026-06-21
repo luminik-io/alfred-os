@@ -505,6 +505,91 @@ def test_followup_borrows_previous_turn_target(tmp_path: Path, monkeypatch) -> N
     assert "acme-io/acme-backend#4" in card["text"]
 
 
+def test_followup_assignment_preserves_named_target_agent(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+
+    import issue_assignment
+
+    calls: list[dict] = []
+
+    def _capture(repo, number, *, target_agent=""):
+        calls.append({"repo": repo, "number": number, "target_agent": target_agent})
+        return SimpleNamespace(
+            ok=True,
+            detail=f"{repo}#{number} assigned to Batman · Architect by adding `agent:large-feature`.",
+            error="",
+        )
+
+    monkeypatch.setattr(issue_assignment, "assign_issue", _capture)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("UFOUNDER",),
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 4,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+    )
+
+    first = listener.handle_payload(
+        {
+            "event_id": "EvAssignFollowupRoot",
+            "event": {
+                "type": "message",
+                "channel": "D1",
+                "channel_type": "im",
+                "user": "UFOUNDER",
+                "text": "look at acme-io/acme-backend#4",
+                "ts": "1716480000.000001",
+            },
+        }
+    )
+    assert first.action == "intent_confirmation_posted"
+
+    listener._intent_engine = _intent_engine(
+        {"action": "assign_issue", "agent": "architect", "confidence": 0.95}
+    )
+    second = listener.handle_payload(
+        {
+            "event_id": "EvAssignFollowupLane",
+            "event": {
+                "type": "message",
+                "channel": "D1",
+                "channel_type": "im",
+                "user": "UFOUNDER",
+                "text": "assign that one to Batman",
+                "ts": "1716480001.000001",
+            },
+        }
+    )
+    assert second.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "acme-io/acme-backend#4" in card
+    assert "Batman \\u00b7 Architect" in card
+
+    confirmed = listener.handle_payload(
+        _reaction(
+            reaction="white_check_mark",
+            ts="1700000002.000001",
+            user="UFOUNDER",
+            channel="D1",
+        )
+    )
+    assert confirmed.handled is True
+    assert confirmed.action == "intent_assign_issue"
+    assert calls == [{"repo": "acme-io/acme-backend", "number": 4, "target_agent": "batman"}]
+
+
 def test_followup_without_prior_target_still_clarifies(tmp_path: Path, monkeypatch) -> None:
     # "do it" with NO prior actionable turn cannot borrow anything; the
     # mutating intent must clarify rather than guess.
@@ -1006,6 +1091,29 @@ def test_ambient_mutating_intent_only_posts_card_never_executes(
     assert record.status == "awaiting_confirmation"
 
 
+def test_ambient_control_fallback_blocks_mutating_commands(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    monkeypatch.setenv("ALFRED_SLACK_AMBIENT", "1")
+
+    poster = CardPoster()
+    control = StubControl()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        intent_engine=_intent_engine({"action": "unknown", "confidence": 0.2}),
+        repo_catalog=_catalog(),
+        control_handler=control,
+        ambient_channels=("C-FLEET",),
+    )
+
+    mutating = listener.handle_payload(_channel_msg("run Batman now"))
+
+    assert mutating.handled is False
+    assert "not actionable" in mutating.detail
+    assert control.calls == []
+
+
 def test_ambient_confirm_executes_only_after_operator_reaction(tmp_path: Path, monkeypatch) -> None:
     # End-to-end through ambient: nothing runs until the operator reacts on the
     # card, and then it runs exactly the same set_issue_pickup the literal-verb
@@ -1068,8 +1176,8 @@ def test_conversational_assign_posts_confirmation_then_executes(
 
     calls: list[dict] = []
 
-    def _capture(repo, number):
-        calls.append({"repo": repo, "number": number})
+    def _capture(repo, number, *, target_agent=""):
+        calls.append({"repo": repo, "number": number, "target_agent": target_agent})
         return SimpleNamespace(
             ok=True,
             detail=f"{repo}#{number} assigned to Lucius by adding `agent:implement`.",
@@ -1108,9 +1216,68 @@ def test_conversational_assign_posts_confirmation_then_executes(
     )
     assert confirmed.handled is True
     assert confirmed.action == "intent_assign_issue"
-    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12}]
+    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "target_agent": ""}]
     assert (
         "<https://github.com/acme-io/acme-frontend/issues/12|acme-io/acme-frontend#12>"
         in poster.messages[-1]["text"]
     )
     assert "assigned to Lucius" in poster.messages[-1]["text"]
+
+
+def test_conversational_assign_to_named_role_passes_target_agent(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ALFRED_INTENT_ROUTER_ENABLED", "1")
+    monkeypatch.setenv("ALFRED_SLACK_AMBIENT", "1")
+    monkeypatch.setenv("ALFRED_OPERATOR_SLACK_USER_ID", "UFOUNDER")
+    monkeypatch.setenv("ALFRED_TRUSTED_SLACK_USER_IDS", "UFOUNDER UTEAM")
+
+    import issue_assignment
+
+    calls: list[dict] = []
+
+    def _capture(repo, number, *, target_agent=""):
+        calls.append({"repo": repo, "number": number, "target_agent": target_agent})
+        return SimpleNamespace(
+            ok=True,
+            detail=f"{repo}#{number} assigned to Batman · Architect by adding `agent:large-feature`.",
+            error="",
+        )
+
+    monkeypatch.setattr(issue_assignment, "assign_issue", _capture)
+
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        intent_engine=_intent_engine(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-frontend",
+                "issue": 12,
+                "agent": "architect",
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_catalog(),
+        control_handler=StubControl(),
+        ambient_channels=("C-FLEET",),
+    )
+
+    posted = listener.handle_payload(
+        _channel_msg(
+            "Alfred, assign acme-io/acme-frontend#12 to Batman",
+            user="UFOUNDER",
+        )
+    )
+    assert posted.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "Batman \\u00b7 Architect" in card
+
+    confirmed = listener.handle_payload(
+        _reaction(reaction="white_check_mark", ts=poster.card_ts(), user="UFOUNDER")
+    )
+    assert confirmed.handled is True
+    assert confirmed.action == "intent_assign_issue"
+    assert calls == [{"repo": "acme-io/acme-frontend", "number": 12, "target_agent": "batman"}]
+    assert "Batman" in poster.messages[-1]["text"]

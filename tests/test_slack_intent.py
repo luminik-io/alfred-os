@@ -39,6 +39,7 @@ from slack_intent import (  # noqa: E402
     RepoCatalog,
     classify_intent,
     resolve_agent_codename,
+    resolve_assignment_agent,
     resolve_issue,
 )
 
@@ -118,6 +119,100 @@ def test_assign_issue_classifies_as_confirmable_mutation() -> None:
     assert intent.issue == 12
     assert intent.is_mutating is True
     assert intent.needs_clarification is False
+
+
+def test_assign_issue_text_lane_beats_conflicting_model_lane() -> None:
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 to Batman",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == "batman"
+    assert intent.needs_clarification is False
+
+
+def test_assignment_lane_reply_tolerates_sentence_punctuation() -> None:
+    assert resolve_assignment_agent("Batman.") == ("batman", "")
+    assert resolve_assignment_agent("the architect.") == ("batman", "")
+    assert resolve_assignment_agent("Lucius.") == ("lucius", "")
+    assert resolve_assignment_agent("the senior developer.") == ("lucius", "")
+
+
+def test_assign_issue_ignores_model_lane_without_explicit_text() -> None:
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == ""
+    assert intent.needs_clarification is False
+
+
+def test_assign_issue_explicit_unsupported_lane_asks() -> None:
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 to Drake",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == ""
+    assert intent.needs_clarification is True
+    assert "Batman" in intent.clarification
+    assert "Lucius" in intent.clarification
+
+
+def test_assign_issue_to_fix_phrase_does_not_become_lane() -> None:
+    intent = classify_intent(
+        "assign acme-io/acme-backend#12 to fix the login bug",
+        engine_invoke=_engine_returning(
+            {
+                "action": "assign_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 12,
+                "agent": "lucius",
+                "confidence": 0.91,
+            }
+        ),
+        catalog=CATALOG,
+    )
+
+    assert intent.action == ACTION_ASSIGN
+    assert intent.agent == ""
+    assert intent.needs_clarification is False
+
+
+def test_resolve_assignment_agent_accepts_article_prefixed_lane_reply() -> None:
+    assert resolve_assignment_agent("the architect") == ("batman", "")
+    assert resolve_assignment_agent("the senior developer") == ("lucius", "")
 
 
 def test_run_agent_classifies_as_confirmable_mutation() -> None:

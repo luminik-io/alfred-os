@@ -13,6 +13,8 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
+    _short_plain,
+    _thread_title_from_text,
     draft_from_slack_text,
     render_bridge_outcome_ack,
 )
@@ -62,6 +64,17 @@ class LegacyMemoryProvider:
             }
         )
         return len(self.calls)
+
+
+def test_slack_text_truncation_honors_limit() -> None:
+    assert len(_short_plain("x" * 40, 12)) <= 12
+    assert _short_plain("x" * 40, 12).endswith("...")
+    assert _short_plain("abcdef", 2) == "ab"
+
+    title = _thread_title_from_text("<@U123ABC> " + "shipping " * 20, limit=20)
+    assert len(title) <= 20
+    assert title.endswith("...")
+    assert _thread_title_from_text("abcdef", limit=2) == "ab"
 
 
 def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:
@@ -1230,7 +1243,7 @@ def test_trusted_collaborator_cannot_trust_another_user(tmp_path: Path, monkeypa
 
     assert result.handled is True
     assert result.action == "control_trust_rejected"
-    assert "Only the operator" in poster.messages[-1]["text"]
+    assert "Only the configured approver" in poster.messages[-1]["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -1372,9 +1385,1383 @@ def test_status_query_answered_directly_without_confirmation(tmp_path: Path) -> 
     result = listener.handle_payload(_intent_dm("how's the fleet doing?"))
     assert result.handled is True
     assert result.action == "intent_status"
-    # Read-only: it answered, it never registered a confirmation thread.
+    # Read-only: it answered, it never registered a confirmation card.
     assert "Fleet status" in poster.messages[-1]["text"]
     assert "status" in control.calls
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    assert registry.lookup("D9", poster.card_ts()) is None
+
+
+def test_top_level_mention_keeps_thread_conversational_without_remention(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action=text.split()[0],
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    first = listener.handle_payload(
+        {
+            "event_id": "EvMentionStatus",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> how is the fleet doing?",
+                "ts": "1716480700.000001",
+            },
+        }
+    )
+
+    assert first.action == "intent_status"
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    record = registry.lookup("C1", "1716480700.000001")
+    assert record is not None
+    assert record.kind == "conversation"
+    assert record.status == "open"
+
+    second = listener.handle_payload(
+        {
+            "event_id": "EvMentionStatusReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "what shipped today?",
+                "ts": "1716480701.000001",
+                "thread_ts": "1716480700.000001",
+            },
+        }
+    )
+
+    assert second.handled is True
+    assert second.action == "intent_status"
+    assert control.calls == ["status", "runs"]
+    assert poster.messages[-1]["thread_ts"] == "1716480700.000001"
+
+
+def test_conversation_thread_fallback_allows_only_read_only_controls(tmp_path: Path) -> None:
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Fleet status",
+            status="open",
+        )
+    )
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action=text.split()[0],
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "unknown", "confidence": 0.2}),
+        repo_catalog=_intent_catalog(),
+    )
+
+    read_only = listener.handle_payload(
+        _thread_reply("runs", event_id="EvConversationRuns", user="U1")
+    )
+    mutating = listener.handle_payload(
+        _thread_reply(
+            "hold acme-io/acme-backend#8",
+            event_id="EvConversationHold",
+            user="U1",
+        )
+    )
+
+    assert read_only.handled is True
+    assert read_only.action == "conversation_control_runs"
+    assert mutating.handled is False
+    assert "not actionable" in mutating.detail
+    assert control.calls == ["runs"]
+
+
+def test_conversation_thread_read_only_control_skips_pending_clarification(
+    tmp_path: Path,
+) -> None:
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Queue issue",
+            status="open",
+        )
+    )
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action=text.split()[0],
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "unknown", "confidence": 0.2}),
+        repo_catalog=_intent_catalog(),
+    )
+    listener._conversation.record(
+        "C1:1716480000.000000",
+        text="queue issue #4",
+        action="queue_issue",
+    )
+
+    result = listener.handle_payload(
+        _thread_reply("runs", event_id="EvConversationRunsDuringClarification", user="U1")
+    )
+
+    assert result.handled is True
+    assert result.action == "conversation_control_runs"
+    assert control.calls == ["runs"]
+    assert "Answer for" in poster.messages[-1]["text"]
+    assert "Which repo" not in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_reply_can_borrow_root_target(tmp_path: Path) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(
+        handle=lambda text, **_: SimpleNamespace(
+            handled=True, action=text.split()[0], text=f"*Answer for* `{text}`", detail=""
+        )
+    )
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 4,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    first = listener.handle_payload(
+        {
+            "event_id": "EvThreadRootTarget",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> can you arm acme-io/acme-backend#4",
+                "ts": "1716480900.000001",
+            },
+        }
+    )
+
+    assert first.action == "intent_confirmation_posted"
+
+    listener._intent_engine = _intent_engine({"action": "queue_issue", "confidence": 0.8})
+    second = listener.handle_payload(
+        {
+            "event_id": "EvThreadBorrowTarget",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "yes, do it",
+                "ts": "1716480901.000001",
+                "thread_ts": "1716480900.000001",
+            },
+        }
+    )
+
+    assert second.action == "intent_confirmation_posted"
+    assert "acme-io/acme-backend#4" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_does_not_borrow_stale_channel_target(tmp_path: Path) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(
+        handle=lambda text, **_: SimpleNamespace(
+            handled=True, action="status", text="*Fleet status*", detail=""
+        )
+    )
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine(
+            {
+                "action": "queue_issue",
+                "repo": "acme-io/acme-backend",
+                "issue": 9,
+                "confidence": 0.95,
+            }
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    older = listener.handle_payload(
+        {
+            "event_id": "EvOlderChannelTarget",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> queue acme-io/acme-backend#9",
+                "ts": "1716480910.000001",
+            },
+        }
+    )
+    assert older.action == "intent_confirmation_posted"
+
+    listener._intent_engine = _intent_engine({"action": "status_query", "confidence": 0.95})
+    status_root = listener.handle_payload(
+        {
+            "event_id": "EvNewStatusRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> status?",
+                "ts": "1716480920.000001",
+            },
+        }
+    )
+    assert status_root.action == "intent_status"
+
+    listener._intent_engine = _intent_engine({"action": "queue_issue", "confidence": 0.8})
+    followup = listener.handle_payload(
+        {
+            "event_id": "EvNewStatusThreadFollowup",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "yes, do it",
+                "ts": "1716480921.000001",
+                "thread_ts": "1716480920.000001",
+            },
+        }
+    )
+
+    assert followup.action == "intent_clarify"
+    assert "acme-io/acme-backend#9" not in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_reply_can_complete_clarification(tmp_path: Path) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "queue_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> queue issue #4",
+                "ts": "1716480930.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvClarifyReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend#4",
+                "ts": "1716480931.000001",
+                "thread_ts": "1716480930.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_confirmation_posted"
+    assert "Confirm queue" in poster.messages[-1]["text"]
+    assert "acme-io/acme-backend#4" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_repo_reply_completes_bare_issue_clarification(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "queue_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvBareIssueClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> queue issue #4",
+                "ts": "1716480932.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvBareIssueRepoReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend",
+                "ts": "1716480933.000001",
+                "thread_ts": "1716480932.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_confirmation_posted"
+    assert "Confirm queue" in poster.messages[-1]["text"]
+    assert "acme-io/acme-backend#4" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_repo_reply_preserves_assignment_agent(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {"action": "assign_issue", "agent": "architect", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvAssignAgentClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign issue #4 to Batman",
+                "ts": "1716480934.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvAssignAgentRepoReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend",
+                "ts": "1716480935.000001",
+                "thread_ts": "1716480934.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "Confirm assign" in poster.messages[-1]["text"]
+    assert "acme-io/acme-backend#4" in card
+    assert "Batman \\u00b7 Architect" in card
+    assert "Lucius \\u00b7 Senior Developer" not in card
+
+
+def test_conversation_thread_clarification_reply_can_supply_assignment_agent(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "assign_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneReplyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign issue #4",
+                "ts": "1716480936.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend to Batman",
+                "ts": "1716480937.000001",
+                "thread_ts": "1716480936.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "acme-io/acme-backend#4" in card
+    assert "Batman \\u00b7 Architect" in card
+    assert "Lucius \\u00b7 Senior Developer" not in card
+
+
+def test_conversation_thread_lane_then_repo_preserves_root_issue(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "assign_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneThenRepoRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign issue #4",
+                "ts": "1716480937.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    lane = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneThenRepoLane",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480938.000001",
+                "thread_ts": "1716480937.000001",
+            },
+        }
+    )
+    assert lane.action == "intent_clarify"
+
+    repo = listener.handle_payload(
+        {
+            "event_id": "EvAssignLaneThenRepoRepo",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend",
+                "ts": "1716480939.000001",
+                "thread_ts": "1716480937.000001",
+            },
+        }
+    )
+
+    assert repo.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "acme-io/acme-backend#4" in card
+    assert "Batman \\u00b7 Architect" in card
+
+
+def test_conversation_thread_unsupported_assignment_reply_asks_for_lane(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "assign_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvUnsupportedLaneReplyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign issue #4",
+                "ts": "1716480938.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvUnsupportedLaneReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend to Drake",
+                "ts": "1716480939.000001",
+                "thread_ts": "1716480938.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_clarify"
+    assert "Batman" in poster.messages[-1]["text"]
+    assert "Lucius" in poster.messages[-1]["text"]
+
+    lane_reply = listener.handle_payload(
+        {
+            "event_id": "EvUnsupportedLaneResolved",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480940.000001",
+                "thread_ts": "1716480938.000001",
+            },
+        }
+    )
+
+    assert lane_reply.action == "intent_confirmation_posted"
+    card = json.dumps(poster.messages[-1]["blocks"])
+    assert "acme-io/acme-backend#4" in card
+    assert "Batman \\u00b7 Architect" in card
+
+
+def test_conversation_thread_root_unsupported_assignment_lane_survives_repo_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "assign_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvRootUnsupportedLane",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign issue #4 to Nightwing",
+                "ts": "1716480941.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvRootUnsupportedLaneRepoReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend",
+                "ts": "1716480942.000001",
+                "thread_ts": "1716480941.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_clarify"
+    assert "Batman" in poster.messages[-1]["text"]
+    assert "Lucius" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_root_unsupported_assignment_lane_survives_partial_replies(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "assign_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvRootUnsupportedLanePartial",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign this to Nightwing",
+                "ts": "1716480943.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    repo_reply = listener.handle_payload(
+        {
+            "event_id": "EvRootUnsupportedLanePartialRepo",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend",
+                "ts": "1716480944.000001",
+                "thread_ts": "1716480943.000001",
+            },
+        }
+    )
+    assert repo_reply.action == "intent_clarify"
+
+    issue_reply = listener.handle_payload(
+        {
+            "event_id": "EvRootUnsupportedLanePartialIssue",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "#4",
+                "ts": "1716480945.000001",
+                "thread_ts": "1716480943.000001",
+            },
+        }
+    )
+
+    assert issue_reply.action == "intent_clarify"
+    assert "Batman" in poster.messages[-1]["text"]
+    assert "Lucius" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_reply_can_complete_agent_clarification(tmp_path: Path) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {"action": "schedule_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvAgentClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule Batman",
+                "ts": "1716480940.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvAgentClarifyReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "daily@09:00",
+                "ts": "1716480941.000001",
+                "thread_ts": "1716480940.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_confirmation_posted"
+    assert "Confirm reschedule" in poster.messages[-1]["text"]
+    assert "batman" in poster.messages[-1]["text"]
+    assert "daily@09:00" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_asks_cadence_after_agent_reply(tmp_path: Path) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "schedule_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule",
+                "ts": "1716480950.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    agent_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleAgentReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480951.000001",
+                "thread_ts": "1716480950.000001",
+            },
+        }
+    )
+    assert agent_reply.action == "intent_clarify"
+    assert "What cadence should `batman` use?" in poster.messages[-1]["text"]
+
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "daily@09:00",
+                "ts": "1716480952.000001",
+                "thread_ts": "1716480950.000001",
+            },
+        }
+    )
+    assert cadence_reply.action == "intent_confirmation_posted"
+    assert "batman" in poster.messages[-1]["text"]
+    assert "daily@09:00" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_accepts_agent_and_cadence_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "schedule_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCombinedRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule",
+                "ts": "1716480952.100001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    combined_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCombinedReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Lucius 20m",
+                "ts": "1716480952.200001",
+                "thread_ts": "1716480952.100001",
+            },
+        }
+    )
+
+    assert combined_reply.action == "intent_confirmation_posted"
+    assert "lucius" in poster.messages[-1]["text"]
+    assert "20m" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_accepts_custom_agent_and_cadence_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "schedule_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCustomRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule",
+                "ts": "1716480952.300001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    combined_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCustomReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "marshall 20m",
+                "ts": "1716480952.400001",
+                "thread_ts": "1716480952.300001",
+            },
+        }
+    )
+
+    assert combined_reply.action == "intent_confirmation_posted"
+    assert "marshall" in poster.messages[-1]["text"]
+    assert "20m" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_preserves_cadence_before_agent_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "schedule_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceFirstRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule",
+                "ts": "1716480952.500001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceFirstReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "20m",
+                "ts": "1716480952.600001",
+                "thread_ts": "1716480952.500001",
+            },
+        }
+    )
+    assert cadence_reply.action == "intent_clarify"
+    assert "Which agent" in poster.messages[-1]["text"]
+
+    agent_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceFirstAgent",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Lucius",
+                "ts": "1716480952.700001",
+                "thread_ts": "1716480952.500001",
+            },
+        }
+    )
+
+    assert agent_reply.action == "intent_confirmation_posted"
+    assert "lucius" in poster.messages[-1]["text"]
+    assert "20m" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_normalizes_human_cadence_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {"action": "schedule_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleHumanCadenceRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule Batman",
+                "ts": "1716480953.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleHumanCadenceReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "every 20 minutes",
+                "ts": "1716480954.000001",
+                "thread_ts": "1716480953.000001",
+            },
+        }
+    )
+
+    assert cadence_reply.action == "intent_confirmation_posted"
+    assert "batman" in poster.messages[-1]["text"]
+    assert "20m" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_reasks_for_invalid_cadence_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine(
+            {"action": "schedule_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleBadCadenceRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule Batman",
+                "ts": "1716480955.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleBadCadenceReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "when the queue gets busy",
+                "ts": "1716480956.000001",
+                "thread_ts": "1716480955.000001",
+            },
+        }
+    )
+
+    assert cadence_reply.action == "intent_clarify"
+    assert "What cadence should `batman` use?" in poster.messages[-1]["text"]
+    assert "Confirm reschedule" not in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_reply_can_complete_dry_run_clarification(tmp_path: Path) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action="dry-run",
+            text=f"*Dry run for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "dry_run_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvDryRunClarifyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> dry run",
+                "ts": "1716480960.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvDryRunTargetReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Batman",
+                "ts": "1716480961.000001",
+                "thread_ts": "1716480960.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_dry_run_agent"
+    assert control.calls == ["dry-run batman"]
+    assert "I ran the dry-run for `batman`." in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_completed_dry_run_allows_later_read_only_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        action = text.split()[0]
+        return SimpleNamespace(
+            handled=True,
+            action=action,
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine(
+            {"action": "dry_run_agent", "agent": "batman", "confidence": 0.95}
+        ),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvCompletedDryRunRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> dry run Batman",
+                "ts": "1716480962.000001",
+            },
+        }
+    )
+    assert root.action == "intent_dry_run_agent"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.2})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvCompletedDryRunRunsReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "runs",
+                "ts": "1716480963.000001",
+                "thread_ts": "1716480962.000001",
+            },
+        }
+    )
+
+    assert reply.action == "conversation_control_runs"
+    assert control.calls == ["dry-run batman", "runs"]
+    assert "Which agent should I dry-run?" not in poster.messages[-1]["text"]
+
+
+def test_threaded_mention_does_not_claim_existing_human_thread(tmp_path: Path) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "status_query", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    result = listener.handle_payload(
+        {
+            "event_id": "EvThreadMentionStatus",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> status?",
+                "ts": "1716480801.000001",
+                "thread_ts": "1716480800.000001",
+            },
+        }
+    )
+
+    assert result.action == "intent_status"
+    registry = SlackThreadRegistry(tmp_path / "slack-threads")
+    assert registry.lookup("C1", "1716480800.000001") is None
 
 
 def test_mutating_intent_posts_card_and_does_not_execute(tmp_path: Path, monkeypatch) -> None:

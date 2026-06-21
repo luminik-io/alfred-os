@@ -282,15 +282,18 @@ _FOLLOWUP_REFERENCE_CUES: tuple[str, ...] = (
 class ConversationTurn:
     """One recorded turn: what the operator said and what we interpreted.
 
-    Pure data. ``repo`` / ``issue`` are the resolved entities (if any) so a
-    later follow-up can refer back to them. ``ts`` is a monotonic-ish epoch
-    used only for TTL expiry; it carries no Slack semantics.
+    Pure data. ``repo`` / ``issue`` and ``agent`` / ``schedule`` are the
+    resolved entities (if any) so a later follow-up can refer back to them.
+    ``ts`` is a monotonic-ish epoch used only for TTL expiry; it carries no
+    Slack semantics.
     """
 
     text: str
     action: str
     repo: str = ""
     issue: int | None = None
+    agent: str = ""
+    schedule: str = ""
     ts: float = 0.0
 
 
@@ -331,6 +334,8 @@ class ConversationContext:
         action: str,
         repo: str = "",
         issue: int | None = None,
+        agent: str = "",
+        schedule: str = "",
     ) -> None:
         """Append an interpreted turn for ``conversation_id`` (bounded)."""
         if not conversation_id:
@@ -342,6 +347,8 @@ class ConversationContext:
                 action=action,
                 repo=repo or "",
                 issue=issue,
+                agent=agent or "",
+                schedule=schedule or "",
                 ts=self._now(),
             )
         )
@@ -645,6 +652,96 @@ def resolve_agent_codename(
     return ""
 
 
+def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, str]:
+    """Resolve the requested issue-assignment lane, if the operator named one."""
+    aliases = {
+        "batman": (
+            "architect",
+            "batman",
+            "bruce",
+            "large feature",
+            "large-feature",
+            "multi repo",
+            "multi-repo",
+        ),
+        "lucius": (
+            "developer",
+            "implementation",
+            "implementation agent",
+            "lucius",
+            "lucius fox",
+            "senior dev",
+            "senior developer",
+            "single repo",
+            "single-repo",
+        ),
+    }
+    explicit = _assignment_agent_from_text(text, aliases)
+    if not explicit:
+        return "", ""
+    if explicit == "alfred":
+        return "", ""
+    if explicit in {"batman", "lucius"}:
+        return explicit, ""
+    return "", explicit
+
+
+def _assignment_agent_from_text(
+    text: str,
+    aliases: dict[str, tuple[str, ...]],
+) -> str:
+    normalized = _normalize(text)
+    if not normalized:
+        return ""
+    prefixes = ("to", "to the", "with", "with the")
+    for agent, names in aliases.items():
+        for name in (agent, *names):
+            if any(_contains_token(normalized, f"{prefix} {name}") for prefix in prefixes):
+                return agent
+    exact = _known_assignment_agent(text, aliases)
+    if not exact:
+        exact = _known_assignment_agent(_strip_leading_articles(normalized), aliases)
+    if exact:
+        return exact
+    match = re.search(
+        r"\b(?:to|with)(?:\s+the)?\s+([a-z][a-z0-9._-]*)\b",
+        normalized,
+    )
+    if match:
+        return _known_assignment_agent(match.group(1), aliases)
+    return ""
+
+
+def _strip_leading_articles(text: str) -> str:
+    return re.sub(r"^(?:the|a|an)\s+", "", (text or "").strip(), count=1)
+
+
+def _known_assignment_agent(
+    value: str,
+    aliases: dict[str, tuple[str, ...]],
+) -> str:
+    normalized = _normalize(value)
+    if not normalized:
+        return ""
+    collapsed = re.sub(r"[^a-z0-9._-]+", "", normalized)
+    compact = re.sub(r"[^a-z0-9]+", "", normalized)
+    for agent, names in aliases.items():
+        if normalized == agent or collapsed == agent:
+            return agent
+        if normalized in names or compact in {
+            re.sub(r"[^a-z0-9]+", "", _normalize(name)) for name in names
+        }:
+            return agent
+    for agent, names in _AGENT_ALIASES.items():
+        if normalized == agent or collapsed == agent:
+            return agent
+        if normalized in names or compact in {
+            re.sub(r"[^a-z0-9]+", "", _normalize(name)) for name in names
+        }:
+            return agent
+    return ""
+
+
 def _agent_candidate(raw: str, *, allow_all: bool, allow_custom: bool) -> str:
     value = (raw or "").strip()
     if not value:
@@ -840,16 +937,39 @@ def classify_intent(
             schedule=schedule,
             params=params,
             confidence=confidence,
-            clarification=_clarify_for_agent_action(action, agent, schedule),
+            clarification=clarify_for_agent_action(action, agent, schedule),
         )
 
     if action in MUTATING_ACTIONS:
-        clarification = _clarify_for_mutating(action, repo, issue, candidates)
+        model_agent = ""
+        agent = ""
+        unsupported_assignment_agent = ""
+        if action == ACTION_ASSIGN:
+            model_agent = str(
+                parsed.get("agent") or parsed.get("codename") or parsed.get("target") or ""
+            ).strip()
+            if model_agent:
+                params["model_agent"] = model_agent
+            agent, unsupported_assignment_agent = resolve_assignment_agent(
+                text,
+                model_agent=model_agent,
+            )
+            if agent:
+                params["assignment_agent"] = agent
+            if unsupported_assignment_agent:
+                params["unsupported_assignment_agent"] = unsupported_assignment_agent
+        clarification = clarify_for_mutating(action, repo, issue, candidates)
+        if action == ACTION_ASSIGN and not clarification and unsupported_assignment_agent:
+            clarification = (
+                "I can route GitHub issues to Batman · Architect or "
+                "Lucius · Senior Developer. Which lane should handle "
+                f"`{repo}#{issue}`?"
+            )
         return Intent(
             action=action,
             repo=repo,
             issue=issue,
-            agent="",
+            agent=agent,
             schedule="",
             params=params,
             confidence=confidence,
@@ -868,7 +988,7 @@ def classify_intent(
     )
 
 
-def _clarify_for_mutating(action: str, repo: str, issue: int | None, candidates: list[str]) -> str:
+def clarify_for_mutating(action: str, repo: str, issue: int | None, candidates: list[str]) -> str:
     """Return a clarifying question for a mutating intent, or "" if ready.
 
     A mutating action needs an unambiguous repo AND issue. If the repo is
@@ -906,7 +1026,7 @@ def _clarify_for_mutating(action: str, repo: str, issue: int | None, candidates:
     return ""
 
 
-def _clarify_for_agent_action(action: str, agent: str, schedule: str = "") -> str:
+def clarify_for_agent_action(action: str, agent: str, schedule: str = "") -> str:
     """Return a clarifying question for an agent-control intent, if needed."""
     if agent and (action != ACTION_SCHEDULE_AGENT or schedule):
         return ""
@@ -1210,6 +1330,8 @@ __all__ = [
     "ambient_enabled",
     "ambient_engages",
     "build_intent_prompt",
+    "clarify_for_agent_action",
+    "clarify_for_mutating",
     "classify_intent",
     "default_intent_engine_invoke",
     "looks_like_followup_reference",
