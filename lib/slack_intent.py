@@ -847,11 +847,11 @@ def classify_intent(
             schedule=schedule,
             params=params,
             confidence=confidence,
-            clarification=_clarify_for_agent_action(action, agent, schedule),
+            clarification=clarify_for_agent_action(action, agent, schedule),
         )
 
     if action in MUTATING_ACTIONS:
-        clarification = _clarify_for_mutating(action, repo, issue, candidates)
+        clarification = clarify_for_mutating(action, repo, issue, candidates)
         return Intent(
             action=action,
             repo=repo,
@@ -875,7 +875,7 @@ def classify_intent(
     )
 
 
-def _clarify_for_mutating(action: str, repo: str, issue: int | None, candidates: list[str]) -> str:
+def clarify_for_mutating(action: str, repo: str, issue: int | None, candidates: list[str]) -> str:
     """Return a clarifying question for a mutating intent, or "" if ready.
 
     A mutating action needs an unambiguous repo AND issue. If the repo is
@@ -913,7 +913,7 @@ def _clarify_for_mutating(action: str, repo: str, issue: int | None, candidates:
     return ""
 
 
-def _clarify_for_agent_action(action: str, agent: str, schedule: str = "") -> str:
+def clarify_for_agent_action(action: str, agent: str, schedule: str = "") -> str:
     """Return a clarifying question for an agent-control intent, if needed."""
     if agent and (action != ACTION_SCHEDULE_AGENT or schedule):
         return ""
@@ -1217,6 +1217,8 @@ __all__ = [
     "ambient_enabled",
     "ambient_engages",
     "build_intent_prompt",
+    "clarify_for_agent_action",
+    "clarify_for_mutating",
     "classify_intent",
     "default_intent_engine_invoke",
     "looks_like_followup_reference",

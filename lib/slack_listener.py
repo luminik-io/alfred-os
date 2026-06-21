@@ -59,10 +59,10 @@ from slack_intent import (
     ConversationContext,
     Intent,
     RepoCatalog,
-    _clarify_for_agent_action,
-    _clarify_for_mutating,
     ambient_enabled,
     ambient_engages,
+    clarify_for_agent_action,
+    clarify_for_mutating,
     classify_intent,
     default_intent_engine_invoke,
     looks_like_followup_reference,
@@ -518,7 +518,7 @@ class SlackPlanningListener:
                 "clarification_root": turn.text,
             },
             confidence=1.0,
-            clarification=_clarify_for_mutating(turn.action, repo, issue, candidates),
+            clarification=clarify_for_mutating(turn.action, repo, issue, candidates),
         )
         self._conversation.record(
             event.conversation_id,
@@ -557,7 +557,7 @@ class SlackPlanningListener:
                 "clarification_root": turn.text,
             },
             confidence=1.0,
-            clarification=_clarify_for_agent_action(turn.action, agent, schedule),
+            clarification=clarify_for_agent_action(turn.action, agent, schedule),
         )
         self._conversation.record(
             event.conversation_id,
@@ -909,9 +909,7 @@ class SlackPlanningListener:
         resolved_issue = intent.issue if intent.issue is not None else prev_issue
         # Re-derive the clarification against the now-augmented entities so a
         # borrowed-but-still-incomplete target still asks rather than guesses.
-        from slack_intent import _clarify_for_mutating
-
-        clarification = _clarify_for_mutating(intent.action, prev_repo, resolved_issue, [])
+        clarification = clarify_for_mutating(intent.action, prev_repo, resolved_issue, [])
         return Intent(
             action=intent.action,
             repo=prev_repo,
