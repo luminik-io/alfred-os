@@ -785,7 +785,8 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
         "ALFRED_TELEMETRY_URL": url,
     }
     replacement_token = (args.token or "").strip()
-    token = (replacement_token or current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
+    current_token = (current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
+    token = (replacement_token or current_token).strip()
     if token and (not args.clear_token or replacement_token):
         values["ALFRED_TELEMETRY_TOKEN"] = token
     if args.clear_token:
@@ -799,8 +800,8 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
             _delete_telemetry_state_token()
             _delete_telemetry_install_id()
         else:
-            retry_token = token or _read_telemetry_state_token()
-            if retry_token and not replacement_token:
+            retry_token = current_token or _read_telemetry_state_token()
+            if retry_token:
                 values["ALFRED_TELEMETRY_TOKEN"] = retry_token
                 retry_url = str(clear_values.get("ALFRED_TELEMETRY_URL") or "").strip()
                 if retry_url:

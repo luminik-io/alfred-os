@@ -432,6 +432,52 @@ def test_telemetry_on_clear_token_keeps_old_endpoint_pair_when_switch_clear_fail
     assert "ALFRED_TELEMETRY_TOKEN=old-token" in rc_text
 
 
+def test_telemetry_on_clear_token_keeps_old_pair_when_replacement_clear_fails(tmp_path):
+    old_server, old_received = _capture_server(status=500)
+    new_server, new_received = _capture_server()
+    old_url = f"http://127.0.0.1:{old_server.server_port}/ingest"
+    new_url = f"http://127.0.0.1:{new_server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(
+        f"ALFRED_TELEMETRY_URL={old_url}\nALFRED_TELEMETRY_TOKEN=old-token\n",
+        encoding="utf-8",
+    )
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--token",
+            "new-token",
+            "--url",
+            new_url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        old_server.shutdown()
+        new_server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert len(old_received) == 1
+    assert new_received == []
+    assert old_received[0]["token"] == "old-token"
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={old_url}" in rc_text
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in rc_text
+    assert "new-token" not in rc_text
+
+
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
     alfredrc = tmp_path / ".alfredrc"
     agents_conf = tmp_path / "agents.conf"
