@@ -21,6 +21,7 @@ if str(LIB) not in sys.path:
 
 import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from fleet_brain import Lesson  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
 
@@ -169,47 +170,50 @@ def test_api_memory_candidates_promote_and_reject(
             self.calls.append(("list", (status, limit)))
             return [
                 {
-                    "id": 101,
+                    "id": "01JYS9RY6W0M3T5J6QAF8D4P8B",
                     "source": "slack",
                     "agent": "lucius",
                     "repo": "example-org/alfred",
                     "topic": "planning",
                     "body": "Keep Slack memories reviewable.",
                     "evidence": [{"source": "slack"}],
-                    "status": "pending",
+                    "status": "candidate",
                     "created_at": datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
                 }
             ]
 
         def promote_memory_candidate(
             self,
-            candidate_id: int,
+            candidate_id: str,
             *,
             reviewer: str,
-            note: str = "",
-        ) -> dict[str, object] | None:
-            self.calls.append(("promote", (candidate_id, reviewer, note)))
-            return {
-                "id": candidate_id,
-                "agent": "lucius",
-                "repo": "example-org/alfred",
-                "status": "promoted",
-            }
+            review_note: str = "",
+        ) -> Lesson:
+            self.calls.append(("promote", (candidate_id, reviewer, review_note)))
+            return Lesson(
+                id=f"lesson:memory_candidate:{candidate_id}",
+                codename="lucius",
+                repo="example-org/alfred",
+                body="Keep Slack memories reviewable.",
+                tags=[],
+                created_at=datetime(2026, 5, 30, 12, 5, tzinfo=UTC),
+                firing_id=None,
+            )
 
         def reject_memory_candidate(
             self,
-            candidate_id: int,
+            candidate_id: str,
             *,
             reviewer: str,
-            note: str = "",
+            review_note: str = "",
         ) -> dict[str, object] | None:
-            self.calls.append(("reject", (candidate_id, reviewer, note)))
+            self.calls.append(("reject", (candidate_id, reviewer, review_note)))
             return {
                 "id": candidate_id,
                 "agent": "lucius",
                 "repo": "example-org/alfred",
                 "status": "rejected",
-                "review_note": note,
+                "review_note": review_note,
             }
 
     brain = FakeBrain()
@@ -219,7 +223,8 @@ def test_api_memory_candidates_promote_and_reject(
     candidates = client.get("/api/memory/candidates")
     assert candidates.status_code == 200
     rows = candidates.json()["rows"]
-    assert rows[0]["id"] == "101"
+    candidate_id = "01JYS9RY6W0M3T5J6QAF8D4P8B"
+    assert rows[0]["id"] == candidate_id
     assert rows[0]["codename"] == "lucius"
     assert rows[0]["status"] == "candidate"
     assert rows[0]["tags"] == []
@@ -228,19 +233,24 @@ def test_api_memory_candidates_promote_and_reject(
     assert rows[0]["source_firing_id"] is None
     assert json.loads(rows[0]["evidence"]) == [{"source": "slack"}]
     assert rows[0]["created_at"].endswith("+00:00")
-    assert brain.calls[0] == ("list", ("pending", 50))
+    assert brain.calls[0] == ("list", ("candidate", 50))
+
+    retired = client.get("/api/memory/candidates?status=retired")
+    assert retired.status_code == 200
+    assert brain.calls[1] == ("list", ("retired", 50))
 
     promoted = client.post(
-        "/api/memory/candidates/101/promote",
+        f"/api/memory/candidates/{candidate_id}/promote",
         json={"reviewer": "operator", "note": "useful"},
         headers=_auth_headers(state),
     )
     assert promoted.status_code == 200
-    assert promoted.json()["lesson_id"] == "lesson:memory_candidate:101"
+    assert promoted.json()["lesson_id"] == f"lesson:memory_candidate:{candidate_id}"
     assert promoted.json()["status"] == "validated"
+    assert promoted.json()["codename"] == "lucius"
 
     rejected = client.post(
-        "/api/memory/candidates/101/reject",
+        f"/api/memory/candidates/{candidate_id}/reject",
         json={"reviewer": "operator", "note": "too broad"},
         headers=_auth_headers(state),
     )
@@ -268,7 +278,7 @@ def test_api_memory_candidate_value_error_is_bad_request(
             return {"ok": True}
 
         def promote_memory_candidate(
-            self, candidate_id: int, *, reviewer: str, note: str = ""
+            self, candidate_id: str, *, reviewer: str, review_note: str = ""
         ) -> dict[str, object] | None:
             raise ValueError(marker)
 
@@ -287,6 +297,32 @@ def test_api_memory_candidate_value_error_is_bad_request(
     _assert_no_exc_leak(body, marker)
 
 
+def test_api_memory_candidate_colon_id_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+
+    class Brain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def promote_memory_candidate(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("invalid id must not reach FleetBrain")
+
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (Brain(), None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/memory/candidates/lesson:memory_candidate:abc/promote",
+        json={"reviewer": "operator", "note": "bad"},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "memory candidate id is invalid"
+
+
 def test_api_memory_candidate_unknown_id_is_not_found(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -303,7 +339,7 @@ def test_api_memory_candidate_unknown_id_is_not_found(
             return {"ok": True}
 
         def reject_memory_candidate(
-            self, candidate_id: int, *, reviewer: str, note: str = ""
+            self, candidate_id: str, *, reviewer: str, review_note: str = ""
         ) -> dict[str, object] | None:
             raise ValueError(f"reject_memory_candidate: unknown candidate {candidate_id!r}")
 

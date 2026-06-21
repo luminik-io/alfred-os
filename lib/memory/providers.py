@@ -20,7 +20,7 @@ registry, never by editing this file -- Open-Closed.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -46,6 +46,11 @@ class FleetBrainProvider:
 
     brain: FleetBrain = field(default_factory=FleetBrain)
     name: str = "fleet"
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> FleetBrainProvider:
+        """Build the local operational ledger from the same env map as config."""
+        return cls(brain=FleetBrain.from_env(env))
 
     def recall(
         self,
@@ -125,9 +130,10 @@ class NullMemoryProvider:
 class ChainedMemoryProvider:
     """Consults a list of providers in order.
 
-    ``recall`` returns the first non-empty result; this lets the
-    operator prefer the fleet-brain (high-signal, fresh) and fall
-    through to a personal knowledge base for older context.
+    ``recall`` merges results from every readable provider in order. This keeps
+    the default ``redis,fleet`` chain honest: Redis provides semantic recall,
+    while freshly reviewed FleetBrain lessons still appear in prompts before a
+    separate Redis sync has run.
 
     ``reflect`` writes to the first provider that does not raise
     :class:`NotImplementedError`. Read-only providers later in the
@@ -155,6 +161,8 @@ class ChainedMemoryProvider:
         repo: str | None = None,
         limit: int = 5,
     ) -> list[Lesson]:
+        provider_lessons: list[list[Lesson]] = []
+        seen: set[str] = set()
         for provider in self.providers:
             try:
                 lessons = provider.recall(
@@ -171,14 +179,22 @@ class ChainedMemoryProvider:
                     provider.name,
                 )
                 continue
+            bucket: list[Lesson] = []
+            for lesson in lessons:
+                key = lesson.id or f"{lesson.codename}:{lesson.repo}:{lesson.body}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                bucket.append(lesson)
             if lessons:
                 _LOG.debug(
-                    "memory.chained: %r returned %d lesson(s); stopping",
+                    "memory.chained: %r returned %d lesson(s)",
                     provider.name,
                     len(lessons),
                 )
-                return lessons
-        return []
+            if bucket:
+                provider_lessons.append(bucket)
+        return _round_robin_lessons(provider_lessons, limit=max(1, int(limit)))
 
     def reflect(
         self,
@@ -213,3 +229,21 @@ class ChainedMemoryProvider:
         raise NotImplementedError(
             "ChainedMemoryProvider: no writable provider in chain"
         ) from last_error
+
+
+def _round_robin_lessons(provider_lessons: list[list[Lesson]], *, limit: int) -> list[Lesson]:
+    out: list[Lesson] = []
+    indexes = [0 for _ in provider_lessons]
+    while len(out) < limit:
+        added = False
+        for idx, lessons in enumerate(provider_lessons):
+            if indexes[idx] >= len(lessons):
+                continue
+            out.append(lessons[indexes[idx]])
+            indexes[idx] += 1
+            added = True
+            if len(out) >= limit:
+                break
+        if not added:
+            break
+    return out

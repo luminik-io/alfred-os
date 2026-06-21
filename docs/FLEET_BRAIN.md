@@ -1,12 +1,15 @@
-# fleet-brain: Alfred's memory layer
+# FleetBrain: Alfred's local operational ledger
 
-Alfred's brain is the per-host store of what the fleet has learned. Engine-aware firings that know their target repo can read from it (recall) and write to it (reflect). The next firing starts with the lessons relevant to its codename and repo prepended to the prompt.
+FleetBrain is Alfred's per-host operational ledger. Redis Agent Memory is the
+default recalled-lesson store; FleetBrain keeps the review queue, firing
+history, failure patterns, GitHub cache, file touches, and evidence that makes
+those lessons trustworthy.
 
-The brain is a single SQLite file in your `$ALFRED_HOME`. Raw lessons, prompts,
-paths, candidate text, and firing history stay on your machine. The normal
-outbound surface is the prompt context Alfred prepends to a firing, which goes
-to Claude Code or Codex on your existing CLI auth. If you configure Alfred's
-optional usage counter, it sends aggregate counts only and can be disabled with
+FleetBrain is a single SQLite file in your `$ALFRED_HOME`. Raw prompts, paths,
+candidate text, and firing history stay on your machine. The normal outbound
+surface is the prompt context Alfred prepends to a firing, which goes to Claude
+Code or Codex on your existing CLI auth. If you configure Alfred's usage
+counter, it sends anonymous aggregate counts only and can be disabled with
 `alfred telemetry off`.
 
 ## Why it exists
@@ -141,35 +144,38 @@ machine-readable reflection block; if the engine returns durable lessons,
 Alfred strips that block from the user-facing result and queues reviewable
 memory candidates in the fleet-brain.
 
-Memory is on by default through the in-tree `fleet` provider. To disable it:
+Runtime lesson recall is on by default through Redis Agent Memory Server, with
+FleetBrain behind it as the local review queue and operational ledger. To
+disable runtime recall and reflection:
 
 ```sh
 export ALFRED_MEMORY_PROVIDERS=null
 ```
 
-To chain a read-only personal knowledge base behind the fleet-brain:
+To keep the default Redis plus FleetBrain stack and add a read-only personal
+knowledge base behind it:
 
 ```sh
-export ALFRED_MEMORY_PROVIDERS=fleet,gbrain
+export ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain
 export ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 ```
 
-To add an already-running Redis Agent Memory Server as an optional fallback:
+To point Alfred at a different Redis Agent Memory Server:
 
 ```sh
-export ALFRED_MEMORY_PROVIDERS=fleet,redis
-export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
+export ALFRED_MEMORY_PROVIDERS=redis,fleet
+export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:9090
 export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ```
 
-The fleet-brain remains the first writable provider, so reflection never writes
-to the optional fallback unless you put that fallback before `fleet` in
-`ALFRED_MEMORY_PROVIDERS`.
+Keep `fleet` in the chain unless you are deliberately running without local
+candidate review, firing logs, GitHub cache, worker heartbeats, and telemetry
+inputs.
 
-Use `alfred brain redis-status` to check Redis AMS health. Use
-`alfred brain redis-sync --dry-run` before `alfred brain redis-sync` to mirror
-reviewed local lessons into Redis. Sync is explicit by design: unreviewed
-memory candidates and raw event logs stay local.
+Use `alfred brain ams-status` or `alfred brain redis-status` to check the local
+Agent Memory Server. Use `alfred brain redis-sync --dry-run` before
+`alfred brain redis-sync` to carry older reviewed local lessons into Redis.
+Unreviewed memory candidates and raw event logs stay local.
 
 By default, engine-returned reflection blocks go to the review queue. If you
 want trusted operator-only runs to write lessons directly, set:
@@ -311,7 +317,7 @@ GC controls:
 
 - `lib/fleet_brain/schema.py`: `CREATE TABLE IF NOT EXISTS` statements. Idempotent on every connection.
 - `lib/fleet_brain/store.py`: `Store` Protocol plus the `SQLiteStore` implementation. Connections are short-lived (per call); the `:memory:` path caches a single handle for test ergonomics.
-- `lib/fleet_brain/__init__.py`: the public `FleetBrain` class. Dependency-inverted on `Store` so a future PGLite/AGE-backed implementation drops in.
+- `lib/fleet_brain/__init__.py`: the public `FleetBrain` class. Dependency-inverted on `Store` so operational storage can change without touching runners.
 - `bin/alfred-brain.py`: Alfred CLI.
 - `bin/alfred-mcp.py`: read-only JSON-RPC stdio bridge.
 - `bin/fleet-ingest.py`: outbox drainer.
@@ -353,9 +359,9 @@ prompt context. Promotion and rejection stay operator-only. Alfred Desktop
 uses the same local candidate queue through `alfred serve`, so Slack, CLI, and
 client review the same rows. `memory harvest` previews repeated-failure lessons
 from the reliability governor; `memory harvest now` queues those lessons as
-reviewable candidates. `memory redis` checks the optional Redis Agent Memory
-Server bridge, and `memory sync` previews a one-way sync of reviewed local
-lessons. `memory sync now` is the explicit Redis write path.
+reviewable candidates. `memory redis` checks the Redis Agent Memory Server, and
+`memory sync` previews a one-way sync of reviewed local lessons.
+`memory sync now` is the explicit Redis write path.
 
 If `memory-harvest.py` is scheduled, it simply performs the `memory harvest now`
 write step for repeated failures. It still only creates candidates, so the Slack
@@ -363,10 +369,10 @@ review loop is unchanged.
 
 ## What to build next
 
-The v1 brain is intentionally small: local lessons, file touches, failure
-events, reviewable candidates, repeated-failure classification, and read-only
-MCP access. The useful next work is not "more storage"; it is closing feedback
-loops:
+FleetBrain is intentionally small: file touches, failure events, reviewable
+memory candidates, repeated-failure classification, GitHub cache, worker
+heartbeats, and read-only MCP access. The useful next work is not "more
+storage"; it is closing feedback loops:
 
 1. **Evidence-linked lesson promotion.** Every promoted lesson should point to
    the firing, PR, issue, file touch, or operator note that made it trustworthy.
@@ -374,37 +380,23 @@ loops:
 2. **Action execution for governor findings.** The governor now proposes
    actions; a future pass should let the operator approve safe follow-ups such
    as filing a setup issue or pausing one codename.
-3. **Spec and bundle memory.** Planning drafts now queue candidates; next,
+3. **Spec and bundle evidence.** Planning drafts now queue candidates; next,
    Batman and specs-driven workflows should remember which specs generated
    which issues, which PRs landed, and which acceptance criteria needed
    follow-up.
-4. **Semantic recall.** Substring matching is enough for v1. v2 should support
-   query-based recall across lessons, plans, and failure summaries. Operators
-   who already run Redis AMS can pilot that shape through the optional `redis`
-   provider before Alfred grows a default semantic backend.
-5. **Memory quality gates.** Candidate promotion should run lightweight checks:
+4. **Memory quality gates.** Candidate promotion should run lightweight checks:
    no secrets, source attached, confidence present, not contradicted by a newer
    lesson, and scoped to a codename/repo when possible.
 
-## v2 direction: PGLite + Apache AGE
+## FleetBrain direction
 
-The public v1 brain is SQLite-first. A future storage backend can use PGLite
-(Postgres in WASM), Apache AGE, and pgvector behind the same `Store` boundary
-when Alfred needs:
+FleetBrain remains the local operational ledger. Keep it boring unless the
+operational evidence outgrows a single-host SQLite store. If that day comes,
+the `Store` boundary is the place to change storage without touching agent
+runners.
 
-- Cypher graph traversal (cross-firing blast-radius, cross-repo dependency walks).
-- Bi-temporal queries (`valid_from`, `valid_to`, `recorded_from`, `recorded_to` on every vertex and edge).
-- Semantic recall via 1024-d vector embeddings.
-- Richer MCP tools for graph and semantic recall.
-
-It also drags in a Node.js process tree, an AGE migration story, and a bridge daemon. The v1 SQLite brain is a deliberate scope cut: same entity model, same public API, no graph or vector layer. The `Store` Protocol means swapping in a PGLite-backed implementation later does not touch `FleetBrain` or the runners.
-
-What is deferred to v2:
-
-- AGE graph queries (`MATCH (a:Agent)-[:FIRED_AS]->(f:Firing)` and friends).
-- Vector embeddings for semantic recall (`brain.recall(query="graphql auth")`).
-- Bi-temporal columns on every entity.
-- HTTP bridge so non-Python tooling can read the brain.
+Do not add a graph database or vector layer to FleetBrain for recalled lessons.
+That job belongs to Redis Agent Memory.
 
 See `ROADMAP.md` and the site roadmap for current status.
 

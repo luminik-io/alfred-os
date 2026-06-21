@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 # real cause in the runtime logs.
 _GENERIC_ERROR = "internal error"
 
-_MEMORY_ID_RE = re.compile(r"^[0-9]{1,18}$")
+_MEMORY_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _LOCAL_CLIENT_USER_ID = "ULOCALCLIENT"
 
 # Header the native client attaches to every state-mutating POST. It carries
@@ -811,10 +811,9 @@ def register_routes(app: FastAPI) -> None:
     ) -> JSONResponse:
         if status not in {
             "candidate",
-            "pending",
             "validated",
-            "promoted",
             "rejected",
+            "retired",
             "all",
         }:
             return JSONResponse({"error": "unknown memory candidate status"}, status_code=400)
@@ -1349,10 +1348,6 @@ def _candidate_to_api(candidate: Any) -> dict[str, Any]:
     if isinstance(payload, dict):
         if payload.get("agent") and not payload.get("codename"):
             payload["codename"] = payload["agent"]
-        if payload.get("status") == "pending":
-            payload["status"] = "candidate"
-        elif payload.get("status") == "promoted":
-            payload["status"] = "validated"
         if payload.get("id") is not None:
             payload["id"] = str(payload["id"])
         if not isinstance(payload.get("tags"), list):
@@ -1377,11 +1372,14 @@ def _candidate_to_api(candidate: Any) -> dict[str, Any]:
 def _memory_status_filter(status: str) -> str | None:
     if status == "all":
         return None
-    if status == "candidate":
-        return "pending"
-    if status == "validated":
-        return "promoted"
     return status
+
+
+def _lesson_field(lesson: Any, key: str) -> Any:
+    payload = _jsonable(asdict(lesson) if is_dataclass(lesson) else lesson)
+    if isinstance(payload, dict):
+        return payload.get(key)
+    return None
 
 
 def _memory_brain(
@@ -1422,26 +1420,27 @@ async def _api_memory_candidate_action(
     try:
         if action == "promote":
             lesson = brain.promote_memory_candidate(
-                int(candidate_id),
+                candidate_id,
                 reviewer=reviewer,
-                note=note,
+                review_note=note,
             )
             if lesson is None:
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)
             return JSONResponse(
                 {
                     "candidate_id": candidate_id,
-                    "lesson_id": f"lesson:memory_candidate:{candidate_id}",
+                    "lesson_id": _lesson_field(lesson, "id")
+                    or f"lesson:memory_candidate:{candidate_id}",
                     "status": "validated",
-                    "codename": lesson.get("agent"),
-                    "repo": lesson.get("repo"),
+                    "codename": _lesson_field(lesson, "codename") or _lesson_field(lesson, "agent"),
+                    "repo": _lesson_field(lesson, "repo"),
                 }
             )
         if action == "reject":
             candidate = brain.reject_memory_candidate(
-                int(candidate_id),
+                candidate_id,
                 reviewer=reviewer,
-                note=note,
+                review_note=note,
             )
             if candidate is None:
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)

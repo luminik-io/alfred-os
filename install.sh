@@ -174,6 +174,10 @@ install_darwin_packages() {
   ok "brew $(brew --version | head -1)"
 
   step "Installing CLI dependencies"
+  if ! brew tap | grep -qx "redis-stack/redis-stack"; then
+    note "brew tap redis-stack/redis-stack"
+    brew tap redis-stack/redis-stack >/dev/null
+  fi
   local pkg
   declare -a packages=(
     git
@@ -183,6 +187,8 @@ install_darwin_packages() {
     python@3.11
     node
     uv
+    redis-stack-server
+    ollama
   )
   for pkg in "${packages[@]}"; do
     if brew list --formula | grep -q "^${pkg%@*}\$"; then
@@ -201,7 +207,7 @@ install_linux_packages() {
   # no apt package, so it installs from the official script below. AWS CLI v2
   # is intentionally not auto-installed: apt's awscli is v1.x and scheduled
   # fleet jobs that touch AWS want v2.
-  local apt_pkgs="ca-certificates curl gnupg git jq python3-venv python3-pip nodejs npm"
+  local apt_pkgs="ca-certificates curl gnupg git jq python3-venv python3-pip nodejs npm redis-tools"
   note "apt-get update"
   ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get update -qq
   note "apt-get install -y ${apt_pkgs}"
@@ -248,6 +254,48 @@ install_linux_packages() {
       *":$HOME/.local/bin:"*) ;;
       *) PATH="$HOME/.local/bin:$PATH"; export PATH ;;
     esac
+  fi
+
+  # Redis Agent Memory Server needs Redis Stack because vector search depends
+  # on RediSearch. Do not install the distro redis-server here; it can occupy
+  # 127.0.0.1:6379 before Redis Stack starts.
+  if ! command -v redis-stack-server >/dev/null 2>&1; then
+    note "installing Redis Stack from packages.redis.io"
+    if curl -fsSL https://packages.redis.io/gpg \
+      | ${SUDO} gpg --batch --yes --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg 2>/dev/null; then
+      local redis_codename="bookworm"
+      if [[ -r /etc/os-release ]]; then
+        # shellcheck disable=SC1091
+        redis_codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-bookworm}")"
+      fi
+      echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb ${redis_codename} main" \
+        | ${SUDO} tee /etc/apt/sources.list.d/redis.list >/dev/null
+      ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get update -qq || true
+      if ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get install -y redis-stack-server >/dev/null 2>&1; then
+        ok "redis-stack-server installed"
+      else
+        warn "Redis Stack install failed; Alfred memory needs redis-stack-server for semantic search."
+      fi
+    else
+      warn "Could not add the Redis apt repo; install redis-stack-server manually for Alfred memory."
+    fi
+  fi
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    if [[ "${ALFRED_INSTALL_OLLAMA:-}" == "1" ]]; then
+      note "installing Ollama for local memory embeddings"
+      local ollama_install
+      ollama_install="$(mktemp)"
+      if curl -fsSL https://ollama.com/install.sh -o "$ollama_install" && sh "$ollama_install"; then
+        ok "ollama installed"
+        rm -f "$ollama_install"
+      else
+        rm -f "$ollama_install"
+        warn "Ollama install failed; install Ollama and run 'ollama pull mxbai-embed-large' and 'ollama pull llama3.2:1b'."
+      fi
+    else
+      warn "Ollama is not installed. Install it manually, or re-run with ALFRED_INSTALL_OLLAMA=1 to use Ollama's official install script."
+    fi
   fi
 
   # python3.11 via uv when the distro did not ship it. Keeps the runtime off
@@ -358,6 +406,36 @@ else
   else
     warn "venv install reported success but imports fail; check $ALFRED_VENV manually"
   fi
+fi
+
+# --------------------------------------------------------------------------
+# 5c. Redis Agent Memory Server
+# --------------------------------------------------------------------------
+step "Redis Agent Memory Server"
+AMS_SPEC="${ALFRED_AMS_UVX_SPEC:-git+https://github.com/redis-developer/agent-memory-server.git}"
+if command -v agent-memory >/dev/null 2>&1; then
+  ok "agent-memory already installed"
+elif command -v uv >/dev/null 2>&1; then
+  note "uv tool install --python 3.12 $AMS_SPEC"
+  if uv tool install --python 3.12 "$AMS_SPEC" >/dev/null 2>&1; then
+    ok "agent-memory installed"
+  else
+    warn "Could not install agent-memory now; ams-launch.sh will fall back to uvx at runtime."
+  fi
+else
+  warn "uv not on PATH; install agent-memory manually for Redis-backed memory."
+fi
+
+if command -v ollama >/dev/null 2>&1; then
+  for ollama_model in mxbai-embed-large llama3.2:1b; do
+    if ollama list 2>/dev/null | grep -q "^${ollama_model}"; then
+      ok "$ollama_model already pulled"
+    elif ollama pull "$ollama_model" >/dev/null 2>&1; then
+      ok "$ollama_model pulled"
+    else
+      warn "Could not pull $ollama_model; Redis memory needs this local model."
+    fi
+  done
 fi
 
 # --------------------------------------------------------------------------
@@ -512,7 +590,8 @@ Next steps (run them in this order):
        See ${C_BLUE}${SLACK_DOC}${C_OFF}
 
   4. Deploy the framework + verify (deploy.sh self-detects the host
-     scheduler: launchd plists on macOS, systemd --user timers on Linux):
+     scheduler: launchd plists on macOS, systemd --user timers on Linux).
+     Deploy also starts the local Redis Agent Memory Server:
        ${C_BLUE}${DEPLOY_CMD}${C_OFF}
        ${C_BLUE}${DOCTOR_CMD}${C_OFF}
 

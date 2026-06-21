@@ -340,7 +340,7 @@ from chat by **leading a message with a known verb**. These are handled by
 | `memory reject <id>` | Operator-only. Reject a noisy candidate. |
 | `memory harvest` | Preview repeated-failure lessons from the reliability governor. |
 | `memory harvest now` | Operator-only. Queue harvested lessons as reviewable candidates. |
-| `memory redis` | Check the optional Redis Agent Memory Server bridge. |
+| `memory redis` | Check the Redis Agent Memory Server. |
 | `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
 | `memory sync now` | Operator-only. Write reviewed lessons to Redis AMS. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |

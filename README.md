@@ -224,15 +224,16 @@ Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, t
 
 Alfred core does not install or run an external agent gateway, hosted memory
 database, skill registry, or dashboard service. The fleet works with local
-Python scripts, `gh`, `git`, the local fleet-brain SQLite store, and the
-configured LLM CLIs.
+Python scripts, `gh`, `git`, configured LLM CLIs, a loopback Redis Agent Memory
+Server for recalled lessons, and FleetBrain for the local review and reliability
+ledger.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
 where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
 worktrees live. Alfred uses `ALFRED_HOME` only for its runtime path.
 
-Companion layers can be useful around Alfred, but they are not bundled and must
-not be required for a clean OSS install. See
+Companion layers can be useful around Alfred, but they must not be required for
+a clean OSS install unless the installer starts and verifies them locally. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the boundary.
 
 Alfred provides the repeatable local fleet pattern: schedules, worktrees, issue
@@ -337,7 +338,7 @@ Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 - [Architecture](ARCHITECTURE.md): design rationale.
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
-- [Fleet brain](docs/FLEET_BRAIN.md): local memory, Slack-driven reviewable lesson candidates, failure history, reliability governor, explicit Redis AMS sync, and read-only MCP access.
+- [Memory](docs/MEMORY_PROVIDERS.md): Redis Agent Memory for recalled lessons, local FleetBrain for the operational ledger and review queue, Slack-driven memory review, failure history, reliability governor, and read-only MCP access.
 - [Alfred Desktop](docs/NATIVE_CLIENT.md): Mac/Linux app, Slack-native boundary, the usage capacity rail (backed by the live `GET /api/usage` endpoint), cinematic agent roster, and local API shape.
 - [Desktop app guide](docs/DESKTOP_CLIENT.md): the desktop app tab by tab, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the `alfred serve` API, and building native installers.
 - [Alfred analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, `alfred usage`, and `alfred slack-listener`.
@@ -392,7 +393,7 @@ v0.5.1 carries the first signed macOS desktop app and Linux desktop packages (bu
 live Claude and Codex subscription usage in that app, a single-repo
 approval gate, a disk guardian that pauses your agents cleanly when the
 disk is nearly full, a Slack planning path that turns an approved draft into a
-labeled GitHub issue, fleet-brain reliability and memory tooling, one-command
+labeled GitHub issue, Redis-backed memory, FleetBrain reliability tooling, one-command
 setup-token bootstrap, a public download page, and SEO plus consent-gated
 analytics on the site. See
 [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.

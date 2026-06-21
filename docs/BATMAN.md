@@ -303,10 +303,11 @@ The Slack approval gate also reads these (from `slack_approval`):
 | `approval-gate` | yes | yes, according to `BATMAN_APPROVAL_MODE` | only after approval |
 | `1` | yes | no | yes, immediately |
 
-The default (`0`) preserves the historical Alfred behaviour: Batman
-drafts a plan and stops. Users who want autonomy opt into
-`approval-gate` (recommended) or `1` (only when you trust the parent
-issues already).
+Fresh installs should use `approval-gate` when Batman is enabled: Batman drafts
+the rollout, waits for the configured approval surface, and then files the child
+issues. `0` is the manual safety mode for teams that want Batman to stop after
+the plan. `1` files immediately and should be reserved for trusted parent
+issues.
 
 ## Safety story
 

@@ -1,15 +1,15 @@
 ---
-title: Fleet brain
-description: "Alfred's local memory layer: lessons, reviewable candidates, failure history, and read-only MCP access."
+title: FleetBrain
+description: "Alfred's local operational ledger: reviewable memory candidates, failure history, GitHub cache, file touches, and read-only MCP access."
 ---
 
-Alfred's fleet brain is the per-host store of what the fleet has learned. It is
-not a cloud service and it is not a hidden agent loop. It is a local SQLite file
-under `$ALFRED_HOME/fleet-brain.db`, read and written by short-lived firings.
+FleetBrain is Alfred's per-host operational ledger. It is not a cloud service
+and it is not a hidden agent loop. It is a local SQLite file under
+`$ALFRED_HOME/fleet-brain.db`, read and written by short-lived firings.
 
-Engine-aware runners recall up to three relevant lessons before invoking the
-configured engine. After the firing, they can reflect durable lessons back into
-the brain. Operators can choose direct writes, a review queue, or memory off.
+Redis Agent Memory is the default recalled-lesson store. FleetBrain keeps the
+review queue, firing history, failure patterns, GitHub cache, file touches, and
+evidence that makes those lessons trustworthy.
 
 Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/FLEET_BRAIN.md).
 
@@ -29,7 +29,7 @@ Full source doc: [`docs/FLEET_BRAIN.md`](https://github.com/luminik-io/alfred-os
 
 The important distinction: state files under `$ALFRED_HOME/state/` tell Alfred
 what is paused, claimed, blocked, or recently run. The fleet brain stores
-lessons and history that should influence future firings.
+review queues and history that should influence future firings.
 
 ## Operator commands
 
@@ -54,7 +54,9 @@ alfred brain doctor
 alfred mcp serve
 ```
 
-Runtime memory is on by default through the local `fleet` provider. Turn it off:
+Runtime memory is on by default through `redis,fleet`: Redis handles recalled
+lessons, and FleetBrain keeps the local review and reliability ledger. Turn
+runtime recall off:
 
 ```sh
 export ALFRED_MEMORY_PROVIDERS=null
@@ -71,7 +73,7 @@ Then use `alfred brain candidates` to promote useful lessons and reject noisy
 ones. Set `ALFRED_MEMORY_REFLECTION_MODE=direct` only for trusted local
 runs where direct lesson writes are intentional.
 
-If you already run Redis Agent Memory Server, keep it optional and explicit:
+Check the local memory server:
 
 ```sh
 alfred brain redis-status
@@ -127,9 +129,9 @@ memory sync
 rejection stay explicit. Alfred Desktop uses the same local candidate
 queue through `alfred serve`, so Slack, CLI, and client review the same rows.
 `memory harvest` previews repeated-failure lessons and `memory harvest now`
-queues them as candidates. Redis Agent Memory Server stays optional and
-explicit: check it with `memory redis`, preview reviewed-lesson sync with
-`memory sync`, and write only with `memory sync now`.
+queues them as candidates. Check Redis Agent Memory Server with `memory redis`,
+preview reviewed-lesson sync with `memory sync`, and write carried-forward
+reviewed lessons with `memory sync now`.
 
 For unattended fleets, schedule `memory-harvest.py` from launchd or systemd. It
 queues the same reviewable repeated-failure candidates and nudges Slack only
