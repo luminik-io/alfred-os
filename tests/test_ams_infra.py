@@ -50,6 +50,13 @@ def test_ams_launcher_starts_ollama_and_falls_back_to_uvx() -> None:
     assert "agent-memory-server.git" in text
 
 
+def test_ams_launcher_registers_token_before_api_start() -> None:
+    text = AMS_LAUNCH.read_text()
+
+    assert "writes the bcrypt-hashed token record directly to Redis" in text
+    assert text.index("agent-memory token add") < text.index("AMS_API_ARGS=(api")
+
+
 def test_deploy_starts_ams_as_host_service() -> None:
     text = DEPLOY_SH.read_text()
 

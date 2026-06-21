@@ -171,6 +171,8 @@ if [ "${AUTH_MODE:-disabled}" = "token" ]; then
     echo "[ams-launch] ALFRED_AMS_AUTH_MODE=token requires ALFRED_AMS_TOKEN" >&2
     exit 6
   fi
+  # agent-memory token add writes the bcrypt-hashed token record directly to Redis.
+  # The API process reads that record on startup, so it does not need to be running yet.
   if ! run_agent_memory_cli token add --description "Alfred local AMS" --token "$ALFRED_AMS_TOKEN" --format json >/dev/null; then
     echo "[ams-launch] could not register ALFRED_AMS_TOKEN with agent-memory token add" >&2
     exit 6
