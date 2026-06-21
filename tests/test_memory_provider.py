@@ -31,7 +31,9 @@ sys.path.insert(0, str(_REPO / "lib"))
 
 from fleet_brain import FleetBrain, Lesson, Severity, SQLiteStore  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
+from memory.ams_server import AMS_DEFAULTS, AmsServerConfig, ams_server_env  # noqa: E402
 from memory.config import (  # noqa: E402
+    DEFAULT_PROVIDER_NAMES,
     PROVIDER_REGISTRY,
     build_chain,
     load_provider,
@@ -221,15 +223,47 @@ def test_chain_requires_at_least_one_provider() -> None:
         ChainedMemoryProvider(providers=[])
 
 
-def test_chain_returns_first_non_empty_recall() -> None:
+def test_chain_merges_recall_from_all_providers_in_order() -> None:
     first = _StaticProvider(name="first", lessons=[])
     second = _StaticProvider(name="second", lessons=[_make_lesson("hit")])
-    third = _StaticProvider(name="third", lessons=[_make_lesson("never")])
+    third = _StaticProvider(name="third", lessons=[_make_lesson("also")])
     chain = ChainedMemoryProvider(providers=[first, second, third])
     out = chain.recall(query="q")
-    assert [L.body for L in out] == ["hit"]
-    # third must not be consulted -- ordering matters
-    assert third.recall_calls == 0
+    assert [L.body for L in out] == ["hit", "also"]
+    assert third.recall_calls == 1
+
+
+def test_chain_dedupes_and_limits_merged_recall() -> None:
+    first = _StaticProvider(
+        name="first",
+        lessons=[_make_lesson("same"), _make_lesson("first-only")],
+    )
+    second = _StaticProvider(
+        name="second",
+        lessons=[_make_lesson("same"), _make_lesson("second-only")],
+    )
+    chain = ChainedMemoryProvider(providers=[first, second])
+
+    out = chain.recall(query="q", limit=3)
+
+    assert [L.body for L in out] == ["same", "second-only", "first-only"]
+
+
+def test_chain_reserves_room_for_later_providers_when_first_fills_limit() -> None:
+    redis = _StaticProvider(
+        name="redis",
+        lessons=[
+            _make_lesson("redis-1"),
+            _make_lesson("redis-2"),
+            _make_lesson("redis-3"),
+        ],
+    )
+    fleet = _StaticProvider(name="fleet", lessons=[_make_lesson("fleet-reviewed")])
+    chain = ChainedMemoryProvider(providers=[redis, fleet])
+
+    out = chain.recall(query="q", limit=3)
+
+    assert [L.body for L in out] == ["redis-1", "fleet-reviewed", "redis-2"]
 
 
 def test_chain_falls_through_when_all_empty() -> None:
@@ -338,6 +372,27 @@ def test_redis_provider_from_env() -> None:
     assert provider.namespace == "team"
     assert provider.user_id == "operator"
     assert provider.timeout_s == 1.5
+    assert provider.search_mode == "semantic"
+
+
+def test_redis_provider_search_mode_overridable() -> None:
+    provider = RedisAgentMemoryProvider.from_env(env={"ALFRED_REDIS_MEMORY_SEARCH_MODE": "keyword"})
+
+    assert provider.search_mode == "keyword"
+
+
+def test_redis_provider_default_url_matches_ams_config() -> None:
+    provider = RedisAgentMemoryProvider.from_env(env={})
+
+    assert provider.base_url == "http://127.0.0.1:8088"
+
+
+def test_redis_provider_default_url_honors_ams_host_and_port() -> None:
+    provider = RedisAgentMemoryProvider.from_env(
+        env={"ALFRED_AMS_HOST": "127.0.0.2", "ALFRED_AMS_PORT": "9090"}
+    )
+
+    assert provider.base_url == "http://127.0.0.2:9090"
 
 
 def test_redis_provider_recall_posts_search_payload() -> None:
@@ -359,7 +414,7 @@ def test_redis_provider_recall_posts_search_payload() -> None:
                     "memory": {
                         "id": "redis-1",
                         "text": "Use owner/repo in Batman plans.",
-                        "topics": ["batman", "plans"],
+                        "topics": ["codename:batman", "repo:acme/app", "plans"],
                         "metadata": {
                             "codename": "batman",
                             "repo": "acme/app",
@@ -374,23 +429,106 @@ def test_redis_provider_recall_posts_search_payload() -> None:
         base_url="http://memory.local",
         token="secret",
         namespace="alfred",
+        user_id="operator",
         transport=transport,
     )
 
     lessons = provider.recall(query="plans", codename="batman", repo="acme/app", limit=2)
 
     assert lessons[0].body == "Use owner/repo in Batman plans."
-    assert lessons[0].tags == ["batman", "plans"]
+    assert lessons[0].tags == ["plans"]
     assert calls[0]["method"] == "POST"
     assert calls[0]["url"] == "http://memory.local/v1/long-term-memory/search"
     payload = calls[0]["payload"]
     assert isinstance(payload, dict)
     assert payload["text"] == "plans"
     assert payload["limit"] == 2
+    assert payload["search_mode"] == "semantic"
     assert payload["namespace"] == {"eq": "alfred"}
+    assert payload["topics"] == {"all": ["codename:batman", "repo:acme/app"]}
+    assert payload["user_id"] == {"eq": "operator"}
+    assert "filters" not in payload
     headers = calls[0]["headers"]
     assert isinstance(headers, dict)
     assert headers["Authorization"] == "Bearer secret"
+
+
+def test_redis_provider_recall_filters_returned_memories_by_scope() -> None:
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        return {
+            "memories": [
+                {
+                    "memory": {
+                        "id": "wrong-repo",
+                        "text": "Other repo convention",
+                        "topics": ["codename:batman", "repo:acme/other"],
+                    }
+                },
+                {
+                    "memory": {
+                        "id": "right-repo",
+                        "text": "Use owner/repo in Batman plans.",
+                        "topics": ["codename:batman", "repo:acme/app"],
+                    }
+                },
+            ]
+        }
+
+    provider = RedisAgentMemoryProvider(
+        base_url="http://memory.local",
+        namespace="alfred",
+        transport=transport,
+    )
+
+    lessons = provider.recall(query="plans", codename="batman", repo="acme/app", limit=5)
+
+    assert [lesson.id for lesson in lessons] == ["right-repo"]
+
+
+def test_redis_provider_recall_filters_returned_namespace_and_user() -> None:
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        return {
+            "memories": [
+                {
+                    "memory": {
+                        "id": "wrong-namespace",
+                        "text": "Other namespace convention",
+                        "namespace": "other",
+                        "user_id": "operator",
+                        "topics": ["codename:batman", "repo:acme/app"],
+                    }
+                },
+                {
+                    "memory": {
+                        "id": "wrong-user",
+                        "text": "Other user convention",
+                        "namespace": "alfred",
+                        "metadata": {"user_id": "someone-else"},
+                        "topics": ["codename:batman", "repo:acme/app"],
+                    }
+                },
+                {
+                    "memory": {
+                        "id": "right-scope",
+                        "text": "Use owner/repo in Batman plans.",
+                        "namespace": "alfred",
+                        "metadata": {"user_id": "operator"},
+                        "topics": ["codename:batman", "repo:acme/app"],
+                    }
+                },
+            ]
+        }
+
+    provider = RedisAgentMemoryProvider(
+        base_url="http://memory.local",
+        namespace="alfred",
+        user_id="operator",
+        transport=transport,
+    )
+
+    lessons = provider.recall(query="plans", codename="batman", repo="acme/app", limit=5)
+
+    assert [lesson.id for lesson in lessons] == ["right-scope"]
 
 
 def test_redis_provider_health_uses_health_endpoint() -> None:
@@ -574,10 +712,14 @@ def test_build_chain_empty_returns_null() -> None:
     assert isinstance(build_chain([], env={}), NullMemoryProvider)
 
 
-def test_load_provider_unset_defaults_to_fleet(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_provider_unset_defaults_to_redis_then_fleet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("ALFRED_MEMORY_PROVIDERS", raising=False)
     out = load_provider(env={})
-    assert isinstance(out, FleetBrainProvider)
+    assert DEFAULT_PROVIDER_NAMES == ["redis", "fleet"]
+    assert isinstance(out, ChainedMemoryProvider)
+    assert [provider.name for provider in out.providers] == ["redis", "fleet"]
 
 
 def test_load_provider_explicit_empty_is_null() -> None:
@@ -621,6 +763,80 @@ def test_registry_is_open_for_extension() -> None:
 
 
 # ---------------------------------------------------------------------------
+# AMS server config
+# ---------------------------------------------------------------------------
+
+
+def test_ams_defaults_are_loopback_and_free_local_embeddings() -> None:
+    cfg = AmsServerConfig.from_env(env={})
+
+    assert cfg.host == "127.0.0.1"
+    assert cfg.port == 8088
+    assert cfg.base_url == "http://127.0.0.1:8088"
+    assert cfg.embedding_model == "ollama/mxbai-embed-large"
+    assert cfg.generation_model == "ollama/llama3.2:1b"
+    assert cfg.embedding_dimensions == 1024
+    assert cfg.forgetting_enabled is False
+    assert cfg.long_term_memory is True
+    assert cfg.port == AMS_DEFAULTS["port"]
+
+
+def test_ams_env_overrides_are_tolerant() -> None:
+    cfg = AmsServerConfig.from_env(
+        env={
+            "ALFRED_AMS_HOST": "127.0.0.2",
+            "ALFRED_AMS_PORT": "not-a-port",
+            "ALFRED_AMS_EMBEDDING_MODEL": "ollama/nomic-embed-text",
+            "ALFRED_AMS_EMBEDDING_DIM": "768",
+            "ALFRED_AMS_GENERATION_MODEL": "ollama/qwen2.5:3b",
+            "ALFRED_AMS_FORGETTING": "yes",
+        }
+    )
+
+    assert cfg.host == "127.0.0.2"
+    assert cfg.port == 8088
+    assert cfg.embedding_model == "ollama/nomic-embed-text"
+    assert cfg.generation_model == "ollama/qwen2.5:3b"
+    assert cfg.embedding_dimensions == 768
+    assert cfg.forgetting_enabled is True
+
+
+def test_ams_server_env_matches_upstream_settings_names() -> None:
+    env = ams_server_env(env={})
+
+    assert env["REDIS_URL"] == "redis://127.0.0.1:6379/0"
+    assert env["AUTH_MODE"] == "disabled"
+    assert env["DISABLE_AUTH"] == "true"
+    assert env["LONG_TERM_MEMORY"] == "true"
+    assert env["EMBEDDING_MODEL"] == "ollama/mxbai-embed-large"
+    assert env["GENERATION_MODEL"] == "ollama/llama3.2:1b"
+    assert env["FAST_MODEL"] == "ollama/llama3.2:1b"
+    assert env["SLOW_MODEL"] == "ollama/llama3.2:1b"
+    assert env["REDISVL_VECTOR_DIMENSIONS"] == "1024"
+    assert env["FORGETTING_ENABLED"] == "false"
+    assert env["OLLAMA_API_BASE"] == "http://127.0.0.1:11434"
+
+
+def test_ams_server_env_enables_auth_when_auth_mode_is_set() -> None:
+    env = ams_server_env(
+        env={
+            "ALFRED_AMS_AUTH_MODE": "token",
+            "ALFRED_AMS_TOKEN": "local-secret",
+        }
+    )
+
+    assert env["AUTH_MODE"] == "token"
+    assert env["DISABLE_AUTH"] == "false"
+    assert "TOKEN" not in env
+
+
+def test_redis_provider_uses_ams_token_as_default_bearer_token() -> None:
+    provider = RedisAgentMemoryProvider.from_env(env={"ALFRED_AMS_TOKEN": "local-secret"})
+
+    assert provider.token == "local-secret"
+
+
+# ---------------------------------------------------------------------------
 # End-to-end chained-recall worked trace (sanity)
 # ---------------------------------------------------------------------------
 
@@ -628,7 +844,7 @@ def test_registry_is_open_for_extension() -> None:
 def test_worked_trace_fleet_then_gbrain(
     tmp_path: Path, fleet_brain_provider: FleetBrainProvider
 ) -> None:
-    """fleet returns lessons -> chain stops there (gbrain not consulted)."""
+    """fleet returns lessons -> later providers can still add context."""
     fleet_brain_provider.reflect(
         codename="lucius",
         repo="acme-org/api",
@@ -637,8 +853,8 @@ def test_worked_trace_fleet_then_gbrain(
     gbrain = _StaticProvider(name="gbrain", lessons=[_make_lesson("kb fallback")])
     chain = ChainedMemoryProvider(providers=[fleet_brain_provider, gbrain])
     out = chain.recall(codename="lucius", repo="acme-org/api")
-    assert [L.body for L in out] == ["fleet-side lesson"]
-    assert gbrain.recall_calls == 0
+    assert [L.body for L in out] == ["fleet-side lesson", "kb fallback"]
+    assert gbrain.recall_calls == 1
 
 
 def test_worked_trace_fleet_empty_falls_through_to_gbrain(

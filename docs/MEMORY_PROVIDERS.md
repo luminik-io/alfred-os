@@ -3,32 +3,32 @@
 Alfred ships a single-host memory layer: a runner can call
 `memory.recall(...)` before a firing to surface lessons earlier
 firings learned, and `memory.reflect(...)` afterwards to file new
-ones. The default backend is the in-tree
-[`fleet_brain`](./FLEET_BRAIN.md) SQLite store. Nothing leaves the
-host by default, and no raw lessons, prompts, paths, or candidate text are
-uploaded. If you configure Alfred's optional usage counter, it sends aggregate
-counts only and can be disabled with `alfred telemetry off`.
+ones. The default chain is `redis,fleet`: Redis Agent Memory Server stores the
+semantic lessons Alfred recalls, while FleetBrain keeps the local operational
+ledger and review queue.
+
+The bundled Redis server binds to loopback by default. Nothing is sent to a
+hosted memory service. If you configure Alfred's usage counter, it sends
+anonymous aggregate counts only and can be disabled with `alfred telemetry off`.
 
 This doc covers the **provider layer** above the brain: how to chain
-multiple memory backends so an agent reads from the fleet-brain first
-and falls through to a personal knowledge base on a miss.
+memory backends so an agent reads from Redis first and still records local
+operational state in FleetBrain.
 
 ## When to use this
 
-You probably don't need it. The shipping default is the fleet-brain
-alone, and most operators stop there. Reach for the provider layer
-when one of these is true:
+Most users can leave the default alone. Reach for the provider layer when one
+of these is true:
 
 - You maintain your own personal knowledge base (notes app with a
   CLI, a local search index, a vector store you built years ago) and
   want Alfred firings to consult it as a fallback for older context.
-- You want to disable the fleet-brain entirely without ripping out
-  the recall/reflect call sites (set
-  `ALFRED_MEMORY_PROVIDERS=null`).
+- You want to disable runtime recall and reflection without ripping out the
+  call sites (set `ALFRED_MEMORY_PROVIDERS=null`).
 - You're writing a custom provider for a downstream fleet (e.g. a
-  team wiki shim) and want to chain it behind the fleet-brain.
-- You already run Redis Agent Memory Server and want Alfred to consult
-  it as an optional second memory surface.
+  team wiki shim) and want to chain it behind Redis or FleetBrain.
+- You run Redis Agent Memory Server on a different loopback port or host and
+  want Alfred to use that endpoint.
 
 ## The Protocol
 
@@ -68,9 +68,9 @@ chain wrapper catches it and tries the next writer.
 
 | Name | File | Writable? | Notes |
 |---|---|---|---|
-| `fleet` | `lib/memory/providers.py` | yes | Wraps `fleet_brain.FleetBrain`. SQLite under `$ALFRED_HOME`. |
+| `redis` | `lib/memory/redis_agent_memory.py` | yes | Primary semantic memory client. Defaults to the bundled loopback Agent Memory Server. |
+| `fleet` | `lib/memory/providers.py` | yes | Local operational ledger and review queue. SQLite under `$ALFRED_HOME`. |
 | `gbrain` | `lib/memory/gbrain_stub.py` | no | Optional subprocess shim into the operator's personal knowledge base CLI. Not bundled functionality. |
-| `redis` | `lib/memory/redis_agent_memory.py` | yes | Optional bridge to Redis Agent Memory Server. Not installed or started by Alfred. |
 | `null` | `lib/memory/providers.py` | no | No-op. `recall` returns `[]`, `reflect` raises. Used when `ALFRED_MEMORY_PROVIDERS=null` or the env var is explicitly empty. |
 
 ## Configuration
@@ -79,26 +79,35 @@ Two env vars drive the chain:
 
 ```sh
 # Consult order. Comma-separated. Whitespace and case insensitive.
-# Unset (the OSS default) -> fleet-brain only.
-ALFRED_MEMORY_PROVIDERS=fleet,gbrain
+# Unset default -> redis,fleet.
+ALFRED_MEMORY_PROVIDERS=redis,fleet
 
 # Optional: path to the operator's personal knowledge base CLI.
 # Read by gbrain_stub; the binary is invoked with a JSON payload on
 # stdin and must emit a JSON list of lessons on stdout.
 ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 
-# Optional: Redis Agent Memory Server.
-ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
+# Redis Agent Memory Server. Leave URL unset to use ALFRED_AMS_HOST/PORT.
+ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8088
 ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ALFRED_REDIS_MEMORY_USER_ID=operator-id
 ALFRED_REDIS_MEMORY_TOKEN=
-ALFRED_REDIS_MEMORY_SEARCH_MODE=hybrid
+ALFRED_REDIS_MEMORY_SEARCH_MODE=semantic
+
+# Bundled local server defaults.
+ALFRED_AMS_HOST=127.0.0.1
+ALFRED_AMS_PORT=8088
+ALFRED_AMS_REDIS_URL=redis://127.0.0.1:6379/0
+ALFRED_AMS_EMBEDDING_MODEL=ollama/mxbai-embed-large
+ALFRED_AMS_EMBEDDING_DIM=1024
+ALFRED_AMS_GENERATION_MODEL=ollama/llama3.2:1b
 ```
 
-Sample shell config for a chained setup:
+Sample shell config for adding a read-only personal knowledge base behind the
+default memory stack:
 
 ```sh
-export ALFRED_MEMORY_PROVIDERS=fleet,gbrain
+export ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain
 export ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
 ```
 
@@ -108,25 +117,25 @@ Sample shell config for "memory off":
 export ALFRED_MEMORY_PROVIDERS=null
 ```
 
-Sample shell config for Redis AMS as a fallback after the local
-fleet-brain:
+Sample shell config for a custom Agent Memory Server endpoint:
 
 ```sh
-export ALFRED_MEMORY_PROVIDERS=fleet,redis
-export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8000
+export ALFRED_MEMORY_PROVIDERS=redis,fleet
+export ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:9090
 export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 ```
 
-Keep `fleet` first unless you have a very specific reason. The default
-reflection mode stores engine-proposed memories as reviewable fleet-brain
-candidates before they can enter recall. A Redis-only chain can recall from
-Redis, but it cannot stage those local review candidates.
+Keep `fleet` in the chain unless you are deliberately running without the local
+review queue and operational ledger. The default reflection mode stores
+engine-proposed memories as reviewable FleetBrain candidates before they enter
+recall. Redis is the promoted lesson store; FleetBrain is the queue and ledger.
 
-Check the bridge before putting it in the provider chain:
+Check the local server:
 
 ```sh
+alfred brain ams-status
 alfred brain redis-status
-alfred brain redis-status --json
+alfred brain ams-status --json
 ```
 
 Mirror reviewed local lessons into Redis explicitly:
@@ -143,37 +152,26 @@ upload raw transcripts, event logs, or unreviewed memory candidates.
 
 `ChainedMemoryProvider` consults providers in declared order:
 
-1. **`recall`** asks each provider in turn and returns the first
-   non-empty list. A provider that raises is logged and skipped --
-   one flaky backend cannot break the firing.
+1. **`recall`** asks every provider, logs and skips failures, deduplicates by
+   lesson id, then round-robins the merged results in provider order. One flaky
+   backend cannot break the firing, and later read-only providers can still add
+   context when Redis has useful hits.
 2. **`reflect`** writes to the first provider that does not raise
    `NotImplementedError`. Read-only providers earlier in the chain
    are skipped silently.
 
-Worked trace for `ALFRED_MEMORY_PROVIDERS=fleet,gbrain`:
+Worked trace for `ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain`:
 
 ```
 firing "lucius" starts, asks memory.recall(codename="lucius", repo="acme-org/api"):
-  -> fleet.recall(...) returns [Lesson("GraphQL schema lives in src/schema.graphql")]
-  -> chain stops there; gbrain is NOT consulted
+  -> redis.recall(...) returns [Lesson("GraphQL schema lives in src/schema.graphql")]
+  -> fleet.recall(...) returns [Lesson("Keep schema PRs small")]
+  -> gbrain.recall(...) returns [Lesson("older notes about acme-org/api auth")]
+  -> chain returns a merged, deduplicated list bounded by the caller's limit
 
 firing finishes, asks memory.reflect(codename=..., repo=..., body="..."):
-  -> fleet.reflect(...) succeeds; lesson recorded in $ALFRED_HOME/fleet-brain.db
-  -> gbrain.reflect would raise NotImplementedError but is not reached
-```
-
-If the fleet had been empty for that (codename, repo):
-
-```
-firing "lucius" starts, asks memory.recall(...):
-  -> fleet.recall(...) returns []
-  -> gbrain.recall(...) shells out to $ALFRED_GBRAIN_BIN, returns
-     [Lesson("older notes about acme-org/api auth")]
-  -> chain returns the gbrain result
-
-firing finishes, asks memory.reflect(...):
-  -> fleet.reflect(...) succeeds first (gbrain is read-only and is
-     after fleet in the chain anyway)
+  -> redis.reflect(...) writes the promoted lesson to Agent Memory Server
+  -> FleetBrain remains available for candidates, firings, and reliability rows
 ```
 
 ## Writing a custom provider
@@ -205,7 +203,7 @@ from .team_wiki import TeamWikiProvider
 PROVIDER_REGISTRY["team_wiki"] = lambda env: TeamWikiProvider()
 ```
 
-Now `ALFRED_MEMORY_PROVIDERS=fleet,team_wiki` works.
+Now `ALFRED_MEMORY_PROVIDERS=redis,fleet,team_wiki` works.
 
 ## Privacy and scope
 
@@ -213,27 +211,23 @@ Now `ALFRED_MEMORY_PROVIDERS=fleet,team_wiki` works.
   base. It is **not** bundled with Alfred. The shim only knows the
   path the operator gives it; if the binary is missing, recall
   returns empty and the chain keeps working.
-- Nothing in the default memory layer phones home. The fleet-brain is a
-  SQLite file under `$ALFRED_HOME`; the gbrain shim invokes a
-  subprocess the operator already installed locally.
-- The `redis` provider only runs when the operator opts in by env.
-  Alfred does not install Redis, start Redis AMS, or make it a hard
-  runtime dependency.
-- `alfred brain redis-sync` is explicit and one-way from reviewed local
-  lessons to Redis AMS.
-- Read-only providers cannot exfiltrate the fleet-brain. Writes flow
+- Nothing in the default memory layer phones home. Redis Agent Memory Server
+  binds to loopback, and FleetBrain is a SQLite file under `$ALFRED_HOME`.
+- `alfred brain redis-sync` remains available for carrying older reviewed
+  FleetBrain lessons into Redis.
+- Read-only providers cannot exfiltrate FleetBrain. Writes flow
   the other direction (to the first writer in the chain), never out
   to gbrain.
 
 ## Deferred
 
-- **Semantic recall.** The Protocol takes a `query` string but the
-  fleet-brain v1 only does substring matching. Vector similarity is
-  v2 (PGLite + pgvector, see `docs/FLEET_BRAIN.md`).
+- **Cross-provider result ranking.** Redis Agent Memory handles semantic recall.
+  A later chain can rank Redis, FleetBrain, and read-only provider results
+  together before prompt injection.
 - **Reflect-everywhere.** Today `reflect` writes to the first
   writable provider only. A "broadcast" mode that fans the write
   out to every writer is intentionally out of scope until users prove
-  they want Redis and fleet-brain written on every firing.
+  they want Redis and FleetBrain written on every firing.
 - **Per-provider limits.** `limit` is passed verbatim to every
   provider in the chain; a smarter chain could split the budget.
 - **Cache.** No caching between calls. Each provider is hit fresh on

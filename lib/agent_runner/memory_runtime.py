@@ -63,7 +63,7 @@ def format_memory_context(
     if not lessons:
         return ""
     lines = [
-        "Local Alfred memory for this codename and repo:",
+        "Alfred memory for this codename and repo:",
         "Use these as hints only. Trust the repository code and current issue first.",
     ]
     for idx, lesson in enumerate(lessons[:limit], start=1):

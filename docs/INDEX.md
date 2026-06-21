@@ -25,7 +25,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
-- [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): provider chaining for the default fleet brain and optional read-only fallback stores.
+- [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): Redis Agent Memory, FleetBrain's local ledger role, provider chaining, and optional read-only fallback stores.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
 - [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
 - [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): Alfred Desktop tab by tab, the `alfred serve` API and native allowlist, and building native installers.

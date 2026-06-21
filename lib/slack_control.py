@@ -18,7 +18,7 @@ command verb** to act on the fleet without leaving Slack:
 * ``memory remember ...``  -> same candidate path inside the memory namespace
 * ``memory promote <id>``  -> operator-only: promote a memory candidate
 * ``memory reject <id>``   -> operator-only: reject a memory candidate
-* ``memory redis``         -> check optional Redis Agent Memory Server
+* ``memory redis``         -> check the local Redis Agent Memory Server
 * ``assign <issue>``       -> operator-only: route an issue to Batman/Lucius
 * ``trusted``              -> list Slack users who can collaborate on plans
 * ``trust <@user>``        -> operator-only: add a trusted collaborator
@@ -1520,7 +1520,7 @@ def render_redis_status(health: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "Redis AMS is optional. Alfred still uses local fleet-brain unless you explicitly configure and sync Redis memory.",
+            "Redis Agent Memory stores recalled lessons. FleetBrain keeps review and reliability state on this machine.",
         ]
     )
     return "\n".join(lines)
@@ -1591,7 +1591,7 @@ def render_memory_usage() -> str:
             "- `remember [owner/repo:] <lesson>` or `memory remember ...`: queue a reviewable candidate.",
             "- `memory promote <id>`: configured approver only: trust a candidate for future recall.",
             "- `memory reject <id> [note]`: configured approver only: reject a noisy candidate.",
-            "- `memory redis`: check optional Redis AMS.",
+            "- `memory redis`: check the local Redis Agent Memory Server.",
             "- `memory sync`: preview Redis sync; `memory sync now` writes reviewed lessons.",
         ]
     )

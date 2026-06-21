@@ -103,7 +103,7 @@ intake:
 | `memory reject <id>` | Operator-only: reject a noisy candidate. |
 | `memory harvest` | Preview repeated-failure lessons from the reliability governor. |
 | `memory harvest now` | Operator-only: queue harvested lessons as reviewable candidates. |
-| `memory redis` | Check the optional Redis Agent Memory Server bridge. |
+| `memory redis` | Check the Redis Agent Memory Server. |
 | `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
 | `memory sync now` | Operator-only: write reviewed lessons to Redis AMS. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
