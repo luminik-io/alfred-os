@@ -76,9 +76,9 @@ See [Alfred Desktop](/concepts/native-client/) for the full client design.
 The optional Slack tier is the planning listener plus the issue bridge:
 
 - the **listener** runs in Socket Mode and refines a trusted user's request into a saved local draft. It never files issues, opens PRs, or runs code.
-- the **bridge** is off by default. When a trusted user explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
+- the **bridge** is off by default. When the configured approver explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
 
-`slack-sdk` and `boto3` are already in the base install, so the Slack tier needs only configuration. Leave `ALFRED_BRIDGE_ENABLED` unset to keep approvals as refine-only no-ops. See [Slack-native planning](/concepts/slack-native-planning/) and [Slack setup](/guides/slack/).
+`slack-sdk` and `boto3` are already in the base install, so the Slack tier needs only configuration. Leave `ALFRED_BRIDGE_ENABLED` unset to keep approvals as refine-only no-ops. Trusted users can create and refine drafts; only `ALFRED_OPERATOR_SLACK_USER_ID` can file Slack-origin drafts into GitHub. See [Slack-native planning](/concepts/slack-native-planning/) and [Slack setup](/guides/slack/).
 
 ## Picking your tiers
 
