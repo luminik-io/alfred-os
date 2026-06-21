@@ -129,6 +129,8 @@ TELEMETRY_ENV_KEYS = (
     "ALFRED_TELEMETRY_URL",
     "ALFRED_TELEMETRY_TOKEN",
 )
+TELEMETRY_TRUSTED_TOKEN_ENV = "ALFRED_TELEMETRY_TRUSTED_TOKEN"
+DEFAULT_TELEMETRY_URL_ENV = "ALFRED_DEFAULT_TELEMETRY_URL"
 TELEMETRY_RC_BANNER = "# alfred telemetry, generated below this line. Safe to re-run."
 TELEMETRY_RC_BANNER_RE = re.compile(
     r"(?:\n{0,2})# alfred telemetry, generated below this line\. Safe to re-run\.\n"
@@ -137,6 +139,9 @@ TELEMETRY_RC_BANNER_RE = re.compile(
 )
 TELEMETRY_SOURCE_MARKER = "source-repo.txt"
 TELEMETRY_DISABLED_VALUES = {"0", "false", "no", "off", "disabled"}
+DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
+TELEMETRY_TOKEN_FILENAME = "telemetry-token"
+TELEMETRY_TOKEN_ENDPOINT_FILENAME = "telemetry-token-endpoint"
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
@@ -397,8 +402,13 @@ def _read_alfredrc_values(path: Path) -> dict[str, str]:
 
 
 def _telemetry_values(alfredrc: Path) -> dict[str, str]:
-    values = _read_alfredrc_values(alfredrc)
-    for key in TELEMETRY_ENV_KEYS:
+    values = _read_alfredrc_values(_alfred_home_path() / ".env")
+    values.update(_read_alfredrc_values(alfredrc))
+    for key in (
+        *TELEMETRY_ENV_KEYS,
+        TELEMETRY_TRUSTED_TOKEN_ENV,
+        DEFAULT_TELEMETRY_URL_ENV,
+    ):
         if key in os.environ:
             values[key] = os.environ[key]
     return values
@@ -409,6 +419,87 @@ def _telemetry_enabled(values: dict[str, str]) -> bool:
     if raw is None:
         return True
     return _switch_value(raw) not in TELEMETRY_DISABLED_VALUES
+
+
+def _default_telemetry_url(values: dict[str, str] | None = None) -> str:
+    source = values or {}
+    override = source.get(DEFAULT_TELEMETRY_URL_ENV)
+    if override is not None:
+        return override.strip()
+    return DEFAULT_TELEMETRY_URL
+
+
+def _telemetry_effective_url(values: dict[str, str]) -> str:
+    configured = values.get("ALFRED_TELEMETRY_URL", "").strip()
+    return configured or _default_telemetry_url(values)
+
+
+def _telemetry_previous_clear_url(values: dict[str, str]) -> str:
+    try:
+        token_endpoint = _telemetry_state_token_endpoint_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        token_endpoint = ""
+    if token_endpoint and _telemetry_state_token_exists():
+        return token_endpoint
+    configured = values.get("ALFRED_TELEMETRY_URL", "").strip()
+    if configured:
+        return configured
+    return token_endpoint or _default_telemetry_url(values)
+
+
+def _telemetry_state_token_path() -> Path:
+    return agent_runner.STATE_ROOT / TELEMETRY_TOKEN_FILENAME
+
+
+def _telemetry_state_token_endpoint_path() -> Path:
+    return agent_runner.STATE_ROOT / TELEMETRY_TOKEN_ENDPOINT_FILENAME
+
+
+def _telemetry_state_install_id_path() -> Path:
+    return agent_runner.STATE_ROOT / "telemetry-install-id"
+
+
+def _telemetry_state_token_exists() -> bool:
+    try:
+        return bool(_telemetry_state_token_path().read_text(encoding="utf-8").strip())
+    except OSError:
+        return False
+
+
+def _read_telemetry_state_token() -> str:
+    try:
+        return _telemetry_state_token_path().read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _delete_telemetry_state_token() -> bool:
+    removed = False
+    try:
+        _telemetry_state_token_path().unlink()
+        removed = True
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+    try:
+        _telemetry_state_token_endpoint_path().unlink()
+        removed = True
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+    return removed
+
+
+def _delete_telemetry_install_id() -> bool:
+    try:
+        _telemetry_state_install_id_path().unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
 
 
 def _quote_env_value(value: str) -> str:
@@ -632,18 +723,24 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
     conf = _telemetry_agents_conf_path(args.agents_conf)
     values = _telemetry_values(alfredrc)
     enabled = _telemetry_enabled(values)
-    url = values.get("ALFRED_TELEMETRY_URL", "").strip()
+    url = _telemetry_effective_url(values)
     token = values.get("ALFRED_TELEMETRY_TOKEN", "").strip()
+    trusted_token = (
+        values.get(TELEMETRY_TRUSTED_TOKEN_ENV, "")
+        or os.environ.get(TELEMETRY_TRUSTED_TOKEN_ENV, "")
+    ).strip()
     install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
     payload = {
         "enabled": enabled,
         "endpoint": url,
-        "token_configured": bool(token),
+        "token_configured": bool(token) or _telemetry_state_token_exists(),
+        "trusted_token_configured": bool(trusted_token),
         "alfredrc": str(alfredrc),
         "agents_conf": str(conf),
         "scheduler_row": _telemetry_row_state(conf),
         "install_id_path": str(install_id_path),
         "install_id_exists": install_id_path.exists(),
+        "token_path": str(_telemetry_state_token_path()),
         "impact_page": "https://alfred.luminik.io/impact/",
     }
     if args.json:
@@ -651,17 +748,16 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
         return 0
     print(f"telemetry: {'on' if enabled else 'off'}")
     print(f"endpoint: {url or '(unset)'}")
-    print(f"token: {'set' if token else 'unset'}")
+    print(f"token: {'set' if payload['token_configured'] else 'unset'}")
+    print(f"trusted token: {'set' if payload['trusted_token_configured'] else 'unset'}")
     print(f"scheduler row: {payload['scheduler_row']} ({conf})")
     print(
         f"install id: {'present' if install_id_path.exists() else 'not created'} ({install_id_path})"
     )
     print("public page: https://alfred.luminik.io/impact/")
-    if enabled and not url:
-        print("warning: telemetry is on but ALFRED_TELEMETRY_URL is unset", file=sys.stderr)
     if enabled and payload["scheduler_row"] != "present":
         print(
-            "warning: usage totals are not scheduled; run `alfred telemetry on --url ...`",
+            "warning: usage totals are not scheduled; run `alfred telemetry on`",
             file=sys.stderr,
         )
     return 0
@@ -671,9 +767,11 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
     alfredrc = _alfredrc_path(args.alfredrc)
     conf = _telemetry_agents_conf_path(args.agents_conf)
     current = _telemetry_values(alfredrc)
-    url = (args.url or current.get("ALFRED_TELEMETRY_URL") or "").strip()
+    url = (
+        args.url or current.get("ALFRED_TELEMETRY_URL") or _default_telemetry_url(current)
+    ).strip()
     if not url:
-        print("alfred telemetry on: pass --url https://.../ingest", file=sys.stderr)
+        print("alfred telemetry on: no telemetry collector configured", file=sys.stderr)
         return 2
     url_error = _telemetry_url_error(url)
     if url_error:
@@ -687,9 +785,32 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
         "ALFRED_TELEMETRY_ENABLED": "1",
         "ALFRED_TELEMETRY_URL": url,
     }
-    token = (args.token or current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
-    if token and not args.clear_token:
+    replacement_token = (args.token or "").strip()
+    current_token = (current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
+    token = (replacement_token or current_token).strip()
+    if token and (not args.clear_token or replacement_token):
         values["ALFRED_TELEMETRY_TOKEN"] = token
+    if args.clear_token:
+        clear_values = dict(current)
+        if not clear_values.get("ALFRED_TELEMETRY_URL"):
+            clear_values["ALFRED_TELEMETRY_URL"] = _telemetry_previous_clear_url(current)
+        clear_result = _clear_previous_telemetry_report(clear_values)
+        clear_status = str(clear_result.get("status") or "")
+        clear_done = clear_status in {"sent", "no_url", "no_install_id"}
+        if clear_done:
+            _delete_telemetry_state_token()
+            _delete_telemetry_install_id()
+        else:
+            retry_token = current_token or _read_telemetry_state_token()
+            if retry_token:
+                values["ALFRED_TELEMETRY_TOKEN"] = retry_token
+                retry_url = str(clear_values.get("ALFRED_TELEMETRY_URL") or "").strip()
+                if retry_url:
+                    values["ALFRED_TELEMETRY_URL"] = retry_url
+            print(
+                "warning: kept install id and token so previous usage totals can be cleared later",
+                file=sys.stderr,
+            )
     _write_telemetry_rc_block(alfredrc, values)
     _ensure_telemetry_scheduler_row(conf, args.schedule)
     print("alfred: telemetry enabled")
@@ -711,7 +832,10 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
     alfredrc = _alfredrc_path(args.alfredrc)
     conf = _telemetry_agents_conf_path(args.agents_conf)
     current = _telemetry_values(alfredrc)
-    clear_result = _clear_previous_telemetry_report(current)
+    clear_values = dict(current)
+    if not clear_values.get("ALFRED_TELEMETRY_URL"):
+        clear_values["ALFRED_TELEMETRY_URL"] = _telemetry_previous_clear_url(current)
+    clear_result = _clear_previous_telemetry_report(clear_values)
     clear_status = str(clear_result.get("status") or "")
     clear_done = clear_status in {"sent", "no_url", "no_install_id"}
     values = {"ALFRED_TELEMETRY_ENABLED": "0"}
@@ -724,6 +848,8 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
         values["ALFRED_TELEMETRY_TOKEN"] = current["ALFRED_TELEMETRY_TOKEN"]
     _write_telemetry_rc_block(alfredrc, values)
     removed = _remove_telemetry_scheduler_row(conf)
+    if clear_status in {"sent", "no_install_id"}:
+        _delete_telemetry_state_token()
     install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
     install_id_action = "none"
     if args.delete_install_id and install_id_path.exists():
@@ -2015,12 +2141,12 @@ def main(argv: list[str] | None = None) -> int:
     p_telemetry_status.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_status.set_defaults(func=cmd_telemetry_status)
     p_telemetry_on = telemetry_sub.add_parser("on", help="enable anonymous usage totals")
-    p_telemetry_on.add_argument("--url", help="HTTPS collector /ingest URL")
+    p_telemetry_on.add_argument("--url", help="custom HTTPS collector /ingest URL")
     p_telemetry_on.add_argument("--token", help="optional collector ingest token")
     p_telemetry_on.add_argument(
         "--clear-token",
         action="store_true",
-        help="do not keep an existing telemetry token when enabling",
+        help="reset the persisted telemetry token and install id when enabling",
     )
     p_telemetry_on.add_argument(
         "--schedule",

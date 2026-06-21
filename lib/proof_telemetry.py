@@ -3,9 +3,9 @@
 This module is the install half of the proof counter. It does **nothing**
 when the operator opts out by setting ``ALFRED_TELEMETRY_ENABLED=0`` (or
 ``false``, ``no``, ``off``, ``disabled``). With the switch left unset, the
-reporter is eligible to run, but a report is still sent only when
-``ALFRED_TELEMETRY_URL`` is configured. Without a URL, no file is written, no
-network call is made, and no ``install_id`` is generated.
+reporter uses Alfred's hosted collector by default. Operators can override that
+with ``ALFRED_TELEMETRY_URL`` or disable the hosted default by setting
+``ALFRED_DEFAULT_TELEMETRY_URL`` to an empty value.
 
 When enabled, ``report_once`` derives a small anonymous aggregate from the
 local fleet-brain counts and POSTs it to a configured endpoint. It is
@@ -50,12 +50,19 @@ Configuration (all read from the environment):
 
     ALFRED_TELEMETRY_ENABLED   Opt-out switch. ``0``, ``false``, ``no``,
                                ``off``, or ``disabled`` is OFF. Unset is ON.
-    ALFRED_TELEMETRY_URL       Ingest endpoint. Required to send; if unset the
-                               reporter no-ops rather than guessing a host.
-    ALFRED_TELEMETRY_TOKEN     Optional shared ingest token. When the collector
-                               is configured with INGEST_TOKEN, set this to the
-                               same value; it is sent as the X-Ingest-Token
-                               header. Unset is fine for an open counter.
+    ALFRED_TELEMETRY_URL       Custom ingest endpoint. Unset uses Alfred's
+                               hosted collector.
+    ALFRED_DEFAULT_TELEMETRY_URL
+                               Override the hosted default. Set to empty only
+                               for offline tests or fully self-hosted installs.
+    ALFRED_TELEMETRY_TOKEN     Optional shared ingest token. Hosted installs
+                               normally leave this unset: the reporter registers
+                               once and stores a per-install token locally.
+    ALFRED_TELEMETRY_TRUSTED_TOKEN
+                               Private collector token. When present, the
+                               hosted Worker accepts this install's counts into
+                               the public progress totals. Normal OSS installs
+                               should leave this unset.
     ALFRED_FLEET_BRAIN_DB /    Locate the local counts (see fleet_brain).
     ALFRED_HOME
 """
@@ -67,10 +74,12 @@ import logging
 import os
 import secrets
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -82,14 +91,20 @@ URL_ENV = "ALFRED_TELEMETRY_URL"
 # Optional shared ingest token. Sent as X-Ingest-Token when set, so a collector
 # configured with INGEST_TOKEN accepts this host's writes. Unset is fine.
 TOKEN_ENV = "ALFRED_TELEMETRY_TOKEN"
+TRUSTED_TOKEN_ENV = "ALFRED_TELEMETRY_TRUSTED_TOKEN"
+DEFAULT_URL_ENV = "ALFRED_DEFAULT_TELEMETRY_URL"
+DEFAULT_INGEST_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
 
 # Where the persisted random install_id lives. Under ALFRED_HOME/state so it
 # travels with the rest of the runtime state and survives restarts.
 _INSTALL_ID_FILENAME = "telemetry-install-id"
+_TOKEN_FILENAME = "telemetry-token"
+_TOKEN_ENDPOINT_FILENAME = "telemetry-token-endpoint"
 
 # Defensive bounds mirrored from the Worker. The server clamps too, but a
 # well-behaved client should not send absurd values in the first place.
 _MAX_PER_FIELD = 100_000
+_MAX_LINES_CHANGED = 5_000_000
 
 # Counting is done by raising the brain's list `limit` until the returned row
 # count stops growing (we have seen every row, or the brain's own internal cap
@@ -126,6 +141,22 @@ class TelemetryCounts:
     lines_changed: int = 0
     loc_added: int = 0
     read_complete: bool = True
+    stale_fields: tuple[str, ...] = ()
+    last_30_days: TelemetryWindowCounts | None = None
+
+
+@dataclass(frozen=True)
+class TelemetryWindowCounts:
+    """Rolling-window counts sent alongside lifetime totals."""
+
+    window_days: int = 30
+    prs_opened: int = 0
+    prs_merged: int = 0
+    prs_reviewed: int = 0
+    issues_opened: int = 0
+    issues_closed: int = 0
+    files_changed: int = 0
+    lines_changed: int = 0
 
 
 def is_enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -144,19 +175,61 @@ def is_enabled(env: Mapping[str, str] | None = None) -> bool:
 
 def telemetry_url(env: Mapping[str, str] | None = None) -> str:
     source = env if env is not None else os.environ
-    return source.get(URL_ENV, "").strip()
+    configured = source.get(URL_ENV)
+    if configured and configured.strip():
+        return configured.strip()
+    default = source.get(DEFAULT_URL_ENV)
+    if default is not None:
+        return default.strip()
+    return DEFAULT_INGEST_URL
 
 
-def telemetry_token(env: Mapping[str, str] | None = None) -> str:
+def telemetry_token(
+    env: Mapping[str, str] | None = None,
+    *,
+    endpoint: str | None = None,
+) -> str:
     """Optional shared ingest token, or empty string when unset."""
     source = env if env is not None else os.environ
-    return source.get(TOKEN_ENV, "").strip()
+    configured = source.get(TOKEN_ENV, "").strip()
+    if configured:
+        return configured
+    return load_persisted_token(endpoint=endpoint) or ""
 
 
-def _clamp(value: int) -> int:
+def trusted_telemetry_token(env: Mapping[str, str] | None = None) -> str:
+    """Private collector token for trusted count-bearing reports."""
+    source = env if env is not None else os.environ
+    return source.get(TRUSTED_TOKEN_ENV, "").strip()
+
+
+def is_official_hosted_collector(url: str) -> bool:
+    """True only for Alfred's hosted telemetry collector."""
+    return _normalize_endpoint(url) == _normalize_endpoint(DEFAULT_INGEST_URL)
+
+
+def trusted_telemetry_token_for_url(
+    url: str,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Private hosted token, withheld from custom/self-hosted collectors."""
+    if not is_official_hosted_collector(url):
+        return ""
+    return trusted_telemetry_token(env)
+
+
+def default_telemetry_url(env: Mapping[str, str] | None = None) -> str:
+    source = env if env is not None else os.environ
+    configured = source.get(DEFAULT_URL_ENV)
+    if configured is not None:
+        return configured.strip()
+    return DEFAULT_INGEST_URL
+
+
+def _clamp(value: int, *, max_value: int = _MAX_PER_FIELD) -> int:
     if value <= 0:
         return 0
-    return value if value <= _MAX_PER_FIELD else _MAX_PER_FIELD
+    return value if value <= max_value else max_value
 
 
 # The reporter sends LIFETIME-cumulative counts. Under the install-keyed
@@ -187,6 +260,77 @@ def _install_id_path() -> Path:
     alfred_home = os.environ.get("ALFRED_HOME")
     root = Path(alfred_home).expanduser() if alfred_home else Path.home() / ".alfred"
     return root / "state" / _INSTALL_ID_FILENAME
+
+
+def _token_path() -> Path:
+    alfred_home = os.environ.get("ALFRED_HOME")
+    root = Path(alfred_home).expanduser() if alfred_home else Path.home() / ".alfred"
+    return root / "state" / _TOKEN_FILENAME
+
+
+def _token_endpoint_path() -> Path:
+    alfred_home = os.environ.get("ALFRED_HOME")
+    root = Path(alfred_home).expanduser() if alfred_home else Path.home() / ".alfred"
+    return root / "state" / _TOKEN_ENDPOINT_FILENAME
+
+
+def _normalize_endpoint(value: str) -> str:
+    return value.strip().rstrip("/")
+
+
+def load_persisted_token(
+    path: Path | None = None,
+    *,
+    endpoint: str | None = None,
+) -> str | None:
+    target = path or _token_path()
+    try:
+        existing = target.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if endpoint is not None:
+        marker_path = _token_endpoint_path()
+        try:
+            token_endpoint = marker_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            token_endpoint = DEFAULT_INGEST_URL
+        if _normalize_endpoint(token_endpoint) != _normalize_endpoint(endpoint):
+            return None
+    return existing or None
+
+
+def persist_token(
+    token: str,
+    path: Path | None = None,
+    *,
+    endpoint: str | None = None,
+) -> bool:
+    if not token or "\n" in token or "\r" in token:
+        return False
+    target = path or _token_path()
+    endpoint_path = _token_endpoint_path() if endpoint is not None else None
+    try:
+        if endpoint_path is not None:
+            assert endpoint is not None
+            endpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(endpoint_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(_normalize_endpoint(endpoint) + "\n")
+            os.chmod(endpoint_path, 0o600)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(token + "\n")
+        os.chmod(target, 0o600)
+    except OSError as exc:
+        logger.debug("telemetry: could not persist install token: %s", exc)
+        with suppress(OSError):
+            target.unlink()
+        if endpoint_path is not None:
+            with suppress(OSError):
+                endpoint_path.unlink()
+        return False
+    return True
 
 
 def load_persisted_install_id(path: Path | None = None) -> str | None:
@@ -448,7 +592,227 @@ def _count_file_touches(brain: Any, **filters: Any) -> int:
     return _count_rows(lambda n: brain.list_file_touches(limit=n, **filters))
 
 
-def derive_counts(brain: Any) -> TelemetryCounts:
+def _sum_github_changed_lines(brain: Any, **filters: Any) -> int:
+    summer = getattr(brain, "sum_github_changed_lines", None)
+    if not callable(summer):
+        return 0
+    total = int(summer(**filters))
+    return total if total < _MAX_LINES_CHANGED else _MAX_LINES_CHANGED
+
+
+def _sum_github_changed_files(brain: Any, **filters: Any) -> int | None:
+    summer = getattr(brain, "sum_github_changed_files", None)
+    if not callable(summer):
+        return None
+    total = int(summer(**filters))
+    return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+
+
+def _row_after(row: Any, field: str, since: datetime) -> bool:
+    value = getattr(row, field, None)
+    if not isinstance(value, datetime):
+        return False
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC) >= since
+
+
+def _count_github_items_window(
+    brain: Any,
+    *,
+    since_field: str,
+    since: datetime,
+    authored_only: bool = False,
+    agent_labeled_only: bool = False,
+    **filters: Any,
+) -> int:
+    """Count GitHub rows in a real date window.
+
+    New fleet-brain stores do this in SQL. Test doubles and older stores fall
+    back to row filtering over the list surface.
+    """
+    counter = getattr(brain, "count_github_items", None)
+    since_kw = {f"{since_field.removesuffix('_at')}_since": since}
+    if callable(counter):
+        try:
+            total = int(
+                counter(
+                    authored_only=authored_only,
+                    agent_labeled_only=agent_labeled_only,
+                    **filters,
+                    **since_kw,
+                )
+            )
+            return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+        except TypeError:
+            pass
+
+    def predicate(row: Any) -> bool:
+        expected_state = filters.get("state")
+        if expected_state is not None and getattr(row, "state", None) != expected_state:
+            return False
+        if authored_only and not _row_is_agent_authored(row):
+            return False
+        if agent_labeled_only and not _row_is_agent_labeled(row):
+            return False
+        return _row_after(row, since_field, since)
+
+    def lister(limit: int) -> list[Any]:
+        try:
+            return brain.list_github_items(limit=limit, **filters)
+        except TypeError:
+            fallback_filters = dict(filters)
+            fallback_filters.pop("state", None)
+            return brain.list_github_items(limit=limit, **fallback_filters)
+
+    return _count_rows(
+        lister,
+        predicate,
+    )
+
+
+def _count_file_touches_window(brain: Any, *, since: datetime) -> int:
+    counter = getattr(brain, "count_file_touches", None)
+    if callable(counter):
+        try:
+            total = int(counter(touched_since=since))
+            return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+        except TypeError:
+            pass
+    return _count_rows(
+        lambda n: brain.list_file_touches(limit=n),
+        lambda row: _row_after(row, "touched_at", since),
+    )
+
+
+def _sum_github_changed_files_window(brain: Any, *, since: datetime) -> int | None:
+    summer = getattr(brain, "sum_github_changed_files", None)
+    if callable(summer):
+        try:
+            total = int(
+                summer(
+                    kind="pr",
+                    state="merged",
+                    authored_only=True,
+                    merged_since=since,
+                )
+            )
+            return total if total < _COUNT_HARD_LIMIT else _COUNT_HARD_LIMIT
+        except TypeError:
+            pass
+    return None
+
+
+def _sum_github_changed_lines_window(brain: Any, *, since: datetime) -> int:
+    summer = getattr(brain, "sum_github_changed_lines", None)
+    if callable(summer):
+        try:
+            total = int(
+                summer(
+                    kind="pr",
+                    state="merged",
+                    authored_only=True,
+                    merged_since=since,
+                )
+            )
+            return total if total < _MAX_LINES_CHANGED else _MAX_LINES_CHANGED
+        except TypeError:
+            pass
+    lister = brain.list_github_items
+    try:
+        rows = lister(kind="pr", state="merged", limit=_COUNT_HARD_LIMIT)
+    except TypeError:
+        rows = [
+            row
+            for row in lister(kind="pr", limit=_COUNT_HARD_LIMIT)
+            if getattr(row, "state", None) == "merged"
+        ]
+    total = 0
+    for row in rows:
+        if not _row_is_agent_authored(row) or not _row_after(row, "merged_at", since):
+            continue
+        total += max(0, int(getattr(row, "additions", 0) or 0))
+        total += max(0, int(getattr(row, "deletions", 0) or 0))
+    return total if total < _MAX_LINES_CHANGED else _MAX_LINES_CHANGED
+
+
+def derive_window_counts(
+    brain: Any,
+    *,
+    now: datetime | None = None,
+    window_days: int = 30,
+) -> TelemetryWindowCounts:
+    """Derive real rolling-window counts from timestamped GitHub rows."""
+    anchor = now or datetime.now(UTC)
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=UTC)
+    anchor = anchor.astimezone(UTC)
+    since = anchor - timedelta(days=window_days)
+    prs_opened = _count_github_items_window(
+        brain,
+        kind="pr",
+        authored_only=True,
+        since_field="created_at",
+        since=since,
+    )
+    prs_merged = _count_github_items_window(
+        brain,
+        kind="pr",
+        state="merged",
+        authored_only=True,
+        since_field="merged_at",
+        since=since,
+    )
+    prs_closed = _count_github_items_window(
+        brain,
+        kind="pr",
+        state="closed",
+        authored_only=True,
+        since_field="closed_at",
+        since=since,
+    )
+    issues_opened = _count_github_items_window(
+        brain,
+        kind="issue",
+        agent_labeled_only=True,
+        since_field="created_at",
+        since=since,
+    )
+    issues_closed = _count_github_items_window(
+        brain,
+        kind="issue",
+        state="closed",
+        agent_labeled_only=True,
+        since_field="closed_at",
+        since=since,
+    )
+    try:
+        window_lines_changed = _sum_github_changed_lines_window(brain, since=since)
+    except Exception as exc:
+        logger.debug("telemetry: rolling line-count derivation failed: %s", exc)
+        window_lines_changed = 0
+    try:
+        window_files_changed = _sum_github_changed_files_window(brain, since=since)
+        if window_files_changed is None or window_files_changed == 0:
+            window_file_touches = _count_file_touches_window(brain, since=since)
+            if window_files_changed is None or window_file_touches > 0:
+                window_files_changed = window_file_touches
+    except Exception as exc:
+        logger.debug("telemetry: rolling file-count derivation failed: %s", exc)
+        window_files_changed = 0
+    return TelemetryWindowCounts(
+        window_days=window_days,
+        prs_opened=_clamp(prs_opened),
+        prs_merged=_clamp(prs_merged),
+        prs_reviewed=_clamp(prs_merged + prs_closed),
+        issues_opened=_clamp(issues_opened),
+        issues_closed=_clamp(issues_closed),
+        files_changed=_clamp(window_files_changed),
+        lines_changed=_clamp(window_lines_changed, max_value=_MAX_LINES_CHANGED),
+    )
+
+
+def derive_counts(brain: Any, *, now: datetime | None = None) -> TelemetryCounts:
     """Roll the local fleet-brain rows up into anonymous aggregate counts.
 
     Pure read: queries the brain, returns counts, touches nothing else. Counts
@@ -478,11 +842,13 @@ def derive_counts(brain: Any) -> TelemetryCounts:
                    include any ``agent:*`` label.
       issues_closed that subset whose state == "closed".
       files_changed a file-delta proxy: the count of file_touches rows (one per
-                   repo file an agent added/modified). The brain stores file
-                   touches, not true line counts.
-      lines_changed true changed-line totals when available. Today the local
-                   brain does not store per-line additions/deletions, so this is
-                   reported as 0 until that signal exists locally.
+                   repo file an agent added/modified).
+      lines_changed additions + deletions from cached GitHub PR rows, filtered
+                   to the same agent-authored PR subset as prs_opened. If
+                   authored PRs exist but the line total is unavailable or still
+                   zero, the field is marked stale so the collector can preserve
+                   the previous per-install line total while accepting the fresh
+                   PR/issue/file counts.
       loc_added    legacy wire alias for files_changed.
 
     Any query failure yields zeroes for the affected fields and marks the read
@@ -506,7 +872,9 @@ def derive_counts(brain: Any) -> TelemetryCounts:
     files_changed = 0
     lines_changed = 0
     loc_added = 0
+    last_30_days: TelemetryWindowCounts | None = None
     read_complete = True
+    stale_fields: set[str] = set()
 
     # Distinguish "the brain genuinely has 0 PRs" from "the base PR query
     # failed". On failure, prs_opened stays 0 AND we suppress the dependent
@@ -589,11 +957,51 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         issues_closed = issues_opened
 
     try:
-        files_changed = _count_file_touches(brain)
+        files_changed_from_github = _sum_github_changed_files(
+            brain,
+            kind="pr",
+            state="merged",
+            authored_only=True,
+        )
+        if files_changed_from_github is None or files_changed_from_github == 0:
+            file_touches = _count_file_touches(brain)
+            files_changed = (
+                file_touches
+                if files_changed_from_github is None or file_touches > 0
+                else files_changed_from_github
+            )
+        else:
+            files_changed = files_changed_from_github
         loc_added = files_changed
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         read_complete = False
-        logger.debug("telemetry: file-touch count derivation failed: %s", exc)
+        logger.debug("telemetry: file-count derivation failed: %s", exc)
+
+    try:
+        line_summer = getattr(brain, "sum_github_changed_lines", None)
+        lines_changed = _sum_github_changed_lines(brain, kind="pr", authored_only=True)
+        if callable(line_summer) and prs_opened > 0 and lines_changed == 0:
+            stale_fields.add("lines_changed")
+            logger.debug(
+                "telemetry: line-count derivation returned zero for %s "
+                "authored PRs; waiting for GitHub poller refresh",
+                prs_opened,
+            )
+    except Exception as exc:  # fail-soft by contract: never raise on a bad read
+        stale_fields.add("lines_changed")
+        logger.debug("telemetry: line-count derivation failed: %s", exc)
+
+    try:
+        last_30_days = derive_window_counts(brain, now=now)
+        if (
+            callable(line_summer)
+            and last_30_days.lines_changed == 0
+            and last_30_days.prs_merged > 0
+        ):
+            stale_fields.add("lines_changed")
+    except Exception as exc:  # fail-soft by contract
+        read_complete = False
+        logger.debug("telemetry: rolling-window derivation failed: %s", exc)
 
     return TelemetryCounts(
         prs_opened=_clamp(prs_opened),
@@ -602,16 +1010,18 @@ def derive_counts(brain: Any) -> TelemetryCounts:
         issues_opened=_clamp(issues_opened),
         issues_closed=_clamp(issues_closed),
         files_changed=_clamp(files_changed),
-        lines_changed=_clamp(lines_changed),
+        lines_changed=_clamp(lines_changed, max_value=_MAX_LINES_CHANGED),
         loc_added=_clamp(loc_added),
         read_complete=read_complete,
+        stale_fields=tuple(sorted(stale_fields)),
+        last_30_days=last_30_days,
     )
 
 
 def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict[str, Any]:
     """Assemble the exact JSON body that goes on the wire. No extra keys."""
     files_changed = counts.files_changed if counts.files_changed is not None else counts.loc_added
-    return {
+    payload = {
         "install_id": install_id,
         "period": period,
         "prs_opened": _clamp(counts.prs_opened),
@@ -620,9 +1030,24 @@ def build_payload(install_id: str, counts: TelemetryCounts, period: str) -> dict
         "issues_opened": _clamp(counts.issues_opened),
         "issues_closed": _clamp(counts.issues_closed),
         "files_changed": _clamp(files_changed),
-        "lines_changed": _clamp(counts.lines_changed),
+        "lines_changed": _clamp(counts.lines_changed, max_value=_MAX_LINES_CHANGED),
         "loc_added": _clamp(counts.loc_added),
     }
+    if counts.stale_fields:
+        payload["stale_fields"] = list(counts.stale_fields)
+    if counts.last_30_days is not None:
+        window = counts.last_30_days
+        payload["last_30_days"] = {
+            "window_days": int(window.window_days),
+            "prs_opened": _clamp(window.prs_opened),
+            "prs_merged": _clamp(window.prs_merged),
+            "prs_reviewed": _clamp(window.prs_reviewed),
+            "issues_opened": _clamp(window.issues_opened),
+            "issues_closed": _clamp(window.issues_closed),
+            "files_changed": _clamp(window.files_changed),
+            "lines_changed": _clamp(window.lines_changed, max_value=_MAX_LINES_CHANGED),
+        }
+    return payload
 
 
 def build_tombstone_payload(install_id: str, period: str | None = None) -> dict[str, Any]:
@@ -634,11 +1059,91 @@ def build_tombstone_payload(install_id: str, period: str | None = None) -> dict[
     }
 
 
+def register_url_for_ingest(url: str) -> str:
+    """Return the sibling /register endpoint for an ingest URL."""
+    parts = urllib.parse.urlsplit(url)
+    path = parts.path.rstrip("/")
+    if path.endswith("/ingest"):
+        path = path[: -len("/ingest")]
+    path = (path.rstrip("/") or "") + "/register"
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def _post_json(
+    url: str,
+    payload: dict[str, Any],
+    *,
+    token: str = "",
+    trusted_token: str = "",
+    timeout: int = _HTTP_TIMEOUT_SECONDS,
+    allow_plain_success: bool = False,
+) -> tuple[bool, dict[str, Any]]:
+    body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Alfred-Telemetry/1.0 (+https://alfred.luminik.io)",
+    }
+    if token:
+        headers["X-Ingest-Token"] = token
+    if trusted_token:
+        headers["X-Alfred-Trusted-Token"] = trusted_token
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers=headers,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw_bytes = resp.read() if hasattr(resp, "read") else b""
+            raw = raw_bytes.decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                if allow_plain_success and 200 <= resp.status < 300:
+                    return True, {}
+                raise
+            return 200 <= resp.status < 300, parsed if isinstance(parsed, dict) else {}
+    except urllib.error.HTTPError as exc:
+        logger.debug("telemetry: server returned HTTP %s", exc.code)
+        return False, {}
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+        logger.debug("telemetry: post failed: %s", exc)
+        return False, {}
+
+
+def register_install(
+    ingest_url: str,
+    install_id: str,
+    *,
+    env: Mapping[str, str] | None = None,
+    requester: Callable[[str, dict[str, Any]], tuple[bool, dict[str, Any]]] | None = None,
+) -> str | None:
+    """Register this install with the hosted collector and persist its token."""
+    register_url = register_url_for_ingest(ingest_url)
+    trusted_token = trusted_telemetry_token_for_url(ingest_url, env)
+    request = requester or (lambda u, p: _post_json(u, p, trusted_token=trusted_token))
+    ok, body = request(register_url, {"install_id": install_id})
+    if not ok:
+        return None
+    returned_id = str(body.get("install_id") or "")
+    token = str(body.get("token") or "")
+    if returned_id and returned_id != install_id:
+        logger.debug("telemetry: register returned a different install id")
+        return None
+    if not token:
+        return None
+    if not persist_token(token, endpoint=ingest_url):
+        return None
+    return token
+
+
 def _post(
     url: str,
     payload: dict[str, Any],
     *,
     token: str = "",
+    trusted_token: str = "",
     timeout: int = _HTTP_TIMEOUT_SECONDS,
 ) -> bool:
     """POST the payload as JSON. Returns True on a 2xx, False on any failure.
@@ -648,26 +1153,15 @@ def _post(
     is non-empty it is sent as the ``X-Ingest-Token`` header so a collector
     configured with ``INGEST_TOKEN`` accepts the write.
     """
-    body = json.dumps(payload).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["X-Ingest-Token"] = token
-    req = urllib.request.Request(
+    ok, _body = _post_json(
         url,
-        data=body,
-        method="POST",
-        headers=headers,
+        payload,
+        token=token,
+        trusted_token=trusted_token,
+        timeout=timeout,
+        allow_plain_success=True,
     )
-    try:
-        # URL is operator-configured (ALFRED_TELEMETRY_URL); not attacker input.
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return 200 <= resp.status < 300
-    except urllib.error.HTTPError as exc:
-        logger.debug("telemetry: server returned HTTP %s", exc.code)
-        return False
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-        logger.debug("telemetry: post failed: %s", exc)
-        return False
+    return ok
 
 
 def report_once(
@@ -676,6 +1170,7 @@ def report_once(
     brain: Any | None = None,
     now: datetime | None = None,
     poster: Callable[[str, dict[str, Any]], bool] | None = None,
+    registrar: Callable[[str, str], str | None] | None = None,
 ) -> dict[str, Any]:
     """Derive, build, and send one telemetry report. Fully fail-soft.
 
@@ -684,7 +1179,7 @@ def report_once(
 
     Status ``status`` values:
       ``disabled``        the master switch is explicitly off. Nothing happened.
-      ``no_url``          enabled but ``ALFRED_TELEMETRY_URL`` is unset. No-op.
+      ``no_url``          enabled but no hosted/default collector is configured.
       ``no_install_id``   enabled, but the install id could not be persisted, so
                           we skip the report rather than POST with an ephemeral
                           id that would inflate the distinct-install count.
@@ -719,16 +1214,25 @@ def report_once(
             # public install count, so skip the report. Next run retries.
             return {"status": "no_install_id", "sent": False}
         period = current_period(now)
-        counts = derive_counts(brain)
+        counts = derive_counts(brain, now=now)
         if not counts.read_complete:
             return {"status": "stale_counts", "sent": False}
         payload = build_payload(install_id, counts, period)
         # Default poster carries the optional ingest token; an injected poster
         # (tests) keeps the simple (url, payload) signature.
-        token = telemetry_token(source)
-        send = poster or (lambda u, p: _post(u, p, token=token))
+        token = telemetry_token(source, endpoint=url)
+        trusted_token = trusted_telemetry_token_for_url(url, source)
+        registration_failed = False
+        if not token:
+            register = registrar or (lambda u, i: register_install(u, i, env=source))
+            token = register(url, install_id) or ""
+            if not token:
+                if is_official_hosted_collector(url):
+                    return {"status": "failed", "sent": False, "registration": "failed"}
+                registration_failed = True
+        send = poster or (lambda u, p: _post(u, p, token=token, trusted_token=trusted_token))
         ok = bool(send(url, payload))
-        return {
+        result = {
             "status": "sent" if ok else "failed",
             "sent": ok,
             "period": period,
@@ -743,6 +1247,11 @@ def report_once(
                 "loc_added": payload["loc_added"],
             },
         }
+        if "last_30_days" in payload:
+            result["last_30_days"] = payload["last_30_days"]
+        if registration_failed:
+            result["registration"] = "failed"
+        return result
     except Exception as exc:  # fail-soft by contract: a telemetry hiccup is silent
         logger.debug("telemetry: report_once swallowed error: %s", exc)
         return {"status": "error", "sent": False}
@@ -753,6 +1262,7 @@ def clear_report(
     env: Mapping[str, str] | None = None,
     install_id: str | None = None,
     poster: Callable[[str, dict[str, Any]], bool] | None = None,
+    registrar: Callable[[str, str], str | None] | None = None,
 ) -> dict[str, Any]:
     """Ask the collector to remove this install's previous contribution.
 
@@ -769,8 +1279,14 @@ def clear_report(
         return {"status": "no_install_id", "sent": False}
     try:
         payload = build_tombstone_payload(resolved_install_id)
-        token = telemetry_token(source)
-        send = poster or (lambda u, p: _post(u, p, token=token))
+        token = telemetry_token(source, endpoint=url)
+        trusted_token = trusted_telemetry_token_for_url(url, source)
+        if not token:
+            register = registrar or (lambda u, i: register_install(u, i, env=source))
+            token = register(url, resolved_install_id) or ""
+            if not token and is_official_hosted_collector(url):
+                return {"status": "no_token", "sent": False}
+        send = poster or (lambda u, p: _post(u, p, token=token, trusted_token=trusted_token))
         ok = bool(send(url, payload))
         return {"status": "sent" if ok else "failed", "sent": ok}
     except Exception as exc:  # fail-soft by contract

@@ -4,8 +4,8 @@ Covers the reporting guarantees:
 
 * Explicit opt-out: no send, no install-id file, no network when the master
   switch is set to a disabled value.
-* Missing endpoint: no send, no install-id file, no network when no ingest URL
-  is configured.
+* Default collector: with no custom URL, Alfred uses the hosted collector unless
+  ALFRED_DEFAULT_TELEMETRY_URL is explicitly set empty.
 * Correct, bounded payload shape when enabled.
 * Fail-soft: a network error never raises; it returns a ``failed`` status.
 * Idempotent-friendly install id: stable across calls, regenerated only when
@@ -63,8 +63,31 @@ class FakePR:
     ``head_ref`` to exercise the branch-prefix path.
     """
 
-    def __init__(self, state: str, *, authored: bool = True, labels=None, head_ref=None) -> None:
+    def __init__(
+        self,
+        state: str,
+        *,
+        authored: bool = True,
+        labels=None,
+        head_ref=None,
+        changed_files: int = 0,
+        additions: int = 0,
+        deletions: int = 0,
+        created_at: datetime | None = None,
+        closed_at: datetime | None = None,
+        merged_at: datetime | None = None,
+    ) -> None:
         self.state = state
+        self.changed_files = changed_files
+        self.additions = additions
+        self.deletions = deletions
+        self.created_at = created_at or datetime(2026, 6, 1, tzinfo=UTC)
+        self.merged_at = merged_at or (
+            datetime(2026, 6, 10, tzinfo=UTC) if state == "merged" else None
+        )
+        self.closed_at = closed_at or (
+            datetime(2026, 6, 10, tzinfo=UTC) if state in {"merged", "closed"} else None
+        )
         if labels is not None or head_ref is not None:
             self.labels = list(labels or [])
             self.head_ref = head_ref
@@ -77,14 +100,26 @@ class FakePR:
 
 
 class FakeTouch:
-    pass
+    def __init__(self, touched_at: datetime | None = None) -> None:
+        self.touched_at = touched_at or datetime(2026, 6, 5, tzinfo=UTC)
 
 
 class FakeIssue:
-    def __init__(self, state: str = "open", *, labels=None) -> None:
+    def __init__(
+        self,
+        state: str = "open",
+        *,
+        labels=None,
+        created_at: datetime | None = None,
+        closed_at: datetime | None = None,
+    ) -> None:
         self.state = state
         self.labels = list(labels if labels is not None else ["agent:implement"])
         self.head_ref = None
+        self.created_at = created_at or datetime(2026, 6, 2, tzinfo=UTC)
+        self.closed_at = closed_at or (
+            datetime(2026, 6, 11, tzinfo=UTC) if state == "closed" else None
+        )
 
 
 def _authored(prs):
@@ -202,6 +237,54 @@ class ClampingBrain:
 
     def count_file_touches(self):
         return len(self._touches)  # exact COUNT(*), no cap
+
+    def sum_github_changed_lines(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+    ):
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        if authored_only:
+            rows = _authored(rows)
+        if agent_labeled_only:
+            rows = _agent_labeled(rows)
+        return sum(max(0, int(getattr(row, "additions", 0))) for row in rows) + sum(
+            max(0, int(getattr(row, "deletions", 0))) for row in rows
+        )
+
+
+class GitHubFileCountsBrain(ClampingBrain):
+    def sum_github_changed_files(
+        self,
+        *,
+        kind=None,
+        state=None,
+        authored_only=False,
+        agent_labeled_only=False,
+        merged_since=None,
+        **_filters,
+    ):
+        assert kind in {"pr", "issue"}
+        rows = self._prs if kind == "pr" else self._issues
+        if state is not None:
+            rows = [p for p in rows if getattr(p, "state", None) == state]
+        if authored_only:
+            rows = _authored(rows)
+        if agent_labeled_only:
+            rows = _agent_labeled(rows)
+        if merged_since is not None:
+            rows = [
+                p
+                for p in rows
+                if p.merged_at is not None and p.merged_at.astimezone(UTC) >= merged_since
+            ]
+        return sum(max(0, int(getattr(row, "changed_files", 0) or 0)) for row in rows)
 
 
 class ClampingNoCountBrain:
@@ -397,6 +480,72 @@ def test_direct_dry_run_loads_alfredrc_opt_out(tmp_path):
     assert not (alfred_home / "state" / "telemetry-install-id").exists()
 
 
+def test_cli_loads_trusted_token_from_alfred_home_env(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    (home / ".alfredrc").write_text(
+        f"{pt.ENABLE_ENV}=1\n{pt.URL_ENV}={pt.DEFAULT_INGEST_URL}\n",
+        encoding="utf-8",
+    )
+    (alfred_home / ".env").write_text(
+        f"{pt.TRUSTED_TOKEN_ENV}=trusted-secret\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv(pt.TRUSTED_TOKEN_ENV, raising=False)
+    captured: dict[str, str] = {}
+
+    def fake_report_once():
+        captured["trusted"] = os.environ.get(pt.TRUSTED_TOKEN_ENV, "")
+        return {"status": "disabled", "sent": False}
+
+    monkeypatch.setattr(pt, "report_once", fake_report_once)
+
+    try:
+        assert cli.main([]) == 0
+        assert captured["trusted"] == "trusted-secret"
+    finally:
+        os.environ.pop(pt.ENABLE_ENV, None)
+        os.environ.pop(pt.URL_ENV, None)
+        os.environ.pop(pt.TRUSTED_TOKEN_ENV, None)
+
+
+def test_script_prefers_checkout_lib_over_stale_alfred_home_lib(tmp_path):
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    stale_lib = alfred_home / "lib"
+    home.mkdir()
+    stale_lib.mkdir(parents=True)
+    (stale_lib / "proof_telemetry.py").write_text(
+        "def is_enabled():\n    return True\ndef telemetry_url():\n    return ''\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(alfred_home)
+    env["ALFRED_DOCTOR"] = "1"
+    env.pop("PYTHONPATH", None)
+    for key in (pt.ENABLE_ENV, pt.URL_ENV, pt.TOKEN_ENV, pt.DEFAULT_URL_ENV):
+        env.pop(key, None)
+
+    result = subprocess.run(
+        [sys.executable, str(_REPO / "bin" / "proof-telemetry.py")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+
+    assert result.returncode == 0
+    assert "[PROOF-TELEMETRY-DOCTOR-OK]" in result.stdout
+    assert "[PROOF-TELEMETRY-NO-URL]" not in result.stdout
+
+
 def test_cli_maps_stale_counts_to_non_error_sentinel(monkeypatch, capsys):
     monkeypatch.setattr(pt, "report_once", lambda: {"status": "stale_counts", "sent": False})
 
@@ -407,9 +556,26 @@ def test_cli_maps_stale_counts_to_non_error_sentinel(monkeypatch, capsys):
     assert "[PROOF-TELEMETRY-ERROR]" not in out
 
 
-def test_report_once_enabled_without_url_is_a_no_op():
+def test_report_once_enabled_with_default_url_registers_and_sends(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     poster = RecordingPoster()
-    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "install-token"
+
+    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster, registrar=registrar)
+    assert result["status"] == "sent"
+    assert result["sent"] is True
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == pt.DEFAULT_INGEST_URL
+    assert poster.calls and poster.calls[0][0] == pt.DEFAULT_INGEST_URL
+
+
+def test_report_once_enabled_without_default_url_is_a_no_op():
+    poster = RecordingPoster()
+    result = pt.report_once(env={pt.DEFAULT_URL_ENV: ""}, brain=FakeBrain(), poster=poster)
     assert result["status"] == "no_url"
     assert result["sent"] is False
     assert poster.calls == []
@@ -431,11 +597,24 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     )
     poster = RecordingPoster(ok=True)
     env = {pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"}
+    registrar_calls = []
 
-    result = pt.report_once(env=env, brain=brain, poster=poster, now=FIXED)
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "custom-install-token"
+
+    result = pt.report_once(
+        env=env,
+        brain=brain,
+        poster=poster,
+        registrar=registrar,
+        now=FIXED,
+    )
 
     assert result["status"] == "sent"
     assert result["sent"] is True
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == "https://telemetry.example.com/ingest"
     assert len(poster.calls) == 1
     url, payload = poster.calls[0]
     assert url == "https://telemetry.example.com/ingest"
@@ -452,6 +631,7 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
         "files_changed",
         "lines_changed",
         "loc_added",
+        "last_30_days",
     }
     # Period is the stable lifetime bucket, not a calendar month, so a calendar
     # rollover never re-adds the cumulative total on the Worker.
@@ -465,7 +645,111 @@ def test_report_once_enabled_sends_expected_payload(tmp_path, monkeypatch):
     assert payload["files_changed"] == 3
     assert payload["lines_changed"] == 0
     assert payload["loc_added"] == 3
+    assert payload["last_30_days"] == {
+        "window_days": 30,
+        "prs_opened": 4,
+        "prs_merged": 2,
+        "prs_reviewed": 3,
+        "issues_opened": 2,
+        "issues_closed": 1,
+        "files_changed": 3,
+        "lines_changed": 0,
+    }
     assert isinstance(payload["install_id"], str) and payload["install_id"]
+
+
+def test_report_once_custom_url_registers_even_with_persisted_hosted_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    assert pt.persist_token("hosted-token")
+
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "custom-install-token"
+
+    env = {pt.URL_ENV: "https://custom.example.com/ingest"}
+    result = pt.report_once(env=env, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result["status"] == "sent"
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == "https://custom.example.com/ingest"
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
+
+
+def test_report_once_custom_url_falls_back_when_registration_is_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return None
+
+    result = pt.report_once(
+        env={pt.URL_ENV: "https://custom.example.com/ingest"},
+        brain=FakeBrain(),
+        poster=poster,
+        registrar=registrar,
+    )
+
+    assert result["status"] == "sent"
+    assert result["sent"] is True
+    assert result["registration"] == "failed"
+    assert len(registrar_calls) == 1
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
+
+
+def test_report_once_hosted_registration_failure_does_not_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+
+    def registrar(_url, _install_id):
+        return None
+
+    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result == {"status": "failed", "sent": False, "registration": "failed"}
+    assert poster.calls == []
+
+
+def test_report_once_default_url_registers_even_with_persisted_custom_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    assert pt.persist_token(
+        "custom-token",
+        endpoint="https://custom.example.com/ingest",
+    )
+
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "hosted-install-token"
+
+    result = pt.report_once(env={}, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result["status"] == "sent"
+    assert len(registrar_calls) == 1
+    assert registrar_calls[0][0] == pt.DEFAULT_INGEST_URL
+    assert poster.calls and poster.calls[0][0] == pt.DEFAULT_INGEST_URL
+
+
+def test_report_once_custom_url_uses_explicit_shared_token_without_registration(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    poster = RecordingPoster(ok=True)
+
+    def registrar(url, install_id):
+        raise AssertionError("custom URL with explicit shared token should not register")
+
+    env = {pt.URL_ENV: "https://custom.example.com/ingest", pt.TOKEN_ENV: "shared-token"}
+    result = pt.report_once(env=env, brain=FakeBrain(), poster=poster, registrar=registrar)
+
+    assert result["status"] == "sent"
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
 
 
 def test_report_once_failed_post_returns_failed_not_raised(tmp_path, monkeypatch):
@@ -570,6 +854,262 @@ def test_derive_counts_uses_exact_count_methods_over_list():
     counts = pt.derive_counts(brain)
     assert counts.prs_opened == 1234
     assert counts.loc_added == 999
+
+
+def test_derive_counts_uses_agent_authored_github_line_totals():
+    brain = ClampingBrain(
+        prs=[
+            FakePR("merged", additions=10, deletions=3),
+            FakePR("open", additions=7, deletions=1),
+            FakePR("merged", authored=False, additions=999, deletions=999),
+        ],
+        touches=[FakeTouch()] * 2,
+    )
+    counts = pt.derive_counts(brain)
+    assert counts.lines_changed == 21
+
+
+def test_derive_counts_prefers_agent_authored_github_file_totals():
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR("merged", changed_files=4),
+            FakePR("open", changed_files=2),
+            FakePR("merged", authored=False, changed_files=200),
+        ],
+        touches=[FakeTouch()] * 999,
+    )
+
+    counts = pt.derive_counts(brain)
+
+    assert counts.files_changed == 4
+    assert counts.loc_added == 4
+
+
+def test_derive_counts_falls_back_to_file_touches_when_github_file_totals_are_empty():
+    brain = GitHubFileCountsBrain(
+        prs=[FakePR("merged", changed_files=0)],
+        touches=[FakeTouch()] * 7,
+    )
+
+    counts = pt.derive_counts(brain)
+
+    assert counts.files_changed == 7
+    assert counts.loc_added == 7
+
+
+def test_derive_window_counts_prefers_agent_authored_github_file_totals():
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR(
+                "merged",
+                changed_files=4,
+                merged_at=datetime(2026, 6, 10, tzinfo=UTC),
+            ),
+            FakePR(
+                "merged",
+                changed_files=9,
+                merged_at=datetime(2026, 4, 10, tzinfo=UTC),
+            ),
+            FakePR(
+                "merged",
+                authored=False,
+                changed_files=200,
+                merged_at=datetime(2026, 6, 10, tzinfo=UTC),
+            ),
+        ],
+        touches=[FakeTouch()] * 999,
+    )
+
+    counts = pt.derive_window_counts(brain, now=now)
+
+    assert counts.files_changed == 4
+
+
+def test_derive_window_counts_falls_back_to_file_touches_when_github_files_are_empty():
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR(
+                "merged",
+                changed_files=0,
+                merged_at=datetime(2026, 6, 10, tzinfo=UTC),
+            ),
+        ],
+        touches=[
+            FakeTouch(touched_at=datetime(2026, 6, 12, tzinfo=UTC)),
+            FakeTouch(touched_at=datetime(2026, 4, 12, tzinfo=UTC)),
+        ],
+    )
+
+    counts = pt.derive_window_counts(brain, now=now)
+
+    assert counts.files_changed == 1
+
+
+def test_derive_counts_marks_line_field_stale_when_line_total_query_fails():
+    class MissingLineColumnsBrain(ClampingBrain):
+        def sum_github_changed_lines(self, **_filters):
+            raise RuntimeError("no such column: additions")
+
+    brain = MissingLineColumnsBrain(
+        prs=[FakePR("merged"), FakePR("open")],
+        issues=[FakeIssue("closed", labels=["agent:authored"])],
+        touches=[FakeTouch()] * 3,
+    )
+    counts = pt.derive_counts(brain)
+
+    assert counts.prs_opened == 2
+    assert counts.prs_merged == 1
+    assert counts.issues_opened == 1
+    assert counts.issues_closed == 1
+    assert counts.files_changed == 3
+    assert counts.lines_changed == 0
+    assert counts.read_complete is True
+    assert counts.stale_fields == ("lines_changed",)
+
+
+def test_derive_counts_marks_line_field_stale_when_authored_prs_have_default_zero_lines():
+    brain = ClampingBrain(
+        prs=[FakePR("merged", additions=0, deletions=0)],
+        touches=[FakeTouch()] * 2,
+    )
+
+    counts = pt.derive_counts(brain)
+
+    assert counts.prs_opened == 1
+    assert counts.prs_merged == 1
+    assert counts.files_changed == 2
+    assert counts.lines_changed == 0
+    assert counts.read_complete is True
+    assert counts.stale_fields == ("lines_changed",)
+
+
+def test_derive_counts_marks_line_field_stale_when_rolling_lines_are_missing():
+    class MissingRollingLineBrain(GitHubFileCountsBrain):
+        def sum_github_changed_lines(self, **filters):
+            if filters.get("merged_since") is not None:
+                return 0
+            return super().sum_github_changed_lines(**filters)
+
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = MissingRollingLineBrain(
+        prs=[
+            FakePR(
+                "merged",
+                additions=100,
+                deletions=20,
+                changed_files=3,
+                merged_at=datetime(2026, 6, 18, tzinfo=UTC),
+            )
+        ],
+    )
+
+    counts = pt.derive_counts(brain, now=now)
+
+    assert counts.lines_changed == 120
+    assert counts.last_30_days is not None
+    assert counts.last_30_days.prs_merged == 1
+    assert counts.last_30_days.files_changed == 3
+    assert counts.last_30_days.lines_changed == 0
+    assert counts.stale_fields == ("lines_changed",)
+
+
+def test_derive_counts_does_not_mark_issue_only_window_as_stale_lines():
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = GitHubFileCountsBrain(
+        prs=[
+            FakePR(
+                "merged",
+                additions=100,
+                deletions=20,
+                changed_files=3,
+                merged_at=datetime(2026, 5, 1, tzinfo=UTC),
+                created_at=datetime(2026, 5, 1, tzinfo=UTC),
+            )
+        ],
+        issues=[
+            FakeIssue(
+                "closed",
+                labels=["agent:triage"],
+                created_at=datetime(2026, 6, 18, tzinfo=UTC),
+                closed_at=datetime(2026, 6, 19, tzinfo=UTC),
+            )
+        ],
+    )
+
+    counts = pt.derive_counts(brain, now=now)
+
+    assert counts.lines_changed == 120
+    assert counts.last_30_days is not None
+    assert counts.last_30_days.issues_opened == 1
+    assert counts.last_30_days.issues_closed == 1
+    assert counts.last_30_days.prs_opened == 0
+    assert counts.last_30_days.prs_merged == 0
+    assert counts.last_30_days.files_changed == 0
+    assert counts.last_30_days.lines_changed == 0
+    assert counts.stale_fields == ()
+
+
+def test_derive_counts_does_not_mark_open_only_window_as_stale_lines():
+    class MissingRollingLineBrain(GitHubFileCountsBrain):
+        def sum_github_changed_lines(self, **filters):
+            if filters.get("merged_since") is not None:
+                return 0
+            return super().sum_github_changed_lines(**filters)
+
+    now = datetime(2026, 6, 21, tzinfo=UTC)
+    brain = MissingRollingLineBrain(
+        prs=[
+            FakePR(
+                "merged",
+                additions=100,
+                deletions=20,
+                changed_files=3,
+                merged_at=datetime(2026, 5, 1, tzinfo=UTC),
+                created_at=datetime(2026, 5, 1, tzinfo=UTC),
+            ),
+            FakePR(
+                "open",
+                additions=0,
+                deletions=0,
+                changed_files=0,
+                created_at=datetime(2026, 6, 18, tzinfo=UTC),
+            ),
+        ],
+    )
+
+    counts = pt.derive_counts(brain, now=now)
+
+    assert counts.lines_changed == 120
+    assert counts.last_30_days is not None
+    assert counts.last_30_days.prs_opened == 1
+    assert counts.last_30_days.prs_merged == 0
+    assert counts.last_30_days.lines_changed == 0
+    assert counts.stale_fields == ()
+
+
+def test_report_once_does_not_zero_lines_when_line_total_query_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+
+    class BrokenLineCountsBrain(ClampingBrain):
+        def sum_github_changed_lines(self, **_filters):
+            raise RuntimeError("temporary read error")
+
+    brain = BrokenLineCountsBrain(prs=[FakePR("merged")], touches=[FakeTouch()])
+    poster = RecordingPoster(ok=True)
+    result = pt.report_once(
+        env={pt.ENABLE_ENV: "1", pt.URL_ENV: "https://telemetry.example.com/ingest"},
+        brain=brain,
+        poster=poster,
+        now=FIXED,
+    )
+
+    assert result["status"] == "sent"
+    assert result["sent"] is True
+    assert poster.calls
+    assert poster.calls[0][1]["stale_fields"] == ["lines_changed"]
+    assert poster.calls[0][1]["lines_changed"] == 0
 
 
 def test_derive_counts_fallback_stops_honestly_at_list_clamp():
@@ -920,9 +1460,137 @@ def test_build_tombstone_payload_contains_no_counts():
 # ---------------------------------------------------------------------------
 # ingest token (optional shared write gate)
 # ---------------------------------------------------------------------------
-def test_telemetry_token_reads_env():
+def test_telemetry_token_reads_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
     assert pt.telemetry_token({}) == ""
     assert pt.telemetry_token({pt.TOKEN_ENV: " tok "}) == "tok"
+
+
+def test_persisted_telemetry_token_is_endpoint_scoped(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+
+    assert pt.persist_token("custom-token", endpoint="https://custom.example.com/ingest")
+
+    assert pt.telemetry_token({}, endpoint="https://custom.example.com/ingest/") == "custom-token"
+    assert pt.telemetry_token({}, endpoint=pt.DEFAULT_INGEST_URL) == ""
+
+
+def test_legacy_persisted_telemetry_token_is_hosted_default_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+
+    assert pt.persist_token("legacy-hosted-token")
+
+    assert pt.telemetry_token({}, endpoint=pt.DEFAULT_INGEST_URL) == "legacy-hosted-token"
+    assert pt.telemetry_token({}, endpoint="https://custom.example.com/ingest") == ""
+
+
+def test_persist_token_removes_token_when_endpoint_marker_write_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    marker = tmp_path / "state" / "telemetry-token-endpoint"
+    marker.mkdir(parents=True)
+
+    assert not pt.persist_token("custom-token", endpoint="https://custom.example.com/ingest")
+
+    assert not (tmp_path / "state" / "telemetry-token").exists()
+
+
+def test_trusted_telemetry_token_reads_env():
+    assert pt.trusted_telemetry_token({}) == ""
+    assert pt.trusted_telemetry_token({pt.TRUSTED_TOKEN_ENV: " trusted "}) == "trusted"
+
+
+def test_trusted_telemetry_token_is_scoped_to_hosted_collector():
+    env = {pt.TRUSTED_TOKEN_ENV: " trusted "}
+
+    assert pt.trusted_telemetry_token_for_url(pt.DEFAULT_INGEST_URL, env) == "trusted"
+    assert pt.trusted_telemetry_token_for_url(f"{pt.DEFAULT_INGEST_URL}/", env) == "trusted"
+    assert pt.trusted_telemetry_token_for_url("https://custom.example.com/ingest", env) == ""
+
+
+def test_register_install_sends_trusted_token_only_to_hosted_collector(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    captured = []
+
+    def fake_post_json(url, payload, **kwargs):
+        captured.append((url, payload, kwargs.get("trusted_token", "")))
+        return True, {"install_id": payload["install_id"], "token": "install-token"}
+
+    monkeypatch.setattr(pt, "_post_json", fake_post_json)
+    env = {pt.TRUSTED_TOKEN_ENV: "trusted-secret"}
+
+    hosted = pt.register_install(pt.DEFAULT_INGEST_URL, "install-reg-recover", env=env)
+    custom = pt.register_install("https://custom.example.com/ingest", "install-reg-custom", env=env)
+
+    assert hosted == "install-token"
+    assert custom == "install-token"
+    assert captured == [
+        (
+            pt.register_url_for_ingest(pt.DEFAULT_INGEST_URL),
+            {"install_id": "install-reg-recover"},
+            "trusted-secret",
+        ),
+        (
+            "https://custom.example.com/register",
+            {"install_id": "install-reg-custom"},
+            "",
+        ),
+    ]
+
+
+def test_report_once_registration_uses_env_trusted_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    captured = []
+
+    def fake_post_json(url, payload, **kwargs):
+        captured.append((url, payload, kwargs.get("trusted_token", "")))
+        return True, {"install_id": payload["install_id"], "token": "install-token"}
+
+    monkeypatch.setattr(pt, "_post_json", fake_post_json)
+    poster = RecordingPoster(ok=True)
+
+    result = pt.report_once(
+        env={pt.TRUSTED_TOKEN_ENV: "trusted-secret"},
+        brain=FakeBrain(),
+        poster=poster,
+    )
+
+    assert result["status"] == "sent"
+    assert captured == [
+        (
+            pt.register_url_for_ingest(pt.DEFAULT_INGEST_URL),
+            {"install_id": poster.calls[0][1]["install_id"]},
+            "trusted-secret",
+        )
+    ]
+
+
+def test_clear_report_registration_uses_env_trusted_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    captured = []
+
+    def fake_post_json(url, payload, **kwargs):
+        captured.append((url, payload, kwargs.get("trusted_token", "")))
+        return True, {"install_id": payload["install_id"], "token": "delete-token"}
+
+    monkeypatch.setattr(pt, "_post_json", fake_post_json)
+    poster = RecordingPoster(ok=True)
+
+    result = pt.clear_report(
+        env={pt.TRUSTED_TOKEN_ENV: "trusted-secret"},
+        poster=poster,
+    )
+
+    assert result == {"status": "sent", "sent": True}
+    assert captured == [
+        (
+            pt.register_url_for_ingest(pt.DEFAULT_INGEST_URL),
+            {"install_id": "existing-token"},
+            "trusted-secret",
+        )
+    ]
 
 
 def test_post_sends_token_header_when_set(monkeypatch):
@@ -948,6 +1616,73 @@ def test_post_sends_token_header_when_set(monkeypatch):
     assert captured["headers"].get("X-ingest-token") == "s3cr3t"
 
 
+def test_post_accepts_plain_2xx_body(monkeypatch):
+    class FakeResp:
+        status = 202
+
+        def read(self):
+            return b"OK"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp())
+
+    assert pt._post("https://w.example.com/ingest", {"x": 1}) is True
+
+
+def test_post_json_still_requires_json_by_default(monkeypatch):
+    class FakeResp:
+        status = 200
+
+        def read(self):
+            return b"OK"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp())
+
+    ok, body = pt._post_json("https://w.example.com/register", {"install_id": "id"})
+
+    assert ok is False
+    assert body == {}
+
+
+def test_post_sends_trusted_token_header_when_set(monkeypatch):
+    captured = {}
+
+    class FakeResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["headers"] = dict(req.headers)
+        return FakeResp()
+
+    monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
+    ok = pt._post(
+        "https://w.example.com/ingest",
+        {"x": 1},
+        token="install-token",
+        trusted_token="trusted-token",
+    )
+    assert ok is True
+    assert captured["headers"].get("X-ingest-token") == "install-token"
+    assert captured["headers"].get("X-alfred-trusted-token") == "trusted-token"
+
+
 def test_post_omits_token_header_when_unset(monkeypatch):
     captured = {}
 
@@ -967,6 +1702,7 @@ def test_post_omits_token_header_when_unset(monkeypatch):
     monkeypatch.setattr(pt.urllib.request, "urlopen", fake_urlopen)
     pt._post("https://w.example.com/ingest", {"x": 1})
     assert "X-ingest-token" not in captured["headers"]
+    assert "X-alfred-trusted-token" not in captured["headers"]
 
 
 def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeypatch):
@@ -975,13 +1711,20 @@ def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeyp
     install_id_path.parent.mkdir()
     install_id_path.write_text("existing-token\n", encoding="utf-8")
     poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return "delete-token"
 
     result = pt.clear_report(
         env={pt.URL_ENV: "https://telemetry.example.com/ingest"},
         poster=poster,
+        registrar=registrar,
     )
 
     assert result == {"status": "sent", "sent": True}
+    assert registrar_calls == [("https://telemetry.example.com/ingest", "existing-token")]
     assert poster.calls == [
         (
             "https://telemetry.example.com/ingest",
@@ -992,6 +1735,45 @@ def test_clear_report_sends_tombstone_with_existing_install_id(tmp_path, monkeyp
             },
         )
     ]
+
+
+def test_clear_report_custom_url_falls_back_when_registration_is_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    poster = RecordingPoster(ok=True)
+    registrar_calls = []
+
+    def registrar(url, install_id):
+        registrar_calls.append((url, install_id))
+        return None
+
+    result = pt.clear_report(
+        env={pt.URL_ENV: "https://custom.example.com/ingest"},
+        poster=poster,
+        registrar=registrar,
+    )
+
+    assert result == {"status": "sent", "sent": True}
+    assert registrar_calls == [("https://custom.example.com/ingest", "existing-token")]
+    assert poster.calls and poster.calls[0][0] == "https://custom.example.com/ingest"
+
+
+def test_clear_report_hosted_registration_failure_returns_no_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    poster = RecordingPoster(ok=True)
+
+    def registrar(_url, _install_id):
+        return None
+
+    result = pt.clear_report(env={}, poster=poster, registrar=registrar)
+
+    assert result == {"status": "no_token", "sent": False}
+    assert poster.calls == []
 
 
 def test_clear_report_does_not_create_install_id(tmp_path, monkeypatch):
@@ -1117,7 +1899,25 @@ def test_report_once_does_not_mint_fresh_id_per_call_on_persist_failure(tmp_path
 # ALFRED_DOCTOR fast path: bin/doctor.sh runs every agent with ALFRED_DOCTOR=1
 # and must get a quick recognized sentinel, never a real telemetry POST.
 # ---------------------------------------------------------------------------
-def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(monkeypatch, capsys):
+def _isolate_doctor_env(monkeypatch, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    for key in (
+        pt.ENABLE_ENV,
+        pt.URL_ENV,
+        pt.TOKEN_ENV,
+        pt.TRUSTED_TOKEN_ENV,
+        pt.DEFAULT_URL_ENV,
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.setenv(pt.ENABLE_ENV, "0")
     # If the fast path fell through to report_once, this would blow up loudly.
@@ -1130,10 +1930,25 @@ def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(monkeypatch, 
     assert "DISABLED]" in out
 
 
-def test_doctor_fast_path_enabled_without_url_emits_no_url(monkeypatch, capsys):
+def test_doctor_fast_path_enabled_without_url_uses_default_collector(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.delenv(pt.URL_ENV, raising=False)
+    monkeypatch.delenv(pt.DEFAULT_URL_ENV, raising=False)
+    monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
+    rc = cli.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "[PROOF-TELEMETRY-DOCTOR-OK]" in out
+
+
+def test_doctor_fast_path_enabled_with_default_disabled_emits_no_url(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
+    monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
+    monkeypatch.delenv(pt.URL_ENV, raising=False)
+    monkeypatch.setenv(pt.DEFAULT_URL_ENV, "")
     monkeypatch.setattr(pt, "report_once", _fail_if_called("report_once must not run under doctor"))
     rc = cli.main([])
     out = capsys.readouterr().out
@@ -1141,7 +1956,10 @@ def test_doctor_fast_path_enabled_without_url_emits_no_url(monkeypatch, capsys):
     assert "[PROOF-TELEMETRY-NO-URL]" in out
 
 
-def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(monkeypatch, capsys):
+def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(
+    tmp_path, monkeypatch, capsys
+):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.setenv(pt.URL_ENV, "https://telemetry.example.com/ingest")
@@ -1155,11 +1973,13 @@ def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(monke
     assert "DOCTOR-OK" in out
 
 
-def test_doctor_fast_path_takes_precedence_over_dry_run(monkeypatch, capsys):
+def test_doctor_fast_path_takes_precedence_over_dry_run(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     # Even with --dry-run, ALFRED_DOCTOR=1 short-circuits to the fast path so a
     # doctor sweep never builds a payload or reads the brain.
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
+    monkeypatch.setenv(pt.DEFAULT_URL_ENV, "")
     rc = cli.main(["--dry-run"])
     out = capsys.readouterr().out
     assert rc == 0

@@ -15,9 +15,11 @@ import worker, {
   clampDependentPrCounts,
   normalizePayload,
   ingest,
+  registerInstall,
   forgetInstall,
   computeTotals,
   hashIp,
+  STATS_CACHE_SCHEMA_VERSION,
 } from "../src/worker.js";
 
 // --------------------------------------------------------------------------
@@ -65,9 +67,8 @@ function makeKV() {
 // read these straight off ingest's return value (the running aggregate); under
 // the derived-on-read model ingest returns only the install's own snapshot, so
 // global assertions go through computeTotals instead.
-const totalsOf = (kv) => computeTotals(kv);
-
 const FIXED = new Date("2026-06-15T00:00:00.000Z");
+const totalsOf = (kv, env) => computeTotals(kv, env, FIXED);
 
 // --------------------------------------------------------------------------
 // clampCount
@@ -85,6 +86,38 @@ test("clampCount truncates floats and caps at the max", () => {
   assert.equal(clampCount(3.9), 3);
   assert.equal(clampCount(100000), 100000);
   assert.equal(clampCount(999999999), 100000);
+});
+
+test("normalizePayload allows larger changed-line totals than row counts", () => {
+  const out = normalizePayload({
+    install_id: "line-count01",
+    period: "lifetime",
+    prs_opened: 1,
+    lines_changed: 321752,
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.value.counts.lines_changed, 321752);
+  assert.equal(
+    normalizePayload({
+      install_id: "line-count02",
+      period: "lifetime",
+      lines_changed: 999999999,
+    }).value.counts.lines_changed,
+    5000000,
+  );
+});
+
+test("normalizePayload carries recognized stale fields only", () => {
+  const out = normalizePayload({
+    install_id: "stale-lines1",
+    period: "lifetime",
+    prs_opened: 3,
+    lines_changed: 0,
+    stale_fields: ["lines_changed", "lines_changed", "prs_opened", 42],
+  });
+
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.value.stale_fields, ["lines_changed"]);
 });
 
 // --------------------------------------------------------------------------
@@ -169,6 +202,38 @@ test("normalizePayload clamps all count fields and keeps id/period", () => {
     "prs_opened",
     "prs_reviewed",
   ]);
+});
+
+test("normalizePayload accepts and clamps rolling 30-day counts", () => {
+  const out = normalizePayload({
+    install_id: "rolling-window1",
+    period: "lifetime",
+    prs_opened: 10,
+    prs_merged: 9,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 9,
+      prs_reviewed: 5,
+      issues_opened: 3,
+      issues_closed: 7,
+      files_changed: 12,
+      lines_changed: 987654321,
+      repo: "ignored",
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.value.last_30_days, {
+    window_days: 30,
+    prs_opened: 4,
+    prs_merged: 9,
+    prs_reviewed: 5,
+    issues_opened: 3,
+    issues_closed: 7,
+    files_changed: 12,
+    lines_changed: 5000000,
+  });
 });
 
 // --------------------------------------------------------------------------
@@ -281,6 +346,120 @@ test("ingest folds the first send into empty totals", async () => {
   assert.equal(agg.loc_added, 1200);
   assert.equal(agg.installs, 1);
   assert.equal(agg.updated_at, FIXED.toISOString());
+});
+
+test("ingest stores rolling 30-day counts and derived stats sum them", async () => {
+  const kv = makeKV();
+  const a = normalizePayload({
+    install_id: "install-rollinga",
+    period: "lifetime",
+    prs_opened: 100,
+    prs_merged: 80,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 10,
+      prs_merged: 8,
+      prs_reviewed: 9,
+      issues_opened: 6,
+      issues_closed: 5,
+      files_changed: 21,
+      lines_changed: 2000,
+    },
+  }).value;
+  const b = normalizePayload({
+    install_id: "install-rollingb",
+    period: "lifetime",
+    prs_opened: 40,
+    prs_merged: 20,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 2,
+      prs_reviewed: 3,
+      issues_opened: 1,
+      issues_closed: 1,
+      files_changed: 7,
+      lines_changed: 500,
+    },
+  }).value;
+
+  await ingest(kv, a, FIXED, { trustedCountsOnly: true, trustedReporter: true });
+  await ingest(kv, b, FIXED, { trustedCountsOnly: true, trustedReporter: true });
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_merged, 100);
+  assert.deepEqual(agg.last_30_days, {
+    window_days: 30,
+    prs_opened: 14,
+    prs_merged: 10,
+    prs_reviewed: 12,
+    issues_opened: 7,
+    issues_closed: 6,
+    files_changed: 28,
+    lines_changed: 2500,
+  });
+});
+
+test("derived stats exclude expired install snapshots from rolling totals", async () => {
+  const kv = makeKV();
+  const stale = normalizePayload({
+    install_id: "install-stalerolling",
+    period: "lifetime",
+    prs_opened: 100,
+    prs_merged: 80,
+    issues_opened: 20,
+    files_changed: 200,
+    lines_changed: 3000,
+    loc_added: 180,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 100,
+      prs_merged: 80,
+      prs_reviewed: 90,
+      issues_opened: 20,
+      issues_closed: 10,
+      files_changed: 200,
+      lines_changed: 3000,
+    },
+  }).value;
+  const fresh = normalizePayload({
+    install_id: "install-freshrolling",
+    period: "lifetime",
+    prs_opened: 5,
+    prs_merged: 3,
+    issues_opened: 2,
+    files_changed: 7,
+    lines_changed: 90,
+    loc_added: 6,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 5,
+      prs_merged: 3,
+      prs_reviewed: 4,
+      issues_opened: 2,
+      issues_closed: 1,
+      files_changed: 7,
+      lines_changed: 90,
+    },
+  }).value;
+
+  await ingest(kv, stale, new Date("2000-01-01T00:00:00.000Z"));
+  await ingest(kv, fresh, FIXED);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_merged, 83);
+  assert.equal(agg.issues_opened, 22);
+  assert.equal(agg.files_changed, 207);
+  assert.deepEqual(agg.last_30_days, {
+    window_days: 30,
+    prs_opened: 5,
+    prs_merged: 3,
+    prs_reviewed: 4,
+    issues_opened: 2,
+    issues_closed: 1,
+    files_changed: 7,
+    lines_changed: 90,
+  });
 });
 
 test("ingest is idempotent: re-sending the same period does not double count", async () => {
@@ -413,6 +592,17 @@ test("forgetInstall removes an install from public totals", async () => {
   assert.equal(totals.prs_opened, 3);
   assert.equal(totals.prs_merged, 1);
   assert.equal(totals.installs, 1);
+});
+
+test("forgetInstall removes the install auth token too", async () => {
+  const kv = makeKV();
+  const registered = await registerInstall(kv, { install_id: "install-delete-auth" }, FIXED);
+  assert.equal(registered.ok, true);
+  assert.equal(kv.store.has("auth:install-delete-auth"), true);
+
+  await forgetInstall(kv, "install-delete-auth");
+
+  assert.equal(kv.store.has("auth:install-delete-auth"), false);
 });
 
 // --------------------------------------------------------------------------
@@ -612,6 +802,314 @@ test("install-keyed model: the per-install record is replaced, not appended", as
   assert.equal(snapshot.prs_opened, 12, "the record holds the latest cumulative total");
 });
 
+test("ingest preserves stale line totals while updating fresh counts", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-staleln",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    loc_added: 20,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const staleLines = normalizePayload({
+    install_id: "install-staleln",
+    period: "lifetime",
+    prs_opened: 6,
+    prs_merged: 5,
+    lines_changed: 0,
+    loc_added: 30,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 6,
+      prs_merged: 5,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 30,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED);
+  await ingest(kv, staleLines, FIXED);
+
+  const snapshot = JSON.parse(kv.store.get("install:install-staleln"));
+  assert.equal(snapshot.prs_opened, 6);
+  assert.equal(snapshot.prs_merged, 5);
+  assert.equal(snapshot.loc_added, 30);
+  assert.equal(snapshot.lines_changed, 1200);
+  assert.equal(snapshot.last_30_days.lines_changed, 900);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_opened, 6);
+  assert.equal(agg.lines_changed, 1200);
+  assert.equal(agg.last_30_days.lines_changed, 900);
+});
+
+test("stale rolling line totals expire when the rolling window has no activity", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-stalewindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const staleLinesAfterWindowAgesOut = normalizePayload({
+    install_id: "install-stalewindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 0,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 0,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED);
+  await ingest(kv, staleLinesAfterWindowAgesOut, FIXED);
+
+  const snapshot = JSON.parse(kv.store.get("install:install-stalewindow"));
+  assert.equal(snapshot.lines_changed, 1200);
+  assert.equal(snapshot.last_30_days.lines_changed, 0);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.lines_changed, 1200);
+  assert.equal(agg.last_30_days.lines_changed, 0);
+});
+
+test("stale rolling line totals do not overwrite fresh lifetime lines", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-stalewindow-fresh-lifetime",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const staleRollingOnly = normalizePayload({
+    install_id: "install-stalewindow-fresh-lifetime",
+    period: "lifetime",
+    prs_opened: 5,
+    prs_merged: 4,
+    lines_changed: 1500,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 1,
+      prs_merged: 1,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 4,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED, {
+    trustedCountsOnly: true,
+    trustedReporter: true,
+  });
+  await ingest(kv, staleRollingOnly, FIXED, {
+    trustedCountsOnly: true,
+    trustedReporter: true,
+  });
+
+  const snapshot = JSON.parse(kv.store.get("install:install-stalewindow-fresh-lifetime"));
+  assert.equal(snapshot.lines_changed, 1500);
+  assert.equal(snapshot.last_30_days.lines_changed, 900);
+
+  const agg = await totalsOf(kv, { TRUSTED_COUNTS_ONLY: "1" });
+  assert.equal(agg.lines_changed, 1500);
+  assert.equal(agg.last_30_days.lines_changed, 900);
+});
+
+test("issue-only rolling windows do not preserve stale rolling lines", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-staleissuewindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const issueOnlyWindow = normalizePayload({
+    install_id: "install-staleissuewindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 0,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 0,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 2,
+      issues_closed: 1,
+      files_changed: 0,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED);
+  await ingest(kv, issueOnlyWindow, FIXED);
+
+  const snapshot = JSON.parse(kv.store.get("install:install-staleissuewindow"));
+  assert.equal(snapshot.lines_changed, 1200);
+  assert.equal(snapshot.last_30_days.issues_opened, 2);
+  assert.equal(snapshot.last_30_days.issues_closed, 1);
+  assert.equal(snapshot.last_30_days.lines_changed, 0);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.lines_changed, 1200);
+  assert.equal(agg.last_30_days.issues_opened, 2);
+  assert.equal(agg.last_30_days.issues_closed, 1);
+  assert.equal(agg.last_30_days.lines_changed, 0);
+});
+
+test("open-only rolling windows do not preserve stale rolling lines", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-staleopenwindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const openOnlyWindow = normalizePayload({
+    install_id: "install-staleopenwindow",
+    period: "lifetime",
+    prs_opened: 5,
+    prs_merged: 3,
+    lines_changed: 0,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 1,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED);
+  await ingest(kv, openOnlyWindow, FIXED);
+
+  const snapshot = JSON.parse(kv.store.get("install:install-staleopenwindow"));
+  assert.equal(snapshot.lines_changed, 1200);
+  assert.equal(snapshot.last_30_days.prs_opened, 1);
+  assert.equal(snapshot.last_30_days.prs_merged, 0);
+  assert.equal(snapshot.last_30_days.lines_changed, 0);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.lines_changed, 1200);
+  assert.equal(agg.last_30_days.prs_opened, 1);
+  assert.equal(agg.last_30_days.prs_merged, 0);
+  assert.equal(agg.last_30_days.lines_changed, 0);
+});
+
+test("trusted-counts stale lines never promote an earlier untrusted total", async () => {
+  const kv = makeKV();
+  const untrusted = normalizePayload({
+    install_id: "install-staleuntrusted",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 999999,
+    loc_added: 20,
+    last_30_days: {
+      window_days: 30,
+      lines_changed: 888888,
+    },
+  }).value;
+  const trustedStale = normalizePayload({
+    install_id: "install-staleuntrusted",
+    period: "lifetime",
+    prs_opened: 6,
+    prs_merged: 5,
+    lines_changed: 0,
+    loc_added: 30,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 6,
+      prs_merged: 5,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, untrusted, FIXED, {
+    trustedCountsOnly: false,
+    trustedReporter: false,
+  });
+  await ingest(kv, trustedStale, FIXED, {
+    trustedCountsOnly: true,
+    trustedReporter: true,
+  });
+
+  const snapshot = JSON.parse(kv.store.get("install:install-staleuntrusted"));
+  assert.equal(snapshot.trusted_reporter, true);
+  assert.equal(snapshot.lines_changed, 0);
+  assert.equal(snapshot.last_30_days.lines_changed, 0);
+
+  const agg = await totalsOf(kv, { TRUSTED_COUNTS_ONLY: "1" });
+  assert.equal(agg.prs_opened, 6);
+  assert.equal(agg.lines_changed, 0);
+  assert.equal(agg.last_30_days.lines_changed, 0);
+});
+
 test("ingest never pushes a total negative on a downward correction", async () => {
   const kv = makeKV();
   const high = normalizePayload({
@@ -743,6 +1241,7 @@ test("GET /stats writes a derived-totals cache and serves it on the next read", 
       loc_added: 0,
       installs: 1,
       updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
     }),
   );
   const second = await worker.fetch(req("GET", "/stats"), env);
@@ -765,6 +1264,7 @@ test("GET /stats cache hit preserves aggregate totals above the per-install cap"
       loc_added: 140000,
       installs: 2,
       updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
     }),
   );
 
@@ -794,6 +1294,7 @@ test("GET /stats preserves legacy cached loc_added as files_changed", async () =
       loc_added: 321,
       installs: 1,
       updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
     }),
   );
 
@@ -802,6 +1303,70 @@ test("GET /stats preserves legacy cached loc_added as files_changed", async () =
 
   assert.equal(stats.files_changed, 321);
   assert.equal(stats.loc_added, 321);
+});
+
+test("GET /stats does not cap already-aggregated rolling totals from cache", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 250000,
+      prs_merged: 240000,
+      prs_reviewed: 250000,
+      issues_opened: 260000,
+      issues_closed: 255000,
+      files_changed: 270000,
+      lines_changed: 6100000,
+      loc_added: 270000,
+      last_30_days: {
+        window_days: 30,
+        prs_opened: 150000,
+        prs_merged: 140000,
+        prs_reviewed: 145000,
+        issues_opened: 160000,
+        issues_closed: 155000,
+        files_changed: 170000,
+        lines_changed: 5900000,
+      },
+      installs: 3,
+      updated_at: FIXED.toISOString(),
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION,
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.last_30_days.prs_opened, 150000);
+  assert.equal(stats.last_30_days.issues_opened, 160000);
+  assert.equal(stats.last_30_days.files_changed, 170000);
+  assert.equal(stats.last_30_days.lines_changed, 5900000);
+});
+
+test("GET /stats ignores stale schema cache entries after a deploy", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-cacheversion", prs_opened: 4 }).value,
+    FIXED,
+  );
+  kv.store.set(
+    "stats:cache",
+    JSON.stringify({
+      prs_opened: 999,
+      installs: 99,
+      updated_at: "2026-01-01T00:00:00.000Z",
+      cache_schema_version: STATS_CACHE_SCHEMA_VERSION - 1,
+    }),
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+  const stats = await res.json();
+
+  assert.equal(stats.prs_opened, 4);
+  assert.equal(stats.installs, 1);
 });
 
 test("a new ingest invalidates the stats cache so the next /stats recomputes", async () => {
@@ -891,9 +1456,10 @@ function makeTtlRecordingKV() {
   return kv;
 }
 
-test("stats cache write uses the default 60s TTL and is accepted by KV", async () => {
+test("stats cache write uses the free-tier-friendly default TTL", async () => {
   // Default (no STATS_CACHE_TTL_SECONDS): the put must use a TTL >= 60 so KV
-  // accepts it and the cache actually populates.
+  // accepts it and the cache actually populates. Hosted Alfred uses 300s so a
+  // continuously hit public page stays below the free KV list/day cap.
   const kv = makeTtlRecordingKV();
   const env = { TELEMETRY: kv };
   await ingest(
@@ -906,8 +1472,26 @@ test("stats cache write uses the default 60s TTL and is accepted by KV", async (
   assert.ok(kv.store.has("stats:cache"), "cache populated under the default TTL");
   assert.ok(kv.putTtls.length >= 1, "a cache put was attempted");
   for (const ttl of kv.putTtls) {
-    assert.ok(ttl >= 60, `stats-cache TTL ${ttl} must be >= the 60s KV minimum`);
+    assert.equal(ttl, 300, "default stats-cache TTL is 300s");
   }
+});
+
+test("GET /stats allows short public response caching", async () => {
+  const kv = makeKV();
+  const env = { TELEMETRY: kv, ALLOWED_ORIGIN: "https://alfred.luminik.io" };
+  await ingest(
+    kv,
+    normalizePayload({ install_id: "install-cache-hdr", prs_opened: 5 }).value,
+    FIXED,
+  );
+
+  const res = await worker.fetch(req("GET", "/stats"), env);
+
+  assert.equal(res.status, 200);
+  assert.equal(
+    res.headers.get("Cache-Control"),
+    "public, max-age=60, stale-while-revalidate=240",
+  );
 });
 
 test("a sub-60 STATS_CACHE_TTL_SECONDS is clamped up to 60 (KV would reject below)", async () => {
@@ -983,11 +1567,11 @@ test("GET /stats sums many installs derived-on-read (no incremented aggregate)",
 // --------------------------------------------------------------------------
 // fetch: HTTP surface
 // --------------------------------------------------------------------------
-function req(method, path, body) {
-  const init = { method };
+function req(method, path, body, headers = {}) {
+  const init = { method, headers: { ...headers } };
   if (body !== undefined) {
     init.body = typeof body === "string" ? body : JSON.stringify(body);
-    init.headers = { "Content-Type": "application/json" };
+    init.headers = { "Content-Type": "application/json", ...headers };
   }
   return new Request(`https://telemetry.example.com${path}`, init);
 }
@@ -1015,7 +1599,10 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
   assert.equal(postBody.ok, true);
   assert.equal(postBody.totals.prs_opened, 9);
 
-  const getRes = await worker.fetch(req("GET", "/stats"), env);
+  const getRes = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "https://alfred.example.com" }),
+    env,
+  );
   assert.equal(getRes.status, 200);
   assert.equal(
     getRes.headers.get("Access-Control-Allow-Origin"),
@@ -1031,6 +1618,16 @@ test("POST /ingest then GET /stats round-trips the aggregate", async () => {
     files_changed: 800,
     lines_changed: 1200,
     loc_added: 800,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 0,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
     installs: 1,
     updated_at: stats.updated_at,
   });
@@ -1052,7 +1649,10 @@ test("POST /ingest rejects malformed bodies with 400", async () => {
 
 test("OPTIONS preflight on /stats returns the scoped CORS origin", async () => {
   const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
-  const res = await worker.fetch(req("OPTIONS", "/stats"), env);
+  const res = await worker.fetch(
+    req("OPTIONS", "/stats", undefined, { Origin: "https://alfred.example.com" }),
+    env,
+  );
   assert.equal(res.status, 204);
   assert.equal(
     res.headers.get("Access-Control-Allow-Origin"),
@@ -1061,6 +1661,36 @@ test("OPTIONS preflight on /stats returns the scoped CORS origin", async () => {
   // Only GET is advertised for the read endpoint; POST is not a browser caller.
   assert.match(res.headers.get("Access-Control-Allow-Methods") || "", /GET/);
   assert.doesNotMatch(res.headers.get("Access-Control-Allow-Methods") || "", /POST/);
+});
+
+test("GET /stats allows localhost preview origins", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "http://127.0.0.1:4327" }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), "http://127.0.0.1:4327");
+});
+
+test("GET /stats allows bracketed IPv6 localhost preview origins", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "http://[::1]:4327" }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), "http://[::1]:4327");
+});
+
+test("GET /stats does not allow arbitrary browser origins", async () => {
+  const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
+  const res = await worker.fetch(
+    req("GET", "/stats", undefined, { Origin: "https://random.example.com" }),
+    env,
+  );
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"), null);
 });
 
 test("OPTIONS preflight on /ingest carries NO allow-origin (browser POST blocked)", async () => {
@@ -1170,6 +1800,20 @@ test("ingest allows a browser Origin that matches ALLOWED_ORIGIN", async () => {
   assert.equal(res.status, 200);
 });
 
+test("ingest allows a browser Origin listed in comma-separated ALLOWED_ORIGIN", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    ALLOWED_ORIGIN: "https://site.example.com, https://alfred.example.com",
+  };
+  const req = new Request("https://telemetry.example.com/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: "https://alfred.example.com" },
+    body: JSON.stringify(SAMPLE_PAYLOAD),
+  });
+  const res = await worker.fetch(req, env);
+  assert.equal(res.status, 200);
+});
+
 test("ingest allows a server-side caller (no Origin header) regardless of ALLOWED_ORIGIN", async () => {
   const env = { TELEMETRY: makeKV(), ALLOWED_ORIGIN: "https://alfred.example.com" };
   const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD), env);
@@ -1179,10 +1823,11 @@ test("ingest allows a server-side caller (no Origin header) regardless of ALLOWE
 // --------------------------------------------------------------------------
 // /ingest write gate: optional shared token
 // --------------------------------------------------------------------------
-function ingestReq(body, token) {
+function ingestReq(body, token, trustedToken) {
   const init = { method: "POST", body: JSON.stringify(body) };
   init.headers = { "Content-Type": "application/json" };
   if (token !== undefined) init.headers["X-Ingest-Token"] = token;
+  if (trustedToken !== undefined) init.headers["X-Alfred-Trusted-Token"] = trustedToken;
   return new Request("https://telemetry.example.com/ingest", init);
 }
 
@@ -1234,6 +1879,310 @@ test("the token check runs before the body is parsed (no work for unauthorized c
   });
   const res = await worker.fetch(badBody, env);
   assert.equal(res.status, 401);
+});
+
+function registerReq(body = {}, token, trustedToken) {
+  const init = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+  if (token !== undefined) init.headers["X-Ingest-Token"] = token;
+  if (trustedToken !== undefined) init.headers["X-Alfred-Trusted-Token"] = trustedToken;
+  return new Request("https://telemetry.example.com/register", init);
+}
+
+test("register issues a per-install token and stores only its hash", async () => {
+  const kv = makeKV();
+  const result = await registerInstall(kv, { install_id: "install-reg001" }, FIXED);
+  assert.equal(result.ok, true);
+  assert.equal(result.install_id, "install-reg001");
+  assert.ok(result.token.length >= 32);
+
+  const stored = JSON.parse(kv.store.get("auth:install-reg001"));
+  assert.equal(typeof stored.token_sha256, "string");
+  assert.notEqual(stored.token_sha256, result.token);
+  assert.equal(stored.created_at, FIXED.toISOString());
+});
+
+test("POST /register returns credentials for the install", async () => {
+  const env = { TELEMETRY: makeKV() };
+  const res = await worker.fetch(registerReq({ install_id: "install-reg002" }), env);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.install_id, "install-reg002");
+  assert.ok(body.token);
+  assert.equal(body.ingest, "/ingest");
+});
+
+test("register refuses to overwrite an existing install token", async () => {
+  const kv = makeKV();
+  const first = await registerInstall(kv, { install_id: "install-reg003" }, FIXED);
+  assert.equal(first.ok, true);
+  const stored = kv.store.get("auth:install-reg003");
+
+  const second = await registerInstall(kv, { install_id: "install-reg003" }, FIXED);
+  assert.equal(second.ok, false);
+  assert.equal(second.status, 409);
+  assert.equal(kv.store.get("auth:install-reg003"), stored);
+});
+
+test("POST /register returns 409 for an already-registered install", async () => {
+  const env = { TELEMETRY: makeKV() };
+  const first = await worker.fetch(registerReq({ install_id: "install-reg004" }), env);
+  assert.equal(first.status, 200);
+
+  const second = await worker.fetch(registerReq({ install_id: "install-reg004" }), env);
+  assert.equal(second.status, 409);
+  assert.match((await second.json()).error, /already registered/);
+});
+
+test("POST /register can rotate an existing token with the current install token", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1" };
+  const first = await (await worker.fetch(registerReq({ install_id: "install-reg005" }), env)).json();
+
+  const rotated = await worker.fetch(
+    registerReq({ install_id: "install-reg005" }, first.token),
+    env,
+  );
+  assert.equal(rotated.status, 200);
+  const rotatedBody = await rotated.json();
+  assert.ok(rotatedBody.token);
+  assert.notEqual(rotatedBody.token, first.token);
+
+  const stale = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg005" }, first.token),
+    env,
+  );
+  assert.equal(stale.status, 401);
+  const ok = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg005" }, rotatedBody.token),
+    env,
+  );
+  assert.equal(ok.status, 200);
+});
+
+test("POST /register can recover a hosted trusted reporter with the trusted token", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const first = await (await worker.fetch(registerReq({ install_id: "install-reg006" }), env)).json();
+
+  const withoutProof = await worker.fetch(registerReq({ install_id: "install-reg006" }), env);
+  assert.equal(withoutProof.status, 409);
+
+  const wrongTrusted = await worker.fetch(
+    registerReq({ install_id: "install-reg006" }, undefined, "wrong-secret"),
+    env,
+  );
+  assert.equal(wrongTrusted.status, 401);
+
+  const recovered = await worker.fetch(
+    registerReq({ install_id: "install-reg006" }, undefined, "trusted-secret"),
+    env,
+  );
+  assert.equal(recovered.status, 200);
+  const recoveredBody = await recovered.json();
+  assert.ok(recoveredBody.token);
+  assert.notEqual(recoveredBody.token, first.token);
+
+  const stale = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg006" }, first.token),
+    env,
+  );
+  assert.equal(stale.status, 401);
+  const ok = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, install_id: "install-reg006" }, recoveredBody.token),
+    env,
+  );
+  assert.equal(ok.status, 200);
+});
+
+test("ingest requires the registered install token when REQUIRE_INSTALL_TOKEN is set", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1" };
+
+  const missing = await worker.fetch(ingestReq(SAMPLE_PAYLOAD), env);
+  assert.equal(missing.status, 401);
+
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+  const wrong = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, "wrong-token"), env);
+  assert.equal(wrong.status, 401);
+
+  const ok = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token), env);
+  assert.equal(ok.status, 200);
+  assert.equal((await ok.json()).ok, true);
+});
+
+test("registered install token gates tombstone deletes too", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1" };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+  await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token), env);
+
+  const badDelete = await worker.fetch(
+    ingestReq({ install_id: SAMPLE_PAYLOAD.install_id, tombstone: true }, "wrong-token"),
+    env,
+  );
+  assert.equal(badDelete.status, 401);
+  assert.equal((await worker.fetch(req("GET", "/stats"), env).then((r) => r.json())).installs, 1);
+
+  const goodDelete = await worker.fetch(
+    ingestReq({ install_id: SAMPLE_PAYLOAD.install_id, tombstone: true }, registered.token),
+    env,
+  );
+  assert.equal(goodDelete.status, 200);
+  assert.equal((await worker.fetch(req("GET", "/stats"), env).then((r) => r.json())).installs, 0);
+
+  const staleToken = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, prs_opened: 99 }, registered.token),
+    env,
+  );
+  assert.equal(staleToken.status, 401);
+
+  const reRegistered = await (
+    await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)
+  ).json();
+  assert.ok(reRegistered.token);
+  assert.notEqual(reRegistered.token, registered.token);
+});
+
+test("trusted-counts mode ignores untrusted public totals", async () => {
+  const env = { TELEMETRY: makeKV(), REQUIRE_INSTALL_TOKEN: "1", TRUSTED_COUNTS_ONLY: "1" };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token), env);
+  assert.equal(res.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 0);
+  assert.equal(stats.prs_opened, 0);
+  assert.equal(stats.prs_merged, 0);
+  assert.equal(stats.files_changed, 0);
+});
+
+test("trusted-counts mode accepts progress totals from the trusted collector token", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token, "trusted-secret"), env);
+  assert.equal(res.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.prs_merged, 2);
+  assert.equal(stats.files_changed, 50);
+});
+
+test("trusted-counts mode keeps trusted totals after an untrusted refresh", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const trusted = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token, "trusted-secret"), env);
+  assert.equal(trusted.status, 200);
+
+  const untrustedRefresh = await worker.fetch(
+    ingestReq({ ...SAMPLE_PAYLOAD, prs_opened: 99999, prs_merged: 99999 }, registered.token),
+    env,
+  );
+  assert.equal(untrustedRefresh.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.prs_merged, 2);
+  assert.equal(stats.files_changed, 50);
+});
+
+test("trusted-counts mode ignores a distinct untrusted fake install", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const trustedInstall = await (
+    await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)
+  ).json();
+  const fakeInstall = await (
+    await worker.fetch(registerReq({ install_id: "install-fake001" }), env)
+  ).json();
+
+  const trusted = await worker.fetch(
+    ingestReq(SAMPLE_PAYLOAD, trustedInstall.token, "trusted-secret"),
+    env,
+  );
+  assert.equal(trusted.status, 200);
+
+  const fake = await worker.fetch(
+    ingestReq(
+      {
+        install_id: "install-fake001",
+        prs_opened: 99999,
+        prs_merged: 99999,
+        loc_added: 99999,
+      },
+      fakeInstall.token,
+    ),
+    env,
+  );
+  assert.equal(fake.status, 200);
+
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.prs_merged, 2);
+  assert.equal(stats.files_changed, 50);
+});
+
+test("trusted-counts mode uses active refreshes for updated_at without double-counting installs", async () => {
+  const kv = makeKV();
+  const trustedAt = new Date("2026-06-15T00:00:00.000Z");
+  const activeAt = new Date("2026-06-16T00:00:00.000Z");
+  const payload = normalizePayload(SAMPLE_PAYLOAD).value;
+
+  await ingest(kv, payload, trustedAt, {
+    trustedReporter: true,
+    trustedCountsOnly: true,
+  });
+  await ingest(
+    kv,
+    normalizePayload({ ...SAMPLE_PAYLOAD, prs_opened: 99999 }).value,
+    activeAt,
+    { trustedCountsOnly: true },
+  );
+
+  const stats = await computeTotals(kv, { TRUSTED_COUNTS_ONLY: "1" }, activeAt);
+  assert.equal(stats.installs, 1);
+  assert.equal(stats.prs_opened, 3);
+  assert.equal(stats.updated_at, activeAt.toISOString());
+});
+
+test("a wrong trusted collector token is rejected", async () => {
+  const env = {
+    TELEMETRY: makeKV(),
+    REQUIRE_INSTALL_TOKEN: "1",
+    TRUSTED_COUNTS_ONLY: "1",
+    TRUSTED_INGEST_TOKEN: "trusted-secret",
+  };
+  const registered = await (await worker.fetch(registerReq({ install_id: SAMPLE_PAYLOAD.install_id }), env)).json();
+
+  const res = await worker.fetch(ingestReq(SAMPLE_PAYLOAD, registered.token, "wrong-secret"), env);
+  assert.equal(res.status, 401);
+  const stats = await (await worker.fetch(req("GET", "/stats"), env)).json();
+  assert.equal(stats.installs, 0);
 });
 
 // --------------------------------------------------------------------------
@@ -1434,6 +2383,16 @@ test("GET /stats on an empty store returns zeroed totals", async () => {
     files_changed: 0,
     lines_changed: 0,
     loc_added: 0,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 0,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
     installs: 0,
     updated_at: null,
   });

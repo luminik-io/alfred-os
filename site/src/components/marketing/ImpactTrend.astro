@@ -29,9 +29,6 @@ const fmt = (n: number) => n.toLocaleString("en-US");
       <span class="m-eyebrow">{windowLabel}</span>
       <h2 class="m-display-md">PRs merged by week.</h2>
     </div>
-    <p>
-      Each bar is one week in the current window.
-    </p>
   </div>
 
   <div class="trend-chart" role="list" style={`--trend-columns:${trendColumns};`}>
@@ -67,18 +64,11 @@ const fmt = (n: number) => n.toLocaleString("en-US");
     background: var(--alfred-surface);
   }
   .trend-panel__head {
-    display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.7fr);
-    gap: 24px;
+    display: flex;
     align-items: end;
   }
   .trend-panel__head h2 {
     margin-top: 12px;
-  }
-  .trend-panel__head p {
-    color: var(--alfred-text);
-    font-size: 16px;
-    line-height: 1.65;
   }
   .trend-chart {
     height: 260px;

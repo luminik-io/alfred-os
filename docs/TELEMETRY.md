@@ -1,28 +1,26 @@
 # Telemetry
 
-Alfred can send anonymous aggregate usage totals to an ingest endpoint you
-configure. Those totals can power public counters so people can see how Alfred
-is being used without exposing private work.
+Alfred can send anonymous aggregate usage totals to the public
+[Impact](https://alfred.luminik.io/impact/) counter. Those totals show what
+Alfred installs are shipping without exposing private work.
 
-The reporter is enabled unless you opt out, but it sends only when
-`ALFRED_TELEMETRY_URL` is set. Without an endpoint, the scheduled reporter exits
-cleanly and creates no install id.
+The reporter is enabled unless you opt out. It uses Alfred's hosted collector by
+default. Set `ALFRED_TELEMETRY_URL` only when you want a self-hosted collector.
 
 ## Control
 
 ```sh
 alfred telemetry status
-alfred telemetry on --url https://your-worker.example.com/ingest
+alfred telemetry on
 alfred telemetry off
 ```
 
-`alfred telemetry on` writes the endpoint and re-enables reporting. `alfred
-telemetry off` asks the collector to remove this install's previous record, then
-writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can stay installed; with
-telemetry off or no endpoint configured, the reporter exits cleanly and sends
-nothing.
+`alfred telemetry on` writes the hosted endpoint and schedules the reporter.
+`alfred telemetry off` asks the collector to remove this install's previous
+record, then writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can stay
+installed; with telemetry off, the reporter exits cleanly and sends nothing.
 
-If your collector uses an ingest token:
+Self-hosted collector:
 
 ```sh
 alfred telemetry on \
@@ -32,7 +30,7 @@ alfred telemetry on \
 
 ## Payload
 
-Once a day, Alfred posts this JSON to `ALFRED_TELEMETRY_URL`:
+Once a day, Alfred posts this JSON:
 
 ```json
 {
@@ -59,7 +57,7 @@ Once a day, Alfred posts this JSON to `ALFRED_TELEMETRY_URL`:
 | `issues_opened` | Lifetime issues with an `agent:*` label. |
 | `issues_closed` | Lifetime issues with an `agent:*` label that reached closed state. |
 | `files_changed` | Lifetime file-touch count from the local fleet brain. |
-| `lines_changed` | Lifetime changed-line total when the local brain has line counts. Current local reporters send `0` because the brain stores file touches, not additions/deletions. |
+| `lines_changed` | Lifetime additions plus deletions from cached Alfred-authored GitHub PRs when the local brain has line counts. |
 | `loc_added` | Historical wire alias for `files_changed`. |
 
 Alfred never sends repo names, file paths, code, prompts, PR titles, issue
@@ -70,14 +68,20 @@ titles, branch names, people, hostnames, or billing data.
 The bundled Cloudflare Worker lives in
 [`telemetry/worker/`](../telemetry/worker/):
 
-- `POST /ingest` stores one latest record per install id. A tombstone payload
-  removes that install's record when the user turns telemetry off.
-- `GET /stats` returns aggregate totals and the number of active installs that
-  have sent a report.
+- `POST /ingest` stores one latest record per verified install id. A tombstone
+  payload removes that install's record when the user turns telemetry off.
+- `POST /register` issues the per-install write token used by Alfred's hosted
+  collector. The token is stored locally at `$ALFRED_HOME/state/telemetry-token`.
+- `GET /stats` returns the public aggregate totals.
 
 The Worker derives totals by summing current install records. It does not keep
-per-install history. Use `INGEST_TOKEN` when you want only your own machines to
-write to the collector.
+per-install history. Use `REQUIRE_INSTALL_TOKEN=1` for per-install tokens, or
+`INGEST_TOKEN` when you want one shared token for a private self-hosted
+collector.
+
+For the hosted public counter, Alfred keeps every public Impact total behind a
+trusted collector token. Anonymous reports can be accepted by the hosted
+collector, but they do not move public PR, issue, file, line, or machine totals.
 
 ## Local Preview
 

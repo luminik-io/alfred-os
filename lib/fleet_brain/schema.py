@@ -41,7 +41,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 4
+SCHEMA_VERSION: Final[int] = 7
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -155,6 +155,7 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         title        TEXT    NOT NULL DEFAULT '',
         url          TEXT    NOT NULL DEFAULT '',
         labels_json  TEXT    NOT NULL DEFAULT '[]',
+        created_at   TEXT,
         updated_at   TEXT    NOT NULL,
         last_seen_at TEXT    NOT NULL,
         closed_at    TEXT,
@@ -162,6 +163,11 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         head_ref     TEXT,
         base_ref     TEXT,
         bundle_slug  TEXT,
+        changed_files INTEGER NOT NULL DEFAULT 0,
+        file_metrics_seen_at TEXT,
+        additions    INTEGER NOT NULL DEFAULT 0,
+        deletions    INTEGER NOT NULL DEFAULT 0,
+        line_metrics_seen_at TEXT,
         CHECK (kind IN ('issue', 'pr')),
         CHECK (state IN ('open', 'closed', 'merged', 'unknown'))
     )
@@ -301,6 +307,12 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     with conn:
         for stmt in _CREATE_STATEMENTS:
             conn.execute(stmt)
+        _add_column_if_missing(conn, "github_items", "additions", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "github_items", "deletions", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "github_items", "line_metrics_seen_at", "TEXT")
+        _add_column_if_missing(conn, "github_items", "created_at", "TEXT")
+        _add_column_if_missing(conn, "github_items", "changed_files", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "github_items", "file_metrics_seen_at", "TEXT")
         # Record the schema version, idempotently. A row with the
         # current version means "we have run ensure_schema at least
         # once at this code revision".
@@ -325,11 +337,19 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, dd
     """Future migration helper. Reserved for v1.x additive changes.
 
     Inspects ``PRAGMA table_info`` and runs ``ALTER TABLE ... ADD
-    COLUMN`` only when the column is absent. Kept private because
-    callers should prefer new tables over mutating old rows unless an
-    additive migration is unavoidable.
+    COLUMN`` only when the column is absent. A concurrent Alfred process
+    may add the same column between the PRAGMA read and ALTER; SQLite
+    reports that as ``duplicate column name``, which is safe to ignore.
+    Kept private because callers should prefer new tables over mutating
+    old rows unless an additive migration is unavoidable.
     """
     cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column in cols:
         return
-    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    except sqlite3.OperationalError as exc:
+        message = str(exc).lower()
+        if "duplicate column name" in message and column.lower() in message:
+            return
+        raise

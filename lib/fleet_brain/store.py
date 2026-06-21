@@ -135,11 +135,17 @@ class GitHubItem:
     labels: list[str]
     updated_at: datetime
     last_seen_at: datetime
+    created_at: datetime | None = None
     closed_at: datetime | None = None
     merged_at: datetime | None = None
     head_ref: str | None = None
     base_ref: str | None = None
     bundle_slug: str | None = None
+    changed_files: int | None = None
+    file_metrics_seen_at: datetime | None = None
+    additions: int | None = 0
+    deletions: int | None = 0
+    line_metrics_seen_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -291,6 +297,7 @@ class Store(Protocol):
         repo: str | None = None,
         codename: str | None = None,
         path: str | None = None,
+        touched_since: datetime | None = None,
     ) -> int: ...
 
     def insert_memory_candidate(self, candidate: MemoryCandidate) -> MemoryCandidate: ...
@@ -336,6 +343,38 @@ class Store(Protocol):
         bundle_slug: str | None = None,
         authored_only: bool = False,
         agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
+    ) -> int: ...
+
+    def sum_github_changed_lines(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
+    ) -> int: ...
+
+    def sum_github_changed_files(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
     ) -> int: ...
 
     def upsert_bundle_item(self, item: BundleItem) -> BundleItem: ...
@@ -755,6 +794,7 @@ class SQLiteStore:
         repo: str | None = None,
         codename: str | None = None,
         path: str | None = None,
+        touched_since: datetime | None = None,
     ) -> int:
         wheres: list[str] = []
         params: list[object] = []
@@ -767,6 +807,9 @@ class SQLiteStore:
         if path:
             wheres.append("path = ?")
             params.append(path)
+        if touched_since:
+            wheres.append("touched_at >= ?")
+            params.append(_to_iso(touched_since))
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         sql = f"SELECT COUNT(*) FROM file_touches {where_clause}"
         with self._connect() as conn:
@@ -930,24 +973,50 @@ class SQLiteStore:
     # ----- GitHub state -------------------------------------------------
 
     def upsert_github_item(self, item: GitHubItem) -> GitHubItem:
+        file_metrics_seen_at = item.last_seen_at if item.changed_files is not None else None
+        line_metrics_seen_at = (
+            item.last_seen_at if item.additions is not None or item.deletions is not None else None
+        )
         with self._connect() as conn, conn:
             conn.execute(
                 "INSERT INTO github_items "
-                "(id, repo, number, kind, state, title, url, labels_json, updated_at, "
-                " last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "(id, repo, number, kind, state, title, url, labels_json, created_at, updated_at, "
+                " last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug, "
+                " changed_files, file_metrics_seen_at, additions, deletions, line_metrics_seen_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (id) DO UPDATE SET "
                 "  state = excluded.state, "
                 "  title = excluded.title, "
                 "  url = excluded.url, "
                 "  labels_json = excluded.labels_json, "
+                "  created_at = COALESCE(excluded.created_at, github_items.created_at), "
                 "  updated_at = excluded.updated_at, "
                 "  last_seen_at = excluded.last_seen_at, "
                 "  closed_at = excluded.closed_at, "
                 "  merged_at = excluded.merged_at, "
                 "  head_ref = excluded.head_ref, "
                 "  base_ref = excluded.base_ref, "
-                "  bundle_slug = excluded.bundle_slug",
+                "  bundle_slug = excluded.bundle_slug, "
+                "  changed_files = CASE "
+                "    WHEN ? IS NULL THEN github_items.changed_files "
+                "    ELSE excluded.changed_files "
+                "  END, "
+                "  file_metrics_seen_at = CASE "
+                "    WHEN ? IS NULL THEN github_items.file_metrics_seen_at "
+                "    ELSE excluded.file_metrics_seen_at "
+                "  END, "
+                "  additions = CASE "
+                "    WHEN ? IS NULL THEN github_items.additions "
+                "    ELSE excluded.additions "
+                "  END, "
+                "  deletions = CASE "
+                "    WHEN ? IS NULL THEN github_items.deletions "
+                "    ELSE excluded.deletions "
+                "  END, "
+                "  line_metrics_seen_at = CASE "
+                "    WHEN ? IS NULL AND ? IS NULL THEN github_items.line_metrics_seen_at "
+                "    ELSE excluded.line_metrics_seen_at "
+                "  END",
                 (
                     item.id,
                     item.repo,
@@ -957,6 +1026,7 @@ class SQLiteStore:
                     item.title,
                     item.url,
                     _tags_to_json(item.labels),
+                    _to_iso(item.created_at) if item.created_at else None,
                     _to_iso(item.updated_at),
                     _to_iso(item.last_seen_at),
                     _to_iso(item.closed_at) if item.closed_at else None,
@@ -964,6 +1034,17 @@ class SQLiteStore:
                     item.head_ref,
                     item.base_ref,
                     item.bundle_slug,
+                    max(0, int(item.changed_files)) if item.changed_files is not None else 0,
+                    _to_iso(file_metrics_seen_at) if file_metrics_seen_at else None,
+                    max(0, int(item.additions)) if item.additions is not None else 0,
+                    max(0, int(item.deletions)) if item.deletions is not None else 0,
+                    _to_iso(line_metrics_seen_at) if line_metrics_seen_at else None,
+                    item.changed_files,
+                    item.changed_files,
+                    item.additions,
+                    item.deletions,
+                    item.additions,
+                    item.deletions,
                 ),
             )
         return item
@@ -992,8 +1073,9 @@ class SQLiteStore:
             params.append(bundle_slug)
         where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
         sql = (
-            "SELECT id, repo, number, kind, state, title, url, labels_json, updated_at, "
-            "last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug "
+            "SELECT id, repo, number, kind, state, title, url, labels_json, created_at, updated_at, "
+            "last_seen_at, closed_at, merged_at, head_ref, base_ref, bundle_slug, "
+            "changed_files, file_metrics_seen_at, additions, deletions, line_metrics_seen_at "
             f"FROM github_items {where_clause} "
             "ORDER BY updated_at DESC LIMIT ?"
         )
@@ -1010,6 +1092,10 @@ class SQLiteStore:
         bundle_slug: str | None = None,
         authored_only: bool = False,
         agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
     ) -> int:
         wheres: list[str] = []
         params: list[object] = []
@@ -1025,6 +1111,18 @@ class SQLiteStore:
         if bundle_slug:
             wheres.append("bundle_slug = ?")
             params.append(bundle_slug)
+        if created_since:
+            wheres.append("created_at IS NOT NULL AND created_at >= ?")
+            params.append(_to_iso(created_since))
+        if closed_since:
+            wheres.append("closed_at IS NOT NULL AND closed_at >= ?")
+            params.append(_to_iso(closed_since))
+        if merged_since:
+            wheres.append("merged_at IS NOT NULL AND merged_at >= ?")
+            params.append(_to_iso(merged_since))
+        if updated_since:
+            wheres.append("updated_at >= ?")
+            params.append(_to_iso(updated_since))
         if authored_only:
             authored_sql, authored_params = _authored_predicate()
             wheres.append(authored_sql)
@@ -1038,6 +1136,122 @@ class SQLiteStore:
         with self._connect() as conn:
             (total,) = conn.execute(sql, params).fetchone()
             return int(total)
+
+    def sum_github_changed_lines(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
+    ) -> int:
+        wheres: list[str] = []
+        params: list[object] = []
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if kind:
+            wheres.append("kind = ?")
+            params.append(kind)
+        if state:
+            wheres.append("state = ?")
+            params.append(state)
+        if bundle_slug:
+            wheres.append("bundle_slug = ?")
+            params.append(bundle_slug)
+        if created_since:
+            wheres.append("created_at IS NOT NULL AND created_at >= ?")
+            params.append(_to_iso(created_since))
+        if closed_since:
+            wheres.append("closed_at IS NOT NULL AND closed_at >= ?")
+            params.append(_to_iso(closed_since))
+        if merged_since:
+            wheres.append("merged_at IS NOT NULL AND merged_at >= ?")
+            params.append(_to_iso(merged_since))
+        if updated_since:
+            wheres.append("updated_at >= ?")
+            params.append(_to_iso(updated_since))
+        if authored_only:
+            authored_sql, authored_params = _authored_predicate()
+            wheres.append(authored_sql)
+            params.extend(authored_params)
+        if agent_labeled_only:
+            agent_sql, agent_params = _agent_labeled_predicate()
+            wheres.append(agent_sql)
+            params.extend(agent_params)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT COALESCE(SUM(CASE "
+            "WHEN line_metrics_seen_at IS NULL THEN 0 "
+            "ELSE additions + deletions END), 0) "
+            f"FROM github_items {where_clause}"
+        )
+        with self._connect() as conn:
+            (total,) = conn.execute(sql, params).fetchone()
+            return max(0, int(total or 0))
+
+    def sum_github_changed_files(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
+    ) -> int:
+        wheres: list[str] = []
+        params: list[object] = []
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        if kind:
+            wheres.append("kind = ?")
+            params.append(kind)
+        if state:
+            wheres.append("state = ?")
+            params.append(state)
+        if bundle_slug:
+            wheres.append("bundle_slug = ?")
+            params.append(bundle_slug)
+        if created_since:
+            wheres.append("created_at IS NOT NULL AND created_at >= ?")
+            params.append(_to_iso(created_since))
+        if closed_since:
+            wheres.append("closed_at IS NOT NULL AND closed_at >= ?")
+            params.append(_to_iso(closed_since))
+        if merged_since:
+            wheres.append("merged_at IS NOT NULL AND merged_at >= ?")
+            params.append(_to_iso(merged_since))
+        if updated_since:
+            wheres.append("updated_at >= ?")
+            params.append(_to_iso(updated_since))
+        if authored_only:
+            authored_sql, authored_params = _authored_predicate()
+            wheres.append(authored_sql)
+            params.extend(authored_params)
+        if agent_labeled_only:
+            agent_sql, agent_params = _agent_labeled_predicate()
+            wheres.append(agent_sql)
+            params.extend(agent_params)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT COALESCE(SUM(CASE "
+            "WHEN file_metrics_seen_at IS NULL THEN 0 "
+            "ELSE changed_files END), 0) "
+            f"FROM github_items {where_clause}"
+        )
+        with self._connect() as conn:
+            (total,) = conn.execute(sql, params).fetchone()
+            return max(0, int(total or 0))
 
     # ----- bundle items -------------------------------------------------
 
@@ -1334,6 +1548,7 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         title,
         url,
         labels_json,
+        created_at,
         updated_at,
         last_seen_at,
         closed_at,
@@ -1341,6 +1556,11 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         head_ref,
         base_ref,
         bundle_slug,
+        changed_files,
+        file_metrics_seen_at,
+        additions,
+        deletions,
+        line_metrics_seen_at,
     ) = row
     return GitHubItem(
         id=item_id,
@@ -1351,6 +1571,7 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         title=title,
         url=url,
         labels=_tags_from_json(labels_json),
+        created_at=_from_iso(created_at) if created_at else None,
         updated_at=_from_iso(updated_at),
         last_seen_at=_from_iso(last_seen_at),
         closed_at=_from_iso(closed_at) if closed_at else None,
@@ -1358,6 +1579,11 @@ def _row_to_github_item(row: tuple) -> GitHubItem:
         head_ref=head_ref,
         base_ref=base_ref,
         bundle_slug=bundle_slug,
+        changed_files=max(0, int(changed_files or 0)),
+        file_metrics_seen_at=_from_iso(file_metrics_seen_at) if file_metrics_seen_at else None,
+        additions=max(0, int(additions or 0)),
+        deletions=max(0, int(deletions or 0)),
+        line_metrics_seen_at=_from_iso(line_metrics_seen_at) if line_metrics_seen_at else None,
     )
 
 

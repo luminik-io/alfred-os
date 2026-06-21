@@ -181,7 +181,7 @@ def test_doctor_accepts_no_url_telemetry_sentinel(tmp_path):
         "#!/usr/bin/env python3\n"
         "import os\n"
         "assert os.environ.get('ALFRED_DOCTOR') == '1'\n"
-        "print('[PROOF-TELEMETRY-NO-URL] (doctor: enabled but ALFRED_TELEMETRY_URL unset)')\n"
+        "print('[PROOF-TELEMETRY-NO-URL] (doctor: enabled but no collector URL available)')\n"
     )
     probe.chmod(0o755)
 

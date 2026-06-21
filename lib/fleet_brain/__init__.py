@@ -432,6 +432,7 @@ class FleetBrain:
         title: str = "",
         url: str = "",
         labels: Iterable[str] | None = None,
+        created_at: datetime | None = None,
         updated_at: datetime | None = None,
         last_seen_at: datetime | None = None,
         closed_at: datetime | None = None,
@@ -439,6 +440,9 @@ class FleetBrain:
         head_ref: str | None = None,
         base_ref: str | None = None,
         bundle_slug: str | None = None,
+        changed_files: int | None = None,
+        additions: int | None = None,
+        deletions: int | None = None,
     ) -> GitHubItem:
         """Cache one GitHub issue or PR row.
 
@@ -466,6 +470,7 @@ class FleetBrain:
             title=(title or "").strip(),
             url=(url or "").strip(),
             labels=clean_labels,
+            created_at=created_at,
             updated_at=updated_at or now,
             last_seen_at=last_seen_at or now,
             closed_at=closed_at,
@@ -473,6 +478,9 @@ class FleetBrain:
             head_ref=head_ref,
             base_ref=base_ref,
             bundle_slug=resolved_bundle,
+            changed_files=max(0, int(changed_files)) if changed_files is not None else None,
+            additions=max(0, int(additions)) if additions is not None else None,
+            deletions=max(0, int(deletions)) if deletions is not None else None,
         )
         persisted = self.store.upsert_github_item(item)
         if persisted.bundle_slug:
@@ -615,6 +623,7 @@ class FleetBrain:
         repo: str | None = None,
         codename: str | None = None,
         path: str | None = None,
+        touched_since: datetime | None = None,
     ) -> int:
         """Exact COUNT(*) of file_touches, unbounded by the list 500-row cap.
 
@@ -622,7 +631,12 @@ class FleetBrain:
         true total (e.g. proof-telemetry's lifetime counts) must use this rather
         than ``len(list_...())``, which silently freezes at 500 on a busy brain.
         """
-        return self.store.count_file_touches(repo=repo, codename=codename, path=path)
+        return self.store.count_file_touches(
+            repo=repo,
+            codename=codename,
+            path=path,
+            touched_since=touched_since,
+        )
 
     def list_memory_candidates(
         self,
@@ -679,6 +693,10 @@ class FleetBrain:
         bundle_slug: str | None = None,
         authored_only: bool = False,
         agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
     ) -> int:
         """Exact COUNT(*) of github_items, unbounded by the list 500-row cap.
 
@@ -705,6 +723,69 @@ class FleetBrain:
             bundle_slug=bundle_slug,
             authored_only=authored_only,
             agent_labeled_only=agent_labeled_only,
+            created_since=created_since,
+            closed_since=closed_since,
+            merged_since=merged_since,
+            updated_since=updated_since,
+        )
+
+    def sum_github_changed_lines(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
+    ) -> int:
+        """Sum additions + deletions from cached GitHub PR rows.
+
+        Proof telemetry uses this with ``kind="pr"`` and
+        ``authored_only=True`` so the line-count metric is anchored to the same
+        Alfred-authored PR subset as the PR counters.
+        """
+        return self.store.sum_github_changed_lines(
+            repo=repo,
+            kind=kind,
+            state=state,
+            bundle_slug=bundle_slug,
+            authored_only=authored_only,
+            agent_labeled_only=agent_labeled_only,
+            created_since=created_since,
+            closed_since=closed_since,
+            merged_since=merged_since,
+            updated_since=updated_since,
+        )
+
+    def sum_github_changed_files(
+        self,
+        repo: str | None = None,
+        kind: GitHubItemKind | None = None,
+        state: GitHubItemState | None = None,
+        bundle_slug: str | None = None,
+        authored_only: bool = False,
+        agent_labeled_only: bool = False,
+        created_since: datetime | None = None,
+        closed_since: datetime | None = None,
+        merged_since: datetime | None = None,
+        updated_since: datetime | None = None,
+    ) -> int:
+        """Sum changed-file counts from cached GitHub PR rows."""
+        return self.store.sum_github_changed_files(
+            repo=repo,
+            kind=kind,
+            state=state,
+            bundle_slug=bundle_slug,
+            authored_only=authored_only,
+            agent_labeled_only=agent_labeled_only,
+            created_since=created_since,
+            closed_since=closed_since,
+            merged_since=merged_since,
+            updated_since=updated_since,
         )
 
     def list_bundle_items(

@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
 
 
 def _capture_server(*, status: int = 200):
@@ -52,7 +53,13 @@ def _run(tmp_path: Path, *args: str, alfredrc: Path | None = None, agents_conf: 
         "ALFRED_HOME": str(alfred_home),
         "PYTHONPATH": str(ROOT / "lib"),
     }
-    for key in ("ALFRED_TELEMETRY_ENABLED", "ALFRED_TELEMETRY_URL", "ALFRED_TELEMETRY_TOKEN"):
+    for key in (
+        "ALFRED_TELEMETRY_ENABLED",
+        "ALFRED_TELEMETRY_URL",
+        "ALFRED_TELEMETRY_TOKEN",
+        "ALFRED_TELEMETRY_TRUSTED_TOKEN",
+        "ALFRED_DEFAULT_TELEMETRY_URL",
+    ):
         env.pop(key, None)
     cmd = [sys.executable, str(ROOT / "bin" / "alfred"), "telemetry", *args]
     if alfredrc is not None:
@@ -71,8 +78,9 @@ def test_telemetry_status_reads_managed_files(tmp_path):
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert payload["enabled"] is True
-    assert payload["endpoint"] == ""
+    assert payload["endpoint"] == DEFAULT_TELEMETRY_URL
     assert payload["scheduler_row"] == "missing"
+    assert payload["trusted_token_configured"] is False
 
 
 def test_telemetry_status_honors_commented_opt_out(tmp_path):
@@ -131,7 +139,361 @@ def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_pa
     assert payload["enabled"] is True
     assert payload["endpoint"] == "https://telemetry.example.com/ingest"
     assert payload["token_configured"] is True
+    assert payload["trusted_token_configured"] is False
     assert payload["scheduler_row"] == "present"
+
+
+def test_telemetry_status_reports_trusted_token_without_printing_it(tmp_path):
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(
+        "ALFRED_TELEMETRY_TRUSTED_TOKEN=trusted-secret\n",
+        encoding="utf-8",
+    )
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["trusted_token_configured"] is True
+    assert "trusted-secret" not in result.stdout
+
+
+def test_telemetry_status_reads_trusted_token_from_alfred_home_env(tmp_path):
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir()
+    (alfred_home / ".env").write_text(
+        "ALFRED_TELEMETRY_TRUSTED_TOKEN=trusted-secret\n",
+        encoding="utf-8",
+    )
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["trusted_token_configured"] is True
+    assert "trusted-secret" not in result.stdout
+
+
+def test_telemetry_on_uses_hosted_default_without_url(tmp_path):
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "on", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert "ALFRED_TELEMETRY_ENABLED=1" in rc_text
+    assert f"ALFRED_TELEMETRY_URL={DEFAULT_TELEMETRY_URL}" in rc_text
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\t" in agents_conf.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_telemetry_on_uses_default_endpoint_from_alfredrc(tmp_path):
+    endpoint = "https://selfhosted.example.com/ingest"
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}\n", encoding="utf-8")
+    agents_conf = tmp_path / "agents.conf"
+
+    result = _run(tmp_path, "on", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}" in rc_text
+    assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
+
+
+def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
+    server, received = _capture_server()
+    url = f"http://127.0.0.1:{server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--url",
+            url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert not token.exists()
+    assert not token_endpoint.exists()
+    assert not install_id.exists()
+    assert "ALFRED_TELEMETRY_TOKEN" not in alfredrc.read_text(encoding="utf-8")
+    assert received[0]["path"] == "/ingest"
+    assert received[0]["token"] == "old-token"
+    assert received[0]["body"]["install_id"] == "old-install-id"
+    assert received[0]["body"]["tombstone"] is True
+
+
+def test_telemetry_on_clear_token_clears_previous_endpoint_before_switching(tmp_path):
+    old_server, old_received = _capture_server()
+    new_server, new_received = _capture_server()
+    old_url = f"http://127.0.0.1:{old_server.server_port}/ingest"
+    new_url = f"http://127.0.0.1:{new_server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={old_url}\n", encoding="utf-8")
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--url",
+            new_url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        old_server.shutdown()
+        new_server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert len(old_received) == 1
+    assert new_received == []
+    assert old_received[0]["path"] == "/ingest"
+    assert old_received[0]["token"] == "old-token"
+    assert old_received[0]["body"]["install_id"] == "old-install-id"
+    assert old_received[0]["body"]["tombstone"] is True
+    assert not token.exists()
+    assert not token_endpoint.exists()
+    assert not install_id.exists()
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={new_url}" in rc_text
+    assert old_url not in rc_text
+
+
+def test_telemetry_on_clear_token_uses_persisted_endpoint_when_current_url_is_implicit(
+    tmp_path,
+):
+    old_server, old_received = _capture_server()
+    new_server, new_received = _capture_server()
+    old_url = f"http://127.0.0.1:{old_server.server_port}/ingest"
+    new_url = f"http://127.0.0.1:{new_server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--url",
+            new_url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        old_server.shutdown()
+        new_server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert len(old_received) == 1
+    assert new_received == []
+    assert old_received[0]["path"] == "/ingest"
+    assert old_received[0]["token"] == "old-token"
+    assert old_received[0]["body"]["install_id"] == "old-install-id"
+    assert old_received[0]["body"]["tombstone"] is True
+    assert not token.exists()
+    assert not token_endpoint.exists()
+    assert not install_id.exists()
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={new_url}" in rc_text
+    assert old_url not in rc_text
+
+
+def test_telemetry_on_clear_token_keeps_explicit_replacement_token(tmp_path):
+    server, received = _capture_server()
+    url = f"http://127.0.0.1:{server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--token",
+            "new-token",
+            "--url",
+            url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert received[0]["token"] == "old-token"
+    assert not token.exists()
+    assert not token_endpoint.exists()
+    assert not install_id.exists()
+    assert "ALFRED_TELEMETRY_TOKEN=new-token" in alfredrc.read_text(encoding="utf-8")
+
+
+def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
+    server, _received = _capture_server(status=500)
+    url = f"http://127.0.0.1:{server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={url}\n", encoding="utf-8")
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert token.read_text(encoding="utf-8").strip() == "old-token"
+    assert token_endpoint.read_text(encoding="utf-8").strip() == url
+    assert install_id.read_text(encoding="utf-8").strip() == "old-install-id"
+    assert "kept install id and token" in result.stderr
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in alfredrc.read_text(encoding="utf-8")
+
+
+def test_telemetry_on_clear_token_keeps_old_endpoint_pair_when_switch_clear_fails(tmp_path):
+    old_server, old_received = _capture_server(status=500)
+    new_server, new_received = _capture_server()
+    old_url = f"http://127.0.0.1:{old_server.server_port}/ingest"
+    new_url = f"http://127.0.0.1:{new_server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={old_url}\n", encoding="utf-8")
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--url",
+            new_url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        old_server.shutdown()
+        new_server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert len(old_received) == 1
+    assert new_received == []
+    assert old_received[0]["token"] == "old-token"
+    assert "kept install id and token" in result.stderr
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={old_url}" in rc_text
+    assert f"ALFRED_TELEMETRY_URL={new_url}" not in rc_text
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in rc_text
+
+
+def test_telemetry_on_clear_token_keeps_old_pair_when_replacement_clear_fails(tmp_path):
+    old_server, old_received = _capture_server(status=500)
+    new_server, new_received = _capture_server()
+    old_url = f"http://127.0.0.1:{old_server.server_port}/ingest"
+    new_url = f"http://127.0.0.1:{new_server.server_port}/ingest"
+    state = tmp_path / "alfred" / "state"
+    state.mkdir(parents=True)
+    token = state / "telemetry-token"
+    token_endpoint = state / "telemetry-token-endpoint"
+    install_id = state / "telemetry-install-id"
+    token.write_text("old-token\n", encoding="utf-8")
+    token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
+    install_id.write_text("old-install-id\n", encoding="utf-8")
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(
+        f"ALFRED_TELEMETRY_URL={old_url}\nALFRED_TELEMETRY_TOKEN=old-token\n",
+        encoding="utf-8",
+    )
+    agents_conf = tmp_path / "agents.conf"
+
+    try:
+        result = _run(
+            tmp_path,
+            "on",
+            "--clear-token",
+            "--token",
+            "new-token",
+            "--url",
+            new_url,
+            alfredrc=alfredrc,
+            agents_conf=agents_conf,
+        )
+    finally:
+        old_server.shutdown()
+        new_server.shutdown()
+
+    assert result.returncode == 0, result.stderr
+    assert len(old_received) == 1
+    assert new_received == []
+    assert old_received[0]["token"] == "old-token"
+    rc_text = alfredrc.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={old_url}" in rc_text
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in rc_text
+    assert "new-token" not in rc_text
 
 
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
@@ -179,11 +541,17 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
         install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
         install_id.parent.mkdir(parents=True)
         install_id.write_text("install-cli-test\n", encoding="utf-8")
+        token = tmp_path / "alfred" / "state" / "telemetry-token"
+        token_endpoint = tmp_path / "alfred" / "state" / "telemetry-token-endpoint"
+        token.write_text("persisted-install-token\n", encoding="utf-8")
+        token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
 
         result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
 
         assert result.returncode == 0, result.stderr
         assert "cleared previous usage totals" in result.stdout
+        assert not token.exists()
+        assert not token_endpoint.exists()
         assert received == [
             {
                 "path": "/ingest",
@@ -197,6 +565,77 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
         ]
     finally:
         server.shutdown()
+
+
+def test_telemetry_off_uses_saved_endpoint_when_hosted_default_is_disabled(tmp_path):
+    server, received = _capture_server()
+    try:
+        endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
+        alfredrc = tmp_path / ".alfredrc"
+        alfredrc.write_text(
+            "ALFRED_TELEMETRY_ENABLED=1\n"
+            "ALFRED_DEFAULT_TELEMETRY_URL=\n"
+            "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+            encoding="utf-8",
+        )
+        agents_conf = tmp_path / "agents.conf"
+        agents_conf.write_text(
+            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tAnonymous usage totals\n",
+            encoding="utf-8",
+        )
+        install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
+        install_id.parent.mkdir(parents=True)
+        install_id.write_text("install-cli-test\n", encoding="utf-8")
+        token = tmp_path / "alfred" / "state" / "telemetry-token"
+        token_endpoint = tmp_path / "alfred" / "state" / "telemetry-token-endpoint"
+        token.write_text("persisted-install-token\n", encoding="utf-8")
+        token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
+
+        result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+
+        assert result.returncode == 0, result.stderr
+        assert "cleared previous usage totals" in result.stdout
+        assert not token.exists()
+        assert not token_endpoint.exists()
+        assert received == [
+            {
+                "path": "/ingest",
+                "token": "shared-secret",
+                "body": {
+                    "install_id": "install-cli-test",
+                    "period": "lifetime",
+                    "tombstone": True,
+                },
+            }
+        ]
+    finally:
+        server.shutdown()
+
+
+def test_telemetry_off_keeps_saved_token_when_no_clear_url_exists(tmp_path):
+    alfredrc = tmp_path / ".alfredrc"
+    alfredrc.write_text(
+        "ALFRED_TELEMETRY_ENABLED=1\n"
+        "ALFRED_DEFAULT_TELEMETRY_URL=\n"
+        "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
+        encoding="utf-8",
+    )
+    agents_conf = tmp_path / "agents.conf"
+    agents_conf.write_text(
+        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tAnonymous usage totals\n",
+        encoding="utf-8",
+    )
+    token = tmp_path / "alfred" / "state" / "telemetry-token"
+    token.parent.mkdir(parents=True)
+    token.write_text("persisted-install-token\n", encoding="utf-8")
+
+    result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+
+    assert result.returncode == 0, result.stderr
+    assert token.exists()
+    assert token.read_text(encoding="utf-8").strip() == "persisted-install-token"
 
 
 def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
@@ -219,12 +658,18 @@ def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
         install_id = tmp_path / "alfred" / "state" / "telemetry-install-id"
         install_id.parent.mkdir(parents=True)
         install_id.write_text("install-cli-test\n", encoding="utf-8")
+        token = tmp_path / "alfred" / "state" / "telemetry-token"
+        token_endpoint = tmp_path / "alfred" / "state" / "telemetry-token-endpoint"
+        token.write_text("persisted-install-token\n", encoding="utf-8")
+        token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
 
         result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
 
         assert result.returncode == 0
         assert "could not clear previous usage totals" in result.stderr
         assert received and received[0]["token"] == "shared-secret"
+        assert token.exists()
+        assert token_endpoint.exists()
         rc_text = alfredrc.read_text(encoding="utf-8")
         assert "ALFRED_TELEMETRY_ENABLED=0" in rc_text
         assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text

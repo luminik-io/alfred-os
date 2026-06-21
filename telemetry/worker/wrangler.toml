@@ -14,18 +14,24 @@ compatibility_date = "2024-11-01"
 # `wrangler whoami`. The value below is a placeholder, replace it.
 account_id = "REPLACE_WITH_YOUR_CLOUDFLARE_ACCOUNT_ID"
 
-# Site origin allowed to read GET /stats from a browser via CORS. Set it to your
-# deployed site origin (e.g. "https://alfred.example.com"). Leave it unset and
-# /stats is still readable server-side; only browser cross-origin reads are
-# gated. /ingest never carries CORS, so a visitor's browser cannot POST to it.
+# Site origin allowed to read GET /stats from a browser via CORS. /ingest and
+# /register never carry CORS, so a visitor's browser cannot write to the
+# counter.
 [vars]
-ALLOWED_ORIGIN = "https://alfred.example.com"
+ALLOWED_ORIGIN = "https://alfred.luminik.io"
+REQUIRE_INSTALL_TOKEN = "1"
+TRUSTED_COUNTS_ONLY = "1"
 
-# Optional shared write gate for POST /ingest. When set, every ingest must send
-# a matching `X-Ingest-Token` header (reporting installs put their value in
-# ALFRED_TELEMETRY_TOKEN). Leave it UNSET for a fully open public counter; the
-# CORS lock, per-IP rate limit, and per-install latest-wins idempotency still
-# apply. Prefer a Worker SECRET over a plaintext var here:
+# Hosted Alfred uses a private trusted reporter token for PR/issue/line totals.
+# Anonymous installs still contribute active-install presence, but cannot move
+# public progress totals without this token. Set as a Worker SECRET:
+#   wrangler secret put TRUSTED_INGEST_TOKEN
+# TRUSTED_INGEST_TOKEN = "set-via-`wrangler secret put`-not-here"
+
+# Optional shared write gate for POST /ingest. The hosted Alfred collector uses
+# per-install tokens from POST /register, so REQUIRE_INSTALL_TOKEN is the normal
+# path. Self-hosted collectors can set INGEST_TOKEN instead when they want one
+# shared token for every install. Prefer a Worker SECRET over a plaintext var:
 #   wrangler secret put INGEST_TOKEN
 # INGEST_TOKEN = "set-via-`wrangler secret put`-not-here"
 
@@ -45,13 +51,12 @@ ALLOWED_ORIGIN = "https://alfred.example.com"
 # RATE_LIMIT_SALT = "set-via-`wrangler secret put`-not-here"
 
 # Optional cache TTL (seconds) for the totals GET /stats derives by summing the
-# per-install records. Defaults to 60, which is the Cloudflare KV minimum for an
-# expirationTtl: KV REJECTS a cache write below 60s, so a value of 1-59 is
-# clamped UP to 60 (and logged) rather than silently never caching. Set 0 to
-# disable the cache and recompute on every read. A read optimization only: a
-# higher value cuts list cost on busy read bursts at the price of staleness. It
-# can never change the derived answer.
-# STATS_CACHE_TTL_SECONDS = "60"
+# per-install records. Hosted Alfred uses 300 seconds: still current enough for
+# the public impact page, and low enough list() pressure for the Cloudflare free
+# tier. Cloudflare KV rejects expirationTtl below 60s, so 1-59 is clamped UP to
+# 60 (and logged). Set 0 to disable the cache and recompute on every read. A
+# read optimization only: it can never change the derived answer.
+STATS_CACHE_TTL_SECONDS = "300"
 
 # Workers KV namespace that holds the per-install records (and a short-lived
 # derived-stats cache). GET /stats sums the install records on read; there is no

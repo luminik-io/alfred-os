@@ -34,6 +34,7 @@ sys.path.insert(0, str(_REPO / "lib"))
 from fleet_brain import FileTouch, FleetBrain, Lesson, SQLiteStore  # noqa: E402
 from fleet_brain.schema import (  # noqa: E402
     SCHEMA_VERSION,
+    _add_column_if_missing,
     applied_version,
     ensure_schema,
 )
@@ -88,6 +89,64 @@ def test_fleetbrain_creates_db_file(tmp_path: Path) -> None:
     db = tmp_path / "nested" / "brain.db"
     FleetBrain(db_path=db)
     assert db.exists()
+
+
+def test_ensure_schema_adds_github_line_columns_to_existing_table(db_path: Path) -> None:
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE github_items (
+                id TEXT NOT NULL PRIMARY KEY,
+                repo TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                state TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                url TEXT NOT NULL DEFAULT '',
+                labels_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                closed_at TEXT,
+                merged_at TEXT,
+                head_ref TEXT,
+                base_ref TEXT,
+                bundle_slug TEXT
+            )
+            """
+        )
+        conn.commit()
+        ensure_schema(conn)
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(github_items)")}
+        assert {
+            "additions",
+            "deletions",
+            "line_metrics_seen_at",
+            "changed_files",
+            "file_metrics_seen_at",
+        }.issubset(cols)
+    finally:
+        conn.close()
+
+
+def test_add_column_if_missing_tolerates_concurrent_duplicate_column() -> None:
+    class RacingConnection:
+        def __init__(self) -> None:
+            self.alter_attempts = 0
+
+        def execute(self, sql: str):
+            if sql.startswith("PRAGMA table_info"):
+                return [(0, "id")]
+            if sql.startswith("ALTER TABLE"):
+                self.alter_attempts += 1
+                raise sqlite3.OperationalError("duplicate column name: additions")
+            raise AssertionError(sql)
+
+    conn = RacingConnection()
+
+    _add_column_if_missing(conn, "github_items", "additions", "INTEGER NOT NULL DEFAULT 0")
+
+    assert conn.alter_attempts == 1
 
 
 def test_memory_doctor_warns_for_v2_database_missing_additive_tables(tmp_path: Path) -> None:
@@ -383,6 +442,9 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
         labels=["agent:bundle:billing", "agent:authored"],
         head_ref="lucius/42",
         base_ref="main",
+        changed_files=4,
+        additions=12,
+        deletions=3,
     )
     assert item.id == "org/api#42:pr"
     assert item.bundle_slug == "billing"
@@ -390,11 +452,144 @@ def test_github_item_upsert_populates_bundle(brain: FleetBrain) -> None:
     items = brain.list_github_items(repo="org/api", kind="pr", state="open")
     assert len(items) == 1
     assert items[0].labels == ["agent:authored", "agent:bundle:billing"]
+    assert items[0].changed_files == 4
+    assert items[0].file_metrics_seen_at is not None
+    assert items[0].additions == 12
+    assert items[0].deletions == 3
+    assert items[0].line_metrics_seen_at is not None
 
     bundle_items = brain.list_bundle_items(bundle_slug="billing")
     assert len(bundle_items) == 1
     assert bundle_items[0].repo == "org/api"
     assert bundle_items[0].item_kind == "pr"
+
+
+def test_github_item_preserves_line_totals_when_updates_omit_them(
+    brain: FleetBrain,
+) -> None:
+    brain.upsert_github_item(
+        repo="org/api",
+        number=43,
+        kind="pr",
+        state="open",
+        changed_files=4,
+        additions=12,
+        deletions=3,
+    )
+
+    brain.upsert_github_item(
+        repo="org/api",
+        number=43,
+        kind="pr",
+        state="merged",
+    )
+
+    items = brain.list_github_items(repo="org/api", kind="pr", state="merged")
+    assert len(items) == 1
+    assert items[0].changed_files == 4
+    assert items[0].additions == 12
+    assert items[0].deletions == 3
+    file_marker = items[0].file_metrics_seen_at
+    marker = items[0].line_metrics_seen_at
+    assert file_marker is not None
+    assert marker is not None
+
+    brain.upsert_github_item(
+        repo="org/api",
+        number=43,
+        kind="pr",
+        state="merged",
+        changed_files=0,
+        additions=0,
+        deletions=0,
+    )
+
+    items = brain.list_github_items(repo="org/api", kind="pr", state="merged")
+    assert items[0].changed_files == 0
+    assert items[0].file_metrics_seen_at is not None
+    assert items[0].file_metrics_seen_at >= file_marker
+    assert items[0].additions == 0
+    assert items[0].deletions == 0
+    assert items[0].line_metrics_seen_at is not None
+    assert items[0].line_metrics_seen_at >= marker
+
+
+def test_sum_github_changed_lines_uses_authored_filter(brain: FleetBrain) -> None:
+    brain.upsert_github_item(
+        repo="org/api",
+        number=1,
+        kind="pr",
+        state="merged",
+        labels=["agent:authored"],
+        changed_files=4,
+        additions=10,
+        deletions=2,
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=2,
+        kind="pr",
+        state="open",
+        head_ref="lucius/2",
+        changed_files=2,
+        additions=5,
+        deletions=1,
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=3,
+        kind="pr",
+        state="merged",
+        head_ref="feature/human",
+        changed_files=200,
+        additions=1000,
+        deletions=1000,
+    )
+    assert brain.sum_github_changed_lines(kind="pr") == 2018
+    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 18
+    assert brain.sum_github_changed_lines(kind="pr", state="merged", authored_only=True) == 12
+    assert brain.sum_github_changed_files(kind="pr") == 206
+    assert brain.sum_github_changed_files(kind="pr", authored_only=True) == 6
+    assert brain.sum_github_changed_files(kind="pr", state="merged", authored_only=True) == 4
+
+
+def test_sum_github_changed_lines_skips_historical_unknown_line_metrics(
+    brain: FleetBrain,
+) -> None:
+    brain.upsert_github_item(
+        repo="org/api",
+        number=4,
+        kind="pr",
+        state="open",
+        labels=["agent:authored"],
+    )
+    brain.upsert_github_item(
+        repo="org/api",
+        number=5,
+        kind="pr",
+        state="open",
+        labels=["agent:authored"],
+        changed_files=6,
+        additions=20,
+        deletions=3,
+    )
+
+    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 23
+    assert brain.sum_github_changed_files(kind="pr", authored_only=True) == 6
+
+    brain.upsert_github_item(
+        repo="org/api",
+        number=4,
+        kind="pr",
+        state="open",
+        labels=["agent:authored"],
+        changed_files=0,
+        additions=0,
+        deletions=0,
+    )
+
+    assert brain.sum_github_changed_lines(kind="pr", authored_only=True) == 23
+    assert brain.sum_github_changed_files(kind="pr", authored_only=True) == 6
 
 
 def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
@@ -561,6 +756,8 @@ def test_count_github_items_agent_labeled_only_past_500_cap(brain: FleetBrain) -
 
 def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
     total = 555
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    recent = 57
     for n in range(total):
         brain.record_file_touch(
             repo="org/api",
@@ -568,10 +765,17 @@ def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> N
             codename="lucius",
             firing_id=f"fid-{n}",
             change_type="modified",
+            touched_at=(
+                datetime(2026, 6, 12, tzinfo=UTC)
+                if n < recent
+                else datetime(2026, 4, 12, tzinfo=UTC)
+            ),
         )
     assert len(brain.list_file_touches(limit=10_000)) == 500
     assert brain.count_file_touches() == total
     assert brain.count_file_touches(repo="org/api") == total
+    assert brain.count_file_touches(touched_since=cutoff) == recent
+    assert brain.count_file_touches(repo="org/api", touched_since=cutoff) == recent
     assert brain.count_file_touches(repo="missing") == 0
 
 

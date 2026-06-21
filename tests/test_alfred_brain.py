@@ -640,6 +640,14 @@ def test_ingest_handles_missing_outbox(
     assert rc == 0
 
 
+def test_github_poll_preserves_omitted_line_counts(github_poll_mod: ModuleType) -> None:
+    assert github_poll_mod._optional_non_negative_int({}, "additions") is None
+    assert github_poll_mod._optional_non_negative_int({"additions": None}, "additions") is None
+    assert github_poll_mod._optional_non_negative_int({"additions": 0}, "additions") == 0
+    assert github_poll_mod._optional_non_negative_int({"additions": "12"}, "additions") == 12
+    assert github_poll_mod._optional_non_negative_int({"additions": -4}, "additions") == 0
+
+
 def test_github_poll_records_issues_prs_and_bundles(
     github_poll_mod: ModuleType, brain_db: Path
 ) -> None:

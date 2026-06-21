@@ -244,23 +244,25 @@ adapter code.
 ## Anonymous usage totals
 
 Alfred can report anonymous aggregate counts for the public
-[Impact](https://alfred.luminik.io/impact/) page. Reporting is on when an ingest
-endpoint is configured. Turn it off any time with `alfred telemetry off` or
-`ALFRED_TELEMETRY_ENABLED=0`. If no endpoint is configured, nothing is sent.
-When an install has already reported, `alfred telemetry off` asks the collector
-to remove that install's stored record before writing the local opt-out.
+[Impact](https://alfred.luminik.io/impact/) page. Reporting is on by default
+and uses Alfred's hosted collector. Turn it off any time with
+`alfred telemetry off` or `ALFRED_TELEMETRY_ENABLED=0`. When an install has
+already reported, `alfred telemetry off` asks the collector to remove that
+install's stored record before writing the local opt-out.
 
 Alfred reports counts only. It does not send repo names, file paths, code,
 prompts, titles, branches, people, hostnames, or billing data. A reporting
-failure never breaks a firing.
+failure never breaks a firing. On Alfred's hosted counter, every public Impact
+total requires a private trusted reporter token, so a random install cannot move
+the public numbers.
 
-Configure or change the endpoint:
+Enable it explicitly or repair the scheduler row:
 
 ```sh
-alfred telemetry on --url https://your-worker.example.com/ingest
+alfred telemetry on
 ```
 
-If your collector uses an ingest token, pass it when enabling:
+Self-hosted collector:
 
 ```sh
 alfred telemetry on \
@@ -306,8 +308,8 @@ Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 | [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
-| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts only aggregate counts to the configured endpoint; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |
-| [`telemetry/worker/`](telemetry/worker/) | Self-hostable Cloudflare Worker that ingests the anonymous aggregate and serves the public totals for the site counter. Ships with placeholder ids; deploy under your own account. |
+| [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts aggregate counts to Alfred's hosted collector by default; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |
+| [`telemetry/worker/`](telemetry/worker/) | Cloudflare Worker for Alfred's hosted aggregate counter, also self-hostable for forks and private counters. |
 | [`bin/`](bin/) | Local helpers, including `doctor.sh` (host validator). |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
 | [`systemd/`](systemd/) | `_template.service` + `_template.timer` + `render.sh` (TSV → `systemd --user` units) for the Linux path. |
