@@ -455,9 +455,6 @@ class SlackPlanningListener:
         routed = self._maybe_route_intent(event)
         if routed is not None:
             return routed
-        clarified = self._maybe_complete_thread_clarification(event)
-        if clarified is not None:
-            return clarified
 
         if _is_read_only_control_text(event.text):
             control = self.control_handler.handle(
@@ -472,6 +469,10 @@ class SlackPlanningListener:
                     f"conversation_control_{control.action}",
                     detail=control.detail,
                 )
+
+        clarified = self._maybe_complete_thread_clarification(event)
+        if clarified is not None:
+            return clarified
 
         return ListenerResult(False, "ignored", "conversation reply is not actionable")
 

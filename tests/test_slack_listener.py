@@ -1512,6 +1512,58 @@ def test_conversation_thread_fallback_allows_only_read_only_controls(tmp_path: P
     assert control.calls == ["runs"]
 
 
+def test_conversation_thread_read_only_control_skips_pending_clarification(
+    tmp_path: Path,
+) -> None:
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Queue issue",
+            status="open",
+        )
+    )
+    poster = CardPoster()
+    control = SimpleNamespace(calls=[])
+
+    def handle(text, *, trusted, actor_user_id=None):
+        control.calls.append(text)
+        return SimpleNamespace(
+            handled=True,
+            action=text.split()[0],
+            text=f"*Answer for* `{text}`",
+            detail="",
+        )
+
+    control.handle = handle
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=control,
+        intent_engine=_intent_engine({"action": "unknown", "confidence": 0.2}),
+        repo_catalog=_intent_catalog(),
+    )
+    listener._conversation.record(
+        "C1:1716480000.000000",
+        text="queue issue #4",
+        action="queue_issue",
+    )
+
+    result = listener.handle_payload(
+        _thread_reply("runs", event_id="EvConversationRunsDuringClarification", user="U1")
+    )
+
+    assert result.handled is True
+    assert result.action == "conversation_control_runs"
+    assert control.calls == ["runs"]
+    assert "Answer for" in poster.messages[-1]["text"]
+    assert "Which repo" not in poster.messages[-1]["text"]
+
+
 def test_conversation_thread_reply_can_borrow_root_target(tmp_path: Path) -> None:
     poster = CardPoster()
     control = SimpleNamespace(
