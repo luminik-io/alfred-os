@@ -616,8 +616,10 @@ def derive_counts(brain: Any) -> TelemetryCounts:
       files_changed a file-delta proxy: the count of file_touches rows (one per
                    repo file an agent added/modified).
       lines_changed additions + deletions from cached GitHub PR rows, filtered
-                   to the same agent-authored PR subset as prs_opened. Older
-                   brains that do not expose the line-count helper report 0.
+                   to the same agent-authored PR subset as prs_opened. If
+                   authored PRs exist but the line total is still zero, the read
+                   is treated as incomplete so a migration/default-zero cache
+                   cannot overwrite a previous non-zero public total.
       loc_added    legacy wire alias for files_changed.
 
     Any query failure yields zeroes for the affected fields and marks the read
@@ -732,6 +734,14 @@ def derive_counts(brain: Any) -> TelemetryCounts:
 
     try:
         lines_changed = _sum_github_changed_lines(brain, kind="pr", authored_only=True)
+        line_summer = getattr(brain, "sum_github_changed_lines", None)
+        if callable(line_summer) and prs_opened > 0 and lines_changed == 0:
+            read_complete = False
+            logger.debug(
+                "telemetry: line-count derivation returned zero for %s "
+                "authored PRs; waiting for GitHub poller refresh",
+                prs_opened,
+            )
     except Exception as exc:  # fail-soft by contract: never raise on a bad read
         read_complete = False
         logger.debug("telemetry: line-count derivation failed: %s", exc)
