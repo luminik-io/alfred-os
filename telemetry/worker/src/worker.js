@@ -706,12 +706,15 @@ export async function ingest(kv, payload, now = new Date(), opts = {}) {
     }
     const previousSnapshot = normalizeSnapshot(previous);
     const canPreservePrevious = !countsNeedTrust || previousSnapshot.trusted_reporter === true;
+    const hasRollingActivity = WINDOW_COUNT_FIELDS.some(
+      (field) => field !== "lines_changed" && snapshot.last_30_days[field] > 0,
+    );
     snapshot.lines_changed = clampCount(
       canPreservePrevious ? previousSnapshot.lines_changed : 0,
       FIELD_MAXIMUMS.lines_changed,
     );
     snapshot.last_30_days.lines_changed = clampCount(
-      canPreservePrevious ? previousSnapshot.last_30_days.lines_changed : 0,
+      canPreservePrevious && hasRollingActivity ? previousSnapshot.last_30_days.lines_changed : 0,
       FIELD_MAXIMUMS.lines_changed,
     );
   }

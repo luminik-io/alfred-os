@@ -797,6 +797,53 @@ test("ingest preserves stale line totals while updating fresh counts", async () 
   assert.equal(agg.last_30_days.lines_changed, 900);
 });
 
+test("stale rolling line totals expire when the rolling window has no activity", async () => {
+  const kv = makeKV();
+  const first = normalizePayload({
+    install_id: "install-stalewindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 1200,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 4,
+      prs_merged: 3,
+      files_changed: 20,
+      lines_changed: 900,
+    },
+  }).value;
+  const staleLinesAfterWindowAgesOut = normalizePayload({
+    install_id: "install-stalewindow",
+    period: "lifetime",
+    prs_opened: 4,
+    prs_merged: 3,
+    lines_changed: 0,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 0,
+      prs_merged: 0,
+      prs_reviewed: 0,
+      issues_opened: 0,
+      issues_closed: 0,
+      files_changed: 0,
+      lines_changed: 0,
+    },
+    stale_fields: ["lines_changed"],
+  }).value;
+
+  await ingest(kv, first, FIXED);
+  await ingest(kv, staleLinesAfterWindowAgesOut, FIXED);
+
+  const snapshot = JSON.parse(kv.store.get("install:install-stalewindow"));
+  assert.equal(snapshot.lines_changed, 1200);
+  assert.equal(snapshot.last_30_days.lines_changed, 0);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.lines_changed, 1200);
+  assert.equal(agg.last_30_days.lines_changed, 0);
+});
+
 test("trusted-counts stale lines never promote an earlier untrusted total", async () => {
   const kv = makeKV();
   const untrusted = normalizePayload({
