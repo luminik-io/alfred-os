@@ -38,6 +38,9 @@ def test_ams_launcher_starts_ollama_and_falls_back_to_uvx() -> None:
     text = AMS_LAUNCH.read_text()
 
     assert "ollama serve" in text
+    assert "wait_for_ollama" in text
+    assert "/api/tags" in text
+    assert "ollama did not answer" in text
     assert "command -v agent-memory" in text
     assert "agent_memory_runs agent-memory" in text
     assert "uvx --python 3.12" in text

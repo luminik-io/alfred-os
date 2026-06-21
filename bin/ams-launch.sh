@@ -102,6 +102,22 @@ wait_for_redis_ping() {
   return 1
 }
 
+ollama_answers() {
+  curl -fsS "${1%/}/api/tags" >/dev/null 2>&1
+}
+
+wait_for_ollama() {
+  local url="$1" i=0
+  while [ "$i" -lt 30 ]; do
+    if ollama_answers "$url"; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  return 1
+}
+
 ensure_redis_with_redisearch() {
   local url="$1"
   command -v redis-cli >/dev/null 2>&1 || {
@@ -139,9 +155,14 @@ if ! ensure_redis_with_redisearch "${REDIS_URL:-redis://127.0.0.1:6379/0}"; then
 fi
 
 if command -v ollama >/dev/null 2>&1; then
-  if ! curl -fsS "${OLLAMA_API_BASE:-http://127.0.0.1:11434}/api/tags" >/dev/null 2>&1; then
+  OLLAMA_READY_URL="${OLLAMA_API_BASE:-http://127.0.0.1:11434}"
+  if ! ollama_answers "$OLLAMA_READY_URL"; then
     echo "[ams-launch] starting ollama serve" >&2
     nohup ollama serve >/dev/null 2>&1 &
+  fi
+  if ! wait_for_ollama "$OLLAMA_READY_URL"; then
+    echo "[ams-launch] ollama did not answer ${OLLAMA_READY_URL%/}/api/tags within 30s" >&2
+    exit 5
   fi
 else
   echo "[ams-launch] ollama not on PATH; embeddings will fail until it is installed" >&2

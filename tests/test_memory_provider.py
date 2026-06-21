@@ -717,12 +717,26 @@ def test_ams_server_env_matches_upstream_settings_names() -> None:
 
     assert env["REDIS_URL"] == "redis://127.0.0.1:6379/0"
     assert env["AUTH_MODE"] == "disabled"
+    assert env["DISABLE_AUTH"] == "true"
     assert env["LONG_TERM_MEMORY"] == "true"
     assert env["EMBEDDING_MODEL"] == "ollama/mxbai-embed-large"
     assert env["GENERATION_MODEL"] == "ollama/llama3.2"
     assert env["REDISVL_VECTOR_DIMENSIONS"] == "1024"
     assert env["FORGETTING_ENABLED"] == "false"
     assert env["OLLAMA_API_BASE"] == "http://127.0.0.1:11434"
+
+
+def test_ams_server_env_enables_auth_when_auth_mode_is_set() -> None:
+    env = ams_server_env(
+        env={
+            "ALFRED_AMS_AUTH_MODE": "token",
+            "ALFRED_AMS_TOKEN": "local-secret",
+        }
+    )
+
+    assert env["AUTH_MODE"] == "token"
+    assert env["DISABLE_AUTH"] == "false"
+    assert env["TOKEN"] == "local-secret"
 
 
 # ---------------------------------------------------------------------------

@@ -123,6 +123,7 @@ class AmsServerConfig:
         out = {
             "REDIS_URL": self.redis_url,
             "AUTH_MODE": self.auth_mode,
+            "DISABLE_AUTH": _as_str_bool(self.auth_mode == "disabled"),
             "LONG_TERM_MEMORY": _as_str_bool(self.long_term_memory),
             "EMBEDDING_MODEL": self.embedding_model,
             "REDISVL_VECTOR_DIMENSIONS": str(self.embedding_dimensions),
