@@ -101,6 +101,24 @@ def test_scan_repo_graph_prunes_skip_dirs_and_marks_truncation(tmp_path: Path, m
     assert all(edge["to"] != "hidden" for edge in graph["edges"])
 
 
+def test_scan_repo_graph_prunes_hidden_build_caches_before_cap(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(cmr, "MAX_GRAPH_FILES", 1)
+    (tmp_path / ".next" / "cache").mkdir(parents=True)
+    (tmp_path / ".next" / "cache" / "generated.ts").write_text(
+        "import { hidden } from 'hidden'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.ts").write_text("import { real } from './real'\n", encoding="utf-8")
+
+    graph = cmr.scan_repo_graph(tmp_path)
+
+    assert graph["graph_summary"]["files"] == 1
+    assert graph["graph_summary"]["truncated"] is False
+    assert [file_info["path"] for file_info in graph["files"]] == ["src/app.ts"]
+    assert all(edge["to"] != "hidden" for edge in graph["edges"])
+
+
 def test_scan_backend_includes_repo_graph_next_to_endpoints(tmp_path: Path) -> None:
     src = tmp_path / "api" / "src" / "main" / "kotlin" / "com" / "example"
     src.mkdir(parents=True)
@@ -165,3 +183,32 @@ def test_load_code_map_summarizes_repo_graph(tmp_path: Path) -> None:
     assert "`backend`: 1 server endpoints, 9 files, 42 symbols, 17 imports" in summary
     assert "languages: kotlin:9" in summary
     assert "Contract drift entries: 1" in summary
+
+
+def test_load_code_map_skips_malformed_graph_counts(tmp_path: Path) -> None:
+    from compose_converse import load_code_map
+
+    path = tmp_path / "code-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "repos": {
+                    "frontend": {
+                        "routes": [{"path": "/"}],
+                        "graph_summary": {
+                            "files": "many",
+                            "symbols": None,
+                            "imports": -4,
+                            "languages": {"typescript": 2},
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = load_code_map(path)
+
+    assert "`frontend`: 1 routes, languages: typescript:2" in summary
+    assert "many files" not in summary

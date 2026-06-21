@@ -305,9 +305,9 @@ def load_code_map(code_map_path: Path | None) -> str:
             if calls:
                 counts.append(f"{len(calls)} client API calls")
             if isinstance(graph_summary, dict):
-                files = int(graph_summary.get("files") or 0)
-                symbols = int(graph_summary.get("symbols") or 0)
-                imports = int(graph_summary.get("imports") or 0)
+                files = _optional_positive_int(graph_summary.get("files"))
+                symbols = _optional_positive_int(graph_summary.get("symbols"))
+                imports = _optional_positive_int(graph_summary.get("imports"))
                 if files:
                     counts.append(f"{files} files")
                 if symbols:
@@ -331,6 +331,18 @@ def load_code_map(code_map_path: Path | None) -> str:
     if isinstance(drift, list) and drift:
         lines.append(f"Contract drift entries: {len(drift)} (advisory).")
     return "\n".join(lines) or "Code map present but empty."
+
+
+def _optional_positive_int(value: object) -> int:
+    if value is None:
+        return 0
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return 0
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, coerced)
 
 
 def build_prompt(

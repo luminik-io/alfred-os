@@ -124,6 +124,12 @@ SKIP_DIRS = {
     "node_modules",
     "target",
 }
+
+
+def _should_skip_dir(name: str) -> bool:
+    return name.startswith(".") or name in SKIP_DIRS
+
+
 LANG_BY_SUFFIX = {
     ".go": "go",
     ".js": "javascript",
@@ -226,7 +232,7 @@ def _iter_source_files(repo_path: Path) -> tuple[list[Path], bool]:
         return [], False
     files: list[Path] = []
     for root, dirs, filenames in os.walk(repo_path):
-        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        dirs[:] = sorted(d for d in dirs if not _should_skip_dir(d))
         for filename in sorted(filenames):
             path = Path(root) / filename
             if path.suffix not in SOURCE_SUFFIXES:
