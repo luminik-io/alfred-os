@@ -102,7 +102,7 @@ Trusted users can inspect the same local planning queue from Slack:
 | `plans` | Shows the newest saved plans, Slack drafts, and captured follow-ups. |
 | `plan <id>` | Shows source, status, parent link, repos, readiness, preview, and next actions. |
 | `draft <id>` | Converts a captured follow-up into a local planning draft with memory recall and readiness checks. |
-| `handled <id>` | Trusted-user command. Archives a captured follow-up without creating a draft. |
+| `handled <id>` | Configured-approver command. Archives a captured follow-up without creating a draft. |
 | `memory` / `memories` | Shows pending memory candidates and suggested promotions. |
 | `remember [repo:] <lesson>` / `memory remember ...` | Queues a reviewable memory candidate from Slack. |
 | `memory promote <id>` | Configured-approver command. Approves a candidate for future recall. |
