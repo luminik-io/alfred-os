@@ -625,6 +625,7 @@ class FleetBrain:
         repo: str | None = None,
         codename: str | None = None,
         path: str | None = None,
+        touched_since: datetime | None = None,
     ) -> int:
         """Exact COUNT(*) of file_touches, unbounded by the list 500-row cap.
 
@@ -632,7 +633,12 @@ class FleetBrain:
         true total (e.g. proof-telemetry's lifetime counts) must use this rather
         than ``len(list_...())``, which silently freezes at 500 on a busy brain.
         """
-        return self.store.count_file_touches(repo=repo, codename=codename, path=path)
+        return self.store.count_file_touches(
+            repo=repo,
+            codename=codename,
+            path=path,
+            touched_since=touched_since,
+        )
 
     def list_memory_candidates(
         self,

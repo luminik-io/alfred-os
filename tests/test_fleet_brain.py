@@ -756,6 +756,8 @@ def test_count_github_items_agent_labeled_only_past_500_cap(brain: FleetBrain) -
 
 def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
     total = 555
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    recent = 57
     for n in range(total):
         brain.record_file_touch(
             repo="org/api",
@@ -763,10 +765,17 @@ def test_count_file_touches_counts_past_the_500_list_cap(brain: FleetBrain) -> N
             codename="lucius",
             firing_id=f"fid-{n}",
             change_type="modified",
+            touched_at=(
+                datetime(2026, 6, 12, tzinfo=UTC)
+                if n < recent
+                else datetime(2026, 4, 12, tzinfo=UTC)
+            ),
         )
     assert len(brain.list_file_touches(limit=10_000)) == 500
     assert brain.count_file_touches() == total
     assert brain.count_file_touches(repo="org/api") == total
+    assert brain.count_file_touches(touched_since=cutoff) == recent
+    assert brain.count_file_touches(repo="org/api", touched_since=cutoff) == recent
     assert brain.count_file_touches(repo="missing") == 0
 
 
