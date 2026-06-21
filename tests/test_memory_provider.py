@@ -736,7 +736,13 @@ def test_ams_server_env_enables_auth_when_auth_mode_is_set() -> None:
 
     assert env["AUTH_MODE"] == "token"
     assert env["DISABLE_AUTH"] == "false"
-    assert env["TOKEN"] == "local-secret"
+    assert "TOKEN" not in env
+
+
+def test_redis_provider_uses_ams_token_as_default_bearer_token() -> None:
+    provider = RedisAgentMemoryProvider.from_env(env={"ALFRED_AMS_TOKEN": "local-secret"})
+
+    assert provider.token == "local-secret"
 
 
 # ---------------------------------------------------------------------------

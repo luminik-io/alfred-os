@@ -135,8 +135,6 @@ class AmsServerConfig:
             "OLLAMA_API_BASE": self.ollama_base_url,
             "OLLAMA_BASE_URL": self.ollama_base_url,
         }
-        if self.token:
-            out["TOKEN"] = self.token
         return out
 
 

@@ -76,7 +76,10 @@ class RedisAgentMemoryProvider:
             base_url=(envmap.get("ALFRED_REDIS_MEMORY_URL") or _ams_default_url(envmap)).rstrip(
                 "/"
             ),
-            token=(envmap.get("ALFRED_REDIS_MEMORY_TOKEN") or "").strip() or None,
+            token=(
+                envmap.get("ALFRED_REDIS_MEMORY_TOKEN") or envmap.get("ALFRED_AMS_TOKEN") or ""
+            ).strip()
+            or None,
             namespace=(envmap.get("ALFRED_REDIS_MEMORY_NAMESPACE") or "alfred").strip() or "alfred",
             user_id=(envmap.get("ALFRED_REDIS_MEMORY_USER_ID") or "").strip() or None,
             timeout_s=timeout,

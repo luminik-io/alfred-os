@@ -6,9 +6,6 @@
 
 set -uo pipefail
 
-ALFRED_HOME="${ALFRED_HOME:-${HERMES_HOME:-$HOME/.alfred}}"
-ALFRED_LIB="$ALFRED_HOME/lib"
-
 load_env_file() {
   local file="$1" line key value
   [ -f "$file" ] || return 0
@@ -32,7 +29,10 @@ load_env_file() {
   done < "$file"
 }
 
+ALFRED_HOME="${ALFRED_HOME:-${HERMES_HOME:-$HOME/.alfred}}"
+load_env_file "$HOME/.alfredrc"
 load_env_file "$ALFRED_HOME/.env"
+ALFRED_LIB="$ALFRED_HOME/lib"
 
 AMS_ENV_EXPORTS="$(
   PYTHONPATH="$ALFRED_LIB${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
@@ -152,6 +152,29 @@ ensure_redis_with_redisearch() {
 
 if ! ensure_redis_with_redisearch "${REDIS_URL:-redis://127.0.0.1:6379/0}"; then
   exit 4
+fi
+
+run_agent_memory_cli() {
+  if command -v agent-memory >/dev/null 2>&1; then
+    agent-memory "$@"
+    return $?
+  fi
+  if command -v uvx >/dev/null 2>&1; then
+    uvx --python 3.12 --from "${ALFRED_AMS_UVX_SPEC:-git+https://github.com/redis-developer/agent-memory-server.git}" agent-memory "$@"
+    return $?
+  fi
+  return 127
+}
+
+if [ "${AUTH_MODE:-disabled}" = "token" ]; then
+  if [ -z "${ALFRED_AMS_TOKEN:-}" ]; then
+    echo "[ams-launch] ALFRED_AMS_AUTH_MODE=token requires ALFRED_AMS_TOKEN" >&2
+    exit 6
+  fi
+  if ! run_agent_memory_cli token add --description "Alfred local AMS" --token "$ALFRED_AMS_TOKEN" --format json >/dev/null; then
+    echo "[ams-launch] could not register ALFRED_AMS_TOKEN with agent-memory token add" >&2
+    exit 6
+  fi
 fi
 
 if command -v ollama >/dev/null 2>&1; then

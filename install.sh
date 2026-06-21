@@ -590,7 +590,8 @@ Next steps (run them in this order):
        See ${C_BLUE}${SLACK_DOC}${C_OFF}
 
   4. Deploy the framework + verify (deploy.sh self-detects the host
-     scheduler: launchd plists on macOS, systemd --user timers on Linux):
+     scheduler: launchd plists on macOS, systemd --user timers on Linux).
+     Deploy also starts the local Redis Agent Memory Server:
        ${C_BLUE}${DEPLOY_CMD}${C_OFF}
        ${C_BLUE}${DOCTOR_CMD}${C_OFF}
 
