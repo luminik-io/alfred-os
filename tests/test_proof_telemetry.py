@@ -1899,7 +1899,25 @@ def test_report_once_does_not_mint_fresh_id_per_call_on_persist_failure(tmp_path
 # ALFRED_DOCTOR fast path: bin/doctor.sh runs every agent with ALFRED_DOCTOR=1
 # and must get a quick recognized sentinel, never a real telemetry POST.
 # ---------------------------------------------------------------------------
-def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(monkeypatch, capsys):
+def _isolate_doctor_env(monkeypatch, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    alfred_home = tmp_path / "alfred"
+    home.mkdir()
+    alfred_home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    for key in (
+        pt.ENABLE_ENV,
+        pt.URL_ENV,
+        pt.TOKEN_ENV,
+        pt.TRUSTED_TOKEN_ENV,
+        pt.DEFAULT_URL_ENV,
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.setenv(pt.ENABLE_ENV, "0")
     # If the fast path fell through to report_once, this would blow up loudly.
@@ -1912,7 +1930,8 @@ def test_doctor_fast_path_explicit_opt_out_emits_disabled_sentinel(monkeypatch, 
     assert "DISABLED]" in out
 
 
-def test_doctor_fast_path_enabled_without_url_uses_default_collector(monkeypatch, capsys):
+def test_doctor_fast_path_enabled_without_url_uses_default_collector(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.delenv(pt.URL_ENV, raising=False)
@@ -1924,7 +1943,8 @@ def test_doctor_fast_path_enabled_without_url_uses_default_collector(monkeypatch
     assert "[PROOF-TELEMETRY-DOCTOR-OK]" in out
 
 
-def test_doctor_fast_path_enabled_with_default_disabled_emits_no_url(monkeypatch, capsys):
+def test_doctor_fast_path_enabled_with_default_disabled_emits_no_url(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.delenv(pt.URL_ENV, raising=False)
@@ -1936,7 +1956,10 @@ def test_doctor_fast_path_enabled_with_default_disabled_emits_no_url(monkeypatch
     assert "[PROOF-TELEMETRY-NO-URL]" in out
 
 
-def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(monkeypatch, capsys):
+def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(
+    tmp_path, monkeypatch, capsys
+):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.delenv(pt.ENABLE_ENV, raising=False)
     monkeypatch.setenv(pt.URL_ENV, "https://telemetry.example.com/ingest")
@@ -1950,7 +1973,8 @@ def test_doctor_fast_path_enabled_with_url_emits_doctor_ok_without_posting(monke
     assert "DOCTOR-OK" in out
 
 
-def test_doctor_fast_path_takes_precedence_over_dry_run(monkeypatch, capsys):
+def test_doctor_fast_path_takes_precedence_over_dry_run(tmp_path, monkeypatch, capsys):
+    _isolate_doctor_env(monkeypatch, tmp_path)
     # Even with --dry-run, ALFRED_DOCTOR=1 short-circuits to the fast path so a
     # doctor sweep never builds a payload or reads the brain.
     monkeypatch.setenv("ALFRED_DOCTOR", "1")
