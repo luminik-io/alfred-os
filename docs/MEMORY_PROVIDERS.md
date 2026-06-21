@@ -11,9 +11,9 @@ The bundled Redis server binds to loopback by default. Nothing is sent to a
 hosted memory service. If you configure Alfred's usage counter, it sends
 anonymous aggregate counts only and can be disabled with `alfred telemetry off`.
 
-This doc covers the **provider layer** above the brain: how to chain
-memory backends so an agent reads from Redis first and still records local
-operational state in FleetBrain.
+This doc covers the **provider layer** above the brain: how to chain memory
+backends so agents recall semantic lessons from Redis while FleetBrain keeps the
+local queue, ledger, and review state.
 
 ## When to use this
 
@@ -25,7 +25,7 @@ of these is true:
   want Alfred firings to consult it as a fallback for older context.
 - You want to disable runtime recall and reflection without ripping out the
   call sites (set `ALFRED_MEMORY_PROVIDERS=null`).
-- You're writing a custom provider for a downstream fleet (e.g. a
+- You're writing a custom provider for a downstream fleet, such as a
   team wiki shim) and want to chain it behind Redis or FleetBrain.
 - You run Redis Agent Memory Server on a different loopback port or host and
   want Alfred to use that endpoint.
@@ -82,7 +82,7 @@ Two env vars drive the chain:
 # Unset default -> redis,fleet.
 ALFRED_MEMORY_PROVIDERS=redis,fleet
 
-# Optional: path to the operator's personal knowledge base CLI.
+# Optional: path to a personal knowledge base CLI.
 # Read by gbrain_stub; the binary is invoked with a JSON payload on
 # stdin and must emit a JSON list of lessons on stdout.
 ALFRED_GBRAIN_BIN=/usr/local/bin/gbrain
@@ -130,6 +130,15 @@ review queue and operational ledger. The default reflection mode stores
 engine-proposed memories as reviewable FleetBrain candidates before they enter
 recall. Redis is the promoted lesson store; FleetBrain is the queue and ledger.
 
+`ALFRED_MEMORY_REFLECTION_MODE` controls how model-generated reflections are
+stored:
+
+| Mode | Behavior |
+|---|---|
+| `candidate` | Default. Queue reviewable FleetBrain candidates. |
+| `direct` | Write through the provider chain immediately. Redis is first in the default chain. |
+| `off` | Skip runtime reflection. Recall still works. |
+
 Check the local server:
 
 ```sh
@@ -158,7 +167,8 @@ upload raw transcripts, event logs, or unreviewed memory candidates.
    context when Redis has useful hits.
 2. **`reflect`** writes to the first provider that does not raise
    `NotImplementedError`. Read-only providers earlier in the chain
-   are skipped silently.
+   are skipped silently. Runner-generated memories use the reflection mode above
+   before they call into the provider chain.
 
 Worked trace for `ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain`:
 
@@ -169,9 +179,13 @@ firing "lucius" starts, asks memory.recall(codename="lucius", repo="acme-org/api
   -> gbrain.recall(...) returns [Lesson("older notes about acme-org/api auth")]
   -> chain returns a merged, deduplicated list bounded by the caller's limit
 
-firing finishes, asks memory.reflect(codename=..., repo=..., body="..."):
-  -> redis.reflect(...) writes the promoted lesson to Agent Memory Server
-  -> FleetBrain remains available for candidates, firings, and reliability rows
+firing finishes, queues a memory candidate:
+  -> FleetBrain stores the proposed lesson for review
+  -> alfred brain redis-sync copies reviewed lessons into Redis
+
+if ALFRED_MEMORY_REFLECTION_MODE=direct:
+  -> redis.reflect(...) writes the lesson to Agent Memory Server
+  -> FleetBrain remains available for firings, candidates, and reliability rows
 ```
 
 ## Writing a custom provider
@@ -207,9 +221,9 @@ Now `ALFRED_MEMORY_PROVIDERS=redis,fleet,team_wiki` works.
 
 ## Privacy and scope
 
-- The `gbrain` provider is the operator's optional personal knowledge
+- The `gbrain` provider is an optional personal knowledge
   base. It is **not** bundled with Alfred. The shim only knows the
-  path the operator gives it; if the binary is missing, recall
+  path you configure; if the binary is missing, recall
   returns empty and the chain keeps working.
 - Nothing in the default memory layer phones home. Redis Agent Memory Server
   binds to loopback, and FleetBrain is a SQLite file under `$ALFRED_HOME`.
