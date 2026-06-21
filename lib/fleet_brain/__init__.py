@@ -1,9 +1,10 @@
 """Alfred's fleet-brain: a local procedural-learning memory layer.
 
 ``fleet_brain`` records what each agent firing learned about a repo
-or codename, then surfaces those lessons back to the next firing as
-prepended prompt context. Storage is a single SQLite file under
-``$ALFRED_HOME``; nothing ever leaves the host.
+or codename. It keeps reviewable candidates, firing history, file
+touches, GitHub cache rows, and local evidence under ``$ALFRED_HOME``.
+Redis Agent Memory is the default recalled-lesson layer for new
+installs; FleetBrain is the local ledger behind that review loop.
 
 Quick start::
 
@@ -29,17 +30,15 @@ Public surface:
   :class:`FileTouch`, :class:`RepoNote`: entity dataclasses,
   re-exported here.
 * :class:`fleet_brain.store.Store`: the Protocol the public API
-  depends on. The default impl is :class:`SQLiteStore`; a
-  PGLite/AGE-backed impl drops in for v2.
+  depends on. The default local ledger implementation is
+  :class:`SQLiteStore`.
 
-PGLite + Apache AGE graph storage is the v2 target; see
-``docs/FLEET_BRAIN.md`` for the upgrade path.
-
-Privacy: the brain is a SQLite file in your ``$ALFRED_HOME``. It
-never leaves your machine. The only outbound surface is the prompt
-context Alfred prepends to a firing, which goes to Claude Code or
-Codex on your existing CLI auth. No telemetry, no phone-home, no
-cloud sync.
+Privacy: the FleetBrain ledger is a SQLite file in your
+``$ALFRED_HOME``. It never leaves your machine. The only outbound
+surface is prompt context sent to Claude Code or Codex on your
+existing CLI auth, plus anonymous usage totals if telemetry is left
+on. No raw prompts, transcripts, or candidate text are sent by
+telemetry.
 """
 
 from __future__ import annotations

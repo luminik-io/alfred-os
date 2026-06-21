@@ -326,8 +326,8 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, dd
 
     Inspects ``PRAGMA table_info`` and runs ``ALTER TABLE ... ADD
     COLUMN`` only when the column is absent. Kept private because
-    callers should add new tables instead of mutating old ones until
-    the v2 PGLite/AGE upgrade lands a real migration framework.
+    callers should prefer new tables over mutating old rows unless an
+    additive migration is unavoidable.
     """
     cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column in cols:
