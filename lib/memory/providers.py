@@ -161,7 +161,7 @@ class ChainedMemoryProvider:
         repo: str | None = None,
         limit: int = 5,
     ) -> list[Lesson]:
-        out: list[Lesson] = []
+        provider_lessons: list[list[Lesson]] = []
         seen: set[str] = set()
         for provider in self.providers:
             try:
@@ -179,19 +179,22 @@ class ChainedMemoryProvider:
                     provider.name,
                 )
                 continue
+            bucket: list[Lesson] = []
             for lesson in lessons:
                 key = lesson.id or f"{lesson.codename}:{lesson.repo}:{lesson.body}"
                 if key in seen:
                     continue
                 seen.add(key)
-                out.append(lesson)
+                bucket.append(lesson)
             if lessons:
                 _LOG.debug(
                     "memory.chained: %r returned %d lesson(s)",
                     provider.name,
                     len(lessons),
                 )
-        return out[: max(1, int(limit))]
+            if bucket:
+                provider_lessons.append(bucket)
+        return _round_robin_lessons(provider_lessons, limit=max(1, int(limit)))
 
     def reflect(
         self,
@@ -226,3 +229,21 @@ class ChainedMemoryProvider:
         raise NotImplementedError(
             "ChainedMemoryProvider: no writable provider in chain"
         ) from last_error
+
+
+def _round_robin_lessons(provider_lessons: list[list[Lesson]], *, limit: int) -> list[Lesson]:
+    out: list[Lesson] = []
+    indexes = [0 for _ in provider_lessons]
+    while len(out) < limit:
+        added = False
+        for idx, lessons in enumerate(provider_lessons):
+            if indexes[idx] >= len(lessons):
+                continue
+            out.append(lessons[indexes[idx]])
+            indexes[idx] += 1
+            added = True
+            if len(out) >= limit:
+                break
+        if not added:
+            break
+    return out

@@ -246,7 +246,24 @@ def test_chain_dedupes_and_limits_merged_recall() -> None:
 
     out = chain.recall(query="q", limit=3)
 
-    assert [L.body for L in out] == ["same", "first-only", "second-only"]
+    assert [L.body for L in out] == ["same", "second-only", "first-only"]
+
+
+def test_chain_reserves_room_for_later_providers_when_first_fills_limit() -> None:
+    redis = _StaticProvider(
+        name="redis",
+        lessons=[
+            _make_lesson("redis-1"),
+            _make_lesson("redis-2"),
+            _make_lesson("redis-3"),
+        ],
+    )
+    fleet = _StaticProvider(name="fleet", lessons=[_make_lesson("fleet-reviewed")])
+    chain = ChainedMemoryProvider(providers=[redis, fleet])
+
+    out = chain.recall(query="q", limit=3)
+
+    assert [L.body for L in out] == ["redis-1", "fleet-reviewed", "redis-2"]
 
 
 def test_chain_falls_through_when_all_empty() -> None:

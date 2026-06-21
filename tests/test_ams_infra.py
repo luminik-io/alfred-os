@@ -33,6 +33,9 @@ def test_ams_launcher_requires_redis_stack_for_vector_search() -> None:
     assert "wait_for_redis_ping" in text
     assert "MODULE LIST" in text
     assert "FT._LIST" in text
+    assert "redis_url_host_port" in text
+    assert 'redis-stack-server --port "$port" --bind "$bind_host"' in text
+    assert "not auto-starting Redis Stack for non-loopback URL" in text
 
 
 def test_ams_launcher_starts_ollama_and_falls_back_to_uvx() -> None:

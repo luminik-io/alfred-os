@@ -104,6 +104,18 @@ wait_for_redis_ping() {
   return 1
 }
 
+redis_url_host_port() {
+  python3 - "$1" <<'PY'
+from urllib.parse import urlparse
+import sys
+
+parsed = urlparse(sys.argv[1])
+host = parsed.hostname or "127.0.0.1"
+port = parsed.port or 6379
+print(f"{host} {port}")
+PY
+}
+
 ollama_answers() {
   curl -fsS "${1%/}/api/tags" >/dev/null 2>&1
 }
@@ -121,7 +133,7 @@ wait_for_ollama() {
 }
 
 ensure_redis_with_redisearch() {
-  local url="$1"
+  local url="$1" host port bind_host
   command -v redis-cli >/dev/null 2>&1 || {
     echo "[ams-launch] redis-cli not on PATH; cannot verify Redis Stack on $url" >&2
     return 0
@@ -136,8 +148,22 @@ ensure_redis_with_redisearch() {
     return 1
   fi
   if command -v redis-stack-server >/dev/null 2>&1; then
-    echo "[ams-launch] starting redis-stack-server" >&2
-    nohup redis-stack-server --port 6379 --bind 127.0.0.1 >/dev/null 2>&1 &
+    read -r host port <<EOF
+$(redis_url_host_port "$url")
+EOF
+    case "$host" in
+      127.0.0.1|localhost|::1) ;;
+      *)
+        echo "[ams-launch] not auto-starting Redis Stack for non-loopback URL $url" >&2
+        return 1
+        ;;
+    esac
+    bind_host="$host"
+    if [ "$bind_host" = "localhost" ]; then
+      bind_host="127.0.0.1"
+    fi
+    echo "[ams-launch] starting redis-stack-server on ${bind_host}:${port}" >&2
+    nohup redis-stack-server --port "$port" --bind "$bind_host" >/dev/null 2>&1 &
     if ! wait_for_redis_ping "$url"; then
       echo "[ams-launch] redis-stack-server did not answer ping within 15s" >&2
       return 1
