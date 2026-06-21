@@ -492,6 +492,15 @@ function normalizeSnapshot(stored) {
   return out;
 }
 
+function hasFreshRollingWindow(snap, now = new Date()) {
+  if (!snap || typeof snap !== "object") return false;
+  if (!snap.last_30_days || typeof snap.last_30_days !== "object") return false;
+  const seenAtMs = Date.parse(snap.seen_at || "");
+  if (!Number.isFinite(seenAtMs)) return false;
+  const windowDays = clampCount(snap.last_30_days.window_days, 366) || 30;
+  return now.getTime() - seenAtMs <= windowDays * 24 * 60 * 60 * 1000;
+}
+
 function trustedCountsOnly(env) {
   const raw = env && env.TRUSTED_COUNTS_ONLY;
   if (raw === undefined || raw === null || raw === "") return false;
@@ -514,7 +523,7 @@ function trustedCountsOnly(env) {
  * read burst does not re-list each time. KV list() is paginated via `cursor`;
  * we follow it so a namespace larger than one page is summed in full.
  */
-export async function computeTotals(kv, env) {
+export async function computeTotals(kv, env, now = new Date()) {
   const totals = { ...EMPTY_AGG, last_30_days: { ...EMPTY_WINDOW } };
   const countsNeedTrust = trustedCountsOnly(env);
   const countedInstalls = new Set();
@@ -540,7 +549,7 @@ export async function computeTotals(kv, env) {
       for (const field of COUNT_FIELDS) {
         totals[field] += snap[field];
       }
-      if (snap.last_30_days && typeof snap.last_30_days === "object") {
+      if (hasFreshRollingWindow(snap, now)) {
         totals.last_30_days.window_days = clampCount(snap.last_30_days.window_days, 366) || 30;
         for (const field of WINDOW_COUNT_FIELDS) {
           totals.last_30_days[field] += snap.last_30_days[field];

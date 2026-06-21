@@ -1476,7 +1476,6 @@ def test_trusted_telemetry_token_is_scoped_to_hosted_collector():
 
 def test_register_install_sends_trusted_token_only_to_hosted_collector(tmp_path, monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    monkeypatch.setenv(pt.TRUSTED_TOKEN_ENV, "trusted-secret")
     captured = []
 
     def fake_post_json(url, payload, **kwargs):
@@ -1484,9 +1483,10 @@ def test_register_install_sends_trusted_token_only_to_hosted_collector(tmp_path,
         return True, {"install_id": payload["install_id"], "token": "install-token"}
 
     monkeypatch.setattr(pt, "_post_json", fake_post_json)
+    env = {pt.TRUSTED_TOKEN_ENV: "trusted-secret"}
 
-    hosted = pt.register_install(pt.DEFAULT_INGEST_URL, "install-reg-recover")
-    custom = pt.register_install("https://custom.example.com/ingest", "install-reg-custom")
+    hosted = pt.register_install(pt.DEFAULT_INGEST_URL, "install-reg-recover", env=env)
+    custom = pt.register_install("https://custom.example.com/ingest", "install-reg-custom", env=env)
 
     assert hosted == "install-token"
     assert custom == "install-token"
@@ -1501,6 +1501,62 @@ def test_register_install_sends_trusted_token_only_to_hosted_collector(tmp_path,
             {"install_id": "install-reg-custom"},
             "",
         ),
+    ]
+
+
+def test_report_once_registration_uses_env_trusted_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    captured = []
+
+    def fake_post_json(url, payload, **kwargs):
+        captured.append((url, payload, kwargs.get("trusted_token", "")))
+        return True, {"install_id": payload["install_id"], "token": "install-token"}
+
+    monkeypatch.setattr(pt, "_post_json", fake_post_json)
+    poster = RecordingPoster(ok=True)
+
+    result = pt.report_once(
+        env={pt.TRUSTED_TOKEN_ENV: "trusted-secret"},
+        brain=FakeBrain(),
+        poster=poster,
+    )
+
+    assert result["status"] == "sent"
+    assert captured == [
+        (
+            pt.register_url_for_ingest(pt.DEFAULT_INGEST_URL),
+            {"install_id": poster.calls[0][1]["install_id"]},
+            "trusted-secret",
+        )
+    ]
+
+
+def test_clear_report_registration_uses_env_trusted_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    install_id_path = tmp_path / "state" / "telemetry-install-id"
+    install_id_path.parent.mkdir()
+    install_id_path.write_text("existing-token\n", encoding="utf-8")
+    captured = []
+
+    def fake_post_json(url, payload, **kwargs):
+        captured.append((url, payload, kwargs.get("trusted_token", "")))
+        return True, {"install_id": payload["install_id"], "token": "delete-token"}
+
+    monkeypatch.setattr(pt, "_post_json", fake_post_json)
+    poster = RecordingPoster(ok=True)
+
+    result = pt.clear_report(
+        env={pt.TRUSTED_TOKEN_ENV: "trusted-secret"},
+        poster=poster,
+    )
+
+    assert result == {"status": "sent", "sent": True}
+    assert captured == [
+        (
+            pt.register_url_for_ingest(pt.DEFAULT_INGEST_URL),
+            {"install_id": "existing-token"},
+            "trusted-secret",
+        )
     ]
 
 

@@ -67,9 +67,8 @@ function makeKV() {
 // read these straight off ingest's return value (the running aggregate); under
 // the derived-on-read model ingest returns only the install's own snapshot, so
 // global assertions go through computeTotals instead.
-const totalsOf = (kv) => computeTotals(kv);
-
 const FIXED = new Date("2026-06-15T00:00:00.000Z");
+const totalsOf = (kv, env) => computeTotals(kv, env, FIXED);
 
 // --------------------------------------------------------------------------
 // clampCount
@@ -398,6 +397,68 @@ test("ingest stores rolling 30-day counts and derived stats sum them", async () 
     issues_closed: 6,
     files_changed: 28,
     lines_changed: 2500,
+  });
+});
+
+test("derived stats exclude expired install snapshots from rolling totals", async () => {
+  const kv = makeKV();
+  const stale = normalizePayload({
+    install_id: "install-stalerolling",
+    period: "lifetime",
+    prs_opened: 100,
+    prs_merged: 80,
+    issues_opened: 20,
+    files_changed: 200,
+    lines_changed: 3000,
+    loc_added: 180,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 100,
+      prs_merged: 80,
+      prs_reviewed: 90,
+      issues_opened: 20,
+      issues_closed: 10,
+      files_changed: 200,
+      lines_changed: 3000,
+    },
+  }).value;
+  const fresh = normalizePayload({
+    install_id: "install-freshrolling",
+    period: "lifetime",
+    prs_opened: 5,
+    prs_merged: 3,
+    issues_opened: 2,
+    files_changed: 7,
+    lines_changed: 90,
+    loc_added: 6,
+    last_30_days: {
+      window_days: 30,
+      prs_opened: 5,
+      prs_merged: 3,
+      prs_reviewed: 4,
+      issues_opened: 2,
+      issues_closed: 1,
+      files_changed: 7,
+      lines_changed: 90,
+    },
+  }).value;
+
+  await ingest(kv, stale, new Date("2000-01-01T00:00:00.000Z"));
+  await ingest(kv, fresh, FIXED);
+
+  const agg = await totalsOf(kv);
+  assert.equal(agg.prs_merged, 83);
+  assert.equal(agg.issues_opened, 22);
+  assert.equal(agg.files_changed, 207);
+  assert.deepEqual(agg.last_30_days, {
+    window_days: 30,
+    prs_opened: 5,
+    prs_merged: 3,
+    prs_reviewed: 4,
+    issues_opened: 2,
+    issues_closed: 1,
+    files_changed: 7,
+    lines_changed: 90,
   });
 });
 
@@ -2103,7 +2164,7 @@ test("trusted-counts mode uses active refreshes for updated_at without double-co
     { trustedCountsOnly: true },
   );
 
-  const stats = await computeTotals(kv, { TRUSTED_COUNTS_ONLY: "1" });
+  const stats = await computeTotals(kv, { TRUSTED_COUNTS_ONLY: "1" }, activeAt);
   assert.equal(stats.installs, 1);
   assert.equal(stats.prs_opened, 3);
   assert.equal(stats.updated_at, activeAt.toISOString());

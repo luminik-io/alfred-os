@@ -1116,11 +1116,12 @@ def register_install(
     ingest_url: str,
     install_id: str,
     *,
+    env: Mapping[str, str] | None = None,
     requester: Callable[[str, dict[str, Any]], tuple[bool, dict[str, Any]]] | None = None,
 ) -> str | None:
     """Register this install with the hosted collector and persist its token."""
     register_url = register_url_for_ingest(ingest_url)
-    trusted_token = trusted_telemetry_token_for_url(ingest_url)
+    trusted_token = trusted_telemetry_token_for_url(ingest_url, env)
     request = requester or (lambda u, p: _post_json(u, p, trusted_token=trusted_token))
     ok, body = request(register_url, {"install_id": install_id})
     if not ok:
@@ -1223,7 +1224,7 @@ def report_once(
         trusted_token = trusted_telemetry_token_for_url(url, source)
         registration_failed = False
         if not token:
-            register = registrar or register_install
+            register = registrar or (lambda u, i: register_install(u, i, env=source))
             token = register(url, install_id) or ""
             if not token:
                 if is_official_hosted_collector(url):
@@ -1281,7 +1282,7 @@ def clear_report(
         token = telemetry_token(source, endpoint=url)
         trusted_token = trusted_telemetry_token_for_url(url, source)
         if not token:
-            register = registrar or register_install
+            register = registrar or (lambda u, i: register_install(u, i, env=source))
             token = register(url, resolved_install_id) or ""
             if not token and is_official_hosted_collector(url):
                 return {"status": "no_token", "sent": False}
