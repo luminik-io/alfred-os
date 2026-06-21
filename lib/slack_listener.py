@@ -582,7 +582,11 @@ class SlackPlanningListener:
         agent = turn.agent or resolve_agent_codename(event.text, allow_all=allow_all)
         schedule = turn.schedule
         if turn.action == ACTION_SCHEDULE_AGENT and not schedule:
-            schedule = _normalize_schedule_reply(event.text) if turn.agent else ""
+            schedule = (
+                _normalize_schedule_reply(event.text)
+                if turn.agent
+                else _normalize_schedule_reply_after_agent(event.text, agent)
+            )
         intent = Intent(
             action=turn.action,
             agent=agent,
@@ -2382,6 +2386,21 @@ def _normalize_schedule_reply(text: str) -> str:
         "days": "d",
     }[match.group("unit")]
     return f"{match.group('num')}{suffix}"
+
+
+def _normalize_schedule_reply_after_agent(text: str, agent: str) -> str:
+    """Extract a cadence from a reply that may start with the agent name."""
+    if not agent:
+        return ""
+    direct = _normalize_schedule_reply(text)
+    if direct:
+        return direct
+    words = re.sub(r"\s+", " ", (text or "").strip()).split()
+    for drop_count in range(1, min(len(words), 4) + 1):
+        cadence = _normalize_schedule_reply(" ".join(words[drop_count:]))
+        if cadence:
+            return cadence
+    return ""
 
 
 def render_draft_ack(result: Any) -> str:
