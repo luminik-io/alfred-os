@@ -1243,7 +1243,7 @@ def test_trusted_collaborator_cannot_trust_another_user(tmp_path: Path, monkeypa
 
     assert result.handled is True
     assert result.action == "control_trust_rejected"
-    assert "Only the operator" in poster.messages[-1]["text"]
+    assert "Only the configured approver" in poster.messages[-1]["text"]
 
 
 # ---------------------------------------------------------------------------

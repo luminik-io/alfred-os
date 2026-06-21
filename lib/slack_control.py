@@ -411,7 +411,7 @@ class SlackControlHandler:
                 True,
                 "assign_rejected",
                 text=(
-                    "*Only the operator can assign work to Alfred.*\n\n"
+                    "*Only the configured approver can assign work to Alfred.*\n\n"
                     "Assignment can make an issue eligible for autonomous pickup. Nothing changed."
                 ),
                 detail="actor is not the operator",
@@ -468,7 +468,7 @@ class SlackControlHandler:
                     True,
                     "queue_rejected",
                     text=(
-                        "*Only the operator can queue work for Alfred.*\n\n"
+                        "*Only the configured approver can queue work for Alfred.*\n\n"
                         "Arming an issue makes it eligible for autonomous pickup. "
                         "Use `hold` to take an issue out of Alfred's reach. Nothing changed."
                     ),
@@ -600,7 +600,7 @@ class SlackControlHandler:
             return ControlResult(
                 True,
                 "handled_rejected",
-                text="*Only the operator can mark follow-ups handled.*\n\nNothing changed.",
+                text="*Only the configured approver can mark follow-ups handled.*\n\nNothing changed.",
                 detail="actor is not the operator",
             )
         plan = self._get_plan(plan_id)
@@ -745,7 +745,7 @@ class SlackControlHandler:
                 "*Memory candidate queued for review*\n\n"
                 f"- Repo: `{repo}`{id_line}\n"
                 f"- Note: {_short(body, 240)}\n\n"
-                "It is not prompt context yet. The operator can promote it with "
+                "It is not prompt context yet. The configured approver can promote it with "
                 f"`memory promote {candidate_id or '<id>'}` after review."
             ),
         )
@@ -762,7 +762,7 @@ class SlackControlHandler:
             return ControlResult(
                 True,
                 f"memory_{action}_rejected",
-                text="*Only the operator can promote or reject memory candidates.*\n\nNothing changed.",
+                text="*Only the configured approver can promote or reject memory candidates.*\n\nNothing changed.",
                 detail="actor is not the operator",
             )
         argv = [action, candidate_id, "--reviewer", actor or "operator", "--json"]
@@ -795,7 +795,7 @@ class SlackControlHandler:
             return ControlResult(
                 True,
                 "memory_sync_rejected",
-                text="*Only the operator can sync memory to Redis AMS.*\n\nNothing changed.",
+                text="*Only the configured approver can sync memory to Redis AMS.*\n\nNothing changed.",
                 detail="actor is not the operator",
             )
         argv = ["redis-sync", "--json"]
@@ -826,7 +826,7 @@ class SlackControlHandler:
             return ControlResult(
                 True,
                 "memory_harvest_rejected",
-                text="*Only the operator can queue harvested memory candidates.*\n\nNothing changed.",
+                text="*Only the configured approver can queue harvested memory candidates.*\n\nNothing changed.",
                 detail="actor is not the operator",
             )
         argv = ["harvest", "--json"]
@@ -927,7 +927,7 @@ class SlackControlHandler:
         lines.extend(
             [
                 "",
-                "The operator can add someone with `trust @person` and remove local entries with `untrust @person`.",
+                "The configured approver can add someone with `trust @person` and remove local entries with `untrust @person`.",
             ]
         )
         return ControlResult(True, "trusted", text="\n".join(lines))
@@ -941,7 +941,7 @@ class SlackControlHandler:
                 return ControlResult(
                     True,
                     "schedule_rejected",
-                    text="*Only the operator can change agent schedules.*\n\nNothing changed.",
+                    text="*Only the configured approver can change agent schedules.*\n\nNothing changed.",
                     detail="actor is not the operator",
                 )
         result = self._runner([self.alfred_bin, "schedule", *args])
@@ -983,7 +983,7 @@ class SlackControlHandler:
             return ControlResult(
                 True,
                 f"{verb}_rejected",
-                text="*Only the operator can change trusted Slack collaborators.*\n\nNothing changed.",
+                text="*Only the configured approver can change trusted Slack collaborators.*\n\nNothing changed.",
                 detail="actor is not the operator",
             )
         store = self.trust_store or SlackTrustStore.from_state_root(default_trust_state_root())
@@ -997,7 +997,7 @@ class SlackControlHandler:
                     text=(
                         f"*Trusted collaborator {action}:* `<@{target_user_id}>`.\n\n"
                         "They can now revise planning threads and send planning requests. "
-                        "Only the operator can approve execution."
+                        "Only the configured approver can approve execution."
                     ),
                 )
             removed = store.remove(target_user_id)
@@ -1047,7 +1047,7 @@ class SlackControlHandler:
                 True,
                 "run_rejected",
                 text=(
-                    "*Only the operator can manually run an agent.*\n\n"
+                    "*Only the configured approver can manually run an agent.*\n\n"
                     "A manual run can kill an in-flight firing before kickstarting "
                     "the scheduler unit. Nothing changed."
                 ),
@@ -1140,7 +1140,7 @@ def _usage_for_malformed(text: str) -> str | None:
     if first in {"trust", "untrust"}:
         return (
             f"*Usage:* `{first} <@user>`\n\n"
-            "Only the configured operator can change trusted collaborators."
+            "Only the configured approver can change trusted collaborators."
         )
     if first in {"plan", "draft", "handled"}:
         # Natural-language intake often starts with "plan ..." or "draft ...".
@@ -1161,7 +1161,7 @@ def _usage_for_malformed(text: str) -> str | None:
     if first == "assign":
         return (
             "*Usage:* `assign owner/repo#123`\n\n"
-            "Only the operator can route an issue to Batman or Lucius."
+            "Only the configured approver can route an issue to Batman or Lucius."
         )
     if first == "remember":
         return render_remember_usage()
@@ -1484,7 +1484,7 @@ def render_memory_review(
         [
             "",
             "Use `remember owner/repo: lesson` to queue a candidate.",
-            "The operator can run `memory promote <id>` or `memory reject <id>`. Redis is checked with `memory redis`.",
+            "The configured approver can run `memory promote <id>` or `memory reject <id>`. Redis is checked with `memory redis`.",
         ]
     )
     return "\n".join(lines)
@@ -1589,8 +1589,8 @@ def render_memory_usage() -> str:
             "- `memory promotions`: high-confidence candidates with evidence.",
             "- `memory harvest`: preview failure-pattern candidates; `memory harvest now` queues them.",
             "- `remember [owner/repo:] <lesson>` or `memory remember ...`: queue a reviewable candidate.",
-            "- `memory promote <id>`: operator-only: trust a candidate for future recall.",
-            "- `memory reject <id> [note]`: operator-only: reject a noisy candidate.",
+            "- `memory promote <id>`: configured approver only: trust a candidate for future recall.",
+            "- `memory reject <id> [note]`: configured approver only: reject a noisy candidate.",
             "- `memory redis`: check optional Redis AMS.",
             "- `memory sync`: preview Redis sync; `memory sync now` writes reviewed lessons.",
         ]
