@@ -126,6 +126,97 @@ if command -v codex >/dev/null 2>&1; then
   echo "[alfred-os/deploy] linked codex → $LOCAL_BIN/codex"
 fi
 
+install_ams_service_linux() {
+  local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+  local service="$systemd_user_dir/alfred-ams.service"
+  mkdir -p "$systemd_user_dir"
+  cat > "$service" <<EOF
+[Unit]
+Description=Alfred Redis Agent Memory Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=$RUNTIME_BIN/ams-launch.sh
+Restart=always
+RestartSec=5
+WorkingDirectory=$HOME
+Environment=PATH=$LOCAL_BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=$HOME
+Environment=ALFRED_HOME=$ALFRED_HOME
+Environment=WORKSPACE_ROOT=$WORKSPACE_ROOT
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+  if systemctl --user enable --now alfred-ams.service >/dev/null 2>&1; then
+    if systemctl --user restart alfred-ams.service >/dev/null 2>&1; then
+      echo "[alfred-os/deploy] alfred-ams.service enabled and restarted"
+    else
+      echo "[alfred-os/deploy] alfred-ams.service enabled; restart failed, see 'systemctl --user status alfred-ams.service'"
+    fi
+  else
+    echo "[alfred-os/deploy] alfred-ams.service installed; enable failed, see 'systemctl --user status alfred-ams.service'"
+  fi
+}
+
+install_ams_service_launchd() {
+  local launch_agents_dir="$HOME/Library/LaunchAgents"
+  local plist="$launch_agents_dir/io.luminik.alfred.ams.plist"
+  local uid_value
+  mkdir -p "$launch_agents_dir"
+  uid_value="$(id -u)"
+  cat > "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.luminik.alfred.ams</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$RUNTIME_BIN/ams-launch.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/alfred-ams.stdout</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/alfred-ams.stderr</string>
+  <key>WorkingDirectory</key>
+  <string>$HOME</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>$LOCAL_BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>$HOME</string>
+    <key>ALFRED_HOME</key>
+    <string>$ALFRED_HOME</string>
+    <key>WORKSPACE_ROOT</key>
+    <string>$WORKSPACE_ROOT</string>
+  </dict>
+</dict>
+</plist>
+EOF
+  launchctl bootout "gui/$uid_value" "$plist" >/dev/null 2>&1 || true
+  if launchctl bootstrap "gui/$uid_value" "$plist" >/dev/null 2>&1; then
+    echo "[alfred-os/deploy] io.luminik.alfred.ams loaded"
+  else
+    echo "[alfred-os/deploy] io.luminik.alfred.ams installed; bootstrap failed, see /tmp/alfred-ams.stderr"
+  fi
+}
+
+if [ "$(uname -s)" = "Linux" ]; then
+  install_ams_service_linux
+elif [ "$(uname -s)" = "Darwin" ]; then
+  install_ams_service_launchd
+fi
+
 # Render + install the systemd --user units on Linux. Mirrors the launchd
 # path below: render from agents.conf, reap units for rows that were removed,
 # install the current set, and skip enabling any agent whose pause marker is

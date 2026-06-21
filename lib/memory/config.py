@@ -3,9 +3,9 @@
 The operator tunes runtime memory via two env vars:
 
 * ``ALFRED_MEMORY_PROVIDERS`` -- comma-separated provider names, in
-  consult order. Example: ``fleet,gbrain``. Unset means
-  "fleet-brain only"; set it to ``null`` or an empty string to
-  disable runtime memory.
+  consult order. Example: ``redis,fleet``. Unset means Redis Agent
+  Memory first, with the local FleetBrain ledger behind it; set it to
+  ``null`` or an empty string to disable runtime memory.
 * Per-provider env (e.g. ``ALFRED_GBRAIN_BIN``) -- see the provider's
   docstring.
 
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from . import MemoryProvider
 
 __all__ = [
+    "DEFAULT_PROVIDER_NAMES",
     "PROVIDER_REGISTRY",
     "build_chain",
     "load_provider",
@@ -42,12 +43,13 @@ __all__ = [
 _LOG = logging.getLogger(__name__)
 
 ProviderFactory = Callable[[Mapping[str, str]], "MemoryProvider"]
+DEFAULT_PROVIDER_NAMES = ["redis", "fleet"]
 
 # Registry: each entry is a small factory that constructs the provider
 # from the process environment. Keep the factories trivial; the
 # providers themselves own their config schema.
 PROVIDER_REGISTRY: dict[str, ProviderFactory] = {
-    "fleet": lambda _env: FleetBrainProvider(),
+    "fleet": lambda env: FleetBrainProvider.from_env(env),
     "gbrain": lambda env: GBrainProvider.from_env(env=dict(env)),
     "redis": lambda env: RedisAgentMemoryProvider.from_env(env=env),
     "null": lambda _env: NullMemoryProvider(),
@@ -114,15 +116,17 @@ def load_provider(env: Mapping[str, str] | None = None) -> MemoryProvider:
     """Top-level entry point: build the chain from
     ``ALFRED_MEMORY_PROVIDERS``.
 
-    The OSS default (env unset) is a single :class:`FleetBrainProvider`.
+    The default (env unset) is Redis Agent Memory first, then FleetBrain.
+    Redis is the semantic memory layer. FleetBrain stays in the chain as the
+    local operational ledger for candidates, firings, GitHub cache, worker
+    heartbeats, and telemetry inputs.
     Operators who want only a no-op layer can set
     ``ALFRED_MEMORY_PROVIDERS=null``.
     """
     envmap = env if env is not None else os.environ
     raw = envmap.get("ALFRED_MEMORY_PROVIDERS")
     if raw is None:
-        # Unset -- shipping default: fleet-brain only.
-        return FleetBrainProvider()
+        return build_chain(DEFAULT_PROVIDER_NAMES, env=envmap)
     names = parse_provider_names(raw)
     if not names:
         # Explicitly empty -- the operator turned memory off.

@@ -591,6 +591,44 @@ def cmd_redis_status(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_ams_status(args: argparse.Namespace) -> int:
+    from memory.ams_server import AmsServerConfig
+
+    cfg = AmsServerConfig.from_env()
+    provider = _build_redis_provider()
+    health = provider.health()
+    provider_base_url = str(getattr(provider, "base_url", health.get("base_url", cfg.base_url)))
+    health_url = f"{provider_base_url}/v1/health"
+    payload = {
+        "base_url": provider_base_url,
+        "health_url": health_url,
+        "server_base_url": cfg.base_url,
+        "redis_url": cfg.redis_url,
+        "auth_mode": cfg.auth_mode,
+        "embedding_model": cfg.embedding_model,
+        "embedding_dimensions": cfg.embedding_dimensions,
+        "generation_model": cfg.generation_model,
+        "long_term_memory": cfg.long_term_memory,
+        "forgetting_enabled": cfg.forgetting_enabled,
+        "health": health,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0 if health.get("ok") else 1
+    print(
+        f"alfred-brain ams: {provider_base_url} "
+        f"embedding={cfg.embedding_model} generation={cfg.generation_model} "
+        f"dim={cfg.embedding_dimensions}"
+    )
+    if provider_base_url != cfg.base_url:
+        print(f"  configured server base: {cfg.base_url}", file=sys.stderr)
+    if health.get("ok"):
+        print(f"  health ok namespace={health.get('namespace')}")
+        return 0
+    print(f"  health unavailable: {health.get('error', 'unknown error')}", file=sys.stderr)
+    return 1
+
+
 def cmd_redis_sync(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     provider = _build_redis_provider()
@@ -1112,6 +1150,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_redis_status = sub.add_parser("redis-status", help="check Redis Agent Memory Server")
     p_redis_status.add_argument("--json", action="store_true")
     p_redis_status.set_defaults(func=cmd_redis_status)
+
+    p_ams_status = sub.add_parser("ams-status", help="show local Agent Memory Server status")
+    p_ams_status.add_argument("--json", action="store_true")
+    p_ams_status.set_defaults(func=cmd_ams_status)
 
     p_redis_sync = sub.add_parser("redis-sync", help="sync reviewed lessons to Redis AMS")
     p_redis_sync.add_argument("--codename", help="codename filter, or '-' to widen")

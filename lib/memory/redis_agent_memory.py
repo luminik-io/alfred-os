@@ -1,8 +1,8 @@
-"""Optional Redis Agent Memory Server provider.
+"""Redis Agent Memory Server provider.
 
-This adapter keeps Redis AMS outside the default install. Operators who
-already run https://github.com/redis/agent-memory-server can add it to
-the provider chain with ``ALFRED_MEMORY_PROVIDERS=fleet,redis``.
+This adapter is Alfred's primary semantic memory client. A fresh install
+talks to the bundled loopback AMS by default; ``ALFRED_REDIS_MEMORY_URL``
+can point it at a different endpoint.
 
 The provider is deliberately tolerant: recall failures return ``[]``;
 reflect failures raise :class:`NotImplementedError` so a chained writer
@@ -23,27 +23,40 @@ from urllib.request import Request, urlopen
 
 from fleet_brain import Lesson, Severity, new_id
 
+from .ams_server import DEFAULT_HOST, DEFAULT_PORT
+
 __all__ = ["RedisAgentMemoryProvider"]
 
 _LOG = logging.getLogger(__name__)
 
 _JSON = "application/json"
-_DEFAULT_URL = "http://127.0.0.1:8000"
-_DEFAULT_TIMEOUT_S = 5.0
+_DEFAULT_TIMEOUT_S = 2.0
+_AMS_DEFAULT_HOST = DEFAULT_HOST
+_AMS_DEFAULT_PORT = DEFAULT_PORT
 
 Transport = Callable[[str, str, dict[str, Any] | None, dict[str, str], float], Any]
+
+
+def _ams_default_url(envmap: Mapping[str, str]) -> str:
+    host = (envmap.get("ALFRED_AMS_HOST") or "").strip() or _AMS_DEFAULT_HOST
+    port_raw = (envmap.get("ALFRED_AMS_PORT") or "").strip()
+    try:
+        port = int(port_raw) if port_raw else _AMS_DEFAULT_PORT
+    except ValueError:
+        port = _AMS_DEFAULT_PORT
+    return f"http://{host}:{port}"
 
 
 @dataclass
 class RedisAgentMemoryProvider:
     """Bridge Alfred's memory Protocol to Redis Agent Memory Server."""
 
-    base_url: str = _DEFAULT_URL
+    base_url: str = f"http://{_AMS_DEFAULT_HOST}:{_AMS_DEFAULT_PORT}"
     token: str | None = None
     namespace: str = "alfred"
     user_id: str | None = None
     timeout_s: float = _DEFAULT_TIMEOUT_S
-    search_mode: str = "hybrid"
+    search_mode: str = "semantic"
     transport: Transport | None = None
     name: str = "redis"
 
@@ -60,13 +73,18 @@ class RedisAgentMemoryProvider:
         except ValueError:
             timeout = _DEFAULT_TIMEOUT_S
         return cls(
-            base_url=(envmap.get("ALFRED_REDIS_MEMORY_URL") or _DEFAULT_URL).rstrip("/"),
-            token=(envmap.get("ALFRED_REDIS_MEMORY_TOKEN") or "").strip() or None,
+            base_url=(envmap.get("ALFRED_REDIS_MEMORY_URL") or _ams_default_url(envmap)).rstrip(
+                "/"
+            ),
+            token=(
+                envmap.get("ALFRED_REDIS_MEMORY_TOKEN") or envmap.get("ALFRED_AMS_TOKEN") or ""
+            ).strip()
+            or None,
             namespace=(envmap.get("ALFRED_REDIS_MEMORY_NAMESPACE") or "alfred").strip() or "alfred",
             user_id=(envmap.get("ALFRED_REDIS_MEMORY_USER_ID") or "").strip() or None,
             timeout_s=timeout,
-            search_mode=(envmap.get("ALFRED_REDIS_MEMORY_SEARCH_MODE") or "hybrid").strip()
-            or "hybrid",
+            search_mode=(envmap.get("ALFRED_REDIS_MEMORY_SEARCH_MODE") or "semantic").strip()
+            or "semantic",
         )
 
     def recall(
@@ -84,6 +102,9 @@ class RedisAgentMemoryProvider:
             "search_mode": self.search_mode,
             "namespace": {"eq": self.namespace},
         }
+        required_topics = _scope_topics(codename=codename, repo=repo)
+        if required_topics:
+            payload["topics"] = {"all": required_topics}
         if self.user_id:
             payload["user_id"] = {"eq": self.user_id}
         try:
@@ -91,7 +112,14 @@ class RedisAgentMemoryProvider:
         except Exception as exc:
             _LOG.debug("memory.redis: recall failed: %s", exc)
             return []
-        return _parse_search_response(response, codename=codename, repo=repo)
+        return _parse_search_response(
+            response,
+            codename=codename,
+            repo=repo,
+            namespace=self.namespace,
+            user_id=self.user_id,
+            required_topics=required_topics,
+        )
 
     def health(self) -> dict[str, Any]:
         """Return Redis AMS health data, normalized for ``alfred brain``.
@@ -244,11 +272,21 @@ def _parse_search_response(
     *,
     codename: str | None,
     repo: str | None,
+    namespace: str | None = None,
+    user_id: str | None = None,
+    required_topics: list[str] | None = None,
 ) -> list[Lesson]:
     entries = _response_entries(response)
     out: list[Lesson] = []
     for entry in entries:
-        lesson = _entry_to_lesson(entry, codename=codename, repo=repo)
+        lesson = _entry_to_lesson(
+            entry,
+            codename=codename,
+            repo=repo,
+            namespace=namespace,
+            user_id=user_id,
+            required_topics=required_topics or [],
+        )
         if lesson is not None:
             out.append(lesson)
     return out
@@ -268,6 +306,9 @@ def _entry_to_lesson(
     *,
     codename: str | None,
     repo: str | None,
+    namespace: str | None,
+    user_id: str | None,
+    required_topics: list[str],
 ) -> Lesson | None:
     if not isinstance(entry, dict):
         return None
@@ -279,8 +320,14 @@ def _entry_to_lesson(
         return None
     raw_metadata = record.get("metadata")
     metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    if not _record_scope_matches(record, metadata, "namespace", namespace):
+        return None
+    if not _record_scope_matches(record, metadata, "user_id", user_id):
+        return None
     raw_topics = record.get("topics")
     topics: list[Any] = raw_topics if isinstance(raw_topics, list) else []
+    if required_topics and not _has_required_topics(topics, required_topics):
+        return None
     control = _control_topics(topics)
     tags = sorted(
         {
@@ -307,6 +354,36 @@ def _entry_to_lesson(
         firing_id=metadata.get("firing_id") or record.get("session_id"),
         severity=severity,
     )
+
+
+def _scope_topics(*, codename: str | None, repo: str | None) -> list[str]:
+    out = []
+    if codename:
+        out.append(f"codename:{codename}")
+    if repo:
+        out.append(f"repo:{repo}")
+    return out
+
+
+def _has_required_topics(topics: list[Any], required_topics: list[str]) -> bool:
+    topic_set = {topic.strip() for topic in topics if isinstance(topic, str) and topic.strip()}
+    return all(topic in topic_set for topic in required_topics)
+
+
+def _record_scope_matches(
+    record: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+    key: str,
+    expected: str | None,
+) -> bool:
+    if not expected:
+        return True
+    raw = record.get(key)
+    if raw is None:
+        raw = metadata.get(key)
+    if raw is None:
+        return True
+    return str(raw).strip() == expected
 
 
 def _control_topics(topics: list[Any]) -> dict[str, str]:

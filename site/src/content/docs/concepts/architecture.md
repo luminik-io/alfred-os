@@ -25,7 +25,10 @@ flowchart LR
     runner <--> state
 ```
 
-State outside your filesystem becomes another service to run. Alfred keeps operational state in plain JSON files under `$ALFRED_HOME/state/`, and durable lessons in the local fleet-brain SQLite file. No required Redis, no SQS, no Postgres, and no required external agent gateway.
+Alfred keeps operational state in plain JSON files under `$ALFRED_HOME/state/`,
+uses FleetBrain for local review and reliability rows, and uses a loopback
+Redis Agent Memory Server for recalled lessons. No SQS, Postgres, hosted memory
+database, or external agent gateway is required.
 
 ## One firing, end to end
 
@@ -179,7 +182,8 @@ See [codename pattern](/concepts/codename-pattern/) for more.
 - Long-running orchestration loops. The OS scheduler is the orchestrator.
 - Hosted LLM gateway. Alfred has local CLI engine adapters and simple per-agent engine selection; it does not run inference for you.
 - Browser automation runtimes. If your fleet needs Playwright, install it in the codename's bin script.
-- Vector databases for memory. Some fleets use a doc-shaped memory layer; Alfred doesn't ship one.
+- Hosted memory databases. Alfred ships local Redis Agent Memory for recalled
+  lessons and keeps FleetBrain on the host for review and reliability state.
 - Anything Anthropic ships natively (Agent Teams, Memory Tool). When those mature, lean on them rather than re-implementing.
 
 ## What this enables
