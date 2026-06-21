@@ -26,6 +26,7 @@ DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
 DEFAULT_AUTH_MODE = "disabled"
 DEFAULT_EMBEDDING_MODEL = "ollama/mxbai-embed-large"
 DEFAULT_EMBEDDING_DIMENSIONS = 1024
+DEFAULT_GENERATION_MODEL = "ollama/llama3.2"
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_LONG_TERM_MEMORY = True
 DEFAULT_COMPACTION_INTERVAL_SECONDS = 600
@@ -38,6 +39,7 @@ AMS_DEFAULTS: dict[str, str | int | bool] = {
     "auth_mode": DEFAULT_AUTH_MODE,
     "embedding_model": DEFAULT_EMBEDDING_MODEL,
     "embedding_dimensions": DEFAULT_EMBEDDING_DIMENSIONS,
+    "generation_model": DEFAULT_GENERATION_MODEL,
     "ollama_base_url": DEFAULT_OLLAMA_BASE_URL,
     "long_term_memory": DEFAULT_LONG_TERM_MEMORY,
     "compaction_interval_seconds": DEFAULT_COMPACTION_INTERVAL_SECONDS,
@@ -56,6 +58,7 @@ class AmsServerConfig:
     token: str | None = None
     embedding_model: str = field(default=DEFAULT_EMBEDDING_MODEL)
     embedding_dimensions: int = field(default=DEFAULT_EMBEDDING_DIMENSIONS)
+    generation_model: str = field(default=DEFAULT_GENERATION_MODEL)
     ollama_base_url: str = field(default=DEFAULT_OLLAMA_BASE_URL)
     long_term_memory: bool = field(default=DEFAULT_LONG_TERM_MEMORY)
     compaction_interval_seconds: int = field(default=DEFAULT_COMPACTION_INTERVAL_SECONDS)
@@ -90,6 +93,10 @@ class AmsServerConfig:
                 "ALFRED_AMS_EMBEDDING_DIM",
                 DEFAULT_EMBEDDING_DIMENSIONS,
             ),
+            generation_model=(
+                envmap.get("ALFRED_AMS_GENERATION_MODEL") or DEFAULT_GENERATION_MODEL
+            ).strip()
+            or DEFAULT_GENERATION_MODEL,
             ollama_base_url=(
                 envmap.get("ALFRED_AMS_OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL
             ).strip()
@@ -120,7 +127,7 @@ class AmsServerConfig:
             "EMBEDDING_MODEL": self.embedding_model,
             "REDISVL_VECTOR_DIMENSIONS": str(self.embedding_dimensions),
             "EMBEDDING_DIMENSIONS": str(self.embedding_dimensions),
-            "GENERATION_MODEL": self.embedding_model,
+            "GENERATION_MODEL": self.generation_model,
             "INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY": "false",
             "FORGETTING_ENABLED": _as_str_bool(self.forgetting_enabled),
             "COMPACTION_EVERY_MINUTES": str(max(1, self.compaction_interval_seconds // 60)),

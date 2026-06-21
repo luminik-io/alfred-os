@@ -207,7 +207,7 @@ install_linux_packages() {
   # no apt package, so it installs from the official script below. AWS CLI v2
   # is intentionally not auto-installed: apt's awscli is v1.x and scheduled
   # fleet jobs that touch AWS want v2.
-  local apt_pkgs="ca-certificates curl gnupg git jq python3-venv python3-pip nodejs npm redis-server"
+  local apt_pkgs="ca-certificates curl gnupg git jq python3-venv python3-pip nodejs npm redis-tools"
   note "apt-get update"
   ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get update -qq
   note "apt-get install -y ${apt_pkgs}"
@@ -257,7 +257,8 @@ install_linux_packages() {
   fi
 
   # Redis Agent Memory Server needs Redis Stack because vector search depends
-  # on RediSearch. Plain redis-server is only a fallback package.
+  # on RediSearch. Do not install the distro redis-server here; it can occupy
+  # 127.0.0.1:6379 before Redis Stack starts.
   if ! command -v redis-stack-server >/dev/null 2>&1; then
     note "installing Redis Stack from packages.redis.io"
     if curl -fsSL https://packages.redis.io/gpg \
@@ -281,11 +282,19 @@ install_linux_packages() {
   fi
 
   if ! command -v ollama >/dev/null 2>&1; then
-    note "installing Ollama for local memory embeddings"
-    if curl -fsSL https://ollama.com/install.sh | sh; then
-      ok "ollama installed"
+    if [[ "${ALFRED_INSTALL_OLLAMA:-}" == "1" ]]; then
+      note "installing Ollama for local memory embeddings"
+      local ollama_install
+      ollama_install="$(mktemp)"
+      if curl -fsSL https://ollama.com/install.sh -o "$ollama_install" && sh "$ollama_install"; then
+        ok "ollama installed"
+        rm -f "$ollama_install"
+      else
+        rm -f "$ollama_install"
+        warn "Ollama install failed; install Ollama and run 'ollama pull mxbai-embed-large' and 'ollama pull llama3.2'."
+      fi
     else
-      warn "Ollama install failed; install Ollama and run 'ollama pull mxbai-embed-large'."
+      warn "Ollama is not installed. Install it manually, or re-run with ALFRED_INSTALL_OLLAMA=1 to use Ollama's official install script."
     fi
   fi
 
@@ -418,13 +427,15 @@ else
 fi
 
 if command -v ollama >/dev/null 2>&1; then
-  if ollama list 2>/dev/null | grep -q '^mxbai-embed-large'; then
-    ok "mxbai-embed-large already pulled"
-  elif ollama pull mxbai-embed-large >/dev/null 2>&1; then
-    ok "mxbai-embed-large pulled"
-  else
-    warn "Could not pull mxbai-embed-large; Redis memory recall needs this embedding model."
-  fi
+  for ollama_model in mxbai-embed-large llama3.2; do
+    if ollama list 2>/dev/null | grep -q "^${ollama_model}"; then
+      ok "$ollama_model already pulled"
+    elif ollama pull "$ollama_model" >/dev/null 2>&1; then
+      ok "$ollama_model pulled"
+    else
+      warn "Could not pull $ollama_model; Redis memory needs this local model."
+    fi
+  done
 fi
 
 # --------------------------------------------------------------------------

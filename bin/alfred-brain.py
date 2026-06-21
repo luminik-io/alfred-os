@@ -597,13 +597,17 @@ def cmd_ams_status(args: argparse.Namespace) -> int:
     cfg = AmsServerConfig.from_env()
     provider = _build_redis_provider()
     health = provider.health()
+    provider_base_url = str(getattr(provider, "base_url", health.get("base_url", cfg.base_url)))
+    health_url = f"{provider_base_url}/v1/health"
     payload = {
-        "base_url": cfg.base_url,
-        "health_url": cfg.health_url,
+        "base_url": provider_base_url,
+        "health_url": health_url,
+        "server_base_url": cfg.base_url,
         "redis_url": cfg.redis_url,
         "auth_mode": cfg.auth_mode,
         "embedding_model": cfg.embedding_model,
         "embedding_dimensions": cfg.embedding_dimensions,
+        "generation_model": cfg.generation_model,
         "long_term_memory": cfg.long_term_memory,
         "forgetting_enabled": cfg.forgetting_enabled,
         "health": health,
@@ -612,9 +616,12 @@ def cmd_ams_status(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
         return 0 if health.get("ok") else 1
     print(
-        f"alfred-brain ams: {cfg.base_url} "
-        f"embedding={cfg.embedding_model} dim={cfg.embedding_dimensions}"
+        f"alfred-brain ams: {provider_base_url} "
+        f"embedding={cfg.embedding_model} generation={cfg.generation_model} "
+        f"dim={cfg.embedding_dimensions}"
     )
+    if provider_base_url != cfg.base_url:
+        print(f"  configured server base: {cfg.base_url}", file=sys.stderr)
     if health.get("ok"):
         print(f"  health ok namespace={health.get('namespace')}")
         return 0

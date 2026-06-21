@@ -90,6 +90,18 @@ redis_has_redisearch() {
   esac
 }
 
+wait_for_redis_ping() {
+  local url="$1" i=0
+  while [ "$i" -lt 15 ]; do
+    if redis_answers_ping "$url"; then
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  return 1
+}
+
 ensure_redis_with_redisearch() {
   local url="$1"
   command -v redis-cli >/dev/null 2>&1 || {
@@ -108,6 +120,14 @@ ensure_redis_with_redisearch() {
   if command -v redis-stack-server >/dev/null 2>&1; then
     echo "[ams-launch] starting redis-stack-server" >&2
     nohup redis-stack-server --port 6379 --bind 127.0.0.1 >/dev/null 2>&1 &
+    if ! wait_for_redis_ping "$url"; then
+      echo "[ams-launch] redis-stack-server did not answer ping within 15s" >&2
+      return 1
+    fi
+    if ! redis_has_redisearch "$url"; then
+      echo "[ams-launch] redis-stack-server started but RediSearch is unavailable" >&2
+      return 1
+    fi
     return 0
   fi
   echo "[ams-launch] no Redis Stack on $url; install redis-stack-server" >&2

@@ -100,6 +100,7 @@ ALFRED_AMS_PORT=8088
 ALFRED_AMS_REDIS_URL=redis://127.0.0.1:6379/0
 ALFRED_AMS_EMBEDDING_MODEL=ollama/mxbai-embed-large
 ALFRED_AMS_EMBEDDING_DIM=1024
+ALFRED_AMS_GENERATION_MODEL=ollama/llama3.2
 ```
 
 Sample shell config for adding a read-only personal knowledge base behind the

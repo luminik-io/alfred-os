@@ -29,6 +29,7 @@ def test_ams_launcher_requires_redis_stack_for_vector_search() -> None:
 
     assert "redis-stack-server" in text
     assert "redis_has_redisearch" in text
+    assert "wait_for_redis_ping" in text
     assert "MODULE LIST" in text
     assert "FT._LIST" in text
 
@@ -51,4 +52,8 @@ def test_installer_provisions_ams_dependencies() -> None:
     assert "ollama" in text
     assert "uv tool install --python 3.12" in text
     assert "agent-memory-server.git" in text
-    assert "ollama pull mxbai-embed-large" in text
+    assert "mxbai-embed-large llama3.2" in text
+    assert 'ollama pull "$ollama_model"' in text
+    apt_line = next(line for line in text.splitlines() if "local apt_pkgs=" in line)
+    assert "redis-server" not in apt_line
+    assert "redis-tools" in text

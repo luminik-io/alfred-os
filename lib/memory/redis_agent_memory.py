@@ -99,6 +99,9 @@ class RedisAgentMemoryProvider:
             "search_mode": self.search_mode,
             "namespace": {"eq": self.namespace},
         }
+        required_topics = _scope_topics(codename=codename, repo=repo)
+        if required_topics:
+            payload["topics"] = required_topics
         if self.user_id:
             payload["user_id"] = {"eq": self.user_id}
         try:
@@ -106,7 +109,12 @@ class RedisAgentMemoryProvider:
         except Exception as exc:
             _LOG.debug("memory.redis: recall failed: %s", exc)
             return []
-        return _parse_search_response(response, codename=codename, repo=repo)
+        return _parse_search_response(
+            response,
+            codename=codename,
+            repo=repo,
+            required_topics=required_topics,
+        )
 
     def health(self) -> dict[str, Any]:
         """Return Redis AMS health data, normalized for ``alfred brain``.
@@ -259,11 +267,17 @@ def _parse_search_response(
     *,
     codename: str | None,
     repo: str | None,
+    required_topics: list[str] | None = None,
 ) -> list[Lesson]:
     entries = _response_entries(response)
     out: list[Lesson] = []
     for entry in entries:
-        lesson = _entry_to_lesson(entry, codename=codename, repo=repo)
+        lesson = _entry_to_lesson(
+            entry,
+            codename=codename,
+            repo=repo,
+            required_topics=required_topics or [],
+        )
         if lesson is not None:
             out.append(lesson)
     return out
@@ -283,6 +297,7 @@ def _entry_to_lesson(
     *,
     codename: str | None,
     repo: str | None,
+    required_topics: list[str],
 ) -> Lesson | None:
     if not isinstance(entry, dict):
         return None
@@ -296,6 +311,8 @@ def _entry_to_lesson(
     metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
     raw_topics = record.get("topics")
     topics: list[Any] = raw_topics if isinstance(raw_topics, list) else []
+    if required_topics and not _has_required_topics(topics, required_topics):
+        return None
     control = _control_topics(topics)
     tags = sorted(
         {
@@ -322,6 +339,20 @@ def _entry_to_lesson(
         firing_id=metadata.get("firing_id") or record.get("session_id"),
         severity=severity,
     )
+
+
+def _scope_topics(*, codename: str | None, repo: str | None) -> list[str]:
+    out = []
+    if codename:
+        out.append(f"codename:{codename}")
+    if repo:
+        out.append(f"repo:{repo}")
+    return out
+
+
+def _has_required_topics(topics: list[Any], required_topics: list[str]) -> bool:
+    topic_set = {topic.strip() for topic in topics if isinstance(topic, str) and topic.strip()}
+    return all(topic in topic_set for topic in required_topics)
 
 
 def _control_topics(topics: list[Any]) -> dict[str, str]:
