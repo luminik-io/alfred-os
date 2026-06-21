@@ -1,10 +1,7 @@
-"""Repository pattern over the fleet-brain SQLite file.
+"""Repository pattern over the FleetBrain SQLite ledger.
 
 :class:`Store` is the Protocol that :class:`fleet_brain.FleetBrain`
 depends on. :class:`SQLiteStore` is the only implementation today.
-A future PGLite/AGE-backed store (v2) implements the same Protocol
-and drops in via dependency injection — see
-``docs/FLEET_BRAIN.md`` for the upgrade path.
 
 Connections are intentionally short-lived (per-call open + close).
 SQLite handles this trivially and it sidesteps thread-local state
@@ -233,7 +230,7 @@ def default_db_path() -> Path:
 
 # ---------------------------------------------------------------------------
 # Store Protocol. The public FleetBrain API depends on this, not the
-# concrete SQLite impl. v2 (PGLite + AGE) replaces SQLiteStore wholesale.
+# concrete SQLite implementation.
 # ---------------------------------------------------------------------------
 
 
@@ -508,9 +505,9 @@ class SQLiteStore:
     ) -> list[Lesson]:
         """Return the most relevant lessons, most-recent first.
 
-        v1 relevance is a literal substring match on ``body`` when
-        ``query`` is given. Vector / semantic recall is deferred to
-        v2 — see ``docs/FLEET_BRAIN.md``.
+        The local SQLite ledger uses literal substring matching on
+        ``body`` when ``query`` is given. Redis Agent Memory provides
+        semantic recall in the default runtime provider chain.
 
         Either ``codename`` or ``repo`` may be ``None`` to widen the
         scope.
