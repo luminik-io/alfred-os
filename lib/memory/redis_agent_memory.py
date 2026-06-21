@@ -101,7 +101,7 @@ class RedisAgentMemoryProvider:
         }
         required_topics = _scope_topics(codename=codename, repo=repo)
         if required_topics:
-            payload["topics"] = required_topics
+            payload["topics"] = {"all": required_topics}
         if self.user_id:
             payload["user_id"] = {"eq": self.user_id}
         try:
