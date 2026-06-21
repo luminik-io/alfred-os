@@ -484,6 +484,52 @@ def test_redis_provider_recall_filters_returned_memories_by_scope() -> None:
     assert [lesson.id for lesson in lessons] == ["right-repo"]
 
 
+def test_redis_provider_recall_filters_returned_namespace_and_user() -> None:
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        return {
+            "memories": [
+                {
+                    "memory": {
+                        "id": "wrong-namespace",
+                        "text": "Other namespace convention",
+                        "namespace": "other",
+                        "user_id": "operator",
+                        "topics": ["codename:batman", "repo:acme/app"],
+                    }
+                },
+                {
+                    "memory": {
+                        "id": "wrong-user",
+                        "text": "Other user convention",
+                        "namespace": "alfred",
+                        "metadata": {"user_id": "someone-else"},
+                        "topics": ["codename:batman", "repo:acme/app"],
+                    }
+                },
+                {
+                    "memory": {
+                        "id": "right-scope",
+                        "text": "Use owner/repo in Batman plans.",
+                        "namespace": "alfred",
+                        "metadata": {"user_id": "operator"},
+                        "topics": ["codename:batman", "repo:acme/app"],
+                    }
+                },
+            ]
+        }
+
+    provider = RedisAgentMemoryProvider(
+        base_url="http://memory.local",
+        namespace="alfred",
+        user_id="operator",
+        transport=transport,
+    )
+
+    lessons = provider.recall(query="plans", codename="batman", repo="acme/app", limit=5)
+
+    assert [lesson.id for lesson in lessons] == ["right-scope"]
+
+
 def test_redis_provider_health_uses_health_endpoint() -> None:
     calls: list[dict[str, object]] = []
 

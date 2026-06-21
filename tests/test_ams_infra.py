@@ -78,6 +78,7 @@ def test_deploy_starts_ams_as_host_service() -> None:
     assert "io.luminik.alfred.ams.plist" in text
     assert "ams-launch.sh" in text
     assert "enable --now alfred-ams.service" in text
+    assert "restart alfred-ams.service" in text
     assert "launchctl bootstrap" in text
 
 

@@ -152,7 +152,11 @@ WantedBy=default.target
 EOF
   systemctl --user daemon-reload >/dev/null 2>&1 || true
   if systemctl --user enable --now alfred-ams.service >/dev/null 2>&1; then
-    echo "[alfred-os/deploy] alfred-ams.service enabled"
+    if systemctl --user restart alfred-ams.service >/dev/null 2>&1; then
+      echo "[alfred-os/deploy] alfred-ams.service enabled and restarted"
+    else
+      echo "[alfred-os/deploy] alfred-ams.service enabled; restart failed, see 'systemctl --user status alfred-ams.service'"
+    fi
   else
     echo "[alfred-os/deploy] alfred-ams.service installed; enable failed, see 'systemctl --user status alfred-ams.service'"
   fi

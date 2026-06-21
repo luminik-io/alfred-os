@@ -119,6 +119,8 @@ class RedisAgentMemoryProvider:
             response,
             codename=codename,
             repo=repo,
+            namespace=self.namespace,
+            user_id=self.user_id,
             required_topics=required_topics,
         )
 
@@ -273,6 +275,8 @@ def _parse_search_response(
     *,
     codename: str | None,
     repo: str | None,
+    namespace: str | None = None,
+    user_id: str | None = None,
     required_topics: list[str] | None = None,
 ) -> list[Lesson]:
     entries = _response_entries(response)
@@ -282,6 +286,8 @@ def _parse_search_response(
             entry,
             codename=codename,
             repo=repo,
+            namespace=namespace,
+            user_id=user_id,
             required_topics=required_topics or [],
         )
         if lesson is not None:
@@ -303,6 +309,8 @@ def _entry_to_lesson(
     *,
     codename: str | None,
     repo: str | None,
+    namespace: str | None,
+    user_id: str | None,
     required_topics: list[str],
 ) -> Lesson | None:
     if not isinstance(entry, dict):
@@ -315,6 +323,10 @@ def _entry_to_lesson(
         return None
     raw_metadata = record.get("metadata")
     metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    if not _record_scope_matches(record, metadata, "namespace", namespace):
+        return None
+    if not _record_scope_matches(record, metadata, "user_id", user_id):
+        return None
     raw_topics = record.get("topics")
     topics: list[Any] = raw_topics if isinstance(raw_topics, list) else []
     if required_topics and not _has_required_topics(topics, required_topics):
@@ -359,6 +371,22 @@ def _scope_topics(*, codename: str | None, repo: str | None) -> list[str]:
 def _has_required_topics(topics: list[Any], required_topics: list[str]) -> bool:
     topic_set = {topic.strip() for topic in topics if isinstance(topic, str) and topic.strip()}
     return all(topic in topic_set for topic in required_topics)
+
+
+def _record_scope_matches(
+    record: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+    key: str,
+    expected: str | None,
+) -> bool:
+    if not expected:
+        return True
+    raw = record.get(key)
+    if raw is None:
+        raw = metadata.get(key)
+    if raw is None:
+        return True
+    return str(raw).strip() == expected
 
 
 def _control_topics(topics: list[Any]) -> dict[str, str]:

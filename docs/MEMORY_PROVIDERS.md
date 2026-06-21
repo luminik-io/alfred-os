@@ -152,9 +152,10 @@ upload raw transcripts, event logs, or unreviewed memory candidates.
 
 `ChainedMemoryProvider` consults providers in declared order:
 
-1. **`recall`** asks each provider in turn and returns the first
-   non-empty list. A provider that raises is logged and skipped --
-   one flaky backend cannot break the firing.
+1. **`recall`** asks every provider, logs and skips failures, deduplicates by
+   lesson id, then round-robins the merged results in provider order. One flaky
+   backend cannot break the firing, and later read-only providers can still add
+   context when Redis has useful hits.
 2. **`reflect`** writes to the first provider that does not raise
    `NotImplementedError`. Read-only providers earlier in the chain
    are skipped silently.
@@ -164,25 +165,13 @@ Worked trace for `ALFRED_MEMORY_PROVIDERS=redis,fleet,gbrain`:
 ```
 firing "lucius" starts, asks memory.recall(codename="lucius", repo="acme-org/api"):
   -> redis.recall(...) returns [Lesson("GraphQL schema lives in src/schema.graphql")]
-  -> chain stops there; fleet and gbrain are not consulted for recall
+  -> fleet.recall(...) returns [Lesson("Keep schema PRs small")]
+  -> gbrain.recall(...) returns [Lesson("older notes about acme-org/api auth")]
+  -> chain returns a merged, deduplicated list bounded by the caller's limit
 
 firing finishes, asks memory.reflect(codename=..., repo=..., body="..."):
   -> redis.reflect(...) writes the promoted lesson to Agent Memory Server
   -> FleetBrain remains available for candidates, firings, and reliability rows
-```
-
-If the fleet had been empty for that (codename, repo):
-
-```
-firing "lucius" starts, asks memory.recall(...):
-  -> fleet.recall(...) returns []
-  -> gbrain.recall(...) shells out to $ALFRED_GBRAIN_BIN, returns
-     [Lesson("older notes about acme-org/api auth")]
-  -> chain returns the gbrain result
-
-firing finishes, asks memory.reflect(...):
-  -> fleet.reflect(...) succeeds first (gbrain is read-only and is
-     after fleet in the chain anyway)
 ```
 
 ## Writing a custom provider
