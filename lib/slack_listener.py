@@ -516,20 +516,31 @@ class SlackPlanningListener:
                 candidates = []
         issue = issue if issue is not None else turn.issue
         agent = turn.agent
+        unsupported_assignment_agent = ""
         if turn.action == ACTION_ASSIGN and not agent:
-            agent = resolve_assignment_agent(event.text)
+            agent, unsupported_assignment_agent = resolve_assignment_agent(event.text)
+        params = {
+            "raw_text": event.text.strip(),
+            "clarification_root": turn.text,
+        }
+        if unsupported_assignment_agent:
+            params["unsupported_assignment_agent"] = unsupported_assignment_agent
+        clarification = clarify_for_mutating(turn.action, repo, issue, candidates)
+        if turn.action == ACTION_ASSIGN and not clarification and unsupported_assignment_agent:
+            clarification = (
+                "I can route GitHub issues to Batman · Architect or "
+                "Lucius · Senior Developer. Which lane should handle "
+                f"`{repo}#{issue}`?"
+            )
 
         intent = Intent(
             action=turn.action,
             repo=repo,
             issue=issue,
             agent=agent,
-            params={
-                "raw_text": event.text.strip(),
-                "clarification_root": turn.text,
-            },
+            params=params,
             confidence=1.0,
-            clarification=clarify_for_mutating(turn.action, repo, issue, candidates),
+            clarification=clarification,
         )
         self._conversation.record(
             event.conversation_id,

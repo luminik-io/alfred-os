@@ -652,9 +652,8 @@ def resolve_agent_codename(
     return ""
 
 
-def resolve_assignment_agent(text: str, *, model_agent: str = "") -> str:
+def resolve_assignment_agent(text: str, *, model_agent: str = "") -> tuple[str, str]:
     """Resolve the requested issue-assignment lane, if the operator named one."""
-    candidates = (text, model_agent)
     aliases = {
         "batman": (
             "architect",
@@ -677,13 +676,54 @@ def resolve_assignment_agent(text: str, *, model_agent: str = "") -> str:
             "single-repo",
         ),
     }
-    for raw in candidates:
-        normalized = _normalize(raw)
-        if not normalized:
-            continue
-        for agent, names in aliases.items():
-            if normalized == agent or any(_contains_token(normalized, name) for name in names):
+    explicit = _assignment_agent_from_text(text, aliases)
+    if not explicit and model_agent:
+        explicit = _assignment_agent_from_model(model_agent, aliases)
+    if not explicit:
+        return "", ""
+    if explicit == "alfred":
+        return "", ""
+    if explicit in {"batman", "lucius"}:
+        return explicit, ""
+    return "", explicit
+
+
+def _assignment_agent_from_text(
+    text: str,
+    aliases: dict[str, tuple[str, ...]],
+) -> str:
+    normalized = _normalize(text)
+    if not normalized:
+        return ""
+    prefixes = ("to", "to the", "with", "with the")
+    for agent, names in aliases.items():
+        for name in (agent, *names):
+            if any(_contains_token(normalized, f"{prefix} {name}") for prefix in prefixes):
                 return agent
+    match = re.search(
+        r"\b(?:to|with)(?:\s+the)?\s+([a-z][a-z0-9._-]*)\b",
+        normalized,
+    )
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _assignment_agent_from_model(
+    model_agent: str,
+    aliases: dict[str, tuple[str, ...]],
+) -> str:
+    normalized = _normalize(model_agent)
+    if not normalized:
+        return ""
+    collapsed = re.sub(r"[^a-z0-9._-]+", "", normalized)
+    for agent, names in aliases.items():
+        if normalized == agent or collapsed == agent:
+            return agent
+        if normalized in names:
+            return agent
+    if _CODENAME_RE.match(collapsed):
+        return collapsed
     return ""
 
 
@@ -888,14 +928,28 @@ def classify_intent(
     if action in MUTATING_ACTIONS:
         model_agent = ""
         agent = ""
+        unsupported_assignment_agent = ""
         if action == ACTION_ASSIGN:
             model_agent = str(
                 parsed.get("agent") or parsed.get("codename") or parsed.get("target") or ""
             ).strip()
             if model_agent:
                 params["model_agent"] = model_agent
-            agent = resolve_assignment_agent(text, model_agent=model_agent)
+            agent, unsupported_assignment_agent = resolve_assignment_agent(
+                text,
+                model_agent=model_agent,
+            )
+            if agent:
+                params["assignment_agent"] = agent
+            if unsupported_assignment_agent:
+                params["unsupported_assignment_agent"] = unsupported_assignment_agent
         clarification = clarify_for_mutating(action, repo, issue, candidates)
+        if action == ACTION_ASSIGN and not clarification and unsupported_assignment_agent:
+            clarification = (
+                "I can route GitHub issues to Batman · Architect or "
+                "Lucius · Senior Developer. Which lane should handle "
+                f"`{repo}#{issue}`?"
+            )
         return Intent(
             action=action,
             repo=repo,

@@ -1920,6 +1920,60 @@ def test_conversation_thread_clarification_reply_can_supply_assignment_agent(
     assert "Lucius \\u00b7 Senior Developer" not in card
 
 
+def test_conversation_thread_unsupported_assignment_reply_asks_for_lane(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "assign_issue", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvUnsupportedLaneReplyRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> assign issue #4",
+                "ts": "1716480938.000001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    reply = listener.handle_payload(
+        {
+            "event_id": "EvUnsupportedLaneReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "acme-io/acme-backend to Drake",
+                "ts": "1716480939.000001",
+                "thread_ts": "1716480938.000001",
+            },
+        }
+    )
+
+    assert reply.action == "intent_clarify"
+    assert "Batman" in poster.messages[-1]["text"]
+    assert "Lucius" in poster.messages[-1]["text"]
+
+
 def test_conversation_thread_reply_can_complete_agent_clarification(tmp_path: Path) -> None:
     poster = CardPoster()
     listener = SlackPlanningListener(
