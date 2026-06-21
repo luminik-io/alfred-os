@@ -90,8 +90,9 @@ Rules:
   `$ALFRED_HOME/state/followups/` and appears in the local Plans inbox as a
   `needs follow-up` item.
 - From the local Plans detail page, a trusted user can convert a captured
-  follow-up into a scoped planning draft for the next pass, or mark it handled.
-  Both actions archive the original follow-up and remain local-only.
+  follow-up into a scoped planning draft for the next pass. The configured
+  approver can also mark it handled. Both actions archive the original
+  follow-up and remain local-only.
 
 ## Slack Planning Inbox Commands
 
