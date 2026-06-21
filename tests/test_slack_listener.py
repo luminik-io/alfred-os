@@ -2366,6 +2366,131 @@ def test_conversation_thread_schedule_accepts_agent_and_cadence_reply(
     assert "20m" in poster.messages[-1]["text"]
 
 
+def test_conversation_thread_schedule_accepts_custom_agent_and_cadence_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "schedule_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCustomRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule",
+                "ts": "1716480952.300001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    combined_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCustomReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "marshall 20m",
+                "ts": "1716480952.400001",
+                "thread_ts": "1716480952.300001",
+            },
+        }
+    )
+
+    assert combined_reply.action == "intent_confirmation_posted"
+    assert "marshall" in poster.messages[-1]["text"]
+    assert "20m" in poster.messages[-1]["text"]
+
+
+def test_conversation_thread_schedule_preserves_cadence_before_agent_reply(
+    tmp_path: Path,
+) -> None:
+    poster = CardPoster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        control_handler=SimpleNamespace(
+            handle=lambda text, **_: SimpleNamespace(
+                handled=True, action="status", text="*Fleet status*", detail=""
+            )
+        ),
+        intent_engine=_intent_engine({"action": "schedule_agent", "confidence": 0.95}),
+        repo_catalog=_intent_catalog(),
+        bot_user_id="UALFRED",
+    )
+
+    root = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceFirstRoot",
+            "event": {
+                "type": "app_mention",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "<@UALFRED> schedule",
+                "ts": "1716480952.500001",
+            },
+        }
+    )
+    assert root.action == "intent_clarify"
+
+    listener._intent_engine = _intent_engine({"action": "unknown", "confidence": 0.8})
+    cadence_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceFirstReply",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "20m",
+                "ts": "1716480952.600001",
+                "thread_ts": "1716480952.500001",
+            },
+        }
+    )
+    assert cadence_reply.action == "intent_clarify"
+    assert "Which agent" in poster.messages[-1]["text"]
+
+    agent_reply = listener.handle_payload(
+        {
+            "event_id": "EvScheduleCadenceFirstAgent",
+            "event": {
+                "type": "message",
+                "channel": "C1",
+                "channel_type": "channel",
+                "user": "U1",
+                "text": "Lucius",
+                "ts": "1716480952.700001",
+                "thread_ts": "1716480952.500001",
+            },
+        }
+    )
+
+    assert agent_reply.action == "intent_confirmation_posted"
+    assert "lucius" in poster.messages[-1]["text"]
+    assert "20m" in poster.messages[-1]["text"]
+
+
 def test_conversation_thread_schedule_normalizes_human_cadence_reply(
     tmp_path: Path,
 ) -> None:

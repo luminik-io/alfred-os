@@ -582,11 +582,13 @@ class SlackPlanningListener:
         agent = turn.agent or resolve_agent_codename(event.text, allow_all=allow_all)
         schedule = turn.schedule
         if turn.action == ACTION_SCHEDULE_AGENT and not schedule:
-            schedule = (
-                _normalize_schedule_reply(event.text)
-                if turn.agent
-                else _normalize_schedule_reply_after_agent(event.text, agent)
-            )
+            if turn.agent:
+                schedule = _normalize_schedule_reply(event.text)
+            else:
+                agent, schedule = _resolve_schedule_reply_agent_and_cadence(
+                    event.text,
+                    agent=agent,
+                )
         intent = Intent(
             action=turn.action,
             agent=agent,
@@ -2388,19 +2390,36 @@ def _normalize_schedule_reply(text: str) -> str:
     return f"{match.group('num')}{suffix}"
 
 
-def _normalize_schedule_reply_after_agent(text: str, agent: str) -> str:
-    """Extract a cadence from a reply that may start with the agent name."""
-    if not agent:
-        return ""
+def _resolve_schedule_reply_agent_and_cadence(
+    text: str,
+    *,
+    agent: str = "",
+) -> tuple[str, str]:
+    """Resolve agent/cadence from a schedule clarification reply."""
     direct = _normalize_schedule_reply(text)
     if direct:
-        return direct
+        return agent, direct
+    if not agent:
+        agent = _custom_schedule_reply_agent(text)
     words = re.sub(r"\s+", " ", (text or "").strip()).split()
     for drop_count in range(1, min(len(words), 4) + 1):
         cadence = _normalize_schedule_reply(" ".join(words[drop_count:]))
         if cadence:
-            return cadence
-    return ""
+            return agent, cadence
+    return agent, ""
+
+
+def _custom_schedule_reply_agent(text: str) -> str:
+    """Return a custom codename from '<codename> <cadence>' replies."""
+    words = re.sub(r"\s+", " ", (text or "").strip().lower()).split()
+    if len(words) < 2:
+        return ""
+    candidate = words[0].strip("`'\".,:;")
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{1,31}", candidate):
+        return ""
+    if candidate in {"every", "daily", "weekly", "interval", "cron"}:
+        return ""
+    return candidate
 
 
 def render_draft_ack(result: Any) -> str:
