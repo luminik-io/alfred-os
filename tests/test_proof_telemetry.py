@@ -1263,6 +1263,49 @@ def test_post_sends_token_header_when_set(monkeypatch):
     assert captured["headers"].get("X-ingest-token") == "s3cr3t"
 
 
+def test_post_accepts_plain_2xx_body(monkeypatch):
+    class FakeResp:
+        status = 202
+
+        def read(self):
+            return b"OK"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(
+        pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp()
+    )
+
+    assert pt._post("https://w.example.com/ingest", {"x": 1}) is True
+
+
+def test_post_json_still_requires_json_by_default(monkeypatch):
+    class FakeResp:
+        status = 200
+
+        def read(self):
+            return b"OK"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(
+        pt.urllib.request, "urlopen", lambda req, timeout=None: FakeResp()
+    )
+
+    ok, body = pt._post_json("https://w.example.com/register", {"install_id": "id"})
+
+    assert ok is False
+    assert body == {}
+
+
 def test_post_sends_trusted_token_header_when_set(monkeypatch):
     captured = {}
 

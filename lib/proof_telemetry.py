@@ -792,6 +792,7 @@ def _post_json(
     token: str = "",
     trusted_token: str = "",
     timeout: int = _HTTP_TIMEOUT_SECONDS,
+    allow_plain_success: bool = False,
 ) -> tuple[bool, dict[str, Any]]:
     body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
@@ -809,7 +810,12 @@ def _post_json(
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw_bytes = resp.read() if hasattr(resp, "read") else b""
             raw = raw_bytes.decode("utf-8", errors="replace")
-            parsed = json.loads(raw) if raw else {}
+            try:
+                parsed = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                if allow_plain_success and 200 <= resp.status < 300:
+                    return True, {}
+                raise
             return 200 <= resp.status < 300, parsed if isinstance(parsed, dict) else {}
     except urllib.error.HTTPError as exc:
         logger.debug("telemetry: server returned HTTP %s", exc.code)
@@ -865,6 +871,7 @@ def _post(
         token=token,
         trusted_token=trusted_token,
         timeout=timeout,
+        allow_plain_success=True,
     )
     return ok
 
