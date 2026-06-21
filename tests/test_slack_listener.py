@@ -13,6 +13,8 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
+    _short_plain,
+    _thread_title_from_text,
     draft_from_slack_text,
     render_bridge_outcome_ack,
 )
@@ -62,6 +64,17 @@ class LegacyMemoryProvider:
             }
         )
         return len(self.calls)
+
+
+def test_slack_text_truncation_honors_limit() -> None:
+    assert len(_short_plain("x" * 40, 12)) <= 12
+    assert _short_plain("x" * 40, 12).endswith("...")
+    assert _short_plain("abcdef", 2) == "ab"
+
+    title = _thread_title_from_text("<@U123ABC> " + "shipping " * 20, limit=20)
+    assert len(title) <= 20
+    assert title.endswith("...")
+    assert _thread_title_from_text("abcdef", limit=2) == "ab"
 
 
 def test_bridge_ack_for_not_ready_draft_is_actionable() -> None:

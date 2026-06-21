@@ -1998,7 +1998,9 @@ def _short_plain(value: str, limit: int) -> str:
     cleaned = re.sub(r"\s+", " ", value).strip()
     if len(cleaned) <= limit:
         return cleaned
-    return cleaned[: max(0, limit - 1)].rstrip() + "..."
+    if limit <= 3:
+        return cleaned[: max(0, limit)]
+    return cleaned[: limit - 3].rstrip() + "..."
 
 
 def parse_slack_payload(payload: dict[str, Any]) -> SlackInputEvent | None:
@@ -3111,7 +3113,9 @@ def _thread_title_from_text(text: str, *, limit: int = 90) -> str:
         return "Slack conversation"
     if len(cleaned) <= limit:
         return cleaned
-    return cleaned[: limit - 1].rstrip() + "..."
+    if limit <= 3:
+        return cleaned[: max(0, limit)]
+    return cleaned[: limit - 3].rstrip() + "..."
 
 
 def _default_state_root() -> Path:
