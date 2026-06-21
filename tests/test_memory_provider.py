@@ -223,15 +223,30 @@ def test_chain_requires_at_least_one_provider() -> None:
         ChainedMemoryProvider(providers=[])
 
 
-def test_chain_returns_first_non_empty_recall() -> None:
+def test_chain_merges_recall_from_all_providers_in_order() -> None:
     first = _StaticProvider(name="first", lessons=[])
     second = _StaticProvider(name="second", lessons=[_make_lesson("hit")])
-    third = _StaticProvider(name="third", lessons=[_make_lesson("never")])
+    third = _StaticProvider(name="third", lessons=[_make_lesson("also")])
     chain = ChainedMemoryProvider(providers=[first, second, third])
     out = chain.recall(query="q")
-    assert [L.body for L in out] == ["hit"]
-    # third must not be consulted -- ordering matters
-    assert third.recall_calls == 0
+    assert [L.body for L in out] == ["hit", "also"]
+    assert third.recall_calls == 1
+
+
+def test_chain_dedupes_and_limits_merged_recall() -> None:
+    first = _StaticProvider(
+        name="first",
+        lessons=[_make_lesson("same"), _make_lesson("first-only")],
+    )
+    second = _StaticProvider(
+        name="second",
+        lessons=[_make_lesson("same"), _make_lesson("second-only")],
+    )
+    chain = ChainedMemoryProvider(providers=[first, second])
+
+    out = chain.recall(query="q", limit=3)
+
+    assert [L.body for L in out] == ["same", "first-only", "second-only"]
 
 
 def test_chain_falls_through_when_all_empty() -> None:
@@ -763,7 +778,7 @@ def test_redis_provider_uses_ams_token_as_default_bearer_token() -> None:
 def test_worked_trace_fleet_then_gbrain(
     tmp_path: Path, fleet_brain_provider: FleetBrainProvider
 ) -> None:
-    """fleet returns lessons -> chain stops there (gbrain not consulted)."""
+    """fleet returns lessons -> later providers can still add context."""
     fleet_brain_provider.reflect(
         codename="lucius",
         repo="acme-org/api",
@@ -772,8 +787,8 @@ def test_worked_trace_fleet_then_gbrain(
     gbrain = _StaticProvider(name="gbrain", lessons=[_make_lesson("kb fallback")])
     chain = ChainedMemoryProvider(providers=[fleet_brain_provider, gbrain])
     out = chain.recall(codename="lucius", repo="acme-org/api")
-    assert [L.body for L in out] == ["fleet-side lesson"]
-    assert gbrain.recall_calls == 0
+    assert [L.body for L in out] == ["fleet-side lesson", "kb fallback"]
+    assert gbrain.recall_calls == 1
 
 
 def test_worked_trace_fleet_empty_falls_through_to_gbrain(

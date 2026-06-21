@@ -31,7 +31,9 @@ load_env_file() {
 
 ALFRED_HOME="${ALFRED_HOME:-${HERMES_HOME:-$HOME/.alfred}}"
 load_env_file "$HOME/.alfredrc"
+ALFRED_HOME="${ALFRED_HOME:-${HERMES_HOME:-$HOME/.alfred}}"
 load_env_file "$ALFRED_HOME/.env"
+ALFRED_HOME="${ALFRED_HOME:-${HERMES_HOME:-$HOME/.alfred}}"
 ALFRED_LIB="$ALFRED_HOME/lib"
 
 AMS_ENV_EXPORTS="$(
