@@ -224,15 +224,16 @@ Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, t
 
 Alfred core does not install or run an external agent gateway, hosted memory
 database, skill registry, or dashboard service. The fleet works with local
-Python scripts, `gh`, `git`, the local fleet-brain SQLite store, and the
-configured LLM CLIs.
+Python scripts, `gh`, `git`, configured LLM CLIs, a loopback Redis Agent Memory
+Server for recalled lessons, and FleetBrain for the local review and reliability
+ledger.
 
 `ALFRED_HOME` is the runtime root. A fresh install defaults to `~/.alfred`,
 where deployed scripts, state, logs, Codex artifacts, prompt overrides, and
 worktrees live. Alfred uses `ALFRED_HOME` only for its runtime path.
 
-Companion layers can be useful around Alfred, but they are not bundled and must
-not be required for a clean OSS install. See
+Companion layers can be useful around Alfred, but they must not be required for
+a clean OSS install unless the installer starts and verifies them locally. See
 [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) for the boundary.
 
 Alfred provides the repeatable local fleet pattern: schedules, worktrees, issue

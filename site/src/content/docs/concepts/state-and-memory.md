@@ -102,11 +102,11 @@ reviewable candidates in FleetBrain by default. Set
 `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are
 intentional.
 
-The same brain stores recent file touches when an agent or outbox import knows
-which repo-relative paths changed. Use `alfred brain files <repo>` to inspect
-that local history. It also stores reviewable memory candidates and normalized
-failure events so repeated runtime problems are searchable instead of living
-only in Slack.
+FleetBrain stores recent file touches when an agent or outbox import knows which
+repo-relative paths changed. Use `alfred brain files <repo>` to inspect that
+local history. It also stores reviewable memory candidates and normalized failure
+events so repeated runtime problems are searchable instead of living only in
+Slack.
 
 Repeated failures can be grouped with `alfred brain failure-patterns` and
 summarized with `alfred brain governor`. The governor classifies local setup

@@ -35,7 +35,7 @@ flowchart LR
     gordon["gordon<br/><i>deploy-health · daily 08:00</i>"]
     automerge["automerge<br/><i>squash-merge · every 15m</i>"]
 
-    batman -- "plans bundles" --> issues
+    batman -- "architects rollouts" --> issues
     drake -- "files scoped work" --> issues
     damian -- "files spec bundles" --> issues
     robin -- "triages" --> issues
@@ -55,7 +55,7 @@ flowchart LR
     ops_cli -. "enable / disable / claim helpers" .-> issues
 ```
 
-The loop closes on itself: Batman leads multi-repo bundles, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
+The loop closes on itself: Batman leads multi-repo rollouts, Drake files smaller scoped work, Lucius and Bane implement it, Ra's al Ghul reviews, Nightwing applies review feedback, automerge ships, and the merge transitions the issue to `agent:done`. Robin and Huntress feed the loop with triaged bug reports. Your first required action is usually labelling issues `agent:implement` and reviewing PRs before merge.
 
 ## Batman: the architect agent
 
