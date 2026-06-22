@@ -104,6 +104,9 @@ function App() {
   const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
     useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
+  // and preferences), so theme selection no longer crowds the onboarding flow.
+  const [settingsTab, setSettingsTab] = useState<"setup" | "settings">("setup");
 
   // ⌘K / Ctrl+K opens the command palette anywhere.
   useEffect(() => {
@@ -214,31 +217,52 @@ function App() {
         />
       ) : null}
       {tab === "settings" ? (
-        <section className="settings-page space-y-4" aria-label="Setup">
-          <section className="alfred-page-hero px-4 py-4" aria-label="Appearance">
-            <div className="space-y-1">
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Setup
-              </p>
-              <h2 className="font-heading text-lg font-medium text-foreground">
-                Onboarding and appearance
-              </h2>
-              <p className="max-w-2xl text-sm text-muted-foreground">
-                Connect local tools, choose repos, and tune how Alfred looks on
-                this Mac.
-              </p>
-            </div>
-            <div className="mt-3">
-              <AppearancePicker
-                themeName={themeName}
-                mode={mode}
-                onSelectTheme={setThemeName}
-                onSelectMode={setMode}
-              />
-            </div>
-          </section>
-
-          {setupMode === "advanced" ? (
+        <section className="settings-page space-y-4" aria-label="Setup and settings">
+          <div className="space-y-1">
+            <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">
+              {settingsTab === "settings" ? "Settings" : "Setup"}
+            </h1>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              {settingsTab === "settings"
+                ? "Tune how Alfred looks and behaves on this Mac."
+                : "Connect local tools, choose repos, and get Alfred running."}
+            </p>
+          </div>
+          <Tabs
+            tabs={
+              [
+                { key: "setup", label: "Setup" },
+                { key: "settings", label: "Settings" },
+              ] as TabItem<"setup" | "settings">[]
+            }
+            active={settingsTab}
+            onChange={setSettingsTab}
+            idBase="settings"
+            ariaLabel="Setup and settings sections"
+          />
+          {settingsTab === "settings" ? (
+            <section className="alfred-page-hero px-4 py-4" aria-label="Appearance">
+              <div className="space-y-1">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Appearance
+                </p>
+                <h2 className="font-heading text-lg font-medium text-foreground">
+                  Theme and mode
+                </h2>
+                <p className="max-w-2xl text-sm text-muted-foreground">
+                  Choose how Alfred looks on this Mac.
+                </p>
+              </div>
+              <div className="mt-3">
+                <AppearancePicker
+                  themeName={themeName}
+                  mode={mode}
+                  onSelectTheme={setThemeName}
+                  onSelectMode={setMode}
+                />
+              </div>
+            </section>
+          ) : setupMode === "advanced" ? (
             <section className="setup-mode-stack">
               <button
                 className="secondary-button setup-mode-back"
