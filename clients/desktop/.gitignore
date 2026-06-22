@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Pixel-sweep QA harness output (screenshots + report)
+.pixel-sweep
+.onboarding-sweep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
