@@ -852,9 +852,15 @@ def _build_codex() -> dict[str, Any] | None:
     # cumulative total/input/output at the prior-day boundary and on the latest
     # day's final event.
     sessions: dict[str, dict[str, Any]] = {}
-    # Newest rate_limits payload seen, with its event timestamp for tie-breaks.
-    quota_ts: datetime | None = None
-    quota_raw: dict[str, Any] | None = None
+    # Newest non-null rate_limits windows, tracked independently so a later
+    # payload that reports a null window (Codex emits these between billing
+    # windows) cannot wipe an earlier valid one.
+    primary_ts: datetime | None = None
+    secondary_ts: datetime | None = None
+    plan_ts: datetime | None = None
+    primary_raw: dict[str, Any] | None = None
+    secondary_raw: dict[str, Any] | None = None
+    plan_type: str | None = None
 
     for root in _codex_session_dirs():
         if not os.path.isdir(root):
@@ -873,9 +879,27 @@ def _build_codex() -> dict[str, Any] | None:
                     continue
 
                 rate_limits = payload.get("rate_limits")
-                if isinstance(rate_limits, dict) and (quota_ts is None or ts >= quota_ts):
-                    quota_ts = ts
-                    quota_raw = rate_limits
+                if isinstance(rate_limits, dict):
+                    prim = rate_limits.get("primary")
+                    if _codex_quota_window(prim) is not None and (
+                        primary_ts is None or ts >= primary_ts
+                    ):
+                        primary_ts = ts
+                        primary_raw = prim
+                    sec = rate_limits.get("secondary")
+                    if _codex_quota_window(sec) is not None and (
+                        secondary_ts is None or ts >= secondary_ts
+                    ):
+                        secondary_ts = ts
+                        secondary_raw = sec
+                    plan = rate_limits.get("plan_type")
+                    if (
+                        isinstance(plan, str)
+                        and plan.strip()
+                        and (plan_ts is None or ts >= plan_ts)
+                    ):
+                        plan_ts = ts
+                        plan_type = plan.strip()
 
                 info = payload.get("info")
                 if not isinstance(info, dict):
@@ -967,6 +991,13 @@ def _build_codex() -> dict[str, Any] | None:
     }
     totals = {"total_tokens": None, "cost_usd": None}
     out: dict[str, Any] = {"latest_day": latest_day, "totals": totals}
+    quota_raw: dict[str, Any] | None = None
+    if primary_raw is not None or secondary_raw is not None or plan_type is not None:
+        quota_raw = {
+            "primary": primary_raw,
+            "secondary": secondary_raw,
+            "plan_type": plan_type,
+        }
     quota = _codex_quota(quota_raw)
     if quota is not None:
         out["quota"] = quota
@@ -1000,13 +1031,33 @@ def _codex_quota_window(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     used = _float(value.get("used_percent"))
-    resets_at = value.get("resets_at")
-    if used is None and not isinstance(resets_at, str):
+    resets_at = _codex_resets_at(value.get("resets_at"))
+    if used is None and resets_at is None:
         return None
     return {
         "used_percent": used,
-        "resets_at": resets_at if isinstance(resets_at, str) else None,
+        "resets_at": resets_at,
     }
+
+
+def _codex_resets_at(value: Any) -> str | None:
+    """Normalize a Codex ``resets_at`` to an ISO-8601 ``...Z`` string.
+
+    Codex emits the reset either as an ISO string or as a Unix epoch (seconds).
+    The countdown math (:func:`_minutes_to_reset`) and the desktop panel (which
+    ``Date.parse``es the value) both need a string, so epoch numbers were being
+    silently dropped, hiding the Codex reset time. Coerce both forms here.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    if isinstance(value, (int, float)):
+        try:
+            return _iso_z(datetime.fromtimestamp(float(value), tz=UTC))
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
 
 
 # --------------------------------------------------------------------------- #

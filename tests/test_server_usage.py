@@ -412,6 +412,97 @@ def test_build_usage_codex_surfaces_rate_limits_quota(
     assert quota["secondary"]["resets_at"] == "2026-06-08T09:00:00Z"
 
 
+def test_build_usage_codex_normalizes_epoch_resets_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex may emit ``resets_at`` as a Unix epoch; it must surface as ISO.
+
+    The CLI's rate_limits payload uses epoch seconds, not an ISO string. The
+    countdown math and the desktop panel both need a string, so the builder
+    coerces the epoch to ``...Z`` instead of silently dropping the reset.
+    """
+    from datetime import UTC, datetime
+
+    primary_epoch = int(datetime(2026, 6, 3, 14, 0, tzinfo=UTC).timestamp())
+    secondary_epoch = int(datetime(2026, 6, 8, 9, 0, tzinfo=UTC).timestamp())
+    codex_dir = tmp_path / "codex-sessions"
+    _write_jsonl(
+        codex_dir / "2026" / "06" / "rollout-epoch.jsonl",
+        [
+            _codex_token_count(
+                ts="2026-06-03T09:00:00.000Z",
+                last_total=5000,
+                last_input=4000,
+                last_output=1000,
+                cum_total=5000,
+                cum_input=4000,
+                cum_output=1000,
+                rate_limits={
+                    "primary": {"used_percent": 35.0, "resets_at": primary_epoch},
+                    "secondary": {"used_percent": 23.0, "resets_at": secondary_epoch},
+                    "plan_type": "pro",
+                },
+            ),
+        ],
+    )
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(codex_dir))
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "no-claude"))
+
+    quota = usage_module.build_usage(now=_NOW)["codex"]["quota"]
+    assert quota["primary"]["used_percent"] == 35.0
+    assert quota["primary"]["resets_at"] == "2026-06-03T14:00:00Z"
+    assert quota["secondary"]["resets_at"] == "2026-06-08T09:00:00Z"
+
+
+def test_build_usage_codex_null_window_does_not_wipe_valid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later null rate_limits window must not erase an earlier valid one.
+
+    Codex emits ``primary: null`` between billing windows. With naive newest-wins
+    that nulled the operator's last real headroom; each window now tracks its own
+    newest non-null reading.
+    """
+    codex_dir = tmp_path / "codex-sessions"
+    _write_jsonl(
+        codex_dir / "2026" / "06" / "rollout-null.jsonl",
+        [
+            _codex_token_count(
+                ts="2026-06-03T09:00:00.000Z",
+                last_total=5000,
+                last_input=4000,
+                last_output=1000,
+                cum_total=5000,
+                cum_input=4000,
+                cum_output=1000,
+                rate_limits=_rate_limits(
+                    primary_pct=62.0,
+                    primary_reset="2026-06-03T13:00:00Z",
+                    secondary_pct=20.0,
+                    secondary_reset="2026-06-08T09:00:00Z",
+                ),
+            ),
+            _codex_token_count(
+                ts="2026-06-03T09:30:00.000Z",
+                last_total=2500,
+                last_input=2000,
+                last_output=500,
+                cum_total=7500,
+                cum_input=6000,
+                cum_output=1500,
+                rate_limits={"primary": None, "secondary": None, "plan_type": "pro"},
+            ),
+        ],
+    )
+    monkeypatch.setenv("ALFRED_CODEX_SESSIONS_DIR", str(codex_dir))
+    monkeypatch.setenv("ALFRED_CLAUDE_PROJECTS_DIR", str(tmp_path / "no-claude"))
+
+    quota = usage_module.build_usage(now=_NOW)["codex"]["quota"]
+    assert quota["primary"]["used_percent"] == 62.0
+    assert quota["primary"]["resets_at"] == "2026-06-03T13:00:00Z"
+    assert quota["secondary"]["used_percent"] == 20.0
+
+
 def test_build_usage_codex_dedupes_subagent_replay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
