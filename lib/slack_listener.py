@@ -89,6 +89,65 @@ _MAX_STORED_REVISIONS = 50
 _DRAFT_REVISION_LOCKS: dict[str, threading.Lock] = {}
 _DRAFT_REVISION_LOCKS_GUARD = threading.Lock()
 
+# Conversation, not just commands. A trusted operator who greets Alfred, asks who
+# it is, or asks what it can do should get a warm, plain answer in Alfred's voice,
+# not a planning draft built from "who are you" and never a description of the
+# intent parser ("I classify and return JSON"). These are deterministic so the
+# common social turns never cost an engine call or leak internal mechanics.
+_IDENTITY_RE = re.compile(
+    r"\b(who\s+are\s+you|what\s+are\s+you|who\s+is\s+alfred|what\s+is\s+alfred|"
+    r"introduce\s+yourself|tell\s+me\s+about\s+yourself)\b",
+    re.IGNORECASE,
+)
+_CAPABILITY_RE = re.compile(
+    r"\b(what\s+can\s+you\s+do|what\s+do\s+you\s+do|how\s+(can|do)\s+you\s+help|"
+    r"what\s+are\s+your\s+(capabilities|abilities)|how\s+does\s+this\s+work|"
+    r"what\s+should\s+i\s+do\s+here)\b",
+    re.IGNORECASE,
+)
+_GREETING_RE = re.compile(
+    r"^\s*(hi|hey|hello|yo|hiya|howdy|sup|good\s+(morning|afternoon|evening))"
+    r"[\s,.!?]*(alfred)?[\s,.!?]*$",
+    re.IGNORECASE,
+)
+_THANKS_RE = re.compile(
+    r"^\s*(thanks|thank\s+you|thx|ty|cheers|appreciate\s+it)"
+    r"[\s,.!?]*(alfred)?[\s,.!?]*$",
+    re.IGNORECASE,
+)
+
+_ALFRED_INTRO = (
+    "I'm Alfred. I turn an outcome into a planned, reviewed pull request: tell me "
+    "what you want built or fixed, in your own words, and I will ask only for what "
+    "is missing, then your coding agents pick it up from GitHub and Slack. "
+    "What would you like to work on?"
+)
+
+
+def conversational_reply(text: str) -> str | None:
+    """A warm Alfred reply for a greeting, identity, capability, or thanks turn.
+
+    Returns ``None`` when the message is not one of these social turns, so the
+    caller falls through to the normal command and planning path. Never describes
+    the intent parser, JSON, or labels: the person cares what Alfred does for
+    them, not how it works.
+    """
+    if not isinstance(text, str):
+        return None
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if _IDENTITY_RE.search(stripped) or _CAPABILITY_RE.search(stripped):
+        return _ALFRED_INTRO
+    if _GREETING_RE.match(stripped):
+        return (
+            "Hi! I'm Alfred. Tell me what you want built or fixed and I will turn "
+            "it into a plan your coding agents can ship. What can I help with?"
+        )
+    if _THANKS_RE.match(stripped):
+        return "Anytime. Tell me what is next whenever you are ready."
+    return None
+
 
 class SlackPoster(Protocol):
     def chat_postMessage(self, **kwargs: Any) -> Any: ...
@@ -786,6 +845,18 @@ class SlackPlanningListener:
                     f"control_{control.action}",
                     detail=control.detail,
                 )
+
+        # A greeting, "who are you", "what can you do", or "thanks" is a
+        # conversation, not a task. Answer warmly as Alfred instead of building a
+        # planning draft out of it.
+        reply = conversational_reply(event.text)
+        if reply is not None:
+            self._post_thread_ack(event.channel, event.root_ts, reply)
+            return ListenerResult(
+                True,
+                "conversational",
+                detail="greeting or capability question",
+            )
 
         draft = draft_from_slack_text(event.text)
         refined = refine_issue_draft(

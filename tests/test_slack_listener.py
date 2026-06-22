@@ -13,6 +13,7 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
+    conversational_reply,
     _short_plain,
     _thread_title_from_text,
     draft_from_slack_text,
@@ -553,6 +554,55 @@ def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
     assert draft["draft"]["title"] == "Improve Slack planning"
     assert draft["draft"]["repos"] == ["luminik-io/alfred-os"]
     assert "Planning draft saved" in poster.messages[0]["text"]
+
+
+def test_conversational_reply_handles_social_turns_and_never_leaks_mechanics() -> None:
+    forbidden = ("json", "classify", "label", "parser", "intent")
+    for message in (
+        "who are you?",
+        "what can you do",
+        "hi alfred",
+        "hello",
+        "thanks!",
+        "what are your capabilities?",
+    ):
+        reply = conversational_reply(message)
+        assert reply, f"expected a warm reply for {message!r}"
+        assert "Alfred" in reply or "Anytime" in reply
+        low = reply.lower()
+        for word in forbidden:
+            assert word not in low, f"{message!r} reply leaked {word!r}"
+    # A real task is not a social turn and must fall through to planning.
+    assert conversational_reply("Add a dark mode toggle to the settings screen") is None
+    assert conversational_reply("title: fix the login bug") is None
+
+
+def test_identity_question_gets_a_warm_reply_not_a_planning_draft(tmp_path: Path) -> None:
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    payload = {
+        "event_id": "EvWho",
+        "event": {
+            "type": "app_mention",
+            "channel": "C1",
+            "user": "U1",
+            "text": "<@UALFRED> who are you?",
+            "ts": "1716480020.000001",
+        },
+    }
+
+    result = listener.handle_payload(payload)
+
+    assert result.handled is True
+    assert result.action == "conversational"
+    assert not getattr(result, "draft_path", None)
+    text = poster.messages[0]["text"]
+    assert "Alfred" in text
+    assert "json" not in text.lower() and "classify" not in text.lower()
 
 
 def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) -> None:
