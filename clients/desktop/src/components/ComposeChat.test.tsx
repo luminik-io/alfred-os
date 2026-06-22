@@ -298,9 +298,9 @@ describe("ComposeView (conversational)", () => {
 
   it("adapts its copy in plain intake mode", () => {
     renderChat("plain");
-    // The eyebrow is stable ("New request"); the mode shows through the intro
-    // copy and the plain-language toggle.
-    expect(screen.getByText(/new request/i)).toBeInTheDocument();
+    // The hero headline is stable; the mode shows through the sub copy and the
+    // plain-language toggle.
+    expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
     expect(screen.getByText(/say the outcome in your own words/i)).toBeInTheDocument();
   });
 

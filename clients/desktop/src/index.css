@@ -2220,35 +2220,70 @@ body {
   min-height: 28rem;
 }
 
-/* Empty state: the teaching block sizes to content and the composer is the
- * hero, so the screen is not a giant empty card. The middle row collapses to
- * the teaching content; everything centers vertically in the available space. */
+/* Empty state: a top bar (just the plain-language toggle) over a single
+ * centered hero. The hero owns the one headline, the composer, and the starter
+ * chips, so the screen is not three copies of the same prompt. */
 .ask--empty {
-  grid-template-rows: auto auto auto;
-  align-content: center;
-  gap: 1.25rem;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.5rem;
 }
 
 .ask__head {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem 1rem;
 }
 
-.ask__head-text {
-  display: grid;
-  gap: 0.3rem;
-  min-width: 0;
+.ask__eyebrow {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
-.ask__intro {
-  max-width: 60ch;
+.ask__topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* The centered hero: headline, sub, composer, and starter chips stacked and
+ * vertically centered in the available space. The composer is the focal point. */
+.ask__hero {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1rem;
+  width: min(46rem, 100%);
+  margin-inline: auto;
+  text-align: center;
+}
+
+.ask__hero-title {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: clamp(1.55rem, 3vw, 2.05rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.ask__hero-sub {
+  max-width: 54ch;
   margin: 0;
   color: var(--muted-foreground);
-  font-size: 0.88rem;
-  line-height: 1.5;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.ask__hero .ask__composer-wrap,
+.ask__hero .ask__starters,
+.ask__hero .ask__error {
+  width: 100%;
 }
 
 .ask__head-controls {
@@ -2291,46 +2326,6 @@ body {
   gap: 0.9rem;
   width: min(48rem, 100%);
   margin-inline: auto;
-}
-
-/* Compact teaching above the hero composer (empty state). A small mark, a lead
- * line, one body sentence, and the starter chips. Sized to content, centered,
- * never a full-height card. */
-.ask__teach {
-  display: grid;
-  justify-items: center;
-  gap: 0.5rem;
-  width: min(46rem, 100%);
-  margin-inline: auto;
-  text-align: center;
-}
-
-.ask__teach-mark {
-  display: grid;
-  width: 2.6rem;
-  aspect-ratio: 1;
-  place-items: center;
-  border-radius: 0.9rem;
-  color: var(--primary-foreground);
-  background: var(--primary);
-  box-shadow: 0 8px 22px color-mix(in oklch, var(--primary), transparent 82%);
-}
-
-.ask__teach-lead {
-  margin: 0.15rem 0 0;
-  color: var(--foreground);
-  font-family: var(--font-heading);
-  font-size: 1.35rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-.ask__teach-body {
-  max-width: 46ch;
-  margin: 0 0 0.35rem;
-  color: var(--muted-foreground);
-  font-size: 0.9rem;
-  line-height: 1.55;
 }
 
 /* Chat bubbles. */
@@ -2528,10 +2523,10 @@ body {
   gap: 0.5rem;
 }
 
-/* Starters sit inside the teaching block in the empty state; center them. */
-.ask__teach .ask__starters {
+/* Starters sit inside the hero in the empty state; center them. */
+.ask__hero .ask__starters {
   justify-content: center;
-  margin-top: 0.3rem;
+  margin-top: 0.1rem;
 }
 
 .ask__starter {

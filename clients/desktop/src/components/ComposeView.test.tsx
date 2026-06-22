@@ -187,15 +187,15 @@ describe("ComposeView", () => {
 
   it("adapts its copy when the server is in plain intake mode", () => {
     renderComposeView("plain");
-    // The eyebrow is stable; the mode shows through the intro copy and toggle.
-    expect(screen.getByText(/new request/i)).toBeInTheDocument();
+    // The hero headline is stable; the mode shows through the sub copy and toggle.
+    expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
     expect(screen.getByText(/say the outcome in your own words/i)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /plain language/i })).toBeChecked();
   });
 
   it("uses the default technical copy when no plain profile is active", () => {
     renderComposeView("technical");
-    expect(screen.getByText(/new request/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
     expect(screen.getByText(/give the outcome, repo scope, and constraints/i)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /plain language/i })).not.toBeChecked();
   });

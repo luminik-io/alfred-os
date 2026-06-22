@@ -32,7 +32,6 @@ import type {
   ConverseResponse,
   FilePlanIssueResponse,
 } from "../types";
-import { PanelHeader } from "./atoms";
 import { LifecycleCard, type RepoChip } from "./LifecycleCard";
 import { PlainModeToggle } from "./PlainModeToggle";
 
@@ -417,33 +416,101 @@ export function ComposeView({
 
   const started = turns.length > 0;
 
-  // Two layouts share one composer. Started: a full-height thread fills the
-  // space, the composer pins at the bottom. Empty: compact teaching sits above
-  // a hero composer, so the screen is not wasted on a giant empty card.
+  // One composer, two layouts. Empty: a single centered hero (one headline, the
+  // composer as the focal point, starter chips below) so the screen is not three
+  // copies of the same prompt. Started: a compact header, a full-height thread,
+  // the composer pinned at the bottom.
+  const errorNotice = error ? (
+    <div className="ask__error inline-notice inline-notice--error" role="alert">
+      <AlertTriangle size={18} aria-hidden="true" />
+      <span>{error}</span>
+    </div>
+  ) : null;
+
+  const composer = (
+    <div className="ask__composer-wrap">
+      <form
+        className="ask__composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy && input.trim()) void send();
+        }}
+      >
+        <label htmlFor="ask-input" className="visually-hidden">
+          Your message to Alfred
+        </label>
+        <textarea
+          id="ask-input"
+          ref={composerRef}
+          className="ask__input"
+          value={input}
+          placeholder={started ? "Reply to Alfred, or add detail." : PLACEHOLDER}
+          rows={1}
+          spellCheck
+          disabled={busy}
+          onChange={(event) => setInput(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            // ChatGPT-style: Enter sends, Shift+Enter inserts a newline.
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              if (!busy && input.trim()) void send();
+            }
+          }}
+        />
+        <button
+          className="ask__send"
+          type="submit"
+          disabled={busy || !input.trim()}
+          aria-label={busy ? "Alfred is thinking" : "Send message"}
+          title={busy ? "Alfred is thinking" : "Send"}
+        >
+          <ArrowUp size={18} aria-hidden="true" />
+        </button>
+      </form>
+      <small className="ask__hint">
+        Enter to send, Shift + Enter for a new line. Alfred saves the plan as the chat gets clearer.
+      </small>
+    </div>
+  );
+
+  const starters = (
+    <div className="ask__starters" aria-label="Starter prompts">
+      {STARTERS.map((starter) => (
+        <button
+          key={starter.label}
+          type="button"
+          className="ask__starter"
+          disabled={busy}
+          onClick={() => {
+            setInput(starter.text);
+            composerRef.current?.focus();
+          }}
+        >
+          <span>{starter.label}</span>
+          <ArrowRight size={13} aria-hidden="true" />
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <section className={`ask${started ? "" : " ask--empty"}`} aria-label="Ask Alfred">
-      <header className="ask__head">
-        <div className="ask__head-text">
-          <PanelHeader
-            eyebrow="New request"
-            title="What should Alfred do?"
-          />
-          <p className="ask__intro">
-            {isPlainMode
-              ? "Say the outcome in your own words. Alfred asks only what is missing, then saves a plan you can file as a GitHub issue."
-              : "Give the outcome, repo scope, and constraints. Alfred prepares the GitHub handoff."}
-          </p>
-        </div>
-        <div className="ask__head-controls">
-          <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
-          {started ? (
+      {started ? (
+        <header className="ask__head">
+          <span className="ask__eyebrow">Ask Alfred</span>
+          <div className="ask__head-controls">
+            <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
             <button className="ghost-button ask__reset" type="button" disabled={busy} onClick={reset}>
               <Sparkles size={14} aria-hidden="true" />
               <span>New chat</span>
             </button>
-          ) : null}
+          </div>
+        </header>
+      ) : (
+        <div className="ask__topbar">
+          <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
         </div>
-      </header>
+      )}
 
       {started ? (
         <div className="ask__thread" ref={transcriptRef} role="log" aria-label="Conversation with Alfred">
@@ -465,88 +532,25 @@ export function ComposeView({
           </div>
         </div>
       ) : (
-        // Compact teaching above the hero composer: a short lead and the
-        // starter chips. No giant empty card.
-        <div className="ask__teach" aria-label="Getting started">
-          <span className="ask__teach-mark" aria-hidden="true">
-            <Sparkles size={20} />
-          </span>
-          <p className="ask__teach-lead">Start with the outcome.</p>
-          <p className="ask__teach-body">
+        <div className="ask__hero">
+          <h1 className="ask__hero-title">What should Alfred do?</h1>
+          <p className="ask__hero-sub">
             {isPlainMode
-              ? "Use normal language. Alfred asks for missing details, then turns it into a plan you can file."
-              : "Add repo scope, constraints, and test expectations when you know them."}
+              ? "Say the outcome in your own words. Alfred asks only what is missing, then saves a plan you can file as a GitHub issue."
+              : "Give the outcome, repo scope, and constraints. Alfred prepares the GitHub handoff."}
           </p>
-          <div className="ask__starters" aria-label="Starter prompts">
-            {STARTERS.map((starter) => (
-              <button
-                key={starter.label}
-                type="button"
-                className="ask__starter"
-                disabled={busy}
-                onClick={() => {
-                  setInput(starter.text);
-                  composerRef.current?.focus();
-                }}
-              >
-                <span>{starter.label}</span>
-                <ArrowRight size={13} aria-hidden="true" />
-              </button>
-            ))}
-          </div>
+          {errorNotice}
+          {composer}
+          {starters}
         </div>
       )}
 
-      {error ? (
-        <div className="ask__error inline-notice inline-notice--error" role="alert">
-          <AlertTriangle size={18} aria-hidden="true" />
-          <span>{error}</span>
-        </div>
+      {started ? (
+        <>
+          {errorNotice}
+          {composer}
+        </>
       ) : null}
-
-      <div className="ask__composer-wrap">
-        <form
-          className="ask__composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!busy && input.trim()) void send();
-          }}
-        >
-          <label htmlFor="ask-input" className="visually-hidden">
-            Your message to Alfred
-          </label>
-          <textarea
-            id="ask-input"
-            ref={composerRef}
-            className="ask__input"
-            value={input}
-            placeholder={started ? "Reply to Alfred, or add detail." : PLACEHOLDER}
-            rows={1}
-            spellCheck
-            disabled={busy}
-            onChange={(event) => setInput(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              // ChatGPT-style: Enter sends, Shift+Enter inserts a newline.
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                if (!busy && input.trim()) void send();
-              }
-            }}
-          />
-          <button
-            className="ask__send"
-            type="submit"
-            disabled={busy || !input.trim()}
-            aria-label={busy ? "Alfred is thinking" : "Send message"}
-            title={busy ? "Alfred is thinking" : "Send"}
-          >
-            <ArrowUp size={18} aria-hidden="true" />
-          </button>
-        </form>
-        <small className="ask__hint">
-          Enter to send, Shift + Enter for a new line. Alfred saves the plan as the chat gets clearer.
-        </small>
-      </div>
     </section>
   );
 }
