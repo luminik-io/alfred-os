@@ -13,9 +13,9 @@ if str(LIB) not in sys.path:
 
 from slack_listener import (  # noqa: E402
     SlackPlanningListener,
-    conversational_reply,
     _short_plain,
     _thread_title_from_text,
+    conversational_reply,
     draft_from_slack_text,
     render_bridge_outcome_ack,
 )
@@ -558,6 +558,9 @@ def test_app_mention_creates_planning_draft(tmp_path: Path) -> None:
 
 def test_conversational_reply_handles_social_turns_and_never_leaks_mechanics() -> None:
     forbidden = ("json", "classify", "label", "parser", "intent")
+    # Include the real app_mention surface: the listener passes the raw event
+    # text, which leads with the bot mention token for a mention. The anchored
+    # greeting and thanks patterns must still match once the mention is stripped.
     for message in (
         "who are you?",
         "what can you do",
@@ -565,6 +568,10 @@ def test_conversational_reply_handles_social_turns_and_never_leaks_mechanics() -
         "hello",
         "thanks!",
         "what are your capabilities?",
+        "<@UALFRED> hi alfred",
+        "<@UALFRED> thanks",
+        "<@UALFRED> who are you?",
+        "<@UALFRED> what can you do",
     ):
         reply = conversational_reply(message)
         assert reply, f"expected a warm reply for {message!r}"
@@ -575,6 +582,7 @@ def test_conversational_reply_handles_social_turns_and_never_leaks_mechanics() -
     # A real task is not a social turn and must fall through to planning.
     assert conversational_reply("Add a dark mode toggle to the settings screen") is None
     assert conversational_reply("title: fix the login bug") is None
+    assert conversational_reply("<@UALFRED> add a dark mode toggle to settings") is None
 
 
 def test_identity_question_gets_a_warm_reply_not_a_planning_draft(tmp_path: Path) -> None:
@@ -603,6 +611,35 @@ def test_identity_question_gets_a_warm_reply_not_a_planning_draft(tmp_path: Path
     text = poster.messages[0]["text"]
     assert "Alfred" in text
     assert "json" not in text.lower() and "classify" not in text.lower()
+
+
+def test_greeting_mention_gets_a_warm_reply_not_a_planning_draft(tmp_path: Path) -> None:
+    # A bare greeting via app_mention leads with the bot mention token; the warm
+    # reply must still fire (the mention is stripped before matching) rather than
+    # building a planning draft out of "hi".
+    poster = Poster()
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+    )
+    payload = {
+        "event_id": "EvHi",
+        "event": {
+            "type": "app_mention",
+            "channel": "C1",
+            "user": "U1",
+            "text": "<@UALFRED> hey alfred",
+            "ts": "1716480030.000001",
+        },
+    }
+
+    result = listener.handle_payload(payload)
+
+    assert result.handled is True
+    assert result.action == "conversational"
+    assert not getattr(result, "draft_path", None)
+    assert "Alfred" in poster.messages[0]["text"]
 
 
 def test_ready_slack_draft_queues_reviewable_memory_candidate(tmp_path: Path) -> None:

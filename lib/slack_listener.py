@@ -134,17 +134,21 @@ def conversational_reply(text: str) -> str | None:
     """
     if not isinstance(text, str):
         return None
-    stripped = text.strip()
-    if not stripped:
+    # Strip Slack mention tokens (for example "<@U123>") so an app_mention such
+    # as "<@BOT> hi" matches the same as a DM "hi". The greeting and thanks
+    # patterns are anchored at the start, so a leading mention would otherwise
+    # defeat them and these turns would fall through to planning intake.
+    cleaned = re.sub(r"<@[A-Z0-9]+>", " ", text).strip()
+    if not cleaned:
         return None
-    if _IDENTITY_RE.search(stripped) or _CAPABILITY_RE.search(stripped):
+    if _IDENTITY_RE.search(cleaned) or _CAPABILITY_RE.search(cleaned):
         return _ALFRED_INTRO
-    if _GREETING_RE.match(stripped):
+    if _GREETING_RE.match(cleaned):
         return (
             "Hi! I'm Alfred. Tell me what you want built or fixed and I will turn "
             "it into a plan your coding agents can ship. What can I help with?"
         )
-    if _THANKS_RE.match(stripped):
+    if _THANKS_RE.match(cleaned):
         return "Anytime. Tell me what is next whenever you are ready."
     return None
 
