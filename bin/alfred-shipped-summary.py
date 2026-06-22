@@ -9,6 +9,13 @@ Usage:
 Scheduled fleets normally set ALFRED_SHIPPED_SUMMARY_REPOS to a comma-separated
 repo list. Bare repo names are resolved through GH_ORG; full owner/repo slugs
 work without GH_ORG.
+
+Counts are scoped to Alfred-driven work only: a merged PR or issue is counted
+only if it carries one of Alfred's provenance labels (``agent:authored`` and
+friends, see DEFAULT_AGENT_LABELS). Operator/human PRs and issues in the same
+repos are excluded so the totals reflect what the fleet shipped, not all repo
+activity. Override the label set with ALFRED_SHIPPED_SUMMARY_AGENT_LABELS, or
+set it to ``*`` to count every merged PR / issue regardless of label.
 """
 
 from __future__ import annotations
@@ -46,7 +53,22 @@ PR_FIELDS = (
     "number,title,url,mergedAt,additions,deletions,changedFiles,author,labels,"
     "closingIssuesReferences"
 )
-ISSUE_FIELDS = "number,title,url,createdAt,closedAt,state"
+ISSUE_FIELDS = "number,title,url,createdAt,closedAt,state,labels"
+
+# Alfred stamps agent-authored PRs/issues with a provenance label (see
+# lib/labels.AUTHORED). The shipped summary must count ONLY Alfred-driven work,
+# not the operator's own human PRs/issues in the same repos, or the totals
+# inflate. We match on any of these labels (case-insensitive, exact match).
+# ``agent:authored`` is the canonical one set on PR open; the rest are accepted
+# for forward/backward compatibility with the shipped-board label set. Override
+# with ALFRED_SHIPPED_SUMMARY_AGENT_LABELS (comma-separated).
+DEFAULT_AGENT_LABELS = (
+    "agent:authored",
+    "agent:done",
+    "agent:shipped",
+    "alfred:shipped",
+    "shipped-by-alfred",
+)
 MODEL_PATH_HINTS = (
     "agents.conf",
     "agent_models",
@@ -100,6 +122,38 @@ def resolve_period(args: argparse.Namespace) -> Period:
 def configured_repos() -> list[str]:
     raw = os.environ.get("ALFRED_SHIPPED_SUMMARY_REPOS", "")
     return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def agent_labels() -> frozenset[str]:
+    """Return the lowercased set of labels that mark Alfred-driven work."""
+    raw = os.environ.get("ALFRED_SHIPPED_SUMMARY_AGENT_LABELS", "").strip()
+    if raw == "*":
+        # Explicit opt-out: count every merged PR / issue, labelled or not.
+        return frozenset()
+    if raw:
+        return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+    return frozenset(label.lower() for label in DEFAULT_AGENT_LABELS)
+
+
+def item_label_names(item: dict[str, Any]) -> set[str]:
+    """Lowercased label names on a PR/issue record from ``gh ... --json labels``."""
+    names: set[str] = set()
+    for label in item.get("labels") or []:
+        name = label.get("name") if isinstance(label, dict) else label
+        if isinstance(name, str) and name:
+            names.add(name.lower())
+    return names
+
+
+def is_agent_authored(item: dict[str, Any], wanted: frozenset[str]) -> bool:
+    """True if the PR/issue carries any Alfred provenance label.
+
+    An empty ``wanted`` set disables filtering (operator opt-out via
+    ``ALFRED_SHIPPED_SUMMARY_AGENT_LABELS=*``), so every item counts.
+    """
+    if not wanted:
+        return True
+    return bool(item_label_names(item) & wanted)
 
 
 def repo_slug(repo: str) -> str:
@@ -178,6 +232,7 @@ def fetch_merged_prs(
 ) -> list[dict[str, Any]]:
     limit = github_query_limit()
     slug = repo_slug(repo)
+    wanted = agent_labels()
     out: dict[int, dict[str, Any]] = {}
     for window in query_windows(period):
         prs = gh_json(
@@ -207,6 +262,8 @@ def fetch_merged_prs(
             number = pr.get("number")
             if not isinstance(number, int) or not in_period(pr.get("mergedAt"), period):
                 continue
+            if not is_agent_authored(pr, wanted):
+                continue
             pr["repo"] = repo
             pr["repo_slug"] = slug
             out[number] = pr
@@ -221,6 +278,7 @@ def fetch_issues(
 ) -> list[dict[str, Any]]:
     limit = github_query_limit()
     slug = repo_slug(repo)
+    wanted = agent_labels()
     ts_key = "createdAt" if qualifier == "created" else "closedAt"
     out: dict[int, dict[str, Any]] = {}
     for window in query_windows(period):
@@ -250,6 +308,8 @@ def fetch_issues(
         for issue in issues or []:
             number = issue.get("number")
             if not isinstance(number, int) or not in_period(issue.get(ts_key), period):
+                continue
+            if not is_agent_authored(issue, wanted):
                 continue
             issue["repo"] = repo
             issue["repo_slug"] = slug
