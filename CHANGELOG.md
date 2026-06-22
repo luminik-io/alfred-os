@@ -21,7 +21,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 ### Added
 
 - Public `/download/` page with signed desktop artifact links for `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`, plus homepage download calls to action.
-- Proof telemetry plumbing for public aggregate install/use counters. The worker is self-hostable; the reporter sends nothing unless `ALFRED_TELEMETRY_URL` is configured, and `ALFRED_TELEMETRY_ENABLED=0` turns it off.
+- Proof telemetry plumbing for public aggregate install/use counters. New installs use Alfred's hosted collector by default, the worker is self-hostable, and `ALFRED_TELEMETRY_ENABLED=0` turns reporting off.
 
 ### Changed
 

@@ -140,6 +140,34 @@ const hasPanel = Astro.slots.has("panel");
     }
   }
 
+  @media (max-width: 520px) {
+    .hero__inner,
+    .hero__copy,
+    .hero__panel,
+    .hero__sub,
+    .hero__ctas {
+      max-width: 100%;
+    }
+    .hero__copy h1 {
+      max-width: 13ch;
+      text-wrap: pretty;
+    }
+    .hero__sub {
+      overflow-wrap: normal;
+      word-break: normal;
+    }
+    .hero__ctas {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .hero__ctas .m-btn {
+      justify-content: center;
+      padding-left: 12px;
+      padding-right: 12px;
+      min-width: 0;
+    }
+  }
+
   /* ───────────────────────────────────────────────────────────────
      Cinematic fleet layer. Sits above .m-ambient (the drifting grid)
      and below the hero copy. A faint horizon sweep crosses the hero on

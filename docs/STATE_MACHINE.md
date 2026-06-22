@@ -48,9 +48,9 @@ At most one of those four is set on any issue at a time.
 
 | Label | Meaning |
 |---|---|
-| `do-not-pickup` | Operator override; agents must skip this issue regardless of any other label |
+| `do-not-pickup` | Manual override; agents must skip this issue regardless of any other label |
 | `needs:human-scope` | Issue is too vague for autonomous work; not eligible for pickup |
-| `agent:plan-pending-approval` | Operator-approval gate; any issue carrying it is held from autonomous pickup until the operator approves and the label is cleared |
+| `agent:plan-pending-approval` | Configured-approver gate; any issue carrying it is held from autonomous pickup until the configured approver approves and the label is cleared |
 
 These can coexist with any lifecycle label.
 
@@ -63,14 +63,14 @@ and bundle labels, which assignment deliberately discards via
 `_assignment_blocking_labels`), so any issue holding it routes to `ROUTE_BLOCKED`
 with the reason `blocked from autonomous pickup by label(s):
 agent:plan-pending-approval`. The issue is never auto-assigned and the dev agents
-keep skipping it until the operator approves and the label is cleared.
+keep skipping it until the configured approver approves and the label is cleared.
 
 Where the label comes from depends on the path:
 
 - **Autonomously planned single-repo plans** are filed with both `agent:implement`
   and this gate label by the planner (Drake, in
-  [`prompts/planner.md`](../prompts/planner.md)), so the operator approves before
-  any work begins.
+  [`prompts/planner.md`](../prompts/planner.md)), so the configured approver
+  approves before any work begins.
 - **Approved Slack / Compose drafts are different.** The human has already
   approved the draft inside Slack, so `SlackIssueBridge.convert()`
   ([`lib/slack_issue_bridge.py`](../lib/slack_issue_bridge.py)) files the issue

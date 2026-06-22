@@ -64,7 +64,7 @@ Inbox opens to the decision queue plus a capacity rail for Claude and Codex subs
 
 The Slack tier is the planning listener plus the issue bridge. It turns Slack into an intake and refinement surface without making chat an approval mechanism for code.
 
-- The **listener** (`lib/slack_listener.py`) runs in Socket Mode. A trusted user DMs or mentions Alfred; the listener refines the request into a saved local draft, scores readiness, and asks for missing scope. It never files issues, opens PRs, or runs code.
+- The **listener** (`lib/slack_listener.py`) runs in Socket Mode. The configured approver and trusted users can DM or mention Alfred; the listener refines the request into a saved local draft, scores readiness, and asks for missing scope. It never files issues, opens PRs, or runs code.
 - The **bridge** (`lib/slack_issue_bridge.py`) is off by default. When the configured approver explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
 
 The base install already includes `slack-sdk` and `boto3` (promoted out of optional extras in v0.4.0), so the only thing the Slack tier needs beyond `core` is configuration:
@@ -91,6 +91,6 @@ Trusted users can create and refine planning drafts. Only `ALFRED_OPERATOR_SLACK
 ## Picking your tiers
 
 - **Headless Linux fleet, no UI:** `core` only. Run the CLI and scheduler; skip `serve`, the client, and Slack, or wire just an incoming webhook for one-way posts.
-- **Mac operator who wants Alfred Desktop:** `core` + `client`. Install the `serve` extra, run `alfred serve`, and drive the fleet from the desktop app.
+- **Mac user who wants Alfred Desktop:** `core` + `client`. Install the `serve` extra, run `alfred serve`, and drive the fleet from the desktop app.
 - **Team that plans in Slack:** `core` + `slack`. Run the listener, keep the bridge off until you trust the flow, then arm it with an allowlist.
 - **Everything:** all three. The client and Slack surfaces both sit on top of the same `core` and never bypass its gates.

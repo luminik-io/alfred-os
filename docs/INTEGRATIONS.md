@@ -1,7 +1,8 @@
 # Integrations
 
 Alfred core should stay boring: local Python runners, host-scheduler units,
-git worktrees, GitHub CLI, model CLIs, and optional Slack delivery.
+git worktrees, GitHub CLI, model CLIs, local Redis Agent Memory, FleetBrain,
+and optional Slack delivery.
 
 Everything else is an integration. Useful integrations are welcome, but they
 should not become required for a clean open-source install.
@@ -44,7 +45,7 @@ Alfred may include:
 Alfred should not bundle:
 
 - private memory stores, canon files, transcripts, or operator data
-- a required vector database
+- a hosted vector database
 - a required external agent runtime
 - third-party skill bundles fetched at runtime without review
 - opaque background services that are not visible in `doctor.sh`
@@ -56,18 +57,19 @@ on a new machine.
 
 | Profile | Use it when | Required pieces |
 | --- | --- | --- |
-| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code or Codex, optional Slack webhook. |
-| Alfred + external memory | You want searchable personal/company memory available to interactive sessions. | Standalone Alfred plus a separately installed memory layer. |
-| Alfred + operator gateway | You want chat control, MCP registration, skills, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/operator layer. |
+| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code or Codex, local Redis Agent Memory, optional Slack webhook. |
+| Alfred + personal memory | You want Alfred to consult your own notes or company knowledge base as a fallback. | Standalone Alfred plus a read-only provider such as `gbrain`. |
+| Alfred + control gateway | You want chat control, MCP registration, skills, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/control layer. |
 
 The standalone profile is the default and the only path the OSS installer
 should assume.
 
 ## Memory
 
-Memory tools can be useful companion layers, but they are not Alfred state. Keep
-them outside `ALFRED_HOME`; point interactive agents at them through your shell,
-Claude Code, MCP, or a separate operator gateway.
+Personal memory tools can be useful companion layers, but they are not Alfred
+state. Keep them outside `ALFRED_HOME`; point Alfred at them through a read-only
+provider, or expose them to interactive agents through your shell, Claude Code,
+MCP, or a separate control gateway.
 
 Recommended shape:
 
@@ -76,11 +78,11 @@ Recommended shape:
 `-- data/
 ```
 
-Alfred runners should continue working if memory is missing. If a prompt
-mentions a memory tool, it should phrase it as optional context, not a hard
-preflight requirement.
+Alfred runners should continue working if a personal memory provider is
+missing. The bundled Redis Agent Memory layer is local and checked by doctor;
+extra memory should remain optional context, not a hard preflight requirement.
 
-## Operator gateways
+## Control gateways
 
 A gateway can wrap Alfred nicely when you want chat commands, MCP servers,
 skills, durable task boards, or dashboards around the fleet. It should observe
@@ -91,7 +93,7 @@ Good boundaries:
 - Alfred owns issue claims, worktrees, scheduler units, state files, and Slack
   firing messages.
 - The gateway owns chat behavior, skills, MCP server registration, memory, and
-  operator dashboards.
+  dashboards.
 - Both tools may read `ALFRED_HOME/state`, but only Alfred runners should mutate
   in-flight issue and worktree state.
 
