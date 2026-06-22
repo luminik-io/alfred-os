@@ -39,6 +39,7 @@ import type {
 } from "../types";
 import { EmptyState } from "./atoms";
 import { LifecycleCard, type RepoChip } from "./LifecycleCard";
+import { Markdown } from "./Markdown";
 import { Button } from "./ui/button";
 import {
   Sheet,
@@ -672,9 +673,9 @@ function PlanInspector({
           </button>
         ) : null}
       </div>
-      <pre className="detail-pre">
+      <Markdown className="detail-md">
         {plan.content || plan.preview || "No plan body saved yet."}
-      </pre>
+      </Markdown>
     </div>
   );
 }
