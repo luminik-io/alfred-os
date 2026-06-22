@@ -61,6 +61,7 @@ export function LifecycleCard({
   outcome,
   attribution,
   action,
+  hoverActions,
   selected = false,
   onSelect,
   ariaLabel,
@@ -75,6 +76,9 @@ export function LifecycleCard({
   attribution?: ReactNode;
   // The single primary action for this card. Optional (e.g. read-only cards).
   action?: ReactNode;
+  // Secondary quick actions revealed on hover or keyboard focus (e.g. Hold), so
+  // common actions do not require opening the detail sheet. Optional.
+  hoverActions?: ReactNode;
   selected?: boolean;
   // Selecting the card opens its detail panel. There is no separate Inspect
   // verb (issue 314): the card body is the selection target.
@@ -104,6 +108,9 @@ export function LifecycleCard({
     .join(" ");
   return (
     <article className={classes} aria-label={ariaLabel}>
+      {hoverActions ? (
+        <div className="alfred-card__hover">{hoverActions}</div>
+      ) : null}
       {onSelect ? (
         <button
           type="button"

@@ -3564,6 +3564,61 @@ body {
     background 140ms ease-out;
 }
 
+/* Quick actions revealed on card hover or keyboard focus, so common actions do
+ * not require opening the detail sheet. Always visible on touch (no hover). */
+.alfred-card__hover {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+.alfred-card:hover .alfred-card__hover,
+.alfred-card:focus-within .alfred-card__hover {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .alfred-card__hover {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+.card-hover-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 120ms ease-out,
+    border-color 120ms ease-out,
+    background 120ms ease-out;
+}
+.card-hover-action:hover:not(:disabled) {
+  color: var(--foreground);
+  border-color: var(--foreground);
+  background: var(--surface);
+}
+.card-hover-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .alfred-card--selected {
   border-color: color-mix(in oklch, var(--primary), var(--hairline) 45%);
   background: color-mix(in oklch, var(--accent-soft), var(--surface) 55%);
