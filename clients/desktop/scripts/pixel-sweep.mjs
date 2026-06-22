@@ -19,7 +19,7 @@ const QUIET = process.argv.includes("--quiet");
 const WIDTHS = [375, 768, 1024, 1280, 1680];
 const THEMES = ["dark", "light"];
 const HEIGHT = 900;
-const ROUTE_TIMEOUT_MS = Number(process.env.SWEEP_ROUTE_TIMEOUT_MS || 20000);
+const ROUTE_TIMEOUT_MS = parsePositiveInt(process.env.SWEEP_ROUTE_TIMEOUT_MS, 20000);
 const THEME_NAME_STORAGE_KEY = "alfred-theme-name";
 const THEME_MODE_STORAGE_KEY = "alfred-theme";
 
@@ -162,6 +162,15 @@ const PROBE = () => {
   return out;
 };
 
+function parsePositiveInt(value, fallback) {
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`SWEEP_ROUTE_TIMEOUT_MS must be a positive integer, got ${JSON.stringify(value)}`);
+  }
+  return parsed;
+}
+
 async function applyTheme(page, theme) {
   await page.evaluate(
     ({ t, nameKey, modeKey }) => {
@@ -180,11 +189,13 @@ async function applyTheme(page, theme) {
 
 async function withTimeout(task, ms, label) {
   let timeoutId;
+  const guardedTask = Promise.resolve(task);
+  guardedTask.catch(() => {});
   const timeout = new Promise((_, reject) => {
     timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
   });
   try {
-    return await Promise.race([task, timeout]);
+    return await Promise.race([guardedTask, timeout]);
   } finally {
     clearTimeout(timeoutId);
   }
