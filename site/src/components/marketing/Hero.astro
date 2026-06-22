@@ -158,7 +158,7 @@ const hasPanel = Astro.slots.has("panel");
     }
     .hero__ctas {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 112px), 1fr));
     }
     .hero__ctas .m-btn {
       justify-content: center;
