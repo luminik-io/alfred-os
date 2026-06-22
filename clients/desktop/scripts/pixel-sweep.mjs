@@ -19,6 +19,7 @@ const QUIET = process.argv.includes("--quiet");
 const WIDTHS = [375, 768, 1024, 1280, 1680];
 const THEMES = ["dark", "light"];
 const HEIGHT = 900;
+const ROUTE_TIMEOUT_MS = parsePositiveInt(process.env.SWEEP_ROUTE_TIMEOUT_MS, 20000);
 const THEME_NAME_STORAGE_KEY = "alfred-theme-name";
 const THEME_MODE_STORAGE_KEY = "alfred-theme";
 
@@ -161,6 +162,15 @@ const PROBE = () => {
   return out;
 };
 
+function parsePositiveInt(value, fallback) {
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`SWEEP_ROUTE_TIMEOUT_MS must be a positive integer, got ${JSON.stringify(value)}`);
+  }
+  return parsed;
+}
+
 async function applyTheme(page, theme) {
   await page.evaluate(
     ({ t, nameKey, modeKey }) => {
@@ -177,59 +187,89 @@ async function applyTheme(page, theme) {
   );
 }
 
+async function withTimeout(task, ms, label) {
+  let timeoutId;
+  const guardedTask = Promise.resolve(task);
+  guardedTask.catch(() => {});
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([guardedTask, timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function renderRoute(browser, { theme, width, route }) {
+  const context = await browser.newContext({
+    viewport: { width, height: HEIGHT },
+    deviceScaleFactor: 1,
+    colorScheme: theme === "dark" ? "dark" : "light",
+  });
+
+  try {
+    const page = await context.newPage();
+    await page.addInitScript(
+      ({ t, nameKey, modeKey }) => {
+        try {
+          localStorage.setItem(nameKey, "alfred");
+          localStorage.setItem(modeKey, t);
+        } catch {}
+      },
+      { t: theme, nameKey: THEME_NAME_STORAGE_KEY, modeKey: THEME_MODE_STORAGE_KEY },
+    );
+
+    const url = `${BASE}/?${route.q}`;
+    let navOk = false;
+    for (let attempt = 0; attempt < 2 && !navOk; attempt++) {
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: ROUTE_TIMEOUT_MS });
+        navOk = true;
+      } catch (err) {
+        if (attempt === 1) throw err;
+        await page.waitForTimeout(500);
+      }
+    }
+    await applyTheme(page, theme);
+    await page.waitForTimeout(700);
+    await page.waitForSelector(route.ready, { timeout: 4000, state: "attached" });
+    await page.waitForTimeout(300);
+
+    const violations = await page.evaluate(PROBE);
+    const shot = `${route.id}_${width}_${theme}.png`;
+    try {
+      await page.screenshot({ path: join(OUT_DIR, shot), fullPage: false, timeout: 8000 });
+    } catch {}
+    return { route: route.id, width, theme, violations, shot };
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 async function run() {
   await mkdir(OUT_DIR, { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ["--disable-gpu"] });
   const results = [];
   let total = 0;
 
-  for (const theme of THEMES) {
-    for (const width of WIDTHS) {
-      const context = await browser.newContext({
-        viewport: { width, height: HEIGHT },
-        deviceScaleFactor: 1,
-        colorScheme: theme === "dark" ? "dark" : "light",
-      });
-      const page = await context.newPage();
-      await page.addInitScript(
-        ({ t, nameKey, modeKey }) => {
-          try {
-            localStorage.setItem(nameKey, "alfred");
-            localStorage.setItem(modeKey, t);
-          } catch {}
-        },
-        { t: theme, nameKey: THEME_NAME_STORAGE_KEY, modeKey: THEME_MODE_STORAGE_KEY },
-      );
-
-      for (const route of ROUTES) {
-        const url = `${BASE}/?${route.q}`;
-        let navOk = false;
-        for (let attempt = 0; attempt < 2 && !navOk; attempt++) {
-          try {
-            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-            navOk = true;
-          } catch (err) {
-            if (attempt === 1) throw err;
-            await page.waitForTimeout(500);
-          }
+  try {
+    for (const theme of THEMES) {
+      for (const width of WIDTHS) {
+        for (const route of ROUTES) {
+          const result = await withTimeout(
+            renderRoute(browser, { theme, width, route }),
+            ROUTE_TIMEOUT_MS,
+            `${route.id} ${width} ${theme}`,
+          );
+          total += result.violations.length;
+          results.push(result);
         }
-        await applyTheme(page, theme);
-        await page.waitForTimeout(700);
-        await page.waitForSelector(route.ready, { timeout: 4000, state: "attached" });
-        await page.waitForTimeout(300);
-
-        const violations = await page.evaluate(PROBE);
-        const shot = `${route.id}_${width}_${theme}.png`;
-        try {
-          await page.screenshot({ path: join(OUT_DIR, shot), fullPage: false, timeout: 8000 });
-        } catch {}
-        total += violations.length;
-        results.push({ route: route.id, width, theme, violations, shot });
       }
-      await context.close();
     }
+  } finally {
+    await browser.close().catch(() => {});
   }
-  await browser.close();
 
   await writeFile(join(OUT_DIR, "report.json"), JSON.stringify(results, null, 2));
 
