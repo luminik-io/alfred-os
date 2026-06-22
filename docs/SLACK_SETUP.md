@@ -252,7 +252,7 @@ Safety model:
 
 The bridge is the wire that turns an *approved* planning draft into a labeled
 GitHub issue the autonomous fleet (Lucius / Batman) picks up. It is **off by
-default**. When enabled, a trusted user can approve a draft directly in its
+default**. When enabled, the operator can approve a draft directly in its
 thread, and Alfred files one issue carrying the pickup label.
 
 **What it does and does not do.** The bridge only runs `gh issue create` with
@@ -265,8 +265,8 @@ of bypassing it.
 **Five gates are all required** before an issue is created:
 
 1. The bridge is explicitly enabled with `ALFRED_BRIDGE_ENABLED=1`.
-2. A **trusted** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID` /
-   `ALFRED_TRUSTED_SLACK_USER_IDS`). A non-trusted user can never trigger it.
+2. The **operator** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID`). Trusted
+   collaborators can refine drafts, but cannot file them as GitHub issues.
 3. An **explicit approval token** in a registered draft thread: a configured
    phrase (default `ship it` / `create issue` / `file issue` / `/ship`) or a
    `:white_check_mark:` reaction on the draft. Ambiguous prose is never treated
@@ -337,16 +337,16 @@ from chat by **leading a message with a known verb**. These are handled by
 | `plans` | Local planning inbox: Batman plans, Slack planning drafts, and captured follow-ups. |
 | `plan <id>` | Inspect one local plan or follow-up. Use `plans` to find the id. |
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
-| `handled <id>` | Operator-only. Archive a captured follow-up without creating a draft. |
+| `handled <id>` | Configured-approver command. Archive a captured follow-up without creating a draft. |
 | `memory` / `memories` | Show pending memory candidates and suggested promotions. |
 | `remember [repo:] <lesson>` / `memory remember ...` | Queue a reviewable memory candidate from Slack. |
-| `memory promote <id>` | Operator-only. Promote a candidate into future recall. |
-| `memory reject <id>` | Operator-only. Reject a noisy candidate. |
+| `memory promote <id>` | Configured-approver command. Approve a candidate for future recall. |
+| `memory reject <id>` | Configured-approver command. Reject a noisy candidate. |
 | `memory harvest` | Preview repeated-failure lessons from the reliability governor. |
-| `memory harvest now` | Operator-only. Queue harvested lessons as reviewable candidates. |
+| `memory harvest now` | Configured-approver command. Queue harvested lessons as reviewable candidates. |
 | `memory redis` | Check the Redis Agent Memory Server. |
 | `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
-| `memory sync now` | Operator-only. Write reviewed lessons to Redis AMS. |
+| `memory sync now` | Configured-approver command. Write reviewed lessons to Redis AMS. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `trusted` | Show the configured approver and trusted Slack users Alfred currently accepts. |
@@ -376,8 +376,8 @@ Safety model:
   follow-up. `handled <id>` archives the follow-up. None of these commands
   files GitHub issues, starts agents, approves execution, or merges PRs.
 - **Memory is reviewable.** `remember ...` and `memory remember ...` queue
-  candidates only. They do not enter future prompt context until you
-  runs `memory promote <id>`.
+  candidates only. They enter future recall only after the configured approver
+  reviews and approves them.
   `memory harvest` previews repeated-failure lessons before `memory harvest now`
   queues them. A scheduled `memory-harvest.py` job can queue the same
   reviewable candidates automatically and notify Slack only when there is

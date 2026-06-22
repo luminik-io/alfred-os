@@ -65,7 +65,7 @@ Inbox opens to the decision queue plus a capacity rail for Claude and Codex subs
 The Slack tier is the planning listener plus the issue bridge. It turns Slack into an intake and refinement surface without making chat an approval mechanism for code.
 
 - The **listener** (`lib/slack_listener.py`) runs in Socket Mode. A trusted user DMs or mentions Alfred; the listener refines the request into a saved local draft, scores readiness, and asks for missing scope. It never files issues, opens PRs, or runs code.
-- The **bridge** (`lib/slack_issue_bridge.py`) is off by default. When a trusted user explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
+- The **bridge** (`lib/slack_issue_bridge.py`) is off by default. When the configured approver explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
 
 The base install already includes `slack-sdk` and `boto3` (promoted out of optional extras in v0.4.0), so the only thing the Slack tier needs beyond `core` is configuration:
 
@@ -76,6 +76,7 @@ echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.al
 # Optional: the planning listener (Socket Mode, bot token + app token)
 echo 'SLACK_BOT_TOKEN=xoxb-...' >> ~/.alfredrc
 echo 'SLACK_APP_TOKEN=xapp-...' >> ~/.alfredrc
+echo 'ALFRED_OPERATOR_SLACK_USER_ID=U0123' >> ~/.alfredrc
 echo 'ALFRED_TRUSTED_SLACK_USER_IDS=U0123,U0456' >> ~/.alfredrc
 ./bin/alfred-slack-listener.py
 
@@ -85,6 +86,7 @@ echo 'ALFRED_BRIDGE_REPOS=acme-org/api,acme-org/web' >> ~/.alfredrc
 ```
 
 Leave `ALFRED_BRIDGE_ENABLED` unset to keep approvals as refine-only no-ops. For the message contract, the reaction approval gate, and the listener boundary, see [`SLACK_UX.md`](SLACK_UX.md), [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md), and the webhook walkthrough in the Slack setup guide.
+Trusted users can create and refine planning drafts. Only `ALFRED_OPERATOR_SLACK_USER_ID` can approve Slack-origin filing into GitHub.
 
 ## Picking your tiers
 

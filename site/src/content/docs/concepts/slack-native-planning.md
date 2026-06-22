@@ -96,16 +96,16 @@ intake:
 | `plans` | Local planning inbox: saved plans, Slack drafts, and captured follow-ups. |
 | `plan <id>` | Inspect one local plan or follow-up. |
 | `draft <id>` | Convert a captured follow-up into a local planning draft. |
-| `handled <id>` | Operator-only: archive a captured follow-up without drafting. |
+| `handled <id>` | Configured-approver command: archive a captured follow-up without drafting. |
 | `memory` / `memories` | Show pending memory candidates and promotion suggestions. |
 | `remember [repo:] <lesson>` / `memory remember ...` | Queue a reviewable memory candidate from Slack. |
-| `memory promote <id>` | Operator-only: promote a candidate into future recall. |
-| `memory reject <id>` | Operator-only: reject a noisy candidate. |
+| `memory promote <id>` | Configured-approver command: approve a candidate for future recall. |
+| `memory reject <id>` | Configured-approver command: reject a noisy candidate. |
 | `memory harvest` | Preview repeated-failure lessons from the reliability governor. |
-| `memory harvest now` | Operator-only: queue harvested lessons as reviewable candidates. |
+| `memory harvest now` | Configured-approver command: queue harvested lessons as reviewable candidates. |
 | `memory redis` | Check the Redis Agent Memory Server. |
 | `memory sync` | Preview reviewed-lesson sync to Redis AMS. |
-| `memory sync now` | Operator-only: write reviewed lessons to Redis AMS. |
+| `memory sync now` | Configured-approver command: write reviewed lessons to Redis AMS. |
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `help` | List these commands. |
@@ -117,8 +117,8 @@ explicit argv with no shell, and the codename is charset-validated before it
 reaches the command, so chat can never inject a flag. `status` and `runs` are
 read-only. `draft <id>` and `handled <id>` only touch local follow-up files and
 planning drafts; they never approve execution, file GitHub issues, start agents,
-or merge PRs. `remember ...` only stages a memory candidate; it does not enter
-future prompt context until you promote it.
+or merge PRs. `remember ...` only stages a memory candidate; it enters future
+recall only after the configured approver reviews and approves it.
 
 Ready Slack-created drafts also queue reviewable `slack-planning` candidates
 automatically, with the local draft path and thread evidence attached. This is

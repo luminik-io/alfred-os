@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -70,17 +71,29 @@ def _make_listener(
     creator: RecordingCreator,
     config: BridgeConfig | None = None,
     trusted=("U1",),
+    operator: str | None = "U1",
 ) -> tuple[SlackPlanningListener, Poster, SlackThreadRegistry]:
     poster = Poster()
     registry = SlackThreadRegistry(tmp_path / "threads")
     bridge = SlackIssueBridge(config=config or _config(), issue_creator=creator)
-    listener = SlackPlanningListener(
-        registry=registry,
-        state_root=tmp_path,
-        poster=poster,
-        trusted_user_ids=trusted,
-        bridge=bridge,
-    )
+    previous_operator = os.environ.get("ALFRED_OPERATOR_SLACK_USER_ID")
+    if operator is None:
+        os.environ.pop("ALFRED_OPERATOR_SLACK_USER_ID", None)
+    else:
+        os.environ["ALFRED_OPERATOR_SLACK_USER_ID"] = operator
+    try:
+        listener = SlackPlanningListener(
+            registry=registry,
+            state_root=tmp_path,
+            poster=poster,
+            trusted_user_ids=trusted,
+            bridge=bridge,
+        )
+    finally:
+        if previous_operator is None:
+            os.environ.pop("ALFRED_OPERATOR_SLACK_USER_ID", None)
+        else:
+            os.environ["ALFRED_OPERATOR_SLACK_USER_ID"] = previous_operator
     return listener, poster, registry
 
 
@@ -182,11 +195,31 @@ def test_convert_refuses_untrusted_user() -> None:
     assert creator.calls == []
 
 
+def test_convert_refuses_slack_non_operator() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
+    payload = _ready_payload()
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=False)
+    assert outcome.created is False
+    assert outcome.status == "refused_non_operator"
+    assert creator.calls == []
+
+
 def test_convert_disabled_creates_nothing() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(enabled=False), issue_creator=creator)
     payload = _ready_payload()
-    outcome = bridge.convert(payload, trusted=True)
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=True)
+    assert outcome.created is False
+    assert outcome.status == "disabled"
+    assert creator.calls == []
+
+
+def test_convert_disabled_wins_before_non_operator_refusal() -> None:
+    creator = RecordingCreator()
+    bridge = SlackIssueBridge(config=_config(enabled=False), issue_creator=creator)
+    payload = _ready_payload()
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=False)
     assert outcome.created is False
     assert outcome.status == "disabled"
     assert creator.calls == []
@@ -196,7 +229,7 @@ def test_convert_refuses_repo_not_in_allowlist() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
     payload = _ready_payload(repo=OTHER_REPO)
-    outcome = bridge.convert(payload, trusted=True)
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=True)
     assert outcome.created is False
     assert outcome.status == "refused_repo_not_allowed"
     assert OTHER_REPO in outcome.detail
@@ -207,7 +240,7 @@ def test_convert_refuses_when_allowlist_empty() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(repos=frozenset()), issue_creator=creator)
     payload = _ready_payload()
-    outcome = bridge.convert(payload, trusted=True)
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=True)
     assert outcome.created is False
     assert outcome.status == "refused_allowlist_empty"
     assert creator.calls == []
@@ -217,7 +250,12 @@ def test_convert_creates_issue_with_repo_and_label() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
     payload = _ready_payload()
-    outcome = bridge.convert(payload, trusted=True, thread_link="slack://thread?x")
+    outcome = bridge.convert(
+        payload,
+        trusted=True,
+        actor_is_operator=True,
+        thread_link="slack://thread?x",
+    )
     assert outcome.created is True
     assert outcome.issue_url == "https://github.com/acme-org/api/issues/42"
     assert len(creator.calls) == 1
@@ -250,7 +288,7 @@ def test_convert_accepts_numeric_readiness_score() -> None:
     payload = _ready_payload()
     payload["readiness"]["score"] = 94.0
 
-    outcome = bridge.convert(payload, trusted=True)
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=True)
 
     assert outcome.created is True
     assert len(creator.calls) == 1
@@ -265,7 +303,7 @@ def test_convert_refuses_under_scoped_draft_even_with_approval() -> None:
         "readiness": {"ok": False, "score": 34},
         "questions": ["What should be different when this ships?"],
     }
-    outcome = bridge.convert(payload, trusted=True)
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=True)
     assert outcome.created is False
     assert outcome.status == "refused_not_ready"
     assert "34/100" in outcome.detail
@@ -277,7 +315,7 @@ def test_convert_refuses_draft_without_readiness_report() -> None:
     creator = RecordingCreator()
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
     payload = {"draft": {"title": "Wire the bridge", "repos": [ALLOWED_REPO]}}
-    outcome = bridge.convert(payload, trusted=True)
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=True)
     assert outcome.created is False
     assert outcome.status == "refused_readiness_missing"
     assert creator.calls == []
@@ -288,7 +326,7 @@ def test_convert_refuses_draft_without_readiness_ok_flag() -> None:
     bridge = SlackIssueBridge(config=_config(), issue_creator=creator)
     payload = _ready_payload()
     del payload["readiness"]["ok"]
-    outcome = bridge.convert(payload, trusted=True)
+    outcome = bridge.convert(payload, trusted=True, actor_is_operator=True)
     assert outcome.created is False
     assert outcome.status == "refused_readiness_missing"
     assert "ok flag" in outcome.detail
@@ -301,7 +339,12 @@ def test_convert_idempotent_when_already_converted() -> None:
     payload = _ready_payload(title="X") | {
         "bridge": {"converted": True, "issue_url": "https://github.com/acme-org/api/issues/7"}
     }
-    outcome = bridge.convert(payload, trusted=True, already_converted=True)
+    outcome = bridge.convert(
+        payload,
+        trusted=True,
+        actor_is_operator=True,
+        already_converted=True,
+    )
     assert outcome.created is False
     assert outcome.status == "already_converted"
     assert outcome.issue_url == "https://github.com/acme-org/api/issues/7"
@@ -331,6 +374,23 @@ def test_trusted_explicit_approval_creates_issue(tmp_path: Path) -> None:
     assert record is not None
     assert record.status == "converted"
     assert record.metadata["bridge_issue_url"] == "https://github.com/acme-org/api/issues/42"
+
+
+def test_operator_mention_form_can_approve_issue(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, _poster, _registry = _make_listener(
+        tmp_path,
+        creator=creator,
+        trusted=("U1",),
+        operator="<@u1>",
+    )
+    _seed_draft(listener, tmp_path, user="U1")
+
+    result = listener.handle_payload(_reply("ship it", event_id="000002a", user="U1"))
+
+    assert result.handled is True
+    assert result.action == "issue_created"
+    assert len(creator.calls) == 1
 
 
 def test_conversion_registers_status_thread(tmp_path: Path) -> None:
@@ -377,6 +437,25 @@ def test_non_trusted_reply_creates_nothing(tmp_path: Path) -> None:
     assert "untrusted" in result.detail
     assert creator.calls == []
     assert len(poster.messages) == before
+
+
+def test_trusted_non_operator_reply_creates_nothing(tmp_path: Path) -> None:
+    creator = RecordingCreator()
+    listener, poster, _registry = _make_listener(
+        tmp_path,
+        creator=creator,
+        trusted=("U1", "U2"),
+        operator="U1",
+    )
+    _seed_draft(listener, tmp_path, user="U1")
+
+    result = listener.handle_payload(_reply("ship it", event_id="000004b", user="U2"))
+
+    assert result.handled is True
+    assert result.action == "approval_no_issue"
+    assert "only the configured operator" in result.detail
+    assert creator.calls == []
+    assert "Could not create the issue" in poster.messages[-1]["text"]
 
 
 def test_non_trusted_reaction_creates_nothing(tmp_path: Path) -> None:

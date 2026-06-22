@@ -3,8 +3,8 @@
 This module is the missing wire between Slack planning and the autonomous
 fleet. The Slack planning listener (``slack_listener.py``) already refines a
 trusted user's request into a saved planning draft. This bridge takes the
-final, deliberate step: when a trusted user *explicitly approves* a draft in
-its registered thread, it converts the saved draft JSON into a single GitHub
+final, deliberate step: when the configured operator explicitly approves a draft
+in its registered thread, it converts the saved draft JSON into a single GitHub
 issue carrying the pickup label the fleet watches for (``agent:implement`` by
 default).
 
@@ -29,8 +29,9 @@ downstream gate.
 Five independent gates are *all* required before an issue is created:
 
 1. **Bridge enabled.** The operator must explicitly enable the bridge.
-2. **Trusted user.** The approval must come from a configured trusted Slack
-   user (the listener gates this in ``handle_payload``; the bridge re-checks).
+2. **Operator user.** Slack approvals that file issues must come from
+   ``ALFRED_OPERATOR_SLACK_USER_ID``. Trusted teammates can refine drafts, but
+   cannot graduate them into GitHub issues.
 3. **Explicit approval token.** The reply must contain an explicit approval
    phrase (default: ``ship it`` / ``create issue`` / ``file issue`` /
    ``/ship``) or be an approval reaction (``white_check_mark``). Ambiguous
@@ -42,7 +43,7 @@ Five independent gates are *all* required before an issue is created:
 5. **Allowed repo.** Every target repo must be present in
    ``ALFRED_BRIDGE_REPOS``.
 
-No single gate alone suffices, and a non-trusted user can never trigger
+No single gate alone suffices, and a non-operator Slack user can never trigger
 creation regardless of text.
 
 Configuration (all env-driven, 12-factor):
@@ -205,9 +206,9 @@ class SlackIssueBridge:
 
     The bridge holds no Slack state of its own. The listener owns trust
     gating, the thread registry, and the saved draft; it calls
-    :meth:`convert` only after deciding a trusted user explicitly approved a
-    registered draft thread. The bridge re-verifies enablement, the approval
-    token, and the repo allowlist before doing anything observable.
+    :meth:`convert` only after deciding a registered draft thread received an
+    explicit approval. The bridge re-verifies enablement, operator authority,
+    and the repo allowlist before doing anything observable.
     """
 
     def __init__(
@@ -235,6 +236,7 @@ class SlackIssueBridge:
         draft_payload: dict,
         *,
         trusted: bool,
+        actor_is_operator: bool = False,
         thread_link: str = "",
         already_converted: bool = False,
         origin: IssueOrigin = "slack",
@@ -246,6 +248,10 @@ class SlackIssueBridge:
             trusted: whether the approving Slack user is a configured trusted
                 user. The listener already gates this; the bridge refuses
                 outright if it is ever False (defense in depth).
+            actor_is_operator: whether the Slack user is
+                ``ALFRED_OPERATOR_SLACK_USER_ID``. Required for Slack-origin
+                issue filing; native-client filing uses a separate explicit
+                local action.
             thread_link: a permalink/back-reference to the Slack thread, added
                 to the issue footer for traceability.
             already_converted: True when the draft/thread was already converted
@@ -265,6 +271,12 @@ class SlackIssueBridge:
         # SAFETY GATE 2: feature must be explicitly enabled.
         if not self.config.enabled:
             return BridgeOutcome(False, "disabled", f"{ENV_ENABLED} is not enabled")
+        if origin == "slack" and not actor_is_operator:
+            return BridgeOutcome(
+                False,
+                "refused_non_operator",
+                "only the configured operator can file a Slack draft as an issue",
+            )
 
         # SAFETY GATE 3: idempotency -- never double-create for one draft.
         if already_converted:
@@ -387,7 +399,7 @@ def _origin_footer(thread_link: str, *, origin: IssueOrigin = "slack") -> str:
         lines = [
             "---",
             "",
-            "Filed by the Alfred Slack issue bridge after an explicit, trusted in-thread approval.",
+            "Filed by the Alfred Slack issue bridge after an explicit operator approval.",
         ]
         link = (thread_link or "").strip()
         if link:

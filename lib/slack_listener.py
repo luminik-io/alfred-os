@@ -73,7 +73,7 @@ from slack_intent import (
 from slack_issue_bridge import SlackIssueBridge, build_issue_body
 from slack_thread_registry import SlackThreadRecord, SlackThreadRegistry
 from slack_thread_status import SlackThreadStatusTracker
-from slack_trust import SlackTrustStore
+from slack_trust import SlackTrustStore, normalize_slack_user_id
 from spec_helper import IssueDraft
 
 ENV_APP_TOKEN = "SLACK_APP_TOKEN"
@@ -240,7 +240,7 @@ class SlackPlanningListener:
                 poster=poster,
             )
         )
-        operator = operator_user_id_from_env()
+        operator = normalize_slack_user_id(operator_user_id_from_env())
         self._operator_user_id = operator
         self._static_trusted_user_ids = (
             set(trusted_user_ids) if trusted_user_ids is not None else None
@@ -1477,8 +1477,8 @@ class SlackPlanningListener:
         SAFETY: this never runs code. It only asks the bridge to create
         labeled GitHub issues, which the autonomous fleet later claims through
         all existing gates. The approving user is trust-gated in
-        ``handle_payload``; ``trusted=True`` reflects that, and the bridge
-        re-verifies it plus enablement, approval, and the repo allowlist.
+        ``handle_payload``; the bridge also requires the configured operator for
+        Slack-origin issue filing.
         """
         payload_path = Path(record.draft_path).expanduser() if record.draft_path else None
         if payload_path is None:
@@ -1498,6 +1498,8 @@ class SlackPlanningListener:
             outcome = self.bridge.convert(
                 payload,
                 trusted=event.user in self._trusted_user_ids(),
+                actor_is_operator=bool(self._operator_user_id)
+                and event.user == self._operator_user_id,
                 thread_link=_thread_link(record),
                 already_converted=already_converted,
             )

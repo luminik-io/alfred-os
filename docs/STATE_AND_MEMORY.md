@@ -112,7 +112,7 @@ Slack.
 Repeated failures can be grouped with `alfred brain failure-patterns` and
 summarized with `alfred brain governor`. The governor classifies local setup
 problems, provider limits, auth failures, timeouts, and agent-quality loops,
-then returns a read-only action list for the operator and dashboard.
+then returns a read-only action list for you and the dashboard.
 
 The default provider chain is `redis,fleet`. Set
 `ALFRED_MEMORY_PROVIDERS=null` to disable runtime recall and reflection, or
@@ -124,8 +124,8 @@ CLI, and [Memory providers](./MEMORY_PROVIDERS.md) for the provider chain.
 
 The `memory-harvest.py` scheduled wrapper runs the same safe loop as
 `memory harvest now`: repeated failure patterns become reviewable candidates,
-not trusted lessons. Slack remains the review surface for `memory`,
-`memory promote <id>`, and `memory reject <id>`.
+not trusted lessons. Slack remains the review surface for `memory` and the
+approve/reject actions.
 
 Use `alfred brain doctor` for a read-only health check, `alfred brain governor`
 for the current action queue, and `alfred mcp serve` when a local MCP client

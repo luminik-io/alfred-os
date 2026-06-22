@@ -41,8 +41,8 @@ public download path for desktop artifacts.
 - Redis Agent Memory is the primary lesson store: the default provider chain is `redis,fleet`, `alfred brain ams-status` checks the local server, and `alfred brain redis-sync` carries older reviewed FleetBrain lessons into Redis.
 - Slack memory curation: trusted users can run `memory` from Slack to review
   pending candidates and promotion suggestions, `remember [repo:] <lesson>` to
-  stage a reviewable candidate from conversation, and approver-only
-  `memory promote <id>` / `memory reject <id>` to decide what enters recall.
+  stage a reviewable candidate from conversation, and the configured approver
+  decides what enters recall.
   `memory harvest` / `memory harvest now` handle repeated-failure candidates,
   while `memory redis` and `memory sync` keep the memory server inspectable.
 - Scheduled memory harvest: `memory-harvest.py` can run from launchd/systemd,
