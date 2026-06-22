@@ -60,7 +60,7 @@ def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_p
                     "deletions": 3,
                     "changedFiles": 2,
                     "author": {"login": "alice"},
-                    "labels": [],
+                    "labels": [{"name": "agent:authored"}],
                     "closingIssuesReferences": [
                         {
                             "number": 7,
@@ -78,7 +78,7 @@ def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_p
                     "deletions": 0,
                     "changedFiles": 1,
                     "author": {"login": "alice"},
-                    "labels": [],
+                    "labels": [{"name": "agent:authored"}],
                     "closingIssuesReferences": [],
                 },
             ]
@@ -93,6 +93,7 @@ def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_p
                     "createdAt": "2026-05-09T09:00:00Z",
                     "closedAt": None,
                     "state": "OPEN",
+                    "labels": [{"name": "agent:authored"}],
                 }
             ]
         if "issue list" in joined and "closed:" in joined:
@@ -104,6 +105,7 @@ def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_p
                     "createdAt": "2026-05-08T09:00:00Z",
                     "closedAt": "2026-05-09T12:01:00Z",
                     "state": "CLOSED",
+                    "labels": [{"name": "agent:done"}],
                 }
             ]
         return default
@@ -138,12 +140,14 @@ def test_fetch_uses_configurable_query_limit_and_warns(monkeypatch, tmp_path):
                 "title": "one",
                 "url": "https://github.com/myorg/alfred/pull/1",
                 "mergedAt": "2026-05-09T12:00:00Z",
+                "labels": [{"name": "agent:authored"}],
             },
             {
                 "number": 2,
                 "title": "two",
                 "url": "https://github.com/myorg/alfred/pull/2",
                 "mergedAt": "2026-05-09T13:00:00Z",
+                "labels": [{"name": "agent:authored"}],
             },
         ]
 
@@ -179,6 +183,7 @@ def test_fetch_splits_multi_day_periods_into_daily_query_windows(monkeypatch, tm
                     "title": "day one",
                     "url": "https://github.com/myorg/alfred/pull/8",
                     "mergedAt": "2026-05-08T12:00:00Z",
+                    "labels": [{"name": "agent:authored"}],
                 }
             ]
         if search == "merged:>=2026-05-09 merged:<2026-05-10":
@@ -188,6 +193,7 @@ def test_fetch_splits_multi_day_periods_into_daily_query_windows(monkeypatch, tm
                     "title": "day two",
                     "url": "https://github.com/myorg/alfred/pull/9",
                     "mergedAt": "2026-05-09T12:00:00Z",
+                    "labels": [{"name": "agent:authored"}],
                 }
             ]
         return default
@@ -244,3 +250,117 @@ def test_render_slack_includes_shipping_totals_and_model_section(monkeypatch, tm
     assert "*Model/config changes*" in text
     assert "`lucius=claude-sonnet-4-5`" in text
     assert "`rasalghul=codex`" in text
+
+
+def _period(mod):
+    return mod.Period(
+        label="test",
+        start=datetime(2026, 5, 9, 0, 0, tzinfo=UTC),
+        end=datetime(2026, 5, 10, 0, 0, tzinfo=UTC),
+    )
+
+
+def test_fetch_merged_prs_excludes_unlabelled_human_pr(monkeypatch, tmp_path):
+    mod = load_module(monkeypatch, tmp_path)
+
+    def fake_gh_json(cmd, default=None):
+        return [
+            {
+                "number": 1,
+                "title": "agent work",
+                "url": "https://github.com/myorg/alfred/pull/1",
+                "mergedAt": "2026-05-09T12:00:00Z",
+                "labels": [{"name": "agent:authored"}],
+            },
+            {
+                "number": 2,
+                "title": "operator hand fix",
+                "url": "https://github.com/myorg/alfred/pull/2",
+                "mergedAt": "2026-05-09T13:00:00Z",
+                "labels": [{"name": "bug"}],
+            },
+            {
+                "number": 3,
+                "title": "operator untagged fix",
+                "url": "https://github.com/myorg/alfred/pull/3",
+                "mergedAt": "2026-05-09T14:00:00Z",
+                "labels": [],
+            },
+        ]
+
+    monkeypatch.setattr(mod, "gh_json", fake_gh_json)
+
+    prs = mod.fetch_merged_prs("alfred", _period(mod), [])
+
+    # Only the agent:authored PR is counted; human PR #2 and untagged PR #3 drop.
+    assert [pr["number"] for pr in prs] == [1]
+
+
+def test_fetch_issues_filters_to_agent_labelled(monkeypatch, tmp_path):
+    mod = load_module(monkeypatch, tmp_path)
+
+    def fake_gh_json(cmd, default=None):
+        return [
+            {
+                "number": 11,
+                "title": "agent issue",
+                "url": "https://github.com/myorg/alfred/issues/11",
+                "createdAt": "2026-05-09T09:00:00Z",
+                "closedAt": None,
+                "state": "OPEN",
+                "labels": [{"name": "agent:done"}],
+            },
+            {
+                "number": 12,
+                "title": "human-filed issue",
+                "url": "https://github.com/myorg/alfred/issues/12",
+                "createdAt": "2026-05-09T10:00:00Z",
+                "closedAt": None,
+                "state": "OPEN",
+                "labels": [{"name": "question"}],
+            },
+        ]
+
+    monkeypatch.setattr(mod, "gh_json", fake_gh_json)
+
+    issues = mod.fetch_issues("alfred", _period(mod), "created", [])
+
+    assert [issue["number"] for issue in issues] == [11]
+
+
+def test_agent_labels_override_and_wildcard(monkeypatch, tmp_path):
+    mod = load_module(monkeypatch, tmp_path)
+
+    # Default set includes the canonical provenance label.
+    assert "agent:authored" in mod.agent_labels()
+
+    # Custom override replaces the default set entirely.
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_AGENT_LABELS", "team:bot, Shipped-By-Alfred")
+    assert mod.agent_labels() == frozenset({"team:bot", "shipped-by-alfred"})
+
+    # Wildcard disables filtering: every item counts.
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_AGENT_LABELS", "*")
+    assert mod.agent_labels() == frozenset()
+    assert mod.is_agent_authored({"labels": []}, mod.agent_labels()) is True
+
+
+def test_wildcard_counts_unlabelled_prs(monkeypatch, tmp_path):
+    mod = load_module(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_AGENT_LABELS", "*")
+
+    def fake_gh_json(cmd, default=None):
+        return [
+            {
+                "number": 1,
+                "title": "untagged",
+                "url": "https://github.com/myorg/alfred/pull/1",
+                "mergedAt": "2026-05-09T12:00:00Z",
+                "labels": [],
+            }
+        ]
+
+    monkeypatch.setattr(mod, "gh_json", fake_gh_json)
+
+    prs = mod.fetch_merged_prs("alfred", _period(mod), [])
+
+    assert [pr["number"] for pr in prs] == [1]
