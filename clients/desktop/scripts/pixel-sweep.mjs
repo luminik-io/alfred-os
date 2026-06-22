@@ -224,7 +224,7 @@ async function renderRoute(browser, { theme, width, route }) {
     let navOk = false;
     for (let attempt = 0; attempt < 2 && !navOk; attempt++) {
       try {
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: ROUTE_TIMEOUT_MS });
         navOk = true;
       } catch (err) {
         if (attempt === 1) throw err;
