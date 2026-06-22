@@ -8,9 +8,35 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
-- Clarified launch docs and install copy around proof telemetry: Alfred reports anonymous aggregate counts to the hosted collector unless telemetry is disabled with `ALFRED_TELEMETRY_ENABLED=0`; the Worker remains self-hostable for forks and private deployments.
+### Fixed
+
+## [0.5.2] - 2026-06-22
+
+### Highlights
+
+- Alfred's native app now ships with the refreshed dark interface from the current public source. Inbox, Ask, Work, Agents, and Setup use the same design in the internal and OSS repos.
+- Redis Agent Memory is now the default local memory layer, with FleetBrain kept as the review and reliability layer. Docs and install copy now match that runtime path.
+- Slack planning threads are easier to use: the first message needs the Alfred mention, and follow-up replies in the thread keep the conversation attached to the same plan.
+- The public site now has fresher impact proof, cleaner mobile hero layouts, and launch copy that explains Alfred's real value: coding agents keep work moving from Slack, GitHub, or a rough plan while you are away.
+
+### Added
+
+- Repo graph support in the code-map flow, giving Alfred a stronger base for understanding codebase relationships before planning work.
+- Visual QA tooling for the desktop client, including screenshot parity checks and pixel-sweep hardening for local desktop routes.
+
+### Changed
+
+- Proof telemetry now reports anonymous aggregate counts to the hosted collector by default unless disabled with `ALFRED_TELEMETRY_ENABLED=0`; the Worker remains self-hostable for forks and private deployments.
+- Impact proof seed data was refreshed from current GitHub activity so the site has useful fallback numbers even before the live counter loads.
+- Docs, README, and site copy now use “Alfred” consistently and keep Batman-first agent hierarchy language aligned with the product.
+- Install and integration docs now describe Redis Agent Memory and FleetBrain as bundled local components rather than optional external services.
+- Homepage, install, impact, and download hero layouts now avoid cramped CTA grids and narrow-screen word wrapping.
 
 ### Fixed
+
+- Workflow validation now resolves `actionlint` from common local install paths, so scheduled agents do not fail when launchd has a narrower PATH.
+- Hosted telemetry counters now handle missing or stale live data more defensively.
+- Desktop visual QA now uses isolated browser contexts, a validated route timeout, and the configured timeout for navigation.
 
 ## [0.5.1] - 2026-06-17
 
