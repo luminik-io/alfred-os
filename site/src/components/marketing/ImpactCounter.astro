@@ -356,7 +356,11 @@ const statsUrl = live
   .impact__pair {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    min-width: 0;
+  }
+  .impact__pair > span {
     white-space: nowrap;
   }
   .impact__pair--small {
