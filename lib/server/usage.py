@@ -1000,13 +1000,33 @@ def _codex_quota_window(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     used = _float(value.get("used_percent"))
-    resets_at = value.get("resets_at")
-    if used is None and not isinstance(resets_at, str):
+    resets_at = _codex_resets_at(value.get("resets_at"))
+    if used is None and resets_at is None:
         return None
     return {
         "used_percent": used,
-        "resets_at": resets_at if isinstance(resets_at, str) else None,
+        "resets_at": resets_at,
     }
+
+
+def _codex_resets_at(value: Any) -> str | None:
+    """Normalize a Codex ``resets_at`` to an ISO-8601 ``...Z`` string.
+
+    Codex emits the reset either as an ISO string or as a Unix epoch (seconds).
+    The countdown math (:func:`_minutes_to_reset`) and the desktop panel (which
+    ``Date.parse``es the value) both need a string, so epoch numbers were being
+    silently dropped, hiding the Codex reset time. Coerce both forms here.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    if isinstance(value, (int, float)):
+        try:
+            return _iso_z(datetime.fromtimestamp(float(value), tz=UTC))
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
 
 
 # --------------------------------------------------------------------------- #
