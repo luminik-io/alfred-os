@@ -209,7 +209,6 @@ function App() {
       {tab === "compose" ? (
         <ComposeView
           baseUrl={baseUrl}
-          intakeProfile={snapshot?.status.intake_profile}
           selectedRepos={snapshot?.status.setup_repos?.selected || shipped?.repos || []}
           onSwitch={goTo}
         />

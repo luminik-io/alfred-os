@@ -33,13 +33,11 @@ import type {
   FilePlanIssueResponse,
 } from "../types";
 import { LifecycleCard, type RepoChip } from "./LifecycleCard";
-import { PlainModeToggle } from "./PlainModeToggle";
 
-// Plain-language prompt for a non-developer. The old DSL (title:/problem:/repo:)
-// is gone: a designer should be able to type in their own words. The server's
-// planning assistant still produces the same structured draft; the optional
-// ALFRED_INTAKE_PROFILE=plain server env makes the assistant ask plain
-// questions and hide jargon in its summary (see intake_profiles.py).
+// Plain-language prompt for a non-developer. Compose always speaks plain: a
+// person describes the outcome in their own words and Alfred asks only for what
+// is missing, then produces the structured draft. There is no plain/technical
+// toggle; every converse call sends plain.
 const PLACEHOLDER = "Describe the outcome, who needs it, and any limits Alfred should respect.";
 
 const STARTERS = [
@@ -153,33 +151,16 @@ function draftCardFrom(result: ConverseResponse | ComposeDraftResponse): DraftCa
 
 export function ComposeView({
   baseUrl,
-  intakeProfile,
   selectedRepos = [],
   onSwitch,
 }: {
   baseUrl: string;
-  // The active server-side intake profile from /api/status. "plain" makes the
-  // refiner ask plain questions and hide jargon, so Compose confirms the mode
-  // and softens its copy. Undefined on older servers; treated as technical.
-  intakeProfile?: string;
   selectedRepos?: string[];
   onSwitch: (tab: TabKey) => void;
 }) {
-  // Plain mode is a per-request toggle, seeded from the server's
-  // ALFRED_INTAKE_PROFILE default but flippable in-app. The chosen value rides
-  // each /api/compose/converse call as `plain`.
-  const serverPlainDefault = intakeProfile === "plain";
-  const [isPlainMode, setIsPlainMode] = useState(serverPlainDefault);
-  // Seed from the server default but keep following it until the operator flips
-  // the switch: Compose can mount before the first /api/status arrives.
-  const [plainPinned, setPlainPinned] = useState(false);
-  useEffect(() => {
-    if (!plainPinned) setIsPlainMode(serverPlainDefault);
-  }, [serverPlainDefault, plainPinned]);
-  const onPlainToggle = (next: boolean) => {
-    setPlainPinned(true);
-    setIsPlainMode(next);
-  };
+  // Alfred Compose always speaks plain language: the person describes the
+  // outcome in their own words and Alfred asks only for what is missing. There
+  // is no technical/plain toggle; every /api/compose/converse call sends plain.
 
   // Whether a live engine is reachable. Starts true on native, false in the
   // browser; flips to false the first time the server reports no engine so we
@@ -279,7 +260,7 @@ export function ComposeView({
       draft_id: result?.draft_id,
       repos: contextReposForPlanning(result, selectedRepos),
       context_repos: contextReposForPlanning(result, selectedRepos),
-      plain: isPlainMode,
+      plain: true,
     };
 
     // Control commands (status, run, etc.) short-circuit before any planning.
@@ -371,7 +352,7 @@ export function ComposeView({
     } finally {
       finishIfCurrent();
     }
-  }, [baseUrl, busy, commitDraftResult, hasEngine, input, isPlainMode, result, selectedRepos, turns]);
+  }, [baseUrl, busy, commitDraftResult, hasEngine, input, result, selectedRepos, turns]);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -499,18 +480,13 @@ export function ComposeView({
         <header className="ask__head">
           <span className="ask__eyebrow">Ask Alfred</span>
           <div className="ask__head-controls">
-            <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
             <button className="ghost-button ask__reset" type="button" disabled={busy} onClick={reset}>
               <Sparkles size={14} aria-hidden="true" />
               <span>New chat</span>
             </button>
           </div>
         </header>
-      ) : (
-        <div className="ask__topbar">
-          <PlainModeToggle checked={isPlainMode} onChange={onPlainToggle} />
-        </div>
-      )}
+      ) : null}
 
       {started ? (
         <div className="ask__thread" ref={transcriptRef} role="log" aria-label="Conversation with Alfred">
@@ -535,9 +511,7 @@ export function ComposeView({
         <div className="ask__hero">
           <h1 className="ask__hero-title">What should Alfred do?</h1>
           <p className="ask__hero-sub">
-            {isPlainMode
-              ? "Say the outcome in your own words. Alfred asks only what is missing, then saves a plan you can file as a GitHub issue."
-              : "Give the outcome, repo scope, and constraints. Alfred prepares the GitHub handoff."}
+            Say the outcome in your own words. Alfred asks only what is missing, then saves a plan you can file as a GitHub issue.
           </p>
           {errorNotice}
           {composer}

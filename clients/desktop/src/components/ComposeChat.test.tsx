@@ -33,11 +33,10 @@ const controlMock = vi.mocked(conversationControl);
 const filePlanIssueMock = vi.mocked(filePlanIssue);
 const streamMock = vi.mocked(streamComposeConverse);
 
-function renderChat(intakeProfile?: string, selectedRepos = ["your-org/frontend"]) {
+function renderChat(selectedRepos = ["your-org/frontend"]) {
   return render(
     <ComposeView
       baseUrl="http://127.0.0.1:7010"
-      intakeProfile={intakeProfile}
       selectedRepos={selectedRepos}
       onSwitch={vi.fn()}
     />,
@@ -296,62 +295,18 @@ describe("ComposeView (conversational)", () => {
     ]);
   });
 
-  it("adapts its copy in plain intake mode", () => {
-    renderChat("plain");
-    // The hero headline is stable; the mode shows through the sub copy and the
-    // plain-language toggle.
+  it("always shows the plain hero copy and no plain/technical toggle", () => {
+    renderChat();
     expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
     expect(screen.getByText(/say the outcome in your own words/i)).toBeInTheDocument();
+    // Compose always speaks plain: there is no toggle to seed, sync, or flip.
+    expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
   });
 
-  it("seeds the plain-language toggle from the server intake profile and sends plain=true", async () => {
-    converseMock.mockResolvedValue(converseResponse());
-    const user = userEvent.setup();
-    renderChat("plain");
-
-    const toggle = screen.getByRole("switch", { name: /plain language/i });
-    expect(toggle).toBeChecked();
-
-    await send(user, "Build it");
-
-    await waitFor(() => expect(converseMock).toHaveBeenCalledTimes(1));
-    expect(converseMock.mock.calls[0][1].plain).toBe(true);
-  });
-
-  it("defaults the toggle off for a technical server and sends plain=false", async () => {
+  it("always sends plain=true to converse", async () => {
     converseMock.mockResolvedValue(converseResponse());
     const user = userEvent.setup();
     renderChat();
-
-    const toggle = screen.getByRole("switch", { name: /plain language/i });
-    expect(toggle).not.toBeChecked();
-
-    await send(user, "Build it");
-
-    await waitFor(() => expect(converseMock).toHaveBeenCalledTimes(1));
-    expect(converseMock.mock.calls[0][1].plain).toBe(false);
-  });
-
-  it("syncs the plain toggle when the server intake profile loads after mount", () => {
-    const { rerender } = renderChat(undefined);
-    expect(screen.getByRole("switch", { name: /plain language/i })).not.toBeChecked();
-
-    rerender(
-      <ComposeView baseUrl="http://127.0.0.1:7010" intakeProfile="plain" onSwitch={vi.fn()} />,
-    );
-    expect(screen.getByRole("switch", { name: /plain language/i })).toBeChecked();
-  });
-
-  it("lets a non-developer flip plain language on in-app, changing the sent flag", async () => {
-    converseMock.mockResolvedValue(converseResponse());
-    const user = userEvent.setup();
-    renderChat();
-
-    const toggle = screen.getByRole("switch", { name: /plain language/i });
-    expect(toggle).not.toBeChecked();
-    await user.click(toggle);
-    expect(toggle).toBeChecked();
-    expect(screen.getByText(/say the outcome in your own words/i)).toBeInTheDocument();
 
     await send(user, "Build it");
 

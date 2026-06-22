@@ -23,11 +23,10 @@ const composeDraftMock = vi.mocked(composeDraft);
 const conversationControlMock = vi.mocked(conversationControl);
 const filePlanIssueMock = vi.mocked(filePlanIssue);
 
-function renderComposeView(intakeProfile?: string, selectedRepos = ["your-org/frontend"]) {
+function renderComposeView(selectedRepos = ["your-org/frontend"]) {
   return render(
     <ComposeView
       baseUrl="http://127.0.0.1:7000"
-      intakeProfile={intakeProfile}
       selectedRepos={selectedRepos}
       onSwitch={vi.fn()}
     />,
@@ -139,7 +138,7 @@ describe("ComposeView", () => {
       }),
     );
     const user = userEvent.setup();
-    renderComposeView(undefined, ["your-org/frontend", "your-org/backend"]);
+    renderComposeView(["your-org/frontend", "your-org/backend"]);
 
     await send(user, "Fix the login copy");
 
@@ -185,19 +184,13 @@ describe("ComposeView", () => {
     expect(fileButtons[fileButtons.length - 1]).toBeEnabled();
   });
 
-  it("adapts its copy when the server is in plain intake mode", () => {
-    renderComposeView("plain");
-    // The hero headline is stable; the mode shows through the sub copy and toggle.
+  it("always shows the plain hero copy and no plain/technical toggle", () => {
+    renderComposeView();
     expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
     expect(screen.getByText(/say the outcome in your own words/i)).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: /plain language/i })).toBeChecked();
-  });
-
-  it("uses the default technical copy when no plain profile is active", () => {
-    renderComposeView("technical");
-    expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
-    expect(screen.getByText(/give the outcome, repo scope, and constraints/i)).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: /plain language/i })).not.toBeChecked();
+    // The plain/technical toggle is gone: Compose always speaks plain.
+    expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/give the outcome, repo scope, and constraints/i)).not.toBeInTheDocument();
   });
 
   it("surfaces an error and restores the typed message when the draft request fails", async () => {
