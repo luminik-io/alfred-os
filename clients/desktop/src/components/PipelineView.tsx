@@ -39,6 +39,7 @@ import type {
 } from "../types";
 import { EmptyState } from "./atoms";
 import { LifecycleCard, type RepoChip } from "./LifecycleCard";
+import { Markdown } from "./Markdown";
 import { Button } from "./ui/button";
 import {
   Sheet,
@@ -307,6 +308,9 @@ export function PipelineView({
                       column={col.key}
                       selected={selection?.kind === "card" && selection.key === cardKey(card)}
                       onSelect={() => setSelection({ kind: "card", key: cardKey(card) })}
+                      canQueue={canQueue}
+                      busyQueue={busyQueue}
+                      onQueueAction={onQueueAction}
                     />
                   ))
                 ) : (
@@ -494,11 +498,17 @@ function BoardLifecycleCard({
   column,
   selected,
   onSelect,
+  canQueue,
+  busyQueue,
+  onQueueAction,
 }: {
   card: ShippedCard;
   column: BoardColumn;
   selected: boolean;
   onSelect: () => void;
+  canQueue?: boolean;
+  busyQueue?: string | null;
+  onQueueAction?: QueueActionHandler;
 }) {
   const agent = agentForShipped(card);
   const action =
@@ -512,6 +522,24 @@ function BoardLifecycleCard({
         <span>Open PR</span>
       </button>
     ) : null;
+  // A queued issue can be held without opening the sheet. Revealed on hover or
+  // keyboard focus by LifecycleCard.
+  const actionable =
+    Boolean(canQueue) && column === "queued" && card.kind === "issue" && !card.demo && !!card.number;
+  const holding = busyQueue === `hold:${card.repo}#${card.number}`;
+  const hoverActions =
+    actionable && card.number && onQueueAction ? (
+      <button
+        className="card-hover-action"
+        type="button"
+        disabled={holding}
+        title={holding ? "Holding" : "Hold"}
+        aria-label={holding ? "Holding this issue" : "Hold this issue"}
+        onClick={() => onQueueAction(card.repo, card.number as number, "hold")}
+      >
+        <Ban size={14} aria-hidden="true" />
+      </button>
+    ) : null;
   return (
     <LifecycleCard
       chip={boardCardChip(card, column)}
@@ -520,6 +548,7 @@ function BoardLifecycleCard({
       outcome={cardOutcome(card)}
       attribution={agent ? <span>{agent}</span> : null}
       action={action}
+      hoverActions={hoverActions}
       selected={selected}
       onSelect={onSelect}
     />
@@ -672,9 +701,9 @@ function PlanInspector({
           </button>
         ) : null}
       </div>
-      <pre className="detail-pre">
+      <Markdown className="detail-md">
         {plan.content || plan.preview || "No plan body saved yet."}
-      </pre>
+      </Markdown>
     </div>
   );
 }

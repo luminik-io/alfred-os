@@ -310,7 +310,11 @@ export function useAlfred() {
             ? `Approved ${target}. Batman starts this exact scope on its next run.`
             : `Declined ${target}. Batman will not start this work.`;
         setActionNotice({ tone: "ok", message, domain: "plans" });
+        // Refresh both surfaces so the decision is live: the snapshot drops the
+        // plan out of Needs-you, and the Work board picks up the newly queued
+        // (or removed) item without a manual reload.
         await refresh(baseUrl);
+        await refreshShipped(baseUrl);
       } catch (err) {
         setActionNotice({
           tone: "error",
@@ -321,7 +325,7 @@ export function useAlfred() {
         setBusyPlanAction(null);
       }
     },
-    [baseUrl, refresh],
+    [baseUrl, refresh, refreshShipped],
   );
 
   const runPlanIssueFile = useCallback(

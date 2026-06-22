@@ -1962,6 +1962,101 @@ body {
   white-space: pre-wrap;
 }
 
+/* Rendered plan / work markdown inside the detail sheet. Replaces the old raw
+ * <pre> dump with real document formatting (headings, lists, tables, code). */
+.detail-md {
+  margin: 0.55rem 0 0;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--hairline);
+  border-radius: 0.65rem;
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+  color: var(--foreground);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.detail-md > :first-child {
+  margin-top: 0;
+}
+.detail-md > :last-child {
+  margin-bottom: 0;
+}
+.detail-md h1,
+.detail-md h2,
+.detail-md h3,
+.detail-md h4 {
+  margin: 1rem 0 0.4rem;
+  font-family: var(--font-heading);
+  font-weight: 650;
+  line-height: 1.25;
+}
+.detail-md h1 {
+  font-size: 1.05rem;
+}
+.detail-md h2 {
+  font-size: 0.98rem;
+}
+.detail-md h3,
+.detail-md h4 {
+  font-size: 0.9rem;
+}
+.detail-md p {
+  margin: 0.4rem 0;
+}
+.detail-md ul,
+.detail-md ol {
+  margin: 0.4rem 0;
+  padding-left: 1.2rem;
+}
+.detail-md li {
+  margin: 0.15rem 0;
+}
+.detail-md pre {
+  overflow: auto;
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--black), var(--background) 8%);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+.detail-md :not(pre) > code {
+  padding: 0.08rem 0.3rem;
+  border-radius: 0.35rem;
+  background: color-mix(in oklch, var(--black), var(--background) 12%);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.detail-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+}
+.detail-md th,
+.detail-md td {
+  border: 1px solid var(--hairline);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+.detail-md a,
+.md__link {
+  color: var(--primary);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md__unsafe-link {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
 .inline-notice {
   display: flex;
   align-items: center;
@@ -2190,12 +2285,22 @@ body {
   background: transparent;
   box-shadow: none;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.detail-panel__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .detail-panel__head span {
   color: var(--muted-foreground);
   font-size: 0.72rem;
   font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -3467,6 +3572,61 @@ body {
   transition:
     border-color 140ms ease-out,
     background 140ms ease-out;
+}
+
+/* Quick actions revealed on card hover or keyboard focus, so common actions do
+ * not require opening the detail sheet. Always visible on touch (no hover). */
+.alfred-card__hover {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 2;
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+.alfred-card:hover .alfred-card__hover,
+.alfred-card:focus-within .alfred-card__hover {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .alfred-card__hover {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+.card-hover-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 120ms ease-out,
+    border-color 120ms ease-out,
+    background 120ms ease-out;
+}
+.card-hover-action:hover:not(:disabled) {
+  color: var(--foreground);
+  border-color: var(--foreground);
+  background: var(--surface);
+}
+.card-hover-action:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .alfred-card--selected {
