@@ -2285,12 +2285,22 @@ body {
   background: transparent;
   box-shadow: none;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.detail-panel__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .detail-panel__head span {
   color: var(--muted-foreground);
   font-size: 0.72rem;
   font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
