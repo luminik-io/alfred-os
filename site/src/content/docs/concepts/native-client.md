@@ -42,7 +42,7 @@ The desktop package alone is not the agent runtime. It needs Alfred core, your
 GitHub auth, and at least one configured repo before it can show real plans,
 runs, and agents.
 
-Full implementation note and build commands: [`docs/NATIVE_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/NATIVE_CLIENT.md).
+Full implementation note and build commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md).
 
 ## Boundary
 

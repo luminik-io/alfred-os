@@ -13,7 +13,7 @@ and repair: what needs attention, which plans are waiting, why a run failed,
 which memory candidates are ready, and which local actions are safe to run next.
 It is a thin control surface, not a second runtime.
 
-Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md) and [`docs/NATIVE_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/NATIVE_CLIENT.md).
+Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md).
 
 ## The local control surface
 

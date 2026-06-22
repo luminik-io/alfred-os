@@ -32,7 +32,7 @@ convenience surface on top, not a dependency.
 The app navigation is five primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
 drawer. The public control model is documented in
-[`docs/NATIVE_CLIENT.md`](../../docs/NATIVE_CLIENT.md).
+[`docs/DESKTOP_CLIENT.md`](../../docs/DESKTOP_CLIENT.md).
 
 **Inbox** is the home / heartbeat: a pinned capacity / health strip over three
 in-page lanes. **Needs you** is approvals and failures waiting on you,

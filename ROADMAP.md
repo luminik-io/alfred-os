@@ -15,6 +15,33 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
+### v0.5.2: 2026-06-22
+
+Desktop interface parity, Redis Agent Memory as the default local memory layer,
+a smoother Slack planning thread, and fresher public proof.
+
+- Redis Agent Memory is now the default local memory layer, with FleetBrain kept
+  as the review and reliability layer. Install and integration docs describe both
+  as bundled local components.
+- Desktop interface parity: the native app ships the refreshed dark Inbox / Ask /
+  Work / Agents / Setup interface, with screenshot parity checks and pixel-sweep
+  hardening for local desktop routes.
+- Code-map repo graph: the code-map flow now builds a repo graph, giving Alfred a
+  stronger base for understanding codebase relationships before planning.
+- Slack planning threads are easier to use: only the first message needs the
+  Alfred mention, and follow-up replies stay attached to the same plan.
+- Proof telemetry reports anonymous aggregate counts to the hosted collector by
+  default unless disabled with `ALFRED_TELEMETRY_ENABLED=0`; the Worker stays
+  self-hostable for forks and private deployments, and the hosted counters handle
+  missing or stale live data defensively.
+- Site polish: fresher impact proof seed data, cleaner mobile hero layouts, and
+  launch copy that explains the real value, coding agents that keep work moving
+  from Slack, GitHub, or a rough plan while you are away.
+- Reliability fixes: workflow validation now resolves `actionlint` from common
+  local install paths so scheduled agents do not fail under a narrower launchd
+  PATH, and desktop visual QA uses isolated browser contexts with validated route
+  and navigation timeouts.
+
 ### v0.5.1: 2026-06-17
 
 Reliability, first-run trust polish, the first packaged native client, and the

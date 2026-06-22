@@ -27,8 +27,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
 - [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md): Redis Agent Memory, FleetBrain's local ledger role, provider chaining, and optional read-only fallback stores.
 - [`SLACK_UX.md`](SLACK_UX.md): Slack-native message shape, planning replies, approval flow, and anti-patterns.
-- [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md): Mac/Linux client direction, Slack-native boundary, and local API shape.
-- [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): Alfred Desktop tab by tab, the `alfred serve` API and native allowlist, and building native installers.
+- [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md): Alfred Desktop design rationale and tab-by-tab tour, the Slack-native boundary, the `alfred serve` API and native allowlist, and building native installers.
 - [`DESIGN.md`](DESIGN.md): the visual language for the native app and the site. Color tokens, the Instrument Sans plus Quicksand plus Fragment Mono type stack, glass surfaces, motion and `prefers-reduced-motion`, and accessibility.
 - [`GOALS.md`](GOALS.md): durable goal contract for Slack, CLI, client, planning readiness, evaluator, and memory integration.
 - [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).

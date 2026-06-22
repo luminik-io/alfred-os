@@ -3,10 +3,10 @@
 How Alfred Desktop (`clients/desktop`) and the marketing and
 docs site (`site/`) look and feel, so a contributor can add a screen or a page
 that matches what is already there. This is the visual-language reference. For
-Alfred Desktop's product direction and the Slack boundary, see
-[`NATIVE_CLIENT.md`](NATIVE_CLIENT.md); for the tab-by-tab operator tour and how
-to build installers, see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md). This page is
-the visual complement to those two, not a duplicate.
+Alfred Desktop's product direction, the Slack boundary, the tab-by-tab operator
+tour, and how to build installers, see
+[`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md). This page is the visual complement to
+that one, not a duplicate.
 
 Everything below is pulled from the live token files. If the code and this doc
 ever disagree, the code wins. The token sources are:

@@ -339,8 +339,7 @@ Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 - [Architecture diagrams](docs/ARCHITECTURE.md): mermaid diagrams for the agent lifecycle, model dispatch, locking, the Slack-native flow, the disk guardian, and the layered install.
 - [State machine](docs/STATE_MACHINE.md): `agent:in-flight` → `agent:pr-open` → `agent:done` lifecycle.
 - [Memory](docs/MEMORY_PROVIDERS.md): Redis Agent Memory for recalled lessons, local FleetBrain for the operational ledger and review queue, Slack-driven memory review, failure history, reliability governor, and read-only MCP access.
-- [Alfred Desktop](docs/NATIVE_CLIENT.md): Mac/Linux app, Slack-native boundary, the usage capacity rail (backed by the live `GET /api/usage` endpoint), cinematic agent roster, and local API shape.
-- [Desktop app guide](docs/DESKTOP_CLIENT.md): the desktop app tab by tab, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the `alfred serve` API, and building native installers.
+- [Alfred Desktop](docs/DESKTOP_CLIENT.md): the desktop app tab by tab, the Slack-native boundary, the Claude + Codex usage rail (backed by the live `GET /api/usage` endpoint), the cinematic agent roster, the `alfred serve` API, and building native installers.
 - [Alfred analytics CLIs](docs/CLI.md): `alfred metrics`, `alfred logs`, `alfred usage`, and `alfred slack-listener`.
 - [Goals](docs/GOALS.md): durable goal contract across Slack, CLI, client, planning readiness, evaluator, and memory.
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
@@ -380,16 +379,16 @@ Alfred has a deliberate shape. The boundaries below are intentional.
 - **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script; the core stays lean.
 
 The engineering fleet, local memory, reliability governor, `alfred serve`, and
-the signed macOS desktop app plus Linux desktop packages all ship in v0.5.1. Content, sales, and ops
+the signed macOS desktop app plus Linux desktop packages all ship today. Content, sales, and ops
 departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.5.1.** Alfred ships a local coding-agent fleet for solo
+**Latest release: v0.5.2.** Alfred ships a local coding-agent fleet for solo
 builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted
 workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling,
 Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
-v0.5.1 carries the first signed macOS desktop app and Linux desktop packages (built with Tauri),
+Alfred carries a signed macOS desktop app and Linux desktop packages (built with Tauri),
 live Claude and Codex subscription usage in that app, a single-repo
 approval gate, a disk guardian that pauses your agents cleanly when the
 disk is nearly full, a Slack planning path that turns an approved draft into a

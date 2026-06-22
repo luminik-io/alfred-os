@@ -218,7 +218,7 @@ flowchart TB
     ui -.->|open outside the app| slackthread
 ```
 
-The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; local plans and firing traces stay in native inspector panes, while explicit Slack and GitHub links open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, pause/resume/run, and local follow-up planning) and surface command audit detail with the result. There is no arbitrary shell execution. See [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the full client and API contracts, and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the tab-by-tab control surface and how to build native installers.
+The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; local plans and firing traces stay in native inspector panes, while explicit Slack and GitHub links open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, pause/resume/run, and local follow-up planning) and surface command audit detail with the result. There is no arbitrary shell execution. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design, the tab-by-tab control surface, and how to build native installers, and [`SERVE.md`](SERVE.md) for the API contract.
 
 ## Disk guardian
 
@@ -288,7 +288,7 @@ flowchart TB
 - **`client`** is Alfred Desktop under `clients/desktop`: fleet service control, a command center, plan/run/memory views, and safe local actions. It is a thin local control surface, not a second runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
 - **`slack`** is the planning listener plus the issue bridge. The listener (`lib/slack_listener.py`) runs in Socket Mode; the bridge (`lib/slack_issue_bridge.py`) is off by default and only ever files a labeled issue. The `serve` extra (`pip install 'alfred-os[serve]'`) pulls in FastAPI and uvicorn for `alfred serve`; `slack-sdk` and `boto3` are in the base install since v0.4.0.
 
-The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub issues and PRs, and Slack threads. The desktop app adds a safer local UI; it does not replace the fleet. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`NATIVE_CLIENT.md`](NATIVE_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
+The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub issues and PRs, and Slack threads. The desktop app adds a safer local UI; it does not replace the fleet. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
 
 Distribution follows the same shape. The fleet and CLI install from source; Alfred Desktop builds native installers; tagged releases are published from CI; and a secret scan gates every push.
 
