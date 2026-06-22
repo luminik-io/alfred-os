@@ -8,6 +8,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
+- Clarified launch docs and install copy around proof telemetry: Alfred reports anonymous aggregate counts to the hosted collector unless telemetry is disabled with `ALFRED_TELEMETRY_ENABLED=0`; the Worker remains self-hostable for forks and private deployments.
+
 ### Fixed
 
 ## [0.5.1] - 2026-06-17
@@ -21,7 +23,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 ### Added
 
 - Public `/download/` page with signed desktop artifact links for `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`, plus homepage download calls to action.
-- Proof telemetry plumbing for public aggregate install/use counters. New installs use Alfred's hosted collector by default, the worker is self-hostable, and `ALFRED_TELEMETRY_ENABLED=0` turns reporting off.
+- Proof telemetry plumbing for public aggregate install/use counters, including a self-hostable Worker and an environment switch to disable reporting.
 
 ### Changed
 
