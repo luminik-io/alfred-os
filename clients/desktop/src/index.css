@@ -2220,11 +2220,10 @@ body {
   min-height: 28rem;
 }
 
-/* Empty state: a top bar (just the plain-language toggle) over a single
- * centered hero. The hero owns the one headline, the composer, and the starter
- * chips, so the screen is not three copies of the same prompt. */
+/* Empty state: a single centered hero that owns the one headline, the composer,
+ * and the starter chips, so the screen is not three copies of the same prompt. */
 .ask--empty {
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.5rem;
 }
 
@@ -2243,12 +2242,6 @@ body {
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-.ask__topbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
 }
 
 /* The centered hero: headline, sub, composer, and starter chips stacked and
