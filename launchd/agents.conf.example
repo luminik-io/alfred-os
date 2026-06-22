@@ -55,4 +55,4 @@
 # an endpoint. The script sends only aggregate counts to ALFRED_TELEMETRY_URL,
 # and ALFRED_TELEMETRY_ENABLED=0 opts out. No repo names, code, prompts, titles,
 # branches, people, or hostnames are sent.
-#   my.fleet.proof-telemetry	proof-telemetry.py	cron:9:10	no		Anonymous usage totals
+#   my.fleet.proof-telemetry	proof-telemetry.py	interval:3600	no		Anonymous usage totals

@@ -178,7 +178,7 @@ def test_render_agents_conf_includes_batman(init_mod, tmp_path):
 def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10" in text
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600" in text
 
 
 def test_render_agents_conf_omits_telemetry_row_without_url(init_mod, tmp_path):
@@ -198,7 +198,7 @@ def test_render_agents_conf_schedules_telemetry_when_opted_in(init_mod, tmp_path
     state.telemetry_url = "https://worker.example.com/ingest"
     text = init_mod.render_agents_conf(state)
     assert (
-        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
         "alfred.proof-telemetry\tAnonymous usage totals" in text
     )
 
@@ -218,8 +218,8 @@ def test_render_agents_conf_telemetry_row_is_a_valid_schedule_record(init_mod, t
     label, script, schedule, needs_java, log_stem, role = fields
     assert label == "alfred.proof-telemetry"
     assert script == "proof-telemetry.py"
-    # cron:HH:MM is the daily schedule grammar deploy.sh understands.
-    assert schedule == "cron:9:10"
+    # interval:<seconds> is the default cadence grammar deploy.sh understands.
+    assert schedule == "interval:3600"
     assert needs_java == "no"
     assert log_stem == "alfred.proof-telemetry"
     assert role  # a non-empty operational descriptor
@@ -238,7 +238,7 @@ def test_opt_in_produces_both_schedule_and_env(init_mod, tmp_path):
     conf = init_mod.render_agents_conf(state)
     env = init_mod.env_assignments_for(state)
 
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10" in conf
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600" in conf
     assert env["ALFRED_TELEMETRY_ENABLED"] == "1"
     assert env["ALFRED_TELEMETRY_URL"] == "https://worker.example.com/ingest"
     assert env["ALFRED_TELEMETRY_TOKEN"] == "shared-secret"
@@ -377,7 +377,7 @@ def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_pat
     env = init_mod.env_assignments_for(state)
     conf = init_mod.render_agents_conf(state)
     assert env["ALFRED_TELEMETRY_ENABLED"] == "1"
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10" in conf
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600" in conf
 
 
 def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_path, capsys):

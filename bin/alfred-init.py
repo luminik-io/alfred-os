@@ -694,7 +694,7 @@ def render_agents_conf(state: WizardState) -> str:
     # create noise in doctor output.
     if state.telemetry_enabled and state.telemetry_url:
         lines.append(
-            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
             "alfred.proof-telemetry\tAnonymous usage totals"
         )
     return "\n".join(lines) + "\n"

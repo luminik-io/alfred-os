@@ -169,7 +169,7 @@ def test_doctor_accepts_no_url_telemetry_sentinel(tmp_path):
     bin_dir.mkdir(parents=True)
     launchd_dir.mkdir(parents=True)
     (launchd_dir / "agents.conf").write_text(
-        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
         "alfred.proof-telemetry\tAnonymous usage totals\n"
     )
     (bin_dir / "agent-launch").write_text(

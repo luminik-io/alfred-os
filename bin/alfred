@@ -121,7 +121,7 @@ PRIMARY_CLAUDE_DIR = Path.home() / ".claude"
 SECONDARY_CLAUDE_DIR = Path.home() / ".claude-secondary"
 TELEMETRY_LABEL = "alfred.proof-telemetry"
 TELEMETRY_ROW = (
-    f"{TELEMETRY_LABEL}\tproof-telemetry.py\tcron:9:10\tno\t"
+    f"{TELEMETRY_LABEL}\tproof-telemetry.py\tinterval:3600\tno\t"
     "alfred.proof-telemetry\tAnonymous usage totals"
 )
 TELEMETRY_ENV_KEYS = (
@@ -632,8 +632,8 @@ def _telemetry_row_state(path: Path) -> str:
 
 def _ensure_telemetry_scheduler_row(path: Path, schedule: str) -> bool:
     row = TELEMETRY_ROW
-    if schedule != "cron:9:10":
-        row = row.replace("\tcron:9:10\t", f"\t{schedule}\t", 1)
+    if schedule != "interval:3600":
+        row = row.replace("\tinterval:3600\t", f"\t{schedule}\t", 1)
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     lines: list[str] = []
     inserted = False
@@ -709,7 +709,7 @@ def _telemetry_schedule_error(schedule: str) -> str | None:
             if not raw_weekday.isdigit() or not 0 <= int(raw_weekday) <= 6:
                 return "weekly cron schedule must use weekday 0-6"
         else:
-            return "cron schedule must look like cron:9:10 or cron:0:22:00"
+            return "schedule must look like interval:3600, cron:9:10, or cron:0:22:00"
         if not raw_hour.isdigit() or not 0 <= int(raw_hour) <= 23:
             return "cron schedule hour must be 0-23"
         if not raw_minute.isdigit() or not 0 <= int(raw_minute) <= 59:
@@ -2150,8 +2150,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_telemetry_on.add_argument(
         "--schedule",
-        default="cron:9:10",
-        help="agents.conf cadence for the usage total reporter (default: cron:9:10)",
+        default="interval:3600",
+        help="agents.conf cadence for the usage total reporter (default: interval:3600)",
     )
     p_telemetry_on.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_on.add_argument("--agents-conf", help=argparse.SUPPRESS)

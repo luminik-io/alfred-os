@@ -132,7 +132,7 @@ def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_pa
     assert "ALFRED_TELEMETRY_TOKEN='shared secret'" in rc_text
     assert alfredrc.stat().st_mode & 0o777 == 0o600
     conf_text = agents_conf.read_text(encoding="utf-8")
-    assert conf_text.count("alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\t") == 1
+    assert conf_text.count("alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\t") == 1
 
     status = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
     payload = json.loads(status.stdout)
@@ -187,7 +187,7 @@ def test_telemetry_on_uses_hosted_default_without_url(tmp_path):
     rc_text = alfredrc.read_text(encoding="utf-8")
     assert "ALFRED_TELEMETRY_ENABLED=1" in rc_text
     assert f"ALFRED_TELEMETRY_URL={DEFAULT_TELEMETRY_URL}" in rc_text
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\t" in agents_conf.read_text(
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\t" in agents_conf.read_text(
         encoding="utf-8"
     )
 
@@ -534,7 +534,7 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
         )
         agents_conf = tmp_path / "agents.conf"
         agents_conf.write_text(
-            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
             "alfred.proof-telemetry\tAnonymous usage totals\n",
             encoding="utf-8",
         )
@@ -580,7 +580,7 @@ def test_telemetry_off_uses_saved_endpoint_when_hosted_default_is_disabled(tmp_p
         )
         agents_conf = tmp_path / "agents.conf"
         agents_conf.write_text(
-            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
             "alfred.proof-telemetry\tAnonymous usage totals\n",
             encoding="utf-8",
         )
@@ -623,7 +623,7 @@ def test_telemetry_off_keeps_saved_token_when_no_clear_url_exists(tmp_path):
     )
     agents_conf = tmp_path / "agents.conf"
     agents_conf.write_text(
-        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
         "alfred.proof-telemetry\tAnonymous usage totals\n",
         encoding="utf-8",
     )
@@ -651,7 +651,7 @@ def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
         )
         agents_conf = tmp_path / "agents.conf"
         agents_conf.write_text(
-            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
             "alfred.proof-telemetry\tAnonymous usage totals\n",
             encoding="utf-8",
         )
@@ -691,7 +691,7 @@ def test_telemetry_off_deletes_install_id_after_clear_succeeds(tmp_path):
         )
         agents_conf = tmp_path / "agents.conf"
         agents_conf.write_text(
-            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
             "alfred.proof-telemetry\tAnonymous usage totals\n",
             encoding="utf-8",
         )
@@ -727,7 +727,7 @@ def test_telemetry_off_preserves_install_id_when_clear_fails(tmp_path):
         )
         agents_conf = tmp_path / "agents.conf"
         agents_conf.write_text(
-            "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+            "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
             "alfred.proof-telemetry\tAnonymous usage totals\n",
             encoding="utf-8",
         )
@@ -764,7 +764,7 @@ def test_telemetry_off_removes_later_init_block_telemetry_values(tmp_path):
     )
     agents_conf = tmp_path / "agents.conf"
     agents_conf.write_text(
-        "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\tno\t"
+        "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
         "alfred.proof-telemetry\tAnonymous usage totals\n",
         encoding="utf-8",
     )
@@ -806,7 +806,7 @@ def test_telemetry_on_prefers_deploy_source_over_runtime_copy(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\t" in source_conf.read_text(
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\t" in source_conf.read_text(
         encoding="utf-8"
     )
     assert "alfred.proof-telemetry" not in runtime_conf.read_text(encoding="utf-8")
@@ -836,7 +836,7 @@ def test_telemetry_on_creates_source_agents_conf_when_marker_exists(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert source_conf.exists()
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tcron:9:10\t" in source_conf.read_text(
+    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\t" in source_conf.read_text(
         encoding="utf-8"
     )
 
@@ -874,7 +874,7 @@ def test_telemetry_on_rejects_tsv_breaking_schedule(tmp_path):
         "--url",
         "https://collector.example/ingest",
         "--schedule",
-        "cron:9:10\tmalicious",
+        "interval:3600\tmalicious",
     )
 
     assert result.returncode == 2
