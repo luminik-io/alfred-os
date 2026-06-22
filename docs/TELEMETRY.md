@@ -83,6 +83,36 @@ For the hosted public counter, Alfred keeps every public Impact total behind a
 trusted collector token. Anonymous reports can be accepted by the hosted
 collector, but they do not move public PR, issue, file, line, or machine totals.
 
+## Integrity and trust
+
+The public Impact number on the site is meant to be trustworthy, not merely
+optimistic. Four layers protect it:
+
+1. **Per-install write tokens.** `POST /register` mints a random token, returns
+   it once, and stores only its SHA-256 hash. `POST /ingest` verifies the token
+   on every report, so one install can replace only its own record and cannot
+   edit another install's counts.
+2. **Trusted-counts gate.** The hosted collector runs with
+   `TRUSTED_COUNTS_ONLY=1` (the default in `wrangler.toml`). Public totals move
+   only for reports that carry the trusted collector token, which lives in the
+   Worker secret store and never ships in the client. An anonymous or
+   self-registered report can refresh an active-install marker, but it cannot
+   add a single PR, issue, file, or line to the public number.
+3. **Anomaly clamps.** Each count field is coerced to a non-negative integer and
+   clamped to a sane ceiling (`MAX_PER_FIELD`, `MAX_LINES_CHANGED`) as defense in
+   depth, so a single report cannot spike a counter even from a trusted reporter.
+4. **Derive on read.** `GET /stats` recomputes the public total as the sum of
+   the current trusted install records, so a replayed or duplicated report never
+   double-counts and a tombstone cleanly removes an install.
+
+Be honest about the limit: an open-source client cannot be made unforgeable,
+because anyone can read the code and craft a request. The public number is
+trustworthy not because the client is unbreakable, but because untrusted
+reports never move it. To shift the public counter you would need the trusted
+collector token, which is not distributed. Forks that do not set
+`TRUSTED_COUNTS_ONLY` accept open reports by design and should treat their own
+totals accordingly.
+
 ## Local Preview
 
 To preview the payload without sending it:
