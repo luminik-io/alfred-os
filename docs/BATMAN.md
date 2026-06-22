@@ -244,13 +244,13 @@ batman, plan drafted for billing-v2 (4 child issue(s), 3 repo(s))
 No child issues are filed until this plan is approved.
 ```
 
-Operator reacts with `:white_check_mark:`. Batman files four child
+The configured approver reacts with `:white_check_mark:`. Batman files four child
 issues, each labelled `agent:implement` plus `agent:bundle:billing-v2`,
 each linked back to `your-org/your-product#42`. Lucius picks them up
 across the three repos on its next firings; no further Batman action is
-needed until the operator wants to start a new bundle.
+needed until the configured approver wants to start a new bundle.
 
-If the operator reacts with `:x:` instead, or if the approval timeout
+If the configured approver reacts with `:x:` instead, or if the approval timeout
 expires with no reaction, Batman halts and posts a report explaining
 which path was taken. No child issues are filed.
 

@@ -250,10 +250,10 @@ Safety model:
 
 ## Optional: Slack issue bridge
 
-The bridge is the wire that turns an *approved* planning draft into a labeled
-GitHub issue the autonomous fleet (Lucius / Batman) picks up. It is **off by
-default**. When enabled, the operator can approve a draft directly in its
-thread, and Alfred files one issue carrying the pickup label.
+The bridge turns an *approved* planning draft into a labeled GitHub issue the
+autonomous fleet (Batman / Lucius) picks up. It is **off by default**. When
+enabled, the configured approver can approve a draft directly in its thread, and
+Alfred files one issue carrying the pickup label.
 
 **What it does and does not do.** The bridge only runs `gh issue create` with
 the configured pickup label. It never runs code, opens worktrees, pushes
@@ -265,8 +265,9 @@ of bypassing it.
 **Five gates are all required** before an issue is created:
 
 1. The bridge is explicitly enabled with `ALFRED_BRIDGE_ENABLED=1`.
-2. The **operator** Slack user (`ALFRED_OPERATOR_SLACK_USER_ID`). Trusted
-   collaborators can refine drafts, but cannot file them as GitHub issues.
+2. The **configured approver** (`ALFRED_OPERATOR_SLACK_USER_ID`). Trusted
+   collaborators can shape drafts, but they cannot file them into GitHub unless
+   they are also the configured approver.
 3. An **explicit approval token** in a registered draft thread: a configured
    phrase (default `ship it` / `create issue` / `file issue` / `/ship`) or a
    `:white_check_mark:` reaction on the draft. Ambiguous prose is never treated
@@ -350,8 +351,8 @@ from chat by **leading a message with a known verb**. These are handled by
 | `pause <codename>` | Stop scheduled firings for one agent (or `all`). |
 | `resume <codename>` | Reverse a pause. |
 | `trusted` | Show the configured approver and trusted Slack users Alfred currently accepts. |
-| `trust <@user>` | Operator-only. Add a local Slack collaborator without a listener restart. |
-| `untrust <@user>` | Operator-only. Remove a locally trusted Slack collaborator. |
+| `trust <@user>` | Configured-approver command. Add a local Slack collaborator without a listener restart. |
+| `untrust <@user>` | Configured-approver command. Remove a locally trusted Slack collaborator. |
 | `help` | List these commands. |
 
 DM Alfred or @-mention it, e.g. `pause lucius` or `status`. Nothing extra to

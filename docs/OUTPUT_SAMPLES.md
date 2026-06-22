@@ -73,7 +73,7 @@ Total: $0.90 / 87 turns / 3 PRs
 
 When it appears: Batman scanned `BATMAN_SCAN_REPOS`, found an
 `agent:large-feature` issue, resolved its bundle, and posted the plan.
-Batman pauses at the plan until the operator approves it.
+Batman pauses at the plan until the configured approver approves it.
 
 ```
 batman · plan drafted
@@ -84,7 +84,7 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-Approval:     waiting for operator go-ahead
+Approval:     waiting for configured approval
 Next:         approve in Slack or the configured gate. After approval, Batman
               files and supervises the child issue sequence.
 ```

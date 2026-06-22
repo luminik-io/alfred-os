@@ -8,7 +8,7 @@ the configured approver reacts with an approve or reject emoji.
 
 This guide walks through the full setup. If you already have a Slack bot
 token wired up via [`docs/SLACK_SETUP.md`](SLACK_SETUP.md), skip to
-[Configuring the operator](#3-configure-the-operator).
+[Configuring the approver](#3-configure-the-approver).
 
 ## Why reaction-based
 
@@ -17,9 +17,9 @@ Reactions beat reply-text on two axes that matter for autonomous fleets:
 - **Unambiguous semantics.** A reaction is a discrete event. Free-text
   replies invite ambiguity ("looks good but change X"), which an agent
   cannot disambiguate without a second LLM call.
-- **Operator-only enforcement.** Each reaction carries a Slack user id,
+- **Configured-approver enforcement.** Each reaction carries a Slack user id,
   so the gate can reject any reaction from a teammate without parsing.
-  A reply has the same author field but pressuring the operator to
+  A reply has the same author field but asking the approver to
   type "approved" every time adds friction.
 
 If you need richer feedback than approve/reject, use the plan thread as
@@ -36,12 +36,12 @@ remove repo: my-org/site
 question: should this wait for a clearer spec?
 ```
 
-Plain-language replies are still captured as operator notes. Alfred posts
+Plain-language replies are still captured as approver notes. Alfred posts
 a concise plan-revision reply in-thread. On approval, repo add/remove
 replies amend execution scope before children are filed; the interpreted
 notes are also carried into child issues and repo-worker prompts. Replies
 from trusted teammates can amend the plan, but only the configured
-operator's reaction can approve or reject it. Any explicit `question:`
+approver's reaction can approve or reject it. Any explicit `question:`
 reply keeps the plan from executing until it is resolved.
 
 ## 1. Create the Slack app
@@ -61,13 +61,13 @@ Scopes**:
 | `reactions:read` | Read which users reacted with which emoji. |
 | `channels:read` | Resolve channel names to channel ids. |
 | `groups:read` | Same, for private channels. |
-| `channels:history` | Read operator replies from public-channel plan threads. |
-| `groups:history` | Read operator replies from private-channel plan threads. |
-| `im:read` | Same, if the operator wants approvals in DM. |
-| `users:read` | Optional. Useful for logging the operator's display name. |
+| `channels:history` | Read approver replies from public-channel plan threads. |
+| `groups:history` | Read approver replies from private-channel plan threads. |
+| `im:read` | Same, if the approver wants approvals in DM. |
+| `users:read` | Optional. Useful for logging the approver's display name. |
 
 The `reactions:write` scope is **not** required. The bot never reacts on
-the operator's behalf.
+the approver's behalf.
 
 A minimal manifest snippet to paste under **Features -> App Manifest**:
 
@@ -141,11 +141,11 @@ resort. This path is intended for short-lived caches that AWS resolvers
 populate, but it can also be pre-seeded by hand for fully offline setups.
 Override with `ALFRED_SLACK_BOT_TOKEN_CACHE`.
 
-## 3. Configure the operator
+## 3. Configure the approver
 
 The gate accepts reactions from **exactly one** Slack user id. Find your
 own id at https://app.slack.com/client (profile menu -> **Copy member
-ID**); operator ids look like `U0123ABCDEF`.
+ID**); approver ids look like `U0123ABCDEF`.
 
 ```sh
 export ALFRED_OPERATOR_SLACK_USER_ID=U0123ABCDEF
@@ -202,10 +202,10 @@ result = gate.await_approval(
 )
 if result.approved:
     for item in result.feedback:
-        print(f"operator amendment: {item.text}")
+        print(f"approver amendment: {item.text}")
     proceed()
 elif result.rejected:
-    abort_with_message(f"Operator rejected: see {post['ts']}")
+    abort_with_message(f"Configured approver rejected: see {post['ts']}")
 else:
     raise RuntimeError(f"approval did not resolve: {result.verdict} ({result.detail})")
 ```
@@ -215,7 +215,7 @@ else:
 | Variable | Purpose | Default |
 |---|---|---|
 | `ALFRED_OPERATOR_SLACK_USER_ID` | Slack user id whose reactions are the only ones that count | (required) |
-| `ALFRED_TRUSTED_SLACK_USER_IDS` | Comma-separated Slack user ids whose thread replies can amend plans | operator only |
+| `ALFRED_TRUSTED_SLACK_USER_IDS` | Comma-separated Slack user ids whose thread replies can amend plans | configured approver only |
 | `SLACK_BOT_TOKEN` | Bot token; used directly when set | unset |
 | `SLACK_APP_TOKEN` / `ALFRED_SLACK_APP_TOKEN` | App-level Socket Mode token for the optional planning listener | unset |
 | `ALFRED_SLACK_BOT_USER_ID` | Bot user id; listener ignores its own messages | unset |
@@ -245,7 +245,7 @@ the plan and clear it after the verdict resolves. See the
 [issue claim state machine](../site/src/content/docs/concepts/state-machine.md)
 for how this label fits the rest of the lifecycle.
 
-## Operator-only check semantics
+## Configured-approver check semantics
 
 - A reaction from **anyone other than** `ALFRED_OPERATOR_SLACK_USER_ID`
   is ignored. The gate keeps polling.
@@ -253,7 +253,7 @@ for how this label fits the rest of the lifecycle.
   and `ALFRED_TRUSTED_SLACK_USER_IDS` are ignored before any draft or feedback
   file is written.
 - The check is by Slack user id, not display name; renaming the
-  operator's profile does not affect approval.
+  approver's profile does not affect approval.
 - Removing a reaction does **not** rewind a verdict. Once approval (or
   rejection) is returned, the verdict is final for that polling cycle.
   Future cycles see the current reaction set fresh.
@@ -261,7 +261,7 @@ for how this label fits the rest of the lifecycle.
 ## Timeout and transport-down semantics
 
 - `timeout_s` (default 900s = 15min) bounds the wall-clock wait.
-  `APPROVAL_TIMEOUT` is returned if the operator does not react within
+  `APPROVAL_TIMEOUT` is returned if the configured approver does not react within
   the window. For overnight gates, pass an explicit longer value (e.g.
   `timeout_s=86400` for 24h) as the examples above do.
 - After five consecutive `reactions.get` failures, the gate returns

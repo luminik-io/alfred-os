@@ -122,8 +122,10 @@ What it does **not** do (deliberately):
 - Choose which agents should run. Use `./bin/alfred-init.py` for that.
 - Run `deploy.sh`. That side-effects the host scheduler (`launchd` on macOS,
   `systemd --user` on Linux); you should know what's about to load.
-- Install an external agent gateway, memory database, MCP server, dashboard, or
-  skill bundle. `ALFRED_HOME` is only Alfred's runtime root.
+- Install a hosted agent gateway, hosted MCP server, dashboard, or skill bundle.
+  Redis Agent Memory is provisioned locally for recalled lessons; `deploy.sh`
+  starts the local service. FleetBrain stays under `ALFRED_HOME` for review and
+  reliability state.
 
 ## Non-interactive
 

@@ -108,12 +108,12 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-To proceed, the operator approves the plan in the configured approval surface.
+To proceed, the configured approver approves the plan in Slack or the configured approval surface.
 After approval, Batman files one scoped child issue per repo and labels each
 issue for the normal fleet pickup path.
 ```
 
-Batman does not bypass the operator. It waits for the approval gate, then files
+Batman does not bypass the approval gate. It waits for approval, then files
 child issues rather than opening worktrees directly. Lucius claims those issues
 through the same label, lock, spend, review, and merge gates as any other work.
 

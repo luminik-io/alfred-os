@@ -132,7 +132,7 @@ p { margin: 0; }
 
 @media (max-width: 480px) {
   :root {
-    --text-display-xl: 34px;
+    --text-display-xl: 32px;
     --text-display-lg: 28px;
     --text-display-md: 24px;
     --text-h2: 21px;
@@ -142,6 +142,9 @@ p { margin: 0; }
      the viewport edge on phones. */
   .m-display-xl { letter-spacing: 0; }
   h1 { letter-spacing: 0; }
+  h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
+    text-wrap: pretty;
+  }
 }
 
 /* Display headlines should wrap at natural word boundaries. Browser

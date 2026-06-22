@@ -1,46 +1,46 @@
 {
-  "generated_at": "2026-06-20T13:36:22.180Z",
+  "generated_at": "2026-06-22T02:37:37.529Z",
   "source": {
     "label": "Alfred product setup",
     "note": "Aggregate-only snapshot from GitHub data visible to the site build token. The source repos stay in Actions config and are not committed here. PRs and issues count only when they carry configured Alfred signals."
   },
   "window": {
     "days": 30,
-    "from": "2026-05-21T13:36:22.180Z",
-    "to": "2026-06-20T13:36:22.180Z"
+    "from": "2026-05-23T02:37:37.529Z",
+    "to": "2026-06-22T02:37:37.529Z"
   },
   "summary": {
     "repos_scanned": 9,
-    "agent_prs_merged": 141,
-    "agent_issues_opened": 439,
-    "agent_issues_closed": 407,
-    "lines_added": 39487,
-    "lines_removed": 10817,
-    "files_changed": 550,
-    "total_prs_merged": 942,
-    "total_issues_opened": 466,
-    "total_issues_closed": 444
+    "agent_prs_merged": 136,
+    "agent_issues_opened": 358,
+    "agent_issues_closed": 355,
+    "lines_added": 42427,
+    "lines_removed": 14326,
+    "files_changed": 587,
+    "total_prs_merged": 1157,
+    "total_issues_opened": 414,
+    "total_issues_closed": 423
   },
   "trend": [
     {
-      "week": "May 21",
-      "prs_merged": 82
+      "week": "May 23",
+      "prs_merged": 76
     },
     {
-      "week": "May 28",
-      "prs_merged": 30
+      "week": "May 30",
+      "prs_merged": 26
     },
     {
-      "week": "Jun 4",
-      "prs_merged": 3
+      "week": "Jun 6",
+      "prs_merged": 6
     },
     {
-      "week": "Jun 11",
-      "prs_merged": 17
+      "week": "Jun 13",
+      "prs_merged": 21
     },
     {
-      "week": "Jun 18",
-      "prs_merged": 9
+      "week": "Jun 20",
+      "prs_merged": 7
     }
   ]
 }

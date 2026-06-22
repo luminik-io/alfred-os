@@ -178,14 +178,14 @@ Agent Memory Server. Use `alfred brain redis-sync --dry-run` before
 Unreviewed memory candidates and raw event logs stay local.
 
 By default, engine-returned reflection blocks go to the review queue. If you
-want trusted operator-only runs to write lessons directly, set:
+want trusted local runs to write lessons directly, set:
 
 ```sh
 export ALFRED_MEMORY_REFLECTION_MODE=direct
 ```
 
-Most operators should keep the default. Review with `alfred brain candidates`,
-promote durable lessons, and reject anything speculative.
+Most installs should keep the default. Review with `alfred brain candidates`,
+approve durable lessons, and reject anything speculative.
 
 ## The outbox + ingest loop
 
@@ -274,13 +274,13 @@ as product regressions.
 `alfred brain governor` combines repeated failure patterns, stale workers, and
 memory-promotion suggestions into one review action list. It is still
 read-only: it does not pause a codename, create an issue, or mutate memory. It
-gives the operator and the local dashboard a single place to see what needs
+gives the configured approver and the local dashboard a single place to see what needs
 attention next.
 
 `alfred brain harvest` is the write-side companion for repeated failures. It
 previews candidate lessons by default and only writes when run with `--apply`.
-The generated rows stay in the memory-candidate queue until the operator
-promotes or rejects them.
+The generated rows stay in the memory-candidate queue until the configured
+approver approves or rejects them.
 
 `bin/memory-harvest.py` is the scheduler wrapper for that same loop. It runs
 `alfred brain harvest --apply --json`, posts to Slack only when new candidates
@@ -355,7 +355,7 @@ memory sync
 ```
 
 `remember ...` and `memory remember ...` stage candidates; they do not become
-prompt context. Promotion and rejection stay operator-only. Alfred Desktop
+prompt context. Approval and rejection stay configured-approver only. Alfred Desktop
 uses the same local candidate queue through `alfred serve`, so Slack, CLI, and
 client review the same rows. `memory harvest` previews repeated-failure lessons
 from the reliability governor; `memory harvest now` queues those lessons as

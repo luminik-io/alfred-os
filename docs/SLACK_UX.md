@@ -89,10 +89,10 @@ Rules:
   before collecting trusted replies. Captured context is also written to
   `$ALFRED_HOME/state/followups/` and appears in the local Plans inbox as a
   `needs follow-up` item.
-- From the local Plans detail page, a trusted user can convert a captured
+- From the local Plans detail page, trusted users can convert a captured
   follow-up into a scoped planning draft for the next pass. The configured
-  approver can also mark it handled. Both actions archive the original
-  follow-up and remain local-only.
+  approver can also mark it handled without drafting. Both actions archive the
+  original follow-up and remain local-only.
 
 ## Slack Planning Inbox Commands
 
@@ -149,11 +149,10 @@ open questions: none
 
 Rules:
 
-- Only configured trusted users can create drafts or amend threads.
-- Trusted collaborators can steer plans and create drafts. The Slack user set in
-  `ALFRED_OPERATOR_SLACK_USER_ID` is the only person who can add or remove local
-  collaborators with `trust <@user>` and `untrust <@user>`, and approve
-  execution.
+- Only the configured approver and trusted users can create drafts or amend threads.
+- The configured approver can add or remove local Slack collaborators with `trust <@user>`
+  and `untrust <@user>`. Trusted collaborators can steer plans and create
+  drafts; execution approval still belongs to the configured approver.
 - If trusted users are not configured, Alfred ignores every event.
 - Intake creates local draft JSON under `$ALFRED_HOME/state/planning-drafts/`.
 - Replies in the intake thread revise the same saved draft, regenerate the issue
@@ -165,8 +164,8 @@ Rules:
 - Planning memory may appear as advisory hints when memory is enabled, but the
   current Slack thread and readiness findings still win.
 - Chat intake never files issues, opens PRs, merges, or approves execution.
-- A draft can graduate into a GitHub issue only through an explicit action by
-  the Slack user set in `ALFRED_OPERATOR_SLACK_USER_ID`, outside the listener.
+- A draft can graduate into a GitHub issue only through an explicit action from
+  the configured approver outside the listener.
 
 ## Tone
 
@@ -211,4 +210,4 @@ Alfred should sound like a calm engineering lead:
 - Raw JSON, raw timestamps, or local filesystem paths as the main content.
 - A long plan excerpt without the decision, scope, and next action above it.
 - A PR notification without issue and thread links.
-- Audience-specific wording when the feature is for every trusted user.
+- Audience-specific wording when the feature is for every Alfred user.
