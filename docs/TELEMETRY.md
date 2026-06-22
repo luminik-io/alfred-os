@@ -86,7 +86,7 @@ collector, but they do not move public PR, issue, file, line, or machine totals.
 ## Integrity and trust
 
 The public Impact number on the site is meant to be trustworthy, not merely
-optimistic. Four layers protect it:
+optimistic. Five layers protect it:
 
 1. **Per-install write tokens.** `POST /register` mints a random token, returns
    it once, and stores only its SHA-256 hash. `POST /ingest` verifies the token
@@ -97,11 +97,15 @@ optimistic. Four layers protect it:
    only for reports that carry the trusted collector token, which lives in the
    Worker secret store and never ships in the client. An anonymous or
    self-registered report can refresh an active-install marker, but it cannot
-   add a single PR, issue, file, or line to the public number.
+   add a single PR, issue, file, line, or active-install count to the public
+   number.
 3. **Anomaly clamps.** Each count field is coerced to a non-negative integer and
    clamped to a sane ceiling (`MAX_PER_FIELD`, `MAX_LINES_CHANGED`) as defense in
    depth, so a single report cannot spike a counter even from a trusted reporter.
-4. **Derive on read.** `GET /stats` recomputes the public total as the sum of
+4. **Rate limiting.** A coarse per-source limit (`RATE_LIMIT_MAX_PER_WINDOW`,
+   keyed on a one-way hash of the client IP) caps how fast any one source can
+   report, so a flood of writes cannot grind the collector or churn the counts.
+5. **Derive on read.** `GET /stats` recomputes the public total as the sum of
    the current trusted install records, so a replayed or duplicated report never
    double-counts and a tombstone cleanly removes an install.
 

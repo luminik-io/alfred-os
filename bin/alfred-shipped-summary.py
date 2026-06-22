@@ -131,7 +131,12 @@ def agent_labels() -> frozenset[str]:
         # Explicit opt-out: count every merged PR / issue, labelled or not.
         return frozenset()
     if raw:
-        return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+        parsed = frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+        if parsed:
+            return parsed
+        # A non-* value that parses to nothing (just commas or whitespace) is a
+        # misconfiguration, not an opt-out. Fall back to the defaults rather than
+        # silently counting every PR and issue like the wildcard would.
     return frozenset(label.lower() for label in DEFAULT_AGENT_LABELS)
 
 

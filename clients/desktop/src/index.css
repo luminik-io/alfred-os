@@ -2041,7 +2041,6 @@ body {
   padding: 0.3rem 0.5rem;
   text-align: left;
 }
-.detail-md a,
 .md__link {
   color: var(--primary);
   background: none;

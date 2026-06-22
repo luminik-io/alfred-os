@@ -343,6 +343,13 @@ def test_agent_labels_override_and_wildcard(monkeypatch, tmp_path):
     assert mod.agent_labels() == frozenset()
     assert mod.is_agent_authored({"labels": []}, mod.agent_labels()) is True
 
+    # A non-wildcard value that parses to nothing (just commas or whitespace) is
+    # a misconfiguration, not an opt-out: fall back to defaults instead of
+    # silently counting every item like the wildcard.
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_AGENT_LABELS", " , ,")
+    assert "agent:authored" in mod.agent_labels()
+    assert mod.is_agent_authored({"labels": []}, mod.agent_labels()) is False
+
 
 def test_wildcard_counts_unlabelled_prs(monkeypatch, tmp_path):
     mod = load_module(monkeypatch, tmp_path)

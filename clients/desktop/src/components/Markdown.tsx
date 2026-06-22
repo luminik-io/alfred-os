@@ -12,10 +12,10 @@ import { isSafeExternalUrl, openExternal } from "../lib/links";
  */
 export function Markdown({
   children,
-  className = "md",
+  className,
 }: {
   children: string;
-  className?: string;
+  className: string;
 }) {
   return (
     <div className={className}>
