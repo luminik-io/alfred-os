@@ -3,7 +3,6 @@ import {
   BackgroundVariant,
   Controls,
   Handle,
-  MiniMap,
   type NodeProps,
   Position,
   ReactFlow,
@@ -151,17 +150,6 @@ export function WorkflowGraph({
         <FitToContainer signature={signature} />
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
         <Controls showInteractive={false} position="bottom-right" />
-        <MiniMap
-          className="workflow-graph__minimap"
-          pannable
-          zoomable
-          ariaLabel="Workflow minimap"
-          nodeColor={(node) =>
-            node.type === "agent"
-              ? ((node.data as { accent?: string }).accent ?? "#888")
-              : "transparent"
-          }
-        />
       </ReactFlow>
     </div>
   );

@@ -959,13 +959,22 @@ body {
 .agents-deck__command {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  /* Query container so the stat grid can pick 2- vs 4-up from the header's own
+     width (which depends on the sidebar), not the viewport. */
+  container-type: inline-size;
+  container-name: agentscommand;
 }
 
 .agents-deck__command .agents-deck__summary {
-  flex: 1 1 420px;
+  flex: 1 1 320px;
+}
+
+/* When the toggle wraps below the stats on a narrow header, keep it right-aligned. */
+.agents-deck__command .agents-deck__viewtoggle {
+  margin-left: auto;
 }
 
 .agents-deck__viewtoggle {
@@ -1064,23 +1073,6 @@ body {
 @media (max-width: 880px) {
   .workflow-graph {
     height: min(54svh, 460px);
-  }
-}
-
-.workflow-graph__minimap {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: color-mix(in oklch, var(--card), var(--background) 20%);
-}
-
-.workflow-graph__minimap .react-flow__minimap-mask {
-  fill: color-mix(in oklch, var(--background), transparent 35%);
-}
-
-/* The minimap crowds very small canvases; hide it there and lean on fit + controls. */
-@media (max-width: 560px) {
-  .workflow-graph__minimap {
-    display: none;
   }
 }
 
@@ -1431,7 +1423,9 @@ body {
   gap: 0.5rem;
 }
 
-@media (min-width: 1280px) {
+/* Stats go 4-up once the header itself is wide enough; otherwise a clean 2x2.
+   Never the awkward 3+1 that plain auto-fit produced. */
+@container agentscommand (min-width: 600px) {
   .agents-deck__summary {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
