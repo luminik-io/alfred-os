@@ -593,6 +593,7 @@ def cmd_auto_promote(args: argparse.Namespace) -> int:
         "  held for human: "
         f"behavior-change={summary['flagged_behavior_change']}, "
         f"duplicate={summary['skipped_duplicate']}, "
+        f"judge-lowered={summary['held_low_confidence']}, "
         f"already-held={summary['skipped_flagged']}"
     )
     print(

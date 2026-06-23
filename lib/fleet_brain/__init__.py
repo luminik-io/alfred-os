@@ -525,6 +525,7 @@ class FleetBrain:
             "skipped_duplicate": 0,
             "skipped_flagged": 0,
             "flagged_behavior_change": 0,
+            "held_low_confidence": 0,
             "judge_errors": 0,
             "judge_calls": 0,
             "judge_budget_exhausted": False,
@@ -656,11 +657,15 @@ class FleetBrain:
                 # that failed the structural bar.
                 confidence = min(confidence, verdict.confidence)
                 if confidence < bar:
+                    # The judge lowered confidence under the bar. Unlike a purely
+                    # structural skip (which leaves the row pending for the next
+                    # run), this row was JUDGED and is HELD for a human, so count
+                    # it as a hold, not a transient low-confidence skip.
                     self.hold_candidate_for_review(
                         candidate.id,
                         note=(f"LLM judge confidence {confidence:.3f} < {bar:.3f}"),
                     )
-                    summary["skipped_low_confidence"] += 1
+                    summary["held_low_confidence"] += 1
                     continue
                 note = (
                     f"auto-promoted (structural + LLM judge "

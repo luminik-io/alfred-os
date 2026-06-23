@@ -67,8 +67,10 @@ def _run_auto_promote(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _held_count(payload: dict[str, Any]) -> int:
-    return int(payload.get("flagged_behavior_change") or 0) + int(
-        payload.get("skipped_duplicate") or 0
+    return (
+        int(payload.get("flagged_behavior_change") or 0)
+        + int(payload.get("skipped_duplicate") or 0)
+        + int(payload.get("held_low_confidence") or 0)
     )
 
 

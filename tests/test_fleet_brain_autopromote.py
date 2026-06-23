@@ -182,7 +182,10 @@ def test_judge_lowering_confidence_below_bar_holds(brain: FleetBrain) -> None:
     c = _candidate(brain, "a structurally strong but judged-weak lesson", confidence=0.95)
     summary = brain.auto_promote_candidates(env=ARM, threshold=0.9, judge=lambda _p: _verdict(0.4))
     assert summary["promoted"] == []
-    assert summary["skipped_low_confidence"] == 1
+    # A judge-lowered row is HELD for a human, not counted as a transient
+    # structural skip (which would leave it pending for the next run).
+    assert summary["held_low_confidence"] == 1
+    assert summary["skipped_low_confidence"] == 0
     row = brain.store.get_memory_candidate(c.id)
     assert row is not None and row.review_note is not None
     assert row.review_note.startswith("[held-for-review]")
