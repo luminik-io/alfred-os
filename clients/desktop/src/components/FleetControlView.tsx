@@ -437,6 +437,7 @@ function AgentInspector({
               type="button"
               variant="default"
               disabled={busy("resume")}
+              aria-busy={busy("resume")}
               onClick={() => onDispatch("resume", row.codename, "Resume")}
             >
               <Play aria-hidden="true" />
@@ -448,6 +449,7 @@ function AgentInspector({
               type="button"
               variant="outline"
               disabled={busy("pause")}
+              aria-busy={busy("pause")}
               onClick={() => onDispatch("pause", row.codename, "Pause")}
             >
               <Pause aria-hidden="true" />
@@ -460,6 +462,7 @@ function AgentInspector({
                 type="button"
                 variant="secondary"
                 disabled={busy("run")}
+                aria-busy={busy("run")}
                 onClick={() => onDispatch("run", row.codename, "Run")}
               >
                 <RotateCw aria-hidden="true" />
@@ -469,6 +472,7 @@ function AgentInspector({
                 type="button"
                 variant="secondary"
                 disabled={busy("dry_run")}
+                aria-busy={busy("dry_run")}
                 onClick={() => onDispatch("dry_run", row.codename, "Dry-run")}
               >
                 <Square aria-hidden="true" />
@@ -510,6 +514,7 @@ function AgentInspector({
               variant="outline"
               aria-label={`Set ${row.codename} schedule`}
               disabled={busy("schedule") || !draftCadence.trim()}
+              aria-busy={busy("schedule")}
               onClick={() => onDispatch("schedule", row.codename, "Set schedule", draftCadence)}
             >
               {busy("schedule") ? "Setting" : "Set"}
