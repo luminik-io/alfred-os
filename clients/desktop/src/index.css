@@ -2990,6 +2990,23 @@ body {
   color: var(--destructive);
 }
 
+/* Unread items. NotificationsView sets `feed-item--new` but there was no rule
+   for it, so the only unread cue was a 0.45rem pip. For an inbox whose whole
+   job is "what needs attention now", give unread rows a left status bar plus a
+   faint tint and a bolder title: a non-color-only cue (WCAG 1.4.1) that reads
+   at a glance. */
+.feed-item--new {
+  border-color: color-mix(in oklch, var(--accent), var(--border) 45%);
+  background: color-mix(in oklch, var(--accent), var(--card) 92%);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.feed-item--new .feed-item__head strong {
+  font-weight: 700;
+}
+
 .feed-item__body {
   min-width: 0;
 }
@@ -3276,6 +3293,17 @@ body {
 .console-agent-row input {
   min-height: 2.35rem;
   padding: 0.55rem 0.65rem;
+}
+
+/* These bare inputs had no focus-visible ring, so keyboard users got no
+   indication of focus. Match the outline pattern used elsewhere (selects,
+   stepper, pipeline assign) so focus is consistent across the app. */
+.server-row input:focus-visible,
+.trusted-form input:focus-visible,
+.console-agent-row input:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--ring), transparent 35%);
+  outline-offset: 1px;
+  border-color: var(--ring);
 }
 
 .console-agent-row label {
