@@ -2942,6 +2942,32 @@ body {
   font-size: 0.72rem;
 }
 
+.feed-groups {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.feed-group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.feed-group__title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+/* The count rides the uppercase section label but reads as plain text. */
+.feed-group__count {
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted-foreground);
+}
+
 .feed-list {
   display: grid;
   gap: 0.55rem;
@@ -3501,9 +3527,27 @@ body {
   .server-row,
   .trusted-form__row,
   .console-agent-row,
-  .attention-card,
-  .feed-item__row {
+  .attention-card {
     grid-template-columns: 1fr;
+  }
+
+  /* Keep the feed row's icon beside the text instead of collapsing to a
+     single column (which stranded the icon on its own line and detached the
+     timestamp). Icon stays left; the time/chevron wrap under the body. */
+  .feed-item__row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .feed-item__row > svg {
+    grid-row: 1;
+  }
+
+  .feed-item__body {
+    grid-column: 2;
+  }
+
+  .feed-item__side {
+    grid-column: 2;
   }
 
   .feed-item__side,

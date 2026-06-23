@@ -22,22 +22,26 @@ export function NotificationsView({
    *  panel chrome + header so it does not nest a card inside a card. */
   embedded?: boolean;
 }) {
+  // Triage queues, not one undivided stream: anything waiting on the operator
+  // ("needs you") is pinned above the passive run history. Each keeps the
+  // newest-first order buildFeed already applied.
+  const needsYou = feed.filter((item) => item.kind === "needs-you");
+  const runs = feed.filter((item) => item.kind === "firing");
+
   const body = (
     <>
       <p className="panel-intro">
-        Recent firings and governor &ldquo;needs you&rdquo; items collect here instead of macOS
-        banners. Use this when you want the raw stream behind Inbox.
+        Everything your agents did and anything that needs your call, newest first.
       </p>
       {feed.length ? (
-        <ol className="feed-list">
-          {feed.map((item) => (
-            <FeedRow key={item.id} item={item} isNew={!seen.has(item.id)} onOpen={onOpenTarget} />
-          ))}
-        </ol>
+        <div className="feed-groups">
+          <FeedSection title="Needs you" items={needsYou} seen={seen} onOpen={onOpenTarget} />
+          <FeedSection title="Recent runs" items={runs} seen={seen} onOpen={onOpenTarget} />
+        </div>
       ) : (
         <EmptyState
           title="No activity yet."
-          body="Once agents fire or the governor flags a needs-you item, it appears here newest-first."
+          body="Once your agents run or something needs your attention, it shows up here, newest first."
         />
       )}
     </>
@@ -56,6 +60,36 @@ export function NotificationsView({
         onAction={unseen ? onMarkAllSeen : undefined}
       />
       {body}
+    </section>
+  );
+}
+
+function FeedSection({
+  title,
+  items,
+  seen,
+  onOpen,
+}: {
+  title: string;
+  items: FeedItem[];
+  seen: Set<string>;
+  onOpen?: (target: FeedTarget) => void;
+}) {
+  if (!items.length) {
+    return null;
+  }
+  const newCount = items.reduce((n, item) => (seen.has(item.id) ? n : n + 1), 0);
+  return (
+    <section className="feed-group">
+      <h3 className="subsection-title feed-group__title">
+        <span>{title}</span>
+        <span className="feed-group__count">{newCount ? `${newCount} new` : items.length}</span>
+      </h3>
+      <ol className="feed-list">
+        {items.map((item) => (
+          <FeedRow key={item.id} item={item} isNew={!seen.has(item.id)} onOpen={onOpen} />
+        ))}
+      </ol>
     </section>
   );
 }
