@@ -140,6 +140,10 @@ export function WorkflowGraph({
         nodesConnectable={false}
         edgesFocusable={false}
         nodesDraggable={false}
+        // We render our own selected state (data-selected) from the inspector,
+        // so disable React Flow's native selection to avoid a second indicator.
+        // onNodeClick still fires.
+        elementsSelectable={false}
         proOptions={{ hideAttribution: false }}
         onNodeClick={(_event, node) => {
           if (node.type === "agent") {

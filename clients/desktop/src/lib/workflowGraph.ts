@@ -83,10 +83,6 @@ function laneIndex(id: WorkflowLaneId): number {
   return WORKFLOW_LANES.findIndex((lane) => lane.id === id);
 }
 
-function laneOf(codename: string): WorkflowLane | undefined {
-  return WORKFLOW_LANES.find((lane) => lane.agents.includes(codename));
-}
-
 // Center a lane's agents vertically around y=0 so the pipeline reads as a band.
 function yWithinLane(indexInLane: number, laneSize: number): number {
   return (indexInLane - (laneSize - 1) / 2) * NODE_GAP_Y;
@@ -151,5 +147,3 @@ export function buildWorkflowGraph(
 
   return { nodes, edges };
 }
-
-export const __test = { laneOf, laneIndex, yWithinLane };
