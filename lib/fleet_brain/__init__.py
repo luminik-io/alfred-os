@@ -507,17 +507,21 @@ class FleetBrain:
 
         LLM judge (additive, default ON when armed, gated behind
         ``ALFRED_AUTO_PROMOTE_LLM_JUDGE``): for each candidate that clears the
-        structural gate, an LLM is asked whether the lesson is safe to promote.
-        The verdict only ever makes the gate STRICTER:
+        structural gate, an LLM is asked whether the lesson is safe to save.
+        The verdict shapes the outcome:
 
-          * ``changes_agent_behavior`` => held for a human, stays a candidate;
+          * ``changes_agent_behavior`` => still AUTO-SAVED like any other safe
+            verdict (the judge decides; the save is reversible), just recorded
+            with a distinct note and counted under ``auto_saved_behavior_change``
+            so the audit trail flags it. It no longer holds for a human;
           * ``is_duplicate``           => held for a human (dedup owns merging);
-          * otherwise the judge confidence is taken as the LOWER of itself and
-            the structural confidence (never a rescue);
+          * the judge confidence is taken as the LOWER of itself and the
+            structural confidence (never a rescue), and a candidate that falls
+            below the bar after that is held for a human;
           * FAIL-SOFT: any LLM error/timeout/parse/empty judgment leaves the
-            candidate PENDING. A candidate is NEVER auto-promoted on a failed or
-            empty judgment, only on an explicit safe verdict that also clears
-            the threshold. With the judge disabled, the heuristic alone gates.
+            candidate PENDING. A candidate is NEVER auto-saved on a failed or
+            empty judgment, only on an explicit verdict that also clears the
+            threshold. With the judge disabled, the heuristic alone gates.
 
         Promotions are capped per run (``max_per_run``) and recorded with
         ``reviewer="auto"`` so the whole batch stays auditable. ``judge`` is an
@@ -536,6 +540,10 @@ class FleetBrain:
             "skipped_conflict": 0,
             "skipped_duplicate": 0,
             "skipped_flagged": 0,
+            "auto_saved_behavior_change": 0,
+            # Kept at 0 for back-compat: behavior-changing verdicts are now
+            # auto-saved (counted under ``auto_saved_behavior_change``) rather
+            # than held, so nothing increments this any more.
             "flagged_behavior_change": 0,
             "held_low_confidence": 0,
             "judge_errors": 0,
@@ -658,14 +666,6 @@ class FleetBrain:
                     # auto-promote. Leave the candidate pending for the human.
                     summary["judge_errors"] += 1
                     continue
-                if verdict.changes_agent_behavior:
-                    rationale = verdict.rationale or "changes agent behavior"
-                    self.hold_candidate_for_review(
-                        candidate.id,
-                        note=f"behavior-changing: {rationale}",
-                    )
-                    summary["flagged_behavior_change"] += 1
-                    continue
                 if verdict.is_duplicate:
                     # Hold (not reject): a rejected row drops out of the dedup
                     # index, so the next harvest would re-propose, re-create, and
@@ -692,10 +692,21 @@ class FleetBrain:
                     )
                     summary["held_low_confidence"] += 1
                     continue
-                note = (
-                    f"auto-promoted (structural + LLM judge "
-                    f"confidence={confidence:.3f} >= {bar:.3f})"
-                )
+                if verdict.changes_agent_behavior:
+                    # Behavior-changing but otherwise safe and above the bar:
+                    # AUTO-SAVE it (the judge decided; every auto-save is
+                    # reversible) with a distinct note so the audit trail flags
+                    # it. Counted separately from ordinary saves.
+                    summary["auto_saved_behavior_change"] += 1
+                    note = (
+                        f"auto-saved (behavior-changing; structural + LLM judge "
+                        f"confidence={confidence:.3f} >= {bar:.3f})"
+                    )
+                else:
+                    note = (
+                        f"auto-promoted (structural + LLM judge "
+                        f"confidence={confidence:.3f} >= {bar:.3f})"
+                    )
 
             try:
                 self.promote_memory_candidate(candidate.id, reviewer=reviewer, review_note=note)

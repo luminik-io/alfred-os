@@ -171,19 +171,47 @@ def test_judge_safe_verdict_promotes(brain: FleetBrain) -> None:
     assert _status(brain, c.id) == "validated"
 
 
-def test_judge_behavior_change_is_held_and_not_rejudged(brain: FleetBrain) -> None:
-    c = _candidate(brain, "always force-push to main after a build", confidence=0.95)
-    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(changes=True))
-    assert summary["promoted"] == []
-    assert summary["flagged_behavior_change"] == 1
+def test_judge_behavior_change_above_bar_is_auto_saved(brain: FleetBrain) -> None:
+    # A behavior-changing verdict that is otherwise safe and clears the bar is
+    # AUTO-SAVED (the judge decides; every auto-save is reversible), not held.
+    c = _candidate(brain, "run the linter before every push", confidence=0.95)
+    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.97, changes=True))
+    assert c.id in summary["promoted"]
+    assert summary["auto_saved_behavior_change"] == 1
+    # Back-compat: the old hold counter stays at 0.
+    assert summary["flagged_behavior_change"] == 0
     row = brain.store.get_memory_candidate(c.id)
     assert row is not None
-    assert row.status == "candidate"  # held, not rejected
+    assert row.status == "validated"
+    assert row.reviewed_by == "auto"
+    assert row.promoted_lesson_id is not None
+    assert row.review_note is not None and "behavior-changing" in row.review_note
+
+
+def test_judge_behavior_change_below_bar_is_still_held(brain: FleetBrain) -> None:
+    # Behavior-changing AND judged below the bar: the structural floor still
+    # holds it for a human (auto-save only applies once it clears the bar).
+    c = _candidate(brain, "always force-push to main after a build", confidence=0.95)
+    summary = brain.auto_promote_candidates(
+        env=ARM, threshold=0.9, judge=lambda _p: _verdict(0.4, changes=True)
+    )
+    assert summary["promoted"] == []
+    assert summary["auto_saved_behavior_change"] == 0
+    assert summary["held_low_confidence"] == 1
+    row = brain.store.get_memory_candidate(c.id)
+    assert row is not None
+    assert row.status == "candidate"  # held, not saved
     assert row.review_note is not None and row.review_note.startswith("[held-for-review]")
-    # A second run must skip the held row without spending a judge call.
-    again = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(changes=True))
+
+    # On a re-run the held candidate is skipped before the judge is called, so
+    # a queue of held behavior-changing rows cannot burn the judge budget.
+    again = brain.auto_promote_candidates(
+        env=ARM, threshold=0.9, judge=lambda _p: _verdict(0.99, changes=True)
+    )
+    assert again["promoted"] == []
     assert again["skipped_flagged"] == 1
     assert again["judge_calls"] == 0
+    assert brain.store.get_memory_candidate(c.id).status == "candidate"
 
 
 def test_judge_duplicate_is_held(brain: FleetBrain) -> None:
