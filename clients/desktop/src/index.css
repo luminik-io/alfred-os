@@ -1048,6 +1048,161 @@ body {
   padding-right: 0.125rem;
 }
 
+/* Workflow graph: the delivery pipeline (React Flow) as lanes + handoffs. */
+.workflow-graph {
+  min-height: 0;
+  height: min(72svh, 660px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 12%);
+  overflow: hidden;
+}
+
+.workflow-graph .react-flow__background {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 68%);
+}
+
+.workflow-graph .react-flow__edge-path {
+  stroke: color-mix(in oklch, var(--primary), var(--border) 45%);
+  stroke-width: 1.5;
+}
+
+.workflow-graph .react-flow__edge.animated .react-flow__edge-path {
+  stroke: var(--primary);
+}
+
+.workflow-graph .react-flow__controls {
+  box-shadow: none;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.workflow-graph .react-flow__controls-button {
+  background: var(--card);
+  border-bottom-color: var(--border);
+  color: var(--foreground);
+}
+
+.workflow-graph .react-flow__controls-button:hover {
+  background: color-mix(in oklch, var(--primary), var(--card) 88%);
+}
+
+.workflow-graph .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.workflow-graph .react-flow__attribution {
+  background: transparent;
+  font-size: 0.58rem;
+  opacity: 0.45;
+}
+
+/* Lane heading above each column. */
+.wf-lane {
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Agent node: monogram, name + role, live status + runs. */
+.wf-node {
+  --agent-accent: var(--primary);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "mark body"
+    "meta meta";
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  width: 200px;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.wf-node:hover {
+  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 40%);
+  transform: translateY(-1px);
+}
+
+.wf-node[data-selected="true"] {
+  border-color: var(--agent-accent);
+  box-shadow:
+    0 0 0 1px var(--agent-accent),
+    inset 3px 0 0 var(--agent-accent);
+}
+
+.wf-node__mark {
+  grid-area: mark;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--agent-accent), transparent 84%);
+  color: var(--agent-accent);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.wf-node__body {
+  grid-area: body;
+  min-width: 0;
+}
+
+.wf-node__name {
+  display: block;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-node__role {
+  display: block;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-node__meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+}
+
+.wf-node__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.wf-node__handle {
+  width: 6px;
+  height: 6px;
+  background: color-mix(in oklch, var(--primary), var(--border) 30%);
+  border: none;
+}
+
 .agent-card {
   --agent-accent: var(--primary);
   position: relative;

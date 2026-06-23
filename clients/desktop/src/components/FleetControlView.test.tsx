@@ -82,7 +82,7 @@ function renderView(onRunLocalAction = vi.fn(), schedule: ScheduledRun[] = SCHED
 describe("FleetControlView", () => {
   beforeEach(() => {
     // Roster view mode persists in localStorage; reset so each test starts on
-    // the cinematic default regardless of order.
+    // the workflow default regardless of order.
     try {
       window.localStorage.clear();
     } catch {
@@ -90,18 +90,18 @@ describe("FleetControlView", () => {
     }
   });
 
-  it("defaults to the cinematic roster and toggles to the dense list", async () => {
+  it("defaults to the workflow view and toggles to the dense list", async () => {
     renderView();
     const user = userEvent.setup();
-    const cinematic = screen.getByRole("button", { name: /cinematic view/i });
+    const workflow = screen.getByRole("button", { name: /workflow view/i });
     const list = screen.getByRole("button", { name: /list view/i });
-    expect(cinematic).toHaveAttribute("aria-pressed", "true");
+    expect(workflow).toHaveAttribute("aria-pressed", "true");
     expect(list).toHaveAttribute("aria-pressed", "false");
 
     await user.click(list);
     expect(list).toHaveAttribute("aria-pressed", "true");
-    expect(cinematic).toHaveAttribute("aria-pressed", "false");
-    // Selecting an agent still works in either view.
+    expect(workflow).toHaveAttribute("aria-pressed", "false");
+    // Selecting an agent works in the list view.
     await user.click(screen.getByRole("button", { name: /select bane/i }));
     expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
   });
@@ -110,13 +110,16 @@ describe("FleetControlView", () => {
     renderView();
     const user = userEvent.setup();
 
-    // The deck selects the running agent first, so only that agent's controls show.
+    // The roster selects the running agent first, so only that agent's controls show.
     expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Resume$/i })).not.toBeInTheDocument();
 
+    // Switch to the list to pick a specific agent (the graph renders no
+    // measurable nodes in jsdom), then select the paused one.
+    await user.click(screen.getByRole("button", { name: /list view/i }));
     await user.click(screen.getByRole("button", { name: /select bane/i }));
     expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
-    // The cinematic card and the inspector both surface the paused state.
+    // The list row and the inspector both surface the paused state.
     expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
   });
 
@@ -157,9 +160,10 @@ describe("FleetControlView", () => {
     const user = userEvent.setup();
 
     expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /list view/i }));
     await user.click(screen.getByRole("button", { name: /select bane/i }));
     expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
-    // The cinematic card and the inspector both surface the paused state.
+    // The list row and the inspector both surface the paused state.
     expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
   });
 
