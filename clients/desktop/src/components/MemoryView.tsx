@@ -148,7 +148,9 @@ function LessonCard({
 }) {
   const isPromoting = busyMemoryAction === `${candidate.id}:promote`;
   const isRejecting = busyMemoryAction === `${candidate.id}:reject`;
-  const busy = Boolean(busyMemoryAction);
+  // Only THIS card is busy while it acts. The old `Boolean(busyMemoryAction)`
+  // disabled every card's buttons whenever any single candidate was acting.
+  const busy = isPromoting || isRejecting;
   const origin = lessonOrigin(candidate.source);
   const OriginIcon = origin.icon;
   const matters = whyItMatters(candidate.severity);
@@ -200,6 +202,7 @@ function LessonCard({
             className="icon-button"
             type="button"
             disabled={busy}
+            aria-busy={isPromoting}
             onClick={() => onMemoryCandidateAction(candidate.id, "promote")}
           >
             <Check size={16} aria-hidden="true" />
@@ -209,6 +212,7 @@ function LessonCard({
             className="secondary-button"
             type="button"
             disabled={busy}
+            aria-busy={isRejecting}
             onClick={() => onMemoryCandidateAction(candidate.id, "reject")}
           >
             <X size={16} aria-hidden="true" />
