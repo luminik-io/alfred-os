@@ -50,6 +50,13 @@
 # failure patterns, posts only when there is something to review, and never
 # promotes lessons by itself.
 #   my.fleet.memory-harvest	memory-harvest.py	cron:8:05	no		Memory candidate harvester
+#
+# Opt-in: gated memory auto-promotion. Promotes ONLY high-confidence,
+# evidence-backed, judge-approved candidates into recall, capped per run, and
+# leaves everything else for the human review queue. Stays a true no-op until
+# ALFRED_AUTO_PROMOTE=1 arms it; ALFRED_AUTO_PROMOTE_KILL=1 halts it without
+# editing config. Run after the harvest so freshly queued candidates are seen.
+#   my.fleet.memory-auto-promote	memory-auto-promote.py	cron:8:20	no		Gated memory auto-promoter
 
 # Anonymous usage totals. This line stays commented until an install configures
 # an endpoint. The script sends only aggregate counts to ALFRED_TELEMETRY_URL,
