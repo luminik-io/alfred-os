@@ -115,6 +115,17 @@ def test_low_confidence_and_missing_evidence_stay_pending(brain: FleetBrain) -> 
     assert _status(brain, bare.id) == "candidate"
 
 
+def test_no_judge_holds_default_confidence_candidate_pending(brain: FleetBrain) -> None:
+    # The low bar is only safe because the judge decides. With the judge
+    # explicitly off, a default-confidence (0.5) candidate must NOT be blindly
+    # auto-promoted: the no-judge floor keeps the structural gate selective.
+    c = _candidate(brain, "a default-confidence observation", confidence=0.5)
+    summary = brain.auto_promote_candidates(env=ARM_NO_JUDGE)
+    assert summary["promoted"] == []
+    assert summary["skipped_low_confidence"] == 1
+    assert _status(brain, c.id) == "candidate"
+
+
 def test_default_confidence_candidate_reaches_judge_and_saves(brain: FleetBrain) -> None:
     # Autonomy: a candidate at the default confidence (0.5) with evidence must
     # REACH the LLM judge under the default 0.5 bar and be saved when the judge
