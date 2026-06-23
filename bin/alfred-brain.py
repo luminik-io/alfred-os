@@ -565,6 +565,49 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_auto_promote(args: argparse.Namespace) -> int:
+    brain = _build_brain(args)
+    summary = brain.auto_promote_candidates(
+        threshold=args.threshold,
+        max_per_run=args.max_per_run,
+    )
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        return 0
+    if not summary["enabled"]:
+        print(
+            "alfred-brain: auto-promotion is disarmed. Set ALFRED_AUTO_PROMOTE=1 "
+            "to arm it (ALFRED_AUTO_PROMOTE_KILL=1 overrides).",
+            file=sys.stderr,
+        )
+        return 0
+    promoted = summary["promoted"]
+    print(
+        f"alfred-brain: auto-promote considered {summary['considered']} candidate(s), "
+        f"promoted {len(promoted)} "
+        f"(threshold={summary['threshold']:.2f}, cap={summary['cap']})"
+    )
+    if promoted:
+        print(f"  promoted: {', '.join(promoted)}")
+    print(
+        "  held for human: "
+        f"behavior-change={summary['flagged_behavior_change']}, "
+        f"duplicate={summary['skipped_duplicate']}, "
+        f"judge-lowered={summary['held_low_confidence']}, "
+        f"already-held={summary['skipped_flagged']}"
+    )
+    print(
+        "  skipped: "
+        f"low-confidence={summary['skipped_low_confidence']}, "
+        f"no-evidence={summary['skipped_no_evidence']}, "
+        f"conflict={summary['skipped_conflict']}"
+    )
+    if summary["judge_enabled"]:
+        budget = ", budget-exhausted" if summary["judge_budget_exhausted"] else ""
+        print(f"  judge: calls={summary['judge_calls']}, errors={summary['judge_errors']}{budget}")
+    return 0
+
+
 def _build_redis_provider() -> RedisAgentMemoryProvider:
     return RedisAgentMemoryProvider.from_env()
 
@@ -1146,6 +1189,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_harvest.add_argument("--apply", action="store_true")
     p_harvest.add_argument("--json", action="store_true")
     p_harvest.set_defaults(func=cmd_harvest)
+
+    p_auto_promote = sub.add_parser(
+        "auto-promote",
+        help="promote high-confidence, judge-approved candidates (ALFRED_AUTO_PROMOTE)",
+    )
+    p_auto_promote.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Confidence bar (default ALFRED_AUTO_PROMOTE_THRESHOLD or 0.9).",
+    )
+    p_auto_promote.add_argument(
+        "--max-per-run",
+        dest="max_per_run",
+        type=int,
+        default=None,
+        help="Promotions per run (default ALFRED_AUTO_PROMOTE_MAX_PER_RUN or 5).",
+    )
+    p_auto_promote.add_argument("--json", action="store_true")
+    p_auto_promote.set_defaults(func=cmd_auto_promote)
 
     p_redis_status = sub.add_parser("redis-status", help="check Redis Agent Memory Server")
     p_redis_status.add_argument("--json", action="store_true")
