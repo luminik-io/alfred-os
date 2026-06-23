@@ -54,6 +54,18 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => undefined;
 }
 
+// React Flow (the workflow graph) observes its container size; jsdom has no
+// ResizeObserver, so stub it. The graph renders no measurable nodes in jsdom,
+// so component tests that need to select a specific agent use the List view.
+if (!("ResizeObserver" in globalThis)) {
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+}
+
 // The Tauri opener plugin is not available in jsdom; stub it so components
 // that import it (via lib/links) can render without a real Tauri runtime.
 vi.mock("@tauri-apps/plugin-opener", () => ({

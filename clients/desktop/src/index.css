@@ -959,13 +959,22 @@ body {
 .agents-deck__command {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  /* Query container so the stat grid can pick 2- vs 4-up from the header's own
+     width (which depends on the sidebar), not the viewport. */
+  container-type: inline-size;
+  container-name: agentscommand;
 }
 
 .agents-deck__command .agents-deck__summary {
-  flex: 1 1 420px;
+  flex: 1 1 320px;
+}
+
+/* When the toggle wraps below the stats on a narrow header, keep it right-aligned. */
+.agents-deck__command .agents-deck__viewtoggle {
+  margin-left: auto;
 }
 
 .agents-deck__viewtoggle {
@@ -1046,6 +1055,176 @@ body {
   max-height: min(72svh, 660px);
   overflow-y: auto;
   padding-right: 0.125rem;
+}
+
+/* Workflow graph: the delivery pipeline (React Flow) as lanes + handoffs.
+   Height tracks the viewport so it stays in frame across screen sizes; the
+   graph re-fits on resize (see FitToContainer). */
+.workflow-graph {
+  min-height: 340px;
+  height: min(72svh, 660px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 12%);
+  overflow: hidden;
+}
+
+/* When the inspector stacks below on narrow screens, give it room. */
+@media (max-width: 880px) {
+  .workflow-graph {
+    height: min(54svh, 460px);
+  }
+}
+
+.workflow-graph .react-flow__background {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 68%);
+}
+
+.workflow-graph .react-flow__edge-path {
+  stroke: color-mix(in oklch, var(--primary), var(--border) 45%);
+  stroke-width: 1.5;
+}
+
+.workflow-graph .react-flow__edge.animated .react-flow__edge-path {
+  stroke: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-graph .react-flow__edge.animated .react-flow__edge-path {
+    animation: none;
+  }
+}
+
+.workflow-graph .react-flow__controls {
+  box-shadow: none;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.workflow-graph .react-flow__controls-button {
+  background: var(--card);
+  border-bottom-color: var(--border);
+  color: var(--foreground);
+}
+
+.workflow-graph .react-flow__controls-button:hover {
+  background: color-mix(in oklch, var(--primary), var(--card) 88%);
+}
+
+.workflow-graph .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.workflow-graph .react-flow__attribution {
+  background: transparent;
+  font-size: 0.58rem;
+  opacity: 0.45;
+}
+
+/* Lane heading above each column. */
+.wf-lane {
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Agent node: monogram, name + role, live status + runs. */
+.wf-node {
+  --agent-accent: var(--primary);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "mark body"
+    "meta meta";
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  width: 200px;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.wf-node:hover {
+  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 40%);
+  transform: translateY(-1px);
+}
+
+.wf-node[data-selected="true"] {
+  border-color: var(--agent-accent);
+  box-shadow:
+    0 0 0 1px var(--agent-accent),
+    inset 3px 0 0 var(--agent-accent);
+}
+
+.wf-node__mark {
+  grid-area: mark;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--agent-accent), transparent 84%);
+  color: var(--agent-accent);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.wf-node__body {
+  grid-area: body;
+  min-width: 0;
+}
+
+.wf-node__name {
+  display: block;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-node__role {
+  display: block;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-node__meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+}
+
+.wf-node__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.wf-node__handle {
+  width: 6px;
+  height: 6px;
+  background: color-mix(in oklch, var(--primary), var(--border) 30%);
+  border: none;
 }
 
 .agent-card {
@@ -1244,7 +1423,9 @@ body {
   gap: 0.5rem;
 }
 
-@media (min-width: 1280px) {
+/* Stats go 4-up once the header itself is wide enough; otherwise a clean 2x2.
+   Never the awkward 3+1 that plain auto-fit produced. */
+@container agentscommand (min-width: 600px) {
   .agents-deck__summary {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }

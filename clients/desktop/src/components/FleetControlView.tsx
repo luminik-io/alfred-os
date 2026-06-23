@@ -1,12 +1,12 @@
 import {
   Clock3,
-  LayoutGrid,
   Pause,
   Play,
   Rows3,
   RotateCw,
   ScrollText,
   Square,
+  Workflow as WorkflowIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -20,7 +20,9 @@ import {
   type FleetServiceState,
 } from "../lib/fleetControl";
 import type { NativeActionRequest } from "../lib/uiTypes";
+import { WORKFLOW_AGENTS, type WorkflowNodeInput } from "../lib/workflowGraph";
 import type { AgentSummary, NativeAction, ScheduledRun } from "../types";
+import { WorkflowGraph } from "./WorkflowGraph";
 import { AlfredMetric, AlfredStatusDot, type AlfredTone } from "./ui/alfred";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -55,16 +57,16 @@ const SCHEDULE_OPTIONS: Array<{ value: string; label: string }> = [
 
 type PendingAction = { action: NativeAction; codename: string; label: string } | null;
 
-type RosterView = "cinematic" | "list";
+type RosterView = "workflow" | "list";
 const ROSTER_VIEW_KEY = "alfred.rosterView";
 
 function readRosterView(): RosterView {
   try {
     return window.localStorage.getItem(ROSTER_VIEW_KEY) === "list"
       ? "list"
-      : "cinematic";
+      : "workflow";
   } catch {
-    return "cinematic";
+    return "workflow";
   }
 }
 
@@ -105,6 +107,28 @@ export function FleetControlView({
   const selectedSchedule = selectedRow
     ? scheduleFor(scheduleByCodename, selectedRow.codename)
     : undefined;
+
+  // Live display data for the pipeline agents, derived with the same helpers
+  // the cards use so status/accent/runs stay consistent across views.
+  const workflowInputs = useMemo<WorkflowNodeInput[]>(
+    () =>
+      rows
+        .filter((row) => WORKFLOW_AGENTS.includes(row.codename))
+        .map((row) => {
+          const profile = agentProfile(row, scheduleFor(scheduleByCodename, row.codename));
+          const { tone, label } = serviceTone(row);
+          return {
+            codename: row.codename,
+            label: profile.label,
+            role: row.summary?.role_title || titleCase(row.codename),
+            accent: profile.themeAccent,
+            tone,
+            statusLabel: label,
+            runsToday: row.summary?.firings_today ?? 0,
+          };
+        }),
+    [rows, scheduleByCodename],
+  );
 
   useEffect(() => {
     if (!rows.length) {
@@ -169,13 +193,13 @@ export function FleetControlView({
             >
               <button
                 type="button"
-                data-active={viewMode === "cinematic" ? "true" : "false"}
-                aria-pressed={viewMode === "cinematic"}
-                aria-label="Cinematic view"
-                onClick={() => setViewMode("cinematic")}
+                data-active={viewMode === "workflow" ? "true" : "false"}
+                aria-pressed={viewMode === "workflow"}
+                aria-label="Workflow view"
+                onClick={() => setViewMode("workflow")}
               >
-                <LayoutGrid aria-hidden="true" />
-                <span>Cinematic</span>
+                <WorkflowIcon aria-hidden="true" />
+                <span>Workflow</span>
               </button>
               <button
                 type="button"
@@ -192,25 +216,15 @@ export function FleetControlView({
 
           <div
             className={
-              viewMode === "cinematic" ? "agents-deck__stage" : "agents-deck__grid"
+              viewMode === "workflow" ? "agents-deck__stage" : "agents-deck__grid"
             }
           >
-            {viewMode === "cinematic" ? (
-              <div
-                className="agents-deck__constellation motion-rise"
-                role="group"
-                aria-label="Agents"
-              >
-                {rows.map((row) => (
-                  <AgentCard
-                    key={row.codename}
-                    row={row}
-                    schedule={scheduleFor(scheduleByCodename, row.codename)}
-                    selected={row.codename === selectedRow?.codename}
-                    onSelect={() => setSelectedCodename(row.codename)}
-                  />
-                ))}
-              </div>
+            {viewMode === "workflow" ? (
+              <WorkflowGraph
+                agents={workflowInputs}
+                selectedCodename={selectedRow?.codename ?? null}
+                onSelect={setSelectedCodename}
+              />
             ) : (
               <div className="agents-deck__rail" aria-label="Roster list">
                 <div
@@ -327,67 +341,6 @@ function AgentRosterRow({
           {label}
         </Badge>
         <span>{scheduleCopy(row, schedule)}</span>
-      </span>
-    </button>
-  );
-}
-
-function AgentCard({
-  onSelect,
-  row,
-  schedule,
-  selected,
-}: {
-  onSelect: () => void;
-  row: FleetControlRow;
-  schedule?: ScheduledRun;
-  selected: boolean;
-}) {
-  const profile = agentProfile(row, schedule);
-  const { tone, label } = serviceTone(row);
-  const runsToday = row.summary?.firings_today ?? 0;
-  const signal =
-    row.paused && row.pausedSince
-      ? `Paused since ${friendlyTime(row.pausedSince)}`
-      : row.summary?.last_summary || "No runs yet";
-  return (
-    <button
-      type="button"
-      className="agent-card"
-      data-selected={selected ? "true" : "false"}
-      data-tone={tone}
-      style={{ "--agent-accent": profile.themeAccent } as React.CSSProperties}
-      onClick={onSelect}
-      aria-current={selected ? "true" : undefined}
-      aria-label={`Select ${profile.label}`}
-    >
-      <span className="agent-card__scan" aria-hidden="true" />
-      <span className="agent-card__glow" aria-hidden="true" />
-      <span className="agent-card__top">
-        <span className="agent-card__codename">{row.codename}</span>
-        <Badge
-          variant="outline"
-          className="alfred-status-badge"
-          data-tone={tone}
-          aria-label={`Status: ${label}`}
-        >
-          <AlfredStatusDot tone={tone} aria-hidden="true" />
-          {label}
-        </Badge>
-      </span>
-      <span className="agent-card__name">{profile.label}</span>
-      <span className="agent-card__purpose">
-        {profile.purpose || agentActionCue(row)}
-      </span>
-      <span className="agent-card__foot">
-        <span className="agent-card__cadence">
-          <Clock3 aria-hidden="true" />
-          {scheduleCopy(row, schedule)}
-        </span>
-        <span className="agent-card__runs">{runsToday} today</span>
-      </span>
-      <span className="agent-card__signal" title={signal}>
-        {signal}
       </span>
     </button>
   );
