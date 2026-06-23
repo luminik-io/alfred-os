@@ -4,13 +4,13 @@ Fresh Mac or Debian/Ubuntu host to a working Alfred fleet skeleton, ~30 minutes.
 
 For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTRAP.md) after this.
 
-This installs the `core` tier: the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The optional desktop `client` and Slack `slack` tiers layer on top of it; see [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
-
 ## Two ways to install
 
 **Desktop app, no terminal.** Download the signed Alfred app for macOS or Linux from [alfred.luminik.io/download](https://alfred.luminik.io/download/), open it, and follow the guided Setup tab. It connects GitHub and Claude, helps you pick repos and agents, and starts the local runtime for you, with no terminal commands. This is the simplest path on a single machine.
 
-**Command line.** Use the steps below (source checkout or Homebrew) when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal. The CLI installs the `core` runtime only; the desktop app is a separate, optional download, so a command-line install never adds a desktop client you did not ask for. You can still download the app later and point it at the same runtime.
+**Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime only; the desktop app is a separate, optional download, so a command-line install never adds a desktop client you did not ask for. You can still download the app later and point it at the same runtime.
+
+Both paths install the `core` tier: the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The optional desktop `client` and Slack `slack` tiers layer on top of it; see [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
 
 ## TL;DR
 
