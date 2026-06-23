@@ -839,6 +839,20 @@ def register_routes(app: FastAPI) -> None:
     async def api_reject_memory_candidate(request: Request, candidate_id: str) -> JSONResponse:
         return await _api_memory_candidate_action(request, candidate_id, action="reject")
 
+    @app.get("/api/memory/lessons", response_class=JSONResponse)
+    async def api_memory_lessons(request: Request, limit: int = 50) -> JSONResponse:
+        """The lessons Alfred is actually using in recall (promoted + auto-promoted),
+        as opposed to the pending review queue served by /api/memory/candidates."""
+        brain, error = _memory_brain(request, require_existing=True)
+        if brain is None:
+            return JSONResponse({"rows": [], "error": error})
+        try:
+            lessons = brain.list_lessons(limit=min(max(1, limit), 200))
+        except Exception:  # pragma: no cover - local bridge can be down
+            logger.exception("api_memory_lessons: failed to list lessons")
+            return JSONResponse({"rows": [], "error": _GENERIC_ERROR})
+        return JSONResponse({"rows": [_lesson_to_api(lesson) for lesson in lessons]})
+
     @app.get("/api/firings", response_class=JSONResponse)
     async def api_firings(
         request: Request,
@@ -1365,6 +1379,21 @@ def _candidate_to_api(candidate: Any) -> dict[str, Any]:
             payload["evidence"] = ""
         elif not isinstance(evidence, str):
             payload["evidence"] = json.dumps(evidence, sort_keys=True)
+        return payload
+    return {}
+
+
+def _lesson_to_api(lesson: Any) -> dict[str, Any]:
+    """Serialize a recall Lesson for the client. Simpler than a candidate:
+    no review fields, just the fact Alfred is using."""
+    payload = _jsonable(asdict(lesson) if is_dataclass(lesson) else lesson)
+    if isinstance(payload, dict):
+        if payload.get("id") is not None:
+            payload["id"] = str(payload["id"])
+        if not isinstance(payload.get("tags"), list):
+            payload["tags"] = []
+        if not payload.get("severity"):
+            payload["severity"] = "info"
         return payload
     return {}
 

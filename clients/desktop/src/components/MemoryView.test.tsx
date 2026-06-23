@@ -176,4 +176,54 @@ describe("MemoryView", () => {
       refreshAfter: true,
     });
   });
+
+  it("surfaces the active lessons Alfred is using below the review queue", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot({
+          memoryLessons: {
+            rows: [
+              {
+                id: "lesson:1",
+                codename: "lucius",
+                repo: "your-org/api",
+                body: "GraphQL schema lives in src/schema.graphql.",
+                tags: ["graphql"],
+                severity: "info",
+                created_at: "2026-05-30T12:00:00Z",
+                firing_id: null,
+              },
+            ],
+          },
+        })}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: /lessons alfred is using/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/graphql schema lives in/i)).toBeInTheDocument();
+  });
+
+  it("omits the active-lessons section when there are none", () => {
+    render(
+      <MemoryView
+        snapshot={snapshot()}
+        actionNotice={null}
+        busyMemoryAction={null}
+        nativeBusy={null}
+        onMemoryCandidateAction={vi.fn()}
+        onRunLocalAction={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: /lessons alfred is using/i }),
+    ).not.toBeInTheDocument();
+  });
 });

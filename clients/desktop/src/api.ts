@@ -16,6 +16,7 @@ import type {
   FollowupActionResponse,
   MemoryCandidateActionResponse,
   MemoryCandidatesResponse,
+  MemoryLessonsResponse,
   NativeAction,
   NativeCommandResult,
   PlanDecision,
@@ -187,11 +188,12 @@ export function alternateDefaultBaseUrl(value: string): string | null {
 // snapshot is genuinely unusable, so that one rejection still surfaces as the
 // connection error the banner shows.
 export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
-  const [status, actions, memoryCandidates, firings, plans, trustedSlack, schedule] =
+  const [status, actions, memoryCandidates, memoryLessons, firings, plans, trustedSlack, schedule] =
     await Promise.allSettled([
       readAlfredJson<StatusResponse>(baseUrl, "/api/status"),
       readAlfredJson<ActionsResponse>(baseUrl, "/api/actions"),
       readAlfredJson<MemoryCandidatesResponse>(baseUrl, "/api/memory/candidates?limit=20"),
+      readAlfredJson<MemoryLessonsResponse>(baseUrl, "/api/memory/lessons?limit=30"),
       readAlfredJson<FiringsResponse>(baseUrl, "/api/firings?limit=14"),
       readAlfredJson<PlansResponse>(baseUrl, "/api/plans?limit=14"),
       readAlfredJson<TrustedSlackUsersResponse>(baseUrl, "/api/slack/trusted-users"),
@@ -228,6 +230,10 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
     memoryCandidates:
       memoryCandidates.status === "fulfilled"
         ? { rows: memoryCandidates.value.rows || [], error: memoryCandidates.value.error }
+        : { rows: [] },
+    memoryLessons:
+      memoryLessons.status === "fulfilled"
+        ? { rows: memoryLessons.value.rows || [], error: memoryLessons.value.error }
         : { rows: [] },
     firings: firings.status === "fulfilled" ? firings.value.rows || [] : [],
     plans: plans.status === "fulfilled" ? plans.value.rows || [] : [],
