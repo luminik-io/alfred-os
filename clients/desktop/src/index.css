@@ -2993,8 +2993,9 @@ body {
 /* Unread items. NotificationsView sets `feed-item--new` but there was no rule
    for it, so the only unread cue was a 0.45rem pip. For an inbox whose whole
    job is "what needs attention now", give unread rows a left status bar plus a
-   faint tint and a bolder title: a non-color-only cue (WCAG 1.4.1) that reads
-   at a glance. */
+   faint accent tint: structural, non-color cues (WCAG 1.4.1) that read at a
+   glance. (No font-weight bump: Tailwind Preflight already resolves `strong`
+   to bolder/700, so an override there would be a no-op.) */
 .feed-item--new {
   border-color: color-mix(in oklch, var(--accent), var(--border) 45%);
   background: color-mix(in oklch, var(--accent), var(--card) 92%);
@@ -3003,8 +3004,13 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.feed-item--new .feed-item__head strong {
-  font-weight: 700;
+/* Preserve the accent identity on hover for rows that are both unread and
+   clickable. The generic `.feed-item--clickable:hover` rule has higher
+   specificity and would otherwise swap the accent tint for the primary hover
+   tint, erasing the unread cue (the left bar survives as box-shadow). */
+.feed-item--new.feed-item--clickable:hover {
+  border-color: color-mix(in oklch, var(--accent), var(--border) 30%);
+  background: color-mix(in oklch, var(--accent), var(--card) 86%);
 }
 
 .feed-item__body {
