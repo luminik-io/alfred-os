@@ -90,6 +90,74 @@ def test_cleanup_preflight_has_no_runtime_env_requirement(cleanup):
     assert cleanup.PREFLIGHT.check_disk is False
 
 
+def _exec_cleanup(tmp_path, monkeypatch, *, argv, home):
+    """Run the procedural cleanup body once with a controlled env + HOME."""
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    (workspace / "product").mkdir(parents=True)
+    (alfred / "state").mkdir(parents=True)
+    (alfred / "worktrees").mkdir(parents=True)
+    monkeypatch.setenv("ALFRED_HOME", str(alfred))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.delenv("ALFRED_CLEANUP_EXTRA_PATHS", raising=False)
+    monkeypatch.setenv("ALFRED_CLAIM_SWEEP_REPOS", "")
+    monkeypatch.setenv("ALFRED_SLACK_WEBHOOK_URL", "")
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    for mod in list(sys.modules):
+        if mod.startswith("agent_runner") or mod == "agent_cleanup":
+            del sys.modules[mod]
+    sys.path.insert(0, str(REPO / "lib"))
+    spec = importlib.util.spec_from_file_location("agent_cleanup", CLEANUP)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["agent_cleanup"] = mod
+    with contextlib.suppress(SystemExit):
+        spec.loader.exec_module(mod)
+    return mod
+
+
+def _seed_dev_caches(home):
+    derived = home / "Library" / "Developer" / "Xcode" / "DerivedData" / "App-abc"
+    derived.mkdir(parents=True)
+    (derived / "build.o").write_bytes(b"x" * 4096)
+    npm_cache = home / ".npm" / "_cacache" / "content-v2"
+    npm_cache.mkdir(parents=True)
+    (npm_cache / "blob").write_bytes(b"y" * 4096)
+
+
+def test_emergency_reclaims_dev_caches(tmp_path, monkeypatch):
+    """--emergency clears regenerable Xcode DerivedData + npm cache under HOME."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--emergency"], home=home)
+    assert not (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert not (home / ".npm" / "_cacache").exists()
+    assert mod.dev_caches_cleared == 2
+    assert mod.dev_cache_freed_mb > 0
+
+
+def test_non_emergency_leaves_dev_caches_untouched(tmp_path, monkeypatch):
+    """A normal (non-emergency) sweep never touches machine-wide dev caches."""
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
+    assert (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert (home / ".npm" / "_cacache").exists()
+    assert mod.dev_caches_cleared == 0
+
+
+def test_emergency_skip_env_preserves_dev_caches(tmp_path, monkeypatch):
+    """ALFRED_EMERGENCY_SKIP_DEV_CACHES=1 opts out even under --emergency."""
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", "1")
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--emergency"], home=home)
+    assert (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert (home / ".npm" / "_cacache").exists()
+    assert mod.dev_caches_cleared == 0
+
+
 def test_sweep_extra_paths_removes_old_clean_worktrees(cleanup, tmp_path, monkeypatch):
     extra_root = tmp_path / "extra-worktrees"
     extra_root.mkdir()

@@ -557,6 +557,35 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
     shutil.rmtree(lock_dir, ignore_errors=True)
     locks_unlocked += 1
 
+# In EMERGENCY mode, reclaim well-known regenerable developer caches that live
+# OUTSIDE the workspace. Every other pass here is workspace-scoped, so a host
+# whose free space is eaten by Xcode DerivedData or the npm cache can wedge the
+# whole fleet off disk while each sweep reclaims 0 MB and the preflight gate
+# keeps skipping firings. These two are pure build/download output: Xcode
+# recreates DerivedData on the next build, npm refetches its cache on the next
+# install. Opt out with ALFRED_EMERGENCY_SKIP_DEV_CACHES=1.
+dev_cache_freed_mb = 0.0
+dev_caches_cleared = 0
+if EMERGENCY and os.environ.get("ALFRED_EMERGENCY_SKIP_DEV_CACHES") != "1":
+    HOME = Path.home()
+    DEV_CACHE_ROOTS = [
+        HOME / "Library" / "Developer" / "Xcode" / "DerivedData",  # macOS Xcode
+        HOME / ".npm" / "_cacache",  # npm content-addressable cache
+    ]
+    for cache_root in DEV_CACHE_ROOTS:
+        if not cache_root.is_dir():
+            continue
+        try:
+            size_mb = sum(f.stat().st_size for f in cache_root.rglob("*") if f.is_file()) / (
+                1024 * 1024
+            )
+        except OSError:
+            continue
+        shutil.rmtree(cache_root, ignore_errors=True)
+        if not cache_root.exists():
+            dev_cache_freed_mb += size_mb
+            dev_caches_cleared += 1
+
 if EMERGENCY:
     print("[cleanup] EMERGENCY mode: aggressive thresholds (disk-pressure recovery)")
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
@@ -578,7 +607,14 @@ print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
-total_freed_mb = freed_mb + wt_freed_mb + extra_stats["freed_mb"] + transcript_freed_mb
+if EMERGENCY:
+    print(
+        f"[cleanup] dev caches: {dev_caches_cleared} reclaimed "
+        f"({dev_cache_freed_mb:.1f} MB freed, Xcode DerivedData + npm cache)"
+    )
+total_freed_mb = (
+    freed_mb + wt_freed_mb + extra_stats["freed_mb"] + transcript_freed_mb + dev_cache_freed_mb
+)
 print(f"[cleanup] total reclaimed: {total_freed_mb:.1f} MB")
 if wt_skipped:
     recovery_note = ""
