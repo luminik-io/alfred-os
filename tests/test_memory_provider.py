@@ -627,6 +627,9 @@ def test_redis_provider_reflect_uses_supported_record_fields() -> None:
     payload = calls[0]["payload"]
     assert isinstance(payload, dict)
     assert set(payload) == {"memories", "deduplicate"}
+    # Server-side dedup runs the weak local model and corrupts the store;
+    # dedup is handled upstream in Python, so the write opts out.
+    assert payload["deduplicate"] is False
     memory = payload["memories"][0]
     assert memory["namespace"] == "alfred"
     assert memory["user_id"] == "operator"
@@ -815,6 +818,25 @@ def test_ams_server_env_matches_upstream_settings_names() -> None:
     assert env["REDISVL_VECTOR_DIMENSIONS"] == "1024"
     assert env["FORGETTING_ENABLED"] == "false"
     assert env["OLLAMA_API_BASE"] == "http://127.0.0.1:11434"
+    # AMS is a pure vector store: every server-side pass that runs the weak
+    # local generation model over memory text is disabled.
+    assert env["ENABLE_DISCRETE_MEMORY_EXTRACTION"] == "false"
+    assert env["ENABLE_TOPIC_EXTRACTION"] == "false"
+    assert env["ENABLE_NER"] == "false"
+    assert env["ENABLE_WORKING_MEMORY_SUMMARIZATION"] == "false"
+    # Default cadence is the 600s interval floored to minutes.
+    assert env["COMPACTION_EVERY_MINUTES"] == "10"
+
+
+def test_ams_server_env_disables_compaction_with_yearly_cadence() -> None:
+    # The upstream server has no off switch: a 0 cadence would compact
+    # constantly. A disabled (non-positive) interval maps to a ~yearly cadence
+    # (525600 minutes), the closest the server allows to "never".
+    env = ams_server_env(env={"ALFRED_AMS_COMPACTION_INTERVAL_S": "0"})
+    assert env["COMPACTION_EVERY_MINUTES"] == "525600"
+
+    env_negative = ams_server_env(env={"ALFRED_AMS_COMPACTION_INTERVAL_S": "-5"})
+    assert env_negative["COMPACTION_EVERY_MINUTES"] == "525600"
 
 
 def test_ams_server_env_enables_auth_when_auth_mode_is_set() -> None:

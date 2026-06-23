@@ -132,8 +132,18 @@ class AmsServerConfig:
             "FAST_MODEL": self.generation_model,
             "SLOW_MODEL": self.generation_model,
             "INDEX_ALL_MESSAGES_IN_LONG_TERM_MEMORY": "false",
+            # Make AMS a pure vector store. Every server-side feature that
+            # reasons about, rewrites, or merges memory text runs the weak
+            # local generation model (llama3.2:1b) and corrupts the store.
+            # Dedup, topic/entity reasoning, and summarization are all handled
+            # upstream in Python before the write, so turn the server-side
+            # passes off and let AMS only embed + retrieve.
+            "ENABLE_DISCRETE_MEMORY_EXTRACTION": "false",
+            "ENABLE_TOPIC_EXTRACTION": "false",
+            "ENABLE_NER": "false",
+            "ENABLE_WORKING_MEMORY_SUMMARIZATION": "false",
             "FORGETTING_ENABLED": _as_str_bool(self.forgetting_enabled),
-            "COMPACTION_EVERY_MINUTES": str(max(1, self.compaction_interval_seconds // 60)),
+            "COMPACTION_EVERY_MINUTES": _compaction_every_minutes(self.compaction_interval_seconds),
             "OLLAMA_API_BASE": self.ollama_base_url,
             "OLLAMA_BASE_URL": self.ollama_base_url,
         }
@@ -142,6 +152,28 @@ class AmsServerConfig:
 
 def ams_server_env(*, env: Mapping[str, str] | None = None) -> dict[str, str]:
     return AmsServerConfig.from_env(env=env).to_server_env()
+
+
+# A near-yearly cadence (minutes) used as the "compaction disabled" value.
+# The upstream server has no off switch: it schedules
+# ``Perpetual(every=timedelta(minutes=COMPACTION_EVERY_MINUTES))``, and a 0
+# would run compaction CONSTANTLY rather than never. Mapping a disabled
+# interval to a ~yearly cadence is the closest the server allows to "off".
+_COMPACTION_DISABLED_MINUTES = "525600"
+
+
+def _compaction_every_minutes(interval_seconds: int) -> str:
+    """Map a compaction interval (seconds) to COMPACTION_EVERY_MINUTES.
+
+    A non-positive interval means "disabled". Since the upstream server
+    cannot turn compaction off (a 0 cadence would compact constantly), a
+    disabled interval is mapped to a ~yearly cadence instead. A positive
+    interval is floored at one minute so the server always gets a valid
+    cadence.
+    """
+    if interval_seconds <= 0:
+        return _COMPACTION_DISABLED_MINUTES
+    return str(max(1, interval_seconds // 60))
 
 
 def _int_env(env: Mapping[str, str], key: str, default: int) -> int:
