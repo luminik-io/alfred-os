@@ -105,7 +105,7 @@ def test_heuristic_promotes_high_confidence_with_evidence(brain: FleetBrain) -> 
 
 
 def test_low_confidence_and_missing_evidence_stay_pending(brain: FleetBrain) -> None:
-    low = _candidate(brain, "weak speculative hunch", confidence=0.5)
+    low = _candidate(brain, "weak speculative hunch", confidence=0.3)
     bare = _candidate(brain, "uncorroborated claim", confidence=0.99, evidence="")
     summary = brain.auto_promote_candidates(env=ARM_NO_JUDGE)
     assert summary["promoted"] == []
@@ -113,6 +113,18 @@ def test_low_confidence_and_missing_evidence_stay_pending(brain: FleetBrain) -> 
     assert summary["skipped_no_evidence"] == 1
     assert _status(brain, low.id) == "candidate"
     assert _status(brain, bare.id) == "candidate"
+
+
+def test_default_confidence_candidate_reaches_judge_and_saves(brain: FleetBrain) -> None:
+    # Autonomy: a candidate at the default confidence (0.5) with evidence must
+    # REACH the LLM judge under the default 0.5 bar and be saved when the judge
+    # approves, instead of piling up in a human queue.
+    c = _candidate(brain, "prefer ripgrep over grep in this repo", confidence=0.5)
+    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.95))
+    assert summary["promoted"] == [c.id]
+    assert summary["judge_calls"] == 1  # it reached the judge, not the human queue
+    row = brain.store.get_memory_candidate(c.id)
+    assert row is not None and row.status == "validated"
 
 
 def test_conflicting_bodies_are_left_for_a_human(brain: FleetBrain) -> None:
@@ -194,7 +206,7 @@ def test_judge_lowering_confidence_below_bar_holds(brain: FleetBrain) -> None:
 def test_judge_score_cannot_rescue_a_below_bar_candidate(brain: FleetBrain) -> None:
     # Structural confidence below the bar is rejected before the judge is even
     # called, so a high judge score cannot lift it.
-    _candidate(brain, "a weak lesson the judge loves", confidence=0.5)
+    _candidate(brain, "a weak lesson the judge loves", confidence=0.3)
     summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(1.0))
     assert summary["promoted"] == []
     assert summary["judge_calls"] == 0  # skipped before judging

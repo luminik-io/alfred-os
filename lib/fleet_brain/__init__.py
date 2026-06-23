@@ -133,7 +133,12 @@ _NON_ACTIONABLE_FAILURE_SUBTYPES = {
 # Auto-promotion defaults. Every one is env-tunable so a deployment can tune
 # the gate without a code change, and all of it is OFF until ALFRED_AUTO_PROMOTE
 # is explicitly set (see ``FleetBrain.auto_promote_enabled``).
-AUTO_PROMOTE_DEFAULT_THRESHOLD = 0.9
+# The threshold is a LIGHT pre-filter, not the decision: any evidenced
+# candidate (candidates default to confidence 0.5) must reach the LLM judge,
+# which makes the real save/skip call. Memory has to capture AND save
+# autonomously via the model; a high bar that dumps observed lessons to a
+# human queue just piles up and never gets reviewed.
+AUTO_PROMOTE_DEFAULT_THRESHOLD = 0.5
 AUTO_PROMOTE_DEFAULT_MAX_PER_RUN = 5
 AUTO_PROMOTE_DEFAULT_MAX_JUDGE_CALLS = 25
 
@@ -491,7 +496,9 @@ class FleetBrain:
           * it does not conflict with another pending candidate that normalizes
             to the same body (two unreviewed versions => leave both for a
             human);
-          * ``confidence >= threshold`` (default 0.9, env-tunable).
+          * ``confidence >= threshold`` (default 0.5, env-tunable) -- a light
+            pre-filter so any evidenced candidate reaches the judge, which is
+            the real save/skip decision (autonomous LLM-driven capture+save).
 
         LLM judge (additive, default ON when armed, gated behind
         ``ALFRED_AUTO_PROMOTE_LLM_JUDGE``): for each candidate that clears the
