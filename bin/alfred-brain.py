@@ -603,10 +603,7 @@ def cmd_auto_promote(args: argparse.Namespace) -> int:
     )
     if summary["judge_enabled"]:
         budget = ", budget-exhausted" if summary["judge_budget_exhausted"] else ""
-        print(
-            f"  judge: calls={summary['judge_calls']}, "
-            f"errors={summary['judge_errors']}{budget}"
-        )
+        print(f"  judge: calls={summary['judge_calls']}, errors={summary['judge_errors']}{budget}")
     return 0
 
 

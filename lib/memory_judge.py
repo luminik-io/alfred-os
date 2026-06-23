@@ -35,6 +35,7 @@ Design constraints (all binding):
     ``None`` verdict as "no judgment" and fall back to the heuristic gate;
     a candidate is NEVER auto-promoted on a failed/empty judgment.
 """
+
 from __future__ import annotations
 
 import json
@@ -138,9 +139,7 @@ def _neutralize_untrusted(text: str) -> str:
     boundary cannot be spoofed from inside the data."""
     text = re.sub(r"={3,}", "==", text)
     text = re.sub(r"-{4,}", "---", text)
-    text = re.sub(
-        r"(?i)(begin|end)?\s*untrusted\s+candidate", r"untrusted-candidate", text
-    )
+    text = re.sub(r"(?i)(begin|end)?\s*untrusted\s+candidate", r"untrusted-candidate", text)
     return text
 
 

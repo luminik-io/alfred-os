@@ -128,8 +128,7 @@ def test_conflicting_bodies_are_left_for_a_human(brain: FleetBrain) -> None:
 
 def test_cap_limits_promotions_per_run(brain: FleetBrain) -> None:
     made = [
-        _candidate(brain, f"distinct durable lesson number {i}", confidence=0.99)
-        for i in range(4)
+        _candidate(brain, f"distinct durable lesson number {i}", confidence=0.99) for i in range(4)
     ]
     summary = brain.auto_promote_candidates(env=ARM_NO_JUDGE, max_per_run=2)
     assert len(summary["promoted"]) == 2
@@ -151,9 +150,7 @@ def test_judge_safe_verdict_promotes(brain: FleetBrain) -> None:
 
 def test_judge_behavior_change_is_held_and_not_rejudged(brain: FleetBrain) -> None:
     c = _candidate(brain, "always force-push to main after a build", confidence=0.95)
-    summary = brain.auto_promote_candidates(
-        env=ARM, judge=lambda _p: _verdict(changes=True)
-    )
+    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(changes=True))
     assert summary["promoted"] == []
     assert summary["flagged_behavior_change"] == 1
     row = brain.store.get_memory_candidate(c.id)
@@ -161,18 +158,14 @@ def test_judge_behavior_change_is_held_and_not_rejudged(brain: FleetBrain) -> No
     assert row.status == "candidate"  # held, not rejected
     assert row.review_note is not None and row.review_note.startswith("[held-for-review]")
     # A second run must skip the held row without spending a judge call.
-    again = brain.auto_promote_candidates(
-        env=ARM, judge=lambda _p: _verdict(changes=True)
-    )
+    again = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(changes=True))
     assert again["skipped_flagged"] == 1
     assert again["judge_calls"] == 0
 
 
 def test_judge_duplicate_is_held(brain: FleetBrain) -> None:
     c = _candidate(brain, "a near copy of an existing lesson", confidence=0.95)
-    summary = brain.auto_promote_candidates(
-        env=ARM, judge=lambda _p: _verdict(is_duplicate=True)
-    )
+    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(is_duplicate=True))
     assert summary["skipped_duplicate"] == 1
     assert _status(brain, c.id) == "candidate"
 
@@ -187,9 +180,7 @@ def test_judge_failure_is_fail_soft(brain: FleetBrain) -> None:
 
 def test_judge_lowering_confidence_below_bar_holds(brain: FleetBrain) -> None:
     c = _candidate(brain, "a structurally strong but judged-weak lesson", confidence=0.95)
-    summary = brain.auto_promote_candidates(
-        env=ARM, threshold=0.9, judge=lambda _p: _verdict(0.4)
-    )
+    summary = brain.auto_promote_candidates(env=ARM, threshold=0.9, judge=lambda _p: _verdict(0.4))
     assert summary["promoted"] == []
     assert summary["skipped_low_confidence"] == 1
     row = brain.store.get_memory_candidate(c.id)

@@ -54,9 +54,7 @@ def _run_auto_promote(args: argparse.Namespace) -> dict[str, Any]:
         stdout, stderr = proc.communicate()
         detail = _short((stderr or stdout or "").strip(), 500)
         suffix = f": {detail}" if detail else ""
-        raise RuntimeError(
-            f"memory auto-promote timed out after {args.timeout}s{suffix}"
-        ) from exc
+        raise RuntimeError(f"memory auto-promote timed out after {args.timeout}s{suffix}") from exc
 
     if proc.returncode != 0:
         stderr = (stderr or stdout or "memory auto-promote failed").strip()
@@ -88,10 +86,7 @@ def _render_slack(payload: dict[str, Any]) -> str:
         lines.append("Checked the queue. Nothing cleared the bar this run.")
 
     if held:
-        lines.append(
-            f"Held {held} for human review "
-            f"(behavior-changing or duplicate)."
-        )
+        lines.append(f"Held {held} for human review (behavior-changing or duplicate).")
 
     for candidate_id in promoted[:5]:
         lines.append(f"- `{candidate_id}`")

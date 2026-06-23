@@ -658,9 +658,7 @@ class FleetBrain:
                 if confidence < bar:
                     self.hold_candidate_for_review(
                         candidate.id,
-                        note=(
-                            f"LLM judge confidence {confidence:.3f} < {bar:.3f}"
-                        ),
+                        note=(f"LLM judge confidence {confidence:.3f} < {bar:.3f}"),
                     )
                     summary["skipped_low_confidence"] += 1
                     continue
@@ -670,9 +668,7 @@ class FleetBrain:
                 )
 
             try:
-                self.promote_memory_candidate(
-                    candidate.id, reviewer=reviewer, review_note=note
-                )
+                self.promote_memory_candidate(candidate.id, reviewer=reviewer, review_note=note)
             except ValueError:
                 # The candidate changed under us (already promoted/rejected by a
                 # concurrent reviewer). Skip without counting it.
