@@ -191,7 +191,11 @@ class RedisAgentMemoryProvider:
                     "updated_at": created.astimezone(UTC).isoformat(),
                 }
             ],
-            "deduplicate": True,
+            # Dedup is handled upstream in Python before the write. The AMS
+            # server-side merge runs the weak local llama3.2:1b generation
+            # model, which rewrites and corrupts the stored lesson text, so we
+            # never ask the server to deduplicate.
+            "deduplicate": False,
         }
         if self.user_id:
             payload["memories"][0]["user_id"] = self.user_id
