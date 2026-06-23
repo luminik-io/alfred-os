@@ -3,12 +3,15 @@ import {
   BackgroundVariant,
   Controls,
   Handle,
+  MiniMap,
   type NodeProps,
   Position,
   ReactFlow,
   type ReactFlowProps,
+  useReactFlow,
+  useStore,
 } from "@xyflow/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   type AgentNodeData,
@@ -59,6 +62,43 @@ function AgentNode({ data }: NodeProps) {
 
 const NODE_TYPES: ReactFlowProps["nodeTypes"] = { agent: AgentNode, lane: LaneNode };
 
+const FIT_OPTIONS = { padding: 0.18, minZoom: 0.45, maxZoom: 1.25 } as const;
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/**
+ * Keep the whole pipeline in frame as the canvas resizes. React Flow tracks the
+ * container size but does not re-fit on its own, so the graph would clip when
+ * the window resizes, the sidebar toggles, or the layout stacks the inspector
+ * below on narrow screens. We watch the store's width/height and re-fit
+ * (debounced) so the view stays correct at every breakpoint and zoom level.
+ */
+function FitToContainer({ signature }: { signature: string }) {
+  const { fitView } = useReactFlow();
+  const width = useStore((state) => state.width);
+  const height = useStore((state) => state.height);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    if (!width || !height) {
+      return;
+    }
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      void fitView({ ...FIT_OPTIONS, duration: prefersReducedMotion() ? 0 : 220 });
+    }, 80);
+    return () => clearTimeout(timer.current);
+  }, [width, height, signature, fitView]);
+
+  return null;
+}
+
 export function WorkflowGraph({
   agents,
   selectedCodename,
@@ -73,6 +113,13 @@ export function WorkflowGraph({
     [agents, selectedCodename],
   );
 
+  // Re-fit whenever the set of agents changes (not on mere selection), so a
+  // roster that loads or changes size still frames cleanly.
+  const signature = useMemo(
+    () => agents.map((agent) => agent.codename).join(","),
+    [agents],
+  );
+
   return (
     <div className="workflow-graph" aria-label="Agent workflow graph">
       <ReactFlow
@@ -80,11 +127,20 @@ export function WorkflowGraph({
         edges={edges}
         nodeTypes={NODE_TYPES}
         fitView
-        fitViewOptions={{ padding: 0.18 }}
-        minZoom={0.4}
-        maxZoom={1.6}
+        fitViewOptions={FIT_OPTIONS}
+        minZoom={0.35}
+        maxZoom={1.75}
+        // Trackpad/touch-first canvas controls (Figma/n8n style): two-finger
+        // scroll pans, pinch (or ctrl/cmd + scroll) zooms, drag pans. The +/-
+        // controls and fit button cover mouse-only users.
+        panOnScroll
+        zoomOnScroll={false}
+        zoomOnPinch
+        panOnDrag
+        zoomOnDoubleClick={false}
         nodesConnectable={false}
         edgesFocusable={false}
+        nodesDraggable={false}
         proOptions={{ hideAttribution: false }}
         onNodeClick={(_event, node) => {
           if (node.type === "agent") {
@@ -92,8 +148,20 @@ export function WorkflowGraph({
           }
         }}
       >
+        <FitToContainer signature={signature} />
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
         <Controls showInteractive={false} position="bottom-right" />
+        <MiniMap
+          className="workflow-graph__minimap"
+          pannable
+          zoomable
+          ariaLabel="Workflow minimap"
+          nodeColor={(node) =>
+            node.type === "agent"
+              ? ((node.data as { accent?: string }).accent ?? "#888")
+              : "transparent"
+          }
+        />
       </ReactFlow>
     </div>
   );

@@ -1048,14 +1048,40 @@ body {
   padding-right: 0.125rem;
 }
 
-/* Workflow graph: the delivery pipeline (React Flow) as lanes + handoffs. */
+/* Workflow graph: the delivery pipeline (React Flow) as lanes + handoffs.
+   Height tracks the viewport so it stays in frame across screen sizes; the
+   graph re-fits on resize (see FitToContainer). */
 .workflow-graph {
-  min-height: 0;
+  min-height: 340px;
   height: min(72svh, 660px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--card), var(--background) 12%);
   overflow: hidden;
+}
+
+/* When the inspector stacks below on narrow screens, give it room. */
+@media (max-width: 880px) {
+  .workflow-graph {
+    height: min(54svh, 460px);
+  }
+}
+
+.workflow-graph__minimap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 20%);
+}
+
+.workflow-graph__minimap .react-flow__minimap-mask {
+  fill: color-mix(in oklch, var(--background), transparent 35%);
+}
+
+/* The minimap crowds very small canvases; hide it there and lean on fit + controls. */
+@media (max-width: 560px) {
+  .workflow-graph__minimap {
+    display: none;
+  }
 }
 
 .workflow-graph .react-flow__background {
@@ -1069,6 +1095,12 @@ body {
 
 .workflow-graph .react-flow__edge.animated .react-flow__edge-path {
   stroke: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workflow-graph .react-flow__edge.animated .react-flow__edge-path {
+    animation: none;
+  }
 }
 
 .workflow-graph .react-flow__controls {
