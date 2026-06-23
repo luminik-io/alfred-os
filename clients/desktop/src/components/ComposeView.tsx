@@ -179,15 +179,20 @@ export function ComposeView({
 
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  // Whether the user is pinned to the bottom of the transcript. Starts true so
+  // the first turns show the latest; flips on scroll (see onScroll below).
+  const pinnedRef = useRef(true);
   // Tracks the in-flight run so reset() and unmount can cancel it; a late
   // resolve must never resurrect a cleared transcript.
   const abortRef = useRef<AbortController | null>(null);
 
-  // Keep the newest turn in view as the conversation grows.
+  // Keep the newest turn in view as the conversation grows, but only when the
+  // user is already pinned to the bottom. Otherwise a new (or streaming) turn
+  // would yank them away from earlier content they had scrolled up to read.
   useEffect(() => {
     if (turns.length === 0) return;
     const el = transcriptRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
   // Cancel any in-flight stream when the view unmounts.
@@ -489,7 +494,16 @@ export function ComposeView({
       ) : null}
 
       {started ? (
-        <div className="ask__thread" ref={transcriptRef} role="log" aria-label="Conversation with Alfred">
+        <div
+          className="ask__thread"
+          ref={transcriptRef}
+          role="log"
+          aria-label="Conversation with Alfred"
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          }}
+        >
           <div className="ask__turns">
             {turns.map((turn, index) =>
               turn.kind === "draft" ? (
