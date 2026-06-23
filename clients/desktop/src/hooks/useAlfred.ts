@@ -462,6 +462,11 @@ export function useAlfred() {
 
   const runMemoryCandidateAction = useCallback(
     async (candidateId: string, action: "promote" | "reject") => {
+      // One memory action at a time. The cards only disable their own buttons,
+      // so this guards against a click on another card while one is in flight.
+      if (busyMemoryAction) {
+        return;
+      }
       const key = `${candidateId}:${action}`;
       setBusyMemoryAction(key);
       setActionNotice(null);
@@ -488,7 +493,7 @@ export function useAlfred() {
         setBusyMemoryAction(null);
       }
     },
-    [baseUrl, refresh],
+    [baseUrl, refresh, busyMemoryAction],
   );
 
   const removeTrustedUser = useCallback(
