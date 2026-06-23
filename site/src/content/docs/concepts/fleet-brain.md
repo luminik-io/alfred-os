@@ -137,6 +137,23 @@ For unattended fleets, schedule `memory-harvest.py` from launchd or systemd. It
 queues the same reviewable repeated-failure candidates and nudges Slack only
 when there is something to review. It does not promote lessons or sync Redis.
 
+## Autonomous capture and save
+
+The goal is that memory captures AND saves itself through the LLMs, not through a
+human review queue. `alfred brain auto-promote` makes an LLM safety judge the
+primary save decision. It is a no-op unless you arm `ALFRED_AUTO_PROMOTE`. When
+armed, the structural confidence bar (default 0.5,
+`ALFRED_AUTO_PROMOTE_THRESHOLD`) is a light pre-filter, and the judge
+(`lib/memory_judge.py`) decides: it saves both safe and behavior-changing
+lessons (behavior-changing is no longer held for a human, and every auto-save is
+reversible with `alfred brain forget`), holds duplicates, and can only lower the
+score, never rescue a below-bar candidate. The judge fails closed, so a failed
+or empty verdict leaves the candidate pending. With the judge disabled, the bar
+rises to a conservative no-judge floor (`ALFRED_AUTO_PROMOTE_NO_JUDGE_THRESHOLD`,
+default 0.9). A per-run cap, a judge-call budget, and the conflict check bound
+each run. Saved candidates go through the normal promotion path and reach Redis
+Agent Memory like any promoted lesson.
+
 ## MCP access
 
 `alfred mcp serve` exposes a small read-only JSON-RPC stdio surface for local
@@ -167,7 +184,8 @@ The next useful layer is reliability, not more mystery:
   setup issue or pausing a single codename.
 - Connect saved planning candidates to Batman and Drake so the brain can answer
   which spec generated which issues and PRs.
-- Add semantic recall for lessons, plans, and failure summaries.
+- Extend semantic recall past lessons (already served by Redis Agent Memory) to
+  plans and failure summaries.
 - Add lightweight memory-quality checks before candidate promotion.
 
 See also:
