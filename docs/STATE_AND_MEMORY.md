@@ -99,7 +99,9 @@ Promoted lesson recall belongs to Redis Agent Memory Server. Engine-aware
 runners that know their target repo recall up to three lessons before invoking
 the engine. If the engine returns a machine-readable memory reflection block,
 Alfred strips it from the user-facing result and queues those entries as
-reviewable FleetBrain candidates by default. Set
+FleetBrain candidates by default. When `ALFRED_AUTO_PROMOTE` is armed, an LLM
+judge saves the safe candidates autonomously rather than waiting on a human
+queue (see [Fleet brain](./FLEET_BRAIN.md)); otherwise they wait for review. Set
 `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are
 intentional.
 

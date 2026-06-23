@@ -261,9 +261,10 @@ workers --stale` reports running firings whose last heartbeat is older than
 the threshold, and `alfred brain doctor` includes that signal alongside memory
 candidate backlog, failure history, GitHub poll freshness, and bundle counts.
 
-`alfred brain promotions` is the review loop for memory quality. It lists
-high-confidence candidates with evidence, tags, or warning/blocker severity so
-the operator can promote the useful lessons and reject noise.
+`alfred brain promotions` lists high-confidence candidates with evidence, tags,
+or warning/blocker severity. You can promote and reject these by hand, but the
+armed autonomous path below is the intended way candidates become lessons; this
+view is for inspecting the queue and handling anything the judge held.
 
 `alfred brain failure-patterns` groups repeated non-success outcomes by
 codename, repo, subtype, and engine, then classifies the likely cause. The
@@ -284,9 +285,52 @@ approver approves or rejects them.
 
 `bin/memory-harvest.py` is the scheduler wrapper for that same loop. It runs
 `alfred brain harvest --apply --json`, posts to Slack only when new candidates
-are queued or the run fails, and leaves all promotion or rejection to the
+are queued or the run fails, and leaves promotion to the autonomous path or the
 operator. Add it to `launchd/agents.conf` or `systemd` when you want Alfred to
-build the review queue automatically without expanding prompt recall silently.
+build the candidate queue automatically without expanding prompt recall silently.
+
+## Autonomous capture and save (off until armed)
+
+The intent is that memory captures AND saves itself through the LLMs, rather
+than waiting on a human review queue. `alfred brain auto-promote`
+(`FleetBrain.auto_promote_candidates`) makes the LLM the primary save decision.
+It is a NO-OP unless you arm `ALFRED_AUTO_PROMOTE`; `ALFRED_AUTO_PROMOTE_KILL=1`
+forces it off even when armed, and a disarmed run reads and writes nothing.
+
+When armed, each pending candidate must still carry evidence and not conflict
+with another unreviewed version of the same lesson. The structural confidence
+bar (default 0.5, env `ALFRED_AUTO_PROMOTE_THRESHOLD`) is only a light
+pre-filter so any evidenced candidate reaches the real decision-maker: an LLM
+safety judge (`lib/memory_judge.py`, default ON when armed, gated by
+`ALFRED_AUTO_PROMOTE_LLM_JUDGE`). The judge reads the candidate's
+topic/body/evidence and:
+
+- saves both safe and behavior-changing lessons. Behavior-changing lessons are
+  the most actionable kind, so they are auto-saved too (recorded with a distinct
+  note and counted under `auto_saved_behavior_change`) rather than held for a
+  human. Every auto-save is reversible with `alfred brain forget`, which is the
+  safety net.
+- holds a candidate it calls a duplicate, so dedup owns merging without the
+  lesson re-entering the harvest loop.
+- only ever lowers the score: the run takes `min(structural, judge)` confidence,
+  so a high judge score can never rescue a below-bar candidate, and a candidate
+  the judge drops under the bar is held.
+
+The judge fails closed: any LLM error, timeout, or unparseable verdict leaves
+the candidate pending and is counted under `judge_errors`, never auto-saved on a
+failed or empty judgment. When the judge is explicitly disabled, the low default
+bar is raised to a conservative no-judge floor
+(`ALFRED_AUTO_PROMOTE_NO_JUDGE_THRESHOLD`, default 0.9) so default-confidence
+candidates are not promoted with no model or human review. Each run is bounded
+by a per-run promotion cap (`ALFRED_AUTO_PROMOTE_MAX_PER_RUN`, default 5), a
+judge-call budget (`ALFRED_AUTO_PROMOTE_MAX_JUDGE_CALLS`, default 25, floored by
+the cap), and the candidate-side conflict check.
+
+A saved candidate is promoted through the same `promote_memory_candidate` path
+as a manual promotion, recorded with `reviewer="auto"` so the batch stays
+auditable. As with any promotion, the lesson lands in the fleet-brain store and
+reaches Redis Agent Memory through the runner's `direct` reflection mode or an
+explicit `alfred brain redis-sync`.
 
 ## Read-only MCP bridge
 
@@ -359,9 +403,10 @@ prompt context. Approval and rejection stay configured-approver only. Alfred Des
 uses the same local candidate queue through `alfred serve`, so Slack, CLI, and
 client review the same rows. `memory harvest` previews repeated-failure lessons
 from the reliability governor; `memory harvest now` queues those lessons as
-reviewable candidates. `memory redis` checks the Redis Agent Memory Server, and
-`memory sync` previews a one-way sync of reviewed local lessons.
-`memory sync now` is the explicit Redis write path.
+reviewable candidates. `memory redis` checks the Redis Agent Memory Server.
+Promoting a candidate already routes the lesson toward Redis, so `memory sync`
+is a back-fill for older lessons: it previews a one-way copy of already-promoted
+local lessons into Redis, and `memory sync now` runs it.
 
 If `memory-harvest.py` is scheduled, it simply performs the `memory harvest now`
 write step for repeated failures. It still only creates candidates, so the Slack

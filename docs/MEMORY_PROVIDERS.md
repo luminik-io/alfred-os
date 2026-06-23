@@ -127,8 +127,19 @@ export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 
 Keep `fleet` in the chain unless you are deliberately running without the local
 review queue and operational ledger. The default reflection mode stores
-agent-proposed memories as reviewable FleetBrain candidates before they enter
-recall. Redis is the promoted lesson store; FleetBrain is the queue and ledger.
+agent-proposed memories as FleetBrain candidates first; when `ALFRED_AUTO_PROMOTE`
+is armed an LLM judge saves the safe ones autonomously, otherwise they wait for
+review (see `docs/FLEET_BRAIN.md`). Redis is the promoted lesson store;
+FleetBrain is the queue, ledger, and recall fallback.
+
+Redis Agent Memory runs as a pure vector store. The bundled server has every
+server-side LLM text process turned off (discrete-memory extraction, topic
+extraction, NER, working-memory summarization), client writes pass
+`deduplicate=False`, and periodic compaction is disabled, because the only local
+generation model (`llama3.2:1b`) is too weak for that work and corrupts the
+store. The real intelligence (the LLM judge that gates auto-save, plus
+candidate-side dedup) lives upstream in Python; Redis just stores and retrieves
+the embeddings.
 
 `ALFRED_MEMORY_REFLECTION_MODE` controls how model-generated reflections are
 stored:
@@ -179,13 +190,16 @@ firing "lucius" starts, asks memory.recall(codename="lucius", repo="acme-org/api
   -> gbrain.recall(...) returns [Lesson("older notes about acme-org/api auth")]
   -> chain returns a merged, deduplicated list bounded by the caller's limit
 
-firing finishes, queues a memory candidate:
-  -> FleetBrain stores the proposed lesson for review
-  -> alfred brain redis-sync copies reviewed lessons into Redis
+firing finishes, queues a memory candidate (default candidate mode):
+  -> FleetBrain stores the proposed lesson as a candidate
+  -> when ALFRED_AUTO_PROMOTE is armed, alfred brain auto-promote lets an LLM
+     judge save safe and behavior-changing candidates autonomously (see
+     docs/FLEET_BRAIN.md); promotion routes the lesson toward Redis
+  -> alfred brain redis-sync back-fills older promoted lessons into Redis
 
 if ALFRED_MEMORY_REFLECTION_MODE=direct:
-  -> redis.reflect(...) writes the lesson to Agent Memory Server
-  -> FleetBrain remains available for firings, candidates, and reliability rows
+  -> redis.reflect(...) writes the lesson to Agent Memory Server first in the
+     chain, with FleetBrain behind it for firings, candidates, and reliability rows
 ```
 
 ## Writing a custom provider

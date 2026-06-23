@@ -121,7 +121,7 @@ class FakeRunner:
                 stdout=json.dumps(
                     {
                         "ok": False,
-                        "base_url": "http://127.0.0.1:8000",
+                        "base_url": "http://127.0.0.1:8088",
                         "namespace": "alfred",
                         "error": "connection refused",
                     }
