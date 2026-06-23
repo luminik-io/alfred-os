@@ -259,6 +259,45 @@ def test_api_memory_candidates_promote_and_reject(
     assert rejected.json()["review_note"] == "too broad"
 
 
+def test_api_memory_lessons_lists_active_lessons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+
+    class FakeBrain:
+        def health(self) -> dict[str, bool]:
+            return {"ok": True}
+
+        def list_lessons(self, *, limit: int) -> list[Lesson]:
+            assert limit <= 200
+            return [
+                Lesson(
+                    id="lesson:1",
+                    codename="lucius",
+                    repo="example-org/alfred",
+                    body="GraphQL schema lives in src/schema.graphql.",
+                    tags=["graphql"],
+                    created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
+                    firing_id=None,
+                )
+            ]
+
+    brain = FakeBrain()
+    monkeypatch.setattr(server_views, "_memory_brain", lambda *_a, **_kw: (brain, None))
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.get("/api/memory/lessons")
+    assert resp.status_code == 200
+    rows = resp.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["id"] == "lesson:1"
+    assert rows[0]["codename"] == "lucius"
+    assert rows[0]["body"].startswith("GraphQL")
+    assert rows[0]["tags"] == ["graphql"]
+    assert rows[0]["severity"] == "info"
+
+
 def test_api_memory_candidate_value_error_is_bad_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

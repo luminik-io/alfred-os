@@ -2322,6 +2322,47 @@ body {
   gap: 0.75rem;
 }
 
+/* "Lessons Alfred is using": the confirmed/active lessons in recall, below the
+   review queue. Quieter than the review cards since they need no decision. */
+.lessons-active {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.lessons-active__intro {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.active-lesson-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.active-lesson {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 8%);
+}
+
+.active-lesson__what {
+  color: var(--foreground);
+  font-size: 0.88rem;
+}
+
+.active-lesson__where {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+
 .attention-card,
 .lesson-card,
 .plan-card,

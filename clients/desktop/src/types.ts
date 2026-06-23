@@ -257,6 +257,24 @@ export type MemoryCandidatesResponse = {
   error?: string;
 };
 
+// A lesson Alfred is actually using in recall (promoted, including
+// auto-promoted), as opposed to a pending review candidate.
+export type MemoryLesson = {
+  id: string;
+  codename: string;
+  repo: string;
+  body: string;
+  tags: string[];
+  severity: "info" | "warning" | "blocker" | string;
+  created_at: string;
+  firing_id?: string | null;
+};
+
+export type MemoryLessonsResponse = {
+  rows: MemoryLesson[];
+  error?: string;
+};
+
 export type MemoryCandidateActionResponse = {
   candidate_id?: string;
   lesson_id?: string;
@@ -660,6 +678,9 @@ export type Snapshot = {
   status: StatusResponse;
   actions: ActionsResponse;
   memoryCandidates: MemoryCandidatesResponse;
+  // Optional + additive: loadSnapshot always sets it (degrading to empty), and
+  // an older serve without /api/memory/lessons simply yields no active lessons.
+  memoryLessons?: MemoryLessonsResponse;
   firings: FiringRecord[];
   plans: PlanDraft[];
   trustedSlack: TrustedSlackUsersResponse | null;

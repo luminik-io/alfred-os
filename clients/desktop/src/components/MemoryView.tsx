@@ -36,6 +36,7 @@ export function MemoryView({
   const candidates = snapshot?.memoryCandidates.rows || [];
   const suggestions = snapshot?.actions.promotion_suggestions || [];
   const candidatesError = snapshot?.memoryCandidates.error || null;
+  const activeLessons = snapshot?.memoryLessons?.rows || [];
 
   return (
     <section className="panel animate-rise">
@@ -89,6 +90,27 @@ export function MemoryView({
           tone="ok"
         />
       )}
+
+      {activeLessons.length ? (
+        <section className="lessons-active" aria-label="Lessons Alfred is using">
+          <h3 className="subsection-title">Lessons Alfred is using</h3>
+          <p className="lessons-active__intro">
+            Confirmed lessons Alfred now applies as it works, including ones you kept and ones it
+            accepted on its own.
+          </p>
+          <ul className="active-lesson-list">
+            {activeLessons.map((lesson) => (
+              <li key={lesson.id} className="active-lesson">
+                <span className="active-lesson__what">{lesson.body}</span>
+                <span className="active-lesson__where">
+                  {prettyAgent(lesson.codename)}
+                  {lesson.repo ? ` · ${lesson.repo}` : ""} · {friendlyTime(lesson.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <AdvancedPanel
         snapshot={snapshot}
