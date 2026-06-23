@@ -44,6 +44,8 @@ telemetry.
 from __future__ import annotations
 
 import logging
+import os
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
@@ -127,6 +129,48 @@ _NON_ACTIONABLE_FAILURE_SUBTYPES = {
     "triage-cap",
     "triaged",
 }
+
+# Auto-promotion defaults. Every one is env-tunable so a deployment can tune
+# the gate without a code change, and all of it is OFF until ALFRED_AUTO_PROMOTE
+# is explicitly set (see ``FleetBrain.auto_promote_enabled``).
+AUTO_PROMOTE_DEFAULT_THRESHOLD = 0.9
+AUTO_PROMOTE_DEFAULT_MAX_PER_RUN = 5
+AUTO_PROMOTE_DEFAULT_MAX_JUDGE_CALLS = 25
+
+# A candidate the auto-promoter has set aside for a human keeps status
+# ``candidate`` (so it stays in the review queue and the dedup index) but its
+# review_note is stamped with this marker. Subsequent runs see the marker and
+# never re-judge the row, so a held candidate cannot starve the per-run judge
+# budget or re-post the same alert every run.
+_AUTO_HELD_MARKER = "[held-for-review]"
+
+
+def _env_flag_on(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """True only for an explicit truthy token (1/true/yes/on)."""
+    src = env if env is not None else os.environ
+    return str(src.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_float(name: str, default: float, env: Mapping[str, str] | None = None) -> float:
+    """Read a float from the environment, falling back on missing/bad input."""
+    src = env if env is not None else os.environ
+    raw = src.get(name)
+    if raw is None or not str(raw).strip():
+        return float(default)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _auto_dedup_key(body: str) -> str:
+    """Normalize a candidate body to a conflict key.
+
+    The OSS ledger has no precomputed ``dedup_hash`` column, so derive a stable
+    key from the body: lowercased with collapsed whitespace. Two pending
+    candidates that normalize to the same key are treated as a conflict (two
+    unreviewed versions of one lesson) and both are left for a human."""
+    return re.sub(r"\s+", " ", (body or "").strip().lower())
 
 
 class FleetBrain:
@@ -390,6 +434,254 @@ class FleetBrain:
             review_note=review_note.strip() or None,
         )
         return self.store.update_memory_candidate(updated)
+
+    def auto_promote_enabled(self, env: Mapping[str, str] | None = None) -> bool:
+        """True only when armed AND not kill-switched.
+
+        OFF by default: ``auto_promote_candidates`` returns immediately (a true
+        no-op, no writes) unless ``ALFRED_AUTO_PROMOTE`` is truthy.
+        ``ALFRED_AUTO_PROMOTE_KILL`` wins over the arm flag so a bad batch can
+        be stopped without un-setting the deployment config."""
+        if _env_flag_on("ALFRED_AUTO_PROMOTE_KILL", env):
+            return False
+        return _env_flag_on("ALFRED_AUTO_PROMOTE", env)
+
+    def hold_candidate_for_review(
+        self, candidate_id: str, *, note: str = ""
+    ) -> MemoryCandidate | None:
+        """Set a candidate aside for a human without promoting or rejecting it.
+
+        The row keeps status ``candidate`` (so it stays in the review queue and
+        the dedup index) but its review_note is stamped with the held marker so
+        later auto-promote runs skip it. Returns None if the candidate is gone
+        or already left the candidate state."""
+        candidate = self.store.get_memory_candidate(candidate_id)
+        if candidate is None or candidate.status != "candidate":
+            return None
+        held = f"{_AUTO_HELD_MARKER} {note}".strip()
+        return self.store.update_memory_candidate(
+            replace(
+                candidate,
+                reviewed_at=datetime.now(UTC),
+                reviewed_by="auto",
+                review_note=held[:500],
+            )
+        )
+
+    def auto_promote_candidates(
+        self,
+        *,
+        threshold: float | None = None,
+        max_per_run: int | None = None,
+        reviewer: str = "auto",
+        judge: Any | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Promote high-confidence, corroborated, non-conflicting candidates.
+
+        Structural gate (every condition must hold):
+
+          * the master arm flag is on and the kill-switch is off
+            (``auto_promote_enabled``); otherwise this is a NO-OP that touches
+            nothing and the manual queue is unchanged;
+          * the candidate is still ``candidate`` and not already held for a
+            human on a prior run;
+          * the candidate carries evidence (no bare assertion auto-enters
+            recall);
+          * it does not conflict with another pending candidate that normalizes
+            to the same body (two unreviewed versions => leave both for a
+            human);
+          * ``confidence >= threshold`` (default 0.9, env-tunable).
+
+        LLM judge (additive, default ON when armed, gated behind
+        ``ALFRED_AUTO_PROMOTE_LLM_JUDGE``): for each candidate that clears the
+        structural gate, an LLM is asked whether the lesson is safe to promote.
+        The verdict only ever makes the gate STRICTER:
+
+          * ``changes_agent_behavior`` => held for a human, stays a candidate;
+          * ``is_duplicate``           => held for a human (dedup owns merging);
+          * otherwise the judge confidence is taken as the LOWER of itself and
+            the structural confidence (never a rescue);
+          * FAIL-SOFT: any LLM error/timeout/parse/empty judgment leaves the
+            candidate PENDING. A candidate is NEVER auto-promoted on a failed or
+            empty judgment, only on an explicit safe verdict that also clears
+            the threshold. With the judge disabled, the heuristic alone gates.
+
+        Promotions are capped per run (``max_per_run``) and recorded with
+        ``reviewer="auto"`` so the whole batch stays auditable. ``judge`` is an
+        injectable ``str -> str|None`` seam; tests pass a stub so no real model
+        process is spawned. Returns a summary dict (always safe to log)."""
+        env_src = env if env is not None else os.environ
+        summary: dict[str, Any] = {
+            "enabled": self.auto_promote_enabled(env_src),
+            "judge_enabled": False,
+            "threshold": None,
+            "cap": None,
+            "considered": 0,
+            "promoted": [],
+            "skipped_low_confidence": 0,
+            "skipped_no_evidence": 0,
+            "skipped_conflict": 0,
+            "skipped_duplicate": 0,
+            "skipped_flagged": 0,
+            "flagged_behavior_change": 0,
+            "judge_errors": 0,
+            "judge_calls": 0,
+            "judge_budget_exhausted": False,
+        }
+        if not summary["enabled"]:
+            # No-op when disarmed: do not even read the queue.
+            return summary
+
+        from memory_judge import judge_candidate, judge_enabled
+
+        use_judge = judge_enabled(env_src)
+        summary["judge_enabled"] = use_judge
+
+        bar = (
+            float(threshold)
+            if threshold is not None
+            else _env_float(
+                "ALFRED_AUTO_PROMOTE_THRESHOLD", AUTO_PROMOTE_DEFAULT_THRESHOLD, env_src
+            )
+        )
+        cap = (
+            int(max_per_run)
+            if max_per_run is not None
+            else int(
+                _env_float(
+                    "ALFRED_AUTO_PROMOTE_MAX_PER_RUN",
+                    AUTO_PROMOTE_DEFAULT_MAX_PER_RUN,
+                    env_src,
+                )
+            )
+        )
+        # Per-run judge-call budget. The promotion ``cap`` only limits successful
+        # promotions, but a rejected/duplicate/flagged row still costs a judge
+        # call, so judging is bounded by this instead. Never below the promotion
+        # cap (you must be able to judge enough to fill it).
+        max_judge_calls = max(
+            cap,
+            int(
+                _env_float(
+                    "ALFRED_AUTO_PROMOTE_MAX_JUDGE_CALLS",
+                    AUTO_PROMOTE_DEFAULT_MAX_JUDGE_CALLS,
+                    env_src,
+                )
+            ),
+        )
+        summary["threshold"] = bar
+        summary["cap"] = cap
+        summary["max_judge_calls"] = max_judge_calls
+        judge_calls = 0
+
+        candidates = self.list_memory_candidates(status="candidate", limit=500)
+        summary["considered"] = len(candidates)
+        # Count normalized bodies so genuine conflicts (>1 unreviewed version)
+        # are left for a human.
+        seen: dict[str, int] = {}
+        for cand in candidates:
+            key = _auto_dedup_key(cand.body)
+            seen[key] = seen.get(key, 0) + 1
+        conflict_keys = {key for key, count in seen.items() if count > 1}
+
+        promoted = 0
+        for candidate in candidates:
+            if promoted >= cap:
+                break
+            if (candidate.review_note or "").startswith(_AUTO_HELD_MARKER):
+                # Already held for a human on a prior run; never reprocess.
+                summary["skipped_flagged"] += 1
+                continue
+            if not (candidate.evidence or "").strip():
+                summary["skipped_no_evidence"] += 1
+                continue
+            if _auto_dedup_key(candidate.body) in conflict_keys:
+                summary["skipped_conflict"] += 1
+                continue
+            try:
+                confidence = float(candidate.confidence)
+            except (TypeError, ValueError):
+                confidence = 0.0
+
+            # Structural confidence is a prerequisite, and the judge can only
+            # LOWER it (never rescue), so a below-bar candidate can never pass.
+            # Skip it BEFORE spending a judge call so a queue of newer
+            # low-confidence rows cannot exhaust the budget and starve older
+            # promotable candidates.
+            if confidence < bar:
+                summary["skipped_low_confidence"] += 1
+                continue
+
+            note = f"auto-promoted (confidence={confidence:.3f} >= {bar:.3f})"
+            if use_judge:
+                if judge_calls >= max_judge_calls:
+                    # Spent the per-run judge budget. Stop here so the run stays
+                    # bounded; remaining rows are picked up next run.
+                    summary["judge_budget_exhausted"] = True
+                    break
+                judge_calls += 1
+                verdict = judge_candidate(
+                    topic=(candidate.body or "").split("\n", 1)[0][:200],
+                    body=candidate.body or "",
+                    evidence=candidate.evidence or "",
+                    judge=judge,
+                )
+                if verdict is None:
+                    # FAIL-SOFT: a failed/empty/unparseable judgment must NEVER
+                    # auto-promote. Leave the candidate pending for the human.
+                    summary["judge_errors"] += 1
+                    continue
+                if verdict.changes_agent_behavior:
+                    rationale = verdict.rationale or "changes agent behavior"
+                    self.hold_candidate_for_review(
+                        candidate.id,
+                        note=f"behavior-changing: {rationale}",
+                    )
+                    summary["flagged_behavior_change"] += 1
+                    continue
+                if verdict.is_duplicate:
+                    # Hold (not reject): a rejected row drops out of the dedup
+                    # index, so the next harvest would re-propose, re-create, and
+                    # re-judge the same lesson. Held keeps it in the index while
+                    # keeping it out of the re-judge loop.
+                    self.hold_candidate_for_review(
+                        candidate.id,
+                        note=f"LLM judge: duplicate {verdict.rationale}".strip(),
+                    )
+                    summary["skipped_duplicate"] += 1
+                    continue
+                # Safe verdict. Take the LOWER of structural and judge
+                # confidence so a high judge score can never lift a candidate
+                # that failed the structural bar.
+                confidence = min(confidence, verdict.confidence)
+                if confidence < bar:
+                    self.hold_candidate_for_review(
+                        candidate.id,
+                        note=(
+                            f"LLM judge confidence {confidence:.3f} < {bar:.3f}"
+                        ),
+                    )
+                    summary["skipped_low_confidence"] += 1
+                    continue
+                note = (
+                    f"auto-promoted (structural + LLM judge "
+                    f"confidence={confidence:.3f} >= {bar:.3f})"
+                )
+
+            try:
+                self.promote_memory_candidate(
+                    candidate.id, reviewer=reviewer, review_note=note
+                )
+            except ValueError:
+                # The candidate changed under us (already promoted/rejected by a
+                # concurrent reviewer). Skip without counting it.
+                continue
+            promoted += 1
+            summary["promoted"].append(candidate.id)
+
+        summary["judge_calls"] = judge_calls
+        return summary
 
     def record_failure(
         self,
