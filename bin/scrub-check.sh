@@ -17,7 +17,7 @@ PATH_ALLOWLIST_RE='^(\./)?(bin/scrub-check\.sh|\.github/workflows/ci\.yml|site/p
 
 # Per-line allowlist for files that legitimately contain example codenames
 # matching one of the generic private-identifier patterns.
-PER_LINE_ALLOW_RE='^(\./)?(launchd/agents\.conf\.example|tests/test_alfred_init\.py|bin/\.scrub-extra-patterns\.example)$'
+PER_LINE_ALLOW_RE='^(\./)?(launchd/agents\.conf\.example|bin/\.scrub-extra-patterns\.example)$'
 
 # Secret allowlist: nothing should be exempt from the secret-pattern scan
 # (Slack tokens, AWS access keys). The list is intentionally smaller than
@@ -71,9 +71,9 @@ patterns=(
   "AWS_PROFILE_FOR_HERMES=\"hermes-alfred"
   # Bare internal AWS profile-name literals. These are the operator's real
   # scoped IAM profiles; public docs/code/tests must use neutral examples
-  # (e.g. acme-cron, acme-host, <your-codename>-cron) instead. tests/
-  # test_alfred_init.py is on PER_LINE_ALLOW_RE so its example codenames are
-  # exempt; everything else must stay neutral.
+  # (e.g. acme-cron, acme-host, <your-codename>-cron) instead. No file is
+  # exempt from these literals, including tests, so a real profile name can
+  # never slip through under a per-line allowance.
   "hermes-alfred"
   "alfred-host"
   "huntress-cron"

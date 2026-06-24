@@ -112,6 +112,12 @@ def _aws_secret_env(profile_env: str, default_profile: str = "acme-host") -> dic
     Scheduled agents should not depend on an operator's interactive AWS
     session. Strip inherited credential variables, then force the dedicated
     host profile unless the operator overrides it explicitly.
+
+    The built-in ``default_profile`` is a neutral placeholder (``acme-host``)
+    that will not match any real IAM profile, so callers must point at their
+    own profile: pass ``default_profile`` explicitly, set ``profile_env``, or
+    set ``ALFRED_AWS_PROFILE`` in the environment. Relying on the bare default
+    will make the downstream AWS call fail with a profile-not-found error.
     """
 
     env = {
