@@ -135,8 +135,43 @@ describe("ComposeView (conversational)", () => {
     expect(
       await screen.findByText(/how should alfred verify this worked\?/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/needs detail/i)).toBeInTheDocument();
-    expect(screen.getByText(/saved as a plan/i)).toBeInTheDocument();
+    // A build turn with a substantive draft surfaces the quiet plan card.
+    expect(screen.getByText(/draft plan/i)).toBeInTheDocument();
+    expect(screen.getByText(/keep chatting to firm it up/i)).toBeInTheDocument();
+  });
+
+  it("answers a conversational turn as plain chat with no plan card", async () => {
+    converseMock.mockResolvedValue(
+      converseResponse({
+        intent: "conversation",
+        reply: "I'm Alfred. I turn an outcome into a planned, reviewed change.",
+        // A conversation turn leaves the draft empty; no card should appear.
+        draft: {
+          title: "",
+          problem: "",
+          user: "",
+          current_behavior: "",
+          desired_behavior: "",
+          repos: [],
+          acceptance_criteria: [],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "Who are you?");
+
+    expect(
+      await screen.findByText(/i'm alfred\. i turn an outcome into a planned/i),
+    ).toBeInTheDocument();
+    // No plan card, no file-issue action, no "draft plan" framing.
+    expect(screen.queryByText(/draft plan/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /file/i })).not.toBeInTheDocument();
   });
 
   it("carries the draft id across turns so the same spec is refined", async () => {
@@ -164,7 +199,7 @@ describe("ComposeView (conversational)", () => {
     expect(await screen.findByText(/ready to file/i)).toBeInTheDocument();
   });
 
-  it("renders missing details on the saved plan card", async () => {
+  it("offers to file a not-yet-ready build plan without forcing a form", async () => {
     converseMock.mockResolvedValue(
       converseResponse({
         readiness: { score: 35, ready: false, missing: ["a test plan", "repository scope"] },
@@ -175,10 +210,12 @@ describe("ComposeView (conversational)", () => {
 
     await send(user, "Build it");
 
-    expect(await screen.findByText(/needs detail/i)).toBeInTheDocument();
-    expect(screen.getByText(/a test plan/i)).toBeInTheDocument();
-    expect(screen.getByText(/repository scope/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /file issue/i })).toBeDisabled();
+    // Quiet "Draft plan" framing, not an alarming "Needs detail" form.
+    expect(await screen.findByText(/draft plan/i)).toBeInTheDocument();
+    // The offer to file is available even before the plan is ready: the server
+    // is the real readiness gate, and the chat reply carries Alfred's questions.
+    const fileButton = screen.getByRole("button", { name: /file as an issue/i });
+    expect(fileButton).toBeEnabled();
   });
 
   it("files a model-ready spec from the chat card", async () => {
@@ -207,6 +244,54 @@ describe("ComposeView (conversational)", () => {
     expect(await screen.findByText(/filed with agent:implement/i)).toBeInTheDocument();
   });
 
+  it("keeps the filed confirmation visible across a conversational follow-up", async () => {
+    converseMock.mockResolvedValueOnce(
+      converseResponse({ readiness: { score: 92, ready: true, missing: [] }, done: false }),
+    );
+    filePlanIssueMock.mockResolvedValue({
+      ok: true,
+      status: "filed",
+      draft_id: "compose-20260603-120000-add-csv-export",
+      issue_url: "https://github.com/your-org/frontend/issues/42",
+      repo: "your-org/frontend",
+      label: "agent:implement",
+    });
+    // The follow-up is a pure conversation turn (e.g. "thanks"): it must not
+    // wipe the filed confirmation the person is still reading.
+    converseMock.mockResolvedValueOnce(
+      converseResponse({
+        intent: "conversation",
+        reply: "Anytime. I'll let the coding agents take it from here.",
+        draft: {
+          title: "",
+          problem: "",
+          user: "",
+          current_behavior: "",
+          desired_behavior: "",
+          repos: [],
+          acceptance_criteria: [],
+          test_plan: "",
+          out_of_scope: "",
+          rollout: "",
+          open_questions: "",
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "Build it");
+    await user.click(await screen.findByRole("button", { name: /file issue/i }));
+    expect(await screen.findByText(/filed with agent:implement/i)).toBeInTheDocument();
+
+    await send(user, "thanks");
+    expect(
+      await screen.findByText(/anytime\. i'll let the coding agents take it from here/i),
+    ).toBeInTheDocument();
+    // The filed confirmation is still on screen after the conversational reply.
+    expect(screen.getByText(/filed with agent:implement/i)).toBeInTheDocument();
+  });
+
   it("saves a draft in the chat when no live session is configured", async () => {
     converseMock.mockRejectedValue(
       new ApiError(
@@ -222,7 +307,8 @@ describe("ComposeView (conversational)", () => {
 
     await waitFor(() => expect(draftMock).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/i saved a draft plan for csv export/i)).toBeInTheDocument();
-    expect(screen.getByText(/needs detail/i)).toBeInTheDocument();
+    // The exact chip label (not the summary prose that also contains "draft plan").
+    expect(screen.getByText(/^Draft plan$/)).toBeInTheDocument();
   });
 
   it("keeps a real error visible and lets the person retry the same message", async () => {
@@ -295,10 +381,10 @@ describe("ComposeView (conversational)", () => {
     ]);
   });
 
-  it("always shows the plain hero copy and no plain/technical toggle", () => {
+  it("shows the ask-anything hero copy and no plain/technical toggle", () => {
     renderChat();
-    expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
-    expect(screen.getByText(/say the outcome in your own words/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /ask alfred anything/i })).toBeInTheDocument();
+    expect(screen.getByText(/ask a question, or describe a change/i)).toBeInTheDocument();
     // Compose always speaks plain: there is no toggle to seed, sync, or flip.
     expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
   });

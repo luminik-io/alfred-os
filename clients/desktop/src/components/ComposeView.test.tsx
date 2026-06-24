@@ -115,8 +115,10 @@ describe("ComposeView", () => {
     expect(
       await screen.findByText(/i saved a plan for the csv export/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/needs detail/i)).toBeInTheDocument();
-    expect(screen.getByText(/saved as a plan/i)).toBeInTheDocument();
+    // The no-engine fallback shows the quiet "Draft plan" card and folds the
+    // open questions into the reply prose (the card is an offer, not a form).
+    expect(screen.getByText(/draft plan/i)).toBeInTheDocument();
+    expect(screen.getByText(/keep chatting to firm it up/i)).toBeInTheDocument();
     expect(
       screen.getByText(/how will you verify this worked after Alfred opens a PR\?/i),
     ).toBeInTheDocument();
@@ -184,10 +186,10 @@ describe("ComposeView", () => {
     expect(fileButtons[fileButtons.length - 1]).toBeEnabled();
   });
 
-  it("always shows the plain hero copy and no plain/technical toggle", () => {
+  it("shows the ask-anything hero copy and no plain/technical toggle", () => {
     renderComposeView();
-    expect(screen.getByRole("heading", { name: /what should alfred do/i })).toBeInTheDocument();
-    expect(screen.getByText(/say the outcome in your own words/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /ask alfred anything/i })).toBeInTheDocument();
+    expect(screen.getByText(/ask a question, or describe a change/i)).toBeInTheDocument();
     // The plain/technical toggle is gone: Compose always speaks plain.
     expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/give the outcome, repo scope, and constraints/i)).not.toBeInTheDocument();

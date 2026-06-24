@@ -1603,6 +1603,56 @@ def _compose_context_repos(body: dict[str, Any], *, base_draft: IssueDraft) -> l
     )
 
 
+def _converse_memory_grounding(
+    request: Request,
+    *,
+    messages: list[Any],
+    base_draft: IssueDraft,
+) -> str:
+    """Recall relevant fleet lessons for a converse turn, gated on build intent.
+
+    Memory is advisory grounding, not always-on injection: a "who are you?" or
+    "how does review work?" turn should not pull lessons into the prompt. We
+    pre-classify the latest user message with the same heuristic the turn parser
+    uses (``compose_converse.resolve_intent``) and only recall when the turn
+    plausibly describes work to plan. The recalled lessons are rendered with the
+    existing planning-memory renderer and appended to the repo grounding, so no
+    prompt-template change is needed and the lessons stay clearly advisory.
+
+    Returns an empty string when the turn is conversational, no provider is
+    configured, or nothing relevant is recalled, so the prompt is unchanged in
+    the common case.
+    """
+    import compose_converse as cc
+
+    # Reuse the single last-user-message extraction so this gate and the turn
+    # parser always classify against identical input.
+    last_user = cc.last_user_message(messages)
+    intent = cc.resolve_intent(None, last_user_message=last_user, draft=base_draft, done=False)
+    if intent != cc.INTENT_BUILD:
+        return ""
+
+    provider = _planning_memory_provider(request)
+    if provider is None:
+        return ""
+    try:
+        from planning_assistant import recall_planning_memory, render_planning_memory
+
+        memory = recall_planning_memory(base_draft, provider, limit=3)
+        if not memory:
+            return ""
+        rendered = render_planning_memory(memory).strip()
+    except Exception:
+        return ""
+    if not rendered:
+        return ""
+    return (
+        "\n\n## Lessons from past work\n\n"
+        "Relevant lessons the fleet has already learned. Advisory only: use them "
+        "to ask sharper questions, never to invent scope.\n\n" + rendered
+    )
+
+
 def _selected_setup_repos_payload() -> dict[str, Any]:
     repos = _selected_setup_repos()
     return {"selected": repos, "count": len(repos)}
@@ -1726,6 +1776,9 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         workspace_root=_compose_workspace_root(),
         repo_to_local=_compose_repo_to_local(),
     )
+    # Recall fleet lessons only when this turn looks like real work (gated, not
+    # always-on), and append them to the grounding as advisory context.
+    repo_grounding += _converse_memory_grounding(request, messages=messages, base_draft=base_draft)
     code_map = cc.load_code_map(_compose_code_map_path())
     # Plain mode is per-request: the client toggle wins when present, and the
     # ALFRED_INTAKE_PROFILE server env is only the default when the body omits
@@ -1791,32 +1844,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         draft_path=prior_path,
         prior_payload=prior_payload,
     )
-    return JSONResponse(
-        {
-            "draft_id": saved_id,
-            "saved_path": str(saved_path),
-            "reply": turn.reply,
-            "readiness": {
-                "score": turn.readiness.score,
-                "ready": turn.readiness.ready,
-                "missing": list(turn.readiness.missing),
-            },
-            "done": turn.done,
-            "draft": {
-                "title": turn.draft.title,
-                "problem": turn.draft.problem,
-                "user": turn.draft.user,
-                "current_behavior": turn.draft.current_behavior,
-                "desired_behavior": turn.draft.desired_behavior,
-                "repos": list(turn.draft.repos),
-                "acceptance_criteria": list(turn.draft.acceptance_criteria),
-                "test_plan": turn.draft.test_plan,
-                "out_of_scope": turn.draft.out_of_scope,
-                "rollout": turn.draft.rollout,
-                "open_questions": turn.draft.open_questions,
-            },
-        }
-    )
+    return JSONResponse(_converse_turn_payload(turn, draft_id=saved_id, saved_path=saved_path))
 
 
 def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
@@ -1874,6 +1902,9 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
         workspace_root=_compose_workspace_root(),
         repo_to_local=_compose_repo_to_local(),
     )
+    # Recall fleet lessons only when this turn looks like real work (gated, not
+    # always-on), and append them to the grounding as advisory context.
+    repo_grounding += _converse_memory_grounding(request, messages=messages, base_draft=base_draft)
     code_map = cc.load_code_map(_compose_code_map_path())
     # Plain mode is per-request: the client toggle wins when present, and the
     # ALFRED_INTAKE_PROFILE server env is only the default when the body omits
@@ -1969,6 +2000,10 @@ def _converse_turn_payload(turn: Any, *, draft_id: str, saved_path: Path) -> dic
         "draft_id": draft_id,
         "saved_path": str(saved_path),
         "reply": turn.reply,
+        # The turn kind: "conversation" (a plain answer) or "build" (a planning
+        # turn). The client renders the inline plan card only for "build" turns,
+        # so a "who are you?" answer reads as a normal chat reply.
+        "intent": getattr(turn, "intent", "build"),
         "readiness": {
             "score": turn.readiness.score,
             "ready": turn.readiness.ready,

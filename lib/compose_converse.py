@@ -96,6 +96,16 @@ class ConverseReadiness:
     missing: tuple[str, ...] = ()
 
 
+# The two turn kinds the interrogator distinguishes. ``conversation`` is a
+# greeting / identity / capability / how-it-works / small-talk turn that gets a
+# plain answer and never produces a plan card; ``build`` is the spec-building
+# turn that co-authors the structured draft. Anything the model returns that is
+# not exactly ``conversation`` is normalized to ``build`` so an unknown value
+# never silently suppresses the plan surface for real work.
+INTENT_CONVERSATION = "conversation"
+INTENT_BUILD = "build"
+
+
 @dataclass(frozen=True)
 class ConverseTurn:
     """The result of one interrogator turn."""
@@ -104,6 +114,10 @@ class ConverseTurn:
     draft: IssueDraft
     readiness: ConverseReadiness
     done: bool
+    # Whether this turn is a plain conversation answer or a build/plan turn.
+    # The client renders the inline plan card only for ``build`` turns, so a
+    # "who are you?" answer reads as a normal chat reply, not a planning form.
+    intent: str = INTENT_BUILD
 
 
 def parse_messages(raw: Any) -> list[ConverseMessage]:
@@ -414,11 +428,19 @@ def intake_guidance_for(profile_name: str) -> str:
     )
 
 
-def parse_turn(raw_text: str, *, base_draft: IssueDraft) -> ConverseTurn | None:
+def parse_turn(
+    raw_text: str,
+    *,
+    base_draft: IssueDraft,
+    last_user_message: str = "",
+) -> ConverseTurn | None:
     """Parse the interrogator's JSON output into a structured turn.
 
     Returns ``None`` when the model did not return usable JSON, so the caller
-    can surface an honest error rather than a fabricated turn.
+    can surface an honest error rather than a fabricated turn. ``intent`` is the
+    model's own classification of the turn (conversation vs build); when the
+    model omits it, a conservative heuristic over the latest user message fills
+    it in so the client never has to guess.
     """
     obj = _extract_json_object(raw_text)
     if obj is None:
@@ -430,7 +452,95 @@ def parse_turn(raw_text: str, *, base_draft: IssueDraft) -> ConverseTurn | None:
     if not reply and not done:
         # A turn with no reply and not done is useless; treat as a parse miss.
         return None
-    return ConverseTurn(reply=reply, draft=draft, readiness=readiness, done=done)
+    intent = resolve_intent(
+        obj.get("intent"),
+        last_user_message=last_user_message,
+        draft=draft,
+        done=done,
+    )
+    return ConverseTurn(reply=reply, draft=draft, readiness=readiness, done=done, intent=intent)
+
+
+# Short, common openers that are almost never a build request on their own. Used
+# only as a backstop when the model does not return an ``intent``; the model's
+# own classification always wins when present.
+_CONVERSATION_HINTS = (
+    "who are you",
+    "what are you",
+    "what can you do",
+    "what do you do",
+    "how do you work",
+    "how does this work",
+    "how does review work",
+    "what is alfred",
+    "help",
+    "hi",
+    "hello",
+    "hey",
+    "thanks",
+    "thank you",
+    "good morning",
+    "good evening",
+)
+
+
+def resolve_intent(
+    raw_intent: Any,
+    *,
+    last_user_message: str,
+    draft: IssueDraft,
+    done: bool,
+) -> str:
+    """Resolve the turn intent: the model's verdict first, a heuristic backstop.
+
+    The model is told to label every turn ``conversation`` or ``build``. When it
+    does, that label wins (normalized so any non-``conversation`` value, e.g. a
+    typo or an unexpected synonym, falls back to ``build`` and never suppresses
+    the plan surface for real work). When the field is missing or unusable, a
+    conservative heuristic decides: a turn that already accepted/handed off, or
+    that has carried any structured draft content, is ``build``; an otherwise
+    short, plainly conversational opener is ``conversation``; everything else
+    defaults to ``build`` so genuine work is never misread as chatter.
+    """
+    if isinstance(raw_intent, str):
+        normalized = raw_intent.strip().lower()
+        if normalized == INTENT_CONVERSATION:
+            return INTENT_CONVERSATION
+        if normalized:
+            # The model spoke but did not say "conversation": honor the documented
+            # guarantee that any non-conversation label (a typo, an invented
+            # synonym like "greeting", or the literal "build") resolves to build,
+            # so an unknown value never suppresses the plan surface via the
+            # heuristic backstop below. Only a missing/empty/non-string intent
+            # falls through to the heuristic.
+            return INTENT_BUILD
+
+    if done or _draft_has_content(draft):
+        return INTENT_BUILD
+
+    message = (last_user_message or "").strip().lower()
+    if not message:
+        return INTENT_BUILD
+    # Only treat as conversation when the WHOLE short message (after trimming
+    # trailing punctuation and a polite "alfred" address) is a known opener, so
+    # "who are you, and can you add a dark mode toggle" stays a build turn.
+    stripped = message.rstrip("?.! ")
+    stripped = stripped.removeprefix("alfred, ").removeprefix("alfred ").strip()
+    stripped = stripped.removesuffix(" alfred").strip()
+    if len(message) <= 80 and any(stripped == hint for hint in _CONVERSATION_HINTS):
+        return INTENT_CONVERSATION
+    return INTENT_BUILD
+
+
+def _draft_has_content(draft: IssueDraft) -> bool:
+    """True when the structured draft carries any real, planned content."""
+    for field in _SCALAR_FIELDS:
+        if str(getattr(draft, field, "") or "").strip():
+            return True
+    for field in _LIST_FIELDS:
+        if [item for item in (getattr(draft, field, None) or []) if str(item).strip()]:
+            return True
+    return False
 
 
 def _readiness_from_obj(raw: Any, draft: IssueDraft) -> ConverseReadiness:
@@ -563,14 +673,16 @@ def run_turn(
     unparseable output, so the caller surfaces an honest error instead of a
     fabricated turn.
     """
+    message_list = list(messages)
     prompt = build_prompt(
         system_prompt=system_prompt,
-        messages=messages,
+        messages=message_list,
         repo_grounding=repo_grounding,
         code_map=code_map,
         intake_guidance=intake_guidance,
         current_draft=base_draft,
     )
+    latest_user_message = last_user_message(message_list)
     engine_invoke = invoke
     if engine_invoke is None:
         try:
@@ -597,7 +709,28 @@ def run_turn(
         return None
     if not getattr(result, "success", False) or not getattr(result, "result_text", ""):
         return None
-    return parse_turn(result.result_text, base_draft=base_draft)
+    return parse_turn(
+        result.result_text,
+        base_draft=base_draft,
+        last_user_message=latest_user_message,
+    )
+
+
+def last_user_message(messages: Iterable[ConverseMessage]) -> str:
+    """The most recent user turn's text, for the intent heuristic backstop.
+
+    Public so other surfaces (e.g. the server's memory-grounding gate) classify
+    intent against the exact same extraction rather than reimplementing it.
+    """
+    last = ""
+    for message in messages:
+        if getattr(message, "role", "") == "user":
+            last = getattr(message, "content", "") or ""
+    return last
+
+
+# Back-compat alias for the previously private name.
+_last_user_message = last_user_message
 
 
 def _extract_json_object(value: str) -> dict[str, Any] | None:
