@@ -18,6 +18,7 @@ bin/agent-launch
 bin/alfred-init\.py
 lib/fleet_brain/schema\.py
 systemd/render\.sh
+tests/test_fleet_brain\.py
 # CLAUDE_CODE_OAUTH_TOKEN setup uses an obviously-fake placeholder
 # value. The generic ant-token regex would otherwise flag the literal
 # prefix that ``claude setup-token`` emits in: the docs example, the

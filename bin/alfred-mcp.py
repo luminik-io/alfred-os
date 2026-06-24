@@ -94,6 +94,47 @@ TOOLS: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "name": "alfred_who_owns",
+        "description": "Resolve the CODEOWNERS owner(s) for a repo path from the fleet graph.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "alfred_recent_changes_near",
+        "description": "List recent fleet file touches in the same directory as a repo path.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "alfred_prs_touching",
+        "description": "List pull requests that changed a repo path from the materialized graph edges.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "alfred_memory_doctor",
         "description": "Run read-only health checks over fleet-brain memory.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -162,6 +203,15 @@ def call_tool(
         for event in failures:
             by_subtype[event.subtype] = by_subtype.get(event.subtype, 0) + 1
         return {"by_subtype": by_subtype, "events": [_failure_to_dict(F) for F in failures]}
+    if name == "alfred_who_owns":
+        repo, path = _require_repo_path(args)
+        return {"repo": repo, "path": path, "owners": brain.who_owns(repo=repo, path=path)}
+    if name == "alfred_recent_changes_near":
+        repo, path = _require_repo_path(args)
+        return brain.recent_changes_near(repo=repo, path=path, limit=int(args.get("limit") or 20))
+    if name == "alfred_prs_touching":
+        repo, path = _require_repo_path(args)
+        return brain.prs_touching(repo=repo, path=path, limit=int(args.get("limit") or 20))
     raise ValueError(f"unknown tool: {name}")
 
 
@@ -239,6 +289,15 @@ def _require_scope(args: dict[str, Any]) -> None:
     if _str_or_none(args.get("codename")) or _str_or_none(args.get("repo")):
         return
     raise ValueError("memory tools require a codename or repo scope")
+
+
+def _require_repo_path(args: dict[str, Any]) -> tuple[str, str]:
+    """Require both ``repo`` and ``path`` for the graph read tools."""
+    repo = _str_or_none(args.get("repo"))
+    path = _str_or_none(args.get("path"))
+    if not repo or not path:
+        raise ValueError("graph tools require both a repo and a path")
+    return repo, path
 
 
 def _raw_memory_allowed() -> bool:

@@ -1290,3 +1290,221 @@ def test_disk_store_enables_wal_journal_mode(tmp_path: Path) -> None:
         assert mode == "wal", f"expected wal, got {mode!r}"
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Graph densification: CODEOWNERS parsing, edge specs, projection, helpers.
+# All cases run against a tmp_path-backed brain; nothing touches external
+# services.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_codeowners_handles_comments_and_multiple_owners() -> None:
+    from fleet_brain.graph import parse_codeowners
+
+    text = (
+        "# top comment\n"
+        "\n"
+        "*       @org/everyone\n"
+        "/src/   @org/api @org/api-team\n"
+        "src/web/*.tsx  @org/web design@org.example\n"
+        "broken-line-without-owner\n"
+        "docs/*  not-an-owner\n"
+    )
+    rules = parse_codeowners("org/api", text)
+    # 1 (*) + 2 (/src/) + 2 (web tsx) = 5 owner rules; the broken and the
+    # no-handle lines are skipped.
+    assert len(rules) == 5
+    assert {r.pattern for r in rules} == {"*", "/src/", "src/web/*.tsx"}
+    # rank is per-line, last-wins; the web rule ranks above the /src/ rule.
+    ranks = {r.pattern: r.rank for r in rules}
+    assert ranks["*"] < ranks["/src/"] < ranks["src/web/*.tsx"]
+
+
+def test_owners_for_path_uses_last_matching_pattern_wins() -> None:
+    from fleet_brain.graph import owners_for_path, parse_codeowners
+
+    rules = parse_codeowners(
+        "org/api",
+        "*           @org/everyone\n/src/       @org/api-team\n",
+    )
+    # A path under /src/ is owned by the more specific, later rule.
+    assert owners_for_path("src/app.py", rules) == ["@org/api-team"]
+    # A path outside /src/ falls back to the catch-all.
+    assert owners_for_path("README.md", rules) == ["@org/everyone"]
+    # Nothing matches when there are no rules.
+    assert owners_for_path("src/app.py", []) == []
+
+
+def test_edges_for_file_touch_emits_in_changed_and_owned_by() -> None:
+    from fleet_brain.graph import edges_for_file_touch
+
+    edges = edges_for_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        pr_url="https://example.test/org/api/pull/7",
+        owners=["@org/api-team", "@org/api-team"],  # duplicate is collapsed
+    )
+    kinds = sorted(e.kind for e in edges)
+    assert kinds == ["changed", "in", "owned_by"]
+    by_kind = {e.kind: e for e in edges}
+    assert by_kind["in"].dst == "repo:org/api"
+    assert by_kind["in"].src == "file:org/api/src/app.py"
+    assert by_kind["changed"].src == "pr:https://example.test/org/api/pull/7"
+    assert by_kind["changed"].dst == "file:org/api/src/app.py"
+    assert by_kind["owned_by"].dst == "owner:@org/api-team"
+
+
+def test_edges_for_file_touch_skips_pr_and_owners_when_absent() -> None:
+    from fleet_brain.graph import edges_for_file_touch
+
+    edges = edges_for_file_touch(repo="org/api", path="src/app.py")
+    assert [e.kind for e in edges] == ["in"]
+    # Empty repo/path yields no edges so callers can project unconditionally.
+    assert edges_for_file_touch(repo="", path="src/app.py") == []
+    assert edges_for_file_touch(repo="org/api", path="") == []
+
+
+def test_densify_enabled_is_on_unless_explicitly_disabled() -> None:
+    from fleet_brain.graph import densify_enabled
+
+    assert densify_enabled({}) is True
+    assert densify_enabled({"ALFRED_GRAPH_DENSIFY": ""}) is True
+    assert densify_enabled({"ALFRED_GRAPH_DENSIFY": "1"}) is True
+    for token in ("0", "false", "no", "off", "OFF", "False"):
+        assert densify_enabled({"ALFRED_GRAPH_DENSIFY": token}) is False
+
+
+def test_record_file_touch_projects_in_changed_and_owned_by_edges(
+    db_path: Path,
+) -> None:
+    brain = FleetBrain(db_path=db_path)
+    brain.ingest_codeowners(
+        repo="org/api",
+        content="*  @org/everyone\n/src/  @org/api-team\n",
+    )
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        codename="lucius",
+        pr_url="https://example.test/org/api/pull/7",
+    )
+
+    # file -[in]-> repo
+    in_edges = brain.store.list_graph_edges(kind="in", src="file:org/api/src/app.py")
+    assert [e.dst for e in in_edges] == ["repo:org/api"]
+    # PR -[changed]-> file
+    changed = brain.store.list_graph_edges(kind="changed", dst="file:org/api/src/app.py")
+    assert changed and changed[0].src == "pr:https://example.test/org/api/pull/7"
+    # file -[owned_by]-> owner (last-wins picks the api-team)
+    owned = brain.store.list_graph_edges(kind="owned_by", src="file:org/api/src/app.py")
+    assert [e.dst for e in owned] == ["owner:@org/api-team"]
+
+
+def test_record_file_touch_skips_edges_when_densify_disabled(db_path: Path) -> None:
+    brain = FleetBrain(db_path=db_path, env={"ALFRED_GRAPH_DENSIFY": "0"})
+    brain.record_file_touch(repo="org/api", path="src/app.py", codename="lucius")
+    assert brain.store.list_graph_edges(kind="in", src="file:org/api/src/app.py") == []
+    # The load-bearing touch row is still recorded.
+    assert brain.list_file_touches(repo="org/api")
+
+
+def test_project_file_touch_edges_is_idempotent(db_path: Path) -> None:
+    brain = FleetBrain(db_path=db_path)
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        codename="lucius",
+        pr_url="https://example.test/org/api/pull/7",
+    )
+    # Touch the same file + PR again; edges must not duplicate, weight bumps.
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        codename="drake",
+        pr_url="https://example.test/org/api/pull/7",
+    )
+    changed = brain.store.list_graph_edges(kind="changed", dst="file:org/api/src/app.py")
+    assert len(changed) == 1
+    assert changed[0].weight == 2
+
+
+def test_who_owns_resolves_against_ingested_codeowners(db_path: Path) -> None:
+    brain = FleetBrain(db_path=db_path)
+    brain.ingest_codeowners(
+        repo="org/api",
+        content="*  @org/everyone\nsrc/web/  @org/web\n",
+    )
+    assert brain.who_owns(repo="org/api", path="src/web/page.tsx") == ["@org/web"]
+    assert brain.who_owns(repo="org/api", path="README.md") == ["@org/everyone"]
+    # No CODEOWNERS data for an unknown repo.
+    assert brain.who_owns(repo="org/other", path="src/app.py") == []
+
+
+def test_recent_changes_near_returns_directory_siblings(db_path: Path) -> None:
+    brain = FleetBrain(db_path=db_path)
+    base = datetime(2026, 6, 24, 12, 0, tzinfo=UTC)
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        codename="lucius",
+        touched_at=base,
+    )
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/util.py",
+        codename="drake",
+        touched_at=base + timedelta(minutes=1),
+    )
+    brain.record_file_touch(
+        repo="org/api",
+        path="docs/readme.md",
+        codename="huntress",
+        touched_at=base + timedelta(minutes=2),
+    )
+    near = brain.recent_changes_near(repo="org/api", path="src/app.py")
+    paths = {row["path"] for row in near}
+    assert paths == {"src/app.py", "src/util.py"}  # docs/ sibling excluded
+    self_rows = [row for row in near if row["is_self"]]
+    assert len(self_rows) == 1 and self_rows[0]["path"] == "src/app.py"
+
+
+def test_prs_touching_reads_materialized_edges(db_path: Path) -> None:
+    brain = FleetBrain(db_path=db_path)
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        codename="lucius",
+        pr_url="https://example.test/org/api/pull/7",
+    )
+    prs = brain.prs_touching(repo="org/api", path="src/app.py")
+    assert [row["pr"] for row in prs] == ["https://example.test/org/api/pull/7"]
+
+
+def test_prs_touching_falls_back_to_touches_when_densify_off(db_path: Path) -> None:
+    brain = FleetBrain(db_path=db_path, env={"ALFRED_GRAPH_DENSIFY": "0"})
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        codename="lucius",
+        pr_url="https://example.test/org/api/pull/9",
+    )
+    # No graph edges were projected, but the helper still answers from the
+    # raw touch rows.
+    assert brain.store.list_graph_edges(kind="changed", dst="file:org/api/src/app.py") == []
+    prs = brain.prs_touching(repo="org/api", path="src/app.py")
+    assert [row["pr"] for row in prs] == ["https://example.test/org/api/pull/9"]
+
+
+def test_stats_reports_graph_edge_and_code_owner_counts(db_path: Path) -> None:
+    brain = FleetBrain(db_path=db_path)
+    brain.ingest_codeowners(repo="org/api", content="/src/  @org/api-team\n")
+    brain.record_file_touch(
+        repo="org/api",
+        path="src/app.py",
+        codename="lucius",
+        pr_url="https://example.test/org/api/pull/7",
+    )
+    stats = brain.stats()
+    assert stats["graph_edges"] >= 1
+    assert stats["code_owners"] >= 1
