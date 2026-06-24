@@ -7,7 +7,7 @@ the boundaries that keep an autonomous run from becoming a problem.
 
 For the private vulnerability-reporting process, see [`SECURITY.md`](../SECURITY.md).
 For what leaves your machine, see
-[Privacy](../README.md#privacy-what-alfred-touches-and-does-not-touch).
+[Privacy](../README.md#privacy-what-alfred-touches-and-what-it-does-not).
 
 ## The trust model in one line
 

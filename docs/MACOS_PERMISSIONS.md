@@ -29,7 +29,7 @@ What it reaches, and why:
 - **Outbound network** to the model provider you chose (Anthropic for Claude
   Code, OpenAI for Codex), to GitHub through `gh`, and to your Slack webhook if
   you configured one. There are no other destinations. See
-  [Privacy](../README.md#privacy-what-alfred-touches-and-does-not-touch).
+  [Privacy](../README.md#privacy-what-alfred-touches-and-what-it-does-not).
 
 ## Alfred Desktop
 
