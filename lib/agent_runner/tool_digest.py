@@ -12,13 +12,19 @@ the common shapes (pytest, generic test runners, unified diffs) and otherwise
 falls back to a head/tail excerpt. It is lossy on purpose; the agent can always
 re-run the tool for the raw output when it needs detail.
 
-It is wired into the firing loop via :func:`digest_stream_tool_result`, which
-the runner applies to verbose ``tool_result`` blocks streamed back from the
-agent CLI before they round-trip into the next turn. Small outputs pass through
+The model-facing entry point is :func:`digest_stream_tool_result`: given a
+verbose ``tool_result`` body it returns a compact, structured replacement for
+the bytes that re-enter the model's next turn. Small outputs pass through
 untouched (nothing to gain, and the agent may want the literal bytes); only
 output past a size threshold is distilled. The whole path is gated behind
 ``ALFRED_TOOL_DIGEST`` (default on, opt-out) so an operator can always fall back
 to raw output.
+
+It is deliberately NOT applied to the loop-detector fingerprint path: that
+path observes raw tool output only for stuck-loop detection and never reaches
+the model, so digesting there would conflate genuinely distinct outputs and
+trip false positives. Compression belongs only where output actually
+round-trips into context.
 """
 
 from __future__ import annotations
