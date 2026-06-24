@@ -215,6 +215,50 @@ def test_stream_step_for_loopcheck_tool_result(fresh_agent_runner):
     assert step == ("tool_result", "boom")
 
 
+def test_stream_step_for_loopcheck_preserves_raw_body_for_fingerprint(fresh_agent_runner):
+    """The loop-check path must fingerprint the RAW tool-result body.
+
+    This pair feeds only the loop detector, never the model's context, so it
+    must not be run through the tool-output digest: digesting would collapse
+    two genuinely different large outputs (e.g. same byte-length and line
+    count) onto the same fingerprint and trip a false-positive loop kill.
+    Two distinct large bodies must yield distinct previews here.
+    """
+    ar = fresh_agent_runner
+
+    def _line(text: str) -> str:
+        return json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {"type": "tool_result", "content": [{"type": "text", "text": text}]}
+                    ]
+                },
+            }
+        )
+
+    # Two different bodies, both well past any digest size floor, sharing the
+    # same line count so a generic digest would render identically.
+    body_a = "\n".join(f"alpha line {i}" for i in range(400))
+    body_b = "\n".join(f"bravo line {i}" for i in range(400))
+    assert len(body_a) > 2000 and len(body_b) > 2000
+
+    step_a = ar.process._stream_step_for_loopcheck(_line(body_a))
+    step_b = ar.process._stream_step_for_loopcheck(_line(body_b))
+    assert step_a is not None and step_b is not None
+    # Raw bodies are returned verbatim (no "[tool output digested ...]" prefix).
+    assert step_a[1] == body_a
+    assert step_b[1] == body_b
+    assert "digested" not in step_a[1]
+    # Distinct outputs stay distinguishable to the fingerprinter.
+    from agent_runner.reliability import step_fingerprint
+
+    fp_a = step_fingerprint(*step_a)
+    fp_b = step_fingerprint(*step_b)
+    assert fp_a != fp_b
+
+
 def test_stream_step_for_loopcheck_ignores_non_tool_lines(fresh_agent_runner):
     ar = fresh_agent_runner
     assert ar.process._stream_step_for_loopcheck('{"type":"system","subtype":"init"}') is None

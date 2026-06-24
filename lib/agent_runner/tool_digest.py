@@ -12,17 +12,41 @@ the common shapes (pytest, generic test runners, unified diffs) and otherwise
 falls back to a head/tail excerpt. It is lossy on purpose; the agent can always
 re-run the tool for the raw output when it needs detail.
 
-This is a building block. Wiring it into the firing loop (digesting Bash tool
-results before they round-trip into the next turn) is a follow-up; landing the
-helper + its tests first keeps the diff tight and reviewable.
+The model-facing entry point is :func:`digest_stream_tool_result`: given a
+verbose ``tool_result`` body it returns a compact, structured replacement for
+the bytes that re-enter the model's next turn. Small outputs pass through
+untouched (nothing to gain, and the agent may want the literal bytes); only
+output past a size threshold is distilled. The whole path is gated behind
+``ALFRED_TOOL_DIGEST`` (default on, opt-out) so an operator can always fall back
+to raw output.
+
+It is deliberately NOT applied to the loop-detector fingerprint path: that
+path observes raw tool output only for stuck-loop detection and never reaches
+the model, so digesting there would conflate genuinely distinct outputs and
+trip false positives. Compression belongs only where output actually
+round-trips into context.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 
-__all__ = ["ToolDigest", "digest_diff", "digest_test_log", "digest_tool_output"]
+__all__ = [
+    "ToolDigest",
+    "digest_diff",
+    "digest_stream_tool_result",
+    "digest_test_log",
+    "digest_tool_output",
+    "tool_digest_enabled",
+    "tool_digest_min_chars",
+]
+
+# Env knobs (12-factor; read at call time so tests can monkeypatch).
+_DIGEST_FLAG = "ALFRED_TOOL_DIGEST"  # default-ON, opt out with 0/false/no/off
+_DIGEST_MIN_CHARS = "ALFRED_TOOL_DIGEST_MIN_CHARS"  # below this, pass through un-digested
+_DEFAULT_MIN_CHARS = 2000
 
 # pytest short-summary lines, e.g. "FAILED tests/test_x.py::test_y - AssertionError"
 _PYTEST_OUTCOME_RE = re.compile(
@@ -170,3 +194,58 @@ def digest_tool_output(text: str, *, kind: str | None = None) -> ToolDigest:
     lines = [ln for ln in text.splitlines() if ln.strip()]
     summary = f"Output: {len(lines)} non-empty line(s)"
     return ToolDigest(kind="generic", summary=summary, excerpt=_excerpt(text))
+
+
+# --------------------------------------------------------------------------
+# Firing-loop wiring
+# --------------------------------------------------------------------------
+
+
+def tool_digest_enabled() -> bool:
+    """True unless an operator opts out via ``ALFRED_TOOL_DIGEST=0`` (default on)."""
+    val = os.environ.get(_DIGEST_FLAG)
+    return val is None or val.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def tool_digest_min_chars() -> int:
+    """Size floor below which tool output passes through un-digested.
+
+    Reads ``ALFRED_TOOL_DIGEST_MIN_CHARS``; falls back to the default and
+    clamps to ``>= 0`` on any non-integer value.
+    """
+    raw = os.environ.get(_DIGEST_MIN_CHARS)
+    if raw is None or not raw.strip():
+        return _DEFAULT_MIN_CHARS
+    try:
+        return max(0, int(raw.strip()))
+    except ValueError:
+        return _DEFAULT_MIN_CHARS
+
+
+def digest_stream_tool_result(text: str, *, kind: str | None = None) -> str:
+    """Distill one verbose ``tool_result`` body for the next model turn.
+
+    This is the firing-loop entry point. Behavior:
+
+    * Disabled (``ALFRED_TOOL_DIGEST=0``): return ``text`` unchanged.
+    * Output shorter than :func:`tool_digest_min_chars`: return ``text``
+      unchanged. Small outputs carry little noise and the agent may want the
+      literal bytes.
+    * Otherwise: sniff the shape (test log / diff / generic) and return the
+      compact :meth:`ToolDigest.render` block, prefixed with a one-line note so
+      the agent knows it is reading a digest, not raw output.
+
+    Pure and side-effect free apart from reading env at call time, so it is
+    safe to call from the stream-capture hot path.
+    """
+    text = text or ""
+    if not tool_digest_enabled():
+        return text
+    if len(text) < tool_digest_min_chars():
+        return text
+    digest = digest_tool_output(text, kind=kind)
+    note = (
+        f"[tool output digested from {len(text)} chars; "
+        "re-run the tool for raw output if you need full detail]"
+    )
+    return f"{note}\n{digest.render()}"

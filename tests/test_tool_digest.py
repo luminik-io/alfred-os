@@ -9,10 +9,14 @@ from pathlib import Path
 _LIB = Path(__file__).resolve().parent.parent / "lib"
 sys.path.insert(0, str(_LIB))
 
+import pytest  # noqa: E402
 from agent_runner.tool_digest import (  # noqa: E402
     digest_diff,
+    digest_stream_tool_result,
     digest_test_log,
     digest_tool_output,
+    tool_digest_enabled,
+    tool_digest_min_chars,
 )
 
 
@@ -86,7 +90,85 @@ def test_render_is_compact_and_structured() -> None:
     assert "test_z.py::test_q" in rendered
 
 
-if __name__ == "__main__":
-    import pytest as _pytest
+# --------------------------------------------------------------------------
+# Firing-loop wiring (digest_stream_tool_result)
+# --------------------------------------------------------------------------
 
-    sys.exit(_pytest.main([__file__, "-v"]))
+
+def _big_test_log(n: int = 400) -> str:
+    passed = "\n".join(f"PASSED tests/test_mod.py::test_{i}" for i in range(n))
+    return (
+        f"{passed}\n"
+        "FAILED tests/test_mod.py::test_boom - AssertionError: nope\n"
+        "=== 1 failed, "
+        f"{n} passed in 12.3s ===\n"
+    )
+
+
+def _big_diff(n: int = 400) -> str:
+    head = "diff --git a/lib/foo.py b/lib/foo.py\n--- a/lib/foo.py\n+++ b/lib/foo.py\n"
+    body = "\n".join(f"+added line {i}" for i in range(n))
+    return head + body + "\n"
+
+
+def test_stream_result_digests_large_test_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST", raising=False)
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST_MIN_CHARS", raising=False)
+    raw = _big_test_log()
+    assert len(raw) >= tool_digest_min_chars()
+    out = digest_stream_tool_result(raw)
+    assert out != raw
+    assert len(out) < len(raw)
+    assert "digested" in out
+    # Signal survives: the failing node and the tail counts.
+    assert "test_boom" in out
+    assert "failed" in out
+
+
+def test_stream_result_digests_large_diff(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST", raising=False)
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST_MIN_CHARS", raising=False)
+    raw = _big_diff()
+    out = digest_stream_tool_result(raw)
+    assert out != raw
+    assert "lib/foo.py" in out
+    assert "file(s) changed" in out
+
+
+def test_stream_result_passes_small_output_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST", raising=False)
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST_MIN_CHARS", raising=False)
+    small = "FAILED tests/test_z.py::test_q - ValueError\n=== 1 failed in 0.1s ===\n"
+    assert len(small) < tool_digest_min_chars()
+    assert digest_stream_tool_result(small) == small
+
+
+def test_stream_result_opt_out_returns_raw(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALFRED_TOOL_DIGEST", "0")
+    raw = _big_test_log()
+    assert tool_digest_enabled() is False
+    assert digest_stream_tool_result(raw) == raw
+
+
+def test_min_chars_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST", raising=False)
+    monkeypatch.setenv("ALFRED_TOOL_DIGEST_MIN_CHARS", "10")
+    # A short blob that would normally pass through is now over the floor.
+    text = "FAILED tests/test_z.py::test_q - ValueError\n=== 1 failed in 0.1s ===\n"
+    assert tool_digest_min_chars() == 10
+    out = digest_stream_tool_result(text)
+    assert "digested" in out
+
+
+def test_min_chars_bad_value_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALFRED_TOOL_DIGEST_MIN_CHARS", "not-a-number")
+    assert tool_digest_min_chars() == 2000
+
+
+def test_empty_output_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ALFRED_TOOL_DIGEST", raising=False)
+    assert digest_stream_tool_result("") == ""
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v"]))

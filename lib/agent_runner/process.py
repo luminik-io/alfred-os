@@ -875,6 +875,14 @@ def _stream_step_for_loopcheck(line: str) -> tuple[str, str] | None:
             body = block.get("content")
             if isinstance(body, list):
                 body = " ".join(str(b.get("text", "")) for b in body if isinstance(b, dict))
+            # Fingerprint the RAW result body. This pair feeds only
+            # ``loop_detector.observe`` (the subprocess runs with
+            # ``stdin=DEVNULL``, so nothing here can reach the model's
+            # context); the loop detector needs the raw bytes so that two
+            # genuinely different outputs stay distinguishable in the
+            # truncated fingerprint window. The tool_digest module is for
+            # compressing output that actually re-enters the model turn,
+            # which is not this path.
             return ("tool_result", str(body))
     return None
 
