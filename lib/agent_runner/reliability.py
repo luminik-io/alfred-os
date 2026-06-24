@@ -51,8 +51,10 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import os
 import random
 import time
+import uuid
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -63,6 +65,11 @@ from typing import Any, TypeVar
 
 from .config import env_int
 from .paths import STATE_ROOT
+
+try:  # POSIX-only; the breaker degrades to best-effort on platforms without it.
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX (Windows) fallback
+    fcntl = None  # type: ignore[assignment]
 
 # --------------------------------------------------------------------------
 # Failure classification: the single source of truth
@@ -149,9 +156,14 @@ _TRANSIENT_TEXT_MARKERS: tuple[str, ...] = (
     " 502 ",
     " 503 ",
     " 504 ",
+    # Context-window overflow only. A bare ``too long`` is deliberately NOT
+    # listed: it also matches non-recoverable env errors like ``argument
+    # list too long`` (E2BIG), ``filename too long`` (ENAMETOOLONG), or
+    # ``path too long``, which a same-engine retry cannot fix and would just
+    # burn the retry budget before surfacing the real cause. The specific
+    # context markers below cover the actually-transient overflow case.
     "context length",
     "context window",
-    "too long",
     "prompt is too long",
     "maximum context",
 )
@@ -467,6 +479,35 @@ class CircuitBreaker:
 
     # -- persistence -------------------------------------------------------
 
+    @contextlib.contextmanager
+    def _locked(self):
+        """Hold an exclusive cross-process lock for a read-modify-write.
+
+        The breaker counter is incremented from every worker on the host
+        sharing one engine file, so the load -> increment -> store sequence
+        must be serialized or concurrent writers race and collapse the
+        count (each reads the same value, each writes value+1, so N
+        failures advance the counter by 1 and the breaker trips far too
+        late). We take an ``fcntl`` exclusive lock on a sidecar ``.lock``
+        file for the duration of the update. On a platform without
+        ``fcntl`` the breaker degrades to best-effort (the unique temp name
+        still prevents corruption, just not a strict count).
+        """
+        if fcntl is None:  # pragma: no cover - non-POSIX fallback
+            yield
+            return
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = self._path.with_suffix(".lock")
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
     def _load(self) -> dict[str, Any]:
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
@@ -476,9 +517,23 @@ class CircuitBreaker:
 
     def _store(self, data: dict[str, Any]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        tmp.replace(self._path)
+        # Write to a per-writer-unique temp file before the atomic rename.
+        # Every worker on the host shares this engine's target path, so a
+        # FIXED ``.tmp`` name would let two concurrent writers clobber each
+        # other's bytes before either renames, silently dropping one of the
+        # two increments and tripping the breaker later than intended. A
+        # pid + uuid token makes each writer's temp file private, so the
+        # only shared step is the atomic ``replace``.
+        tmp = self._path.with_suffix(f".json.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        try:
+            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp.replace(self._path)
+        finally:
+            # If the rename never happened (an error between write and
+            # replace), do not leave a stray temp file behind.
+            with contextlib.suppress(OSError):
+                if tmp.exists():
+                    tmp.unlink()
 
     # -- queries -----------------------------------------------------------
 
@@ -506,20 +561,26 @@ class CircuitBreaker:
     # -- transitions -------------------------------------------------------
 
     def record_transient_failure(self, *, reason: str | None = None) -> BreakerStatus:
-        """Count one transient failure; trip the breaker at the threshold."""
-        data = self._load()
-        consecutive = int(data.get("consecutive", 0) or 0) + 1
-        data["consecutive"] = consecutive
-        data["last_failure"] = self._now().strftime("%Y-%m-%dT%H:%M:%SZ")
-        if reason:
-            data["reason"] = reason
-        opened = False
-        if consecutive >= self._threshold:
-            until = self._now() + timedelta(seconds=self._cooldown)
-            data["open_until"] = until.strftime("%Y-%m-%dT%H:%M:%SZ")
-            opened = True
-        with contextlib.suppress(OSError):
-            self._store(data)
+        """Count one transient failure; trip the breaker at the threshold.
+
+        The whole load -> increment -> store runs under an exclusive
+        cross-process lock so concurrent workers on the host each see the
+        other's increment rather than racing on a stale read.
+        """
+        with self._locked():
+            data = self._load()
+            consecutive = int(data.get("consecutive", 0) or 0) + 1
+            data["consecutive"] = consecutive
+            data["last_failure"] = self._now().strftime("%Y-%m-%dT%H:%M:%SZ")
+            if reason:
+                data["reason"] = reason
+            opened = False
+            if consecutive >= self._threshold:
+                until = self._now() + timedelta(seconds=self._cooldown)
+                data["open_until"] = until.strftime("%Y-%m-%dT%H:%M:%SZ")
+                opened = True
+            with contextlib.suppress(OSError):
+                self._store(data)
         return BreakerStatus(
             open=opened,
             engine=self.engine,
@@ -532,7 +593,7 @@ class CircuitBreaker:
         """Reset the streak and close the breaker after a clean call."""
         if not self._path.exists():
             return
-        with contextlib.suppress(OSError):
+        with self._locked(), contextlib.suppress(OSError):
             self._store({"consecutive": 0})
 
     def reset(self) -> None:
@@ -540,6 +601,10 @@ class CircuitBreaker:
         with contextlib.suppress(OSError):
             if self._path.exists():
                 self._path.unlink()
+        with contextlib.suppress(OSError):
+            lock_path = self._path.with_suffix(".lock")
+            if lock_path.exists():
+                lock_path.unlink()
 
 
 # --------------------------------------------------------------------------

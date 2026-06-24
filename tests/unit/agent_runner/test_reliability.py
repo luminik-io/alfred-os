@@ -12,6 +12,7 @@ Covers the four pieces of the self-healing core:
 from __future__ import annotations
 
 import random
+import threading
 from datetime import UTC, datetime
 
 import pytest
@@ -89,6 +90,30 @@ def test_classify_result_text_markers(fresh_agent_runner):
         ar, "unknown", stop_reason="error", result_text="prompt is too long for context window"
     )
     assert ar.classify_result(context) is ar.FailureClass.TRANSIENT
+
+
+def test_classify_result_posix_too_long_is_not_transient(fresh_agent_runner):
+    """A bare ``too long`` POSIX/env error is NOT a transient context overflow.
+
+    ``argument list too long`` (E2BIG), ``filename too long``
+    (ENAMETOOLONG), and similar are unrecoverable environment problems: a
+    same-engine retry cannot fix them, so they must not classify TRANSIENT
+    and burn the retry budget. They fall through to the unplaceable default
+    (CAPABILITY) instead.
+    """
+    ar = fresh_agent_runner
+    for message in (
+        "OSError: [Errno 7] argument list too long",
+        "OSError: [Errno 36] filename too long",
+        "path too long for this filesystem",
+    ):
+        res = _result(ar, "unknown", stop_reason="error", error_message=message)
+        assert ar.classify_result(res) is not ar.FailureClass.TRANSIENT, message
+    # The genuine context-overflow markers still classify transient.
+    overflow = _result(
+        ar, "unknown", stop_reason="error", error_message="maximum context length exceeded"
+    )
+    assert ar.classify_result(overflow) is ar.FailureClass.TRANSIENT
 
 
 def test_classify_result_unplaceable_defaults_capability(fresh_agent_runner):
@@ -310,6 +335,45 @@ def test_breaker_state_is_shared_across_instances(fresh_agent_runner):
     cb_a.record_transient_failure()
     cb_b = ar.CircuitBreaker("claude", threshold=2, cooldown_seconds=600)
     assert cb_b.is_open() is True
+
+
+def test_breaker_concurrent_writes_do_not_lose_increments(fresh_agent_runner):
+    """Concurrent failure records on the shared ledger keep an exact count.
+
+    Each worker uses its own ``CircuitBreaker`` instance pointed at the
+    same on-disk engine file. The exclusive cross-process lock around the
+    load -> increment -> store sequence (plus the per-writer-unique temp
+    name) means no writer reads a stale count or clobbers another's bytes,
+    so every increment lands and the committed counter equals the number
+    of writers rather than collapsing to a single surviving write. A high
+    threshold keeps the breaker closed so the counter keeps climbing.
+    """
+    ar = fresh_agent_runner
+    workers = 16
+    barrier = threading.Barrier(workers)
+    errors: list[BaseException] = []
+
+    def hammer() -> None:
+        try:
+            cb = ar.CircuitBreaker("claude", threshold=10_000, cooldown_seconds=600)
+            barrier.wait()
+            cb.record_transient_failure()
+        except BaseException as exc:  # pragma: no cover - surfaced via assert
+            errors.append(exc)
+
+    threads = [threading.Thread(target=hammer) for _ in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, errors
+    final = ar.CircuitBreaker("claude", threshold=10_000, cooldown_seconds=600)
+    status = final.status()
+    assert status.consecutive == workers
+    # No stray per-writer temp files leaked into the breaker dir.
+    leftover = list(final._path.parent.glob("*.tmp"))
+    assert leftover == [], leftover
 
 
 def test_breaker_reset_clears_state(fresh_agent_runner):
