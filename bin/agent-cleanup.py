@@ -21,6 +21,7 @@ from __future__ import annotations
 import collections
 import contextlib
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -406,6 +407,72 @@ def discover_worktree_pools(
     return sorted(set(found))
 
 
+def _parse_docker_reclaimed_mb(stdout: str) -> float:
+    """Parse ``Total reclaimed space: <num><unit>B`` from docker prune output.
+
+    Docker reports the unit-suffixed total (e.g. ``1.5GB``, ``512MB``, ``0B``).
+    Units are normalized to MB; an empty/bare-byte unit is treated as bytes.
+    Returns 0.0 when the line is absent.
+    """
+    match = re.search(r"Total reclaimed space:\s*([\d.]+)\s*([KMGT]?)B", stdout)
+    if not match:
+        return 0.0
+    value = float(match.group(1))
+    unit = match.group(2)
+    factors = {
+        "": 1.0 / (1024 * 1024),  # bytes -> MB
+        "K": 1.0 / 1024,  # KB -> MB
+        "M": 1.0,  # MB
+        "G": 1024.0,  # GB -> MB
+        "T": 1024.0 * 1024.0,  # TB -> MB
+    }
+    return value * factors[unit]
+
+
+def reclaim_emergency_docker() -> tuple[float, int]:
+    """Reclaim regenerable Docker artifacts during --emergency.
+
+    Like the dev-cache sweep, this targets machine-wide build output that can
+    wedge the whole fleet off disk while every workspace-scoped pass reclaims
+    0 MB. Docker's build cache, dangling images, and orphaned volumes are all
+    regenerable: the next build or run recreates whatever it needs. We run only
+    SAFE prunes that never touch a running or stopped container or its data:
+
+    * ``docker builder prune -f``  -> build cache only
+    * ``docker image prune -f``    -> dangling images only (NOT ``-a``)
+    * ``docker volume prune -f``   -> volumes referenced by no container
+
+    We never run ``docker container prune`` and never pass ``-a`` to the image
+    prune, so running containers and their data are always preserved. Opt out
+    with ALFRED_EMERGENCY_SKIP_DOCKER=1.
+
+    Returns ``(freed_mb, prunes_reclaimed)`` where ``prunes_reclaimed`` counts
+    the prune commands that freed more than 0 bytes.
+    """
+    if not EMERGENCY or os.environ.get("ALFRED_EMERGENCY_SKIP_DOCKER") == "1":
+        return 0.0, 0
+    docker = shutil.which("docker")
+    if docker is None:
+        return 0.0, 0
+    commands = [
+        [docker, "builder", "prune", "-f"],
+        [docker, "image", "prune", "-f"],
+        [docker, "volume", "prune", "-f"],
+    ]
+    freed_mb = 0.0
+    reclaimed = 0
+    for cmd in commands:
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        mb = _parse_docker_reclaimed_mb(proc.stdout or "")
+        if mb > 0:
+            freed_mb += mb
+            reclaimed += 1
+    return freed_mb, reclaimed
+
+
 # Operator-managed extra worktree pools (outside ALFRED_HOME).
 # ``ALFRED_CLEANUP_EXTRA_PATHS`` is a colon-separated list; each entry
 # is swept using the same dirty-skip rules as the fleet pool but with a
@@ -595,6 +662,11 @@ if EMERGENCY and os.environ.get("ALFRED_EMERGENCY_SKIP_DEV_CACHES") != "1":
         if not cache_root.exists():
             dev_cache_freed_mb += size_mb
             dev_caches_cleared += 1
+# In EMERGENCY mode, also reclaim regenerable Docker build cache, dangling
+# images, and orphaned volumes (SAFE prunes only - running and stopped
+# containers and their data are never touched). Opt out with
+# ALFRED_EMERGENCY_SKIP_DOCKER=1.
+dock_freed_mb, dock_n = reclaim_emergency_docker()
 print(f"[cleanup] /tmp: {removed} files/dirs removed ({freed_mb:.1f} MB freed)")
 print(
     f"[cleanup] worktrees: {wt_removed} abandoned removed "
@@ -619,8 +691,18 @@ if EMERGENCY:
         f"[cleanup] dev caches: {dev_caches_cleared} reclaimed "
         f"({dev_cache_freed_mb:.1f} MB freed, Xcode DerivedData + npm cache)"
     )
+    print(
+        f"[cleanup] docker: {dock_n} prune(s) reclaimed "
+        f"({dock_freed_mb:.1f} MB freed, build cache + dangling images "
+        f"+ orphaned volumes)"
+    )
 total_freed_mb = (
-    freed_mb + wt_freed_mb + extra_stats["freed_mb"] + transcript_freed_mb + dev_cache_freed_mb
+    freed_mb
+    + wt_freed_mb
+    + extra_stats["freed_mb"]
+    + transcript_freed_mb
+    + dev_cache_freed_mb
+    + dock_freed_mb
 )
 print(f"[cleanup] total reclaimed: {total_freed_mb:.1f} MB")
 if wt_skipped:

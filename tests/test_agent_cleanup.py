@@ -180,6 +180,83 @@ def test_emergency_skip_env_preserves_dev_caches(tmp_path, monkeypatch):
     assert mod.dev_caches_cleared == 0
 
 
+def _patch_docker(monkeypatch, *, present, stdout):
+    """Route docker prune calls to a fake while leaving real subprocess intact.
+
+    The procedural cleanup body runs ``subprocess.run`` for git/worktree work
+    during module exec, so we only intercept ``docker`` invocations and
+    delegate everything else to the genuine implementation.
+    """
+    real_run = subprocess.run
+    real_which = __import__("shutil").which
+    calls: list[list[str]] = []
+
+    def fake_which(name, *args, **kwargs):
+        if name == "docker":
+            return "/usr/bin/docker" if present else None
+        return real_which(name, *args, **kwargs)
+
+    def fake_run(cmd, *args, **kwargs):
+        if isinstance(cmd, (list, tuple)) and cmd and str(cmd[0]).endswith("docker"):
+            calls.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr("shutil.which", fake_which)
+    monkeypatch.setattr("subprocess.run", fake_run)
+    return calls
+
+
+def test_emergency_reclaims_docker_and_sums(tmp_path, monkeypatch):
+    """--emergency runs the 3 safe docker prunes and sums their reclaimed space."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--emergency"], home=home)
+    assert mod.dock_n == 3
+    assert mod.dock_freed_mb == pytest.approx(1536.0 * 3, rel=1e-3)
+    assert [c[1:] for c in calls] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+        ["volume", "prune", "-f"],
+    ]
+    for cmd in calls:
+        assert "container" not in cmd
+        assert "-a" not in cmd
+
+
+def test_emergency_docker_absent_reclaims_nothing(tmp_path, monkeypatch):
+    """When the docker binary is absent, no prune runs and nothing is reclaimed."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(monkeypatch, present=False, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--emergency"], home=home)
+    assert mod.dock_n == 0
+    assert mod.dock_freed_mb == 0.0
+    assert calls == []
+
+
+def test_emergency_skip_env_preserves_docker(tmp_path, monkeypatch):
+    """ALFRED_EMERGENCY_SKIP_DOCKER=1 opts out even under --emergency."""
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DOCKER", "1")
+    home = tmp_path / "home"
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--emergency"], home=home)
+    assert mod.dock_n == 0
+    assert mod.dock_freed_mb == 0.0
+    assert calls == []
+
+
+def test_non_emergency_leaves_docker_untouched(tmp_path, monkeypatch):
+    """A normal (non-emergency) sweep never runs docker prunes."""
+    home = tmp_path / "home"
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
+    assert mod.dock_n == 0
+    assert mod.dock_freed_mb == 0.0
+    assert calls == []
+
+
 def test_sweep_extra_paths_removes_old_clean_worktrees(cleanup, tmp_path, monkeypatch):
     extra_root = tmp_path / "extra-worktrees"
     extra_root.mkdir()
