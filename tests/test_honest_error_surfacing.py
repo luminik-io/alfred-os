@@ -85,13 +85,17 @@ def _engine_kwargs():
 
 
 def test_hybrid_stamps_fallback_trigger_on_codex_result() -> None:
-    """When Claude auth-fails in hybrid mode and codex then rate-limits,
-    the returned codex result carries fallback_from_subtype so callers can
-    report the auth root cause."""
+    """When Claude hits a capability gap in hybrid mode and codex then
+    rate-limits, the returned codex result carries fallback_from_subtype so
+    callers can report the original trigger as the root cause.
+
+    Note: only CAPABILITY failures trigger the fallback now (transient
+    failures retry the same engine, fatal failures surface honestly), so
+    the trigger here is ``error_max_turns``, not auth."""
     captured: list[ClaudeResult] = []
 
     def fake_claude(*a, **kw):
-        return _result("error_authentication")
+        return _result("error_max_turns")
 
     def fake_codex(*a, **kw):
         return _result("error_rate_limit")
@@ -107,10 +111,12 @@ def test_hybrid_stamps_fallback_trigger_on_codex_result() -> None:
 
     assert engine_used == "codex-fallback"
     assert result.subtype == "error_rate_limit"
-    assert result.fallback_from_subtype == "error_authentication"
-    assert reported_subtype(result) == "error_authentication"
+    assert result.fallback_from_subtype == "error_max_turns"
+    # The codex subtype is the honest headline here (the trigger was not an
+    # operator-actionable auth failure), so reported_subtype keeps it.
+    assert reported_subtype(result) == "error_rate_limit"
     # on_fallback fired with the ORIGINAL claude failure.
-    assert captured and captured[0].subtype == "error_authentication"
+    assert captured and captured[0].subtype == "error_max_turns"
 
 
 def test_hybrid_no_fallback_leaves_trigger_unset() -> None:

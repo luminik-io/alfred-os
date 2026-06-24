@@ -6,6 +6,7 @@ import io
 import json
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -176,3 +177,83 @@ def test_claude_invoke_timeout_returns_error_timeout(fresh_agent_runner, monkeyp
     assert out.subtype == "error_timeout"
     assert out.stop_reason == "aborted"
     assert "5s" in (out.error_message or "")
+
+
+# --------------------------------------------------------------------------
+# Reliability wiring in process.py
+# --------------------------------------------------------------------------
+
+
+def test_stream_step_for_loopcheck_tool_use(fresh_agent_runner):
+    ar = fresh_agent_runner
+    line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "ls"}}]
+            },
+        }
+    )
+    step = ar.process._stream_step_for_loopcheck(line)
+    assert step is not None
+    action, preview = step
+    assert action == "Bash"
+    assert "ls" in preview
+
+
+def test_stream_step_for_loopcheck_tool_result(fresh_agent_runner):
+    ar = fresh_agent_runner
+    line = json.dumps(
+        {
+            "type": "user",
+            "message": {
+                "content": [{"type": "tool_result", "content": [{"type": "text", "text": "boom"}]}]
+            },
+        }
+    )
+    step = ar.process._stream_step_for_loopcheck(line)
+    assert step == ("tool_result", "boom")
+
+
+def test_stream_step_for_loopcheck_ignores_non_tool_lines(fresh_agent_runner):
+    ar = fresh_agent_runner
+    assert ar.process._stream_step_for_loopcheck('{"type":"system","subtype":"init"}') is None
+    assert ar.process._stream_step_for_loopcheck("not json") is None
+    assert ar.process._stream_step_for_loopcheck("") is None
+
+
+def test_dispatch_short_circuits_when_breaker_open(fresh_agent_runner, monkeypatch):
+    """When the engine breaker is already open, dispatch returns a
+    breaker-open result without invoking the engine."""
+    ar = fresh_agent_runner
+
+    # Trip the claude breaker first.
+    cb = ar.CircuitBreaker("claude", threshold=1, cooldown_seconds=600)
+    cb.record_transient_failure()
+    assert cb.is_open() is True
+
+    # Make the per-instance breaker inside dispatch use the same low settings
+    # by setting the env defaults (threshold 1, long cooldown).
+    monkeypatch.setenv("ALFRED_BREAKER_THRESHOLD", "1")
+    monkeypatch.setenv("ALFRED_BREAKER_COOLDOWN_SECONDS", "600")
+
+    def fake_claude(*a, **kw):  # pragma: no cover - must not run
+        raise AssertionError("claude must not be called while breaker is open")
+
+    def fake_codex(*a, **kw):  # pragma: no cover - must not run
+        raise AssertionError("codex must not be called")
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="claude",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+    )
+    assert out.success is False
+    assert out.raw.get("breaker_open") is True
+    assert engine_used == "claude"

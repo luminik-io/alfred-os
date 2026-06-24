@@ -12,7 +12,7 @@ This page covers the three modes, the precedence chain, the fallback behavior, t
 |---|---|
 | `claude` | Use Claude Code only. No fallback. |
 | `codex` | Use Codex only. No fallback. |
-| `hybrid` | Use Claude Code first. Fall back to Codex on `error_budget`, `error_rate_limit`, or `error_authentication`. Default for most codenames. |
+| `hybrid` | Use Claude Code first. Retry the same engine on transient faults; fall back to Codex only on a capability gap (engine ran, produced nothing useful). Default for most codenames. |
 
 `hybrid` is the default for builder agents because it gives you graceful degradation when Claude quota is exhausted, without committing every firing to Codex. Reviewer agents that are happy with either engine often run pure `codex` so they preserve Claude quota for builders.
 
@@ -43,17 +43,43 @@ Set the env-var form in `~/.alfredrc` when you want the override to follow the o
 
 ## Hybrid fallback behavior
 
-Hybrid mode tries Claude first. The runner inspects the `AgentResult` and falls back to Codex only for a narrow set of subtypes:
+Hybrid mode tries Claude first. Every invocation outcome is run through one classifier (`classify_result`) that maps it to one of three failure classes, and the class decides what happens next:
 
-- `error_budget`: the Claude account has run out of subscription budget.
-- `error_rate_limit`: the Claude account hit a rate limit.
-- `error_authentication`: the Claude CLI auth is missing or stale.
+- **TRANSIENT** (`error_rate_limit`, `error_overloaded`, `error_timeout`, `error_api`, connection resets, context-overflow): a temporary provider or transport fault the same engine is likely to clear. The runner retries the SAME engine with exponential backoff and full jitter, honouring any server `Retry-After` hint (it waits `max(Retry-After, backoff)`). It does NOT fall back. A single transient 429 on the fallback engine no longer kills a task that would have succeeded on retry.
+- **FATAL** (`error_authentication`, `error_budget`, 401/403/422): a problem retrying cannot fix. The runner surfaces it honestly and never burns the fallback. For auth, the credentials remedy is the one the scheduled-firing preflight already names; falling back to Codex would only hide it.
+- **CAPABILITY** (`error_max_turns`, `parse-failed`, `error_loop_detected`, or any failure we cannot place): the engine ran and returned cleanly but produced nothing useful. This is the only class that triggers the Claude->Codex fallback, because a different engine may have the capability this one lacked.
 
-Any other failure stays a Claude failure. A normal Claude tool error is a bug in the runner or prompt, not a reason to switch engines; hiding it behind a fallback would mask real problems.
+The core rule: **the fallback fires only on a capability gap, not on a transient blip.** This is the single biggest reliability change from earlier versions, where any rate-limit or auth subtype dropped straight to Codex.
+
+When the codex result carries a fallback, it is stamped with `fallback_from_subtype` so `reported_subtype()` can still surface the original Claude trigger as the root cause rather than a bare codex subtype.
+
+### Per-engine circuit breaker
+
+Each engine has its own breaker, backed by `$ALFRED_HOME/state/_breaker/<engine>.json`. After `ALFRED_BREAKER_THRESHOLD` consecutive transient failures on an engine, the breaker trips and pauses calls to THAT engine for `ALFRED_BREAKER_COOLDOWN_SECONDS`. Because the state file is shared by every worker on the host, this auto-throttles the shared provider quota instead of needing a human to scale workers down: parallel workers can no longer lockstep-retry into a deeper rate-limit. A clean call resets the streak; the first call after the cooldown is allowed through (half-open).
+
+### Loop-fingerprint detection
+
+While a Claude firing streams, each tool step is fingerprinted as a stable hash of `(tool/action, result-preview)`. `ALFRED_LOOP_WINDOW` identical fingerprints in a row means the agent is spinning on a no-progress action: the runner kills the subprocess and returns `error_loop_detected` (a capability gap) rather than letting it burn to the wall-clock timeout. A hard per-task step ceiling (`ALFRED_MAX_STEPS`) catches a task that never repeats but also never finishes. Disable the whole guard with `ALFRED_LOOP_DETECT=0`.
 
 When a Claude-backed firing returns `error_rate_limit` or `error_budget`, the runner also calls `set_global_block(hours=1, reason=...)`. That writes `$ALFRED_HOME/state/global-blocked-until.json`, which every other Claude-backed firing reads at the top of `main()`. They print `[<AGENT>-GLOBAL-BLOCKED]` and exit 0 for the next hour. The block stops the stampede; without it, the whole fleet would spend the hour firing into the same rate-limit wall.
 
 Hybrid agents are *not* silenced by the global block: if they fall back to Codex successfully, they keep working through the Claude outage. That is the point.
+
+### Reliability tunables
+
+All four pieces are config-driven with env-overridable defaults, so a launchd plist or deployment config can retune behaviour without a redeploy. Defaults are clamped, so a typo cannot unbound a budget.
+
+| Env var | Default | What it controls |
+|---|---|---|
+| `ALFRED_TRANSIENT_MAX_RETRIES` | `3` | Extra same-engine retries on a TRANSIENT failure (`0` disables retry). |
+| `ALFRED_RETRY_BASE_SECONDS` | `2` | Base of the exponential backoff window. |
+| `ALFRED_RETRY_CAP_SECONDS` | `60` | Max backoff window (before jitter). |
+| `ALFRED_RETRY_AFTER_MAX_SECONDS` | `300` | Ceiling applied to a server `Retry-After` hint. |
+| `ALFRED_BREAKER_THRESHOLD` | `5` | Consecutive transient failures before an engine breaker trips. |
+| `ALFRED_BREAKER_COOLDOWN_SECONDS` | `300` | How long a tripped engine breaker stays open. |
+| `ALFRED_LOOP_DETECT` | on | Set to `0`/`false` to disable loop-fingerprint detection. |
+| `ALFRED_LOOP_WINDOW` | `3` | Identical step fingerprints in a row that count as a loop. |
+| `ALFRED_MAX_STEPS` | `200` | Hard per-task step ceiling. |
 
 ## Default routing matrix
 
@@ -95,7 +121,7 @@ On the roadmap:
 - **Ollama and other local engines**: for operators who want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
 - **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
 
-Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and a subtype-mapping table so hybrid fallback knows which failures to swallow.
+Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and subtype entries in the `classify_result` table so the retry/breaker/fallback policy knows how to treat its failures.
 
 ## See also
 

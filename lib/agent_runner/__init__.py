@@ -269,6 +269,22 @@ from .process import (
 )
 
 # --------------------------------------------------------------------------
+# Reliability: classification, retry/backoff, circuit breaker, loop detection
+# --------------------------------------------------------------------------
+from .reliability import (
+    BreakerStatus,
+    CircuitBreaker,
+    FailureClass,
+    LoopDetector,
+    classify_exception,
+    classify_result,
+    compute_backoff_delay,
+    retry_after_seconds,
+    retry_with_backoff,
+    step_fingerprint,
+)
+
+# --------------------------------------------------------------------------
 # Result classification
 # --------------------------------------------------------------------------
 from .result import (
@@ -366,6 +382,17 @@ __all__ = [
     "optional_env_int",
     "reported_subtype",
     "set_dry_run",
+    # reliability
+    "BreakerStatus",
+    "CircuitBreaker",
+    "FailureClass",
+    "LoopDetector",
+    "classify_exception",
+    "classify_result",
+    "compute_backoff_delay",
+    "retry_after_seconds",
+    "retry_with_backoff",
+    "step_fingerprint",
     # result
     "ClaudeResult",
     "STOP_REASON_FAIL",

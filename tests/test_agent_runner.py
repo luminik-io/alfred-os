@@ -588,8 +588,14 @@ def test_invoke_agent_engine_codex_skips_claude():
     assert calls == ["codex"]
 
 
-def test_invoke_agent_engine_hybrid_falls_back_on_provider_limit():
+def test_invoke_agent_engine_hybrid_transient_retries_claude_no_fallback(monkeypatch):
+    """A provider rate-limit is TRANSIENT: retry the SAME engine, never
+    burn the codex fallback. This is the core behavior change of the
+    reliability foundation."""
     import agent_runner as ar
+
+    # One bounded retry on claude, no real sleeps.
+    monkeypatch.setenv("ALFRED_TRANSIENT_MAX_RETRIES", "1")
 
     calls: list[str] = []
     fallback_seen: list[str] = []
@@ -606,6 +612,53 @@ def test_invoke_agent_engine_hybrid_falls_back_on_provider_limit():
             raw={},
             stop_reason="error",
             error_message="limit",
+        )
+
+    def fake_codex(*args, **kwargs):  # pragma: no cover - must not run
+        calls.append("codex")
+        raise AssertionError("codex fallback must not fire on a transient failure")
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_timeout=45,
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+        on_fallback=lambda result: fallback_seen.append(result.subtype),
+    )
+
+    # claude was retried once (2 total) and the transient failure is surfaced.
+    assert out.subtype == "error_rate_limit"
+    assert engine_used == "claude"
+    assert calls == ["claude", "claude"]
+    assert fallback_seen == []
+
+
+def test_invoke_agent_engine_hybrid_falls_back_on_capability_gap():
+    """The fallback fires ONLY on a capability failure (engine ran but
+    produced nothing useful)."""
+    import agent_runner as ar
+
+    calls: list[str] = []
+    fallback_seen: list[str] = []
+
+    def fake_claude(*args, **kwargs):
+        calls.append("claude")
+        return ar.ClaudeResult(
+            success=False,
+            subtype="error_max_turns",
+            num_turns=999,
+            cost_usd=0.0,
+            session_id="claude-session",
+            result_text="ran out of turns with no result",
+            raw={},
+            stop_reason="error",
+            error_message="max turns",
         )
 
     def fake_codex(*args, **kwargs):
@@ -640,11 +693,14 @@ def test_invoke_agent_engine_hybrid_falls_back_on_provider_limit():
     assert out.success is True
     assert out.result_text == "codex ok"
     assert engine_used == "codex-fallback"
+    assert out.fallback_from_subtype == "error_max_turns"
     assert calls == ["claude", "codex"]
-    assert fallback_seen == ["error_rate_limit"]
+    assert fallback_seen == ["error_max_turns"]
 
 
-def test_invoke_agent_engine_hybrid_falls_back_on_claude_auth_error():
+def test_invoke_agent_engine_hybrid_auth_is_fatal_no_fallback():
+    """A Claude auth failure is FATAL: surface honestly, never burn the
+    codex fallback. The credentials remedy is the #291 preflight's job."""
     import agent_runner as ar
 
     calls: list[str] = []
@@ -664,19 +720,9 @@ def test_invoke_agent_engine_hybrid_falls_back_on_claude_auth_error():
             error_message="401 invalid authentication credentials",
         )
 
-    def fake_codex(*args, **kwargs):
+    def fake_codex(*args, **kwargs):  # pragma: no cover - must not run
         calls.append("codex")
-        return ar.ClaudeResult(
-            success=True,
-            subtype="success",
-            num_turns=1,
-            cost_usd=0.0,
-            session_id="codex-session",
-            result_text="codex ok",
-            raw={},
-            stop_reason="end_turn",
-            error_message=None,
-        )
+        raise AssertionError("codex fallback must not fire on a fatal auth failure")
 
     out, engine_used = ar.invoke_agent_engine(
         "hi",
@@ -691,11 +737,11 @@ def test_invoke_agent_engine_hybrid_falls_back_on_claude_auth_error():
         on_fallback=lambda result: fallback_seen.append(result.subtype),
     )
 
-    assert out.success is True
-    assert out.result_text == "codex ok"
-    assert engine_used == "codex-fallback"
-    assert calls == ["claude", "codex"]
-    assert fallback_seen == ["error_authentication"]
+    assert out.success is False
+    assert out.subtype == "error_authentication"
+    assert engine_used == "claude"
+    assert calls == ["claude"]
+    assert fallback_seen == []
 
 
 def test_codex_invoke_rejects_unsupported_claude_controls():

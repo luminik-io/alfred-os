@@ -38,7 +38,6 @@ from pathlib import Path
 from typing import Any
 
 from .config import (
-    HYBRID_FALLBACK_SUBTYPES,
     _truthy_env,
     dry_run_log,
     is_dry_run,
@@ -59,6 +58,14 @@ from .paths import (
     CODEX_BIN,
     CODEX_DEFAULT_MODEL,
     CODEX_DEFAULT_SANDBOX,
+)
+from .reliability import (
+    CircuitBreaker,
+    FailureClass,
+    LoopDetector,
+    classify_result,
+    retry_after_seconds,
+    retry_with_backoff,
 )
 from .result import (
     _BUDGET_RESULT_RE,
@@ -93,6 +100,16 @@ _CLAUDE_UNLIMITED_TURNS: int = 999
 # never log the agent out. Opt back in (e.g. for interactive debugging)
 # with ``ALFRED_AGENT_NOTIFICATIONS=1``.
 _AGENT_NOTIF_SUPPRESS_SETTINGS = '{"agentPushNotifEnabled":false,"preferredNotifChannel":"none"}'
+
+
+def _is_falsy_env(name: str) -> bool:
+    """True when ``name`` is explicitly set to a falsy value (0/false/no/off).
+
+    Used for default-ON features that an operator can opt OUT of: an unset
+    env var returns ``False`` here so the feature stays enabled.
+    """
+    val = os.environ.get(name)
+    return val is not None and val.strip().lower() in {"0", "false", "no", "off"}
 
 
 def _agent_notifications_enabled() -> bool:
@@ -624,6 +641,13 @@ def claude_invoke_streaming(
             error_message=f"claude CLI not found: {exc}",
         )
 
+    # Loop-fingerprint guard: watch the live stream for an agent stuck
+    # repeating the same step (or blowing past the hard step ceiling) and
+    # kill the subprocess instead of letting it spin to the wall-clock
+    # timeout. Disabled with ``ALFRED_LOOP_DETECT=0``.
+    loop_detector = None if _is_falsy_env("ALFRED_LOOP_DETECT") else LoopDetector()
+    loop_stop: dict[str, str] = {}
+
     def _capture_stdout() -> None:
         assert proc.stdout is not None
         with transcript.open("w", encoding="utf-8") as handle:
@@ -631,6 +655,13 @@ def claude_invoke_streaming(
                 captured_lines.append(raw_line)
                 handle.write(raw_line)
                 handle.flush()
+                if loop_detector is not None and not loop_stop:
+                    step = _stream_step_for_loopcheck(raw_line)
+                    if step is not None and loop_detector.observe(*step):
+                        loop_stop["reason"] = loop_detector.tripped_reason or "loop detected"
+                        with contextlib.suppress(OSError):
+                            proc.kill()
+                        break
 
     reader = threading.Thread(target=_capture_stdout, name=f"claude-stream-{agent}", daemon=True)
     reader.start()
@@ -651,6 +682,25 @@ def claude_invoke_streaming(
             stderr = proc.stderr.read()
 
     stdout_text = "".join(captured_lines)
+    if loop_stop:
+        # A stuck agent: surface honestly and escalate rather than spin.
+        # Classified as a capability gap so hybrid mode can try the other
+        # engine once, which may not get stuck on the same step.
+        return ClaudeResult(
+            success=False,
+            subtype="error_loop_detected",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=stdout_text or stderr,
+            raw={
+                "loop_detected": True,
+                "reason": loop_stop["reason"],
+                "transcript_path": str(transcript),
+            },
+            stop_reason="aborted",
+            error_message=f"claude_invoke_streaming stopped: {loop_stop['reason']}",
+        )
     if timed_out:
         return ClaudeResult(
             success=False,
@@ -710,6 +760,45 @@ def _last_stream_result(lines: list[str]) -> dict[str, Any] | None:
         if isinstance(obj, dict) and ("result" in obj or obj.get("type") == "result"):
             final = obj
     return final
+
+
+def _stream_step_for_loopcheck(line: str) -> tuple[str, str] | None:
+    """Extract a ``(action, result_preview)`` pair from one stream-json line.
+
+    Returns ``None`` for lines that are not a tool step (system init,
+    assistant text, the final result). We fingerprint tool USE events
+    (action = tool name, preview = a stable digest of the tool input) and
+    tool RESULT events (action = ``"tool_result"``, preview = the result
+    body), which together are what spins when an agent is stuck redoing
+    the same failing action.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        obj = json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    msg = obj.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(content, list):
+        return None
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("type")
+        if btype == "tool_use":
+            name = str(block.get("name") or "tool")
+            payload = json.dumps(block.get("input", {}), sort_keys=True, default=str)
+            return (name, payload)
+        if btype == "tool_result":
+            body = block.get("content")
+            if isinstance(body, list):
+                body = " ".join(str(b.get("text", "")) for b in body if isinstance(b, dict))
+            return ("tool_result", str(body))
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -1004,23 +1093,70 @@ def invoke_agent_engine(
             add_dirs=codex_add_dirs,
         )
 
+    def _resilient_invoke(engine_name: str, invoke: Callable[[], ClaudeResult]) -> ClaudeResult:
+        """Run one engine with a per-engine breaker + same-engine transient retry.
+
+        TRANSIENT failures are absorbed here (bounded backoff with full
+        jitter honouring any Retry-After) so they never reach the
+        Claude->Codex fallback. The breaker trips after N consecutive
+        transient failures on the engine and pauses it for a cooldown, so
+        parallel workers cannot lockstep-retry into a deeper rate-limit.
+        """
+        breaker = CircuitBreaker(engine_name)
+        if breaker.is_open():
+            status = breaker.status()
+            return ClaudeResult(
+                success=False,
+                subtype="error_rate_limit",
+                num_turns=0,
+                cost_usd=0.0,
+                session_id=None,
+                result_text=(
+                    f"{engine_name} circuit breaker open until {status.until}: "
+                    f"pausing calls to protect the shared provider quota"
+                ),
+                raw={"breaker_open": True, "engine": engine_name, "until": status.until},
+                stop_reason="error",
+                error_message=f"{engine_name} breaker open (cooldown until {status.until})",
+            )
+
+        def _on_retry(attempt: int, delay: float, outcome: ClaudeResult) -> None:
+            breaker.record_transient_failure(reason=outcome.subtype)
+
+        result = retry_with_backoff(
+            invoke,
+            classify=classify_result,
+            retry_after_of=retry_after_seconds,
+            on_retry=_on_retry,
+        )
+        if classify_result(result) is FailureClass.TRANSIENT:
+            # Retries exhausted on a still-transient failure: count it so the
+            # breaker can trip and stop a hot loop on the next firing.
+            breaker.record_transient_failure(reason=result.subtype)
+        elif result.success:
+            breaker.record_success()
+        return result
+
     if mode == "codex":
-        result = _invoke_codex()
+        result = _resilient_invoke("codex", _invoke_codex)
         engine_used = "codex"
     else:
-        result = _invoke_claude()
+        result = _resilient_invoke("claude", _invoke_claude)
         engine_used = "claude"
-        if mode == "hybrid" and result.subtype in HYBRID_FALLBACK_SUBTYPES:
+        # The fallback fires ONLY on a capability failure: Claude ran and
+        # returned cleanly but produced nothing useful. Transient failures
+        # were already retried on Claude above and never reach here; fatal
+        # failures (auth/budget/schema) are surfaced honestly, never papered
+        # over by burning the second engine.
+        if mode == "hybrid" and classify_result(result) is FailureClass.CAPABILITY:
             trigger_subtype = result.subtype
             if on_fallback:
                 on_fallback(result)
-            result = _invoke_codex()
+            result = _resilient_invoke("codex", _invoke_codex)
             engine_used = "codex-fallback"
             # Stamp the codex result with the Claude failure that triggered
-            # the fallback so callers can surface the ROOT cause. Without
-            # this, a Claude 401 that pushed us to codex (which then hit its
-            # own rate-limit) gets reported as a bare rate_limit, hiding the
-            # real, operator-actionable problem: authentication.
+            # the fallback so callers (reported_subtype) can surface the ROOT
+            # cause rather than a bare codex subtype.
             result.fallback_from_subtype = trigger_subtype
 
     if memory_provider is not None and memory_repo:
