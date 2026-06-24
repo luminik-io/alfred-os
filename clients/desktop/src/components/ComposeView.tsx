@@ -38,9 +38,13 @@ import { LifecycleCard, type RepoChip } from "./LifecycleCard";
 // person describes the outcome in their own words and Alfred asks only for what
 // is missing, then produces the structured draft. There is no plain/technical
 // toggle; every converse call sends plain.
-const PLACEHOLDER = "Describe the outcome, who needs it, and any limits Alfred should respect.";
+const PLACEHOLDER = "Ask a question, or describe a change you want made.";
 
 const STARTERS = [
+  {
+    label: "How does Alfred work?",
+    text: "How does Alfred work, and what can you do for me?",
+  },
   {
     label: "Ship a feature",
     text: "Add a CSV export to the attendees table so sales can download the filtered rows they see.",
@@ -48,10 +52,6 @@ const STARTERS = [
   {
     label: "Fix a workflow",
     text: "The review queue is hard to scan at small window sizes. Make it usable without hiding important decisions.",
-  },
-  {
-    label: "Polish a screen",
-    text: "Improve the setup screen so a non-developer can connect Alfred and understand what is ready.",
   },
 ];
 
@@ -119,6 +119,48 @@ function draftWithRepoContext(
 
 function repoChipsFor(repos: string[]): RepoChip[] {
   return cleanRepos(repos).map((repo) => ({ short: repoShortName(repo), full: repo }));
+}
+
+// A converse turn is conversational (just a chat answer) unless the server
+// marks it "build". Servers that predate intent omit the field; we treat those
+// as build so the plan surface never silently disappears. ComposeDraftResponse
+// (the no-engine one-shot fallback) is always a plan, so it has no intent.
+function isConversationTurn(
+  result: ConverseResponse | ComposeDraftResponse,
+): boolean {
+  return "intent" in result && result.intent === "conversation";
+}
+
+// Whether a draft carries enough to be worth showing as a plan card. A bare
+// title with nothing else is not a plan yet; we only surface the card once the
+// turn has actually started building something.
+function draftHasSubstance(draft: ComposeDraftFields | undefined): boolean {
+  if (!draft) return false;
+  const scalars = [
+    draft.problem,
+    draft.desired_behavior,
+    draft.current_behavior,
+    draft.user,
+    draft.test_plan,
+  ];
+  if (scalars.some((value) => Boolean(value && value.trim()))) return true;
+  if (cleanRepos(draft.repos).length) return true;
+  if ((draft.acceptance_criteria || []).some((value) => Boolean(value && value.trim())))
+    return true;
+  return false;
+}
+
+// The reply for the no-engine fallback path. There is no live model to ask the
+// open questions in prose, so fold them into the message (Markdown list) under
+// the saved-plan summary, keeping the inline card a clean offer.
+function draftFallbackReply(draft: ComposeDraftResponse): string {
+  const summary =
+    (draft.summary || "").trim() ||
+    "I saved a plan. Review it below, then file it as an issue when you are ready.";
+  const questions = (draft.questions || []).filter((q) => Boolean(q && q.trim())).slice(0, 4);
+  if (!questions.length) return summary;
+  const list = questions.map((q) => `- ${q.trim()}`).join("\n");
+  return `${summary}\n\nTo firm it up:\n\n${list}`;
 }
 
 function draftCardFrom(result: ConverseResponse | ComposeDraftResponse): DraftCardModel {
@@ -217,19 +259,30 @@ export function ComposeView({
     el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [input]);
 
-  const commitDraftResult = useCallback(
+  // Commit one assistant turn. A conversation turn is just a chat reply: no
+  // plan card, and the live plan (result) is left untouched so a "thanks" mid
+  // build does not wipe the spec. A build turn renders the reply, then the
+  // inline plan card once the draft has real substance, and becomes the live
+  // plan the composer keeps refining.
+  const commitTurn = useCallback(
     (
       reply: ConverseResponse | ComposeDraftResponse,
       baseTurns: ChatTurn[],
       message: string,
     ) => {
-      setResult(reply);
       setFileNotice(null);
       const next: ChatTurn[] = [...baseTurns];
       if (message.trim()) {
         next.push({ role: "assistant", content: message, kind: "message" });
       }
-      next.push({ role: "assistant", kind: "draft", draft: draftCardFrom(reply) });
+      if (isConversationTurn(reply)) {
+        setTurns(next);
+        return;
+      }
+      setResult(reply);
+      if (draftHasSubstance(reply.draft)) {
+        next.push({ role: "assistant", kind: "draft", draft: draftCardFrom(reply) });
+      }
       setTurns(next);
     },
     [],
@@ -297,7 +350,10 @@ export function ComposeView({
         });
         if (!isCurrent()) return true;
         setHasEngine(false);
-        commitDraftResult(draft, nextTurns, draft.summary || "I saved a plan. Review it below, then file the issue when it is ready.");
+        // The no-engine path has no live model to weave questions into prose,
+        // so fold any open questions into the reply itself (the inline card is
+        // an offer, not a form, and no longer lists them).
+        commitTurn(draft, nextTurns, draftFallbackReply(draft));
         return true;
       } catch (draftErr) {
         if (controller.signal.aborted) return true;
@@ -344,7 +400,7 @@ export function ComposeView({
         reply = await composeConverse(baseUrl, converseRequest, controller.signal);
       }
       if (!isCurrent()) return;
-      commitDraftResult(reply, nextTurns, reply.reply);
+      commitTurn(reply, nextTurns, reply.reply);
     } catch (err) {
       if (controller.signal.aborted) return;
       if (isLiveSessionUnavailable(err)) {
@@ -357,7 +413,7 @@ export function ComposeView({
     } finally {
       finishIfCurrent();
     }
-  }, [baseUrl, busy, commitDraftResult, hasEngine, input, result, selectedRepos, turns]);
+  }, [baseUrl, busy, commitTurn, hasEngine, input, result, selectedRepos, turns]);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -454,7 +510,7 @@ export function ComposeView({
         </button>
       </form>
       <small className="ask__hint">
-        Enter to send, Shift + Enter for a new line. Alfred saves the plan as the chat gets clearer.
+        Enter to send, Shift + Enter for a new line. When you are planning work, Alfred shapes a plan as the chat gets clearer.
       </small>
     </div>
   );
@@ -523,9 +579,9 @@ export function ComposeView({
         </div>
       ) : (
         <div className="ask__hero">
-          <h1 className="ask__hero-title">What should Alfred do?</h1>
+          <h1 className="ask__hero-title">Ask Alfred anything</h1>
           <p className="ask__hero-sub">
-            Say the outcome in your own words. Alfred asks only what is missing, then saves a plan you can file as a GitHub issue.
+            Ask a question, or describe a change you want made. Alfred answers, and when you are planning work it shapes a plan you can file as a GitHub issue.
           </p>
           {errorNotice}
           {composer}
@@ -566,19 +622,26 @@ function DraftCard({
   onOpenWork: () => void;
 }) {
   const filed = notice?.tone === "ok";
+  // The card is an OFFER attached to a build turn, not a form. The chat reply
+  // already carries Alfred's questions, so the card stays quiet until the plan
+  // is ready to file: a neutral "Draft plan" while it firms up, a confident
+  // "Ready to file" once it is. File issue is always available (the server is
+  // the real gate); when the plan is still firming up it is a quiet secondary.
   return (
-    <div className="ask-draft" aria-label="Saved plan">
+    <div className="ask-draft" aria-label="Plan Alfred is shaping">
       <LifecycleCard
         chip={
           filed
             ? { label: "Filed", tone: "ok" }
             : draft.ready
               ? { label: "Ready to file", tone: "ok" }
-              : { label: "Needs detail", tone: "attention" }
+              : { label: "Draft plan", tone: "idle" }
         }
         repos={repoChipsFor(draft.repos)}
         outcome={draft.title}
-        attribution={<span>Saved as a plan</span>}
+        attribution={
+          <span>{draft.ready ? "Ready when you are" : "Keep chatting to firm it up"}</span>
+        }
         action={
           filed ? (
             notice?.url ? (
@@ -593,26 +656,23 @@ function DraftCard({
             )
           ) : (
             <button
-              className="icon-button ask-draft__file"
+              className={draft.ready ? "icon-button ask-draft__file" : "secondary-button ask-draft__file"}
               type="button"
-              disabled={busy || !draft.ready}
+              disabled={busy}
               onClick={onFile}
-              title={draft.ready ? "File this as a GitHub issue" : "Answer the open questions first"}
+              title={
+                draft.ready
+                  ? "File this as a GitHub issue"
+                  : "File it now, or keep chatting to add detail first"
+              }
             >
               <CheckCircle2 size={15} aria-hidden="true" />
-              <span>{busy ? "Filing..." : "File issue"}</span>
+              <span>{busy ? "Filing..." : draft.ready ? "File issue" : "File as an issue"}</span>
             </button>
           )
         }
         ariaLabel={`Plan: ${draft.title}`}
       />
-      {!draft.ready && draft.questions.length ? (
-        <ul className="ask-draft__questions">
-          {draft.questions.slice(0, 4).map((question, index) => (
-            <li key={`${index}-${question.slice(0, 24)}`}>{question}</li>
-          ))}
-        </ul>
-      ) : null}
       {notice ? (
         <p className={`ask-draft__notice ask-draft__notice--${notice.tone}`} role="status">
           {notice.message}

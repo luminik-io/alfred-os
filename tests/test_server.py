@@ -1799,6 +1799,7 @@ def _stub_converse_turn(
     ready: bool = False,
     missing: list[str] | None = None,
     done: bool = False,
+    intent: str = "build",
     capture: dict | None = None,
 ):
     """Patch the LLM dispatch so the endpoint runs without a live model call."""
@@ -1820,6 +1821,7 @@ def _stub_converse_turn(
             draft=draft,
             readiness=cc.ConverseReadiness(score=score, ready=ready, missing=tuple(missing or [])),
             done=done,
+            intent=intent,
         )
 
     monkeypatch.setattr(cc, "run_turn", fake_run_turn)
@@ -1867,6 +1869,7 @@ def test_compose_converse_runs_a_turn_and_persists_a_draft(
         "missing": ["test plan"],
     }
     assert payload["done"] is False
+    assert payload["intent"] == "build"
     assert payload["draft"]["title"] == "Add CSV export"
     assert payload["draft"]["repos"] == ["acme/frontend"]
 
@@ -1887,6 +1890,39 @@ def test_compose_converse_runs_a_turn_and_persists_a_draft(
 
     plans = client.get("/api/plans").json()["rows"]
     assert any(row["plan_id"] == payload["draft_id"] for row in plans)
+
+
+def test_compose_converse_conversation_intent_flows_to_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A conversational turn ("who are you?") returns intent=conversation.
+
+    The client uses this to render a plain chat reply instead of a plan card,
+    so a question never gets a forced "Needs detail" planning form.
+    """
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    _stub_converse_turn(
+        monkeypatch,
+        reply="I'm Alfred. I turn an outcome into a planned, reviewed change.",
+        intent="conversation",
+        score=0,
+    )
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    response = client.post(
+        "/api/compose/converse",
+        json={"messages": [{"role": "user", "content": "Who are you?"}]},
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["intent"] == "conversation"
+    assert payload["reply"].startswith("I'm Alfred")
 
 
 def test_compose_converse_defaults_single_setup_repo_as_scope(

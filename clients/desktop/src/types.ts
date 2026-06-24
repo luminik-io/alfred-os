@@ -389,10 +389,18 @@ export type ConverseReadiness = {
 // server seeds a repo-grounded interrogator, asks a clarifying question or two,
 // co-authors the structured `draft`, and judges readiness. `done` is true only
 // once the person has accepted the plan AND it is ready to hand off.
+// The turn kind. "conversation" is a plain answer (a greeting, "who are you?",
+// "how does review work?"); the client renders it as a normal chat reply with
+// no plan card. "build" is a planning turn that co-authors the structured draft
+// and surfaces the inline plan/file-issue affordance. Older servers that do not
+// send `intent` are treated as "build" so the plan surface never disappears.
+export type ConverseIntent = "conversation" | "build";
+
 export type ConverseResponse = {
   draft_id: string;
   saved_path: string;
   reply: string;
+  intent?: ConverseIntent;
   readiness: ConverseReadiness;
   done: boolean;
   draft: ComposeDraftFields;
