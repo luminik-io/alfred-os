@@ -54,6 +54,9 @@ load_env_file() {
       *) printf '%s' none ;;
     esac
   }
+  # Keep in lockstep with `decode_env_value` in lib/agent_runner/paths.py,
+  # which the Python .env readers share. Changing the unquoting rules here
+  # means changing them there too, or the two will disagree on a token value.
   decode_env_value() {
     local value="$1" sq="'" dq='"' splice
     splice="${sq}${dq}${sq}${dq}${sq}"

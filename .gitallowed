@@ -26,3 +26,11 @@ docs/CLAUDE_CODE\.md
 docs/AI_ASSISTED_INSTALL\.md
 bin/alfred-setup-token\.py
 tests/test_alfred_setup_token\.py
+# Same obviously-fake CLAUDE_CODE_OAUTH_TOKEN placeholders appear in the
+# auth single-source-of-truth tests: agent-launch .env loading, the
+# preflight credential check, the lifecycle .env resolution, and the
+# fallback-trigger classification.
+tests/test_agent_launch_interpreter\.py
+tests/test_agent_runner\.py
+tests/test_lifecycle_doctor\.py
+tests/test_honest_error_surfacing\.py

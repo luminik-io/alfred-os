@@ -135,6 +135,40 @@ def _aws_secret_env(profile_env: str, default_profile: str = "alfred-host") -> d
     return env
 
 
+def decode_env_value(value: str) -> str:
+    """Decode one dotenv RHS the way the bash loaders do.
+
+    This is the single source of truth for unquoting a ``.env`` value, kept
+    byte-for-byte in step with ``decode_env_value`` in ``bin/agent-launch``
+    and ``bin/doctor.sh`` so the Python readers and the shell loaders can
+    never disagree on the actual token value. ``bin/alfred-setup-token.py``
+    writes the token with ``shlex.quote``; the bash loaders decode it; this
+    helper is what the Python readers use to decode the same line.
+
+    The bash semantics, mirrored exactly:
+
+    * A value wrapped in matching single quotes (``'...'``, length >= 2) is
+      unwrapped by one quote on each side, then every shell-escape splice
+      ``'"'"'`` is collapsed back to a single ``'`` (this is how
+      ``shlex.quote`` escapes an embedded single quote).
+    * A value wrapped in matching double quotes (``"..."``, length >= 2) is
+      unwrapped by one quote on each side; no inner unescaping.
+    * Anything else (unquoted, or a single stray quote char) is returned
+      verbatim.
+
+    Crucially this strips at most one quote pair, unlike a naive
+    ``strip('"').strip("'")`` which peels every leading/trailing quote and
+    would diverge from the loaders for quote-adjacent token values.
+    """
+
+    if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
+        inner = value[1:-1]
+        return inner.replace("'\"'\"'", "'")
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1]
+    return value
+
+
 def config_value(key: str, default: str = "") -> str:
     """Resolve a config value from process env, then ``$ALFRED_HOME/.env``."""
 
@@ -150,7 +184,7 @@ def config_value(key: str, default: str = "") -> str:
                     continue
                 name, _, value = line.partition("=")
                 if name.strip() == key:
-                    return value.strip().strip('"').strip("'")
+                    return decode_env_value(value.strip())
     except OSError:
         pass
     return default

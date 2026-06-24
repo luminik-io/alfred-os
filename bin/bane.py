@@ -53,6 +53,7 @@ from agent_runner import (
     optional_env_int,
     preflight,
     remove_worktree,
+    reported_subtype,
     run,
     short,
     slack_post,
@@ -273,11 +274,22 @@ def main() -> int:
         memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
+    # Root-cause subtype to REPORT. When a Claude auth failure triggered the
+    # codex fallback (which then failed for its own reason), report the auth
+    # failure, not codex's downstream subtype. ``result.subtype`` stays the
+    # raw codex subtype; ``root_subtype`` is what the operator should see.
+    root_subtype = reported_subtype(result)
+    fallback_detail = (
+        f" (after claude {result.fallback_from_subtype}, fell back to {result.subtype})"
+        if root_subtype != result.subtype
+        else ""
+    )
     events.emit(
         "llm_invoke_done",
         engine=engine_used,
         turns=result.num_turns,
-        subtype=result.subtype,
+        subtype=root_subtype,
+        raw_subtype=result.subtype,
         success=result.success,
     )
 
@@ -296,11 +308,13 @@ def main() -> int:
         remove_worktree(repo, wt)
         msg = (
             f"❌ {AGENT.title()} {repo}: engine={engine_used} "
-            f"subtype={result.subtype} turns={result.num_turns}"
+            f"subtype={root_subtype}{fallback_detail} turns={result.num_turns}"
         )
+        if root_subtype == "error_authentication":
+            msg += ". Claude credential unreachable; run `alfred setup-token`."
         print(msg)
         slack_post(msg)
-        events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
+        events.emit("firing_complete", outcome=f"llm-{root_subtype}", engine=engine_used)
         return 0
 
     text = result.result_text or ""

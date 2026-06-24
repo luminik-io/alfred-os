@@ -95,6 +95,7 @@ from .config import (
     is_dry_run,
     normalize_engine,
     optional_env_int,
+    reported_subtype,
     set_dry_run,
 )
 
@@ -363,6 +364,7 @@ __all__ = [
     "is_dry_run",
     "normalize_engine",
     "optional_env_int",
+    "reported_subtype",
     "set_dry_run",
     # result
     "ClaudeResult",

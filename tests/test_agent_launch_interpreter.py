@@ -121,6 +121,82 @@ def test_alfred_python_override_only_applies_to_python_targets(
     assert "override-python" not in proc.stdout
 
 
+def _run_env(
+    target: Path, *, alfred_home: Path, extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["ALFRED_HOME"] = str(alfred_home)
+    env.pop("ALFRED_PYTHON", None)
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    env["HOME"] = str(alfred_home.parent)
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_agent_launch_loads_token_from_env_file(tmp_path: Path, alfred_home: Path) -> None:
+    """The canonical store: a token in $ALFRED_HOME/.env (dotenv KEY=value,
+    no `export`) must be exported into the agent's environment. This is the
+    fix for the silent-401 outage where the loader and the token tool
+    pointed at different files."""
+    (alfred_home / ".env").write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromdotenv\n", encoding="utf-8"
+    )
+    target = tmp_path / "echo-token.sh"
+    target.write_text('#!/usr/bin/env bash\necho "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "TOKEN=sk-ant-oat01-fromdotenv" in proc.stdout
+
+
+def test_agent_launch_env_file_does_not_clobber_real_env(tmp_path: Path, alfred_home: Path) -> None:
+    """A value already in the scheduler/process environment wins over the
+    same key in .env (.env is a gap-filler, not an override)."""
+    (alfred_home / ".env").write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromdotenv\n", encoding="utf-8"
+    )
+    target = tmp_path / "echo-token.sh"
+    target.write_text('#!/usr/bin/env bash\necho "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-fromenv"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "TOKEN=sk-ant-oat01-fromenv" in proc.stdout
+
+
+def test_agent_launch_alfredrc_wins_over_env_file(tmp_path: Path, alfred_home: Path) -> None:
+    """.alfredrc is loaded first; its value must survive the later .env load
+    because .env is no-clobber. Keeps the legacy rc working during migration."""
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromrc\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromdotenv\n", encoding="utf-8"
+    )
+    target = tmp_path / "echo-token.sh"
+    target.write_text('#!/usr/bin/env bash\necho "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "TOKEN=sk-ant-oat01-fromrc" in proc.stdout
+
+
 def test_bash_available() -> None:
     """Sanity: tests need bash on PATH."""
     assert shutil.which("bash"), "bash not on PATH; cannot run agent-launch tests"

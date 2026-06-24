@@ -1,11 +1,28 @@
 #!/usr/bin/env bash
 # Runtime wrapper for scheduler-spawned alfred-os agents.
 #
-# Host schedulers do not source shell rc files. This wrapper loads ~/.alfredrc
-# at firing time, exports its KEY=VALUE entries, then execs the requested agent
+# Host schedulers do not source shell rc files. This wrapper loads config at
+# firing time, exports its KEY=VALUE entries, then execs the requested agent
 # script from ${ALFRED_HOME}/bin. That keeps secrets and per-agent env outside
 # scheduler unit files while still making scheduled jobs see the same config as
 # the operator shell.
+#
+# Config lives in two files, loaded in this order:
+#
+#   1. ~/.alfredrc          - optional shell rc the operator may also source
+#                             interactively (export KEY=value).
+#   2. ${ALFRED_HOME}/.env  - the canonical runtime store. This is the same
+#                             file the Set up surface, alfred-setup-token,
+#                             config_value(), and ams-launch.sh read and write
+#                             (dotenv KEY=value, no `export`). Loading it here
+#                             is what keeps the token tooling and the runtime
+#                             loader pointed at one source of truth: a token
+#                             written by `alfred setup-token` reaches every
+#                             scheduled firing instead of silently 401ing.
+#
+# Already-exported variables (real environment, or set by an earlier file) are
+# never clobbered, so a value in .alfredrc or the scheduler unit still wins
+# over the same key in .env.
 
 set -euo pipefail
 
@@ -18,7 +35,7 @@ SCRIPT="$1"
 shift
 
 load_env_file() {
-  local file="$1" line key value quote_style
+  local file="$1" no_clobber="${2:-}" line key value quote_style
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -27,6 +44,9 @@ load_env_file() {
       *) printf '%s' none ;;
     esac
   }
+  # Keep in lockstep with `decode_env_value` in lib/agent_runner/paths.py,
+  # which the Python .env readers share. Changing the unquoting rules here
+  # means changing them there too, or the two will disagree on a token value.
   decode_env_value() {
     local value="$1" sq="'" dq='"' splice
     splice="${sq}${dq}${sq}${dq}${sq}"
@@ -57,6 +77,11 @@ load_env_file() {
         continue
         ;;
     esac
+    # In no-clobber mode, an already-exported value (real environment or an
+    # earlier-loaded file) wins. Keeps .env a gap-filler, not an override.
+    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
+      continue
+    fi
     quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
     if [ "$quote_style" != "single" ]; then
@@ -70,6 +95,11 @@ load_env_file() {
 load_env_file "$HOME/.alfredrc"
 
 : "${ALFRED_HOME:=$HOME/.alfred}"
+
+# Load the canonical runtime store once ALFRED_HOME is known. no-clobber so
+# anything already set by .alfredrc or the scheduler unit takes precedence.
+load_env_file "$ALFRED_HOME/.env" no_clobber
+
 : "${WORKSPACE_ROOT:=$HOME/code}"
 
 export ALFRED_HOME WORKSPACE_ROOT

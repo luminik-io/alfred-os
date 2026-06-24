@@ -154,6 +154,12 @@ class ClaudeResult:
     # legacy fields keep working unchanged.
     stop_reason: str | None = None
     error_message: str | None = None
+    # Set on a fallback result (codex after a Claude failure in hybrid
+    # mode) to the subtype of the Claude failure that TRIGGERED the
+    # fallback. Lets callers report the root cause: if Claude 401'd and
+    # codex then rate-limited, the honest headline is the auth failure,
+    # not codex's downstream rate_limit. ``None`` when no fallback ran.
+    fallback_from_subtype: str | None = None
 
 
 def _derive_success(subtype: str, stop_reason: str | None) -> bool:

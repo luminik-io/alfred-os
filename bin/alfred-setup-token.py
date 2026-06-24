@@ -12,14 +12,22 @@ The supported fix is a long-lived OAuth token that ``claude`` reads from
 the ``CLAUDE_CODE_OAUTH_TOKEN`` env var, bypassing the credential store.
 This script wraps the ``claude setup-token`` flow:
 
-  1. Detect whether a token is already set (env var or ``~/.alfredrc``).
-     Exit early when already configured, unless ``--force`` is given.
+  1. Detect whether a token is already set (env var, ``$ALFRED_HOME/.env``,
+     or the legacy ``~/.alfredrc``). Exit early when already configured,
+     unless ``--force`` is given.
   2. Spawn ``claude setup-token`` so the operator can approve the
      browser flow once.
   3. Parse the long-lived token from the resulting output.
-  4. Append ``export CLAUDE_CODE_OAUTH_TOKEN=<value>`` to
-     ``~/.alfredrc`` (idempotently: re-runs overwrite the line, not
-     duplicate it) and chmod the file 0600.
+  4. Upsert ``CLAUDE_CODE_OAUTH_TOKEN=<value>`` into ``$ALFRED_HOME/.env``
+     (idempotently: re-runs overwrite the line, not duplicate it) and
+     chmod the file 0600.
+
+``$ALFRED_HOME/.env`` is the single source of truth for runtime config:
+the same file the Set up surface, ``config_value()``, ``ams-launch.sh``,
+and ``bin/agent-launch`` read. Writing the token anywhere else (a shell
+rc file the scheduler loader never sources) is exactly how a token can
+be "set" yet still 401 every scheduled firing. The dotenv format is bare
+``KEY=value`` with no ``export``, matching the rest of ``.env``.
 
 The token is tied to the operator's existing subscription. There is no
 extra cost, no new account, no API-key billing. Rotate by re-running
@@ -43,17 +51,36 @@ import subprocess
 import sys
 from pathlib import Path
 
-ALFREDRC = Path(os.environ.get("ALFREDRC", str(Path.home() / ".alfredrc")))
 TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
 
-# Marker block in ~/.alfredrc. Re-runs replace the block atomically
-# rather than appending duplicate exports. Accepts ``\r?\n`` line endings
-# because an operator could have saved ``~/.alfredrc`` from a CRLF editor.
-BANNER = "# alfred setup-token, do not edit by hand (re-run to rotate)"
-BLOCK_RE = re.compile(
-    rf"\r?\n?{re.escape(BANNER)}\r?\nexport {TOKEN_ENV}=[^\r\n]*\r?\n",
+# Legacy shell rc. Older installs (and a hand-edited operator machine)
+# may still carry the token here. We READ it so ``--check-only`` and the
+# already-configured guard see it, and so ``--force`` can migrate it, but
+# we no longer WRITE here: the scheduler loader does not source rc files,
+# so a token parked in ~/.alfredrc silently 401s every firing.
+ALFREDRC = Path(os.environ.get("ALFREDRC", str(Path.home() / ".alfredrc")))
+
+# Accepts ``\r?\n`` line endings because an operator could have saved
+# ~/.alfredrc from a CRLF editor (Notepad, a Windows checkout).
+LEGACY_BANNER = "# alfred setup-token, do not edit by hand (re-run to rotate)"
+LEGACY_BLOCK_RE = re.compile(
+    rf"\r?\n?{re.escape(LEGACY_BANNER)}\r?\nexport {TOKEN_ENV}=[^\r\n]*\r?\n",
     re.MULTILINE,
 )
+
+
+def _alfred_home() -> Path:
+    return Path(os.environ.get("ALFRED_HOME") or str(Path.home() / ".alfred"))
+
+
+def env_path() -> Path:
+    """Canonical runtime store: ``$ALFRED_HOME/.env`` (dotenv KEY=value).
+
+    Resolved at call time, not import time, so a test (or an operator who
+    exports ALFRED_HOME between runs) sees the right file.
+    """
+    return _alfred_home() / ".env"
+
 
 # claude setup-token prints the token on a line by itself between two
 # sets of human prose. We match the canonical prefix (``sk-ant-oat01-``)
@@ -80,61 +107,142 @@ def fail(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
+def _file_defines_token(path: Path) -> bool:
+    """True if ``path`` defines a non-empty ``TOKEN_ENV`` line.
+
+    Tolerates both dotenv (``KEY=value``) and shell (``export KEY=value``)
+    forms so it reads ``.env`` and the legacy ``~/.alfredrc`` alike.
+    """
+    if not path.is_file():
+        return False
+    try:
+        contents = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        warn(f"could not read {path}: {exc}")
+        return False
+    for line in contents.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, _, value = stripped.partition("=")
+        key = name.removeprefix("export").strip()
+        if key == TOKEN_ENV and value.strip():
+            return True
+    return False
+
+
 def existing_token_source() -> str | None:
     """Return a human-readable description of where the token is already set,
     or ``None`` if it is unset.
 
-    Checks process env first (covers shell exports), then ``~/.alfredrc``.
+    Checks process env first (covers shell exports), then the canonical
+    ``$ALFRED_HOME/.env``, then the legacy ``~/.alfredrc``. Reporting the
+    legacy path lets ``--force`` migrate an old install to ``.env``.
     Does not validate the value, only reports presence.
     """
     if os.environ.get(TOKEN_ENV, "").strip():
         return f"env var {TOKEN_ENV}"
-    if ALFREDRC.is_file():
-        try:
-            contents = ALFREDRC.read_text(encoding="utf-8")
-        except OSError as exc:
-            warn(f"could not read {ALFREDRC}: {exc}")
-            return None
-        for line in contents.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("#") or "=" not in stripped:
-                continue
-            key = stripped.split("=", 1)[0].removeprefix("export").strip()
-            if key == TOKEN_ENV:
-                return str(ALFREDRC)
+    env_file = env_path()
+    if _file_defines_token(env_file):
+        return str(env_file)
+    if _file_defines_token(ALFREDRC):
+        return f"{ALFREDRC} (legacy; re-run with --force to migrate to {env_file})"
     return None
 
 
-def write_token(token: str) -> None:
-    """Idempotently write the token export to ``~/.alfredrc`` and tighten
-    perms to 0600.
+def _strip_legacy_block(text: str) -> str:
+    """Remove the token line from legacy ``~/.alfredrc`` content.
 
-    Re-runs overwrite the existing block in-place rather than duplicating
-    the export line. File is created if missing. On a shared host, the
-    file is created with 0600 perms from the start (umask narrowed during
-    the write) so there is no readable window between create and chmod.
+    Drops both the old marker block and any bare ``export TOKEN=...`` line
+    so migrating to ``.env`` does not leave a stale duplicate behind.
     """
-    ALFREDRC.parent.mkdir(parents=True, exist_ok=True)
-    existing = ALFREDRC.read_text(encoding="utf-8") if ALFREDRC.is_file() else ""
+    cleaned = LEGACY_BLOCK_RE.sub("\n", text)
+    kept = [
+        line
+        for line in cleaned.splitlines()
+        if line.strip().removeprefix("export").strip().split("=", 1)[0] != TOKEN_ENV
+    ]
+    return "\n".join(kept).rstrip()
 
-    # Drop any prior alfred setup-token block so re-runs are clean.
-    cleaned = BLOCK_RE.sub("\n", existing).rstrip()
-    # Quote the value with shlex.quote so a stray shell metachar can't
-    # break the sourcing line.
-    block = f"\n{BANNER}\nexport {TOKEN_ENV}={shlex.quote(token)}\n"
-    new_contents = (cleaned + block) if cleaned else block.lstrip("\n")
+
+def _migrate_legacy_token() -> None:
+    """Remove a token line left in ``~/.alfredrc`` by an older install.
+
+    Best-effort: if the file is unreadable or unwritable we warn and move
+    on. The newly written ``.env`` is authoritative regardless.
+    """
+    if not _file_defines_token(ALFREDRC):
+        return
+    try:
+        existing = ALFREDRC.read_text(encoding="utf-8")
+    except OSError as exc:
+        warn(f"could not read legacy {ALFREDRC} to migrate token: {exc}")
+        return
+    cleaned = _strip_legacy_block(existing)
+    new_contents = (cleaned + "\n") if cleaned else ""
+    prior_umask = os.umask(0o077)
+    try:
+        ALFREDRC.write_text(new_contents, encoding="utf-8")
+    except OSError as exc:
+        warn(f"could not rewrite legacy {ALFREDRC}: {exc}")
+        return
+    finally:
+        os.umask(prior_umask)
+    info(f"removed legacy {TOKEN_ENV} from {ALFREDRC} (now lives in {env_path()}).")
+
+
+def write_token(token: str) -> None:
+    """Idempotently upsert ``CLAUDE_CODE_OAUTH_TOKEN`` into ``$ALFRED_HOME/.env``
+    and tighten perms to 0600.
+
+    Re-runs replace the existing line in place rather than duplicating it,
+    and every other line in ``.env`` is preserved untouched. The file is
+    created if missing. On a shared host the file is created with 0600
+    perms from the start (umask narrowed during the write) so there is no
+    readable window between create and chmod holding a year-long
+    subscription credential. A token left in the legacy ``~/.alfredrc`` is
+    migrated out so the two stores cannot disagree.
+    """
+    path = env_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Dotenv line: bare KEY=value, no `export`, shlex-quoted so a stray
+    # shell metachar in the token cannot break a downstream sourcing.
+    new_line = f"{TOKEN_ENV}={shlex.quote(token)}"
+
+    try:
+        existing_lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        existing_lines = []
+
+    out_lines: list[str] = []
+    replaced = False
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            name = stripped.partition("=")[0].removeprefix("export").strip()
+            if name == TOKEN_ENV:
+                if not replaced:
+                    out_lines.append(new_line)
+                    replaced = True
+                continue
+        out_lines.append(line)
+    if not replaced:
+        out_lines.append(new_line)
+    new_contents = "\n".join(out_lines).rstrip("\n") + "\n"
 
     # Narrow umask so the create-then-chmod window cannot leave a
     # world-readable file holding a year-long subscription credential.
     prior_umask = os.umask(0o077)
     try:
-        ALFREDRC.write_text(new_contents, encoding="utf-8")
+        path.write_text(new_contents, encoding="utf-8")
     finally:
         os.umask(prior_umask)
     try:
-        ALFREDRC.chmod(0o600)
+        path.chmod(0o600)
     except OSError as exc:
-        warn(f"could not chmod 0600 {ALFREDRC}: {exc}")
+        warn(f"could not chmod 0600 {path}: {exc}")
+
+    _migrate_legacy_token()
 
 
 def run_setup_token() -> str:
@@ -186,7 +294,7 @@ def run_setup_token() -> str:
         fail(
             "could not parse a long-lived token from `claude setup-token` output. "
             "Run the command yourself, copy the printed token, and add this line "
-            f"to {ALFREDRC} manually:\n\n    export {TOKEN_ENV}=<your-token>\n\n"
+            f"to {env_path()} manually:\n\n    {TOKEN_ENV}=<your-token>\n\n"
             "Then re-run this script with --check-only to confirm."
         )
     token = match.group(1)
@@ -204,7 +312,7 @@ def run_setup_token() -> str:
 
 
 def _validate_token_shape(token: str) -> None:
-    """Reject obviously broken tokens before writing them to ~/.alfredrc."""
+    """Reject obviously broken tokens before writing them to ``.env``."""
     if not TOKEN_LINE_RE.fullmatch(token):
         fail(
             f"--token value does not look like a Claude long-lived token "
@@ -221,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         description=(
             "Mint a long-lived Claude OAuth token so scheduled (launchd / "
             "systemd --user) agents can authenticate without the host "
-            "credential store. Token goes to ~/.alfredrc."
+            "credential store. Token goes to $ALFRED_HOME/.env."
         ),
     )
     parser.add_argument(
@@ -240,9 +348,9 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "skip the interactive `claude setup-token` spawn and write the "
-            "given token to ~/.alfredrc directly. Use this from AI-assisted "
-            "installs where the operator runs `claude setup-token` in their "
-            "own terminal and pastes the value back."
+            "given token to $ALFRED_HOME/.env directly. Use this from "
+            "AI-assisted installs where the operator runs `claude setup-token` "
+            "in their own terminal and pastes the value back."
         ),
     )
     args = parser.parse_args(argv)
@@ -271,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         token = args.token.strip()
         _validate_token_shape(token)
         write_token(token)
-        info(f"wrote {TOKEN_ENV} from --token to {ALFREDRC} (chmod 0600).")
+        info(f"wrote {TOKEN_ENV} from --token to {env_path()} (chmod 0600).")
         info("scheduled agents will pick it up on their next firing.")
         return 0
 
@@ -287,14 +395,14 @@ def main(argv: list[str] | None = None) -> int:
             "  1. Run `alfred setup-token` in your own shell, OR\n"
             "  2. Run `claude setup-token` in your shell, copy the printed token, "
             "then run: alfred setup-token --token <value>, OR\n"
-            "  3. Set CLAUDE_CODE_OAUTH_TOKEN in ~/.alfredrc by hand "
-            "(export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...) and re-run with --check-only."
+            "  3. Set CLAUDE_CODE_OAUTH_TOKEN in $ALFRED_HOME/.env by hand "
+            "(CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat...) and re-run with --check-only."
         )
 
     token = run_setup_token()
     write_token(token)
 
-    info(f"wrote {TOKEN_ENV} to {ALFREDRC} (chmod 0600).")
+    info(f"wrote {TOKEN_ENV} to {env_path()} (chmod 0600).")
     info("scheduled agents will pick it up on their next firing.")
     info("rotate later with `alfred setup-token --force`.")
     return 0

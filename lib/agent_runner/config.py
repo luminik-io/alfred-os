@@ -46,6 +46,33 @@ HYBRID_FALLBACK_SUBTYPES: frozenset[str] = PROVIDER_LIMIT_SUBTYPES | frozenset(
 """Subtypes that should trigger a Claude->Codex fallback in hybrid mode."""
 
 
+def reported_subtype(result: object) -> str:
+    """Return the subtype an agent should REPORT as the failure's root cause.
+
+    Hybrid mode falls back from Claude to codex on a provider-limit or auth
+    failure. When the fallback itself then fails, the returned ``ClaudeResult``
+    carries codex's subtype, which can be a misleading ``error_rate_limit``
+    that hides the original trigger. This was a real outage: a Claude 401
+    (token missing from the runtime env) pushed every firing to codex, codex
+    hit its weekly cap, and the whole thing surfaced as ``error_rate_limit``
+    instead of "your Claude credential is unreachable".
+
+    The honest headline is the TRIGGER. We promote ``fallback_from_subtype``
+    when it is an auth failure (operator-actionable, distinct from codex's
+    own wall). A provider-limit trigger that fell back to another provider
+    limit stays as-is: both ends are genuinely rate-limited, so reporting
+    the codex subtype is not misleading.
+
+    Accepts any object exposing ``subtype`` / ``fallback_from_subtype`` so
+    this module need not import :mod:`result` (avoids an import cycle).
+    """
+    subtype = getattr(result, "subtype", "") or ""
+    trigger = getattr(result, "fallback_from_subtype", None)
+    if trigger == "error_authentication" and subtype != "error_authentication":
+        return trigger
+    return subtype
+
+
 # --------------------------------------------------------------------------
 # Env-var primitives
 # --------------------------------------------------------------------------

@@ -1011,10 +1011,17 @@ def invoke_agent_engine(
         result = _invoke_claude()
         engine_used = "claude"
         if mode == "hybrid" and result.subtype in HYBRID_FALLBACK_SUBTYPES:
+            trigger_subtype = result.subtype
             if on_fallback:
                 on_fallback(result)
             result = _invoke_codex()
             engine_used = "codex-fallback"
+            # Stamp the codex result with the Claude failure that triggered
+            # the fallback so callers can surface the ROOT cause. Without
+            # this, a Claude 401 that pushed us to codex (which then hit its
+            # own rate-limit) gets reported as a bare rate_limit, hiding the
+            # real, operator-actionable problem: authentication.
+            result.fallback_from_subtype = trigger_subtype
 
     if memory_provider is not None and memory_repo:
         result_text = result.result_text or ""

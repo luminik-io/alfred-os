@@ -58,6 +58,15 @@ class PreflightSpec:
     bins: list[str] = field(default_factory=list)
     aws_profile: str | None = None
     require_gh_auth: bool = False
+    # When True, fail preflight if no Claude OAuth credential is reachable
+    # from the runtime environment (env var or ``$ALFRED_HOME/.env``). This
+    # is the cheap, no-network guard against the silent-401 outage class: a
+    # token that only lives in the host credential store or a shell rc file
+    # the scheduler never sources looks "logged in" interactively yet 401s
+    # every firing. Catching it here names the real cause (authentication)
+    # with the remedy (`alfred setup-token`) instead of letting the firing
+    # fall back to codex and die on a misleading downstream rate_limit.
+    require_claude_credential: bool = False
     require_workspace_repos: list[str] = field(default_factory=list)
     # Disk-pressure floors. ``None`` means "use the env-configured /
     # built-in defaults" (``ALFRED_MIN_FREE_DISK_GB`` /
@@ -281,6 +290,23 @@ def preflight(spec: PreflightSpec) -> None:
         else:
             if gh.returncode != 0:
                 misses.append("gh auth not active (run `gh auth login`)")
+
+    # 4.5. Claude OAuth credential reachable from the runtime env.
+    #
+    # Cheap, no-network presence check: resolve CLAUDE_CODE_OAUTH_TOKEN the
+    # exact way the runtime does (process env, then $ALFRED_HOME/.env via
+    # config_value). A token sitting only in the macOS Keychain or a shell
+    # rc file the scheduler never sources is invisible here -- which is the
+    # point: that is precisely the credential a launchd firing cannot see,
+    # so flagging it now beats a silent 401 + codex fallback later.
+    if spec.require_claude_credential:
+        from .paths import config_value
+
+        if not config_value("CLAUDE_CODE_OAUTH_TOKEN").strip():
+            misses.append(
+                "Claude credential unreachable: CLAUDE_CODE_OAUTH_TOKEN not in env "
+                "or $ALFRED_HOME/.env (run `alfred setup-token`)"
+            )
 
     # 5. Local repo checkouts present.
     # Resolve via ``WORKSPACE`` (which honours ``WORKSPACE_SUBDIR``) so a

@@ -73,6 +73,48 @@ def test_preflight_raises_on_missing_binary(monkeypatch):
     assert posted == []
 
 
+def test_preflight_requires_claude_credential_when_unreachable(monkeypatch, capsys):
+    """With require_claude_credential set and no token in env or
+    $ALFRED_HOME/.env, preflight must fail and name authentication as the
+    cause with the remedy. This is the silent-401 guard."""
+    import agent_runner as ar
+
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.setattr(ar, "slack_post", lambda msg, *a, **kw: None)
+
+    spec = ar.PreflightSpec(agent="test", require_claude_credential=True)
+    with pytest.raises(ar.PreflightFailed):
+        ar.preflight(spec)
+    out = capsys.readouterr().out
+    assert "Claude credential unreachable" in out
+    assert "alfred setup-token" in out
+
+
+def test_preflight_passes_when_credential_in_env(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-fromenv")
+    spec = ar.PreflightSpec(agent="test", require_claude_credential=True)
+    ar.preflight(spec)  # should not raise
+
+
+def test_preflight_passes_when_credential_in_env_file(monkeypatch):
+    """A token that lives only in $ALFRED_HOME/.env (not the process env)
+    satisfies the check, mirroring how agent-launch loads it at runtime."""
+    import os
+
+    import agent_runner as ar
+
+    home = Path(os.environ["ALFRED_HOME"])
+    home.mkdir(parents=True, exist_ok=True)
+    (home / ".env").write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromdotenv\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    spec = ar.PreflightSpec(agent="test", require_claude_credential=True)
+    ar.preflight(spec)  # should not raise
+
+
 def test_preflight_suppresses_slack_when_not_under_launchd(monkeypatch):
     import agent_runner as ar
 

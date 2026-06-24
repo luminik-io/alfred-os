@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import io
+import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 LIB = REPO / "lib"
@@ -131,13 +135,16 @@ def test_lifecycle_doctor_reports_missing_slack_scope() -> None:
     assert slack.deleted == [("C0DOCTOR", "1700000000.123")]
 
 
-def test_lifecycle_doctor_requires_claude_oauth_token() -> None:
+def test_lifecycle_doctor_requires_claude_oauth_token(tmp_path) -> None:
     from agent_runner.lifecycle_doctor import FIXTURE_PATH, run_lifecycle_doctor
 
     stream = io.StringIO()
+    # ALFRED_HOME points at an empty dir so the .env credential fallback
+    # finds nothing; otherwise the doctor would resolve a token from the
+    # real ~/.alfred/.env on the host running the suite.
     rc = run_lifecycle_doctor(
         fixture=FIXTURE_PATH,
-        env={"SLACK_BOT_TOKEN": "xoxb-test"},
+        env={"SLACK_BOT_TOKEN": "xoxb-test", "ALFRED_HOME": str(tmp_path)},
         slack_client=FakeSlack(),
         command_runner=fake_claude_ok,
         stream=stream,
@@ -145,8 +152,39 @@ def test_lifecycle_doctor_requires_claude_oauth_token() -> None:
 
     out = stream.getvalue()
     assert rc == 1
-    assert "CLAUDE_CODE_OAUTH_TOKEN present in env: no" in out
+    assert "CLAUDE_CODE_OAUTH_TOKEN reachable (env or $ALFRED_HOME/.env): no" in out
     assert "alfred setup-token" in out
+
+
+def test_lifecycle_doctor_resolves_token_from_env_file(tmp_path) -> None:
+    """A token in $ALFRED_HOME/.env (not the process env) is honored, the
+    same way the runtime loader resolves it."""
+    from agent_runner.lifecycle_doctor import FIXTURE_PATH, run_lifecycle_doctor
+
+    (tmp_path / ".env").write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromdotenv\n", encoding="utf-8"
+    )
+
+    seen_env: dict[str, str] = {}
+
+    def capture_claude(cmd, *, input_text, timeout_s, env):
+        seen_env.update(env)
+        return subprocess.CompletedProcess(list(cmd), 0, stdout="hi\n", stderr="")
+
+    stream = io.StringIO()
+    rc = run_lifecycle_doctor(
+        fixture=FIXTURE_PATH,
+        env={"SLACK_BOT_TOKEN": "xoxb-test", "ALFRED_HOME": str(tmp_path)},
+        slack_client=FakeSlack(),
+        command_runner=capture_claude,
+        stream=stream,
+    )
+
+    out = stream.getvalue()
+    assert rc == 0
+    assert "CLAUDE_CODE_OAUTH_TOKEN reachable: yes" in out
+    # The live probe must run with the token loaded from .env.
+    assert seen_env.get("CLAUDE_CODE_OAUTH_TOKEN") == "sk-ant-oat01-fromdotenv"
 
 
 def test_lifecycle_doctor_fails_bad_parent_body() -> None:
@@ -157,3 +195,113 @@ def test_lifecycle_doctor_fails_bad_parent_body() -> None:
     assert plan is not None
     assert result.ok is False
     assert "parsed 0 children" in result.lines
+
+
+# --------------------------------------------------------------------------
+# Shared .env unquoting: the Python readers must agree with the bash loaders
+# (decode_env_value in bin/agent-launch and bin/doctor.sh) for every quoted
+# form, including the edge cases a naive strip('"').strip("'") would mangle.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # Unquoted plain token: returned verbatim.
+        ("sk-ant-oat01-plain", "sk-ant-oat01-plain"),
+        # shlex.quote leaves a token with no metachars unquoted.
+        (shlex.quote("sk-ant-oat01-plain"), "sk-ant-oat01-plain"),
+        # shlex.quote wraps a metachar token in single quotes; one pair only.
+        (shlex.quote("sk-ant-oat01-$DANGEROUS"), "sk-ant-oat01-$DANGEROUS"),
+        # shlex.quote escapes an embedded single quote via the '"'"' splice.
+        (shlex.quote("ab'cd"), "ab'cd"),
+        (shlex.quote("'leading-quote"), "'leading-quote"),
+        (shlex.quote("trailing-quote'"), "trailing-quote'"),
+        # Double-quoted value: one pair stripped, inner left intact.
+        ('"sk-ant-oat01-dq"', "sk-ant-oat01-dq"),
+        ('"has spaces and $stuff"', "has spaces and $stuff"),
+        # A bare single quote char is not a matching pair: returned verbatim.
+        ("'", "'"),
+        ('"', '"'),
+        # A value that merely starts with a quote but is not wrapped: verbatim.
+        ("'unterminated", "'unterminated"),
+        ('unterminated"', 'unterminated"'),
+        # Empty value.
+        ("", ""),
+    ],
+)
+def test_decode_env_value_matches_quoting_contract(raw: str, expected: str) -> None:
+    """The shared decoder unwraps exactly one matching quote pair and undoes
+    the shlex single-quote escape splice, matching the bash loaders rather
+    than peeling every leading/trailing quote like a naive strip would."""
+    from agent_runner.paths import decode_env_value
+
+    assert decode_env_value(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "sk-ant-oat01-plain",
+        "sk-ant-oat01-$DANGEROUS",
+        "ab'cd",
+        "'leading-quote",
+        "trailing-quote'",
+        'embedded"double',
+        "has spaces",
+    ],
+)
+def test_decode_env_value_round_trips_shlex_quote(token: str) -> None:
+    """A token written exactly the way write_token persists it (shlex.quote)
+    decodes back to the original token through the shared helper. This is the
+    write/read contract the silent-401 fix depends on."""
+    from agent_runner.paths import decode_env_value
+
+    assert decode_env_value(shlex.quote(token)) == token
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "sk-ant-oat01-plain",
+        "sk-ant-oat01-$DANGEROUS",
+        "ab'cd",
+        "'leading-quote",
+        "trailing-quote'",
+    ],
+)
+def test_decode_env_value_agrees_with_bash_loader(token: str, tmp_path: Path) -> None:
+    """Cross-check the Python decoder against the real bash decode_env_value
+    in bin/agent-launch: write the token with shlex.quote (as write_token
+    does), load it through the actual shell loader, and assert the exported
+    value matches what the Python helper decodes. Keeps the two in sync."""
+    from agent_runner.paths import decode_env_value
+
+    agent_launch = REPO / "bin" / "agent-launch"
+    home = tmp_path
+    (home / ".env").write_text(f"CLAUDE_CODE_OAUTH_TOKEN={shlex.quote(token)}\n", encoding="utf-8")
+    target = tmp_path / "echo-token.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\nprintf "TOKEN[%s]\\n" "${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n',
+        encoding="utf-8",
+    )
+    target.chmod(0o755)
+
+    env = dict(os.environ)
+    env["ALFRED_HOME"] = str(home)
+    env["HOME"] = str(home.parent)
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    env.pop("ALFRED_PYTHON", None)
+
+    proc = subprocess.run(
+        ["bash", str(agent_launch), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    bash_value = proc.stdout.split("TOKEN[", 1)[1].rsplit("]", 1)[0]
+    assert bash_value == token
+    assert decode_env_value(shlex.quote(token)) == bash_value

@@ -16,7 +16,7 @@ import labels as label_constants
 from batman import parse_parent_issue
 from slack_approval import default_slack_client
 
-from .paths import CLAUDE_BIN
+from .paths import CLAUDE_BIN, decode_env_value
 
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "lifecycle_doctor_body.md"
 DEFAULT_PARENT_BODY = """Bundle: doctor-hello
@@ -253,19 +253,56 @@ def _default_command_runner(
     )
 
 
+def _resolve_oauth_token(env: Mapping[str, str]) -> str:
+    """Resolve the Claude OAuth token the way the runtime does.
+
+    Process/passed env first, then ``$ALFRED_HOME/.env`` -- the canonical
+    runtime store that ``alfred setup-token`` writes and ``agent-launch``
+    loads. Reading only the passed env (the old behaviour) reported "no
+    token" for a perfectly good token that lived in ``.env``, sending the
+    operator to re-run setup-token when auth was actually fine.
+    """
+    token = (env.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip()
+    if token:
+        return token
+    home = (env.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")).strip()
+    if not home:
+        return ""
+    try:
+        with open(Path(home) / ".env", encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                if name.removeprefix("export").strip() == "CLAUDE_CODE_OAUTH_TOKEN":
+                    # Shared decoder keeps this in lockstep with the bash
+                    # `decode_env_value` loaders; a naive strip() of quote
+                    # chars would diverge for shlex-quoted edge cases.
+                    return decode_env_value(value.strip())
+    except OSError:
+        pass
+    return ""
+
+
 def check_claude_oauth(
     env: Mapping[str, str],
     *,
     command_runner: CommandRunner | None = None,
 ) -> CheckResult:
-    if not (env.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip():
+    token = _resolve_oauth_token(env)
+    if not token:
         return CheckResult(
             "OAuth token",
             False,
-            ("CLAUDE_CODE_OAUTH_TOKEN present in env: no",),
+            ("CLAUDE_CODE_OAUTH_TOKEN reachable (env or $ALFRED_HOME/.env): no",),
             "Run `alfred setup-token` from an interactive terminal, then rerun doctor.",
         )
     runner = command_runner or _default_command_runner
+    # The live `claude -p` probe must see the token even when it only lived
+    # in .env, so it validates the same credential the runtime would use.
+    if not (env.get("CLAUDE_CODE_OAUTH_TOKEN") or "").strip():
+        env = {**env, "CLAUDE_CODE_OAUTH_TOKEN": token}
     claude_bin = env.get("CLAUDE_BIN") or CLAUDE_BIN
     try:
         result = runner(
@@ -278,14 +315,14 @@ def check_claude_oauth(
         return CheckResult(
             "OAuth token",
             False,
-            ("CLAUDE_CODE_OAUTH_TOKEN present in env: yes", "`claude -p` probe timed out"),
+            ("CLAUDE_CODE_OAUTH_TOKEN reachable: yes", "`claude -p` probe timed out"),
             "Run `claude` interactively to verify auth.",
         )
     except OSError as exc:
         return CheckResult(
             "OAuth token",
             False,
-            ("CLAUDE_CODE_OAUTH_TOKEN present in env: yes", f"`{claude_bin}` failed: {exc}"),
+            ("CLAUDE_CODE_OAUTH_TOKEN reachable: yes", f"`{claude_bin}` failed: {exc}"),
             "Set CLAUDE_BIN to the scheduler-visible Claude CLI path.",
         )
     if result.returncode != 0:
@@ -294,7 +331,7 @@ def check_claude_oauth(
             "OAuth token",
             False,
             (
-                "CLAUDE_CODE_OAUTH_TOKEN present in env: yes",
+                "CLAUDE_CODE_OAUTH_TOKEN reachable: yes",
                 f"`claude -p` exit {result.returncode}",
             ),
             blob[:500] or "Run `claude` interactively to verify auth.",
@@ -302,7 +339,7 @@ def check_claude_oauth(
     return CheckResult(
         "OAuth token",
         True,
-        ("CLAUDE_CODE_OAUTH_TOKEN present in env: yes", "`claude -p --max-turns 1` -> ok"),
+        ("CLAUDE_CODE_OAUTH_TOKEN reachable: yes", "`claude -p --max-turns 1` -> ok"),
     )
 
 
