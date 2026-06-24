@@ -199,4 +199,54 @@ describe("LogsView live tail (#41)", () => {
     expect(screen.queryByText(/opened pr #1048/i)).not.toBeInTheDocument();
     expect(screen.getByText(/failed · rate limit/i)).toBeInTheDocument();
   });
+
+  it("resets the errors-only filter when switching to another agent", async () => {
+    const luciusErr = runningFiring({
+      firing_id: "lucius-err",
+      codename: "lucius",
+      status: "error",
+      ended_at: "2026-06-03T12:09:00Z",
+      timeline: {
+        headline: "Failed · rate limit",
+        severity: "error",
+        error: "rate_limit",
+        outcome: "llm-error_rate_limit",
+        steps: [],
+      },
+    });
+    // A second agent whose only run is clean: if the errors-only filter leaked
+    // across the switch it would render the misleading "no runs" empty state.
+    const baneOk = runningFiring({
+      firing_id: "bane-ok",
+      codename: "bane",
+      status: "ok",
+      ended_at: "2026-06-03T12:20:00Z",
+      timeline: {
+        headline: "Opened PR #2001",
+        severity: "ok",
+        error: null,
+        outcome: "pr-opened",
+        steps: [],
+      },
+    });
+    renderLogs([luciusErr, baneOk], "lucius");
+
+    // Turn the filter on for lucius (which has a failure).
+    const toggle = screen.getByRole("switch", { name: /errors only/i });
+    await act(async () => {
+      toggle.click();
+    });
+    expect(screen.getByText(/failed · rate limit/i)).toBeInTheDocument();
+
+    // Switch to bane, whose runs are all clean.
+    const baneTab = screen.getByRole("tab", { name: /bane/i });
+    await act(async () => {
+      baneTab.click();
+    });
+
+    // The filter reset, so bane's clean run shows instead of an empty state.
+    expect(screen.getByText(/opened pr #2001/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no runs need attention/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /errors only/i })).not.toBeChecked();
+  });
 });

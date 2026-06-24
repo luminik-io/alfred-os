@@ -64,6 +64,33 @@ def test_review_run_summarises_findings() -> None:
     assert review_step.detail == "2 findings"
 
 
+def test_multiple_reviews_sum_findings_without_masking() -> None:
+    # A clean second review must never hide blocking findings from the first:
+    # the headline summarises both reviews and totals their findings.
+    timeline = derive_timeline(
+        [
+            _ev("firing_started"),
+            _ev("review_posted", repo="acme-org/api", number=100, p0_count=3, p1_count=0),
+            _ev("review_posted", repo="acme-org/api", number=200, p0_count=0, p1_count=0),
+            _ev("firing_complete", outcome="review-posted"),
+        ]
+    )
+    assert timeline.severity == "ok"
+    assert timeline.headline == "Reviewed 2 PRs · 3 findings"
+
+
+def test_multiple_pr_opens_are_counted() -> None:
+    timeline = derive_timeline(
+        [
+            _ev("firing_started"),
+            _ev("pr_opened", url="https://github.com/acme-org/api/pull/1", repo="acme-org/api"),
+            _ev("pr_opened", url="https://github.com/acme-org/api/pull/2", repo="acme-org/api"),
+            _ev("firing_complete", outcome="pr-opened"),
+        ]
+    )
+    assert timeline.headline == "Opened 2 PRs"
+
+
 def test_review_with_no_findings_reads_clean() -> None:
     timeline = derive_timeline(
         [

@@ -363,41 +363,57 @@ def _build_steps(events: list[dict], error_cause: str | None) -> list[TimelineSt
 
 def _headline(events: list[dict], outcome: str | None, error_cause: str | None) -> str:
     """A single scannable sentence for the collapsed row."""
-    by_name: dict[str, dict] = {}
+    # Keep every event of a kind, in order, rather than last-write-wins: a
+    # single firing can open or review more than one PR, and collapsing to the
+    # last event would hide the earlier (often higher-signal) milestone.
+    by_name: dict[str, list[dict]] = {}
     for event in events:
-        by_name[_name(event)] = event
+        by_name.setdefault(_name(event), []).append(event)
+
+    def first(name: str) -> dict | None:
+        items = by_name.get(name)
+        return items[0] if items else None
 
     if error_cause:
         label = _CAUSE_LABEL.get(error_cause, error_cause)
         # Anchor the failure to what it was working on, when we know.
         pr = None
         for key in ("pr_opened", "pr_picked", "review_posted"):
-            if key in by_name:
-                pr = _pr_ref(by_name[key])
+            event = first(key)
+            if event is not None:
+                pr = _pr_ref(event)
                 if pr:
                     break
         if pr:
             return f"Failed on {pr} · {label}"
         return f"Failed · {label}"
 
-    if "pr_opened" in by_name:
-        pr = _pr_ref(by_name["pr_opened"]) or "a PR"
-        return f"Opened {pr}"
-    if "review_posted" in by_name:
-        ev = by_name["review_posted"]
-        pr = _pr_ref(ev) or "a PR"
-        return f"Reviewed {pr} · {_findings_phrase(_int(ev.get('p0_count')), _int(ev.get('p1_count')))}"
+    opened = by_name.get("pr_opened", [])
+    if opened:
+        if len(opened) > 1:
+            return f"Opened {len(opened)} PRs"
+        return f"Opened {_pr_ref(opened[0]) or 'a PR'}"
+    reviews = by_name.get("review_posted", [])
+    if reviews:
+        # Sum findings across every review so a clean second review never masks
+        # blocking findings from the first.
+        p0 = sum(_int(ev.get("p0_count")) or 0 for ev in reviews)
+        p1 = sum(_int(ev.get("p1_count")) or 0 for ev in reviews)
+        phrase = _findings_phrase(p0, p1)
+        if len(reviews) > 1:
+            return f"Reviewed {len(reviews)} PRs · {phrase}"
+        return f"Reviewed {_pr_ref(reviews[0]) or 'a PR'} · {phrase}"
     if "fix_pushed" in by_name:
         return "Pushed a review fix"
     if "triaged" in by_name:
-        count = _int(by_name["triaged"].get("count"))
+        count = _int((first("triaged") or {}).get("count"))
         return (
             f"Triaged {count} issue{'' if count == 1 else 's'}"
             if count is not None
             else "Triaged issues"
         )
 
-    if outcome in _IDLE_OUTCOME_VALUES or outcome == "noop":
+    if outcome in _IDLE_OUTCOME_VALUES:
         return "Idle · no work"
     if outcome:
         # A completed run we have no richer milestone for: show the outcome
@@ -434,7 +450,7 @@ def derive_timeline(events: list[dict]) -> FiringTimeline:
 
     if error_cause:
         severity: Severity = "error"
-    elif outcome in _IDLE_OUTCOME_VALUES or outcome == "noop":
+    elif outcome in _IDLE_OUTCOME_VALUES:
         severity = "idle"
     elif outcome:
         severity = "ok"

@@ -215,6 +215,14 @@ function LiveTailView({
   }, [firings, selectedAgent, fetched]);
   const activeAgent = lanes.find((l) => l.codename === selectedAgent) || lanes[0] || null;
 
+  // The "Errors only" filter is per-agent: switching agents should land on the
+  // new agent's full run list, not inherit the previous agent's filter and show
+  // a misleading "No runs need attention" empty state for a clean agent.
+  const activeCodename = activeAgent?.codename ?? null;
+  useEffect(() => {
+    setErrorsOnly(false);
+  }, [activeCodename]);
+
   const allRuns = useMemo(() => activeAgent?.firings ?? [], [activeAgent]);
   const errorCount = useMemo(
     () => allRuns.filter((f) => isErrorFiring(f)).length,
