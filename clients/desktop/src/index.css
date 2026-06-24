@@ -1025,25 +1025,14 @@ body {
   gap: 0.75rem;
 }
 
-/* Cinematic stage: a glowing card constellation, with the inspector docked
-   alongside on wide screens (sticky) and stacked below on narrow ones. */
+/* Workflow stage: the canvas is the primary surface and takes the full width.
+   The agent detail opens as a slide-over drawer (see .agent-drawer), so the
+   canvas no longer shares the deck with a permanent inspector panel. */
 .agents-deck__stage {
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
-  gap: 0.75rem;
-}
-
-@media (min-width: 880px) {
-  .agents-deck__stage {
-    grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
-    align-items: start;
-  }
-
-  .agents-deck__stage .agent-inspector {
-    position: sticky;
-    top: 0.5rem;
-  }
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .agents-deck__constellation {
@@ -1061,18 +1050,24 @@ body {
    Height tracks the viewport so it stays in frame across screen sizes; the
    graph re-fits on resize (see FitToContainer). */
 .workflow-graph {
-  min-height: 340px;
-  height: min(72svh, 660px);
+  min-height: 420px;
+  height: min(78svh, 760px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--card), var(--background) 12%);
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in oklch, var(--primary), transparent 94%),
+      transparent 60%
+    ),
+    color-mix(in oklch, var(--card), var(--background) 12%);
   overflow: hidden;
 }
 
-/* When the inspector stacks below on narrow screens, give it room. */
 @media (max-width: 880px) {
   .workflow-graph {
-    height: min(54svh, 460px);
+    min-height: 360px;
+    height: min(62svh, 520px);
   }
 }
 
@@ -1081,12 +1076,13 @@ body {
 }
 
 .workflow-graph .react-flow__edge-path {
-  stroke: color-mix(in oklch, var(--primary), var(--border) 45%);
-  stroke-width: 1.5;
+  stroke: color-mix(in oklch, var(--primary), var(--border) 52%);
+  stroke-width: 1.75;
 }
 
 .workflow-graph .react-flow__edge.animated .react-flow__edge-path {
   stroke: var(--primary);
+  stroke-width: 2;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1121,6 +1117,22 @@ body {
   opacity: 0.45;
 }
 
+/* Minimap: a quiet glass overview pinned bottom-right, mirroring the canvas
+   status colors so it reads at a glance without competing with the nodes. */
+.workflow-graph .wf-minimap.react-flow__minimap {
+  margin: 0.85rem;
+  border: 1px solid color-mix(in oklch, var(--border), white 6%);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.workflow-graph .react-flow__minimap-node {
+  rx: 3;
+  ry: 3;
+}
+
 /* Lane heading above each column. */
 .wf-lane {
   color: var(--muted-foreground);
@@ -1132,22 +1144,29 @@ body {
   pointer-events: none;
 }
 
-/* Agent node: monogram, name + role, live status + runs. */
+/* Agent node card: an accent rail, monogram, name + role, a status pill, and a
+   metric row (runs today, last run, fail streak). Status drives the rail color
+   so the pipeline reads at a glance. Mirror NODE_WIDTH/NODE_HEIGHT in
+   workflowGraph.ts when these dimensions change. */
 .wf-node {
   --agent-accent: var(--primary);
+  --wf-tone: var(--agent-accent);
+  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    "mark body"
-    "meta meta";
+    "mark body status"
+    "meta meta meta";
   align-items: center;
-  gap: 0.4rem 0.6rem;
-  width: 200px;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: color-mix(in oklch, var(--card), var(--background) 6%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  gap: 0.45rem 0.65rem;
+  width: 232px;
+  padding: 0.7rem 0.8rem 0.7rem 0.95rem;
+  border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 62%);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card), var(--background) 5%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 6px 18px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -1155,29 +1174,56 @@ body {
     transform 140ms ease;
 }
 
+/* Status -> rail/accent tone mapping. idle stays neutral (never green). */
+.wf-node[data-tone="ok"] {
+  --wf-tone: var(--primary);
+}
+.wf-node[data-tone="warn"] {
+  --wf-tone: oklch(0.78 0.16 80);
+}
+.wf-node[data-tone="error"] {
+  --wf-tone: var(--destructive);
+}
+.wf-node[data-tone="idle"] {
+  --wf-tone: color-mix(in oklch, var(--muted-foreground), var(--border) 30%);
+}
+
+.wf-node__rail {
+  position: absolute;
+  inset: 0.5rem auto 0.5rem 0.35rem;
+  width: 0.2rem;
+  border-radius: 999px;
+  background: var(--wf-tone);
+  opacity: 0.85;
+}
+
 .wf-node:hover {
-  border-color: color-mix(in oklch, var(--agent-accent), var(--border) 40%);
+  border-color: color-mix(in oklch, var(--wf-tone), var(--border) 28%);
   transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 26px rgba(0, 0, 0, 0.16);
 }
 
 .wf-node[data-selected="true"] {
-  border-color: var(--agent-accent);
+  border-color: var(--wf-tone);
   box-shadow:
-    0 0 0 1px var(--agent-accent),
-    inset 3px 0 0 var(--agent-accent);
+    0 0 0 1px var(--wf-tone),
+    0 10px 28px color-mix(in oklch, var(--wf-tone), transparent 80%);
 }
 
 .wf-node__mark {
   grid-area: mark;
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--agent-accent), transparent 84%);
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.7rem;
+  background: color-mix(in oklch, var(--agent-accent), transparent 82%);
   color: var(--agent-accent);
+  font-family: var(--font-heading);
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
 }
 
 .wf-node__body {
@@ -1189,7 +1235,8 @@ body {
   display: block;
   overflow: hidden;
   color: var(--foreground);
-  font-size: 0.86rem;
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1204,26 +1251,63 @@ body {
   white-space: nowrap;
 }
 
-.wf-node__meta {
-  grid-area: meta;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  color: var(--muted-foreground);
-  font-size: 0.7rem;
-}
-
 .wf-node__status {
+  grid-area: status;
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 55%);
+  background: color-mix(in oklch, var(--wf-tone), var(--card) 88%);
+  color: color-mix(in oklch, var(--wf-tone), var(--foreground) 45%);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wf-node__meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.85rem;
+  margin-top: 0.1rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in oklch, var(--border), transparent 35%);
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+
+.wf-node__metaitem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.wf-node__metalabel {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 18%);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wf-node__metavalue {
+  color: var(--foreground);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wf-node__metaitem--warn .wf-node__metavalue {
+  color: var(--destructive);
 }
 
 .wf-node__handle {
   width: 6px;
   height: 6px;
-  background: color-mix(in oklch, var(--primary), var(--border) 30%);
+  background: color-mix(in oklch, var(--wf-tone), var(--border) 30%);
   border: none;
 }
 
@@ -1526,115 +1610,138 @@ body {
   white-space: nowrap;
 }
 
-.agent-inspector {
+/* Agent detail slide-over. A right-anchored sheet (radix Dialog primitive) that
+   overlays the canvas on select and is dismissible. Sized to a comfortable
+   reading column on desktop, full-bleed on narrow widths. */
+.agent-drawer.agent-drawer {
+  width: min(440px, 92vw);
+  max-width: 92vw;
+  gap: 0;
+  padding: 0;
+  border-left: 1px solid color-mix(in oklch, var(--border), white 8%);
+  background: color-mix(in oklch, var(--card), var(--background) 6%);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.agent-drawer__inner {
   --agent-accent: var(--primary);
   display: grid;
-  min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
+  min-height: 0;
+  height: 100%;
 }
 
-.agent-inspector__header {
+.agent-drawer__header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  align-items: start;
-  border-bottom: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 80%);
-  background: color-mix(in oklch, var(--agent-accent), var(--card) 94%);
-  padding: 1rem;
+  gap: 0.6rem;
+  padding: 1.15rem 1.15rem 1rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 82%);
+  background: color-mix(in oklch, var(--agent-accent), var(--card) 93%);
 }
 
-.agent-inspector__title {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-family: var(--font-heading);
-  font-size: clamp(1.45rem, 2.4vw, 2rem);
-  font-weight: 650;
-  line-height: 1.05;
+.agent-drawer__identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8rem;
 }
 
-.agent-inspector__purpose {
-  max-width: 62ch;
-  margin: 0.5rem 0 0;
-  color: var(--muted-foreground);
-  font-size: 0.95rem;
-  line-height: 1.45;
-}
-
-.agent-inspector__pulse {
+.agent-drawer__pulse {
   display: grid;
   place-items: center;
-  width: 3.15rem;
+  width: 2.85rem;
   aspect-ratio: 1;
   border: 1px solid color-mix(in oklch, var(--agent-accent), white 26%);
-  border-radius: 1rem;
-  background: color-mix(in oklch, var(--agent-accent), var(--card) 78%);
+  border-radius: 0.95rem;
+  background: color-mix(in oklch, var(--agent-accent), var(--card) 76%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 10px 28px color-mix(in oklch, var(--agent-accent), transparent 84%);
+    0 10px 26px color-mix(in oklch, var(--agent-accent), transparent 84%);
   font-family: var(--font-heading);
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   font-weight: 650;
   line-height: 1;
   color: color-mix(in oklch, var(--agent-accent), var(--foreground) 34%);
 }
 
-.agent-inspector__body {
+.agent-drawer__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-heading);
+  font-size: clamp(1.2rem, 2.2vw, 1.5rem);
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.agent-drawer__purpose {
+  max-width: 56ch;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.agent-drawer__body {
   display: grid;
   min-height: 0;
   align-content: start;
   gap: 0.85rem;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 1.15rem;
 }
 
-.agent-inspector__metrics {
+.agent-drawer__metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
+  gap: 0.6rem;
 }
 
-@media (min-width: 1280px) {
-  .agent-inspector__metrics {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-.agent-inspector__latest,
-.agent-inspector__schedule {
+.agent-drawer__latest,
+.agent-drawer__schedule {
   border: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 84%);
   border-radius: 0.875rem;
   background: color-mix(in oklch, var(--card), var(--background) 9%);
   padding: 0.85rem;
 }
 
-.agent-inspector__latest span {
+.agent-drawer__latest span {
   display: block;
   color: var(--muted-foreground);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.agent-inspector__latest p {
+.agent-drawer__latest p {
   margin: 0.35rem 0 0;
   color: var(--foreground);
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   line-height: 1.45;
 }
 
-.agent-inspector__actions {
-  display: flex;
-  flex-wrap: wrap;
+.agent-drawer__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
-.agent-inspector__schedule {
+.agent-drawer__actions > * {
+  width: 100%;
+}
+
+.agent-drawer__schedule {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.65rem;
   align-items: end;
+}
+
+@media (max-width: 520px) {
+  .agent-drawer__schedule {
+    grid-template-columns: 1fr;
+  }
 }
 
 .agents-deck__empty {
@@ -1649,10 +1756,6 @@ body {
   .agents-deck__row-meta {
     grid-column: 2;
     justify-items: start;
-  }
-
-  .agent-inspector__schedule {
-    grid-template-columns: 1fr;
   }
 }
 

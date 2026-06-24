@@ -1,17 +1,8 @@
-import {
-  Clock3,
-  Pause,
-  Play,
-  Rows3,
-  RotateCw,
-  ScrollText,
-  Square,
-  Workflow as WorkflowIcon,
-} from "lucide-react";
+import { Rows3, Workflow as WorkflowIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { supportsNativeActions } from "../api";
-import { exactTime, friendlyTime, titleCase } from "../format";
+import { friendlyTime, titleCase } from "../format";
 import { isErrorStatus } from "../lib/derive";
 import {
   buildFleetRows,
@@ -22,6 +13,7 @@ import {
 import type { NativeActionRequest } from "../lib/uiTypes";
 import { WORKFLOW_AGENTS, type WorkflowNodeInput } from "../lib/workflowGraph";
 import type { AgentSummary, NativeAction, ScheduledRun } from "../types";
+import { AgentDetailDrawer } from "./AgentDetailDrawer";
 import { WorkflowGraph } from "./WorkflowGraph";
 import { AlfredMetric, AlfredStatusDot, type AlfredTone } from "./ui/alfred";
 import { Badge } from "./ui/badge";
@@ -35,14 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { Label } from "./ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 
 const CONFIRM_VERBS: ReadonlySet<NativeAction> = new Set(["pause", "resume", "run"]);
 const SCHEDULE_OPTIONS: Array<{ value: string; label: string }> = [
@@ -92,9 +76,16 @@ export function FleetControlView({
   const stats = agentStats(rows);
   const defaultSelected = defaultSelectedCodename(rows);
   const [selectedCodename, setSelectedCodename] = useState<string | null>(defaultSelected);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const [viewMode, setViewMode] = useState<RosterView>(() => readRosterView());
   const affirmRef = useRef<HTMLButtonElement | null>(null);
+
+  // Selecting an agent (canvas node or list row) opens the detail drawer.
+  const selectAgent = (codename: string) => {
+    setSelectedCodename(codename);
+    setDrawerOpen(true);
+  };
 
   useEffect(() => {
     try {
@@ -125,6 +116,8 @@ export function FleetControlView({
             tone,
             statusLabel: label,
             runsToday: row.summary?.firings_today ?? 0,
+            lastRunLabel: row.summary ? friendlyTime(row.summary.last_run_at) : "No run",
+            failStreak: row.consecutiveFailures,
           };
         }),
     [rows, scheduleByCodename],
@@ -222,8 +215,8 @@ export function FleetControlView({
             {viewMode === "workflow" ? (
               <WorkflowGraph
                 agents={workflowInputs}
-                selectedCodename={selectedRow?.codename ?? null}
-                onSelect={setSelectedCodename}
+                selectedCodename={drawerOpen ? selectedRow?.codename ?? null : null}
+                onSelect={selectAgent}
               />
             ) : (
               <div className="agents-deck__rail" aria-label="Roster list">
@@ -238,23 +231,30 @@ export function FleetControlView({
                       row={row}
                       schedule={scheduleFor(scheduleByCodename, row.codename)}
                       selected={row.codename === selectedRow?.codename}
-                      onSelect={() => setSelectedCodename(row.codename)}
+                      onSelect={() => selectAgent(row.codename)}
                     />
                   ))}
                 </div>
               </div>
             )}
-            {selectedRow ? (
-              <AgentInspector
-                row={selectedRow}
-                schedule={selectedSchedule}
-                canRun={canRun}
-                nativeBusy={nativeBusy}
-                onDispatch={dispatch}
-                onViewLogs={onViewLogs}
-              />
-            ) : null}
           </div>
+
+          <AgentDetailDrawer
+            row={selectedRow}
+            open={drawerOpen}
+            onOpenChange={setDrawerOpen}
+            schedule={selectedSchedule}
+            canRun={canRun}
+            nativeBusy={nativeBusy}
+            serviceTone={serviceTone}
+            agentProfile={agentProfile}
+            agentActionCue={agentActionCue}
+            scheduleCopy={scheduleCopy}
+            editableScheduleValue={editableScheduleValue}
+            scheduleOptions={scheduleOptions}
+            onDispatch={dispatch}
+            onViewLogs={onViewLogs}
+          />
         </>
       ) : (
         <div className="agents-deck__empty">
@@ -343,221 +343,6 @@ function AgentRosterRow({
         <span>{scheduleCopy(row, schedule)}</span>
       </span>
     </button>
-  );
-}
-
-function AgentInspector({
-  row,
-  schedule,
-  canRun,
-  nativeBusy,
-  onDispatch,
-  onViewLogs,
-}: {
-  row: FleetControlRow;
-  schedule?: ScheduledRun;
-  canRun: boolean;
-  nativeBusy: string | null;
-  onDispatch: (
-    action: NativeAction,
-    codename: string,
-    label: string,
-    cadence?: string,
-  ) => void;
-  onViewLogs: (codename: string) => void;
-}) {
-  const busy = (action: NativeAction) => nativeBusy === `${action}:${row.codename}`;
-  const currentCadence = editableScheduleValue(schedule);
-  const [draftCadence, setDraftCadence] = useState(currentCadence);
-
-  useEffect(() => {
-    setDraftCadence(currentCadence);
-  }, [currentCadence]);
-
-  const options = scheduleOptions(currentCadence);
-  const profile = agentProfile(row, schedule);
-  // Agent monogram: the first letter of the display name in the accent color,
-  // a small identity mark instead of an empty decorative chip.
-  const monogram =
-    profile.label.replace(/\s*·.*$/, "").trim().charAt(0).toUpperCase() || "A";
-  return (
-    <section
-      className="agent-inspector"
-      aria-label={`${profile.label} details`}
-      style={{ "--agent-accent": profile.themeAccent } as React.CSSProperties}
-    >
-      <div className="agent-inspector__header">
-        <div className="min-w-0">
-          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
-            <Badge
-              variant="secondary"
-              className="h-5 border-border/50 bg-secondary/65 px-2 text-[0.68rem]"
-              title={`Runtime codename: ${row.codename}`}
-            >
-              {row.codename}
-            </Badge>
-            <ServiceBadge row={row} />
-          </div>
-          <h2 className="agent-inspector__title">{profile.label}</h2>
-          <p className="agent-inspector__purpose">
-            {profile.purpose || agentActionCue(row)}
-          </p>
-        </div>
-        <div className="agent-inspector__pulse" aria-hidden="true">
-          {monogram}
-        </div>
-      </div>
-
-      <div className="agent-inspector__body">
-        <dl className="agent-inspector__metrics">
-          <MetaItem label="Last run" title={exactTime(row.summary?.last_run_at)}>
-            {row.summary ? friendlyTime(row.summary.last_run_at) : "No run"}
-          </MetaItem>
-          <MetaItem label="Runs today">{row.summary?.firings_today ?? 0}</MetaItem>
-          <MetaItem label="Fail streak">{row.consecutiveFailures}</MetaItem>
-          <MetaItem label="Schedule">{scheduleCopy(row, schedule)}</MetaItem>
-        </dl>
-
-        <div className="agent-inspector__latest">
-          <span>Latest signal</span>
-          <p>
-            {row.paused && row.pausedSince
-              ? `Paused since ${friendlyTime(row.pausedSince)}.`
-              : row.summary?.last_summary || "No runs yet."}
-          </p>
-        </div>
-
-        <div className="agent-inspector__actions">
-          <Button type="button" variant="outline" onClick={() => onViewLogs(row.codename)}>
-            <ScrollText aria-hidden="true" />
-            Logs
-          </Button>
-          {canRun && row.paused ? (
-            <Button
-              type="button"
-              variant="default"
-              disabled={busy("resume")}
-              aria-busy={busy("resume")}
-              onClick={() => onDispatch("resume", row.codename, "Resume")}
-            >
-              <Play aria-hidden="true" />
-              {busy("resume") ? "Resuming" : "Resume"}
-            </Button>
-          ) : null}
-          {canRun && !row.paused ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy("pause")}
-              aria-busy={busy("pause")}
-              onClick={() => onDispatch("pause", row.codename, "Pause")}
-            >
-              <Pause aria-hidden="true" />
-              {busy("pause") ? "Pausing" : "Pause"}
-            </Button>
-          ) : null}
-          {canRun ? (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busy("run")}
-                aria-busy={busy("run")}
-                onClick={() => onDispatch("run", row.codename, "Run")}
-              >
-                <RotateCw aria-hidden="true" />
-                {busy("run") ? "Running" : "Run once"}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busy("dry_run")}
-                aria-busy={busy("dry_run")}
-                onClick={() => onDispatch("dry_run", row.codename, "Dry-run")}
-              >
-                <Square aria-hidden="true" />
-                {busy("dry_run") ? "Running" : "Dry-run"}
-              </Button>
-            </>
-          ) : null}
-        </div>
-
-        {canRun ? (
-          <div className="agent-inspector__schedule">
-            <div className="min-w-0 space-y-1.5">
-              <Label
-                htmlFor={`schedule-${row.codename}`}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground"
-              >
-                <Clock3 className="size-3.5" aria-hidden="true" />
-                Cadence
-              </Label>
-              <Select value={draftCadence} onValueChange={setDraftCadence}>
-                <SelectTrigger
-                  id={`schedule-${row.codename}`}
-                  aria-label={`Schedule ${row.codename}`}
-                  className="w-full"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {options.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              aria-label={`Set ${row.codename} schedule`}
-              disabled={busy("schedule") || !draftCadence.trim()}
-              aria-busy={busy("schedule")}
-              onClick={() => onDispatch("schedule", row.codename, "Set schedule", draftCadence)}
-            >
-              {busy("schedule") ? "Setting" : "Set"}
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function MetaItem({
-  children,
-  label,
-  title,
-}: {
-  children: React.ReactNode;
-  label: string;
-  title?: string;
-}) {
-  return (
-    <AlfredMetric
-      asDescription
-      className="min-w-0"
-      label={label}
-      title={title}
-      value={children}
-    />
-  );
-}
-
-function ServiceBadge({ row }: { row: FleetControlRow }) {
-  const { tone, label } = serviceTone(row);
-  return (
-    <Badge
-      variant="outline"
-      className="alfred-status-badge"
-      data-tone={tone}
-      aria-label={`Status: ${label}`}
-    >
-      <AlfredStatusDot tone={tone} aria-hidden="true" />
-      {label}
-    </Badge>
   );
 }
 

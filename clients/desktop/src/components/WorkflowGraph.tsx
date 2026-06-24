@@ -3,6 +3,7 @@ import {
   BackgroundVariant,
   Controls,
   Handle,
+  MiniMap,
   type NodeProps,
   Position,
   ReactFlow,
@@ -28,10 +29,15 @@ function LaneNode({ data }: NodeProps) {
   return <div className="wf-lane">{label}</div>;
 }
 
-/** One agent in the pipeline: monogram, name, role, live status, runs today. */
+/**
+ * One agent in the pipeline: monogram, name, role, live status, today's run
+ * count, last-run recency, and a health line when a fail streak is building.
+ * Status drives the accent rail color so the canvas reads at a glance.
+ */
 function AgentNode({ data }: NodeProps) {
   const node = data as AgentNodeData;
   const monogram = (node.label || node.codename).trim().charAt(0).toUpperCase();
+  const failStreak = node.failStreak ?? 0;
   return (
     <div
       className="wf-node"
@@ -40,6 +46,7 @@ function AgentNode({ data }: NodeProps) {
       style={{ "--agent-accent": node.accent } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Left} className="wf-node__handle" />
+      <span className="wf-node__rail" aria-hidden="true" />
       <span className="wf-node__mark" aria-hidden="true">
         {monogram}
       </span>
@@ -47,12 +54,27 @@ function AgentNode({ data }: NodeProps) {
         <span className="wf-node__name">{node.label || node.codename}</span>
         <span className="wf-node__role">{node.role || node.codename}</span>
       </span>
+      <span className="wf-node__status" data-tone={node.tone}>
+        <AlfredStatusDot tone={node.tone} aria-hidden="true" />
+        {node.statusLabel}
+      </span>
       <span className="wf-node__meta">
-        <span className="wf-node__status">
-          <AlfredStatusDot tone={node.tone} aria-hidden="true" />
-          {node.statusLabel}
+        <span className="wf-node__metaitem">
+          <span className="wf-node__metalabel">Runs</span>
+          <span className="wf-node__metavalue">{node.runsToday} today</span>
         </span>
-        <span className="wf-node__runs">{node.runsToday} today</span>
+        {node.lastRunLabel ? (
+          <span className="wf-node__metaitem">
+            <span className="wf-node__metalabel">Last run</span>
+            <span className="wf-node__metavalue">{node.lastRunLabel}</span>
+          </span>
+        ) : null}
+        {failStreak >= 1 ? (
+          <span className="wf-node__metaitem wf-node__metaitem--warn">
+            <span className="wf-node__metalabel">Fails</span>
+            <span className="wf-node__metavalue">{failStreak} in a row</span>
+          </span>
+        ) : null}
       </span>
       <Handle type="source" position={Position.Right} className="wf-node__handle" />
     </div>
@@ -61,7 +83,29 @@ function AgentNode({ data }: NodeProps) {
 
 const NODE_TYPES: ReactFlowProps["nodeTypes"] = { agent: AgentNode, lane: LaneNode };
 
-const FIT_OPTIONS = { padding: 0.18, minZoom: 0.45, maxZoom: 1.25 } as const;
+const FIT_OPTIONS = { padding: 0.14, minZoom: 0.45, maxZoom: 1.4 } as const;
+
+// MiniMap node color tracks the agent's live status, so the overview reads the
+// same as the canvas. The minimap paints into a raw SVG, so resolve theme
+// tokens to concrete values up front (CSS variables do not apply on <rect>).
+function readToken(name: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  return value || fallback;
+}
+
+function miniMapNodeColor(node: { type?: string; data?: unknown }): string {
+  if (node.type !== "agent") {
+    return "rgba(148, 163, 184, 0.35)";
+  }
+  const tone = (node.data as AgentNodeData | undefined)?.tone;
+  if (tone === "error") return readToken("--destructive", "oklch(0.6 0.2 25)");
+  if (tone === "warn") return "oklch(0.78 0.16 80)";
+  if (tone === "ok") return readToken("--primary", "oklch(0.7 0.15 250)");
+  return "rgba(148, 163, 184, 0.6)";
+}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -74,9 +118,9 @@ function prefersReducedMotion(): boolean {
 /**
  * Keep the whole pipeline in frame as the canvas resizes. React Flow tracks the
  * container size but does not re-fit on its own, so the graph would clip when
- * the window resizes, the sidebar toggles, or the layout stacks the inspector
- * below on narrow screens. We watch the store's width/height and re-fit
- * (debounced) so the view stays correct at every breakpoint and zoom level.
+ * the window resizes, the sidebar toggles, or the layout stacks below on narrow
+ * screens. We watch the store's width/height and re-fit (debounced) so the view
+ * stays correct at every breakpoint and zoom level.
  */
 function FitToContainer({ signature }: { signature: string }) {
   const { fitView } = useReactFlow();
@@ -90,7 +134,7 @@ function FitToContainer({ signature }: { signature: string }) {
     }
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      void fitView({ ...FIT_OPTIONS, duration: prefersReducedMotion() ? 0 : 220 });
+      void fitView({ ...FIT_OPTIONS, duration: prefersReducedMotion() ? 0 : 240 });
     }, 80);
     return () => clearTimeout(timer.current);
   }, [width, height, signature, fitView]);
@@ -152,8 +196,18 @@ export function WorkflowGraph({
         }}
       >
         <FitToContainer signature={signature} />
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
-        <Controls showInteractive={false} position="bottom-right" />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+        <Controls showInteractive={false} position="bottom-left" />
+        <MiniMap
+          pannable
+          zoomable
+          ariaLabel="Workflow minimap"
+          position="bottom-right"
+          className="wf-minimap"
+          nodeColor={miniMapNodeColor}
+          nodeStrokeWidth={0}
+          maskColor="color-mix(in oklch, var(--background), transparent 35%)"
+        />
       </ReactFlow>
     </div>
   );

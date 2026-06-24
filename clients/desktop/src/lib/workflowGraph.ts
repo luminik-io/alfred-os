@@ -4,6 +4,7 @@
 // delivery flow. This is intentionally declarative so a future editable
 // canvas (drag handoffs, add agents) can read and write the same shape.
 
+import dagre from "@dagrejs/dagre";
 import type { Edge, Node } from "@xyflow/react";
 
 import type { AlfredTone } from "../components/ui/alfred";
@@ -55,10 +56,20 @@ export const WORKFLOW_AGENTS: readonly string[] = WORKFLOW_LANES.flatMap(
   (lane) => lane.agents,
 );
 
-// Layout constants. Lanes step right; agents stack and center within a lane.
-const LANE_GAP_X = 250;
-const NODE_GAP_Y = 128;
-const LANE_LABEL_Y = -150;
+// Node + lane footprint used both for the dagre layout and the CSS sizing of
+// the rendered card. Keep these in sync with the .wf-node / .wf-lane rules.
+const NODE_WIDTH = 232;
+const NODE_HEIGHT = 98;
+const LANE_LABEL_WIDTH = 232;
+const LANE_LABEL_HEIGHT = 24;
+// Dagre spacing. ranksep controls the horizontal gap between lanes (we lay the
+// graph out left-to-right), nodesep the vertical gap within a rank.
+const RANK_SEP = 96;
+const NODE_SEP = 28;
+const EDGE_SEP = 18;
+// Vertical offset that lifts each lane label clear of the agent cards beneath
+// it. Dagre positions the label node; we nudge it up so it reads as a heading.
+const LANE_LABEL_LIFT = 78;
 
 /** The display fields a node needs, derived by the caller from the live row. */
 export type WorkflowNodeInput = {
@@ -69,10 +80,14 @@ export type WorkflowNodeInput = {
   tone: AlfredTone;
   statusLabel: string;
   runsToday: number;
+  // Optional richer fields (the card degrades gracefully without them).
+  lastRunLabel?: string;
+  failStreak?: number;
 };
 
 export type AgentNodeData = WorkflowNodeInput & {
   laneId: WorkflowLaneId;
+  laneLabel: string;
   selected: boolean;
   [key: string]: unknown;
 };
@@ -83,9 +98,68 @@ function laneIndex(id: WorkflowLaneId): number {
   return WORKFLOW_LANES.findIndex((lane) => lane.id === id);
 }
 
-// Center a lane's agents vertically around y=0 so the pipeline reads as a band.
-function yWithinLane(indexInLane: number, laneSize: number): number {
-  return (indexInLane - (laneSize - 1) / 2) * NODE_GAP_Y;
+/**
+ * Lay the pipeline out with dagre as a left-to-right DAG. We seed each agent and
+ * lane label as a sized node, add the surviving handoffs as edges, and pin the
+ * lane rank so the canonical order (triage -> architect -> ... -> ops) is never
+ * reordered by the solver. Returns top-left positions React Flow can consume.
+ */
+function layoutGraph(
+  agents: { codename: string; laneId: WorkflowLaneId }[],
+  lanes: { id: WorkflowLaneId }[],
+  edges: [string, string][],
+): Map<string, { x: number; y: number }> {
+  const g = new dagre.graphlib.Graph({ compound: true });
+  g.setGraph({
+    rankdir: "LR",
+    ranksep: RANK_SEP,
+    nodesep: NODE_SEP,
+    edgesep: EDGE_SEP,
+    marginx: 24,
+    marginy: 48,
+  });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  for (const agent of agents) {
+    g.setNode(agent.codename, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  }
+  for (const lane of lanes) {
+    g.setNode(`lane:${lane.id}`, {
+      width: LANE_LABEL_WIDTH,
+      height: LANE_LABEL_HEIGHT,
+    });
+  }
+  for (const [source, target] of edges) {
+    g.setEdge(source, target);
+  }
+
+  dagre.layout(g);
+
+  // Force lane labels to share the x rank of the first agent in their lane and
+  // sit above the band, so they read as column headings rather than drifting
+  // into the flow. Dagre gives center coords; React Flow wants top-left.
+  const positions = new Map<string, { x: number; y: number }>();
+  let minAgentY = Infinity;
+  for (const agent of agents) {
+    const n = g.node(agent.codename);
+    if (!n) continue;
+    minAgentY = Math.min(minAgentY, n.y - NODE_HEIGHT / 2);
+    positions.set(agent.codename, {
+      x: n.x - NODE_WIDTH / 2,
+      y: n.y - NODE_HEIGHT / 2,
+    });
+  }
+
+  for (const lane of lanes) {
+    const laneAgents = agents.filter((a) => a.laneId === lane.id);
+    if (!laneAgents.length) continue;
+    const first = positions.get(laneAgents[0].codename);
+    if (!first) continue;
+    const labelY = (Number.isFinite(minAgentY) ? minAgentY : first.y) - LANE_LABEL_LIFT;
+    positions.set(`lane:${lane.id}`, { x: first.x, y: labelY });
+  }
+
+  return positions;
 }
 
 /**
@@ -99,50 +173,68 @@ export function buildWorkflowGraph(
 ): { nodes: Node[]; edges: Edge[] } {
   const byCodename = new Map(inputs.map((input) => [input.codename, input]));
   const present = new Set(byCodename.keys());
+
+  // Resolve the present agents + their lane, in canonical lane order.
+  const placedAgents: { codename: string; laneId: WorkflowLaneId; laneLabel: string }[] = [];
+  const presentLanes: { id: WorkflowLaneId }[] = [];
+  for (const lane of [...WORKFLOW_LANES].sort((a, b) => laneIndex(a.id) - laneIndex(b.id))) {
+    const liveAgents = lane.agents.filter((codename) => present.has(codename));
+    if (!liveAgents.length) continue;
+    presentLanes.push({ id: lane.id });
+    for (const codename of liveAgents) {
+      placedAgents.push({ codename, laneId: lane.id, laneLabel: lane.label });
+    }
+  }
+
+  const liveEdges: [string, string][] = WORKFLOW_EDGES.filter(
+    ([source, target]) => present.has(source) && present.has(target),
+  ).map(([source, target]) => [source, target]);
+
+  const positions = layoutGraph(placedAgents, presentLanes, liveEdges);
+
   const nodes: Node[] = [];
 
-  for (const lane of WORKFLOW_LANES) {
-    const liveAgents = lane.agents.filter((codename) => present.has(codename));
-    const x = laneIndex(lane.id) * LANE_GAP_X;
-
-    // One non-interactive label per lane that actually has agents.
-    if (liveAgents.length) {
-      nodes.push({
-        id: `lane:${lane.id}`,
-        type: "lane",
-        position: { x, y: LANE_LABEL_Y },
-        data: { label: lane.label } satisfies LaneNodeData,
-        draggable: false,
-        selectable: false,
-        deletable: false,
-      });
-    }
-
-    liveAgents.forEach((codename, indexInLane) => {
-      const input = byCodename.get(codename)!;
-      nodes.push({
-        id: codename,
-        type: "agent",
-        position: { x, y: yWithinLane(indexInLane, liveAgents.length) },
-        data: {
-          ...input,
-          laneId: lane.id,
-          selected: codename === selectedCodename,
-        } satisfies AgentNodeData,
-        draggable: false,
-      });
+  for (const lane of presentLanes) {
+    const laneMeta = WORKFLOW_LANES.find((l) => l.id === lane.id)!;
+    const pos = positions.get(`lane:${lane.id}`) ?? { x: 0, y: 0 };
+    nodes.push({
+      id: `lane:${lane.id}`,
+      type: "lane",
+      position: pos,
+      data: { label: laneMeta.label } satisfies LaneNodeData,
+      draggable: false,
+      selectable: false,
+      deletable: false,
     });
   }
 
-  const edges: Edge[] = WORKFLOW_EDGES.filter(
-    ([source, target]) => present.has(source) && present.has(target),
-  ).map(([source, target]) => ({
+  for (const placed of placedAgents) {
+    const input = byCodename.get(placed.codename)!;
+    const pos = positions.get(placed.codename) ?? { x: 0, y: 0 };
+    nodes.push({
+      id: placed.codename,
+      type: "agent",
+      position: pos,
+      // Declare the card footprint so the minimap can paint the node before
+      // React Flow measures the DOM (otherwise the overview renders empty).
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      data: {
+        ...input,
+        laneId: placed.laneId,
+        laneLabel: placed.laneLabel,
+        selected: placed.codename === selectedCodename,
+      } satisfies AgentNodeData,
+      draggable: false,
+    });
+  }
+
+  const edges: Edge[] = liveEdges.map(([source, target]) => ({
     id: `${source}->${target}`,
     source,
     target,
     type: "smoothstep",
-    animated:
-      source === selectedCodename || target === selectedCodename,
+    animated: source === selectedCodename || target === selectedCodename,
   }));
 
   return { nodes, edges };

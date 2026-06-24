@@ -14,6 +14,7 @@
     "tauri": "node scripts/tauri.mjs"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
     "@fontsource-variable/instrument-sans": "^5.2.8",
     "@fontsource-variable/quicksand": "^5.2.10",
     "@fontsource/fragment-mono": "^5.2.8",

@@ -79,6 +79,17 @@ function renderView(onRunLocalAction = vi.fn(), schedule: ScheduledRun[] = SCHED
   return onRunLocalAction;
 }
 
+// The agent detail is a slide-over drawer that opens on select. The workflow
+// graph renders no measurable nodes in jsdom, so we open the drawer through the
+// list view (its rows are real buttons) to reach the inspector controls.
+async function openDrawer(
+  user: ReturnType<typeof userEvent.setup>,
+  codename: string,
+) {
+  await user.click(screen.getByRole("button", { name: /list view/i }));
+  await user.click(screen.getByRole("button", { name: new RegExp(`select ${codename}`, "i") }));
+}
+
 describe("FleetControlView", () => {
   beforeEach(() => {
     // Roster view mode persists in localStorage; reset so each test starts on
@@ -110,20 +121,23 @@ describe("FleetControlView", () => {
     renderView();
     const user = userEvent.setup();
 
-    // The roster selects the running agent first, so only that agent's controls show.
+    // Nothing is open until an agent is selected, so no controls show yet.
+    expect(screen.queryByRole("button", { name: /^Pause$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Resume$/i })).not.toBeInTheDocument();
+
+    // Open the running agent's drawer: its Pause control shows, Resume does not.
+    await openDrawer(user, "lucius");
     expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Resume$/i })).not.toBeInTheDocument();
 
-    // Switch to the list to pick a specific agent (the graph renders no
-    // measurable nodes in jsdom), then select the paused one.
-    await user.click(screen.getByRole("button", { name: /list view/i }));
+    // Select the paused agent: the drawer swaps to show Resume.
     await user.click(screen.getByRole("button", { name: /select bane/i }));
     expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
-    // The list row and the inspector both surface the paused state.
+    // The list row and the drawer both surface the paused state.
     expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
   });
 
-  it("opens on an llm-error agent before a running agent", () => {
+  it("defaults selection to an llm-error agent before a running agent", async () => {
     render(
       <FleetControlView
         agents={[agent("lucius", { status: "live" }), agent("bane", { status: "llm-error" })]}
@@ -134,9 +148,15 @@ describe("FleetControlView", () => {
         onViewLogs={vi.fn()}
       />,
     );
+    const user = userEvent.setup();
 
-    expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Pause$/i })).not.toBeInTheDocument();
+    // The errored, paused agent is the default selection: its list row is the
+    // one marked current, ahead of the live agent.
+    await user.click(screen.getByRole("button", { name: /list view/i }));
+    expect(screen.getByRole("button", { name: /select bane/i })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
   });
 
   it("reads paused state from the polled summary without a CLI service map", async () => {
@@ -159,15 +179,15 @@ describe("FleetControlView", () => {
     );
     const user = userEvent.setup();
 
+    await openDrawer(user, "lucius");
     expect(screen.getByRole("button", { name: /^Pause$/i })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /list view/i }));
     await user.click(screen.getByRole("button", { name: /select bane/i }));
     expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
-    // The list row and the inspector both surface the paused state.
+    // The list row and the drawer both surface the paused state.
     expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
   });
 
-  it("renders the human agent role and purpose above the runtime codename", () => {
+  it("renders the human agent role and purpose above the runtime codename", async () => {
     render(
       <FleetControlView
         agents={[
@@ -184,6 +204,8 @@ describe("FleetControlView", () => {
         onViewLogs={vi.fn()}
       />,
     );
+    const user = userEvent.setup();
+    await openDrawer(user, "lucius");
 
     expect(screen.getAllByText("Lucius · Senior Developer").length).toBeGreaterThan(0);
     expect(
@@ -195,6 +217,7 @@ describe("FleetControlView", () => {
   it("runs dry-run immediately without confirmation", async () => {
     const onRun = renderView();
     const user = userEvent.setup();
+    await openDrawer(user, "lucius");
     await user.click(screen.getAllByRole("button", { name: /Dry-run/i })[0]);
     expect(onRun).toHaveBeenCalledWith(
       expect.objectContaining({ action: "dry_run", refreshAfter: true }),
@@ -204,6 +227,7 @@ describe("FleetControlView", () => {
   it("sets an agent schedule from a cadence menu", async () => {
     const onRun = renderView();
     const user = userEvent.setup();
+    await openDrawer(user, "lucius");
 
     await user.click(screen.getByRole("combobox", { name: /schedule lucius/i }));
     await user.click(screen.getByRole("option", { name: /every 20 min/i }));
@@ -222,6 +246,7 @@ describe("FleetControlView", () => {
   it("requires confirmation before a state-changing pause", async () => {
     const onRun = renderView();
     const user = userEvent.setup();
+    await openDrawer(user, "lucius");
 
     await user.click(screen.getByRole("button", { name: /^Pause$/i }));
     // Nothing dispatched yet; a confirm dialog appears instead.
@@ -237,6 +262,7 @@ describe("FleetControlView", () => {
   it("cancels a pending action without dispatching", async () => {
     const onRun = renderView();
     const user = userEvent.setup();
+    await openDrawer(user, "lucius");
 
     await user.click(screen.getByRole("button", { name: /^Pause$/i }));
     await user.click(screen.getByRole("button", { name: /cancel/i }));
@@ -247,6 +273,7 @@ describe("FleetControlView", () => {
   it("moves focus to the affirmative button and closes on Escape", async () => {
     const onRun = renderView();
     const user = userEvent.setup();
+    await openDrawer(user, "lucius");
 
     await user.click(screen.getByRole("button", { name: /^Pause$/i }));
     // Focus lands on the destructive affirmative so the confirm is keyboard-ready.
@@ -272,6 +299,7 @@ describe("FleetControlView", () => {
       />,
     );
     const user = userEvent.setup();
+    await openDrawer(user, "lucius");
     await user.click(screen.getByRole("button", { name: /^Logs$/i }));
     expect(onViewLogs).toHaveBeenCalledWith("lucius");
   });
