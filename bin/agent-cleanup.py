@@ -414,13 +414,14 @@ def _parse_docker_reclaimed_mb(stdout: str) -> float:
     Units are normalized to MB; an empty/bare-byte unit is treated as bytes.
     Returns 0.0 when the line is absent.
     """
-    match = re.search(r"Total reclaimed space:\s*([\d.]+)\s*([KMGT]?)B", stdout)
+    match = re.search(r"Total reclaimed space:\s*([\d.]+)\s*([kKMGT]?)B", stdout)
     if not match:
         return 0.0
     value = float(match.group(1))
     unit = match.group(2)
     factors = {
         "": 1.0 / (1024 * 1024),  # bytes -> MB
+        "k": 1.0 / 1024,  # kB (Docker lowercase) -> MB
         "K": 1.0 / 1024,  # KB -> MB
         "M": 1.0,  # MB
         "G": 1024.0,  # GB -> MB
@@ -438,9 +439,16 @@ def reclaim_emergency_docker() -> tuple[float, int]:
     regenerable: the next build or run recreates whatever it needs. We run only
     SAFE prunes that never touch a running or stopped container or its data:
 
-    * ``docker builder prune -f``  -> build cache only
-    * ``docker image prune -f``    -> dangling images only (NOT ``-a``)
-    * ``docker volume prune -f``   -> volumes referenced by no container
+    * ``docker builder prune -f``        -> build cache only
+    * ``docker image prune -f``          -> dangling images only (NOT ``-a``)
+    * ``docker volume prune --all -f``   -> all volumes referenced by no
+      container, named or anonymous
+
+    Since Docker 23.0 a bare ``docker volume prune -f`` removes only anonymous
+    volumes, leaving named orphaned volumes (the usual source of large bloat)
+    on disk. ``--all`` restores the pre-23.0 behavior and reclaims both. On
+    Docker <23 the unknown flag exits non-zero with empty stdout, so the parser
+    reads 0.0 MB and the run is a no-op rather than a regression.
 
     We never run ``docker container prune`` and never pass ``-a`` to the image
     prune, so running containers and their data are always preserved. Opt out
@@ -457,7 +465,7 @@ def reclaim_emergency_docker() -> tuple[float, int]:
     commands = [
         [docker, "builder", "prune", "-f"],
         [docker, "image", "prune", "-f"],
-        [docker, "volume", "prune", "-f"],
+        [docker, "volume", "prune", "--all", "-f"],
     ]
     freed_mb = 0.0
     reclaimed = 0
@@ -691,11 +699,14 @@ if EMERGENCY:
         f"[cleanup] dev caches: {dev_caches_cleared} reclaimed "
         f"({dev_cache_freed_mb:.1f} MB freed, Xcode DerivedData + npm cache)"
     )
-    print(
-        f"[cleanup] docker: {dock_n} prune(s) reclaimed "
-        f"({dock_freed_mb:.1f} MB freed, build cache + dangling images "
-        f"+ orphaned volumes)"
-    )
+    if os.environ.get("ALFRED_EMERGENCY_SKIP_DOCKER") == "1":
+        print("[cleanup] docker: skipped (ALFRED_EMERGENCY_SKIP_DOCKER=1)")
+    else:
+        print(
+            f"[cleanup] docker: {dock_n} prune(s) reclaimed "
+            f"({dock_freed_mb:.1f} MB freed, build cache + dangling images "
+            f"+ orphaned volumes)"
+        )
 total_freed_mb = (
     freed_mb
     + wt_freed_mb

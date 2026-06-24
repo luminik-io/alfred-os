@@ -218,7 +218,7 @@ def test_emergency_reclaims_docker_and_sums(tmp_path, monkeypatch):
     assert [c[1:] for c in calls] == [
         ["builder", "prune", "-f"],
         ["image", "prune", "-f"],
-        ["volume", "prune", "-f"],
+        ["volume", "prune", "--all", "-f"],
     ]
     for cmd in calls:
         assert "container" not in cmd
@@ -255,6 +255,40 @@ def test_non_emergency_leaves_docker_untouched(tmp_path, monkeypatch):
     assert mod.dock_n == 0
     assert mod.dock_freed_mb == 0.0
     assert calls == []
+
+
+def test_volume_prune_uses_all_for_named_orphans(tmp_path, monkeypatch):
+    """The volume prune must pass --all so named orphaned volumes are reclaimed.
+
+    Since Docker 23.0 a bare ``docker volume prune -f`` removes only anonymous
+    volumes; named orphaned volumes (the ~2.3 GB that caused the incident) are
+    left on disk. --all restores the pre-23.0 reclaim-everything behavior.
+    """
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 2.3GB\n")
+    _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--emergency"], home=home)
+    volume_cmds = [c[1:] for c in calls if "volume" in c]
+    assert volume_cmds == [["volume", "prune", "--all", "-f"]]
+
+
+def test_parse_docker_reclaimed_mb_handles_lowercase_kb(tmp_path, monkeypatch):
+    """Docker reports kilobytes with a lowercase ``k`` (e.g. ``820.4kB``).
+
+    The parser must match the lowercase unit and convert it via the matching
+    ``"k"`` factor instead of returning 0.0 or raising KeyError.
+    """
+    home = tmp_path / "home"
+    _patch_docker(monkeypatch, present=False, stdout="")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
+    assert mod._parse_docker_reclaimed_mb("Total reclaimed space: 820.4kB\n") == pytest.approx(
+        820.4 / 1024, rel=1e-6
+    )
+    # Uppercase K stays equivalent, and the empty (bare-byte) unit is unchanged.
+    assert mod._parse_docker_reclaimed_mb("Total reclaimed space: 820.4KB\n") == pytest.approx(
+        820.4 / 1024, rel=1e-6
+    )
+    assert mod._parse_docker_reclaimed_mb("Total reclaimed space: 0B\n") == 0.0
 
 
 def test_sweep_extra_paths_removes_old_clean_worktrees(cleanup, tmp_path, monkeypatch):
