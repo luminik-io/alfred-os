@@ -69,6 +69,15 @@ patterns=(
 
   # Internal-only AWS profile naming (the literal value, not the env name).
   "AWS_PROFILE_FOR_HERMES=\"hermes-alfred"
+  # Bare internal AWS profile-name literals. These are the operator's real
+  # scoped IAM profiles; public docs/code/tests must use neutral examples
+  # (e.g. acme-cron, acme-host, <your-codename>-cron) instead. tests/
+  # test_alfred_init.py is on PER_LINE_ALLOW_RE so its example codenames are
+  # exempt; everything else must stay neutral.
+  "hermes-alfred"
+  "alfred-host"
+  "huntress-cron"
+  "oracle-cron"
 
   # Internal pipelines / surfaces.
   "slack/(staging|prod|production)/"
@@ -147,11 +156,14 @@ scan_patterns() {
   local fail=0
 
   for pat in "$@"; do
-    # Collect raw matches first.
-    local matches
-    if ! matches=$(candidate_files "$allowlist_re" | xargs -0 grep -InE "$pat" -- 2>/dev/null); then
-      continue
-    fi
+    # Collect raw matches first. Do NOT gate on the pipeline's exit status:
+    # `xargs -0 grep` exits non-zero (123, or grep's 1) whenever ANY batched
+    # grep invocation finds no match in its file slice, even when OTHER files
+    # do match. Gating on that exit silently discarded real matches and let
+    # every pattern pass. Capture the output and decide on emptiness instead.
+    local matches=""
+    matches=$(candidate_files "$allowlist_re" | xargs -0 grep -InE "$pat" -- 2>/dev/null || true)
+    [ -z "$matches" ] && continue
 
     if [ -n "$per_line_skip" ]; then
       # Drop matches whose file path matches the per-line allow regex.

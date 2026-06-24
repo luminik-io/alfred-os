@@ -15,7 +15,7 @@ Your admin SSO may have broad AWS access. If a scheduled agent inherited that, a
 
 - `<your-codename>-cron`: read-only on the agent's specific secrets (test creds, webhooks, etc.).
 - `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token.
-- `alfred-host`: read-only on `alfred/*` secrets.
+- `acme-host`: read-only on `alfred/*` secrets.
 
 Agent runners that touch AWS read role-specific variables such as `ALFRED_HUNTRESS_AWS_PROFILE` or `ALFRED_GORDON_AWS_PROFILE` from `~/.alfredrc`, then strip ambient `AWS_*` credentials and set `AWS_PROFILE` only for the AWS subprocess they own.
 

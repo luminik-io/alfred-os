@@ -106,7 +106,7 @@ CODEX_APPROVAL_POLICY: str = os.environ.get("CODEX_APPROVAL_POLICY", "never").st
 # --------------------------------------------------------------------------
 
 
-def _aws_secret_env(profile_env: str, default_profile: str = "alfred-host") -> dict[str, str]:
+def _aws_secret_env(profile_env: str, default_profile: str = "acme-host") -> dict[str, str]:
     """Return an AWS env for Alfred-owned secret lookups.
 
     Scheduled agents should not depend on an operator's interactive AWS
