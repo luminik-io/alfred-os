@@ -1,0 +1,216 @@
+name: Desktop release (macOS, signed)
+
+# Builds the signed and notarized macOS desktop app for a release, then
+# attaches the stapled Alfred.dmg and a checksums.txt to the GitHub release.
+#
+# This runs entirely from repository SECRETS, so the operator never has to
+# build or sign locally. See docs/RELEASING.md for the one-time secret setup
+# and the end-to-end flow. The companion release.yml creates the DRAFT release
+# and the changelog body; this workflow only adds the signed desktop assets.
+#
+# Triggers:
+#   - push of a vX.Y.Z tag (runs alongside release.yml; uploads to the draft
+#     release that release.yml creates for the same tag),
+#   - a published release (re-attach or refresh assets after publish),
+#   - manual workflow_dispatch against a tag (re-run a packaging build).
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach to (e.g. v0.5.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: Build, sign, notarize, attach (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Determine tag
+        id: tag
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -n "$DISPATCH_TAG" ]; then
+            tag="$DISPATCH_TAG"
+          elif [ -n "$RELEASE_TAG" ]; then
+            tag="$RELEASE_TAG"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "::notice::Building desktop release for $tag"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify VERSION matches tag
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          version_in_file="$(tr -d '[:space:]' < VERSION)"
+          tag_no_v="${TAG#v}"
+          if [ "$tag_no_v" != "$version_in_file" ]; then
+            echo "::error::Tag $TAG does not match VERSION file ($version_in_file)"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.12.0"
+          cache: npm
+          cache-dependency-path: clients/desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: clients/desktop/src-tauri
+
+      - name: Install frontend dependencies
+        working-directory: clients/desktop
+        run: npm ci
+
+      # Import the Developer ID Application certificate into a temporary,
+      # throwaway keychain. The cert is a base64-encoded .p12 held in a secret;
+      # nothing is written to the runner's login keychain and the temp keychain
+      # is destroyed in the always() cleanup step below.
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          keychain: alfred-signing
+          keychain-password: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+
+      # Build the macOS .dmg with codesigning enabled. Tauri reads
+      # APPLE_SIGNING_IDENTITY and signs the .app with the Developer ID
+      # Application identity imported above. Notarization is run as an explicit
+      # step below so this build does not depend on Tauri's notarize path; we
+      # build the .dmg signed but un-notarized, then notarize + staple it.
+      - name: Build signed macOS .dmg
+        working-directory: clients/desktop
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: npm run tauri -- build --bundles app dmg --target universal-apple-darwin
+
+      - name: Locate built .dmg
+        id: dmg
+        run: |
+          # Tauri writes the .dmg under the universal target bundle dir. Pick
+          # the first (and only) .dmg so a version bump does not break the path.
+          bundle_dir="clients/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg"
+          src_dmg="$(find "$bundle_dir" -maxdepth 1 -name '*.dmg' -print -quit)"
+          if [ -z "$src_dmg" ]; then
+            echo "::error::No .dmg found under $bundle_dir"
+            ls -R "clients/desktop/src-tauri/target/universal-apple-darwin/release/bundle" || true
+            exit 1
+          fi
+          echo "src_dmg=$src_dmg" >> "$GITHUB_OUTPUT"
+          echo "::notice::Built .dmg: $src_dmg"
+
+      # Notarize the signed .dmg with Apple. App Store Connect API key auth is
+      # preferred (issuer id + key id + .p8). If those secrets are absent, fall
+      # back to Apple-ID + team-id + app-specific-password auth. The submit
+      # waits for Apple's verdict and fails the job on rejection.
+      - name: Notarize .dmg
+        env:
+          SRC_DMG: ${{ steps.dmg.outputs.src_dmg }}
+          AC_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          AC_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          AC_APPLE_ID: ${{ secrets.APPLE_ID }}
+          AC_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          AC_APP_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${AC_API_KEY_P8:-}" ] && [ -n "${AC_API_KEY_ID:-}" ] && [ -n "${AC_API_ISSUER_ID:-}" ]; then
+            echo "::notice::Notarizing with App Store Connect API key"
+            key_path="$RUNNER_TEMP/ac_api_key.p8"
+            printf '%s' "$AC_API_KEY_P8" > "$key_path"
+            xcrun notarytool submit "$SRC_DMG" \
+              --key "$key_path" \
+              --key-id "$AC_API_KEY_ID" \
+              --issuer "$AC_API_ISSUER_ID" \
+              --wait
+            rm -f "$key_path"
+          elif [ -n "${AC_APPLE_ID:-}" ] && [ -n "${AC_TEAM_ID:-}" ] && [ -n "${AC_APP_PASSWORD:-}" ]; then
+            echo "::notice::Notarizing with Apple ID + app-specific password"
+            xcrun notarytool submit "$SRC_DMG" \
+              --apple-id "$AC_APPLE_ID" \
+              --team-id "$AC_TEAM_ID" \
+              --password "$AC_APP_PASSWORD" \
+              --wait
+          else
+            echo "::error::No notarization credentials. Add the App Store Connect API key secrets (APPLE_API_KEY_ID, APPLE_API_ISSUER_ID, APPLE_API_KEY_P8) or the Apple ID secrets (APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD). See docs/RELEASING.md."
+            exit 1
+          fi
+
+      - name: Staple notarization ticket
+        env:
+          SRC_DMG: ${{ steps.dmg.outputs.src_dmg }}
+        run: |
+          set -euo pipefail
+          xcrun stapler staple "$SRC_DMG"
+          xcrun stapler validate "$SRC_DMG"
+
+      # Publish a stable asset name (Alfred.dmg) so the download page and the
+      # Homebrew cask can point at /releases/latest/download/Alfred.dmg without a
+      # per-release URL change. Also emit checksums.txt over the stable name.
+      - name: Stage stable asset name and checksums
+        id: stage
+        env:
+          SRC_DMG: ${{ steps.dmg.outputs.src_dmg }}
+        run: |
+          set -euo pipefail
+          out_dir="$RUNNER_TEMP/release-assets"
+          mkdir -p "$out_dir"
+          cp "$SRC_DMG" "$out_dir/Alfred.dmg"
+          ( cd "$out_dir" && shasum -a 256 Alfred.dmg > checksums.txt )
+          echo "::notice::checksums.txt:"
+          cat "$out_dir/checksums.txt"
+          echo "out_dir=$out_dir" >> "$GITHUB_OUTPUT"
+
+      # Attach the signed, notarized, stapled assets to the triggering release.
+      # --clobber overwrites a previous attempt's asset of the same name so a
+      # re-run is idempotent. The release stays a draft until a human publishes
+      # it (see docs/RELEASING.md); uploading to a draft is supported.
+      - name: Upload signed assets to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          OUT_DIR: ${{ steps.stage.outputs.out_dir }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            "$OUT_DIR/Alfred.dmg" \
+            "$OUT_DIR/checksums.txt" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      # Always destroy the temporary signing keychain, even if an earlier step
+      # failed, so signing material never lingers on the runner.
+      - name: Clean up signing keychain
+        if: always()
+        run: |
+          security delete-keychain alfred-signing.keychain-db 2>/dev/null || \
+          security delete-keychain alfred-signing.keychain 2>/dev/null || true
+          echo "Signing keychain removed (if present)."

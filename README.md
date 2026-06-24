@@ -362,6 +362,7 @@ Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md): private-disclosure process.
 - [Release checklist](docs/RELEASE_CHECKLIST.md): pre-tag gates, scrub scan, GitHub Release flow.
+- [Releasing](docs/RELEASING.md): end-to-end tagged-release runbook, the signed and notarized macOS desktop pipeline, and the one-time signing/notarization secrets to add.
 
 Rendered version: https://alfred.luminik.io/.
 

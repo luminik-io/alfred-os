@@ -9,35 +9,26 @@
 #   brew install alfred-os            # CLI (formula)
 #   brew install --cask alfred-os     # desktop app (this cask)
 #
-# OPERATOR-GATED: this cask tracks the latest signed build via `sha256 :no_check`
-# until the operator pins a published checksum (see step 3). Signed macOS
-# release assets are attached to the GitHub Release by the operator before
-# publish (public releases start as draft releases; CI builds with --no-bundle
-# and never signs). Finish this cask after the signed asset is published:
+# SELF-UPDATING: this cask tracks the latest signed build via `sha256 :no_check`
+# against the stable `/releases/latest/download/Alfred.dmg` asset. There is no
+# per-release sha bump to do by hand.
 #
-#   1. Publish the release so `Alfred.dmg` is attached to the `v0.5.3` tag.
-#   2. Compute the real checksum against the published, signed asset:
-#        curl -fL -o Alfred.dmg \
-#          https://github.com/luminik-io/alfred-os/releases/download/v0.5.3/Alfred.dmg
-#        shasum -a 256 Alfred.dmg
-#   3. Pin the published build by replacing the `:no_check` line below with the
-#      real values once the signed asset is attached:
-#        version "0.5.3"
-#        sha256 "<shasum-from-step-2>"
-#        url "https://github.com/luminik-io/alfred-os/releases/download/v#{version}/Alfred.dmg"
-#      Pinning restores integrity verification against a known checksum.
-#   4. Verify: `brew audit --cask --new Casks/alfred-os.rb` and
-#      `brew install --cask ./Casks/alfred-os.rb`.
+# Why `:no_check` is the right call here (documented tradeoff): the desktop
+# release workflow (.github/workflows/desktop-release.yml) builds, signs with a
+# Developer ID Application cert, notarizes, and staples a fresh `Alfred.dmg` on
+# every release, then attaches it under the stable `latest/download` name. The
+# `.dmg` changes on every release, so a pinned `sha256`/`version` pair would go
+# stale and break `brew install --cask` until someone re-pinned it. Pointing at
+# `latest/download` with `:no_check` keeps the GUI install path working on every
+# release with zero maintenance.
 #
-# Until then this cask tracks the latest published signed build with
-# `sha256 :no_check`. That keeps the GUI install path working and discoverable
-# the moment the operator attaches a signed `Alfred.dmg` to a release, instead
-# of hard-failing every `brew install --cask` on an all-zeros placeholder
-# checksum (Homebrew verifies the declared sha256 before any DSL hook runs, so
-# a placeholder cannot be guarded with `preflight`/`odie`).
+# Integrity is not lost: the `.dmg` is Developer-ID signed and Apple-notarized,
+# so Gatekeeper verifies it on first launch, and the workflow also attaches a
+# `checksums.txt` to each release for anyone who wants to verify by hand. If you
+# ever prefer per-release pinning instead, replace the `:no_check` + `url` block
+# with `version "X.Y.Z"`, the `sha256` from that release's `checksums.txt`, and
+# a versioned `/releases/download/v#{version}/Alfred.dmg` URL.
 cask "alfred-os" do
-  # TODO(operator): pin `version` + `sha256` to the published v0.5.3 asset to
-  # restore checksum verification. See the header for the exact command.
   sha256 :no_check
 
   url "https://github.com/luminik-io/alfred-os/releases/latest/download/Alfred.dmg",
