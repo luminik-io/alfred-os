@@ -15,7 +15,7 @@
 # `version` and recompute the checksum against the published asset:
 #
 #   curl -fL -o Alfred.dmg \
-#     https://github.com/luminik-io/alfred-os/releases/download/v0.5.3/Alfred.dmg
+#     https://github.com/luminik-io/alfred-os/releases/download/vX.Y.Z/Alfred.dmg
 #   shasum -a 256 Alfred.dmg
 #
 # Then verify: `brew audit --cask --new Casks/alfred-os.rb` and
