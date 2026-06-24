@@ -507,7 +507,6 @@ export default defineConfig({
             { label: "AWS", slug: "guides/aws" },
             { label: "Skills", slug: "guides/skills" },
             { label: "Integrations", slug: "guides/integrations" },
-            { label: "Hermes", slug: "guides/hermes" },
             { label: "Linux", slug: "guides/linux" },
           ],
         },

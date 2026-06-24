@@ -215,7 +215,7 @@ install_linux_packages() {
   ${SUDO} DEBIAN_FRONTEND=noninteractive apt-get install -y ${apt_pkgs} >/dev/null
   ok "apt packages installed"
 
-  # python3.11: Hermes-shaped agents pin 3.11, but recent Ubuntu/Debian ship a
+  # python3.11: some agents pin 3.11, but recent Ubuntu/Debian ship a
   # newer default. Prefer a uv-managed 3.11 (set up after uv installs below);
   # if the distro happens to ship python3.11, that is fine too.
   if command -v python3.11 >/dev/null 2>&1; then

@@ -19,10 +19,10 @@ NOW = datetime(2026, 6, 2, 12, 0, 0, tzinfo=UTC)
 
 @pytest.fixture(autouse=True)
 def _hermetic_alfred_home(monkeypatch, tmp_path):
-    """Point ALFRED_HOME / HERMES_HOME at a tmp dir for every test.
+    """Point ALFRED_HOME at a tmp dir for every test.
 
     ``shipped_board`` resolves the demo store and the ``.env`` repo fallback
-    from ``$ALFRED_HOME``/``$HERMES_HOME`` (defaulting to ``~/.alfred``). Without
+    from ``$ALFRED_HOME`` (defaulting to ``~/.alfred``). Without
     this, a seeded host leaks demo cards into ``build_board`` (and the demo merge
     is now opt-in, but defense-in-depth keeps the whole suite independent of the
     operator's real home). Tests that want their own home can still override.
@@ -30,7 +30,6 @@ def _hermetic_alfred_home(monkeypatch, tmp_path):
     home = tmp_path / "_alfred_home"
     (home / "state").mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("ALFRED_HOME", str(home))
-    monkeypatch.setenv("HERMES_HOME", str(home))
     return home
 
 

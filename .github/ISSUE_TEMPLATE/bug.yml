@@ -73,7 +73,7 @@ body:
       label: Relevant state files (optional)
       description: |
         If the bug is about a specific firing, paste the contents of the agent's spend file:
-        `cat $HERMES_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`
+        `cat $ALFRED_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`
 
         Redact any secrets first. The framework should never put secret values in spend files, but check.
       render: json

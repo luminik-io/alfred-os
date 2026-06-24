@@ -12,12 +12,7 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 for candidate in (
     _HERE.parent / "lib",
-    Path(
-        os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
-    / "lib",
+    Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) / "lib",
 ):
     if candidate.exists():
         candidate_path = str(candidate)

@@ -8,6 +8,12 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
+- Alfred now standardizes on a single home-directory setting. The runtime reads `ALFRED_HOME` only; the old `HERMES_HOME` fallback has been removed across the runtime, the desktop client, and the launchers. Existing setups already export `ALFRED_HOME`, so nothing changes for them.
+
+### Removed
+
+- Dropped the optional Hermes integration guide and its mentions from the docs and site. Alfred core runs standalone, and the generic control-gateway guidance in `docs/INTEGRATIONS.md` covers wrapping the fleet with any companion tool.
+
 ### Fixed
 
 ## [0.5.3] - 2026-06-24

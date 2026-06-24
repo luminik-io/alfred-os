@@ -35,7 +35,7 @@ from typing import Any
 # ``$ALFRED_HOME/lib/``; in a checkout the script lives in ``<repo>/bin/`` and
 # the library in ``<repo>/lib/``. Probe both. (Mirrors bin/alfred-serve.py.)
 _HERE = Path(__file__).resolve().parent
-_runtime_home = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME") or ""
+_runtime_home = os.environ.get("ALFRED_HOME") or ""
 for _candidate in (_HERE.parent / "lib", Path(_runtime_home) / "lib"):
     if _candidate.is_dir() and str(_candidate) not in sys.path:
         sys.path.insert(0, str(_candidate))

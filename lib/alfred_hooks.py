@@ -121,7 +121,7 @@ def _load_scrub_names() -> tuple[str, ...]:
     names += [n.strip() for n in raw.split(",") if n.strip()]
     path = os.environ.get("ALFRED_SCRUB_NAMES_FILE")
     if not path:
-        home = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME")
+        home = os.environ.get("ALFRED_HOME")
         if home:
             path = os.path.join(home, "scrub-names.txt")
     if path and os.path.exists(path):

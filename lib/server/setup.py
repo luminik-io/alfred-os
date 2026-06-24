@@ -109,11 +109,7 @@ def selected_repos() -> list[str]:
 # .env writer
 # --------------------------------------------------------------------------- #
 def _env_path() -> Path:
-    home = (
-        os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
+    home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(home) / ".env"
 
 
@@ -666,11 +662,7 @@ def load_demo_cards(state_root: Path | None = None) -> dict[str, list[dict[str, 
         "shipped": [],
     }
     if state_root is None:
-        base = (
-            os.environ.get("ALFRED_HOME")
-            or os.environ.get("HERMES_HOME")
-            or os.path.expanduser("~/.alfred")
-        )
+        base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
         state_root = Path(base) / "state"
     path = _demo_path(state_root)
     try:

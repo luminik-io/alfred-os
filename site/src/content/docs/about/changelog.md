@@ -63,7 +63,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 Public launch hardening release.
 
 - Checked-in CodeQL workflow (Actions, Python, Ruby, JS/TS) with PR, push, scheduled, and manual triggers.
-- Optional [Hermes integration guide](/guides/hermes/).
+- Optional Hermes integration guide (since removed).
 - Stopped Lucius from logging GitHub issue-author trust details to stdout/Slack (CodeQL clear-text-logging fix).
 - Public repo metadata moved to clearer Alfred positioning; squash-only merges + Dependabot.
 

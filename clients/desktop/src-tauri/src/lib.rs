@@ -230,14 +230,12 @@ async fn request_alfred_json(
 const SERVER_TOKEN_HEADER: &str = "X-Alfred-Token";
 
 /// Resolve the Alfred home directory the same way the Python runtime does:
-/// `$ALFRED_HOME`, then the legacy `$HERMES_HOME`, then `~/.alfred`.
+/// `$ALFRED_HOME`, then `~/.alfred`.
 fn alfred_home() -> Option<PathBuf> {
-    for var in ["ALFRED_HOME", "HERMES_HOME"] {
-        if let Ok(value) = std::env::var(var) {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                return Some(PathBuf::from(trimmed));
-            }
+    if let Ok(value) = std::env::var("ALFRED_HOME") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
         }
     }
     home_dir().map(|home| home.join(".alfred"))
@@ -1634,7 +1632,6 @@ mod tests {
     fn alfred_resolver_reads_alfred_env_file() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_hermes = std::env::var("HERMES_HOME").ok();
         let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
 
         let root = temp_root("alfred-bin-dotenv");
@@ -1647,7 +1644,6 @@ mod tests {
         .expect("write temp env");
 
         std::env::set_var("ALFRED_HOME", &root);
-        std::env::remove_var("HERMES_HOME");
         std::env::remove_var("ALFRED_BIN");
         assert_eq!(
             resolve_program("alfred"),
@@ -1656,7 +1652,6 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("HERMES_HOME", prev_hermes);
         restore_var("ALFRED_BIN", prev_alfred_bin);
     }
 
@@ -1664,7 +1659,6 @@ mod tests {
     fn alfred_resolver_uses_configured_runtime_home_bin() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_hermes = std::env::var("HERMES_HOME").ok();
         let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
         let prev_home = std::env::var("HOME").ok();
 
@@ -1675,7 +1669,6 @@ mod tests {
         touch(&runtime);
 
         std::env::set_var("ALFRED_HOME", root.join("runtime"));
-        std::env::remove_var("HERMES_HOME");
         std::env::remove_var("ALFRED_BIN");
         std::env::set_var("HOME", root.join("user"));
         assert_eq!(
@@ -1685,7 +1678,6 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("HERMES_HOME", prev_hermes);
         restore_var("ALFRED_BIN", prev_alfred_bin);
         restore_var("HOME", prev_home);
     }
@@ -1708,7 +1700,6 @@ mod tests {
     fn gh_resolver_reads_alfred_env_file() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_hermes = std::env::var("HERMES_HOME").ok();
         let prev_alfred_gh = std::env::var("ALFRED_GH_BIN").ok();
         let prev_gh = std::env::var("GH_BIN").ok();
 
@@ -1718,14 +1709,12 @@ mod tests {
             .expect("write temp env");
 
         std::env::set_var("ALFRED_HOME", &dir);
-        std::env::remove_var("HERMES_HOME");
         std::env::remove_var("ALFRED_GH_BIN");
         std::env::remove_var("GH_BIN");
         assert_eq!(resolve_gh_bin(), "/configured/gh");
 
         let _ = std::fs::remove_dir_all(&dir);
         restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("HERMES_HOME", prev_hermes);
         restore_var("ALFRED_GH_BIN", prev_alfred_gh);
         restore_var("GH_BIN", prev_gh);
     }
@@ -1759,34 +1748,21 @@ mod tests {
         // with the other env-touching token test via a shared lock.
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_hermes = std::env::var("HERMES_HOME").ok();
 
         std::env::set_var("ALFRED_HOME", "/tmp/example-alfred-home");
-        std::env::remove_var("HERMES_HOME");
         let path = server_token_path().expect("ALFRED_HOME resolves a token path");
         assert_eq!(
             path,
             PathBuf::from("/tmp/example-alfred-home/state/server-token")
         );
 
-        // HERMES_HOME is the legacy fallback when ALFRED_HOME is unset.
-        std::env::remove_var("ALFRED_HOME");
-        std::env::set_var("HERMES_HOME", "/tmp/legacy-hermes-home");
-        let legacy = server_token_path().expect("HERMES_HOME resolves a token path");
-        assert_eq!(
-            legacy,
-            PathBuf::from("/tmp/legacy-hermes-home/state/server-token")
-        );
-
         restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("HERMES_HOME", prev_hermes);
     }
 
     #[test]
     fn read_server_token_returns_token_written_under_state_dir() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_hermes = std::env::var("HERMES_HOME").ok();
 
         let dir = std::env::temp_dir().join(format!("alfred-token-test-{}", std::process::id()));
         let state = dir.join("state");
@@ -1795,7 +1771,6 @@ mod tests {
             .expect("write token file");
 
         std::env::set_var("ALFRED_HOME", &dir);
-        std::env::remove_var("HERMES_HOME");
         assert_eq!(read_server_token().as_deref(), Some("secret-token-value"));
 
         // An empty token file is treated as absent.
@@ -1804,7 +1779,6 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
         restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("HERMES_HOME", prev_hermes);
     }
 
     fn restore_var(name: &str, prev: Option<String>) {

@@ -350,7 +350,6 @@ Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
 - [Telemetry](docs/TELEMETRY.md): anonymous aggregate usage totals, the on/off switch, and how to self-host the collector.
 - [Integrations](docs/INTEGRATIONS.md): optional companion tools and what Alfred does not bundle.
-- [Hermes integration](docs/HERMES.md): optional Hermes-layer recipe for teams already using Hermes.
 - [Linux](docs/LINUX.md): Debian/Ubuntu via `systemd --user` timers. Install, deploy, and operate.
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)

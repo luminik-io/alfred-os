@@ -136,15 +136,15 @@ def test_agents_conf_path_prefers_renamed_alfred_checkout(
 def test_unified_alfred_schedule_dispatch(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     conf = _write_conf(repo)
-    hermes = tmp_path / "hermes"
-    bin_dir = hermes / "bin"
+    alfred_home = tmp_path / "alfred_home"
+    bin_dir = alfred_home / "bin"
     bin_dir.mkdir(parents=True)
     target = bin_dir / "alfred-schedule.py"
     target.write_text(SCHEDULE.read_text(encoding="utf-8"), encoding="utf-8")
     target.chmod(0o755)
 
     env = os.environ.copy()
-    env["ALFRED_HOME"] = str(hermes)
+    env["ALFRED_HOME"] = str(alfred_home)
     env["ALFRED_REPO"] = str(repo)
 
     res = subprocess.run(
@@ -163,10 +163,10 @@ def test_unified_alfred_schedule_dispatch(tmp_path: Path) -> None:
 def test_unified_alfred_assign_dispatch(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _write_conf(repo)
-    hermes = tmp_path / "hermes"
+    alfred_home = tmp_path / "alfred_home"
 
     env = os.environ.copy()
-    env["ALFRED_HOME"] = str(hermes)
+    env["ALFRED_HOME"] = str(alfred_home)
     env["ALFRED_REPO"] = str(repo)
 
     res = subprocess.run(
