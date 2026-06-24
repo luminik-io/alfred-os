@@ -88,7 +88,12 @@ export function AgentDetailDrawer({
         aria-label={row ? `${agentProfile(row, schedule).label} details` : "Agent details"}
       >
         {row ? (
+          // Key by agent so the body remounts on every agent switch. The drawer
+          // stays open across selections (modal={false}); without a fresh mount,
+          // local draft state (draftCadence) would leak the previous agent's
+          // value when switching without closing.
           <DrawerBody
+            key={row.codename}
             row={row}
             schedule={schedule}
             canRun={canRun}

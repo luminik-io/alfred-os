@@ -60,15 +60,14 @@ export const WORKFLOW_AGENTS: readonly string[] = WORKFLOW_LANES.flatMap(
 // the rendered card. Keep these in sync with the .wf-node / .wf-lane rules.
 const NODE_WIDTH = 232;
 const NODE_HEIGHT = 98;
-const LANE_LABEL_WIDTH = 232;
-const LANE_LABEL_HEIGHT = 24;
 // Dagre spacing. ranksep controls the horizontal gap between lanes (we lay the
 // graph out left-to-right), nodesep the vertical gap within a rank.
 const RANK_SEP = 96;
 const NODE_SEP = 28;
 const EDGE_SEP = 18;
 // Vertical offset that lifts each lane label clear of the agent cards beneath
-// it. Dagre positions the label node; we nudge it up so it reads as a heading.
+// it. Lane labels are derived from the laid-out agent positions, not laid out
+// by dagre, so we place them by hand above the band.
 const LANE_LABEL_LIFT = 78;
 
 /** The display fields a node needs, derived by the caller from the live row. */
@@ -87,7 +86,6 @@ export type WorkflowNodeInput = {
 
 export type AgentNodeData = WorkflowNodeInput & {
   laneId: WorkflowLaneId;
-  laneLabel: string;
   selected: boolean;
   [key: string]: unknown;
 };
@@ -109,7 +107,9 @@ function layoutGraph(
   lanes: { id: WorkflowLaneId }[],
   edges: [string, string][],
 ): Map<string, { x: number; y: number }> {
-  const g = new dagre.graphlib.Graph({ compound: true });
+  // No compound nodes here (setParent is never called), so leave the graph in
+  // its default non-compound mode to keep dagre's rank assignment unaltered.
+  const g = new dagre.graphlib.Graph();
   g.setGraph({
     rankdir: "LR",
     ranksep: RANK_SEP,
@@ -120,14 +120,11 @@ function layoutGraph(
   });
   g.setDefaultEdgeLabel(() => ({}));
 
+  // Only real agent nodes go through dagre. Lane labels are not part of the
+  // flow (nothing connects to them), so we derive their positions from the
+  // laid-out agents below instead of registering throwaway nodes.
   for (const agent of agents) {
     g.setNode(agent.codename, { width: NODE_WIDTH, height: NODE_HEIGHT });
-  }
-  for (const lane of lanes) {
-    g.setNode(`lane:${lane.id}`, {
-      width: LANE_LABEL_WIDTH,
-      height: LANE_LABEL_HEIGHT,
-    });
   }
   for (const [source, target] of edges) {
     g.setEdge(source, target);
@@ -175,14 +172,14 @@ export function buildWorkflowGraph(
   const present = new Set(byCodename.keys());
 
   // Resolve the present agents + their lane, in canonical lane order.
-  const placedAgents: { codename: string; laneId: WorkflowLaneId; laneLabel: string }[] = [];
+  const placedAgents: { codename: string; laneId: WorkflowLaneId }[] = [];
   const presentLanes: { id: WorkflowLaneId }[] = [];
   for (const lane of [...WORKFLOW_LANES].sort((a, b) => laneIndex(a.id) - laneIndex(b.id))) {
     const liveAgents = lane.agents.filter((codename) => present.has(codename));
     if (!liveAgents.length) continue;
     presentLanes.push({ id: lane.id });
     for (const codename of liveAgents) {
-      placedAgents.push({ codename, laneId: lane.id, laneLabel: lane.label });
+      placedAgents.push({ codename, laneId: lane.id });
     }
   }
 
@@ -222,7 +219,6 @@ export function buildWorkflowGraph(
       data: {
         ...input,
         laneId: placed.laneId,
-        laneLabel: placed.laneLabel,
         selected: placed.codename === selectedCodename,
       } satisfies AgentNodeData,
       draggable: false,
