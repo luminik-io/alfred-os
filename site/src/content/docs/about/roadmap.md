@@ -18,6 +18,10 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 The [changelog](/about/changelog/) is the detailed, version-by-version ledger. This tier is the short version, so the roadmap stays a forward-looking document.
 
+### v0.5.3 (2026-06-24)
+
+The signed macOS desktop app and Linux packages published with a working `brew install --cask alfred-os`, a conversational Ask surface, a full-width workflow canvas with a dismissible agent drawer, an honest run timeline with an errors-only filter, a self-healing reliability core (classify, retry, break, loop-detect), a code-structure memory layer over MCP, single-source scheduled auth, and a stronger memory store.
+
 ### v0.5.2 (2026-06-22)
 
 Design parity between the internal and OSS builds (the refreshed dark UI across Inbox / Ask / Work / Agents / Setup), Redis Agent Memory as the default local memory layer with FleetBrain as the review and reliability layer, smoother Slack planning threads, repo-graph support in the code-map flow, desktop visual-QA tooling, and a fresher public site.

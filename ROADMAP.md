@@ -17,17 +17,40 @@ What is in the OSS tree today.
 
 ### v0.5.3: 2026-06-24
 
-Autonomous memory capture with a human-undoable safety net, a more reliable
-memory store, and a disk emergency that no longer stalls the fleet.
+The signed macOS desktop app and Linux packages published with a working
+`brew install --cask alfred-os`, honest and conversational desktop surfaces, a
+self-healing reliability core, a code-structure memory layer, and a stronger
+memory store.
 
+- Published install paths: the signed, notarized macOS app and Linux packages
+  ship on the release. `brew install --cask alfred-os` installs the desktop app
+  and `brew install alfred-os` installs the CLI; the formula tracks the current
+  release tarball.
+- Conversational Ask: the desktop Ask surface answers a plain question directly
+  and only opens the plan-and-issue flow when you are describing work to build.
+- Workflow canvas rebuild: the canvas is the full-width primary surface with
+  automatic left-to-right DAG layout, fit and zoom controls, a status-colored
+  minimap, and richer node cards; agent detail opens in a dismissible drawer.
+- Honest activity timeline: each run opens on a one-line headline and expands to
+  the full step timeline, an "Errors only" filter shows failures, and a failure
+  reports its real cause instead of a misleading provider message.
+- Self-healing reliability core: failures are classified into transient, fatal,
+  and capability. Transient errors retry the same engine with backoff, fatal
+  errors surface honestly without retrying, the engine fallback fires only on a
+  real capability gap, and repeated identical attempts are detected so a run
+  cannot loop forever.
+- Code-memory over MCP: Alfred can attach an external code-structure memory
+  server to each Claude run for code search, call-graph, blast-radius, and
+  ownership lookups while planning. On by default, opts out with
+  `ALFRED_CODE_MEMORY_MCP=0`, never vendored, and a clean no-op when not
+  installed.
+- Single-source auth: the sign-in token and runtime config live in one store
+  read by the scheduler, with an early auth preflight, closing the silent
+  authentication-failure class where a misplaced token looked like a rate limit.
 - Autonomous lesson capture: a confidence reviewer reads each evidence-backed
   candidate and, when it is confident the lesson is sound and worth keeping,
   saves it into recall without a human. It stays off until armed, holds anything
   it is unsure about in the review queue, and every automatic save is reversible.
-- Behaviour-changing lessons are saved for you: when a lesson would change how the
-  agents act next time and the reviewer is confident it is safe, Alfred saves it
-  straight away rather than leaving it unreviewed; weak or one-off lessons are
-  still held.
 - Reliable memory store: the local memory server is now a plain place to store
   and look up lessons. The small on-device model no longer rewrites or merges
   saved lessons, so recalled memory stays true to what was written and the
@@ -38,6 +61,8 @@ memory store, and a disk emergency that no longer stalls the fleet.
 - Disk emergency recovery: when free space runs critically low, the emergency
   cleanup also reclaims regenerable build and download caches across the machine,
   so a full disk no longer wedges the fleet off work.
+- Single home setting: the runtime reads `ALFRED_HOME` only across the runtime,
+  the desktop client, and the launchers.
 
 ### v0.5.2: 2026-06-22
 

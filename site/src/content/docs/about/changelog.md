@@ -9,6 +9,17 @@ A readable summary of recent releases. The canonical, complete history lives in 
 
 Changes merged to `main` since the last tagged release. The running list is the [`[Next]` section of `CHANGELOG.md`](https://github.com/luminik-io/alfred-os/blob/main/CHANGELOG.md).
 
+## 0.5.3 (2026-06-24)
+
+- The signed, notarized macOS app and Linux packages ship on this release: `brew install --cask alfred-os` installs the desktop app and `brew install alfred-os` installs the CLI, or grab the assets from [`/download/`](/download/).
+- Ask is now a real conversation: a plain question gets a direct answer instead of a saved plan, and Alfred only opens the plan-and-issue flow when you are describing work to build.
+- The workflow canvas is the full-width primary surface, with automatic left-to-right pipeline layout, fit and zoom controls, a status-colored minimap, and each agent's detail in a dismissible drawer.
+- Activity tells the real story of a run: a one-line headline that expands to the full step timeline, an "Errors only" filter, and a failure that reports its real cause rather than a misleading provider message.
+- A self-healing reliability core classifies failures: transient errors retry the same engine with backoff, authentication and budget failures surface honestly without retrying, and the engine fallback fires only on a real capability gap.
+- A code-structure memory layer attaches over MCP, giving agents code search, call-graph, blast-radius, and ownership lookups while planning. On by default, opts out with `ALFRED_CODE_MEMORY_MCP=0`, and a clean no-op when not installed.
+- Alfred keeps the most useful lessons on its own: a confidence reviewer saves a sound, evidence-backed lesson into recall without you, holds anything it is unsure about, and every automatic save is reversible. The local memory server is now a plain lesson store.
+- The first-run setup wizard shows honest progress and states its value once, scheduled runs read auth from one place with an early auth preflight, and the emergency disk cleanup reclaims regenerable caches so a full disk no longer stalls the fleet.
+
 ## 0.5.2 (2026-06-22)
 
 - The native app ships the refreshed dark interface from the public source, so Inbox / Ask / Work / Agents / Setup look the same in the internal and OSS builds.
