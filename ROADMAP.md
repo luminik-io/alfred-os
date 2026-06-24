@@ -15,6 +15,30 @@ Effort sizing is uniform across tiers: **S** is roughly a week of focused work, 
 
 What is in the OSS tree today.
 
+### v0.5.3: 2026-06-24
+
+Autonomous memory capture with a human-undoable safety net, a more reliable
+memory store, and a disk emergency that no longer stalls the fleet.
+
+- Autonomous lesson capture: a confidence reviewer reads each evidence-backed
+  candidate and, when it is confident the lesson is sound and worth keeping,
+  saves it into recall without a human. It stays off until armed, holds anything
+  it is unsure about in the review queue, and every automatic save is reversible.
+- Behaviour-changing lessons are saved for you: when a lesson would change how the
+  agents act next time and the reviewer is confident it is safe, Alfred saves it
+  straight away rather than leaving it unreviewed; weak or one-off lessons are
+  still held.
+- Reliable memory store: the local memory server is now a plain place to store
+  and look up lessons. The small on-device model no longer rewrites or merges
+  saved lessons, so recalled memory stays true to what was written and the
+  decisions about what to keep live in Alfred.
+- Cleaner lessons queue: draft plans and specs are kept out of the lesson
+  candidates, so reviews are about real lessons from real runs, and the reviewer's
+  prompt now matches what it actually does.
+- Disk emergency recovery: when free space runs critically low, the emergency
+  cleanup also reclaims regenerable build and download caches across the machine,
+  so a full disk no longer wedges the fleet off work.
+
 ### v0.5.2: 2026-06-22
 
 Desktop interface parity, Redis Agent Memory as the default local memory layer,

@@ -1,6 +1,6 @@
 [package]
 name = "alfred_desktop"
-version = "0.5.2"
+version = "0.5.3"
 description = "Native local control center for Alfred"
 authors = ["Alfred contributors"]
 edition = "2021"

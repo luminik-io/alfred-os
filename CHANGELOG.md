@@ -10,6 +10,30 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Fixed
 
+## [0.5.3] - 2026-06-24
+
+### Highlights
+
+- Alfred can now keep the most useful lessons on its own. A second model reads each candidate lesson, and when it is confident the lesson is sound and worth keeping, the lesson is saved into recall without waiting for you. Anything it is unsure about still waits in the review queue, and every automatic save can be undone.
+- The lessons that change how Alfred works are the ones it now saves for itself. When a lesson would actually change how the agents behave next time, and the reviewer is confident it is safe, Alfred saves it straight away rather than letting it sit unreviewed. Weak or one-off lessons are still held back.
+- The memory server is more reliable. Alfred now uses the local memory server purely to store and look up lessons, and no longer lets the small on-device model rewrite or merge them. The lessons you and the fleet trust are kept exactly as written.
+- A full disk no longer wedges the fleet. When space runs critically low, the emergency cleanup now also clears regenerable build and download caches across the machine, so the agents can keep working instead of getting stuck.
+
+### Added
+
+- Autonomous lesson capture. When a second model is confident a real, evidence-backed lesson is sound and useful, Alfred now saves it into recall on its own. It stays off until you turn it on, holds anything it is unsure about, and every automatic save is reversible.
+
+### Changed
+
+- The confidence reviewer is now the main gate for saving a lesson automatically. Any lesson with real evidence behind it reaches the reviewer, which decides whether to keep it. When the reviewer is turned off, Alfred falls back to a stricter, conservative rule so it still keeps very few lessons by hand.
+- The local memory server is now a plain store for lessons. The small on-device model no longer rewrites, merges, or reshapes saved lessons, so the memory Alfred recalls stays true to what was written. The smarts that decide what to keep live in Alfred, not in the store.
+- The memory documentation now matches how Alfred really works: the local memory server as the main place lessons are recalled from, the confidence reviewer deciding what gets saved, and the server kept as a plain lesson store.
+
+### Fixed
+
+- Planning notes no longer clutter the lessons queue. Draft plans and specs are kept out of the lesson candidates, so what you review is real lessons from real runs.
+- The reviewer's instructions now match what it actually does. Its prompt and notes describe confidence as the safety check and treat behaviour change as a plain label, so the reviewer and the code agree on when a lesson is saved.
+
 ## [0.5.2] - 2026-06-22
 
 ### Highlights
