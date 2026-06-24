@@ -155,10 +155,7 @@ class FleetReader(Protocol):
 
 def default_state_root() -> Path:
     """Resolve the runtime state path. The path is not required to exist."""
-    base = (
-        os.environ.get("ALFRED_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base) / "state"
 
 

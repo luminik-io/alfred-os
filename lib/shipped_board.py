@@ -427,10 +427,7 @@ def _demo_cards() -> dict[str, list[dict]]:
         return load_demo_cards()
     except Exception:  # pragma: no cover - defensive: demo store is optional
         pass
-    base = (
-        os.environ.get("ALFRED_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     path = os.path.join(base, "state", _DEMO_FILENAME)
     try:
         with open(path, encoding="utf-8") as handle:

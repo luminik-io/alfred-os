@@ -2138,10 +2138,7 @@ def _compose_repo_to_local() -> dict[str, str]:
 
 
 def _compose_code_map_path() -> Path:
-    base = (
-        os.environ.get("ALFRED_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base) / "state" / "code-map.json"
 
 
@@ -3055,10 +3052,7 @@ def _state_root(request: Request) -> Path:
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
         return state_root
-    base = (
-        os.environ.get("ALFRED_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base) / "state"
 
 
@@ -3087,10 +3081,7 @@ def _planning_root(request: Request, *, directory: str = "planning-drafts") -> P
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
         return state_root.parent / directory
-    base = (
-        os.environ.get("ALFRED_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base) / directory
 
 
@@ -3106,10 +3097,7 @@ def _planning_memory_provider(request: Request):
 
 
 def _load_planning_memory_provider_from_env():
-    if not (
-        os.environ.get("ALFRED_HOME")
-        or os.environ.get("FLEET_BRAIN_HOST")
-    ):
+    if not (os.environ.get("ALFRED_HOME") or os.environ.get("FLEET_BRAIN_HOST")):
         return None
     try:
         from memory.config import load_provider
@@ -3233,10 +3221,7 @@ def _planning_workdir(request: Request) -> Path:
     state_root = getattr(reader, "state_root", None)
     if isinstance(state_root, Path):
         return state_root.parent
-    base = (
-        os.environ.get("ALFRED_HOME")
-        or os.path.expanduser("~/.alfred")
-    )
+    base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
     return Path(base)
 
 
