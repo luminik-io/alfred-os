@@ -4526,6 +4526,36 @@ body {
   z-index: 1;
 }
 
+/* The trust differentiator, elevated to a quiet pill directly under the value
+ * line: the one-time, can't-miss "no API keys, runs on the subscriptions you
+ * already pay for" point. A bordered steel-violet chip, not buried fine print. */
+.alfred-onboarding-welcome__trust {
+  display: inline-flex;
+  align-items: center;
+  justify-self: center;
+  gap: 0.5rem;
+  max-width: 34rem;
+  padding: 0.55rem 0.95rem;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 65%);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--primary), transparent 88%);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--foreground);
+  text-align: left;
+}
+
+.alfred-onboarding-welcome__trust > svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
+@media (max-width: 480px) {
+  .alfred-onboarding-welcome__trust {
+    border-radius: var(--radius-lg);
+  }
+}
+
 /* Responsive: below the tablet breakpoint the shell tightens its padding and the
  * stepper collapses inactive labels to dots so the row stays on one line with no
  * horizontal scroll. The footer never truncates because Back / Continue are

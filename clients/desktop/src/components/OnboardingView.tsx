@@ -300,15 +300,26 @@ export function OnboardingView({
   const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
   const reposSelected = (status?.repos.count ?? 0) > 0;
 
-  // Per-step completion. Welcome completes once the user moves past it; engine
-  // and github reflect real detection; repos reflects a saved selection; slack
-  // is optional (complete when skipped or an approver was added); request is
-  // complete once a real request or demo landed.
-  const stepComplete = useCallback(
+  const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
+
+  // The furthest step the user has actually reached. The rail's "done" state and
+  // the "N of M done" count are anchored to this cursor, never to a background
+  // signal that happens to be satisfied for a step the user has not seen yet. So
+  // a fresh launch where Claude Code, gh, and repos are all already detected
+  // still opens on Welcome with 0 of 6 done, instead of the old "3 of 6 done"
+  // shown while sitting on step 1. The mark only ever moves forward.
+  const [reachedIndex, setReachedIndex] = useState(0);
+  useEffect(() => {
+    setReachedIndex((prev) => Math.max(prev, currentIndex));
+  }, [currentIndex]);
+
+  // Whether a step's own readiness signal is satisfied, ignoring position.
+  const stepSatisfied = useCallback(
     (key: OnboardingStepKey): boolean => {
       switch (key) {
         case "welcome":
-          return ONBOARDING_STEP_ORDER.indexOf(stepKey) > 0 || requestDone;
+          // Welcome is satisfied the moment the user steps off it (or finishes).
+          return reachedIndex > 0 || requestDone;
         case "engine":
           return engineReady;
         case "github":
@@ -317,7 +328,7 @@ export function OnboardingView({
           return reposSelected;
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
-          // SetupStatus, so the rail marks it done only when the user explicitly
+          // SetupStatus, so it reads satisfied only when the user explicitly
           // skipped it or added an approver (tracked locally as slackTouched). We
           // never invent a "Slack done" signal the server did not send.
           return skipped.has("slack") || slackTouched;
@@ -327,7 +338,21 @@ export function OnboardingView({
           return false;
       }
     },
-    [engineReady, githubConnected, reposSelected, requestDone, skipped, slackTouched, stepKey],
+    [engineReady, githubConnected, reachedIndex, reposSelected, requestDone, skipped, slackTouched],
+  );
+
+  // Per-step completion for the rail. A step is "done" only when the user has
+  // reached it (its index is at or below the furthest-reached cursor) AND its
+  // readiness signal is satisfied. This keeps the indicator and the "N of M
+  // done" count honest to where the user is, never running ahead on a
+  // pre-detected engine / gh / repo selection the user has not walked up to yet.
+  const stepComplete = useCallback(
+    (key: OnboardingStepKey): boolean => {
+      const index = ONBOARDING_STEP_ORDER.indexOf(key);
+      if (index > reachedIndex) return false;
+      return stepSatisfied(key);
+    },
+    [reachedIndex, stepSatisfied],
   );
 
   const steps = useMemo<StepMeta[]>(
@@ -359,7 +384,6 @@ export function OnboardingView({
     [steps, progressFor],
   );
 
-  const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
   const previousKey = ONBOARDING_STEP_ORDER[currentIndex - 1] ?? null;
   const nextKey = ONBOARDING_STEP_ORDER[currentIndex + 1] ?? null;
 
@@ -480,12 +504,13 @@ export function OnboardingView({
 
         <div className="alfred-onboarding-shell__panel motion-fade" key={stepKey}>
           {stepKey === "welcome" ? (
-            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
-              <WelcomeStep
-                onGetStarted={() => goToStep("engine")}
-                onDevShortcut={() => goToStep("github")}
-              />
-            </StepFrame>
+            // Welcome is the hero screen, not a labelled step: it skips the
+            // StepFrame icon/title/blurb so the value line is said once here, not
+            // echoed by a step header above it.
+            <WelcomeStep
+              onGetStarted={() => goToStep("engine")}
+              onDevShortcut={() => goToStep("github")}
+            />
           ) : null}
 
           {stepKey === "engine" ? (

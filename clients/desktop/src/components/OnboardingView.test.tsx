@@ -104,7 +104,13 @@ describe("OnboardingView six-step takeover", () => {
     expect(
       await screen.findByText(/wake up to shipped work you can trust/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/runs your own claude code and codex/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/opens pull requests, handles reviews, and reports back in slack/i),
+    ).toBeInTheDocument();
+    // The trust differentiator is on the first screen, not buried.
+    expect(
+      screen.getByText(/runs on the claude max and codex pro subscriptions you already pay for/i),
+    ).toBeInTheDocument();
     expect(screen.getByText(/you will not need a terminal/i)).toBeInTheDocument();
     // The persistent rail shows all six steps.
     expect(screen.getByRole("button", { name: /^welcome$/i })).toBeInTheDocument();
@@ -503,6 +509,31 @@ describe("OnboardingView six-step takeover", () => {
     // The completion count reflects the three detected-done steps.
     expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
       /3 of 6/i,
+    );
+  });
+
+  it("opens on Welcome at 0 of 6 done even when tools, gh and repos are pre-detected", async () => {
+    // Regression for the broken progress logic: on a fresh launch where Claude
+    // Code is installed, gh is already signed in, and repos are already saved,
+    // the rail used to show "3 of 6 done" while the user was still on step 1
+    // (Welcome). The count must reflect where the user actually is, so a step the
+    // user has not reached never reads done even when its signal is satisfied.
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        engine_ready: true,
+        github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    renderOnboarding();
+    const stepper = await screen.findByRole("navigation", { name: /onboarding progress/i });
+    // The active node is Welcome and nothing reads done.
+    const current = within(stepper).getByRole("button", { current: "step" });
+    expect(current).toHaveAccessibleName(/welcome/i);
+    await waitFor(() =>
+      expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+        /0 of 6/i,
+      ),
     );
   });
 

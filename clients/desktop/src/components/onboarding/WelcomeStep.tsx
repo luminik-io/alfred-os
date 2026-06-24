@@ -1,11 +1,16 @@
-import { ArrowRight, Server, Sparkles } from "lucide-react";
+import { ArrowRight, KeyRound, Server, Sparkles } from "lucide-react";
 
 import { Button } from "../ui";
 
 /**
- * Step 0: Welcome. One near-black screen that teaches the mental model in a
- * line and offers two doors: Maya's "Get started" and Dev's "I have a server
- * running" (jumps straight to the GitHub / paste-URL step). No data fetch.
+ * Step 0: Welcome. The hero screen of the first-run takeover. It says the value
+ * once, then leads with the trust differentiator (no API keys, runs on the
+ * subscriptions you already pay for), and offers one primary door for the guided
+ * path plus a quiet shortcut for a developer who already has a server running.
+ *
+ * It deliberately does not repeat the shell header ("Let's connect Alfred, six
+ * short steps") or carry a StepFrame title above it: the journey framing is said
+ * once in the shell, and the value is said once here.
  */
 export function WelcomeStep({
   onGetStarted,
@@ -15,8 +20,8 @@ export function WelcomeStep({
   onDevShortcut: () => void;
 }) {
   return (
-    <div className="alfred-onboarding-welcome grid gap-6 text-center">
-      <div className="mx-auto grid max-w-xl gap-3">
+    <div className="alfred-onboarding-welcome grid gap-7 text-center">
+      <div className="mx-auto grid max-w-xl gap-4">
         <span
           className="mx-auto flex size-12 items-center justify-center rounded-full border border-primary/30 bg-primary/15 text-primary"
           aria-hidden="true"
@@ -27,10 +32,19 @@ export function WelcomeStep({
           Wake up to shipped work you can trust.
         </h2>
         <p className="text-base text-muted-foreground">
-          Alfred runs your own Claude Code and Codex to open pull requests, handle reviews, and
-          report back in Slack. Let's connect it. About two minutes.
+          Alfred opens pull requests, handles reviews, and reports back in Slack,
+          all on your own machine while you stay in control.
         </p>
       </div>
+
+      <div className="alfred-onboarding-welcome__trust">
+        <KeyRound size={15} aria-hidden="true" />
+        <span>
+          No API keys. Alfred runs on the Claude Max and Codex Pro subscriptions
+          you already pay for.
+        </span>
+      </div>
+
       <div className="mx-auto flex flex-wrap items-center justify-center gap-2">
         <Button type="button" size="lg" onClick={onGetStarted}>
           <span>Get started</span>
@@ -41,9 +55,6 @@ export function WelcomeStep({
           <span>I have a server running</span>
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        No API keys, no cloud dashboard, no token paste. Everything runs on this Mac.
-      </p>
     </div>
   );
 }
