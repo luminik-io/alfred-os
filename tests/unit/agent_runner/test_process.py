@@ -231,7 +231,9 @@ def test_stream_step_for_loopcheck_preserves_raw_body_for_fingerprint(fresh_agen
             {
                 "type": "user",
                 "message": {
-                    "content": [{"type": "tool_result", "content": [{"type": "text", "text": text}]}]
+                    "content": [
+                        {"type": "tool_result", "content": [{"type": "text", "text": text}]}
+                    ]
                 },
             }
         )
