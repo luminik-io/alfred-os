@@ -75,6 +75,7 @@ from .result import (
     _should_retry_claude_auth,
     dry_run_claude_result,
 )
+from .tool_digest import digest_stream_tool_result
 from .transcripts import (
     _extract_codex_session_id,
     _extract_codex_tokens,
@@ -875,7 +876,13 @@ def _stream_step_for_loopcheck(line: str) -> tuple[str, str] | None:
             body = block.get("content")
             if isinstance(body, list):
                 body = " ".join(str(b.get("text", "")) for b in body if isinstance(b, dict))
-            return ("tool_result", str(body))
+            # Route verbose tool output (test logs, diffs, build dumps) through
+            # the digest before it round-trips into the model's next turn, so
+            # the agent sees structured signal (failing nodes, changed files,
+            # first error frame) instead of a raw blob. Config-gated, default
+            # on; small outputs pass through untouched. See tool_digest.py.
+            digested = digest_stream_tool_result(str(body))
+            return ("tool_result", digested)
     return None
 
 
