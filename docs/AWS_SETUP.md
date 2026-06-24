@@ -13,7 +13,7 @@ The operator's AWS SSO has admin everywhere. If a scheduled agent inherited that
 
 - `<your-codename>-cron`: read-only on the agent's specific secrets (e.g. test credentials, webhook URLs).
 - `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token secret.
-- `alfred-host`: read-only on `alfred/*` secrets (catch-all for fleet-wide config).
+- `acme-host`: read-only on `alfred/*` secrets (catch-all for fleet-wide config).
 
 Each agent's prompt invokes `aws` with that profile and strips any operator SSO env that might leak in:
 
@@ -239,5 +239,5 @@ The AWS credential chain prefers env vars over `~/.aws/credentials`. Either run 
 **`AccessDeniedException` on `secretsmanager:GetSecretValue` for a secret you can clearly read.**
 Check the resource pattern. Secrets get a 6-character suffix on creation (`alfred/slack-webhook-NmY0Gv`), so the policy resource pattern must end with `*` to match. `arn:…:secret:alfred/slack-webhook` (no trailing `*`) won't match.
 
-**`alfred-host` IAM read-only and you need `CreateSecret`.**
+**`acme-host` IAM read-only and you need `CreateSecret`.**
 That's by design. Use your admin SSO profile to create/update; the scheduled-agent IAM user only reads.

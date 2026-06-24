@@ -153,3 +153,59 @@ def test_comment_and_pattern_coexist_in_one_file(scrub_repo, tmp_path):
         "the '#my-channel' pattern below a comment line must still load; "
         f"stdout={res.stdout!r} stderr={res.stderr!r}"
     )
+
+
+def test_match_is_found_even_when_other_files_do_not_match(scrub_repo, tmp_path):
+    """A real match must trip the scan regardless of non-matching files.
+
+    The scan batches files through ``xargs grep``; ``grep`` exits non-zero
+    for any file slice with no hit. The scan must not gate on that exit
+    status, or a single non-matching file would silently discard a real
+    leak found elsewhere. Plant several clean files plus one leaky one and
+    assert the scan still fails.
+    """
+    extra = tmp_path / "extra-patterns"
+    extra.write_text("#my-channel\n")
+
+    for i in range(5):
+        (scrub_repo / f"clean_{i}.txt").write_text("nothing to see here\n")
+    (scrub_repo / "leaky.txt").write_text("posted to #my-channel\n")
+
+    res = _run_scrub(scrub_repo, extra)
+
+    assert res.returncode == 1, (
+        "a real match must trip the scan even when most files do not match; "
+        f"stdout={res.stdout!r} stderr={res.stderr!r}"
+    )
+    assert "leaky.txt" in res.stdout
+
+
+def test_internal_profile_literal_is_caught_in_a_test_named_file(scrub_repo, tmp_path):
+    """Built-in profile-name literals are caught even in ``tests/`` files.
+
+    The bare internal AWS profile names are first-class scrub patterns
+    with no per-line exemption, so a forbidden literal
+    must trip the scan no matter which file it lands in — including one
+    under a ``tests/`` path that used to be exempt.
+    """
+    extra = tmp_path / "extra-patterns"
+    extra.write_text("")  # rely only on the script's built-in patterns
+
+    # Build the forbidden literal at runtime so this test's own source file
+    # never contains the bare profile name (which would otherwise trip the
+    # repo's real scrub-check now that the tests/ per-line exemption is gone).
+    forbidden = "hermes" + "-" + "alfred"
+
+    tests_dir = scrub_repo / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_alfred_init.py").write_text(
+        f'profile = "{forbidden}"  # internal IAM profile, must not ship\n'
+    )
+
+    res = _run_scrub(scrub_repo, extra)
+
+    assert res.returncode == 1, (
+        "an internal profile literal under tests/ must trip the scan; "
+        f"stdout={res.stdout!r} stderr={res.stderr!r}"
+    )
+    assert forbidden in res.stdout

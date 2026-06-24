@@ -295,9 +295,9 @@ def test_env_assignments_slack_aws(init_mod, tmp_path):
 def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.use_aws = True
-    state.aws_agent_profiles = {"huntress": "huntress-cron"}
+    state.aws_agent_profiles = {"huntress": "acme-cron"}
     out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_HUNTRESS_AWS_PROFILE"] == "huntress-cron"
+    assert out["ALFRED_HUNTRESS_AWS_PROFILE"] == "acme-cron"
 
 
 # ---------------------------------------------------------------------------
@@ -722,14 +722,14 @@ def test_apply_config_overrides(init_mod, tmp_path):
             "slack_webhook": "https://hooks.slack.com/services/X/Y/Z",
             "slack_storage": "aws",
             "use_aws": True,
-            "aws_agent_profiles": {"huntress": "huntress-cron"},
+            "aws_agent_profiles": {"huntress": "acme-cron"},
             "agents": ["lucius", "drake"],
         },
     )
     assert state.gh_org == "acme"
     assert state.slack_storage == "aws"
     assert state.use_aws is True
-    assert state.aws_agent_profiles == {"huntress": "huntress-cron"}
+    assert state.aws_agent_profiles == {"huntress": "acme-cron"}
     assert "feature_dev" in state.enabled_roles
     assert "planner" in state.enabled_roles
 
