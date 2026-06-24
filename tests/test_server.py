@@ -2872,7 +2872,7 @@ def test_plan_decision_approve_writes_batman_marker(tmp_path: Path) -> None:
     assert body["issue_number"] == 13
     assert body["status"] == "approved"
     # The marker lands exactly where Batman's file poll watches it:
-    # $HERMES_HOME/batman/approvals/{issue_num}.approved (state_root.parent).
+    # $ALFRED_HOME/batman/approvals/{issue_num}.approved (state_root.parent).
     approved = tmp_path / "batman" / "approvals" / "13.approved"
     rejected = tmp_path / "batman" / "approvals" / "13.rejected"
     record = tmp_path / "batman" / "approval-decisions" / "13.json"

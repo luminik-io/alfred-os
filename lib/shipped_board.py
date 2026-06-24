@@ -429,7 +429,6 @@ def _demo_cards() -> dict[str, list[dict]]:
         pass
     base = (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
     path = os.path.join(base, "state", _DEMO_FILENAME)

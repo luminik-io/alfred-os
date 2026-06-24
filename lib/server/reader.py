@@ -1,7 +1,7 @@
 """Read-only state reader for ``alfred serve``.
 
-Reads fleet state from ``$ALFRED_HOME/state`` (falling back to the legacy
-``$HERMES_HOME/state`` and then ``~/.alfred/state``). The reader is exposed as a :class:`typing.Protocol`
+Reads fleet state from ``$ALFRED_HOME/state`` (falling back to
+``~/.alfred/state``). The reader is exposed as a :class:`typing.Protocol`
 so tests can swap in a stub without touching disk; the default
 implementation walks the filesystem layout written by ``lib.agent_runner``.
 
@@ -157,7 +157,6 @@ def default_state_root() -> Path:
     """Resolve the runtime state path. The path is not required to exist."""
     base = (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
     return Path(base) / "state"

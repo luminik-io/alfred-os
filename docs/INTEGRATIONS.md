@@ -97,8 +97,6 @@ Good boundaries:
 - Both tools may read `ALFRED_HOME/state`, but only Alfred runners should mutate
   in-flight issue and worktree state.
 
-See [`HERMES.md`](HERMES.md) for the optional Hermes recipe.
-
 ## Future Adapters
 
 Good next integrations:

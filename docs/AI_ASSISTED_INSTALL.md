@@ -329,8 +329,6 @@ Expected:
 - **Skipping prompt setup.** Current `alfred-init.py` copies starter prompts;
   do not manually copy old prompt snippets unless you are customizing them.
 - **Treating Slack as required.** It is optional. Use `--slack-webhook skip`.
-- **Treating Hermes as required.** It is optional. Alfred uses `ALFRED_HOME`,
-  not `HERMES_HOME`.
 - **Confusing assistant auth with Alfred engine auth.** The assistant can
   install Alfred even if Codex is not configured as an Alfred engine.
 - **Continuing after failed auth.** Run `alfred auth status` and fix auth before

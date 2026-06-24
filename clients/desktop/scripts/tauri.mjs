@@ -15,7 +15,6 @@ function isThrowawayWorktree(dir) {
     parts.includes(".worktrees") ||
     parts.includes(".audit-worktrees") ||
     normalized.includes(`${sep}.claude${sep}worktrees${sep}`) ||
-    normalized.includes(`${sep}.hermes${sep}worktrees${sep}`) ||
     normalized.includes(`${sep}.alfred${sep}worktrees${sep}`)
   );
 }

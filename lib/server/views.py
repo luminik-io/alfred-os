@@ -2140,7 +2140,6 @@ def _compose_repo_to_local() -> dict[str, str]:
 def _compose_code_map_path() -> Path:
     base = (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
     return Path(base) / "state" / "code-map.json"
@@ -2152,7 +2151,7 @@ def _compose_interrogator_prompt_path() -> Path:
         return Path(override)
     relative = Path("prompts") / "spec-interrogator.md"
     candidates: list[Path] = []
-    runtime_home = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME")
+    runtime_home = os.environ.get("ALFRED_HOME")
     if runtime_home:
         candidates.append(Path(runtime_home) / relative)
     candidates.append(Path(__file__).resolve().parents[2] / relative)
@@ -3058,7 +3057,6 @@ def _state_root(request: Request) -> Path:
         return state_root
     base = (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
     return Path(base) / "state"
@@ -3091,7 +3089,6 @@ def _planning_root(request: Request, *, directory: str = "planning-drafts") -> P
         return state_root.parent / directory
     base = (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
     return Path(base) / directory
@@ -3111,7 +3108,6 @@ def _planning_memory_provider(request: Request):
 def _load_planning_memory_provider_from_env():
     if not (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
         or os.environ.get("FLEET_BRAIN_HOST")
     ):
         return None
@@ -3128,7 +3124,7 @@ def _planning_uses_runtime_state(request: Request) -> bool:
     state_root = getattr(reader, "state_root", None)
     if not isinstance(state_root, Path):
         return False
-    base = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME")
+    base = os.environ.get("ALFRED_HOME")
     if base is None and os.environ.get("FLEET_BRAIN_HOST"):
         base = os.path.expanduser("~/.alfred")
     if not base:
@@ -3239,7 +3235,6 @@ def _planning_workdir(request: Request) -> Path:
         return state_root.parent
     base = (
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
         or os.path.expanduser("~/.alfred")
     )
     return Path(base)

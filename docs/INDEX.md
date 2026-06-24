@@ -40,7 +40,6 @@ Current map of the public docs. Trust code first, then this index.
 - [`AWS_SETUP.md`](AWS_SETUP.md): per-agent IAM and Secrets Manager setup.
 - [`SKILLS.md`](SKILLS.md): recommended Claude Code skills.
 - [`INTEGRATIONS.md`](INTEGRATIONS.md): what Alfred does and does not bundle.
-- [`HERMES.md`](HERMES.md): optional Hermes/operator-gateway recipe.
 - [`LINUX.md`](LINUX.md): running the fleet on Debian/Ubuntu via `systemd --user` timers. Install, deploy, operate, `linger`.
 - [`PUBLISHING.md`](PUBLISHING.md): GitHub Pages, release-site, and custom-domain operations.
 

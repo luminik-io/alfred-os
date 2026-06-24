@@ -14,7 +14,7 @@ function alfredProxyToken(): string | null {
   const direct = env.ALFRED_DESKTOP_PROXY_TOKEN?.trim();
   if (direct) return direct;
 
-  const home = env.ALFRED_HOME || env.HERMES_HOME || (env.HOME ? join(env.HOME, ".alfred") : "");
+  const home = env.ALFRED_HOME || (env.HOME ? join(env.HOME, ".alfred") : "");
   if (!home) return null;
 
   try {

@@ -41,9 +41,8 @@ export WORKSPACE_ROOT="$HOME/code"   # parent dir of your forked product repos
 
 `ALFRED_HOME` is the runtime root: deployed agent binaries land in `$ALFRED_HOME/bin`, the shared library in `$ALFRED_HOME/lib`, state in `$ALFRED_HOME/state`, per-firing worktrees in `$ALFRED_HOME/worktrees`.
 
-Alfred core does not require a separate Hermes install unless you choose to use
-optional companion features such as skills, MCP, gbrain memory, canon, or
-dashboarding.
+Alfred core runs standalone. Optional companion features such as skills, MCP,
+external memory, or dashboarding are layered on only if you choose to add them.
 
 `WORKSPACE_ROOT` is the parent directory of your canonical product checkouts. Lucius and Bane look here for repo CLAUDE.md files and grep targets before invoking `claude -p`.
 

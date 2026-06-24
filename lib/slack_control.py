@@ -1278,7 +1278,7 @@ def _discover_run_codenames(alfred_bin: str) -> frozenset[str]:
 def _agents_conf_candidates(alfred_bin: str) -> list[Path]:
     repo_root = _repo_root_from_bin(alfred_bin)
     candidates: list[Path] = []
-    for env_name in ("ALFRED_REPO", "ALFRED_HOME", "HERMES_HOME"):
+    for env_name in ("ALFRED_REPO", "ALFRED_HOME"):
         raw = os.environ.get(env_name)
         if raw:
             root = Path(raw).expanduser()
@@ -1301,7 +1301,7 @@ def _agents_conf_candidates(alfred_bin: str) -> list[Path]:
 def _fleet_yaml_candidates(alfred_bin: str) -> list[Path]:
     repo_root = _repo_root_from_bin(alfred_bin)
     candidates: list[Path] = []
-    for env_name in ("ALFRED_REPO", "ALFRED_HOME", "HERMES_HOME"):
+    for env_name in ("ALFRED_REPO", "ALFRED_HOME"):
         raw = os.environ.get(env_name)
         if raw:
             root = Path(raw).expanduser()

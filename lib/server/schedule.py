@@ -79,14 +79,14 @@ def agents_conf_path() -> Path | None:
     """Resolve ``launchd/agents.conf``, or ``None`` if absent.
 
     An explicit ``ALFRED_REPO`` wins. Otherwise prefer the installed runtime
-    home (``ALFRED_HOME`` / ``HERMES_HOME``), because ``deploy.sh`` copies the
+    home (``ALFRED_HOME``), because ``deploy.sh`` copies the
     launchd config there. Source-checkout fallbacks remain for development.
     """
     alfred_repo = os.environ.get("ALFRED_REPO")
     if alfred_repo:
         return _first_agents_conf(Path(alfred_repo))
 
-    runtime_home = os.environ.get("ALFRED_HOME") or os.environ.get("HERMES_HOME")
+    runtime_home = os.environ.get("ALFRED_HOME")
     if runtime_home:
         deployed = _first_agents_conf(Path(runtime_home))
         if deployed is not None:

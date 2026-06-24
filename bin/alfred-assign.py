@@ -14,7 +14,7 @@ for candidate in (
     _HERE.parent / "lib",
     Path(
         os.environ.get("ALFRED_HOME")
-        or os.environ.get("HERMES_HOME")
+       
         or os.path.expanduser("~/.alfred")
     )
     / "lib",

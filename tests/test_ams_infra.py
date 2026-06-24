@@ -56,7 +56,7 @@ def test_ams_launcher_starts_ollama_and_falls_back_to_uvx() -> None:
 def test_ams_launcher_restores_alfred_home_after_rc_files() -> None:
     text = AMS_LAUNCH.read_text()
 
-    assert text.count('ALFRED_HOME="${ALFRED_HOME:-${HERMES_HOME:-$HOME/.alfred}}"') >= 3
+    assert text.count('ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"') >= 3
     assert text.index('load_env_file "$HOME/.alfredrc"') < text.index(
         'load_env_file "$ALFRED_HOME/.env"'
     )
