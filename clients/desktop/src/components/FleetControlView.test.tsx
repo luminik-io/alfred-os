@@ -207,7 +207,11 @@ describe("FleetControlView", () => {
     const user = userEvent.setup();
     await openDrawer(user, "lucius");
 
-    expect(screen.getAllByText("Lucius · Senior Developer").length).toBeGreaterThan(0);
+    // Name and the plain role label render as separate elements now (the role
+    // is shown explicitly, independent of the themed name), in both the list
+    // row and the drawer.
+    expect(screen.getAllByText("Lucius").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Senior Developer").length).toBeGreaterThan(0);
     expect(
       screen.getAllByText("Ships scoped implementation issues as pull requests.").length,
     ).toBeGreaterThan(0);

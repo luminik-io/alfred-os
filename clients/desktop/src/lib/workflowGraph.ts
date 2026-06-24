@@ -3,58 +3,23 @@
 // (status + runs come from the roster); the lanes and edges are the fixed
 // delivery flow. This is intentionally declarative so a future editable
 // canvas (drag handoffs, add agents) can read and write the same shape.
+//
+// Lanes are the canonical ROLES (see agentRoster.ts), and every agent the fleet
+// reports is placed into the lane matching its role, with a fallback lane so no
+// agent is ever dropped. The graph is no longer gated by a hardcoded list of
+// codenames.
 
 import dagre from "@dagrejs/dagre";
 import type { Edge, Node } from "@xyflow/react";
 
 import type { AlfredTone } from "../components/ui/alfred";
-
-export type WorkflowLaneId =
-  | "intake"
-  | "architect"
-  | "implement"
-  | "review"
-  | "ship"
-  | "ops";
-
-export type WorkflowLane = {
-  id: WorkflowLaneId;
-  label: string;
-  agents: string[];
-};
-
-// Ordered lanes (left to right). Each agent sits in exactly one lane.
-export const WORKFLOW_LANES: readonly WorkflowLane[] = [
-  { id: "intake", label: "Triage & plan", agents: ["robin", "drake", "damian"] },
-  { id: "architect", label: "Architect", agents: ["batman"] },
-  { id: "implement", label: "Implement", agents: ["lucius", "bane", "nightwing"] },
-  { id: "review", label: "Review", agents: ["rasalghul"] },
-  { id: "ship", label: "Ship", agents: ["automerge"] },
-  { id: "ops", label: "Ops & health", agents: ["gordon", "fleet-doctor", "huntress"] },
-];
-
-// Canonical handoffs (source codename -> target codename). A real run does not
-// always traverse every edge, but this is the path work can take through the
-// fleet.
-export const WORKFLOW_EDGES: readonly [string, string][] = [
-  ["robin", "drake"],
-  ["drake", "batman"],
-  ["damian", "batman"],
-  ["drake", "lucius"],
-  ["batman", "lucius"],
-  ["lucius", "rasalghul"],
-  ["bane", "rasalghul"],
-  ["nightwing", "rasalghul"],
-  ["rasalghul", "automerge"],
-  ["automerge", "gordon"],
-];
-
-// Every codename that appears in the delivery graph. Agents outside this set
-// (overnight orchestrator, brand/content monitors) are not part of the
-// engineering pipeline and stay in the List view.
-export const WORKFLOW_AGENTS: readonly string[] = WORKFLOW_LANES.flatMap(
-  (lane) => lane.agents,
-);
+import {
+  ROLE_EDGES,
+  ROLE_LANE_LABEL,
+  roleOrder,
+  WORKFLOW_ROLES,
+  type WorkflowRole,
+} from "./agentRoster";
 
 // Node + lane footprint used both for the dagre layout and the CSS sizing of
 // the rendered card. Keep these in sync with the .wf-node / .wf-lane rules.
@@ -70,11 +35,17 @@ const EDGE_SEP = 18;
 // by dagre, so we place them by hand above the band.
 const LANE_LABEL_LIFT = 78;
 
-/** The display fields a node needs, derived by the caller from the live row. */
+/**
+ * The display fields a node needs, derived by the caller from the live row. The
+ * `role` is the canonical lane the agent belongs to (derived from metadata, not
+ * a name list); `roleLabel` is the human-readable role shown on the card.
+ */
 export type WorkflowNodeInput = {
   codename: string;
+  role: WorkflowRole;
   label: string;
-  role: string;
+  // The plain role label (e.g. "Reviewer"), shown independent of the name.
+  roleLabel: string;
   accent: string;
   tone: AlfredTone;
   statusLabel: string;
@@ -85,16 +56,12 @@ export type WorkflowNodeInput = {
 };
 
 export type AgentNodeData = WorkflowNodeInput & {
-  laneId: WorkflowLaneId;
+  laneId: WorkflowRole;
   selected: boolean;
   [key: string]: unknown;
 };
 
 export type LaneNodeData = { label: string; [key: string]: unknown };
-
-function laneIndex(id: WorkflowLaneId): number {
-  return WORKFLOW_LANES.findIndex((lane) => lane.id === id);
-}
 
 /**
  * Lay the pipeline out with dagre as a left-to-right DAG. We seed each agent and
@@ -103,8 +70,8 @@ function laneIndex(id: WorkflowLaneId): number {
  * reordered by the solver. Returns top-left positions React Flow can consume.
  */
 function layoutGraph(
-  agents: { codename: string; laneId: WorkflowLaneId }[],
-  lanes: { id: WorkflowLaneId }[],
+  agents: { codename: string; laneId: WorkflowRole }[],
+  lanes: { id: WorkflowRole }[],
   edges: [string, string][],
 ): Map<string, { x: number; y: number }> {
   // No compound nodes here (setParent is never called), so leave the graph in
@@ -161,44 +128,68 @@ function layoutGraph(
 
 /**
  * Build React Flow nodes + edges for the workflow graph from live node inputs.
- * Missing agents (in a lane but not in the live roster) are skipped; inputs not
- * in any lane are ignored. Pure and deterministic for testing.
+ * EVERY input is placed: each agent goes into the lane named by its `role`, so
+ * the whole reported roster renders (not a hardcoded subset). Edges connect the
+ * agents occupying each pair of handoff roles. Pure and deterministic.
  */
 export function buildWorkflowGraph(
   inputs: WorkflowNodeInput[],
   selectedCodename: string | null,
 ): { nodes: Node[]; edges: Edge[] } {
-  const byCodename = new Map(inputs.map((input) => [input.codename, input]));
-  const present = new Set(byCodename.keys());
-
-  // Resolve the present agents + their lane, in canonical lane order.
-  const placedAgents: { codename: string; laneId: WorkflowLaneId }[] = [];
-  const presentLanes: { id: WorkflowLaneId }[] = [];
-  for (const lane of [...WORKFLOW_LANES].sort((a, b) => laneIndex(a.id) - laneIndex(b.id))) {
-    const liveAgents = lane.agents.filter((codename) => present.has(codename));
-    if (!liveAgents.length) continue;
-    presentLanes.push({ id: lane.id });
-    for (const codename of liveAgents) {
-      placedAgents.push({ codename, laneId: lane.id });
+  // Group the live agents by role, in canonical lane order. Within a lane keep
+  // the caller's order (the roster already sorts by a stable agent order).
+  const byRole = new Map<WorkflowRole, WorkflowNodeInput[]>();
+  for (const input of inputs) {
+    const bucket = byRole.get(input.role);
+    if (bucket) {
+      bucket.push(input);
+    } else {
+      byRole.set(input.role, [input]);
     }
   }
 
-  const liveEdges: [string, string][] = WORKFLOW_EDGES.filter(
-    ([source, target]) => present.has(source) && present.has(target),
-  ).map(([source, target]) => [source, target]);
+  const placedAgents: { codename: string; laneId: WorkflowRole }[] = [];
+  const presentLanes: { id: WorkflowRole }[] = [];
+  const presentRoles = new Set<WorkflowRole>();
+  for (const role of [...WORKFLOW_ROLES].sort((a, b) => roleOrder(a) - roleOrder(b))) {
+    const laneAgents = byRole.get(role);
+    if (!laneAgents || !laneAgents.length) continue;
+    presentLanes.push({ id: role });
+    presentRoles.add(role);
+    for (const agent of laneAgents) {
+      placedAgents.push({ codename: agent.codename, laneId: role });
+    }
+  }
+
+  // Role handoffs become agent->agent edges: connect the first agent in the
+  // source lane to the first agent in the target lane, so the canvas shows the
+  // pipeline spine without a dense all-pairs mesh. Only edges whose both lanes
+  // are present survive.
+  const firstInRole = (role: WorkflowRole): string | null =>
+    byRole.get(role)?.[0]?.codename ?? null;
+
+  const liveEdges: [string, string][] = [];
+  for (const [sourceRole, targetRole] of ROLE_EDGES) {
+    if (!presentRoles.has(sourceRole) || !presentRoles.has(targetRole)) continue;
+    const source = firstInRole(sourceRole);
+    const target = firstInRole(targetRole);
+    if (source && target && source !== target) {
+      liveEdges.push([source, target]);
+    }
+  }
 
   const positions = layoutGraph(placedAgents, presentLanes, liveEdges);
 
+  const byCodename = new Map(inputs.map((input) => [input.codename, input]));
   const nodes: Node[] = [];
 
   for (const lane of presentLanes) {
-    const laneMeta = WORKFLOW_LANES.find((l) => l.id === lane.id)!;
     const pos = positions.get(`lane:${lane.id}`) ?? { x: 0, y: 0 };
     nodes.push({
       id: `lane:${lane.id}`,
       type: "lane",
       position: pos,
-      data: { label: laneMeta.label } satisfies LaneNodeData,
+      data: { label: ROLE_LANE_LABEL[lane.id] } satisfies LaneNodeData,
       draggable: false,
       selectable: false,
       deletable: false,

@@ -52,7 +52,7 @@ function AgentNode({ data }: NodeProps) {
       </span>
       <span className="wf-node__body">
         <span className="wf-node__name">{node.label || node.codename}</span>
-        <span className="wf-node__role">{node.role || node.codename}</span>
+        <span className="wf-node__role">{node.roleLabel || node.codename}</span>
       </span>
       <span className="wf-node__status" data-tone={node.tone}>
         <AlfredStatusDot tone={node.tone} aria-hidden="true" />

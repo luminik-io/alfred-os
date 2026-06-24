@@ -40,7 +40,13 @@ function DrawerHost() {
         canRun
         nativeBusy={null}
         serviceTone={() => ({ tone: "ok", label: "Running" })}
-        agentProfile={() => ({ label: codename, purpose: "purpose", themeAccent: "#fff" })}
+        agentProfile={() => ({
+          name: codename,
+          roleLabel: "Engineer",
+          label: codename,
+          purpose: "purpose",
+          themeAccent: "#fff",
+        })}
         agentActionCue={() => "cue"}
         scheduleCopy={() => "every 10m"}
         // Both agents share the same base cadence, so the in-place sync effect is

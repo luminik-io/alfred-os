@@ -1,8 +1,8 @@
 import { Rows3, Workflow as WorkflowIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { supportsNativeActions } from "../api";
-import { friendlyTime, titleCase } from "../format";
+import { friendlyTime } from "../format";
 import { isErrorStatus } from "../lib/derive";
 import {
   buildFleetRows,
@@ -10,8 +10,13 @@ import {
   type FleetControlRow,
   type FleetServiceState,
 } from "../lib/fleetControl";
+import {
+  DEFAULT_ROSTER_THEME,
+  resolveThemedIdentity,
+  type RosterThemeId,
+} from "../lib/agentThemes";
 import type { NativeActionRequest } from "../lib/uiTypes";
-import { WORKFLOW_AGENTS, type WorkflowNodeInput } from "../lib/workflowGraph";
+import { type WorkflowNodeInput } from "../lib/workflowGraph";
 import type { AgentSummary, NativeAction, ScheduledRun } from "../types";
 import { AgentDetailDrawer } from "./AgentDetailDrawer";
 import { WorkflowGraph } from "./WorkflowGraph";
@@ -59,6 +64,7 @@ export function FleetControlView({
   schedule,
   service,
   nativeBusy,
+  rosterTheme = DEFAULT_ROSTER_THEME,
   onRunLocalAction,
   onViewLogs,
 }: {
@@ -66,12 +72,22 @@ export function FleetControlView({
   schedule?: ScheduledRun[];
   service: FleetServiceState;
   nativeBusy: string | null;
+  // The active roster theme (name + role-label cast). Defaults to the shipped
+  // Batman roster so an omitted prop renders exactly as before.
+  rosterTheme?: RosterThemeId;
   onRunLocalAction: (request: NativeActionRequest) => void;
   onViewLogs: (codename: string) => void;
 }) {
   const canRun = supportsNativeActions();
   const rows = buildFleetRows(agents, service);
   const scheduleByCodename = useMemo(() => scheduleMap(schedule || []), [schedule]);
+  // Theme-bound profile resolver so the list rows and the drawer render the same
+  // themed name + plain role label as the canvas, with the two-arg call shape
+  // those call sites already use.
+  const themedProfile = useCallback(
+    (row: FleetControlRow, sched?: ScheduledRun) => agentProfile(row, sched, rosterTheme),
+    [rosterTheme],
+  );
   const health = deriveFleetHealth(rows);
   const stats = agentStats(rows);
   const defaultSelected = defaultSelectedCodename(rows);
@@ -99,28 +115,29 @@ export function FleetControlView({
     ? scheduleFor(scheduleByCodename, selectedRow.codename)
     : undefined;
 
-  // Live display data for the pipeline agents, derived with the same helpers
-  // the cards use so status/accent/runs stay consistent across views.
+  // Live display data for EVERY agent the fleet reports (not a hardcoded
+  // subset), derived with the same helpers the cards use so status/accent/runs
+  // stay consistent across views. Each agent's lane/role and themed name come
+  // from its own metadata via the active roster theme.
   const workflowInputs = useMemo<WorkflowNodeInput[]>(
     () =>
-      rows
-        .filter((row) => WORKFLOW_AGENTS.includes(row.codename))
-        .map((row) => {
-          const profile = agentProfile(row, scheduleFor(scheduleByCodename, row.codename));
-          const { tone, label } = serviceTone(row);
-          return {
-            codename: row.codename,
-            label: profile.label,
-            role: row.summary?.role_title || titleCase(row.codename),
-            accent: profile.themeAccent,
-            tone,
-            statusLabel: label,
-            runsToday: row.summary?.firings_today ?? 0,
-            lastRunLabel: row.summary ? friendlyTime(row.summary.last_run_at) : "No run",
-            failStreak: row.consecutiveFailures,
-          };
-        }),
-    [rows, scheduleByCodename],
+      rows.map((row) => {
+        const profile = themedProfile(row, scheduleFor(scheduleByCodename, row.codename));
+        const { tone, label } = serviceTone(row);
+        return {
+          codename: row.codename,
+          role: profile.role,
+          label: profile.name,
+          roleLabel: profile.roleLabel,
+          accent: profile.themeAccent,
+          tone,
+          statusLabel: label,
+          runsToday: row.summary?.firings_today ?? 0,
+          lastRunLabel: row.summary ? friendlyTime(row.summary.last_run_at) : "No run",
+          failStreak: row.consecutiveFailures,
+        };
+      }),
+    [rows, scheduleByCodename, themedProfile],
   );
 
   useEffect(() => {
@@ -231,6 +248,7 @@ export function FleetControlView({
                       row={row}
                       schedule={scheduleFor(scheduleByCodename, row.codename)}
                       selected={row.codename === selectedRow?.codename}
+                      profile={themedProfile}
                       onSelect={() => selectAgent(row.codename)}
                     />
                   ))}
@@ -247,7 +265,7 @@ export function FleetControlView({
             canRun={canRun}
             nativeBusy={nativeBusy}
             serviceTone={serviceTone}
-            agentProfile={agentProfile}
+            agentProfile={themedProfile}
             agentActionCue={agentActionCue}
             scheduleCopy={scheduleCopy}
             editableScheduleValue={editableScheduleValue}
@@ -302,16 +320,18 @@ export function FleetControlView({
 
 function AgentRosterRow({
   onSelect,
+  profile: resolveProfile,
   row,
   schedule,
   selected,
 }: {
   onSelect: () => void;
+  profile: (row: FleetControlRow, schedule?: ScheduledRun) => AgentProfile;
   row: FleetControlRow;
   schedule?: ScheduledRun;
   selected: boolean;
 }) {
-  const profile = agentProfile(row, schedule);
+  const profile = resolveProfile(row, schedule);
   const { tone, label } = serviceTone(row);
   return (
     <button
@@ -321,11 +341,16 @@ function AgentRosterRow({
       style={{ "--agent-accent": profile.themeAccent } as React.CSSProperties}
       onClick={onSelect}
       aria-current={selected ? "true" : undefined}
-      aria-label={`Select ${profile.label}`}
+      aria-label={`Select ${profile.name}, ${profile.roleLabel}`}
     >
       <span className="agents-deck__row-mark" aria-hidden="true" />
       <span className="min-w-0">
-        <span className="agents-deck__row-title">{profile.label}</span>
+        <span className="agents-deck__row-title">
+          {profile.name}
+          {profile.roleLabel ? (
+            <span className="agents-deck__row-role">{profile.roleLabel}</span>
+          ) : null}
+        </span>
         <span className="agents-deck__row-purpose">
           {profile.purpose || scheduleCopy(row, schedule)}
         </span>
@@ -385,16 +410,44 @@ function fleetHealthLabel(level: "ok" | "warn" | "error" | "unknown"): string {
   return "Unknown";
 }
 
-function agentProfile(row: FleetControlRow, schedule?: ScheduledRun): {
+// Resolve an agent's display profile under the active roster theme. The themed
+// name + role label come from the theme mapping (keyed off the agent's derived
+// role, never a literal name list); the runtime's own reported display name /
+// role title still take precedence when present so a server that labels its
+// agents is honored. `label` keeps the legacy "Name · Role" form for the aria
+// title; `name` and `roleLabel` render separately so the role is always plain.
+type AgentProfile = {
+  name: string;
+  role: WorkflowNodeInput["role"];
+  roleLabel: string;
   label: string;
   purpose: string;
   themeAccent: string;
-} {
-  const displayName = row.summary?.display_name || schedule?.display_name || titleCase(row.codename);
-  const roleTitle = row.summary?.role_title || schedule?.role_title || schedule?.role || "";
+};
+
+function agentProfile(
+  row: FleetControlRow,
+  schedule?: ScheduledRun,
+  themeId: RosterThemeId = DEFAULT_ROSTER_THEME,
+): AgentProfile {
+  const identity = resolveThemedIdentity(
+    {
+      codename: row.codename,
+      roleTitle: row.summary?.role_title || schedule?.role_title || schedule?.role,
+      purpose: row.summary?.purpose || schedule?.purpose,
+    },
+    themeId,
+  );
+  // The runtime's own labels win when set, so existing server-side naming is
+  // preserved; otherwise the theme persona supplies the name and role label.
+  const name = row.summary?.display_name || schedule?.display_name || identity.name;
+  const roleLabel = row.summary?.role_title || schedule?.role_title || identity.roleLabel;
   const purpose = row.summary?.purpose || schedule?.purpose || "";
   return {
-    label: roleTitle ? `${displayName} · ${roleTitle}` : displayName,
+    name,
+    role: identity.role,
+    roleLabel,
+    label: roleLabel ? `${name} · ${roleLabel}` : name,
     purpose,
     themeAccent: row.summary?.theme_accent || schedule?.theme_accent || "var(--primary)",
   };

@@ -20,6 +20,7 @@ import { OnboardingView } from "./components/OnboardingView";
 import { PipelineView } from "./components/PipelineView";
 import { RequestThread } from "./components/RequestThread";
 import { ReviewView } from "./components/ReviewView";
+import { RosterThemePicker } from "./components/RosterThemePicker";
 import { SetupView } from "./components/SetupView";
 import { Tabs, type TabItem } from "./components/Tabs";
 import {
@@ -32,6 +33,7 @@ import { useDesktopRoute } from "./hooks/useDesktopRoute";
 import { hasStoredBaseUrl, supportsNativeActions } from "./api";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
 import type { OperatorKey, RequestThreadModel, TabKey } from "./lib/uiTypes";
+import { useRosterTheme } from "./lib/useRosterTheme";
 import { useTheme } from "./lib/useTheme";
 
 function App() {
@@ -103,6 +105,7 @@ function App() {
 
   const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
     useTheme();
+  const { rosterTheme, setRosterTheme } = useRosterTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
   // and preferences), so theme selection no longer crowds the onboarding flow.
@@ -357,6 +360,9 @@ function App() {
                 what the fleet learned.
               </p>
             </div>
+            {fleetTab === "fleet" ? (
+              <RosterThemePicker value={rosterTheme} onChange={setRosterTheme} />
+            ) : null}
           </div>
           <Tabs
             tabs={FLEET_SUBTABS.map<TabItem<OperatorKey>>((s) => ({
@@ -376,6 +382,7 @@ function App() {
                 schedule={snapshot?.schedule || []}
                 service={fleetService}
                 nativeBusy={nativeBusy}
+                rosterTheme={rosterTheme}
                 onRunLocalAction={runLocalAction}
                 onViewLogs={viewAgentLogs}
               />

@@ -57,7 +57,13 @@ export function AgentDetailDrawer({
   agentProfile: (
     row: FleetControlRow,
     schedule?: ScheduledRun,
-  ) => { label: string; purpose: string; themeAccent: string };
+  ) => {
+    name: string;
+    roleLabel: string;
+    label: string;
+    purpose: string;
+    themeAccent: string;
+  };
   agentActionCue: (row: FleetControlRow) => string;
   scheduleCopy: (row: FleetControlRow, schedule?: ScheduledRun) => string;
   editableScheduleValue: (schedule?: ScheduledRun) => string;
@@ -138,7 +144,13 @@ function DrawerBody({
   agentProfile: (
     row: FleetControlRow,
     schedule?: ScheduledRun,
-  ) => { label: string; purpose: string; themeAccent: string };
+  ) => {
+    name: string;
+    roleLabel: string;
+    label: string;
+    purpose: string;
+    themeAccent: string;
+  };
   agentActionCue: (row: FleetControlRow) => string;
   scheduleCopy: (row: FleetControlRow, schedule?: ScheduledRun) => string;
   editableScheduleValue: (schedule?: ScheduledRun) => string;
@@ -162,8 +174,7 @@ function DrawerBody({
   const options = scheduleOptions(currentCadence);
   const profile = agentProfile(row, schedule);
   const { tone, label } = serviceTone(row);
-  const monogram =
-    profile.label.replace(/\s*·.*$/, "").trim().charAt(0).toUpperCase() || "A";
+  const monogram = profile.name.trim().charAt(0).toUpperCase() || "A";
 
   return (
     <div
@@ -177,9 +188,18 @@ function DrawerBody({
           </span>
           <div className="min-w-0">
             <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-2">
+              {profile.roleLabel ? (
+                <Badge
+                  variant="secondary"
+                  className="h-5 border-border/50 bg-secondary/65 px-2 text-[0.68rem]"
+                  aria-label={`Role: ${profile.roleLabel}`}
+                >
+                  {profile.roleLabel}
+                </Badge>
+              ) : null}
               <Badge
                 variant="secondary"
-                className="h-5 border-border/50 bg-secondary/65 px-2 text-[0.68rem]"
+                className="h-5 border-border/50 bg-secondary/45 px-2 text-[0.68rem]"
                 title={`Runtime codename: ${row.codename}`}
               >
                 {row.codename}
@@ -194,7 +214,7 @@ function DrawerBody({
                 {label}
               </Badge>
             </div>
-            <SheetTitle className="agent-drawer__title">{profile.label}</SheetTitle>
+            <SheetTitle className="agent-drawer__title">{profile.name}</SheetTitle>
           </div>
         </div>
         <SheetDescription className="agent-drawer__purpose">

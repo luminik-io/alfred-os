@@ -1591,6 +1591,24 @@ body {
   -webkit-line-clamp: 2;
 }
 
+/* Plain role label shown after the themed name, so the role always reads
+   independent of whatever cast the roster theme applies. */
+.agents-deck__row-role {
+  margin-left: 0.5rem;
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--border), transparent 35%);
+  background: color-mix(in oklch, var(--secondary), transparent 40%);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .agents-deck__row-purpose {
   margin-top: 0.15rem;
   overflow: hidden;
@@ -1599,6 +1617,30 @@ body {
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Roster theme picker: sits in the Agents header, aligned with the title row. */
+.roster-theme-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.roster-theme-picker__icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--muted-foreground);
+}
+
+.roster-theme-picker__label {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.roster-theme-picker__trigger {
+  min-width: 8.5rem;
 }
 
 .agents-deck__row-meta {
