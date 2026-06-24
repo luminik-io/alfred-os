@@ -998,8 +998,7 @@ class SlackPlanningListener:
             )
         except Exception as exc:
             print(
-                f"[SLACK-LISTENER-WARN] converse failed for "
-                f"{event.channel}/{event.root_ts}: {exc}",
+                f"[SLACK-LISTENER-WARN] converse failed for {event.channel}/{event.root_ts}: {exc}",
                 file=sys.stderr,
             )
             return None

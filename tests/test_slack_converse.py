@@ -37,7 +37,6 @@ from compose_converse import (  # noqa: E402
 )
 from spec_helper import IssueDraft  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
@@ -202,9 +201,7 @@ def test_thread_context_is_bounded_and_role_tagged() -> None:
         if i % 2 == 1:
             m["user"] = "UBOT"
     client = FakeSlackClient(replies={"ok": True, "messages": messages})
-    out = sc.gather_thread_context(
-        client, channel="C1", root_ts="1.0", bot_user_id="UBOT", limit=5
-    )
+    out = sc.gather_thread_context(client, channel="C1", root_ts="1.0", bot_user_id="UBOT", limit=5)
     assert len(out) == 5  # bounded to limit
     # Chronological order preserved (most recent five).
     assert [m.content for m in out] == ["msg 15", "msg 16", "msg 17", "msg 18", "msg 19"]
@@ -219,9 +216,7 @@ def test_thread_context_excludes_triggering_message() -> None:
         {"ts": "1.2", "user": "U1", "text": "the trigger"},
     ]
     client = FakeSlackClient(replies={"ok": True, "messages": messages})
-    out = sc.gather_thread_context(
-        client, channel="C1", root_ts="1.1", limit=12, exclude_ts="1.2"
-    )
+    out = sc.gather_thread_context(client, channel="C1", root_ts="1.1", limit=12, exclude_ts="1.2")
     assert [m.content for m in out] == ["earlier"]
 
 
@@ -254,9 +249,7 @@ def test_thread_context_zero_limit_returns_empty() -> None:
 def test_stream_updates_are_throttled() -> None:
     clock = FakeClock()
     client = FakeSlackClient()
-    poster = sc.SlackStreamPoster(
-        client, channel="C1", thread_ts="1.0", throttle=1.0, now=clock
-    )
+    poster = sc.SlackStreamPoster(client, channel="C1", thread_ts="1.0", throttle=1.0, now=clock)
     assert poster.start() is True
     assert poster.message_ts == "100.1"
 
@@ -278,9 +271,7 @@ def test_stream_updates_are_throttled() -> None:
 def test_finalize_always_writes_ignoring_throttle() -> None:
     clock = FakeClock()
     client = FakeSlackClient()
-    poster = sc.SlackStreamPoster(
-        client, channel="C1", thread_ts="1.0", throttle=10.0, now=clock
-    )
+    poster = sc.SlackStreamPoster(client, channel="C1", thread_ts="1.0", throttle=10.0, now=clock)
     poster.start()
     # No clock advance at all; finalize must still land.
     poster.finalize("the reconciled answer")
@@ -291,9 +282,7 @@ def test_finalize_always_writes_ignoring_throttle() -> None:
 def test_update_skips_identical_text() -> None:
     clock = FakeClock()
     client = FakeSlackClient()
-    poster = sc.SlackStreamPoster(
-        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock
-    )
+    poster = sc.SlackStreamPoster(client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock)
     poster.start()
     poster.update("same")
     poster.update("same")
@@ -303,9 +292,7 @@ def test_update_skips_identical_text() -> None:
 def test_long_stream_text_is_trimmed() -> None:
     clock = FakeClock()
     client = FakeSlackClient()
-    poster = sc.SlackStreamPoster(
-        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock
-    )
+    poster = sc.SlackStreamPoster(client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock)
     poster.start()
     poster.finalize("x" * (sc.MAX_STREAM_CHARS + 500))
     assert len(client.updates) == 1
@@ -320,7 +307,7 @@ def test_long_stream_text_is_trimmed() -> None:
 def _fake_build_turn(turn: ConverseTurn, transcript_text: str):
     """Build a fake turn runner that writes a transcript then returns ``turn``."""
 
-    def _run(*, messages, engine, timeout, firing_id, workdir):  # noqa: ANN001
+    def _run(*, messages, engine, timeout, firing_id, workdir):
         # The runner tees assistant text; emulate that by writing the transcript
         # the streamer tails.
         return turn
@@ -392,7 +379,7 @@ def test_run_slack_converse_streams_partial_tokens(tmp_path: Path) -> None:
     # advance the clock so the throttled update fires.
     calls = {"n": 0}
 
-    def _slow_run(*, messages, engine, timeout, firing_id, workdir):  # noqa: ANN001
+    def _slow_run(*, messages, engine, timeout, firing_id, workdir):
         import time as _time
 
         _time.sleep(0.35)
@@ -428,7 +415,7 @@ def test_run_slack_converse_handles_unavailable_engine(tmp_path: Path) -> None:
     transcript = tmp_path / "t.jsonl"
     transcript.write_text("", encoding="utf-8")
 
-    def _no_turn(*, messages, engine, timeout, firing_id, workdir):  # noqa: ANN001
+    def _no_turn(*, messages, engine, timeout, firing_id, workdir):
         return None
 
     outcome = sc.run_slack_converse(
@@ -481,7 +468,7 @@ def test_run_slack_converse_threads_prior_context(tmp_path: Path) -> None:
     transcript.write_text("", encoding="utf-8")
     seen: dict[str, list[ConverseMessage]] = {}
 
-    def _capture_run(*, messages, engine, timeout, firing_id, workdir):  # noqa: ANN001
+    def _capture_run(*, messages, engine, timeout, firing_id, workdir):
         seen["messages"] = list(messages)
         return _turn("Same review path on mobile.", INTENT_CONVERSATION)
 
