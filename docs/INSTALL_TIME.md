@@ -41,6 +41,25 @@ Add 30 to 90 minutes if any of these are not done:
 
 A realistic fresh-machine total is 60 to 120 minutes.
 
+## If you also want the desktop app
+
+The native client (`client` tier) is a separate, much shorter step on top of
+the CLI core. It does not run agents on its own; it drives the same core over
+`alfred serve`.
+
+- **Signed install: 2 to 5 minutes.** `brew install --cask alfred-os` (or
+  downloading `Alfred.dmg` from the [download page](https://alfred.luminik.io/download/))
+  is a normal app install. On first launch with no runtime running, the app
+  opens straight into the guided setup wizard, which can start `alfred serve`
+  for you, so there is no separate "connect" step to figure out.
+- **Build from source: 10 to 20 minutes.** Only needed for client
+  development: `cd clients/desktop && npm install && npm run tauri dev` pulls
+  the Node toolchain and the Tauri Rust dependencies the first time.
+
+The desktop app needs the CLI core installed and at least one repo configured
+to show anything useful, so its timing sits on top of the core figures above,
+not instead of them.
+
 ## One-time gates before you start
 
 These are the things you cannot do from inside the install script, so check

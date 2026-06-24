@@ -4,8 +4,8 @@
 class AlfredOs < Formula
   desc "Local coding agents for Claude Code and Codex"
   homepage "https://alfred.luminik.io"
-  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.5.1.tar.gz"
-  sha256 "d891d956e6d6ec6fdf8181a21416535feb9fd72496824b1c63d1c693b5b8371a"
+  url "https://github.com/luminik-io/alfred-os/archive/refs/tags/v0.5.3.tar.gz"
+  sha256 "07f0838803382074a6ffbb79a16c569a0bbdd62d3910b2fcda9f1c8c5372fe11"
   license "MIT"
   head "https://github.com/luminik-io/alfred-os.git", branch: "main"
 
@@ -69,6 +69,10 @@ class AlfredOs < Formula
 
       Framework-only smoke test:
         alfred-deploy && alfred-doctor
+
+      Want the desktop app too? Install the signed native client:
+        brew install --cask alfred-os
+      It is optional and talks to this CLI over `alfred serve`.
 
       Docs:
         https://alfred.luminik.io

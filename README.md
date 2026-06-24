@@ -121,14 +121,20 @@ alfred-init                       # choose agents, repos, codenames, Slack
 The Homebrew formula installs the latest tagged release and exposes
 `alfred`, `alfred-init`, `alfred-install`, `alfred-deploy`, and
 `alfred-doctor` on your PATH. Use the source checkout path when you want to
-work from `main` or run the Linux installer.
+work from `main` or run the Linux installer. Want the desktop app too? After
+the formula installs, run `brew install --cask alfred-os` for the signed
+native client (see Install Alfred Desktop below).
 
 ### Install Alfred Desktop
 
 Alfred Desktop is optional. It connects to the local runtime over
-`alfred serve`; it does not run agents by itself.
+`alfred serve`; it does not run agents by itself. On first launch with no
+runtime running, it opens straight into the guided setup wizard, which can
+start `alfred serve` for you.
 
-- macOS 11+ on Apple silicon: download the signed, notarized DMG from
+- macOS 11+ with Homebrew: `brew install --cask alfred-os` installs the
+  signed, notarized app alongside the CLI.
+- macOS 11+ on Apple silicon: or download the signed, notarized DMG from
   [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
 - Linux: download the AppImage or `.deb` from the same page.
 - Local development: `cd clients/desktop && npm install && npm run tauri dev`.
@@ -319,7 +325,8 @@ Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 | [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) | Full lifecycle reference: pick / claim / claude / act / release / report. |
 | [`examples/bin/label_state.py`](examples/bin/label_state.py) | Alfred CLI helper for the issue claim state machine. |
 | [`examples/git-hooks/pre-push`](examples/git-hooks/pre-push) | Refuses push if a referenced issue is in-flight. Symmetric guard. |
-| [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula pinned to the latest public release tarball. |
+| [`Formula/alfred-os.rb`](Formula/alfred-os.rb) | Homebrew formula for the CLI, pinned to the latest public release tarball. `brew install alfred-os`. |
+| [`Casks/alfred-os.rb`](Casks/alfred-os.rb) | Homebrew cask for the signed native desktop app. `brew install --cask alfred-os`. |
 | [`site/`](site/) | Astro Starlight docs site, with GitHub Pages publishing gated by the release repo variable. |
 | [`clients/desktop/`](clients/desktop/) | Tauri Mac/Linux client. A local dashboard over `alfred serve` JSON APIs, with Inbox, Ask, Work, Agents, and Setup surfaces plus explicit Slack and GitHub external links. Inbox carries a Claude + Codex usage rail (real subscription usage, no billing API; backed by the live `GET /api/usage` endpoint); Agents defaults to a cinematic roster with a list toggle. Builds native installers (`.app`/`.dmg`, `.AppImage`/`.deb`) from the Tauri bundle config. |
 | [`lib/slack_control.py`](lib/slack_control.py), [`lib/slack_trust.py`](lib/slack_trust.py) | Trusted Slack control/query commands (`status`/`runs`/`plans`/`plan`/`draft`/`handled`/`memory`/`remember`/`pause`/`resume`/`trusted`/`trust`/`untrust`/`help`), codename-, plan-id-, and memory-id-validated, no shell, with local collaborator state under `$ALFRED_HOME/state/slack-trust`. |
@@ -384,7 +391,7 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 
 ## Status
 
-**Latest release: v0.5.2.** Alfred ships a local coding-agent fleet for solo
+**Latest release: v0.5.3.** Alfred ships a local coding-agent fleet for solo
 builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted
 workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling,
 Claude/Codex engine routing, Slack reporting, and isolated worktree execution.

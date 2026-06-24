@@ -3,7 +3,7 @@ import {
   RefreshCw,
   Sun,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppearancePicker } from "./components/AppearancePicker";
 import {
@@ -123,6 +123,39 @@ function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [tab, fleetTab, setupMode]);
+
+  // First-run routing. A clean launch with no `alfred serve` running settles
+  // with a connection error and no snapshot. Without this, that user lands on
+  // an empty Home behind an error banner with no obvious next step; the setup
+  // wizard is only reachable by hunting through Settings. So the very first
+  // time the initial load settles with no server reachable and Alfred has
+  // never connected on this machine, route the user straight into guided
+  // onboarding. It fires once: once they have connected, or once we have
+  // redirected, we never yank them out of wherever they navigate next.
+  const [firstRunRouted, setFirstRunRouted] = useState(false);
+  const hasEverConnected = useRef(false);
+  useEffect(() => {
+    if (snapshot && !error) {
+      hasEverConnected.current = true;
+    }
+  }, [snapshot, error]);
+  useEffect(() => {
+    if (firstRunRouted) return;
+    // Wait for the initial load to settle before deciding anything.
+    if (loading) return;
+    if (hasEverConnected.current || snapshot) {
+      // Already connected at least once: this is not a fresh first run.
+      setFirstRunRouted(true);
+      return;
+    }
+    if (error) {
+      // Fresh machine, runtime not up yet: take the user to the wizard.
+      setFirstRunRouted(true);
+      setSetupMode("guided");
+      setTab("settings");
+      setSettingsTab("setup");
+    }
+  }, [firstRunRouted, loading, error, snapshot, setSetupMode, setTab]);
 
   const commands = useMemo<Command[]>(() => {
     const nav: Command[] = PRIMARY_TABS.map((item) => ({
