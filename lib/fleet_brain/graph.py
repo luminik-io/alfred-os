@@ -6,9 +6,9 @@ file`` relation. This module densifies the same ledger with three
 explicit, fleet-authored edge kinds so a later firing can ask graph
 questions without re-deriving them from raw rows every time:
 
-* ``PR -[changed]-> file`` — a pull request changed a file.
-* ``file -[owned_by]-> owner`` — a file's CODEOWNERS owner(s).
-* ``file -[in]-> repo`` — a file belongs to a repo.
+* ``PR -[changed]-> file``: a pull request changed a file.
+* ``file -[owned_by]-> owner``: a file's CODEOWNERS owner(s).
+* ``file -[in]-> repo``: a file belongs to a repo.
 
 Edges are materialized into the ``graph_edges`` table and keyed by
 ``(kind, src, dst)`` so re-projecting the same touch is idempotent and
@@ -76,9 +76,7 @@ def densify_enabled(env: Mapping[str, str] | None = None) -> bool:
     """
     src = env if env is not None else os.environ
     raw = str(src.get(GRAPH_DENSIFY_ENV, "")).strip().lower()
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    return True
+    return raw not in {"0", "false", "no", "off"}
 
 
 def file_node(repo: str, path: str) -> str:
@@ -179,9 +177,7 @@ def parse_codeowners(repo: str, text: str) -> list[CodeOwnerRule]:
         if not owners:
             continue
         for owner in owners:
-            rules.append(
-                CodeOwnerRule(repo=repo, pattern=pattern, owner=_owner(owner), rank=rank)
-            )
+            rules.append(CodeOwnerRule(repo=repo, pattern=pattern, owner=_owner(owner), rank=rank))
         rank += 1
     return rules
 

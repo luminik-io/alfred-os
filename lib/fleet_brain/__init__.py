@@ -372,7 +372,7 @@ class FleetBrain:
         if densify_enabled(self._env):
             try:
                 self.project_file_touch_edges(stored)
-            except Exception:  # noqa: BLE001 - densification is advisory
+            except Exception:  # densification is advisory; never lose the touch
                 _LOG.warning("graph densify failed for touch %s", stored.id, exc_info=True)
         return stored
 
@@ -460,9 +460,7 @@ class FleetBrain:
         ]
         return owners_for_path(path, rules)
 
-    def recent_changes_near(
-        self, *, repo: str, path: str, limit: int = 20
-    ) -> list[dict[str, Any]]:
+    def recent_changes_near(self, *, repo: str, path: str, limit: int = 20) -> list[dict[str, Any]]:
         """Return recent file touches in the same directory as ``path``.
 
         "Near" means siblings under the same directory prefix in the same

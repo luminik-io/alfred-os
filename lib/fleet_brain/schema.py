@@ -32,10 +32,10 @@ The schema deliberately mirrors the entity model documented in
 * ``worker_heartbeats`` — last-seen worker liveness for stale-run detection.
 * ``lesson_tags`` — many-to-many over ``lessons`` so a lesson can
   be filed under several taxonomy buckets without splitting rows.
-* ``code_owners`` — one row per CODEOWNERS rule a fleet firing observed
+* ``code_owners``: one row per CODEOWNERS rule a fleet firing observed
   in a repo: a path glob mapped to one owner. Upserted per (repo, pattern,
   owner), so re-ingesting the same CODEOWNERS file is idempotent.
-* ``graph_edges`` — densified fleet-authored relationships materialized
+* ``graph_edges``: densified fleet-authored relationships materialized
   over the ledger: ``PR -[changed]-> file``, ``file -[owned_by]-> owner``,
   and ``file -[in]-> repo``. One row per (kind, src, dst) so re-projecting
   the same touch never duplicates an edge.
