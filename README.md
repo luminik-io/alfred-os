@@ -11,25 +11,102 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**Local coding agents that turn Slack requests, specs, and labeled issues into pull requests, reviews, safe merges, and Slack updates.**
+**An autonomous coding team on your Mac that opens and reviews real pull requests and reports to Slack. You stay in control.**
 
-Alfred keeps engineering work moving when you are not sitting at the keyboard.
-It turns Slack requests, rough plans, specs, and GitHub issues into scoped
-tasks, isolated worktrees, pull requests, reviews, tests, safe merges, and Slack
-summaries. Batman is the architect for work that spans repos. Lucius is the
-senior developer. Drake scopes smaller work. Ra's al Ghul is the reviewer. Bane
-handles test coverage. Nightwing fixes reviewer comments. Automerge can land
-small safe PRs once they pass your policy. The agents run on a computer you
-choose, during the hours that machine is awake, using the subscriptions you
-already pay for. Alfred shells out to your local CLI auth, so provider API keys
-and hosted agent accounts are not part of the setup.
+Alfred is a local, private fleet of coding agents. It turns Slack requests,
+rough plans, specs, and labeled GitHub issues into scoped tasks, isolated
+worktrees, pull requests, code review, tests, and Slack updates, and it keeps
+that work moving when you are not at the keyboard. The agents play narrow roles
+with clear handoffs: an architect for work that spans repos, a senior developer
+who implements, a planner who scopes smaller work, a reviewer who reads every
+PR, a test-coverage agent, and a fixer for review comments. You give the goal,
+the repos, and the approval rules. Alfred keeps the loop moving until it has a
+pull request, a review finding, or a decision to bring back to Slack. It never
+merges its own work unless you let it.
 
-You do not sit in front of Claude or Codex and keep prompting every step.
-You give Alfred the goal, the repos, and the approval rules; Alfred keeps the
-loop moving until it has a pull request, a review finding, or a decision to
-bring back to Slack.
+**It runs on the Claude Max or Codex Pro subscription you already pay for. No
+API keys, no separate token bill.** Alfred shells out to your local `claude` and
+optional `codex` CLI auth, so there is no hosted inference service and no
+provider key setup.
+
+### Why Alfred
+
+- **Pull requests are the artifact.** Every run ends in a real PR on GitHub you
+  can read, diff, and merge, not a chat transcript or a hidden change. The
+  review, the tests, and the history are all where your team already looks.
+- **Local and private by construction.** Alfred runs as you, on your own Mac,
+  against the CLIs you already authenticated. Your code never leaves the
+  machine. The only network calls go to the model provider you chose, to GitHub,
+  and to your Slack webhook.
+- **A team you supervise, not autonomy you hope for.** Each run is contained in
+  an isolated worktree, bounded by a hard spend cap, and held at an approval
+  gate you control. Slack is the planning surface; you keep merge authority.
+
+### See it work
+
+> **Hero demo (video to be added).** A 60-second continuous real run: type a
+> task, watch an agent work in an isolated worktree, a real PR opens on GitHub,
+> Alfred reviews its own PR, a Slack ping lands, and you approve and merge from
+> the app, with the live cost and usage meter on screen the whole time.
 
 Docs site: https://alfred.luminik.io
+
+## Privacy: what Alfred touches, and what it does not
+
+Alfred touches your repos, your git history, and optionally Slack, so it should
+be obvious what it can reach. The posture is simple: Alfred runs as you, on your
+machine, against the local CLIs you already authenticated. It is meant to be
+inspectable, not taken on faith.
+
+**What Alfred touches:**
+
+- The repos you explicitly added to `~/.alfredrc`, and the isolated worktrees it
+  creates for them under `ALFRED_HOME` (`~/.alfred` by default).
+- Your local `claude` and optional `codex` CLI auth, by shelling out to those
+  tools. It reads no provider password and stores no API key.
+- Three network destinations, and only these three: the model provider you chose
+  (Anthropic for Claude Code, OpenAI for Codex), GitHub through `gh`, and your
+  Slack webhook if you configured one.
+
+**What Alfred does NOT do:**
+
+- It does **not** send your code, file paths, repo names, prompts, branches, or
+  diffs anywhere except the model provider you chose and GitHub, as above.
+- It does **not** read repos you did not add. It does not discover or clone other
+  repositories.
+- It does **not** call any third-party analytics, ad, or tracking service.
+- It does **not** turn on usage reporting silently against your private
+  data. Anonymous aggregate counts are the only thing reported, they never
+  include code, names, paths, or prompts, and you can turn them off with
+  `alfred telemetry off`. See [Anonymous usage totals](#anonymous-usage-totals).
+- It does **not** request screen recording, accessibility control, your contacts,
+  your location, your microphone, or your camera. See
+  [`docs/MACOS_PERMISSIONS.md`](docs/MACOS_PERMISSIONS.md).
+- It does **not** merge its own work by default. A human merges; see the
+  [threat model](docs/THREAT_MODEL.md).
+
+Want to verify it yourself? Run a network monitor during a firing and confirm
+the only outbound destinations are the three above. If you find a call we did
+not document, that is exactly what the [open audit issue](#open-audit-issue) is
+for.
+
+- [macOS permissions explainer](docs/MACOS_PERMISSIONS.md): every prompt you may
+  see, why it appears, and the long list of permissions Alfred never requests.
+- [Threat model](docs/THREAT_MODEL.md): what one run can and cannot do, isolated
+  worktrees, the approval gate, and never auto-merge.
+- [Telemetry contract](docs/TELEMETRY.md): exactly what an anonymous count
+  contains, and the off switch.
+
+### Open audit issue
+
+Trust scaffolding is the feature for a tool that touches repos, git, and Slack,
+so the privacy claim is meant to be tested in the open. If you spot an
+undocumented network call, a privacy claim that does not match the code, or a
+containment boundary that can be bypassed, open a
+[Security or privacy audit finding](https://github.com/luminik-io/alfred-os/issues/new?template=audit.yml).
+Exploitable vulnerabilities go through a private
+[security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new)
+instead; see [`SECURITY.md`](SECURITY.md).
 
 ## Why use it
 
@@ -361,6 +438,8 @@ Full contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 - [Publishing](docs/PUBLISHING.md): GitHub Pages, custom-domain, and release-site checks.
 - [Contributing](CONTRIBUTING.md) | [Roadmap](ROADMAP.md) | [Changelog](CHANGELOG.md)
 - [Security](SECURITY.md): private-disclosure process.
+- [Threat model](docs/THREAT_MODEL.md): what one run can and cannot do, the containment boundaries, and inputs treated as untrusted.
+- [macOS permissions](docs/MACOS_PERMISSIONS.md): every prompt, why it appears, and what Alfred never requests.
 - [Release checklist](docs/RELEASE_CHECKLIST.md): pre-tag gates, scrub scan, GitHub Release flow.
 
 Rendered version: https://alfred.luminik.io/.

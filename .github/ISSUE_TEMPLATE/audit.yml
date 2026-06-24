@@ -1,0 +1,71 @@
+name: Security or privacy audit finding
+description: Report a privacy claim that does not hold, an undocumented network call, or a containment gap. Public-by-design.
+title: "[audit] "
+labels: ["audit", "needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Alfred's whole pitch is **control, local, and private**: your code never leaves the machine, the only network calls go to the model provider you chose, GitHub, and your Slack webhook, and no run can merge itself.
+
+        This template is the open invitation to test that. Use it for findings that are safe to discuss in public, for example:
+
+        - an outbound network call we did not document
+        - a privacy claim in the README or [`docs/THREAT_MODEL.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/THREAT_MODEL.md) that does not match what the code does
+        - a containment boundary (isolated worktree, approval gate, spend cap, never auto-merge) that can be bypassed without operator action
+        - a macOS permission prompt that appears but is not explained in [`docs/MACOS_PERMISSIONS.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/MACOS_PERMISSIONS.md)
+
+        **If the finding is an exploitable vulnerability, do NOT use this template.** Report it privately through a [security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new) instead. See [`SECURITY.md`](https://github.com/luminik-io/alfred-os/blob/main/SECURITY.md).
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What kind of claim does this finding touch?
+      options:
+        - Undocumented network call / data leaving the machine
+        - Privacy claim does not match the code
+        - Containment boundary can be bypassed
+        - macOS permission not explained
+        - Telemetry behaving differently than documented
+        - Other trust / privacy concern
+    validations:
+      required: true
+
+  - type: textarea
+    id: claim
+    attributes:
+      label: The claim you tested
+      description: Quote the exact sentence from the README, threat model, permissions doc, or telemetry doc that you are checking.
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What you actually observed
+      description: |
+        What did you see instead? Be concrete. For a network finding, include the destination host and how you captured it (Little Snitch, `lsof -i`, a proxy, packet capture).
+      placeholder: |
+        During a single Lucius firing I saw an outbound connection to <host> that is not the model provider, GitHub, or my Slack webhook.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Exact steps, commands, and any non-default env vars. Redact secrets first.
+      render: shell
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Sanity checks
+      options:
+        - label: This finding is safe to discuss in public. An exploitable vulnerability would go through a private security advisory instead.
+          required: true
+        - label: I redacted any AWS keys, Slack webhook URLs, bot tokens, repo names, or other secrets from the report above.
+          required: true

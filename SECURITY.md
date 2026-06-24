@@ -1,5 +1,12 @@
 # Security
 
+For how Alfred contains what a single agent run can do (isolated worktrees, the
+approval gate, spend caps, never auto-merge) and how to verify the privacy claim
+yourself, see [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md). Public-by-design
+privacy and containment findings go to the
+[audit issue template](.github/ISSUE_TEMPLATE/audit.yml); exploitable
+vulnerabilities use the private process below.
+
 ## Reporting a vulnerability
 
 **Do not open a public GitHub issue for security vulnerabilities.** Report privately so we can patch before disclosure.

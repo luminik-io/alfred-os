@@ -60,6 +60,8 @@ Current map of the public docs. Trust code first, then this index.
 - [`../ROADMAP.md`](../ROADMAP.md)
 - [`../CHANGELOG.md`](../CHANGELOG.md)
 - [`../SECURITY.md`](../SECURITY.md)
+- [`THREAT_MODEL.md`](THREAT_MODEL.md): what one run can and cannot do, the containment boundaries, and how to verify the privacy claim yourself.
+- [`MACOS_PERMISSIONS.md`](MACOS_PERMISSIONS.md): every macOS prompt explained, plus the permissions Alfred never requests.
 - [`../SUPPORT.md`](../SUPPORT.md)
 - [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)
 - [`RELEASING.md`](RELEASING.md): the tag-to-publish release process, including the draft-release gate for desktop assets.
