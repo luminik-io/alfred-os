@@ -160,6 +160,14 @@ export function rememberBaseUrl(value: string): void {
   window.localStorage.setItem(BASE_URL_KEY, clientBaseUrl(value));
 }
 
+// True once Alfred has successfully connected at least once on this machine.
+// `rememberBaseUrl` persists the connected URL, so a stored value is a durable
+// proxy for "this is a returning user" that survives app restarts. Used to keep
+// first-run onboarding from re-firing on every cold start for established users.
+export function hasStoredBaseUrl(): boolean {
+  return Boolean(window.localStorage.getItem(BASE_URL_KEY));
+}
+
 export function alternateDefaultBaseUrl(value: string): string | null {
   try {
     const normalized = normalizedBaseUrl(value);

@@ -16,6 +16,7 @@ import {
   conversationControl,
   decidePlan,
   errorDetail,
+  hasStoredBaseUrl,
   initialBaseUrl,
   loadShipped,
   loadSnapshot,
@@ -70,6 +71,16 @@ describe("base URL fallback", () => {
 
   it("does not redirect arbitrary remote URLs", () => {
     expect(alternateDefaultBaseUrl("https://example.com")).toBeNull();
+  });
+
+  it("reports no stored base URL for a fresh, never-connected machine", () => {
+    expect(hasStoredBaseUrl()).toBe(false);
+  });
+
+  it("reports a stored base URL once a connection has been remembered", () => {
+    window.localStorage.setItem("alfred-desktop.base-url", "http://127.0.0.1:7010");
+
+    expect(hasStoredBaseUrl()).toBe(true);
   });
 });
 

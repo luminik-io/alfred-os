@@ -51,6 +51,20 @@ Alfred Desktop is an optional Tauri app under `clients/desktop`. It is a thin lo
 
 It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. You can run Alfred entirely without it.
 
+There are two ways to install it. Pick the signed release for a normal setup; build from source only when you are working on the client itself.
+
+Signed release (recommended):
+
+```sh
+brew install --cask alfred-os               # macOS 11+, signed and notarized
+# or download Alfred.dmg / Alfred.AppImage / Alfred.deb from
+# https://alfred.luminik.io/download/
+```
+
+The cask installs alongside the `alfred-os` CLI formula, so `brew install alfred-os && brew install --cask alfred-os` gives you both halves. On first launch with no runtime running, the app opens into the guided setup wizard, which can start `alfred serve` for you, so a fresh user never lands on a dead end.
+
+Build from source (client development):
+
 ```sh
 alfred serve --port 7010 --no-browser       # or let Setup start it for you
 cd clients/desktop
