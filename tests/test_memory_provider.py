@@ -911,3 +911,46 @@ def test_os_env_unmodified_by_load_provider(monkeypatch: pytest.MonkeyPatch) -> 
     snapshot = dict(os.environ)
     load_provider()
     assert dict(os.environ) == snapshot
+
+
+def test_redis_provider_recall_scored_normalizes_score_and_distance() -> None:
+    def transport(method, url, payload, headers, timeout_s):  # type: ignore[no-untyped-def]
+        return {
+            "memories": [
+                {
+                    "score": 0.9,
+                    "memory": {
+                        "id": "redis-1",
+                        "text": "High-relevance lesson.",
+                        "topics": ["codename:batman", "repo:acme/app"],
+                        "metadata": {"codename": "batman", "repo": "acme/app"},
+                    },
+                },
+                {
+                    "dist": 1.5,  # cosine distance -> similarity 1 - 1.5/2 = 0.25
+                    "memory": {
+                        "id": "redis-2",
+                        "text": "Low-relevance lesson.",
+                        "topics": ["codename:batman", "repo:acme/app"],
+                        "metadata": {"codename": "batman", "repo": "acme/app"},
+                    },
+                },
+                {
+                    "memory": {
+                        "id": "redis-3",
+                        "text": "Unscored lesson.",
+                        "topics": ["codename:batman", "repo:acme/app"],
+                        "metadata": {"codename": "batman", "repo": "acme/app"},
+                    },
+                },
+            ]
+        }
+
+    provider = RedisAgentMemoryProvider(base_url="http://memory.local", transport=transport)
+    scored = provider.recall_scored(query="plans", codename="batman", repo="acme/app", limit=5)
+
+    assert len(scored) == 3
+    bodies = {lesson.body: score for lesson, score in scored}
+    assert bodies["High-relevance lesson."] == 0.9
+    assert abs(bodies["Low-relevance lesson."] - 0.25) < 1e-9
+    assert bodies["Unscored lesson."] is None

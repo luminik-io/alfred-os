@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# code-memory-mcp - launcher and indexer for codebase-memory-mcp.
+#
+# codebase-memory-mcp (DeusData, MIT: https://github.com/DeusData/codebase-memory-mcp)
+# is a STANDALONE external binary. Alfred invokes it over MCP as the
+# code-structure memory layer: it indexes the in-scope repos into a code graph
+# and answers read-only structure queries (search, call graph, impact / blast
+# radius, who-owns). The binary is NEVER vendored into this repo, so the tree
+# stays OSS-clean and passes scrub-check.
+#
+# Subcommands:
+#   serve     start the stdio MCP server (used by the fleet; default)
+#   index     build / rebuild the code index for the in-scope repos
+#   refresh   incremental re-index of repos that changed since last index
+#   doctor    print resolved binary, version, and index location
+#
+# Resolution order for the binary (first hit wins):
+#   1. $ALFRED_CODE_MEMORY_BIN              explicit path
+#   2. codebase-memory-mcp on $PATH         system / package install
+#   3. $ALFRED_HOME/bin/codebase-memory-mcp pinned cache (auto-fetched here)
+#
+# On first run, if the binary is not found, this script fetches the pinned
+# release ($ALFRED_CODE_MEMORY_VERSION) from GitHub into the cache. Fetching is
+# opt-out with ALFRED_CODE_MEMORY_AUTOFETCH=0; in that case a missing binary is
+# a clean no-op (exit 0) so attaching the MCP server is always safe.
+
+set -uo pipefail
+
+# --- pinned upstream release (override via env) -----------------------------
+CODE_MEMORY_VERSION="${ALFRED_CODE_MEMORY_VERSION:-v0.4.0}"
+CODE_MEMORY_REPO="${ALFRED_CODE_MEMORY_REPO:-DeusData/codebase-memory-mcp}"
+CODE_MEMORY_BIN_NAME="codebase-memory-mcp"
+
+log() { printf '[code-memory-mcp] %s\n' "$*" >&2; }
+
+load_env_file() {
+  local file="$1" line key value
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|\#*) continue ;;
+      export\ *) line="${line#export }" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+    esac
+    case "$value" in
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    value="${value//\$\{HOME\}/$HOME}"
+    value="${value//\$HOME/$HOME}"
+    export "$key=$value"
+  done < "$file"
+}
+
+ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
+load_env_file "$HOME/.alfredrc"
+ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
+load_env_file "$ALFRED_HOME/.env"
+ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
+
+CACHE_BIN="$ALFRED_HOME/bin/$CODE_MEMORY_BIN_NAME"
+INDEX_DIR="${ALFRED_CODE_MEMORY_INDEX_DIR:-$ALFRED_HOME/state/code-memory}"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
+WORKSPACE_SUBDIR="${ALFRED_WORKSPACE_SUBDIR:-}"
+if [ -n "$WORKSPACE_SUBDIR" ]; then
+  WORKSPACE="$WORKSPACE_ROOT/$WORKSPACE_SUBDIR"
+else
+  WORKSPACE="$WORKSPACE_ROOT"
+fi
+
+autofetch_enabled() {
+  case "${ALFRED_CODE_MEMORY_AUTOFETCH:-1}" in
+    0|false|no|off|"") return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+platform_tag() {
+  local os arch
+  case "$(uname -s)" in
+    Darwin) os="apple-darwin" ;;
+    Linux)  os="unknown-linux-gnu" ;;
+    *) return 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) arch="x86_64" ;;
+    arm64|aarch64) arch="aarch64" ;;
+    *) return 1 ;;
+  esac
+  printf '%s-%s' "$arch" "$os"
+}
+
+fetch_binary() {
+  # Best-effort fetch of the pinned release asset into the cache. Returns
+  # non-zero on any failure; the caller degrades to a clean no-op.
+  command -v curl >/dev/null 2>&1 || { log "curl not found; cannot fetch"; return 1; }
+  local tag asset url tmp
+  tag="$(platform_tag)" || { log "unsupported platform for prebuilt binary"; return 1; }
+  asset="${CODE_MEMORY_BIN_NAME}-${tag}"
+  url="https://github.com/${CODE_MEMORY_REPO}/releases/download/${CODE_MEMORY_VERSION}/${asset}"
+  tmp="$(mktemp)" || return 1
+  log "fetching ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION} (${tag})"
+  if ! curl -fsSL "$url" -o "$tmp"; then
+    log "download failed: $url"
+    rm -f "$tmp"
+    return 1
+  fi
+  mkdir -p "$(dirname "$CACHE_BIN")"
+  chmod +x "$tmp"
+  mv "$tmp" "$CACHE_BIN"
+  log "installed to $CACHE_BIN"
+}
+
+resolve_binary() {
+  if [ -n "${ALFRED_CODE_MEMORY_BIN:-}" ] && [ -x "${ALFRED_CODE_MEMORY_BIN}" ]; then
+    printf '%s' "$ALFRED_CODE_MEMORY_BIN"
+    return 0
+  fi
+  local on_path
+  on_path="$(command -v "$CODE_MEMORY_BIN_NAME" 2>/dev/null || true)"
+  if [ -n "$on_path" ]; then
+    printf '%s' "$on_path"
+    return 0
+  fi
+  if [ -x "$CACHE_BIN" ]; then
+    printf '%s' "$CACHE_BIN"
+    return 0
+  fi
+  if autofetch_enabled && fetch_binary && [ -x "$CACHE_BIN" ]; then
+    printf '%s' "$CACHE_BIN"
+    return 0
+  fi
+  return 1
+}
+
+# In-scope repos for indexing: ALFRED_CODE_MEMORY_REPOS (comma-separated local
+# dir names under WORKSPACE), falling back to ALFRED_CODE_MAP_REPOS so a single
+# scope list drives both the planning code map and the code-memory index.
+scope_repos() {
+  local raw="${ALFRED_CODE_MEMORY_REPOS:-${ALFRED_CODE_MAP_REPOS:-}}"
+  printf '%s' "$raw" | tr ',' '\n' | while IFS= read -r name; do
+    name="$(printf '%s' "$name" | tr -d '[:space:]')"
+    [ -n "$name" ] || continue
+    [ -d "$WORKSPACE/$name" ] || continue
+    printf '%s\n' "$WORKSPACE/$name"
+  done
+}
+
+run_index() {
+  local bin="$1" mode="$2" repo had=0
+  mkdir -p "$INDEX_DIR"
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    had=1
+    log "${mode}: $repo"
+    # Upstream accepts --index-dir for the on-disk graph and --auto-index /
+    # --refresh for full vs incremental builds. Failures are logged, not fatal,
+    # so one bad repo never blocks the others.
+    "$bin" "$mode" --index-dir "$INDEX_DIR" --repo "$repo" \
+      || log "${mode} failed for $repo (continuing)"
+  done < <(scope_repos)
+  if [ "$had" -eq 0 ]; then
+    log "no in-scope repos found under $WORKSPACE (set ALFRED_CODE_MEMORY_REPOS)"
+  fi
+}
+
+# Default subcommand. When the scheduler launches us as the refresh agent it
+# sets AGENT_CODENAME but passes no args (the conf/render path carries the
+# script name only), so default to an incremental refresh rather than serve.
+DEFAULT_CMD="serve"
+case "${AGENT_CODENAME:-}" in
+  code-memory-refresh|code-memory-index) DEFAULT_CMD="refresh" ;;
+esac
+
+CMD="${1:-$DEFAULT_CMD}"
+[ "$#" -gt 0 ] && shift || true
+
+case "$CMD" in
+  serve)
+    BIN="$(resolve_binary)" || {
+      log "binary unavailable; code-memory MCP is a no-op this run"
+      exit 0
+    }
+    exec "$BIN" serve --index-dir "$INDEX_DIR" "$@"
+    ;;
+  index)
+    BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 0; }
+    run_index "$BIN" "auto-index"
+    ;;
+  refresh)
+    BIN="$(resolve_binary)" || { log "binary unavailable; cannot refresh"; exit 0; }
+    run_index "$BIN" "refresh"
+    ;;
+  doctor)
+    if BIN="$(resolve_binary)"; then
+      log "binary:  $BIN"
+      "$BIN" --version 2>/dev/null || log "version: (binary did not report)"
+    else
+      log "binary:  NOT RESOLVED (set ALFRED_CODE_MEMORY_BIN or enable autofetch)"
+    fi
+    log "version-pin: ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION}"
+    log "index-dir:   $INDEX_DIR"
+    log "workspace:   $WORKSPACE"
+    log "repos:       ${ALFRED_CODE_MEMORY_REPOS:-${ALFRED_CODE_MAP_REPOS:-(none configured)}}"
+    ;;
+  *)
+    log "unknown subcommand: $CMD (use serve|index|refresh|doctor)"
+    exit 2
+    ;;
+esac

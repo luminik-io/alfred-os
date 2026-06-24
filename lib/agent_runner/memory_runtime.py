@@ -9,6 +9,7 @@ import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from .result import ClaudeResult
 
@@ -44,6 +45,107 @@ def load_runtime_memory(env: Mapping[str, str] | None = None):
         return None
 
 
+_DEFAULT_RECALL_THRESHOLD = 0.0
+
+
+def _recall_relevance_threshold(env: Mapping[str, str] | None = None) -> float:
+    """Minimum AMS similarity a recalled lesson needs to be injected.
+
+    Config-driven via ``ALFRED_MEMORY_RECALL_THRESHOLD`` (a similarity in
+    ``[0, 1]``, higher is stricter). Default ``0.0`` preserves the historical
+    "inject everything recall returned" behavior; raise it to suppress weakly
+    related lessons. Lessons whose provider reports no score are never dropped
+    by the threshold (the gate cannot judge them).
+    """
+    raw = (env or os.environ).get("ALFRED_MEMORY_RECALL_THRESHOLD")
+    if raw is None or not str(raw).strip():
+        return _DEFAULT_RECALL_THRESHOLD
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_RECALL_THRESHOLD
+    return max(0.0, min(1.0, value))
+
+
+def _normalized_body(body: str) -> str:
+    """Whitespace- and case-folded body used as a dedup key."""
+    return " ".join(str(body or "").split()).strip().casefold()
+
+
+def _iter_scored_providers(provider) -> Iterator[Any]:
+    """Yield ``provider`` and any chained sub-providers exposing ``recall_scored``."""
+    seen: list[int] = []
+    candidates = getattr(provider, "providers", None)
+    pool = candidates if isinstance(candidates, list) else [provider]
+    for candidate in pool:
+        if candidate is None or id(candidate) in seen:
+            continue
+        seen.append(id(candidate))
+        if hasattr(candidate, "recall_scored"):
+            yield candidate
+
+
+def _recall_scored_lessons(
+    provider,
+    *,
+    codename: str,
+    repo: str,
+    query: str | None,
+    limit: int,
+) -> list[tuple[object, float | None]] | None:
+    """Return scored lessons from the first scored-capable provider, or ``None``.
+
+    ``None`` signals "no provider can report scores; fall back to plain recall".
+    """
+    for candidate in _iter_scored_providers(provider):
+        try:
+            scored = candidate.recall_scored(codename=codename, repo=repo, query=query, limit=limit)
+        except Exception:
+            _LOG.exception("memory runtime: recall_scored failed")
+            continue
+        return list(scored)
+    return None
+
+
+def _gated_lessons(
+    provider,
+    *,
+    codename: str,
+    repo: str,
+    query: str | None,
+    limit: int,
+    threshold: float,
+) -> list[object]:
+    """Recall lessons, gate by relevance threshold, and dedupe by body.
+
+    Prefers the scored recall path so the threshold can act on real AMS
+    similarity. Falls back to plain ``recall`` (threshold inapplicable, dedup
+    still applied) for providers without scores so existing behavior is never
+    weakened.
+    """
+    scored = _recall_scored_lessons(
+        provider, codename=codename, repo=repo, query=query, limit=limit
+    )
+    if scored is None:
+        lessons = provider.recall(codename=codename, repo=repo, query=query, limit=limit)
+        pairs: list[tuple[object, float | None]] = [(lesson, None) for lesson in lessons]
+    else:
+        pairs = scored
+    out: list[object] = []
+    seen_bodies: set[str] = set()
+    for lesson, score in pairs:
+        # A reported score below threshold is dropped; an absent score (None)
+        # is always kept (the gate cannot judge it).
+        if score is not None and score < threshold:
+            continue
+        key = _normalized_body(getattr(lesson, "body", ""))
+        if not key or key in seen_bodies:
+            continue
+        seen_bodies.add(key)
+        out.append(lesson)
+    return out
+
+
 def format_memory_context(
     provider,
     *,
@@ -52,11 +154,25 @@ def format_memory_context(
     query: str | None = None,
     limit: int = 3,
 ) -> str:
-    """Return prompt-ready memory context, or an empty string."""
+    """Return prompt-ready memory context, or an empty string.
+
+    Recalled lessons are gated before injection: anything below the configured
+    relevance threshold (``ALFRED_MEMORY_RECALL_THRESHOLD``) is dropped, and
+    near-duplicate bodies are collapsed so the same lesson is never injected
+    twice. This reuses the provider's own scoring rather than always injecting.
+    """
     if provider is None or getattr(provider, "name", "") == "null":
         return ""
+    threshold = _recall_relevance_threshold()
     try:
-        lessons = provider.recall(codename=codename, repo=repo, query=query, limit=limit)
+        lessons = _gated_lessons(
+            provider,
+            codename=codename,
+            repo=repo,
+            query=query,
+            limit=limit,
+            threshold=threshold,
+        )
     except Exception:
         _LOG.exception("memory runtime: recall failed")
         return ""

@@ -76,6 +76,11 @@ def test_memory_mcp_attached_by_default(monkeypatch):
 
 def test_memory_mcp_disabled_by_env(monkeypatch):
     monkeypatch.setenv("ALFRED_MEMORY_MCP", "0")
+    # The code-memory MCP is a separate server with its own opt-out; disable it
+    # too so this test isolates the read-only memory MCP opt-out (otherwise the
+    # shared --mcp-config still carries code_memory). Its own wiring + opt-out
+    # are covered in test_code_memory_mcp_wiring.py.
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
     cmd = _capture(monkeypatch)
     assert "--mcp-config" not in cmd
     assert _allowed(cmd) == "Read,Bash"  # untouched
