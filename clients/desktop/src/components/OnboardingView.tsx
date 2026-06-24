@@ -350,10 +350,9 @@ export function OnboardingView({
     (key: OnboardingStepKey): boolean => {
       const index = ONBOARDING_STEP_ORDER.indexOf(key);
       if (index > reachedIndex) return false;
-      if (key === "request") return requestDone;
       return stepSatisfied(key);
     },
-    [reachedIndex, requestDone, stepSatisfied],
+    [reachedIndex, stepSatisfied],
   );
 
   const steps = useMemo<StepMeta[]>(

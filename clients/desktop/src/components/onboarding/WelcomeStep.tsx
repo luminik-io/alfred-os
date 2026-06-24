@@ -37,13 +37,13 @@ export function WelcomeStep({
         </p>
       </div>
 
-      <p className="alfred-onboarding-welcome__trust">
+      <div className="alfred-onboarding-welcome__trust">
         <KeyRound size={15} aria-hidden="true" />
         <span>
           No API keys. Alfred runs on the Claude Max and Codex Pro subscriptions
           you already pay for.
         </span>
-      </p>
+      </div>
 
       <div className="mx-auto flex flex-wrap items-center justify-center gap-2">
         <Button type="button" size="lg" onClick={onGetStarted}>

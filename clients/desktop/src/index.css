@@ -4535,7 +4535,6 @@ body {
   justify-self: center;
   gap: 0.5rem;
   max-width: 34rem;
-  margin: 0;
   padding: 0.55rem 0.95rem;
   border: 1px solid color-mix(in oklch, var(--primary), transparent 65%);
   border-radius: 999px;
