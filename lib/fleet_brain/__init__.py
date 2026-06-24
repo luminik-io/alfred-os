@@ -52,8 +52,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from .graph import (
+    CodeOwnerRule,
+    GraphEdge,
+    densify_enabled,
+    edges_for_file_touch,
+    file_node,
+    owners_for_path,
+    parse_codeowners,
+)
 from .store import (
     BundleItem,
+    CodeOwnerRow,
     FailureEvent,
     FileChangeType,
     FileTouch,
@@ -62,6 +72,7 @@ from .store import (
     GitHubItem,
     GitHubItemKind,
     GitHubItemState,
+    GraphEdgeRow,
     Lesson,
     MemoryCandidate,
     MemoryCandidateStatus,
@@ -77,6 +88,8 @@ from .store import (
 
 __all__ = [
     "BundleItem",
+    "CodeOwnerRow",
+    "CodeOwnerRule",
     "FailureEvent",
     "FileChangeType",
     "FileTouch",
@@ -86,6 +99,8 @@ __all__ = [
     "GitHubItem",
     "GitHubItemKind",
     "GitHubItemState",
+    "GraphEdge",
+    "GraphEdgeRow",
     "Lesson",
     "MemoryCandidate",
     "MemoryCandidateStatus",
@@ -96,7 +111,11 @@ __all__ = [
     "WorkerHeartbeat",
     "WorkerStatus",
     "default_db_path",
+    "densify_enabled",
+    "edges_for_file_touch",
     "new_id",
+    "owners_for_path",
+    "parse_codeowners",
 ]
 
 
@@ -206,12 +225,21 @@ class FleetBrain:
       brain never phones home).
     """
 
-    def __init__(self, store: Store | None = None, *, db_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        store: Store | None = None,
+        *,
+        db_path: Path | str | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> None:
         if store is not None:
             self.store: Store = store
         else:
             resolved = Path(db_path) if db_path is not None else default_db_path()
             self.store = SQLiteStore(db_path=resolved)
+        # Optional env override for config-driven toggles (e.g. graph
+        # densification). ``None`` means read the live process environment.
+        self._env: Mapping[str, str] | None = env
         self.store.ensure_schema()
 
     @classmethod
@@ -221,11 +249,11 @@ class FleetBrain:
             return cls()
         explicit = env.get("ALFRED_FLEET_BRAIN_DB", "").strip()
         if explicit:
-            return cls(db_path=Path(explicit).expanduser())
+            return cls(db_path=Path(explicit).expanduser(), env=env)
         alfred_home = env.get("ALFRED_HOME", "").strip()
         if alfred_home:
-            return cls(db_path=Path(alfred_home).expanduser() / "fleet-brain.db")
-        return cls(db_path=Path.home() / ".alfred" / "fleet-brain.db")
+            return cls(db_path=Path(alfred_home).expanduser() / "fleet-brain.db", env=env)
+        return cls(db_path=Path.home() / ".alfred" / "fleet-brain.db", env=env)
 
     # ----- write paths --------------------------------------------------
 
@@ -337,7 +365,184 @@ class FleetBrain:
             change_type=change_type,
             touched_at=touched_at or datetime.now(UTC),
         )
-        return self.store.insert_file_touch(touch)
+        stored = self.store.insert_file_touch(touch)
+        # Densify the graph with the edges this touch implies. Best-effort
+        # and gated by ALFRED_GRAPH_DENSIFY (default on); a projection error
+        # must never lose the recorded touch, which is the load-bearing row.
+        if densify_enabled(self._env):
+            try:
+                self.project_file_touch_edges(stored)
+            except Exception:  # noqa: BLE001 - densification is advisory
+                _LOG.warning("graph densify failed for touch %s", stored.id, exc_info=True)
+        return stored
+
+    # ----- graph densification ------------------------------------------
+
+    def project_file_touch_edges(
+        self, touch: FileTouch, *, now: datetime | None = None
+    ) -> list[GraphEdgeRow]:
+        """Materialize the fleet-authored edges implied by a file touch.
+
+        Writes ``file -[in]-> repo`` always, ``PR -[changed]-> file`` when
+        the touch carries a ``pr_url``, and ``file -[owned_by]-> owner`` for
+        every CODEOWNERS owner currently resolved for the path. Idempotent:
+        re-projecting the same touch bumps ``last_seen``/``weight`` rather
+        than duplicating edges.
+        """
+        ts = now or touch.touched_at or datetime.now(UTC)
+        owners = self.who_owns(repo=touch.repo, path=touch.path)
+        specs = edges_for_file_touch(
+            repo=touch.repo,
+            path=touch.path,
+            pr_url=touch.pr_url,
+            owners=owners,
+        )
+        written: list[GraphEdgeRow] = []
+        for spec in specs:
+            row = GraphEdgeRow(
+                id=new_id(),
+                kind=spec.kind,
+                src_type=spec.src_type,
+                src=spec.src,
+                dst_type=spec.dst_type,
+                dst=spec.dst,
+                repo=spec.repo,
+                first_seen=ts,
+                last_seen=ts,
+                weight=1,
+            )
+            written.append(self.store.upsert_graph_edge(row))
+        return written
+
+    def ingest_codeowners(
+        self, *, repo: str, content: str, updated_at: datetime | None = None
+    ) -> int:
+        """Parse and persist a repo's CODEOWNERS file.
+
+        The new file replaces any earlier rules for the repo (CODEOWNERS is
+        the single source of truth). After ingest, ``who_owns`` and future
+        ``owned_by`` projections resolve against these rules. Returns the
+        number of stored ``(pattern, owner)`` rules.
+        """
+        if not repo or not repo.strip():
+            raise ValueError("ingest_codeowners: repo is required")
+        repo = repo.strip()
+        ts = updated_at or datetime.now(UTC)
+        rules = parse_codeowners(repo, content or "")
+        rows = [
+            CodeOwnerRow(
+                id=new_id(),
+                repo=rule.repo,
+                pattern=rule.pattern,
+                owner=rule.owner,
+                rank=rule.rank,
+                updated_at=ts,
+            )
+            for rule in rules
+        ]
+        return self.store.replace_code_owners(repo, rows)
+
+    def who_owns(self, *, repo: str, path: str) -> list[str]:
+        """Return the CODEOWNERS owner(s) for ``repo``/``path``.
+
+        Resolves against the rules ingested via :meth:`ingest_codeowners`
+        using CODEOWNERS "last matching pattern wins" semantics. Returns an
+        empty list when the repo has no CODEOWNERS data or nothing matches.
+        """
+        if not repo or not path:
+            return []
+        stored = self.store.list_code_owners(repo.strip())
+        if not stored:
+            return []
+        rules = [
+            CodeOwnerRule(repo=row.repo, pattern=row.pattern, owner=row.owner, rank=row.rank)
+            for row in stored
+        ]
+        return owners_for_path(path, rules)
+
+    def recent_changes_near(
+        self, *, repo: str, path: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Return recent file touches in the same directory as ``path``.
+
+        "Near" means siblings under the same directory prefix in the same
+        repo, most-recent-first. This is the graph read that answers "what
+        else has the fleet been changing around here lately" without an AST.
+        """
+        if not repo or not path:
+            return []
+        repo = repo.strip()
+        directory = path.strip().rsplit("/", 1)[0] if "/" in path.strip() else ""
+        clamped = max(1, min(int(limit), 200))
+        # Pull a generous window, then filter to the directory in Python so we
+        # do not push a LIKE prefix scan into the hot list path.
+        touches = self.store.list_file_touches(repo=repo, limit=500)
+        out: list[dict[str, Any]] = []
+        for touch in touches:
+            touch_dir = touch.path.rsplit("/", 1)[0] if "/" in touch.path else ""
+            if touch_dir != directory:
+                continue
+            out.append(
+                {
+                    "repo": touch.repo,
+                    "path": touch.path,
+                    "codename": touch.codename,
+                    "change_type": touch.change_type,
+                    "firing_id": touch.firing_id,
+                    "pr_url": touch.pr_url,
+                    "touched_at": touch.touched_at.astimezone(UTC).isoformat(),
+                    "is_self": touch.path == path.strip(),
+                }
+            )
+            if len(out) >= clamped:
+                break
+        return out
+
+    def prs_touching(self, *, repo: str, path: str, limit: int = 20) -> list[dict[str, Any]]:
+        """Return the pull requests that changed ``repo``/``path``.
+
+        Reads the materialized ``PR -[changed]-> file`` edges. Falls back to
+        scanning ``file_touches`` for a ``pr_url`` when graph projection is
+        off, so the helper still answers correctly on a non-densified brain.
+        Most-recently-seen first.
+        """
+        if not repo or not path:
+            return []
+        repo = repo.strip()
+        fnode = file_node(repo, path)
+        edges = self.store.list_graph_edges(kind="changed", dst=fnode, limit=500)
+        clamped = max(1, min(int(limit), 200))
+        if edges:
+            out = [
+                {
+                    "pr": edge.src.split(":", 1)[1] if ":" in edge.src else edge.src,
+                    "repo": edge.repo,
+                    "weight": edge.weight,
+                    "last_seen": edge.last_seen.astimezone(UTC).isoformat(),
+                }
+                for edge in edges
+            ]
+            return out[:clamped]
+        # Fallback: derive from raw touches when no edges were projected.
+        seen: dict[str, dict[str, Any]] = {}
+        for touch in self.store.list_file_touches(repo=repo, path=path.strip(), limit=500):
+            if not touch.pr_url:
+                continue
+            existing = seen.get(touch.pr_url)
+            iso = touch.touched_at.astimezone(UTC).isoformat()
+            if existing is None:
+                seen[touch.pr_url] = {
+                    "pr": touch.pr_url,
+                    "repo": touch.repo,
+                    "weight": 1,
+                    "last_seen": iso,
+                }
+            else:
+                existing["weight"] = int(existing["weight"]) + 1
+                if iso > str(existing["last_seen"]):
+                    existing["last_seen"] = iso
+        ordered = sorted(seen.values(), key=lambda item: str(item["last_seen"]), reverse=True)
+        return ordered[:clamped]
 
     def propose_memory(
         self,

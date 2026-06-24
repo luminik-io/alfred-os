@@ -189,6 +189,40 @@ class RepoNote:
     updated_at: datetime
 
 
+@dataclass(frozen=True)
+class GraphEdgeRow:
+    """One materialized fleet-authored graph edge.
+
+    The triple ``(kind, src, dst)`` is unique; re-projecting the same
+    relationship bumps ``last_seen`` and ``weight`` instead of inserting a
+    duplicate. See :mod:`fleet_brain.graph` for node-id and edge-kind
+    semantics.
+    """
+
+    id: str
+    kind: str
+    src_type: str
+    src: str
+    dst_type: str
+    dst: str
+    first_seen: datetime
+    last_seen: datetime
+    repo: str | None = None
+    weight: int = 1
+
+
+@dataclass(frozen=True)
+class CodeOwnerRow:
+    """One persisted CODEOWNERS rule: a path glob mapped to one owner."""
+
+    id: str
+    repo: str
+    pattern: str
+    owner: str
+    rank: int
+    updated_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # ID generation. ULID-like: 48 bits of millisecond timestamp + 80 bits of
 # entropy, base32-Crockford encoded. Sortable by creation time,
@@ -394,6 +428,23 @@ class Store(Protocol):
         status: WorkerStatus | None = None,
         limit: int = 50,
     ) -> list[WorkerHeartbeat]: ...
+
+    def upsert_graph_edge(self, edge: GraphEdgeRow) -> GraphEdgeRow: ...
+
+    def list_graph_edges(
+        self,
+        kind: str | None = None,
+        src: str | None = None,
+        dst: str | None = None,
+        repo: str | None = None,
+        limit: int = 200,
+    ) -> list[GraphEdgeRow]: ...
+
+    def upsert_code_owner(self, rule: CodeOwnerRow) -> CodeOwnerRow: ...
+
+    def list_code_owners(self, repo: str, limit: int = 1000) -> list[CodeOwnerRow]: ...
+
+    def replace_code_owners(self, repo: str, rules: list[CodeOwnerRow]) -> int: ...
 
     def stats(self) -> dict[str, int]: ...
 
@@ -1364,6 +1415,135 @@ class SQLiteStore:
             rows = conn.execute(sql, params).fetchall()
             return [_row_to_worker_heartbeat(r) for r in rows]
 
+    # ----- graph edges ---------------------------------------------------
+
+    def upsert_graph_edge(self, edge: GraphEdgeRow) -> GraphEdgeRow:
+        """Insert an edge or, if ``(kind, src, dst)`` already exists, bump
+        ``last_seen``/``weight``. Idempotent re-projection by design."""
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT INTO graph_edges "
+                "(id, kind, src_type, src, dst_type, dst, repo, "
+                " first_seen, last_seen, weight) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(kind, src, dst) DO UPDATE SET "
+                "  last_seen = excluded.last_seen, "
+                "  weight = graph_edges.weight + 1, "
+                "  repo = COALESCE(excluded.repo, graph_edges.repo)",
+                (
+                    edge.id,
+                    edge.kind,
+                    edge.src_type,
+                    edge.src,
+                    edge.dst_type,
+                    edge.dst,
+                    edge.repo,
+                    _to_iso(edge.first_seen),
+                    _to_iso(edge.last_seen),
+                    int(edge.weight),
+                ),
+            )
+            row = conn.execute(
+                "SELECT id, kind, src_type, src, dst_type, dst, repo, "
+                "first_seen, last_seen, weight FROM graph_edges "
+                "WHERE kind = ? AND src = ? AND dst = ?",
+                (edge.kind, edge.src, edge.dst),
+            ).fetchone()
+        return _row_to_graph_edge(row)
+
+    def list_graph_edges(
+        self,
+        kind: str | None = None,
+        src: str | None = None,
+        dst: str | None = None,
+        repo: str | None = None,
+        limit: int = 200,
+    ) -> list[GraphEdgeRow]:
+        wheres: list[str] = []
+        params: list[object] = []
+        if kind:
+            wheres.append("kind = ?")
+            params.append(kind)
+        if src:
+            wheres.append("src = ?")
+            params.append(src)
+        if dst:
+            wheres.append("dst = ?")
+            params.append(dst)
+        if repo:
+            wheres.append("repo = ?")
+            params.append(repo)
+        where_clause = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        sql = (
+            "SELECT id, kind, src_type, src, dst_type, dst, repo, "
+            f"first_seen, last_seen, weight FROM graph_edges {where_clause} "
+            "ORDER BY last_seen DESC LIMIT ?"
+        )
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [_row_to_graph_edge(r) for r in rows]
+
+    # ----- code owners ---------------------------------------------------
+
+    def upsert_code_owner(self, rule: CodeOwnerRow) -> CodeOwnerRow:
+        with self._connect() as conn, conn:
+            conn.execute(
+                "INSERT INTO code_owners (id, repo, pattern, owner, rank, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(repo, pattern, owner) DO UPDATE SET "
+                "  rank = excluded.rank, updated_at = excluded.updated_at",
+                (
+                    rule.id,
+                    rule.repo,
+                    rule.pattern,
+                    rule.owner,
+                    int(rule.rank),
+                    _to_iso(rule.updated_at),
+                ),
+            )
+            row = conn.execute(
+                "SELECT id, repo, pattern, owner, rank, updated_at FROM code_owners "
+                "WHERE repo = ? AND pattern = ? AND owner = ?",
+                (rule.repo, rule.pattern, rule.owner),
+            ).fetchone()
+        return _row_to_code_owner(row)
+
+    def list_code_owners(self, repo: str, limit: int = 1000) -> list[CodeOwnerRow]:
+        sql = (
+            "SELECT id, repo, pattern, owner, rank, updated_at FROM code_owners "
+            "WHERE repo = ? ORDER BY rank ASC LIMIT ?"
+        )
+        with self._connect() as conn:
+            rows = conn.execute(sql, (repo, int(limit))).fetchall()
+            return [_row_to_code_owner(r) for r in rows]
+
+    def replace_code_owners(self, repo: str, rules: list[CodeOwnerRow]) -> int:
+        """Replace every CODEOWNERS rule for ``repo`` in one transaction.
+
+        A re-ingested CODEOWNERS file is the new source of truth, so we
+        clear the repo's rows and re-insert. Returns the number of rules
+        written.
+        """
+        with self._connect() as conn, conn:
+            conn.execute("DELETE FROM code_owners WHERE repo = ?", (repo,))
+            conn.executemany(
+                "INSERT INTO code_owners (id, repo, pattern, owner, rank, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        rule.id,
+                        rule.repo,
+                        rule.pattern,
+                        rule.owner,
+                        int(rule.rank),
+                        _to_iso(rule.updated_at),
+                    )
+                    for rule in rules
+                ],
+            )
+        return len(rules)
+
     # ----- stats ---------------------------------------------------------
 
     def stats(self) -> dict[str, int]:
@@ -1387,6 +1567,8 @@ class SQLiteStore:
             (tags,) = conn.execute("SELECT COUNT(DISTINCT tag) FROM lesson_tags").fetchone()
             (codenames,) = conn.execute("SELECT COUNT(DISTINCT codename) FROM lessons").fetchone()
             (repos,) = conn.execute("SELECT COUNT(DISTINCT repo) FROM lessons").fetchone()
+            (graph_edges,) = conn.execute("SELECT COUNT(*) FROM graph_edges").fetchone()
+            (code_owners,) = conn.execute("SELECT COUNT(*) FROM code_owners").fetchone()
         return {
             "lessons": int(lessons),
             "firings": int(firings),
@@ -1402,6 +1584,8 @@ class SQLiteStore:
             "tags": int(tags),
             "codenames": int(codenames),
             "repos": int(repos),
+            "graph_edges": int(graph_edges),
+            "code_owners": int(code_owners),
         }
 
 
@@ -1628,4 +1812,32 @@ def _row_to_worker_heartbeat(row: tuple) -> WorkerHeartbeat:
         repo=repo,
         pid=int(pid) if pid is not None else None,
         detail=detail or "",
+    )
+
+
+def _row_to_graph_edge(row: tuple) -> GraphEdgeRow:
+    edge_id, kind, src_type, src, dst_type, dst, repo, first_seen, last_seen, weight = row
+    return GraphEdgeRow(
+        id=edge_id,
+        kind=kind,
+        src_type=src_type,
+        src=src,
+        dst_type=dst_type,
+        dst=dst,
+        repo=repo,
+        first_seen=_from_iso(first_seen),
+        last_seen=_from_iso(last_seen),
+        weight=int(weight),
+    )
+
+
+def _row_to_code_owner(row: tuple) -> CodeOwnerRow:
+    owner_id, repo, pattern, owner, rank, updated_at = row
+    return CodeOwnerRow(
+        id=owner_id,
+        repo=repo,
+        pattern=pattern,
+        owner=owner,
+        rank=int(rank),
+        updated_at=_from_iso(updated_at),
     )

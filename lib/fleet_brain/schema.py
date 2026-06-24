@@ -32,6 +32,13 @@ The schema deliberately mirrors the entity model documented in
 * ``worker_heartbeats`` — last-seen worker liveness for stale-run detection.
 * ``lesson_tags`` — many-to-many over ``lessons`` so a lesson can
   be filed under several taxonomy buckets without splitting rows.
+* ``code_owners`` — one row per CODEOWNERS rule a fleet firing observed
+  in a repo: a path glob mapped to one owner. Upserted per (repo, pattern,
+  owner), so re-ingesting the same CODEOWNERS file is idempotent.
+* ``graph_edges`` — densified fleet-authored relationships materialized
+  over the ledger: ``PR -[changed]-> file``, ``file -[owned_by]-> owner``,
+  and ``file -[in]-> repo``. One row per (kind, src, dst) so re-projecting
+  the same touch never duplicates an edge.
 * ``schema_version`` — single-row record of the applied schema
   version, for forward migrations.
 """
@@ -41,7 +48,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Final
 
-SCHEMA_VERSION: Final[int] = 7
+SCHEMA_VERSION: Final[int] = 8
 
 # Each CREATE statement is a string in this tuple. We execute them
 # one at a time so a syntax error in one statement does not silently
@@ -203,6 +210,33 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         CHECK (status IN ('running', 'ok', 'failed', 'stale', 'cancelled'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS code_owners (
+        id         TEXT NOT NULL PRIMARY KEY,
+        repo       TEXT NOT NULL,
+        pattern    TEXT NOT NULL,
+        owner      TEXT NOT NULL,
+        rank       INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        UNIQUE (repo, pattern, owner)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS graph_edges (
+        id          TEXT NOT NULL PRIMARY KEY,
+        kind        TEXT NOT NULL,
+        src_type    TEXT NOT NULL,
+        src         TEXT NOT NULL,
+        dst_type    TEXT NOT NULL,
+        dst         TEXT NOT NULL,
+        repo        TEXT,
+        first_seen  TEXT NOT NULL,
+        last_seen   TEXT NOT NULL,
+        weight      INTEGER NOT NULL DEFAULT 1,
+        UNIQUE (kind, src, dst),
+        CHECK (kind IN ('changed', 'owned_by', 'in'))
+    )
+    """,
     # Indexes — recall is read-heavy on (codename, repo) and recent-first,
     # so we cover that path explicitly.
     """
@@ -292,6 +326,22 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
     """
     CREATE INDEX IF NOT EXISTS worker_heartbeats_codename_idx
         ON worker_heartbeats (codename, heartbeat_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS code_owners_repo_idx
+        ON code_owners (repo, rank)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS graph_edges_kind_src_idx
+        ON graph_edges (kind, src, last_seen DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS graph_edges_kind_dst_idx
+        ON graph_edges (kind, dst, last_seen DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS graph_edges_repo_idx
+        ON graph_edges (repo, last_seen DESC)
     """,
 )
 
