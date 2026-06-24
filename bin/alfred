@@ -185,6 +185,11 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
         "schedule": "interval:21600",
         "role": "code map refresh",
     },
+    "code-memory-refresh": {
+        "script": "code-memory-mcp",
+        "schedule": "interval:21600",
+        "role": "code-memory index refresh",
+    },
     "agent-morning-brief": {
         "script": "agent-morning-brief.py",
         "schedule": "cron:7:00",

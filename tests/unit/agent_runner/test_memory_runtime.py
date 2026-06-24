@@ -254,3 +254,156 @@ def test_invoke_agent_engine_strips_malformed_memory_block(monkeypatch) -> None:
     )
 
     assert result.result_text == "done"
+
+
+class _Scored:
+    """Minimal scored-capable provider stub for gating tests."""
+
+    name = "redis"
+
+    def __init__(self, pairs) -> None:
+        self._pairs = pairs
+
+    def recall_scored(self, *, codename, repo, query=None, limit=5):
+        return list(self._pairs)
+
+    def recall(self, *, codename, repo, query=None, limit=5):
+        return [lesson for lesson, _ in self._pairs]
+
+
+class _LessonStub:
+    def __init__(self, body, severity="info", tags=None) -> None:
+        self.body = body
+        self.severity = severity
+        self.tags = tags or []
+
+
+def test_format_memory_context_drops_below_threshold(monkeypatch) -> None:
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("Strongly relevant lesson."), 0.92),
+            (_LessonStub("Weakly relevant lesson."), 0.20),
+        ]
+    )
+    monkeypatch.setenv("ALFRED_MEMORY_RECALL_THRESHOLD", "0.5")
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api")
+    assert "Strongly relevant lesson." in out
+    assert "Weakly relevant lesson." not in out
+
+
+def test_format_memory_context_dedupes_bodies(monkeypatch) -> None:
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("Use the API fixture factory."), 0.9),
+            (_LessonStub("use the   API fixture factory."), 0.9),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api")
+    assert out.count("fixture factory") == 1
+
+
+def test_format_memory_context_keeps_unscored_lessons(monkeypatch) -> None:
+    from agent_runner import memory_runtime as runtime
+
+    # No score reported (None) must never be dropped by the threshold.
+    provider = _Scored([(_LessonStub("Unscored but important."), None)])
+    monkeypatch.setenv("ALFRED_MEMORY_RECALL_THRESHOLD", "0.99")
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api")
+    assert "Unscored but important." in out
+
+
+def test_format_memory_context_default_threshold_injects_all(monkeypatch) -> None:
+    from agent_runner import memory_runtime as runtime
+
+    provider = _Scored(
+        [
+            (_LessonStub("Lesson A."), 0.05),
+            (_LessonStub("Lesson B."), 0.5),
+        ]
+    )
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    out = runtime.format_memory_context(provider, codename="lucius", repo="org/api")
+    # Default threshold 0.0 preserves existing inject-everything behavior.
+    assert "Lesson A." in out and "Lesson B." in out
+
+
+def test_format_memory_context_falls_back_to_plain_recall() -> None:
+    from agent_runner import memory_runtime as runtime
+
+    class PlainProvider:
+        name = "fleet"
+
+        def recall(self, *, codename, repo, query=None, limit=5):
+            return [_LessonStub("Plain recall lesson.")]
+
+    out = runtime.format_memory_context(PlainProvider(), codename="lucius", repo="org/api")
+    assert "Plain recall lesson." in out
+
+
+class _PlainFleet:
+    """Non-scored chain member (e.g. FleetBrain) exposing only ``recall``."""
+
+    name = "fleet"
+
+    def __init__(self, lessons) -> None:
+        self._lessons = lessons
+
+    def recall(self, *, codename, repo, query=None, limit=5):
+        return list(self._lessons)
+
+
+class _Chain:
+    """Minimal ChainedMemoryProvider stand-in: an ordered ``providers`` list."""
+
+    name = "chained"
+
+    def __init__(self, providers) -> None:
+        self.providers = providers
+
+    def recall(self, *, codename, repo, query=None, limit=5):
+        out = []
+        for p in self.providers:
+            out.extend(p.recall(codename=codename, repo=repo, query=query, limit=limit))
+        return out
+
+
+def test_format_memory_context_chain_merges_scored_and_unscored_members(monkeypatch) -> None:
+    """A redis,fleet chain must surface BOTH backends' lessons.
+
+    Regression: the scored-recall path used to return only the first scored
+    member (redis), silently dropping the non-scored FleetBrain member's
+    freshly reviewed lessons from the prompt.
+    """
+    from agent_runner import memory_runtime as runtime
+
+    redis = _Scored([(_LessonStub("Redis semantic lesson."), 0.9)])
+    fleet = _PlainFleet([_LessonStub("Freshly reviewed fleet lesson.")])
+    chain = _Chain([redis, fleet])
+
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    out = runtime.format_memory_context(chain, codename="lucius", repo="org/api", limit=5)
+
+    assert "Redis semantic lesson." in out
+    assert "Freshly reviewed fleet lesson." in out
+
+
+def test_format_memory_context_chain_keeps_unscored_member_under_high_threshold(
+    monkeypatch,
+) -> None:
+    """A high threshold filters weak redis hits but never the unscored fleet lesson."""
+    from agent_runner import memory_runtime as runtime
+
+    redis = _Scored([(_LessonStub("Weak redis lesson."), 0.10)])
+    fleet = _PlainFleet([_LessonStub("Unscored fleet lesson.")])
+    chain = _Chain([redis, fleet])
+
+    monkeypatch.setenv("ALFRED_MEMORY_RECALL_THRESHOLD", "0.5")
+    out = runtime.format_memory_context(chain, codename="lucius", repo="org/api", limit=5)
+
+    assert "Weak redis lesson." not in out
+    assert "Unscored fleet lesson." in out

@@ -121,6 +121,52 @@ class RedisAgentMemoryProvider:
             required_topics=required_topics,
         )
 
+    def recall_scored(
+        self,
+        *,
+        query: str | None = None,
+        codename: str | None = None,
+        repo: str | None = None,
+        limit: int = 5,
+    ) -> list[tuple[Lesson, float | None]]:
+        """Like :meth:`recall`, but pair each lesson with its relevance score.
+
+        The score is a similarity in ``[0, 1]`` (higher is closer) derived from
+        the AMS search response. ``None`` means the server did not report a
+        score for that entry; gating treats ``None`` as "cannot judge" and lets
+        the lesson through rather than silently dropping it.
+        """
+        text = (query or " ".join(x for x in (codename, repo) if x) or "alfred").strip()
+        payload: dict[str, Any] = {
+            "text": text,
+            "limit": max(1, int(limit)),
+            "search_mode": self.search_mode,
+            "namespace": {"eq": self.namespace},
+        }
+        required_topics = _scope_topics(codename=codename, repo=repo)
+        if required_topics:
+            payload["topics"] = {"all": required_topics}
+        if self.user_id:
+            payload["user_id"] = {"eq": self.user_id}
+        try:
+            response = self._request("POST", "/v1/long-term-memory/search", payload)
+        except Exception as exc:
+            _LOG.debug("memory.redis: recall_scored failed: %s", exc)
+            return []
+        out: list[tuple[Lesson, float | None]] = []
+        for entry in _response_entries(response):
+            lesson = _entry_to_lesson(
+                entry,
+                codename=codename,
+                repo=repo,
+                namespace=self.namespace,
+                user_id=self.user_id,
+                required_topics=required_topics,
+            )
+            if lesson is not None:
+                out.append((lesson, _entry_relevance(entry)))
+        return out
+
     def health(self) -> dict[str, Any]:
         """Return Redis AMS health data, normalized for ``alfred brain``.
 
@@ -294,6 +340,33 @@ def _parse_search_response(
         if lesson is not None:
             out.append(lesson)
     return out
+
+
+def _entry_relevance(entry: Any) -> float | None:
+    """Extract a similarity score in ``[0, 1]`` from one search entry.
+
+    AMS variants report either a similarity (``score`` / ``relevance``, higher
+    is closer) or a vector distance (``dist`` / ``distance``, lower is closer).
+    We normalize both to a similarity so a single threshold works regardless of
+    which field the server emits. Returns ``None`` when no usable number is
+    present so gating can let the lesson through instead of guessing.
+    """
+    if not isinstance(entry, dict):
+        return None
+    record = entry.get("memory") or entry.get("record") or entry
+    sources = (entry, record if isinstance(record, dict) else {})
+    for src in sources:
+        for key in ("score", "relevance", "similarity"):
+            val = src.get(key)
+            if isinstance(val, (int, float)):
+                return max(0.0, min(1.0, float(val)))
+    for src in sources:
+        for key in ("dist", "distance"):
+            val = src.get(key)
+            if isinstance(val, (int, float)):
+                # Cosine distance in [0, 2]; map to similarity in [0, 1].
+                return max(0.0, min(1.0, 1.0 - float(val) / 2.0))
+    return None
 
 
 def _response_entries(response: Any) -> list[Any]:

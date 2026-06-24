@@ -217,11 +217,30 @@ class _Unresolved:
 _UNRESOLVED = _Unresolved()
 
 
-def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[str]:
-    """``--mcp-config`` args attaching the read-only memory server, or ``[]``.
+def _memory_mcp_server(script: Path | None | _Unresolved = _UNRESOLVED) -> dict[str, Any] | None:
+    """Return the ``mcpServers`` entry for the memory server, or ``None``.
 
-    The server exposes only read-only tools (no arbitrary-query escape hatch),
-    so no per-tool restriction is needed even under bypassPermissions.
+    Split out from the args builder so memory and code-memory can share one
+    ``--mcp-config`` flag (a single ``mcpServers`` map). A resolved ``None`` is
+    honored as-is; only the ``_UNRESOLVED`` sentinel triggers a fresh lookup.
+    """
+    if not _memory_mcp_enabled():
+        return None
+    resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
+    if resolved is None:
+        return None
+    return {MEMORY_MCP_SERVER: {"command": "python3", "args": [str(resolved), "serve"]}}
+
+
+def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[str]:
+    """``--mcp-config`` args attaching the read-only memory + code-memory
+    servers, or ``[]``.
+
+    The memory server exposes only read-only tools (no arbitrary-query escape
+    hatch), so no per-tool restriction is needed even under bypassPermissions.
+    The code-memory server (``codebase-memory-mcp``, an external MIT binary) is
+    likewise read-only: it answers code-structure queries (search, call graph,
+    blast radius, who-owns) and never mutates the repo.
 
     ``script`` lets the caller resolve ``_memory_mcp_script()`` once per invoke
     and share it with ``_with_memory_mcp_tools`` so the allowlist augmentation
@@ -229,15 +248,16 @@ def _memory_mcp_args(script: Path | None | _Unresolved = _UNRESOLVED) -> list[st
     separate ``Path.exists()`` checks). A resolved ``None`` is honored as-is;
     only the ``_UNRESOLVED`` sentinel triggers a fresh lookup here.
     """
-    if not _memory_mcp_enabled():
+    servers: dict[str, Any] = {}
+    memory = _memory_mcp_server(script)
+    if memory:
+        servers.update(memory)
+    code = _code_memory_mcp_server()
+    if code:
+        servers.update(code)
+    if not servers:
         return []
-    resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
-    if resolved is None:
-        return []
-    config = {
-        "mcpServers": {MEMORY_MCP_SERVER: {"command": "python3", "args": [str(resolved), "serve"]}}
-    }
-    return ["--mcp-config", json.dumps(config, separators=(",", ":"))]
+    return ["--mcp-config", json.dumps({"mcpServers": servers}, separators=(",", ":"))]
 
 
 def _memory_tool_names() -> list[str]:
@@ -254,18 +274,76 @@ def _with_memory_mcp_tools(
     ``_memory_mcp_script()`` with ``_memory_mcp_args`` (see its docstring); a
     resolved ``None`` is honored, only ``_UNRESOLVED`` triggers a fresh lookup.
     """
-    if not _memory_mcp_enabled():
-        return allowed_tools
-    resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
-    if resolved is None:
-        return allowed_tools
     base = (allowed_tools or "").strip()
+    wanted: list[str] = []
+    if _memory_mcp_enabled():
+        resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
+        if resolved is not None:
+            wanted.extend(_memory_tool_names())
+    if _code_memory_mcp_server():
+        wanted.extend(_code_memory_tool_names())
+    if not wanted:
+        return base
     existing = set(base.replace(",", " ").split())
-    additions = [n for n in _memory_tool_names() if n not in existing]
+    additions = [n for n in wanted if n not in existing]
     if not additions:
         return base
     sep = "," if ("," in base or " " not in base) else " "
     return (base + sep if base else "") + sep.join(additions)
+
+
+# ---------- Code-memory MCP attachment ----------
+#
+# codebase-memory-mcp (DeusData, MIT) is a STANDALONE external binary invoked
+# over MCP -- it is never vendored into this tree, so the repo stays OSS-clean
+# and passes scrub-check. It indexes the in-scope repos into a code graph and
+# exposes read-only structure tools (search, call graph, impact / blast radius,
+# who-owns) so fleet agents can reason about code structure instead of grepping
+# blind. This is a capability, on by default when the binary is installed;
+# disable with ALFRED_CODE_MEMORY_MCP=0. The bin/code-memory-mcp launcher
+# resolves and (on first run) fetches the pinned upstream binary.
+CODE_MEMORY_MCP_SERVER = "code_memory"
+# Tools the upstream server exposes. Kept as an allowlist so a future upstream
+# tool cannot silently widen agent capability without a code change here.
+_CODE_MEMORY_TOOLS = (
+    "search_code",
+    "call_graph",
+    "impact_analysis",
+    "who_owns",
+)
+
+
+def _code_memory_mcp_enabled() -> bool:
+    val = os.environ.get("ALFRED_CODE_MEMORY_MCP")
+    if val is None:
+        return True
+    return val.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _code_memory_launcher() -> Path | None:
+    """Return the bin/code-memory-mcp launcher path, or ``None`` if absent."""
+    script = Path(__file__).resolve().parents[2] / "bin" / "code-memory-mcp"
+    return script if script.exists() else None
+
+
+def _code_memory_mcp_server() -> dict[str, Any] | None:
+    """Return the ``mcpServers`` entry for the code-memory server, or ``None``.
+
+    ``None`` when disabled by env or when the launcher is missing (e.g. a lib
+    checkout without bin/, or an install that opted out of the binary). The
+    launcher itself decides whether the underlying binary is present and exits
+    cleanly if not, so attaching it is always safe.
+    """
+    if not _code_memory_mcp_enabled():
+        return None
+    launcher = _code_memory_launcher()
+    if launcher is None:
+        return None
+    return {CODE_MEMORY_MCP_SERVER: {"command": str(launcher), "args": ["serve"]}}
+
+
+def _code_memory_tool_names() -> list[str]:
+    return [f"mcp__{CODE_MEMORY_MCP_SERVER}__{t}" for t in _CODE_MEMORY_TOOLS]
 
 
 def _subprocess_text(value: object) -> str:

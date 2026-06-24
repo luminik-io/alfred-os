@@ -11,6 +11,23 @@ The bundled Redis server binds to loopback by default. Nothing is sent to a
 hosted memory service. If you configure Alfred's usage counter, it sends
 anonymous aggregate counts only and can be disabled with `alfred telemetry off`.
 
+For the **code-structure** layer (where a symbol lives, who calls it, what a
+change breaks, who owns a file) see [CODE_MEMORY.md](CODE_MEMORY.md). It is a
+separate read-only MCP layer (codebase-memory-mcp) that complements the
+semantic lessons and the operational graph rather than replacing them.
+
+## Recall gating
+
+Recalled lessons are gated before they are injected into a firing's prompt.
+Anything below `ALFRED_MEMORY_RECALL_THRESHOLD` (an AMS similarity in `[0, 1]`,
+higher is stricter) is dropped, and near-duplicate lesson bodies are collapsed
+so the same lesson is never injected twice. This reuses the AMS relevance score
+rather than always injecting whatever recall returned. The default threshold is
+`0.0`, which preserves the historical inject-everything behavior; raise it to
+suppress weakly related lessons. Lessons whose backend reports no score are
+never dropped by the threshold (the gate cannot judge them), so providers
+without scores keep their existing behavior.
+
 This doc covers the **provider layer** above the brain: how to chain memory
 backends so agents recall semantic lessons from Redis while FleetBrain keeps the
 local queue, ledger, and review state.

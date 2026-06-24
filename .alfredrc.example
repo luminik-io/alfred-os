@@ -158,3 +158,34 @@ WORKSPACE_ROOT=
 # ALFRED_REDIS_MEMORY_URL=http://127.0.0.1:8088
 # ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 # ALFRED_REDIS_MEMORY_SEARCH_MODE=hybrid
+
+# Recall gating. Recalled lessons below this AMS similarity (0..1, higher is
+# stricter) are not injected into a firing's prompt; near-duplicate lessons are
+# collapsed before injection regardless. Default 0.0 injects everything recall
+# returns (historical behavior). Lessons whose backend reports no score are
+# never dropped by the threshold.
+# ALFRED_MEMORY_RECALL_THRESHOLD=0.0
+
+# ----------------------------------------------------------------------
+# Code memory (code-structure layer; see docs/CODE_MEMORY.md)
+# ----------------------------------------------------------------------
+
+# codebase-memory-mcp (DeusData, MIT) indexes the in-scope repos into a code
+# graph and exposes read-only structure tools (search, call graph, impact /
+# blast radius, who-owns) to the fleet over MCP. It is a standalone external
+# binary, never vendored. Attached to firings by default; a clean no-op when
+# the binary is not installed. Disable with ALFRED_CODE_MEMORY_MCP=0.
+# ALFRED_CODE_MEMORY_MCP=1
+
+# Repos to index. Comma-separated local dir names under your workspace. Falls
+# back to ALFRED_CODE_MAP_REPOS so one scope list can drive both layers.
+# ALFRED_CODE_MEMORY_REPOS=your-backend,your-frontend,your-mobile
+
+# Binary resolution + pinning. Set ALFRED_CODE_MEMORY_BIN to skip PATH and the
+# auto-fetch cache. Autofetch pulls the pinned release on first use; set 0 for
+# a strict no-network install and provide the binary yourself.
+# ALFRED_CODE_MEMORY_BIN=/usr/local/bin/codebase-memory-mcp
+# ALFRED_CODE_MEMORY_VERSION=v0.4.0
+# ALFRED_CODE_MEMORY_REPO=DeusData/codebase-memory-mcp
+# ALFRED_CODE_MEMORY_AUTOFETCH=1
+# ALFRED_CODE_MEMORY_INDEX_DIR=${ALFRED_HOME}/state/code-memory

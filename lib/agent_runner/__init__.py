@@ -327,6 +327,12 @@ from .state import (
     with_lock,
     write_agent_pause_marker,
 )
+from .tool_digest import (
+    ToolDigest,
+    digest_diff,
+    digest_test_log,
+    digest_tool_output,
+)
 
 # --------------------------------------------------------------------------
 # Transcripts
@@ -492,6 +498,11 @@ __all__ = [
     "record_reflections",
     "strip_memory_reflections",
     "with_memory_prompt",
+    # tool-output digest
+    "ToolDigest",
+    "digest_diff",
+    "digest_test_log",
+    "digest_tool_output",
     # orchestrator
     "OLLAMA_HOST",
     "OLLAMA_MODEL",

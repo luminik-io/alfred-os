@@ -57,6 +57,14 @@
 # ALFRED_AUTO_PROMOTE=1 arms it; ALFRED_AUTO_PROMOTE_KILL=1 halts it without
 # editing config. Run after the harvest so freshly queued candidates are seen.
 #   my.fleet.memory-auto-promote	memory-auto-promote.py	cron:8:20	no		Gated memory auto-promoter
+#
+# Opt-in: code-memory index refresh. Incrementally re-indexes the in-scope
+# repos (ALFRED_CODE_MEMORY_REPOS, falling back to ALFRED_CODE_MAP_REPOS) into
+# the codebase-memory-mcp code graph so the search / call-graph / impact /
+# who-owns tools stay current. AGENT_CODENAME=code-memory-refresh makes the
+# launcher default to `refresh`. A clean no-op until the binary is installed
+# (autofetch on by default; disable with ALFRED_CODE_MEMORY_AUTOFETCH=0).
+#   my.fleet.code-memory-refresh	code-memory-mcp	interval:21600	no		Code-memory index refresh
 
 # Anonymous usage totals. This line stays commented until an install configures
 # an endpoint. The script sends only aggregate counts to ALFRED_TELEMETRY_URL,
