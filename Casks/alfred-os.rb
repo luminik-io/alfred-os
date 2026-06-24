@@ -9,38 +9,22 @@
 #   brew install alfred-os            # CLI (formula)
 #   brew install --cask alfred-os     # desktop app (this cask)
 #
-# OPERATOR-GATED: this cask tracks the latest signed build via `sha256 :no_check`
-# until the operator pins a published checksum (see step 3). Signed macOS
-# release assets are attached to the GitHub Release by the operator before
-# publish (public releases start as draft releases; CI builds with --no-bundle
-# and never signs). Finish this cask after the signed asset is published:
+# Pinned to the published v0.5.3 desktop app. The `sha256` below is the
+# checksum of the `Alfred.dmg` asset on the v0.5.3 release, so every install is
+# verified against a known build. To refresh for a future release, bump
+# `version` and recompute the checksum against the published asset:
 #
-#   1. Publish the release so `Alfred.dmg` is attached to the `v0.5.3` tag.
-#   2. Compute the real checksum against the published, signed asset:
-#        curl -fL -o Alfred.dmg \
-#          https://github.com/luminik-io/alfred-os/releases/download/v0.5.3/Alfred.dmg
-#        shasum -a 256 Alfred.dmg
-#   3. Pin the published build by replacing the `:no_check` line below with the
-#      real values once the signed asset is attached:
-#        version "0.5.3"
-#        sha256 "<shasum-from-step-2>"
-#        url "https://github.com/luminik-io/alfred-os/releases/download/v#{version}/Alfred.dmg"
-#      Pinning restores integrity verification against a known checksum.
-#   4. Verify: `brew audit --cask --new Casks/alfred-os.rb` and
-#      `brew install --cask ./Casks/alfred-os.rb`.
+#   curl -fL -o Alfred.dmg \
+#     https://github.com/luminik-io/alfred-os/releases/download/v0.5.3/Alfred.dmg
+#   shasum -a 256 Alfred.dmg
 #
-# Until then this cask tracks the latest published signed build with
-# `sha256 :no_check`. That keeps the GUI install path working and discoverable
-# the moment the operator attaches a signed `Alfred.dmg` to a release, instead
-# of hard-failing every `brew install --cask` on an all-zeros placeholder
-# checksum (Homebrew verifies the declared sha256 before any DSL hook runs, so
-# a placeholder cannot be guarded with `preflight`/`odie`).
+# Then verify: `brew audit --cask --new Casks/alfred-os.rb` and
+# `brew install --cask ./Casks/alfred-os.rb`.
 cask "alfred-os" do
-  # TODO(operator): pin `version` + `sha256` to the published v0.5.3 asset to
-  # restore checksum verification. See the header for the exact command.
-  sha256 :no_check
+  version "0.5.3"
+  sha256 "2b3009c14665b81fd224362e0630cef3874056b21696a877432c3130b1a32ada"
 
-  url "https://github.com/luminik-io/alfred-os/releases/latest/download/Alfred.dmg",
+  url "https://github.com/luminik-io/alfred-os/releases/download/v#{version}/Alfred.dmg",
       verified: "github.com/luminik-io/alfred-os/"
   name "Alfred Desktop"
   desc "Native desktop client for the Alfred local coding-agent fleet"

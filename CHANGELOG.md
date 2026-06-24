@@ -8,32 +8,51 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
-- Alfred now standardizes on a single home-directory setting. The runtime reads `ALFRED_HOME` only; the old `HERMES_HOME` fallback has been removed across the runtime, the desktop client, and the launchers. Existing setups already export `ALFRED_HOME`, so nothing changes for them.
-
 ### Removed
-
-- Dropped the optional Hermes integration guide and its mentions from the docs and site. Alfred core runs standalone, and the generic control-gateway guidance in `docs/INTEGRATIONS.md` covers wrapping the fleet with any companion tool.
 
 ### Fixed
 
 ## [0.5.3] - 2026-06-24
 
+The signed, notarized macOS desktop app and Linux packages are published on this
+release, and `brew install --cask alfred-os` installs the desktop app while
+`brew install alfred-os` installs the CLI. This cycle also makes the desktop
+surfaces honest and conversational, adds a self-healing reliability core,
+strengthens the memory layer, and hardens both install paths.
+
 ### Highlights
 
-- Alfred can now keep the most useful lessons on its own. A second model reads each candidate lesson, and when it is confident the lesson is sound and worth keeping, the lesson is saved into recall without waiting for you. Anything it is unsure about still waits in the review queue, and every automatic save can be undone.
-- The lessons that change how Alfred works are the ones it now saves for itself. When a lesson would actually change how the agents behave next time, and the reviewer is confident it is safe, Alfred saves it straight away rather than letting it sit unreviewed. Weak or one-off lessons are still held back.
-- The memory server is more reliable. Alfred now uses the local memory server purely to store and look up lessons, and no longer lets the small on-device model rewrite or merge them. The lessons you and the fleet trust are kept exactly as written.
+- Ask is now a real conversation. A plain question like "Who are you?" gets a real answer instead of a saved plan with a "File issue" button. Alfred reads each message, answers directly when you are just talking, and only opens the plan-and-issue flow when you are describing work to build.
+- The workflow canvas is the main surface. It now spans the full width, lays the architect to implement to review to ship pipeline out automatically, and opens each agent's detail in a slide-over drawer you can dismiss, so the canvas behind it stays visible.
+- Activity tells the real story of a run. Each run opens on a single-line headline (what it did, the key result) and expands to the full step timeline. An "Errors only" switch filters to failures, and a failure shows its real cause rather than a misleading provider message.
+- The fleet heals itself instead of dying on the first hiccup. A transient error now retries the same engine with backoff, a real authentication or budget failure is surfaced honestly and never retried, and the fallback to a second engine only fires when an engine genuinely could not do the work.
+- Alfred keeps the most useful lessons on its own. A second model reads each candidate lesson, and when it is confident the lesson is sound and worth keeping, the lesson is saved into recall without waiting for you. Anything it is unsure about still waits in the review queue, and every automatic save can be undone.
 - A full disk no longer wedges the fleet. When space runs critically low, the emergency cleanup now also clears regenerable build and download caches across the machine, so the agents can keep working instead of getting stuck.
 
 ### Added
 
+- Conversational Ask. The desktop Ask surface classifies each message as plain conversation or a build request. Plain conversation gets a direct answer and leaves your draft untouched; a build request co-authors the structured spec as before. The planning capability is kept, offered conversationally rather than forced on every message.
+- Self-healing reliability core. A single source of truth classifies each failure into transient, fatal, or capability, then retries the same engine with backoff on transient errors, surfaces fatal errors honestly without retrying, and only falls back to a second engine on a genuine capability gap. It also detects repeated identical attempts so a run cannot loop forever. Existing behaviour is unchanged when nothing is failing.
+- Code-memory layer over MCP. Alfred can attach an external code-structure memory server to each Claude run, giving agents code search, call-graph, blast-radius, and ownership lookups while planning a change. It is on by default, opts out with `ALFRED_CODE_MEMORY_MCP=0`, runs as a standalone external binary that is never vendored, and degrades to a clean no-op when the binary is not installed.
 - Autonomous lesson capture. When a second model is confident a real, evidence-backed lesson is sound and useful, Alfred now saves it into recall on its own. It stays off until you turn it on, holds anything it is unsure about, and every automatic save is reversible.
+- Homebrew cask for the desktop app. `brew install --cask alfred-os` installs the signed, notarized macOS app and pulls in the CLI formula it talks to over `alfred serve`. The CLI alone is still `brew install alfred-os`.
 
 ### Changed
 
+- The workflow canvas was rebuilt to be the primary surface: full-width, automatic left-to-right DAG layout, fit-to-view and zoom controls, a status-colored minimap, and richer status-colored node cards. The agent detail is now a dismissible slide-over drawer built on the existing Sheet primitive, so it never permanently eats canvas space.
+- The Activity run view now defaults to a one-line headline and expands to the full per-run step timeline already captured by the fleet. Idle runs stay quiet, failures are loud, and the failure cause is classified from the real outcome rather than the downstream fallback message, so an authentication failure reads as authentication, not a misleading rate limit.
+- The first-run setup wizard tells the truth. The progress stepper is anchored to the furthest step you have actually reached, so a machine with everything pre-detected opens on Welcome at "0 of 6 done" and climbs honestly as you advance. The value is stated once per step instead of three times, and the no-API-keys trust point is elevated.
+- Scheduled runs read auth from one place. The sign-in token and runtime config now live in a single store (`$ALFRED_HOME/.env`), the scheduler loads it, and an early auth preflight surfaces a real authentication failure as authentication. This closes the silent-auth-failure class where a token written to the wrong file caused every run to fall back and report a misleading rate limit.
 - The confidence reviewer is now the main gate for saving a lesson automatically. Any lesson with real evidence behind it reaches the reviewer, which decides whether to keep it. When the reviewer is turned off, Alfred falls back to a stricter, conservative rule so it still keeps very few lessons by hand.
 - The local memory server is now a plain store for lessons. The small on-device model no longer rewrites, merges, or reshapes saved lessons, so the memory Alfred recalls stays true to what was written. The smarts that decide what to keep live in Alfred, not in the store.
+- The emergency disk cleanup now reclaims regenerable build and download caches across the machine, not just Alfred's own leftovers, so a full disk no longer stalls the fleet off work.
+- The Homebrew CLI formula now points at the current `v0.5.3` source tarball.
+- Alfred standardizes on a single home-directory setting. The runtime reads `ALFRED_HOME` only across the runtime, the desktop client, and the launchers. Existing setups already export `ALFRED_HOME`, so nothing changes for them.
 - The memory documentation now matches how Alfred really works: the local memory server as the main place lessons are recalled from, the confidence reviewer deciding what gets saved, and the server kept as a plain lesson store.
+
+### Removed
+
+- Dropped the optional companion-tool integration guide and its mentions from the docs and site. Alfred core runs standalone, and the generic control-gateway guidance in `docs/INTEGRATIONS.md` covers wrapping the fleet with any companion tool.
 
 ### Fixed
 

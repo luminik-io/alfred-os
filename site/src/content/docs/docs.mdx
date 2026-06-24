@@ -152,9 +152,10 @@ flowchart TB
 
 ## Roadmap
 
-The engineering fleet, local memory, Slack planning loop, and Mac/Linux desktop
-app all ship in v0.5.1. The next larger categories are content, sales, and ops;
-each needs its own integrations, prompts, tests, and human-approval rules.
+The engineering fleet, local memory, Slack planning loop, and signed Mac/Linux
+desktop app all ship today in v0.5.3. The next larger categories are content,
+sales, and ops; each needs its own integrations, prompts, tests, and
+human-approval rules.
 
 <CardGrid>
   <Card title="Content" icon="document">Blog, LinkedIn, SEO drafts, and site-page generation. Human approval before publish.</Card>
@@ -166,10 +167,11 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.5.1. Alfred ships a local coding-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, Slack reporting, isolated worktree execution, FleetBrain GitHub polling, worker heartbeats, Redis Agent Memory recall, reviewable memory candidates, repeated-failure classification, the reliability governor, planning-memory recall, and a native Mac/Linux client with a public download page.
+Latest release: v0.5.3. Alfred ships a local coding-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, a self-healing reliability core, Slack reporting, isolated worktree execution, FleetBrain GitHub polling, worker heartbeats, Redis Agent Memory recall, a code-structure memory layer over MCP, reviewable and autonomously-captured memory, planning-memory recall, and a signed native Mac/Linux client with a public download page and a Homebrew cask.
 
-Public releases keep native download assets behind a draft-release gate until
-the desktop packages are attached. The design boundary is stable: one person,
+The signed desktop app and Linux packages are published on the latest release, so
+`brew install --cask alfred-os` installs the app and `brew install alfred-os`
+installs the CLI. The design boundary is stable: one person,
 one local host, local CLIs, isolated worktrees, GitHub as the coordination layer.
 PRs are welcome when they strengthen that shape: reliability, setup, docs,
 tests, new codenames with clear scope, or optional integrations that fail
