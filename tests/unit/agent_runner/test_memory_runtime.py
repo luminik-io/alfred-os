@@ -343,3 +343,67 @@ def test_format_memory_context_falls_back_to_plain_recall() -> None:
 
     out = runtime.format_memory_context(PlainProvider(), codename="lucius", repo="org/api")
     assert "Plain recall lesson." in out
+
+
+class _PlainFleet:
+    """Non-scored chain member (e.g. FleetBrain) exposing only ``recall``."""
+
+    name = "fleet"
+
+    def __init__(self, lessons) -> None:
+        self._lessons = lessons
+
+    def recall(self, *, codename, repo, query=None, limit=5):
+        return list(self._lessons)
+
+
+class _Chain:
+    """Minimal ChainedMemoryProvider stand-in: an ordered ``providers`` list."""
+
+    name = "chained"
+
+    def __init__(self, providers) -> None:
+        self.providers = providers
+
+    def recall(self, *, codename, repo, query=None, limit=5):
+        out = []
+        for p in self.providers:
+            out.extend(p.recall(codename=codename, repo=repo, query=query, limit=limit))
+        return out
+
+
+def test_format_memory_context_chain_merges_scored_and_unscored_members(monkeypatch) -> None:
+    """A redis,fleet chain must surface BOTH backends' lessons.
+
+    Regression: the scored-recall path used to return only the first scored
+    member (redis), silently dropping the non-scored FleetBrain member's
+    freshly reviewed lessons from the prompt.
+    """
+    from agent_runner import memory_runtime as runtime
+
+    redis = _Scored([(_LessonStub("Redis semantic lesson."), 0.9)])
+    fleet = _PlainFleet([_LessonStub("Freshly reviewed fleet lesson.")])
+    chain = _Chain([redis, fleet])
+
+    monkeypatch.delenv("ALFRED_MEMORY_RECALL_THRESHOLD", raising=False)
+    out = runtime.format_memory_context(chain, codename="lucius", repo="org/api", limit=5)
+
+    assert "Redis semantic lesson." in out
+    assert "Freshly reviewed fleet lesson." in out
+
+
+def test_format_memory_context_chain_keeps_unscored_member_under_high_threshold(
+    monkeypatch,
+) -> None:
+    """A high threshold filters weak redis hits but never the unscored fleet lesson."""
+    from agent_runner import memory_runtime as runtime
+
+    redis = _Scored([(_LessonStub("Weak redis lesson."), 0.10)])
+    fleet = _PlainFleet([_LessonStub("Unscored fleet lesson.")])
+    chain = _Chain([redis, fleet])
+
+    monkeypatch.setenv("ALFRED_MEMORY_RECALL_THRESHOLD", "0.5")
+    out = runtime.format_memory_context(chain, codename="lucius", repo="org/api", limit=5)
+
+    assert "Weak redis lesson." not in out
+    assert "Unscored fleet lesson." in out

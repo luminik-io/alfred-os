@@ -72,17 +72,21 @@ def _normalized_body(body: str) -> str:
     return " ".join(str(body or "").split()).strip().casefold()
 
 
-def _iter_scored_providers(provider) -> Iterator[Any]:
-    """Yield ``provider`` and any chained sub-providers exposing ``recall_scored``."""
-    seen: list[int] = []
+def _iter_chain_members(provider) -> Iterator[Any]:
+    """Yield each distinct member of ``provider``'s chain (or ``provider`` itself).
+
+    A :class:`ChainedMemoryProvider` exposes a ``providers`` list; anything else
+    is treated as a single-member chain. Duplicate object identities are skipped
+    so the same sub-provider is never consulted twice.
+    """
+    seen: set[int] = set()
     candidates = getattr(provider, "providers", None)
     pool = candidates if isinstance(candidates, list) else [provider]
     for candidate in pool:
         if candidate is None or id(candidate) in seen:
             continue
-        seen.append(id(candidate))
-        if hasattr(candidate, "recall_scored"):
-            yield candidate
+        seen.add(id(candidate))
+        yield candidate
 
 
 def _recall_scored_lessons(
@@ -93,18 +97,41 @@ def _recall_scored_lessons(
     query: str | None,
     limit: int,
 ) -> list[tuple[object, float | None]] | None:
-    """Return scored lessons from the first scored-capable provider, or ``None``.
+    """Return merged scored lessons across every chain member, or ``None``.
 
-    ``None`` signals "no provider can report scores; fall back to plain recall".
+    Scored-capable members contribute ``(lesson, score)`` pairs from
+    ``recall_scored``; members without scoring (e.g. FleetBrain) contribute
+    ``(lesson, None)`` pairs from plain ``recall`` so their lessons are never
+    dropped from the prompt. This mirrors :meth:`ChainedMemoryProvider.recall`,
+    which merges every backend so freshly reviewed FleetBrain lessons still
+    appear before a separate Redis sync has run.
+
+    ``None`` is returned only when no member exposes ``recall_scored`` at all,
+    signalling "fall back to the provider's own plain recall".
     """
-    for candidate in _iter_scored_providers(provider):
-        try:
-            scored = candidate.recall_scored(codename=codename, repo=repo, query=query, limit=limit)
-        except Exception:
-            _LOG.exception("memory runtime: recall_scored failed")
-            continue
-        return list(scored)
-    return None
+    merged: list[tuple[object, float | None]] = []
+    any_scored = False
+    for candidate in _iter_chain_members(provider):
+        if hasattr(candidate, "recall_scored"):
+            any_scored = True
+            try:
+                scored = candidate.recall_scored(
+                    codename=codename, repo=repo, query=query, limit=limit
+                )
+            except Exception:
+                _LOG.exception("memory runtime: recall_scored failed")
+                continue
+            merged.extend(scored)
+        else:
+            try:
+                lessons = candidate.recall(codename=codename, repo=repo, query=query, limit=limit)
+            except Exception:
+                _LOG.exception("memory runtime: chain-member recall failed")
+                continue
+            merged.extend((lesson, None) for lesson in lessons)
+    if not any_scored:
+        return None
+    return merged
 
 
 def _gated_lessons(
