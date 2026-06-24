@@ -210,6 +210,75 @@ def test_thread_context_is_bounded_and_role_tagged() -> None:
     assert out[1].role == "user"  # index 16 -> even -> user
 
 
+def test_thread_context_only_own_bot_is_assistant() -> None:
+    # A third-party bot (bot_id set, but a different user) must NOT be tagged
+    # assistant; only Alfred's own user id maps to the assistant role.
+    messages = [
+        {"ts": "1.1", "user": "U1", "text": "a human question"},
+        {"ts": "1.2", "user": "UOTHERBOT", "bot_id": "B999", "text": "a third-party bot post"},
+        {"ts": "1.3", "user": "UBOT", "bot_id": "BALFRED", "text": "Alfred's own answer"},
+    ]
+    client = FakeSlackClient(replies={"ok": True, "messages": messages})
+    out = sc.gather_thread_context(client, channel="C1", root_ts="1.0", bot_user_id="UBOT")
+    assert [(m.role, m.content) for m in out] == [
+        ("user", "a human question"),
+        ("user", "a third-party bot post"),
+        ("assistant", "Alfred's own answer"),
+    ]
+
+
+def test_thread_context_pages_to_newest_turns() -> None:
+    # conversations_replies returns oldest-first and paginates. A long thread
+    # must surface the NEWEST ``limit`` turns, not the oldest chunk.
+    page_one = [{"ts": f"1.{i}", "user": "U1", "text": f"msg {i}"} for i in range(200)]
+    page_two = [{"ts": f"2.{i}", "user": "U1", "text": f"msg {200 + i}"} for i in range(50)]
+
+    class PagingClient:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def conversations_replies(self, **kwargs: object) -> dict:
+            self.calls.append(dict(kwargs))
+            if not kwargs.get("cursor"):
+                return {
+                    "ok": True,
+                    "messages": page_one,
+                    "response_metadata": {"next_cursor": "PAGE2"},
+                }
+            return {"ok": True, "messages": page_two}
+
+    client = PagingClient()
+    out = sc.gather_thread_context(client, channel="C1", root_ts="1.0", limit=3)
+    assert len(client.calls) == 2  # paged forward once
+    assert client.calls[1]["cursor"] == "PAGE2"
+    # The most recent three turns, in chronological order.
+    assert [m.content for m in out] == ["msg 247", "msg 248", "msg 249"]
+
+
+def test_thread_context_paging_is_bounded() -> None:
+    # A pathological thread that always returns another cursor must still stop
+    # at the scan cap rather than paging forever.
+    page = [{"ts": f"p.{i}", "user": "U1", "text": f"m{i}"} for i in range(sc.THREAD_PAGE_SIZE)]
+
+    class EndlessClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def conversations_replies(self, **kwargs: object) -> dict:
+            self.calls += 1
+            return {
+                "ok": True,
+                "messages": page,
+                "response_metadata": {"next_cursor": "MORE"},
+            }
+
+    client = EndlessClient()
+    out = sc.gather_thread_context(client, channel="C1", root_ts="1.0", limit=4)
+    assert len(out) == 4
+    # Bounded: never pages past the scan cap.
+    assert client.calls <= (sc.THREAD_SCAN_CAP // sc.THREAD_PAGE_SIZE) + 1
+
+
 def test_thread_context_excludes_triggering_message() -> None:
     messages = [
         {"ts": "1.1", "user": "U1", "text": "earlier"},
@@ -289,14 +358,40 @@ def test_update_skips_identical_text() -> None:
     assert len(client.updates) == 1
 
 
-def test_long_stream_text_is_trimmed() -> None:
+def test_long_partial_stream_text_is_trimmed() -> None:
     clock = FakeClock()
     client = FakeSlackClient()
     poster = sc.SlackStreamPoster(client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock)
     poster.start()
-    poster.finalize("x" * (sc.MAX_STREAM_CHARS + 500))
+    poster.update("x" * (sc.MAX_STREAM_CHARS + 500))
     assert len(client.updates) == 1
+    # A streamed partial stays small so a fast stream is cheap to re-post.
     assert len(client.updates[0]["text"]) <= sc.MAX_STREAM_CHARS
+
+
+def test_finalize_lands_full_answer_above_stream_cap() -> None:
+    clock = FakeClock()
+    client = FakeSlackClient()
+    poster = sc.SlackStreamPoster(client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock)
+    poster.start()
+    long_answer = "y" * (sc.MAX_STREAM_CHARS * 3)
+    poster.finalize(long_answer)
+    assert len(client.updates) == 1
+    # The reconciled answer is NOT clipped to the small streaming cap; it lands
+    # in full, bounded only by Slack's message-body limit.
+    assert len(client.updates[0]["text"]) > sc.MAX_STREAM_CHARS
+    assert client.updates[0]["text"] == long_answer
+
+
+def test_finalize_caps_at_slack_message_limit() -> None:
+    clock = FakeClock()
+    client = FakeSlackClient()
+    poster = sc.SlackStreamPoster(client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock)
+    poster.start()
+    poster.finalize("z" * (sc.MAX_MESSAGE_CHARS + 5000))
+    assert len(client.updates) == 1
+    # Still bounded by Slack's body limit so an update never fails for length.
+    assert len(client.updates[0]["text"]) <= sc.MAX_MESSAGE_CHARS
 
 
 # ---------------------------------------------------------------------------

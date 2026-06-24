@@ -1004,7 +1004,9 @@ class SlackPlanningListener:
             return None
         if outcome is None or not getattr(outcome, "handled", False):
             return None
-        action = "converse_build" if getattr(outcome, "intent", "") == "build" else "converse"
+        from compose_converse import INTENT_BUILD
+
+        action = "converse_build" if getattr(outcome, "intent", "") == INTENT_BUILD else "converse"
         return ListenerResult(
             True,
             action,

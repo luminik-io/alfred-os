@@ -76,10 +76,15 @@ DEFAULT_THREAD_CONTEXT = 12
 # case, so we default a touch above that to stay comfortably inside the limit
 # even with clock jitter.
 DEFAULT_THROTTLE = 1.2
-# A Slack message body is capped well below this, but assistant text can be
-# long; trim what we stream into a single message so an update never fails for
-# length. Full prose still lands in the final reconciled update.
+# While streaming, trim each partial into a single short message so a fast
+# growing stream stays small and cheap to re-post. The final reconciled answer
+# is NOT held to this cap (see ``finalize``); it is only bounded by Slack's own
+# message-body limit so the full prose lands.
 MAX_STREAM_CHARS = 3500
+# Slack's hard message-body limit is ~40000 characters. We bound the final
+# reconciled write to a touch under that so a long answer lands in full yet an
+# update can never fail for length.
+MAX_MESSAGE_CHARS = 39000
 
 # The placeholder shown the instant a mention lands, before the first token.
 PLACEHOLDER = "_Alfred is thinking…_"
@@ -143,6 +148,17 @@ class SlackConverseConfig:
 # ---------------------------------------------------------------------------
 
 
+# Hard cap on how many thread messages we will page through, so even a very
+# long thread cannot turn context-gathering into an unbounded Slack read. We
+# page from the thread root (Slack returns replies oldest-first) until we either
+# exhaust the thread or hit this many messages, then keep the most recent
+# ``limit`` turns -- the ones the user is actually replying to.
+THREAD_SCAN_CAP = 400
+# Per-page size for ``conversations_replies`` while paging toward the newest
+# turns. Slack accepts up to 1000; a few hundred keeps each call cheap.
+THREAD_PAGE_SIZE = 200
+
+
 def gather_thread_context(
     client: Any,
     *,
@@ -156,41 +172,71 @@ def gather_thread_context(
 
     Best-effort: a missing ``conversations_replies`` method, an API error, or a
     not-ok response all degrade to an empty context rather than raising, so a
-    transient Slack read never blocks the answer. The bot's own messages map to
-    the ``assistant`` role and everyone else to ``user`` so the converse turn
-    reads the back-and-forth correctly. ``exclude_ts`` drops the triggering
-    message itself (it is supplied separately as the latest user turn).
+    transient Slack read never blocks the answer. Only the bot's own messages
+    (``user`` equals ``bot_user_id``) map to the ``assistant`` role; every other
+    author -- humans and any third-party bot alike -- maps to ``user`` so a
+    stray integration's posts are never mistaken for Alfred's own prior answers.
+    ``exclude_ts`` drops the triggering message itself (it is supplied
+    separately as the latest user turn).
+
+    ``conversations_replies`` returns replies oldest-first, so a single
+    ``limit``-sized read of a long thread would only ever see the *oldest* turns
+    and miss the recent back-and-forth the user is replying to. We page forward
+    (bounded by :data:`THREAD_SCAN_CAP`) to reach the end of the thread, then
+    keep the most recent ``limit`` turns in chronological order.
     """
     if limit <= 0:
         return []
     replies = getattr(client, "conversations_replies", None)
     if replies is None:
         return []
-    try:
-        resp = replies(channel=channel, ts=root_ts, limit=max(limit + 1, 2))
-    except Exception:
-        return []
-    data = _as_mapping(resp)
-    if not data.get("ok", False):
-        return []
     bot = (bot_user_id or "").strip()
     out: list[ConverseMessage] = []
-    for message in data.get("messages") or []:
-        if not isinstance(message, dict):
-            continue
-        ts = str(message.get("ts") or "")
-        if exclude_ts and ts == exclude_ts:
-            continue
-        raw_text = str(message.get("text") or "")
-        text = _clean_text(raw_text)
-        if not text:
-            continue
-        author = str(message.get("user") or "")
-        is_bot = bool(message.get("bot_id")) or (bool(bot) and author == bot)
-        role = "assistant" if is_bot else "user"
-        out.append(ConverseMessage(role=role, content=text))
+    cursor = ""
+    while len(out) < THREAD_SCAN_CAP:
+        kwargs: dict[str, Any] = {
+            "channel": channel,
+            "ts": root_ts,
+            "limit": THREAD_PAGE_SIZE,
+        }
+        if cursor:
+            kwargs["cursor"] = cursor
+        try:
+            resp = replies(**kwargs)
+        except Exception:
+            break
+        data = _as_mapping(resp)
+        if not data.get("ok", False):
+            break
+        for message in data.get("messages") or []:
+            if not isinstance(message, dict):
+                continue
+            ts = str(message.get("ts") or "")
+            if exclude_ts and ts == exclude_ts:
+                continue
+            raw_text = str(message.get("text") or "")
+            text = _clean_text(raw_text)
+            if not text:
+                continue
+            author = str(message.get("user") or "")
+            is_alfred = bool(bot) and author == bot
+            role = "assistant" if is_alfred else "user"
+            out.append(ConverseMessage(role=role, content=text))
+        cursor = _next_cursor(data)
+        if not cursor:
+            break
     # Keep the most recent ``limit`` turns, preserving chronological order.
     return out[-limit:]
+
+
+def _next_cursor(data: dict[str, Any]) -> str:
+    """Pull the next-page cursor from a Slack response, empty when exhausted."""
+    meta = data.get("response_metadata")
+    if isinstance(meta, dict):
+        cursor = meta.get("next_cursor")
+        if isinstance(cursor, str):
+            return cursor.strip()
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +310,13 @@ class SlackStreamPoster:
         self._write(text)
 
     def finalize(self, text: str) -> None:
-        """Final update, never throttled, so the reconciled answer always lands."""
-        text = _trim_stream(text)
+        """Final update, never throttled and never stream-trimmed.
+
+        The reconciled answer lands in full, bounded only by Slack's own
+        message-body limit (:data:`MAX_MESSAGE_CHARS`) so a long answer is not
+        clipped to the much smaller streaming cap.
+        """
+        text = _cap_message(text)
         if not self._message_ts or not text or text == self._last_text:
             return
         self._write(text)
@@ -740,10 +791,18 @@ def _safe_extract(extract: Callable[[Path], list[str]], path: Path) -> list[str]
 
 
 def _trim_stream(text: str) -> str:
+    return _cap_text(text, MAX_STREAM_CHARS)
+
+
+def _cap_message(text: str) -> str:
+    return _cap_text(text, MAX_MESSAGE_CHARS)
+
+
+def _cap_text(text: str, cap: int) -> str:
     text = (text or "").strip()
-    if len(text) <= MAX_STREAM_CHARS:
+    if len(text) <= cap:
         return text
-    return text[: MAX_STREAM_CHARS - 1].rstrip() + "…"
+    return text[: cap - 1].rstrip() + "…"
 
 
 def _clean_text(text: str) -> str:
