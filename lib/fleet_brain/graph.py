@@ -261,7 +261,14 @@ def _repo(repo: str) -> str:
 
 
 def _path(path: str) -> str:
-    return (path or "").strip().lstrip("./").strip("/")
+    # ``lstrip("./")`` treats its argument as a character set and would strip
+    # every leading ``.`` or ``/``, mangling dotfiles (".gitignore" -> "gitignore")
+    # so their CODEOWNERS rules never match. Drop a single literal "./" prefix and
+    # only trim slashes, leaving a leading dot intact.
+    p = (path or "").strip().lstrip("/")
+    if p.startswith("./"):
+        p = p[2:]
+    return p.strip("/")
 
 
 def _owner(owner: str) -> str:

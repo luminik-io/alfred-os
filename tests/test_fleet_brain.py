@@ -1336,6 +1336,24 @@ def test_owners_for_path_uses_last_matching_pattern_wins() -> None:
     assert owners_for_path("src/app.py", []) == []
 
 
+def test_owners_for_path_matches_dotfile_rules() -> None:
+    # A dotfile path must keep its leading dot so an explicit CODEOWNERS rule
+    # for it still matches. ``lstrip("./")`` would strip the dot and silently
+    # leave the file unowned.
+    from fleet_brain.graph import file_node, owners_for_path, parse_codeowners
+
+    rules = parse_codeowners(
+        "org/api",
+        "*               @org/everyone\n/.gitignore     @org/infra\n",
+    )
+    assert owners_for_path("/.gitignore", rules) == ["@org/infra"]
+    assert owners_for_path(".gitignore", rules) == ["@org/infra"]
+    # The node id also preserves the leading dot.
+    assert file_node("org/api", ".gitignore") == "file:org/api/.gitignore"
+    # A "./"-prefixed path is still normalized away without eating the dotfile.
+    assert owners_for_path("./.gitignore", rules) == ["@org/infra"]
+
+
 def test_edges_for_file_touch_emits_in_changed_and_owned_by() -> None:
     from fleet_brain.graph import edges_for_file_touch
 
