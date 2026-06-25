@@ -59,6 +59,32 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 # entries so a malformed payload cannot grow the file without bound.
 _MAX_CUSTOM_ENTRIES = 128
 
+# The shipped Batman display name per known fleet codename. The desktop builds a
+# ``custom`` theme on top of this base (agentThemes.ts ``BATMAN_THEME``), so an
+# agent the operator has NOT renamed still shows its Batman-base name there. This
+# table mirrors that base so the Slack path resolves the same name for an unnamed
+# agent under a custom theme, instead of falling back to the bare codename and
+# diverging from the desktop. Kept in lockstep with ``agentThemes.ts``.
+BATMAN_BASE_NAMES: dict[str, str] = {
+    "robin": "Robin",
+    "drake": "Drake",
+    "damian": "Damian",
+    "batman": "Batman",
+    "lucius": "Lucius",
+    "bane": "Bane",
+    "nightwing": "Nightwing",
+    "rasalghul": "Ra's al Ghul",
+    "huntress": "Huntress",
+    "automerge": "Auto-merge",
+    "gordon": "Gordon",
+    "fleet-doctor": "Fleet doctor",
+    "cleanup": "Cleanup",
+    "agent-cleanup": "Cleanup",
+    "memory-harvest": "Memory harvest",
+    "code-map-refresh": "Code map",
+    "proof-telemetry": "Telemetry",
+}
+
 
 class RosterThemeError(ValueError):
     """Raised when an inbound theme payload fails validation."""
@@ -99,6 +125,21 @@ class RosterThemeState:
         if self.theme != CUSTOM_THEME_ID:
             return None
         return self.custom_roles.get(_normalize_codename(codename) or "")
+
+    def custom_display_name_for(self, codename: str) -> str | None:
+        """Resolve the desktop-equivalent display name under the custom theme.
+
+        Under the ``custom`` theme the desktop builds names on the Batman base,
+        so an agent the operator has NOT renamed still shows its Batman-base
+        name (``Lucius``), never the bare codename. This mirrors that: the
+        operator's custom name when set, else the Batman base name for a known
+        codename. Returns ``None`` for a non-custom theme or an unknown codename
+        so the caller keeps the shipped behavior for those.
+        """
+        if self.theme != CUSTOM_THEME_ID:
+            return None
+        short = _normalize_codename(codename) or ""
+        return self.custom_names.get(short) or BATMAN_BASE_NAMES.get(short)
 
 
 def default_theme_state() -> RosterThemeState:
@@ -286,6 +327,7 @@ def _utc_now() -> str:
 
 
 __all__ = [
+    "BATMAN_BASE_NAMES",
     "CUSTOM_THEME_ID",
     "DEFAULT_THEME_ID",
     "PRESET_THEME_IDS",

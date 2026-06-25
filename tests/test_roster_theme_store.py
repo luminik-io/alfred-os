@@ -120,6 +120,26 @@ def test_explicit_custom_payload_replaces_retained_cast(tmp_path: Path) -> None:
     assert dict(loaded.custom_names) == {}
 
 
+def test_custom_display_name_falls_back_to_batman_base(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.save(theme="custom", custom_names={"batman": "Sherlock"})
+    loaded = _store(tmp_path).load()
+    # The renamed agent uses the operator name.
+    assert loaded.custom_display_name_for("batman") == "Sherlock"
+    # An un-renamed known agent uses the Batman-base name, not the bare codename,
+    # so the Slack path matches the desktop (which overlays on the same base).
+    assert loaded.custom_display_name_for("lucius") == "Lucius"
+    # An unknown codename has no base persona, so it returns None.
+    assert loaded.custom_display_name_for("mystery-bot") is None
+
+
+def test_custom_display_name_is_none_for_preset(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.save(theme="justice-league")
+    loaded = _store(tmp_path).load()
+    assert loaded.custom_display_name_for("lucius") is None
+
+
 def test_save_rejects_unknown_theme(tmp_path: Path) -> None:
     with pytest.raises(RosterThemeError):
         _store(tmp_path).save(theme="nope")

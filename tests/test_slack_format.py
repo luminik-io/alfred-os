@@ -285,11 +285,21 @@ def test_themed_label_custom_name_falls_back_to_env_role(tmp_path, monkeypatch):
     assert sf._themed_codename_label("batman") == "Sherlock (Fleet lead)"
 
 
-def test_themed_label_custom_without_name_keeps_shipped_behavior(tmp_path, monkeypatch):
+def test_themed_label_custom_without_name_uses_batman_base_name(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Engineer")
+    # A custom theme that did not name THIS agent must still match the desktop,
+    # which shows the Batman-base name (``Lucius``), not the bare codename.
+    _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
+    assert sf._themed_codename_label("lucius") == "Lucius (Engineer)"
+
+
+def test_themed_label_custom_unknown_codename_keeps_shipped_behavior(tmp_path, monkeypatch):
     import slack_format as sf
     from agent_runner.metadata import codename_with_role
 
-    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Engineer")
-    # A custom theme that did not name THIS agent renders the shipped codename.
+    monkeypatch.setenv("ALFRED_MYSTERY_BOT_ROLE", "Wildcard")
+    # A codename outside the Batman base (no desktop persona) is left as shipped.
     _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
-    assert sf._themed_codename_label("lucius") == codename_with_role("lucius")
+    assert sf._themed_codename_label("mystery-bot") == codename_with_role("mystery-bot")

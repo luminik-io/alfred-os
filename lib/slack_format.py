@@ -68,12 +68,16 @@ def _themed_codename_label(codename: str) -> str:
     except Exception:  # noqa: BLE001 - rendering must never fail on store reads
         return codename_with_role(codename)
 
-    name = state.display_name_for(codename)
-    role = state.role_label_for(codename) or agent_role(codename)
+    # Under a custom theme the desktop builds names on the Batman base, so an
+    # agent the operator has not renamed still shows its Batman-base name. Resolve
+    # the same name here (custom name, else Batman base) so a partial custom theme
+    # does not render ``Lucius`` on the desktop but ``lucius (Engineer)`` in
+    # Slack. A non-custom theme (or a codename outside the base) returns None and
+    # keeps the shipped behavior so presets/Batman are unchanged.
+    name = state.custom_display_name_for(codename)
     if not name:
-        # Non-custom theme (or no custom name for this agent): keep the shipped
-        # behavior so presets/Batman are unchanged on the Slack path.
         return codename_with_role(codename)
+    role = state.role_label_for(codename) or agent_role(codename)
     return f"{name} ({role})" if role else name
 
 SLACK_API = "https://slack.com/api"
