@@ -41,6 +41,7 @@ from planning_assistant import (
     engine_refiner_from_env,
     refine_issue_draft,
 )
+from roster_theme_store import RosterThemeError, RosterThemeStore
 from slack_control import SlackControlHandler
 from slack_trust import (
     SlackTrustStore,
@@ -768,6 +769,40 @@ def register_routes(app: FastAPI) -> None:
         ).to_dict()
         snapshot["removed"] = removed
         return JSONResponse(snapshot)
+
+    @app.get("/api/roster-theme", response_class=JSONResponse)
+    async def api_roster_theme(request: Request) -> JSONResponse:
+        # The active roster theme (the named agent cast) plus any operator-
+        # authored custom names. Read-only and unauthenticated like the other
+        # GETs: it carries no secret and lets any surface read the same choice.
+        store = RosterThemeStore.from_state_root(_state_root(request))
+        return JSONResponse(store.load().to_dict())
+
+    @app.post("/api/roster-theme", response_class=JSONResponse)
+    async def api_set_roster_theme(request: Request) -> JSONResponse:
+        # Persist the chosen theme + custom name/role maps so the desktop and the
+        # Slack message path honor the same cast. Token-gated like every other
+        # state-mutating POST so a drive-by same-origin page cannot rename agents.
+        if not _same_origin_post(request) or not _authorized_mutation(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = json.loads((await request.body()).decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JSONResponse({"error": "request body must be JSON"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {"error": "request body must be a JSON object"}, status_code=400
+            )
+        store = RosterThemeStore.from_state_root(_state_root(request))
+        try:
+            state = store.save(
+                theme=str(body.get("theme") or ""),
+                custom_names=body.get("custom_names"),
+                custom_roles=body.get("custom_roles"),
+            )
+        except RosterThemeError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse(state.to_dict())
 
     @app.post("/api/conversation/control", response_class=JSONResponse)
     async def api_conversation_control(request: Request) -> JSONResponse:

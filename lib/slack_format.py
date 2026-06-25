@@ -45,8 +45,36 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from agent_runner.metadata import codename_with_role
+from agent_runner.metadata import agent_role, codename_with_role
 from slack_approval import resolve_bot_token as _resolve_bot_token
+
+
+def _themed_codename_label(codename: str) -> str:
+    """Format ``"<name> (<role>)"`` honoring the persisted roster theme.
+
+    The default (Batman) theme reproduces ``codename_with_role`` exactly, so a
+    fork with no theme set sees no change. When the operator has saved a
+    ``custom`` theme via the desktop, an agent's themed display name and role
+    label (persisted under the runtime state dir) replace the bare codename and
+    the env role, so the Slack post matches what the desktop shows. Never
+    raises: any failure reading the store falls back to ``codename_with_role``
+    so a firing post always goes out.
+    """
+    try:
+        from agent_runner.paths import STATE_ROOT
+        from roster_theme_store import RosterThemeStore
+
+        state = RosterThemeStore.from_state_root(STATE_ROOT).load()
+    except Exception:  # noqa: BLE001 - rendering must never fail on store reads
+        return codename_with_role(codename)
+
+    name = state.display_name_for(codename)
+    role = state.role_label_for(codename) or agent_role(codename)
+    if not name:
+        # Non-custom theme (or no custom name for this agent): keep the shipped
+        # behavior so presets/Batman are unchanged on the Slack path.
+        return codename_with_role(codename)
+    return f"{name} ({role})" if role else name
 
 SLACK_API = "https://slack.com/api"
 
@@ -271,7 +299,7 @@ def _format_root_text(codename: str, summary_one_liner: str, severity: str) -> s
     var). When unset the codename appears alone, so operators on a forked
     install without role wiring still get readable posts.
     """
-    label = codename_with_role(codename)
+    label = _themed_codename_label(codename)
     emoji = SEVERITY_EMOJI[severity]
     raw = f"{emoji} {label}: {summary_one_liner}".strip()
     return _truncate(raw, HEADER_MAX)
@@ -428,7 +456,7 @@ def _format_close_text(
 ) -> str:
     """Mrkdwn body for the firing-close summary post."""
     minutes, seconds = divmod(int(max(0.0, duration_seconds)), 60)
-    label = codename_with_role(codename)
+    label = _themed_codename_label(codename)
     emoji = SEVERITY_EMOJI[severity]
     return (
         f"{emoji} *{label}* firing complete\n"
