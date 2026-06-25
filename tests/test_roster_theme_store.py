@@ -18,8 +18,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from roster_theme_store import (
+    BATMAN_BASE_NAMES,
+    BATMAN_BASE_ROLES,
     DEFAULT_THEME_ID,
+    PRESET_DISPLAY_NAMES,
     RosterThemeError,
+    RosterThemeState,
     RosterThemeStore,
     default_theme_state,
 )
@@ -225,3 +229,40 @@ def test_load_unknown_theme_falls_back_to_default(tmp_path: Path) -> None:
     root.mkdir(parents=True)
     (root / "roster-theme.json").write_text(json.dumps({"theme": "garbage"}), encoding="utf-8")
     assert RosterThemeStore.from_state_root(tmp_path / "state").load().theme == "batman"
+
+
+def test_preset_maps_cover_the_same_cast_as_batman_base() -> None:
+    # Every preset re-skins the SAME fleet as the Batman base. If a new agent is
+    # added to BATMAN_BASE_NAMES without a matching entry in each preset, Slack
+    # would render that agent's bare codename under a preset while the desktop
+    # shows a themed name. Hold the codename sets identical so that cannot ship.
+    base = set(BATMAN_BASE_NAMES)
+    for theme, names in PRESET_DISPLAY_NAMES.items():
+        assert set(names) == base, f"{theme} preset cast drifted from the Batman base"
+
+
+def test_themed_display_name_resolves_preset_identity() -> None:
+    state = RosterThemeState(theme="transformers", custom_names={}, custom_roles={})
+    assert state.themed_display_name_for("lucius") == "Ironhide"
+    assert state.themed_display_name_for("batman") == "Optimus Prime"
+    # Role label comes from the Batman base the presets share.
+    assert state.themed_role_label_for("lucius") == BATMAN_BASE_ROLES["lucius"]
+
+
+def test_themed_display_name_batman_theme_keeps_shipped_behavior() -> None:
+    state = RosterThemeState(theme="batman", custom_names={}, custom_roles={})
+    # Batman theme returns None so the caller keeps codename_with_role.
+    assert state.themed_display_name_for("lucius") is None
+    assert state.themed_role_label_for("lucius") is None
+
+
+def test_themed_display_name_custom_theme_uses_custom_overlay() -> None:
+    state = RosterThemeState(
+        theme="custom",
+        custom_names={"batman": "Sherlock"},
+        custom_roles={"batman": "Lead detective"},
+    )
+    assert state.themed_display_name_for("batman") == "Sherlock"
+    assert state.themed_role_label_for("batman") == "Lead detective"
+    # An unnamed agent still resolves to its Batman-base name under custom.
+    assert state.themed_display_name_for("lucius") == BATMAN_BASE_NAMES["lucius"]

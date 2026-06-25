@@ -113,6 +113,56 @@ BATMAN_BASE_ROLES: dict[str, str] = {
 }
 
 
+# The preset rosters re-skin the SAME cast as the Batman base, so each preset
+# names every codename ``BATMAN_BASE_NAMES`` does. The presets share the Batman
+# role labels (agentThemes.ts gives every preset ``ROLE_LABELS_DEFAULT`` with no
+# per-codename override), so a preset's role label is ``BATMAN_BASE_ROLES`` for
+# the codename; only the display name changes. Kept in lockstep with the
+# desktop ``agentThemes.ts`` preset ``nameByCodename`` maps; a parity test holds
+# the codename set identical to ``BATMAN_BASE_NAMES`` so a new agent cannot be
+# named under Batman without also being named under every preset.
+PRESET_DISPLAY_NAMES: dict[str, dict[str, str]] = {
+    "transformers": {
+        "robin": "Bumblebee",
+        "drake": "Hot Rod",
+        "damian": "Blurr",
+        "batman": "Optimus Prime",
+        "lucius": "Ironhide",
+        "bane": "Grimlock",
+        "nightwing": "Sideswipe",
+        "rasalghul": "Ratchet",
+        "huntress": "Arcee",
+        "automerge": "Jazz",
+        "gordon": "Wheeljack",
+        "fleet-doctor": "Perceptor",
+        "cleanup": "Cosmos",
+        "agent-cleanup": "Cosmos",
+        "memory-harvest": "Brainstorm",
+        "code-map-refresh": "Beachcomber",
+        "proof-telemetry": "Blaster",
+    },
+    "justice-league": {
+        "robin": "The Flash",
+        "drake": "Green Arrow",
+        "damian": "Hawkgirl",
+        "batman": "Batman",
+        "lucius": "Superman",
+        "bane": "Shazam",
+        "nightwing": "Aquaman",
+        "rasalghul": "Wonder Woman",
+        "huntress": "Martian Manhunter",
+        "automerge": "Green Lantern",
+        "gordon": "Cyborg",
+        "fleet-doctor": "Doctor Fate",
+        "cleanup": "Atom",
+        "agent-cleanup": "Atom",
+        "memory-harvest": "Zatanna",
+        "code-map-refresh": "Vixen",
+        "proof-telemetry": "Firestorm",
+    },
+}
+
+
 class RosterThemeError(ValueError):
     """Raised when an inbound theme payload fails validation."""
 
@@ -183,6 +233,42 @@ class RosterThemeState:
             return None
         short = _normalize_codename(codename) or ""
         return self.custom_roles.get(short) or BATMAN_BASE_ROLES.get(short)
+
+    def themed_display_name_for(self, codename: str) -> str | None:
+        """Display name for a codename under the ACTIVE theme, or ``None``.
+
+        This is the theme-aware resolver the Slack path uses so every saved
+        theme renders on Slack the way it does on the desktop:
+
+        * ``custom``  -> the operator's name, else the Batman base name.
+        * a preset    -> the preset's themed name (``Optimus Prime``).
+        * ``batman``  -> ``None``, so the caller keeps the shipped
+          ``codename_with_role`` rendering unchanged.
+
+        Returns ``None`` for an unknown codename so the caller falls back to the
+        shipped behavior rather than inventing a name.
+        """
+        if self.theme == CUSTOM_THEME_ID:
+            return self.custom_display_name_for(codename)
+        preset = PRESET_DISPLAY_NAMES.get(self.theme)
+        if preset is None:
+            return None
+        return preset.get(_normalize_codename(codename) or "")
+
+    def themed_role_label_for(self, codename: str) -> str | None:
+        """Role label for a codename under the ACTIVE theme, or ``None``.
+
+        The presets share the Batman role labels (agentThemes.ts gives each
+        preset ``ROLE_LABELS_DEFAULT`` with no per-codename override), so a
+        preset resolves to the Batman base role for the codename. ``custom``
+        keeps its own per-agent overlay; ``batman`` returns ``None`` so the
+        caller keeps the shipped env-role behavior.
+        """
+        if self.theme == CUSTOM_THEME_ID:
+            return self.custom_role_label_for(codename)
+        if self.theme in PRESET_DISPLAY_NAMES:
+            return BATMAN_BASE_ROLES.get(_normalize_codename(codename) or "")
+        return None
 
 
 def default_theme_state() -> RosterThemeState:

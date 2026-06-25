@@ -253,14 +253,33 @@ def test_themed_label_default_matches_codename_with_role(monkeypatch):
     assert sf._themed_codename_label("lucius") == "lucius (Single-repo feature engineer)"
 
 
-def test_themed_label_preset_is_unchanged(tmp_path, monkeypatch):
+def test_themed_label_preset_renders_preset_identity(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Fleet lead")
+    # A saved preset must render the preset's themed name on Slack the same way
+    # the desktop does, not fall back to the bare codename or the env role. The
+    # role label is the Batman-base label the preset shares.
+    _persist_theme(tmp_path, theme="justice-league")
+    assert sf._themed_codename_label("lucius") == "Superman (Senior developer)"
+    assert sf._themed_codename_label("batman") == "Batman (Architect)"
+
+
+def test_themed_label_preset_transformers_differs_from_justice_league(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    _persist_theme(tmp_path, theme="transformers")
+    assert sf._themed_codename_label("lucius") == "Ironhide (Senior developer)"
+    assert sf._themed_codename_label("batman") == "Optimus Prime (Architect)"
+
+
+def test_themed_label_preset_unknown_codename_falls_back(tmp_path, monkeypatch):
     import slack_format as sf
     from agent_runner.metadata import codename_with_role
 
-    monkeypatch.setenv("ALFRED_BATMAN_ROLE", "Fleet lead")
-    _persist_theme(tmp_path, theme="justice-league")
-    # A preset carries no custom names, so the Slack path renders as shipped.
-    assert sf._themed_codename_label("batman") == codename_with_role("batman")
+    _persist_theme(tmp_path, theme="transformers")
+    # A codename the preset does not name keeps the shipped rendering.
+    assert sf._themed_codename_label("nobody") == codename_with_role("nobody")
 
 
 def test_themed_label_custom_name_and_role_applied(tmp_path, monkeypatch):

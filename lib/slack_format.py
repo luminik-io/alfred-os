@@ -79,21 +79,21 @@ def _themed_codename_label(codename: str) -> str:
     except Exception:  # rendering must never fail on store reads
         return codename_with_role(codename)
 
-    # Under a custom theme the desktop builds names on the Batman base, so an
-    # agent the operator has not renamed still shows its Batman-base name. Resolve
-    # the same name here (custom name, else Batman base) so a partial custom theme
-    # does not render ``Lucius`` on the desktop but ``lucius (Engineer)`` in
-    # Slack. A non-custom theme (or a codename outside the base) returns None and
-    # keeps the shipped behavior so presets/Batman are unchanged.
-    name = state.custom_display_name_for(codename)
+    # Resolve the display name under whatever theme is active so Slack matches
+    # the desktop: a custom theme uses the operator's name (else the Batman
+    # base); a preset (Transformers, Justice League) uses the preset's themed
+    # name; the Batman theme returns None and keeps the shipped
+    # ``codename_with_role`` rendering. A codename outside the active theme also
+    # returns None and falls back, so a firing always posts a name.
+    name = state.themed_display_name_for(codename)
     if not name:
         return codename_with_role(codename)
     # Match the desktop's role fallback: a custom theme with a name but no
-    # per-agent role label falls back to the Batman-base role label (not the
-    # ``ALFRED_<CODENAME>_ROLE`` env label), so the same persisted custom theme
-    # renders identically on both surfaces. Only a codename outside the Batman
+    # per-agent role label, and every preset, fall back to the Batman-base role
+    # label (not the ``ALFRED_<CODENAME>_ROLE`` env label), so the same saved
+    # theme renders identically on both surfaces. Only a codename outside that
     # base falls through to the env role, preserving the shipped behavior there.
-    role = state.custom_role_label_for(codename) or agent_role(codename)
+    role = state.themed_role_label_for(codename) or agent_role(codename)
     safe_name = _escape_slack_text(name)
     safe_role = _escape_slack_text(role) if role else role
     return f"{safe_name} ({safe_role})" if safe_role else safe_name
