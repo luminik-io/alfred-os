@@ -127,6 +127,42 @@ def test_no_real_middle_is_not_condensed() -> None:
     assert seen == []
 
 
+def test_recondensing_an_already_condensed_conversation_keeps_one_summary_and_the_task() -> None:
+    # Feeding a condensed result back through condense (the reactive-overflow case)
+    # must NOT stack summaries or lose the original task: the prior summary block
+    # lands in the new middle and is replaced by a single fresh summary.
+    config = cc.CondenserConfig(keep_first=1, keep_last=3, trigger_turns=4)
+    summarize, _ = _counting_summarizer()
+
+    first = cc.condense(_convo(20), summarize=summarize, config=config)
+    assert first.condensed is True
+    assert sum(1 for m in first.messages if m.role == cc.SUMMARY_ROLE) == 1
+
+    # Re-condense the already-condensed message list.
+    second = cc.condense(first.messages, summarize=summarize, config=config)
+    assert second.condensed is True
+    # Still exactly ONE summary block - summaries are replaced, never stacked.
+    assert sum(1 for m in second.messages if m.role == cc.SUMMARY_ROLE) == 1
+    # The original task at index 0 survives every round (keep_first protects it).
+    assert second.messages[0].content == "TASK: add a dark mode toggle"
+    # And it does not grow: keep_first(1) + summary(1) + keep_last(3) == 5.
+    assert len(second.messages) == 5
+
+
+def test_config_floors_keep_first_and_keep_last_so_the_task_is_never_dropped() -> None:
+    # The direct constructor (not just from_env) must floor these at 1, or
+    # keep_first=0 would summarize away the opening task.
+    config = cc.CondenserConfig(keep_first=0, keep_last=0, trigger_turns=4)
+    assert config.keep_first == 1
+    assert config.keep_last == 1
+
+    summarize, _ = _counting_summarizer()
+    result = cc.condense(_convo(20), summarize=summarize, config=config)
+    assert result.condensed is True
+    # The task is preserved despite the caller asking for keep_first=0.
+    assert result.messages[0].content == "TASK: add a dark mode toggle"
+
+
 # --- reactive: condense-on-overflow forces a pass ---------------------------
 
 
@@ -188,9 +224,7 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     assert cc.looks_like_context_overflow(
         'error code "context_length_exceeded" returned by the provider'
     )
-    assert cc.looks_like_context_overflow(
-        "Please reduce the length of the messages and try again."
-    )
+    assert cc.looks_like_context_overflow("Please reduce the length of the messages and try again.")
     assert cc.looks_like_context_overflow("Request too large for this model")
     assert cc.looks_like_context_overflow("token limit exceeded for the request")
 

@@ -142,6 +142,16 @@ class CondenserConfig:
     trigger_chars: int = DEFAULT_TRIGGER_CHARS
     max_summary_chars: int = DEFAULT_MAX_SUMMARY_CHARS
 
+    def __post_init__(self) -> None:
+        # Floor keep_first/keep_last at 1 on EVERY construction path, not just
+        # from_env: keep_first=0 would summarize away the opening task and
+        # keep_last=0 would summarize away the live working tail, defeating the
+        # whole point of the condenser. Frozen dataclass, so set via object.
+        if self.keep_first < 1:
+            object.__setattr__(self, "keep_first", 1)
+        if self.keep_last < 1:
+            object.__setattr__(self, "keep_last", 1)
+
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> CondenserConfig:
         """Build a config from process env, clamped so a typo can never break it.
