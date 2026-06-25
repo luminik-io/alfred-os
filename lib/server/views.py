@@ -1823,6 +1823,7 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         base_draft=base_draft,
         engine=engine,
         workdir=_planning_workdir(request),
+        on_condense=_converse_condense_recorder(request, draft_id=draft_id),
     )
     if turn is None:
         return JSONResponse(
@@ -1947,6 +1948,8 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
     transcript = _converse_transcript_path(request, firing_id)
     workdir = _planning_workdir(request)
 
+    on_condense = _converse_condense_recorder(request, draft_id=draft_id)
+
     def _run() -> Any:
         return cc.run_turn(
             system_prompt=system_prompt,
@@ -1958,6 +1961,7 @@ def _stream_compose_converse(request: Request, body: dict[str, Any]) -> Any:
             engine=engine,
             workdir=workdir,
             firing_id=firing_id,
+            on_condense=on_condense,
         )
 
     def _reconcile(turn: Any) -> dict[str, Any]:
@@ -3045,6 +3049,25 @@ def _archive_followup(
 
 def _state_planning_root(request: Request) -> Path:
     return _state_root(request) / "planning-drafts"
+
+
+def _converse_condense_recorder(request: Request, *, draft_id: str | None) -> Any:
+    """Return an ``on_condense`` callback that persists each condensation record.
+
+    The record lands under ``<state>/condensations`` as auditable JSON listing
+    which turns were summarized and what the summary said, so an operator (or a
+    later memory-promote pass) can review it. Persistence failures are swallowed:
+    a disk hiccup must never fail the user's converse turn.
+    """
+    import conversation_condenser as condenser
+
+    record_dir = _state_root(request) / "condensations"
+
+    def _record(record: Any) -> None:
+        with suppress(OSError):
+            condenser.persist_record(record, record_dir=record_dir, slug=draft_id or "")
+
+    return _record
 
 
 def _state_root(request: Request) -> Path:

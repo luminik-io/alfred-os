@@ -30,12 +30,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import conversation_condenser as condenser
 from spec_helper import IssueDraft, assess_issue_draft
 
 # Each call is one assistant turn, so the interrogator never needs many model
@@ -44,6 +45,20 @@ DEFAULT_TIMEOUT = 180
 DEFAULT_MAX_TURNS = 6
 MAX_MESSAGES = 60
 MAX_MESSAGE_CHARS = 8000
+
+# The cheap model the condenser uses to summarize the middle of a long
+# conversation. Empty means "engine default" (the CLI's own default model),
+# which keeps the summarizer free of any model-name policy. Set
+# ``ALFRED_CONDENSER_MODEL`` to a cheaper model so summarization stays low-cost.
+CONDENSER_MODEL_ENV = "ALFRED_CONDENSER_MODEL"
+
+# A short, low-budget cap for the summarizer turn so condensation never costs as
+# much as a real interrogator turn.
+CONDENSER_TIMEOUT = 90
+CONDENSER_MAX_TURNS = 1
+# The codename condensation fires under, kept distinct from the interrogator so
+# its transcripts and any cost show up separately in the timeline.
+CONDENSER_AGENT = "compose-condenser"
 # Bound prompt size without silently cutting normal multi-repo workspaces down
 # to an arbitrary handful. Keep enough headroom for a real product surface plus
 # specs, agents, and infra.
@@ -649,6 +664,66 @@ def converse_firing_id() -> str:
     return datetime.now(UTC).strftime("compose-converse-%Y%m%d-%H%M%S-%f")
 
 
+def condenser_model_from_env() -> str | None:
+    """The cheap model the condenser summarizer should use, or ``None``.
+
+    ``None`` means "let the engine pick its default model"; an operator sets
+    ``ALFRED_CONDENSER_MODEL`` to a cheaper model to keep summarization low-cost.
+    """
+    value = (os.environ.get(CONDENSER_MODEL_ENV) or "").strip()
+    return value or None
+
+
+def _build_summarizer(
+    *,
+    engine: str,
+    engine_invoke: Callable[..., Any],
+    workdir: Path,
+    firing_id: str,
+) -> condenser.Summarizer:
+    """Wrap the agent-engine dispatch as a cheap, single-pass summarizer.
+
+    The returned callable takes the run of middle turns and asks the engine for
+    a compact summary. It never raises: any engine failure returns ``""`` so the
+    condenser declines to condense (leaving the conversation intact) rather than
+    dropping turns it could not summarize.
+    """
+    model = condenser_model_from_env()
+
+    def summarize(turns: Sequence[condenser.Turn]) -> str:
+        transcript = format_untrusted_transcript(_as_converse_message(turn) for turn in turns)
+        prompt = (
+            "You compress part of a longer product-planning conversation so it "
+            "fits the model's context budget. Summarize the turns below into a "
+            "compact, faithful brief. Preserve every decision, requirement, "
+            "constraint, repo/surface named, open question, and correction. Drop "
+            "filler and pleasantries. Do not invent anything. Output only the "
+            "summary prose, no preamble.\n\n"
+            f"{transcript}"
+        )
+        try:
+            result, _engine_used = engine_invoke(
+                prompt,
+                engine=engine,
+                agent=CONDENSER_AGENT,
+                firing_id=f"{firing_id}-condense",
+                workdir=workdir,
+                claude_allowed_tools="",
+                timeout=CONDENSER_TIMEOUT,
+                claude_max_turns=CONDENSER_MAX_TURNS,
+                claude_model=model,
+                codex_model=model,
+                codex_timeout=CONDENSER_TIMEOUT,
+            )
+        except Exception:
+            return ""
+        if not getattr(result, "success", False):
+            return ""
+        return str(getattr(result, "result_text", "") or "").strip()
+
+    return summarize
+
+
 def run_turn(
     *,
     system_prompt: str,
@@ -662,6 +737,8 @@ def run_turn(
     timeout: int = DEFAULT_TIMEOUT,
     invoke: Callable[..., Any] | None = None,
     firing_id: str | None = None,
+    condenser_config: condenser.CondenserConfig | None = None,
+    on_condense: Callable[[condenser.CondensationRecord], None] | None = None,
 ) -> ConverseTurn | None:
     """Run one interrogator turn through the agent engine dispatch.
 
@@ -674,15 +751,11 @@ def run_turn(
     fabricated turn.
     """
     message_list = list(messages)
-    prompt = build_prompt(
-        system_prompt=system_prompt,
-        messages=message_list,
-        repo_grounding=repo_grounding,
-        code_map=code_map,
-        intake_guidance=intake_guidance,
-        current_draft=base_draft,
-    )
+    # Track the latest real user turn BEFORE any condensation so the intent
+    # heuristic always reads the genuine last user message, never the injected
+    # summary block.
     latest_user_message = last_user_message(message_list)
+
     engine_invoke = invoke
     if engine_invoke is None:
         try:
@@ -693,6 +766,122 @@ def run_turn(
             return None
     if not firing_id:
         firing_id = converse_firing_id()
+
+    config = condenser_config or condenser.CondenserConfig.from_env()
+    summarize = _build_summarizer(
+        engine=engine,
+        engine_invoke=engine_invoke,
+        workdir=workdir,
+        firing_id=firing_id,
+    )
+
+    # PROACTIVE: condense the middle of a long conversation up front so the turn
+    # prompt stays within budget. Short conversations fall through untouched.
+    proactive = condenser.condense(message_list, summarize=summarize, config=config)
+    prompt_messages = _condensed_converse_messages(proactive)
+    if proactive.record is not None and on_condense is not None:
+        on_condense(proactive.record)
+
+    prompt = build_prompt(
+        system_prompt=system_prompt,
+        messages=prompt_messages,
+        repo_grounding=repo_grounding,
+        code_map=code_map,
+        intake_guidance=intake_guidance,
+        current_draft=base_draft,
+    )
+
+    result = _invoke_converse(
+        engine_invoke,
+        prompt=prompt,
+        engine=engine,
+        firing_id=firing_id,
+        workdir=workdir,
+        timeout=timeout,
+    )
+
+    # REACTIVE: if the engine reported a context-overflow, condense-and-retry once
+    # instead of failing the turn. Only failed results can be overflows; a
+    # successful turn whose reply text merely mentions overflow-like prose must
+    # not be discarded. Skip the retry when we already condensed proactively on
+    # this exact message set (a second pass cannot shrink it more).
+    if (
+        result is not None
+        and not getattr(result, "success", False)
+        and _is_overflow(result)
+        and proactive.record is None
+    ):
+        reactive = condenser.condense_on_overflow(message_list, summarize=summarize, config=config)
+        if reactive.record is not None:
+            if on_condense is not None:
+                on_condense(reactive.record)
+            retry_prompt = build_prompt(
+                system_prompt=system_prompt,
+                messages=_condensed_converse_messages(reactive),
+                repo_grounding=repo_grounding,
+                code_map=code_map,
+                intake_guidance=intake_guidance,
+                current_draft=base_draft,
+            )
+            # Reuse the original firing_id: the SSE stream tails THIS firing_id,
+            # so writing the retry under a "-retry" suffix would strand the
+            # retry's tokens on a transcript the client is not watching. The
+            # retry must continue on the stream the client is already reading.
+            result = _invoke_converse(
+                engine_invoke,
+                prompt=retry_prompt,
+                engine=engine,
+                firing_id=firing_id,
+                workdir=workdir,
+                timeout=timeout,
+            )
+
+    if result is None:
+        return None
+    if not getattr(result, "success", False) or not getattr(result, "result_text", ""):
+        return None
+    return parse_turn(
+        result.result_text,
+        base_draft=base_draft,
+        last_user_message=latest_user_message,
+    )
+
+
+def _condensed_converse_messages(
+    result: condenser.CondensationResult,
+) -> list[ConverseMessage]:
+    """Project a condensation result back to ``ConverseMessage`` turns.
+
+    The synthesized summary block is re-stamped to the ``user`` role so it
+    survives ``format_untrusted_transcript``'s role coercion as clearly-labelled
+    summary DATA inside the untrusted boundary, rather than being silently
+    relabeled. Its content already announces it is a condensed summary.
+    """
+    if not result.condensed:
+        return [_as_converse_message(turn) for turn in result.messages]
+    restamped = condenser.with_summary_in_role(result, as_role="user")
+    return [_as_converse_message(turn) for turn in restamped.messages]
+
+
+def _as_converse_message(turn: Any) -> ConverseMessage:
+    if isinstance(turn, ConverseMessage):
+        return turn
+    role = str(getattr(turn, "role", "user") or "user")
+    if role not in {"user", "assistant"}:
+        role = "user"
+    return ConverseMessage(role=role, content=str(getattr(turn, "content", "") or ""))
+
+
+def _invoke_converse(
+    engine_invoke: Callable[..., Any],
+    *,
+    prompt: str,
+    engine: str,
+    firing_id: str,
+    workdir: Path,
+    timeout: int,
+) -> Any:
+    """Run one interrogator invocation; ``None`` on any engine exception."""
     try:
         result, _engine_used = engine_invoke(
             prompt,
@@ -707,13 +896,21 @@ def run_turn(
         )
     except Exception:
         return None
-    if not getattr(result, "success", False) or not getattr(result, "result_text", ""):
-        return None
-    return parse_turn(
-        result.result_text,
-        base_draft=base_draft,
-        last_user_message=latest_user_message,
+    return result
+
+
+def _is_overflow(result: Any) -> bool:
+    """True when an engine result looks like a context-window overflow.
+
+    Reads the result's error text and body so the reactive condense-and-retry
+    path can fire. A ``None`` result (engine exception) is never an overflow.
+    """
+    if result is None:
+        return False
+    haystack = " ".join(
+        str(getattr(result, attr, "") or "") for attr in ("error_message", "result_text", "subtype")
     )
+    return condenser.looks_like_context_overflow(haystack)
 
 
 def last_user_message(messages: Iterable[ConverseMessage]) -> str:
