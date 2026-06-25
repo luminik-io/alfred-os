@@ -54,7 +54,7 @@ The variable only affects two things:
 Everything else (the structured `IssueDraft`, readiness scoring, the
 GitHub-ready issue body, the development spec, and the same structured work
 Lucius implements and Ra's al Ghul reviews) is identical in both modes. Plain
-mode is a thin strategy seam (`lib/intake_profiles.py`), not a separate code
+mode is a thin strategy seam (`lib/intake_profiles.py`) over the same code
 path.
 
 ## Where it fits

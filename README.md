@@ -60,7 +60,7 @@ Docs site: https://alfred.luminik.io
 
 Alfred touches your repos, your git history, and optionally Slack, so what it can
 reach should be obvious. It runs as you, on your machine, against the local CLIs
-you already authenticated. It is meant to be inspectable, not taken on faith.
+you already authenticated. It is meant to be inspectable, so you can read exactly what will happen before it runs.
 
 **What Alfred touches:**
 
@@ -123,7 +123,7 @@ Alfred is for the engineering work that should keep moving after you step away:
 planned features, reviewer comments, follow-up tests, dependency bumps, docs
 gaps, and multi-repo rollouts.
 
-- **Narrow roles, not a chatty crowd.** Drake plans, Lucius implements, Ra's al
+- **Narrow, single-purpose roles.** Drake plans, Lucius implements, Ra's al
   Ghul reviews, Bane adds tests, Nightwing clears review comments, and Batman
   ships multi-repo rollouts.
 - **Coordinate through ordinary repo primitives.** Issues, pull requests, labels,

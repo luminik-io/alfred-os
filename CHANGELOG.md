@@ -440,8 +440,7 @@ Initial public framework extraction.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
 [Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.5.3...HEAD
-[0.5.3]: https://github.com/luminik-io/alfred-os/compare/v0.5.2...v0.5.3
-[0.5.2]: https://github.com/luminik-io/alfred-os/compare/v0.5.1...v0.5.2
+[0.5.3]: https://github.com/luminik-io/alfred-os/compare/v0.5.1...v0.5.3
 [0.5.1]: https://github.com/luminik-io/alfred-os/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/luminik-io/alfred-os/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/luminik-io/alfred-os/compare/v0.3.0...v0.4.0
