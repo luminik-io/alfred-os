@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { deriveAgentRole, type WorkflowRole } from "./agentRoster";
 import {
+  editableAgents,
   isRosterThemeId,
   resolveThemedIdentity,
   ROSTER_THEME_IDS,
+  rosterThemeFor,
 } from "./agentThemes";
 
 describe("deriveAgentRole", () => {
@@ -96,5 +98,66 @@ describe("isRosterThemeId", () => {
     }
     expect(isRosterThemeId("nope")).toBe(false);
     expect(isRosterThemeId(null)).toBe(false);
+  });
+});
+
+describe("custom roster theme", () => {
+  it("applies operator names and role labels over the Batman base", () => {
+    const id = resolveThemedIdentity({ codename: "batman" }, "custom", {
+      names: { batman: "Sherlock" },
+      roles: { batman: "Lead detective" },
+    });
+    expect(id.name).toBe("Sherlock");
+    expect(id.role).toBe("architect");
+    expect(id.roleLabel).toBe("Lead detective");
+  });
+
+  it("falls back to the Batman name when an agent is not customized", () => {
+    const id = resolveThemedIdentity({ codename: "lucius" }, "custom", {
+      names: { batman: "Sherlock" },
+      roles: {},
+    });
+    // lucius was not renamed, so it keeps its shipped Batman-base name.
+    expect(id.name).toBe("Lucius");
+    expect(id.roleLabel).toBe("Senior developer");
+  });
+
+  it("ignores blank custom names rather than rendering an empty label", () => {
+    const id = resolveThemedIdentity({ codename: "batman" }, "custom", {
+      names: { batman: "   " },
+      roles: {},
+    });
+    expect(id.name).toBe("Batman");
+  });
+
+  it("normalizes a dotted codename when building the custom theme", () => {
+    const theme = rosterThemeFor("custom", {
+      names: { "fleet.local.batman": "Sherlock" },
+      roles: {},
+    });
+    expect(theme.nameByCodename.batman).toBe("Sherlock");
+  });
+
+  it("presets ignore custom maps entirely", () => {
+    const id = resolveThemedIdentity({ codename: "batman" }, "transformers", {
+      names: { batman: "Sherlock" },
+      roles: {},
+    });
+    expect(id.name).toBe("Optimus Prime");
+  });
+});
+
+describe("editableAgents", () => {
+  it("lists the full default cast with a role, name, and role label each", () => {
+    const agents = editableAgents();
+    expect(agents.length).toBeGreaterThan(0);
+    for (const agent of agents) {
+      expect(agent.codename.length).toBeGreaterThan(0);
+      expect(agent.defaultName.length).toBeGreaterThan(0);
+      expect(agent.defaultRoleLabel.length).toBeGreaterThan(0);
+    }
+    // The alias entry is collapsed so an agent never appears twice.
+    expect(agents.some((a) => a.codename === "agent-cleanup")).toBe(false);
+    expect(agents.some((a) => a.codename === "batman")).toBe(true);
   });
 });

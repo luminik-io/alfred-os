@@ -60,7 +60,7 @@ export const ROLE_EDGES: readonly [WorkflowRole, WorkflowRole][] = [
 // a machine-readable role for every agent, so we seed the canonical codenames
 // here. This is a HINT, not a gate: an agent absent from this table is still
 // placed by its reported role metadata or, failing that, the fallback lane.
-const CODENAME_ROLE_HINTS: Record<string, WorkflowRole> = {
+export const CODENAME_ROLE_HINTS: Record<string, WorkflowRole> = {
   robin: "triage",
   drake: "triage",
   damian: "triage",

@@ -1643,6 +1643,19 @@ body {
   min-width: 8.5rem;
 }
 
+.roster-theme-picker__edit {
+  flex: 0 0 auto;
+  gap: 0.35rem;
+}
+
+.custom-theme-editor__legend {
+  padding-inline: 0;
+}
+
+.custom-theme-editor__row {
+  align-items: end;
+}
+
 .agents-deck__row-meta {
   display: grid;
   justify-items: end;

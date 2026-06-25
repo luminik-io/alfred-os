@@ -11,7 +11,9 @@ import {
   type FleetServiceState,
 } from "../lib/fleetControl";
 import {
+  type CustomRosterNames,
   DEFAULT_ROSTER_THEME,
+  EMPTY_CUSTOM_NAMES,
   resolveThemedIdentity,
   type RosterThemeId,
 } from "../lib/agentThemes";
@@ -65,6 +67,7 @@ export function FleetControlView({
   service,
   nativeBusy,
   rosterTheme = DEFAULT_ROSTER_THEME,
+  customNames = EMPTY_CUSTOM_NAMES,
   onRunLocalAction,
   onViewLogs,
 }: {
@@ -75,6 +78,8 @@ export function FleetControlView({
   // The active roster theme (name + role-label cast). Defaults to the shipped
   // Batman roster so an omitted prop renders exactly as before.
   rosterTheme?: RosterThemeId;
+  // Operator-authored names/roles for the `custom` theme; ignored by presets.
+  customNames?: CustomRosterNames;
   onRunLocalAction: (request: NativeActionRequest) => void;
   onViewLogs: (codename: string) => void;
 }) {
@@ -85,8 +90,9 @@ export function FleetControlView({
   // themed name + plain role label as the canvas, with the two-arg call shape
   // those call sites already use.
   const themedProfile = useCallback(
-    (row: FleetControlRow, sched?: ScheduledRun) => agentProfile(row, sched, rosterTheme),
-    [rosterTheme],
+    (row: FleetControlRow, sched?: ScheduledRun) =>
+      agentProfile(row, sched, rosterTheme, customNames),
+    [rosterTheme, customNames],
   );
   const health = deriveFleetHealth(rows);
   const stats = agentStats(rows);
@@ -429,6 +435,7 @@ function agentProfile(
   row: FleetControlRow,
   schedule?: ScheduledRun,
   themeId: RosterThemeId = DEFAULT_ROSTER_THEME,
+  customNames: CustomRosterNames = EMPTY_CUSTOM_NAMES,
 ): AgentProfile {
   const identity = resolveThemedIdentity(
     {
@@ -437,11 +444,19 @@ function agentProfile(
       purpose: row.summary?.purpose || schedule?.purpose,
     },
     themeId,
+    customNames,
   );
   // The runtime's own labels win when set, so existing server-side naming is
   // preserved; otherwise the theme persona supplies the name and role label.
-  const name = row.summary?.display_name || schedule?.display_name || identity.name;
-  const roleLabel = row.summary?.role_title || schedule?.role_title || identity.roleLabel;
+  // The `custom` theme is the operator's explicit choice, so it overrides the
+  // runtime's reported name/role to match what the editor and Slack show.
+  const themeWins = themeId === "custom";
+  const name = themeWins
+    ? identity.name
+    : row.summary?.display_name || schedule?.display_name || identity.name;
+  const roleLabel = themeWins
+    ? identity.roleLabel
+    : row.summary?.role_title || schedule?.role_title || identity.roleLabel;
   const purpose = row.summary?.purpose || schedule?.purpose || "";
   return {
     name,
