@@ -176,4 +176,90 @@ describe("useRosterTheme", () => {
       expect(result.current.saveError).toBeNull();
     });
   });
+
+  // Thread: "Out-of-order saves persist stale theme". Two fast switches must be
+  // serialized: only the first POST goes out immediately, the newest is
+  // coalesced and sent once the socket frees, so the server's final write is
+  // the operator's last choice, in order.
+  it("serializes rapid switches so only the latest reaches the server", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+
+    // First save is held open so the second switch lands while it is in flight.
+    let resolveFirst: (value: RosterThemeResponse) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+
+    // Only the first POST is out; the newest choice is queued, not sent yet.
+    expect(saveRosterTheme).toHaveBeenCalledTimes(1);
+    expect(saveRosterTheme).toHaveBeenNthCalledWith(1, "http://127.0.0.1:7010", {
+      theme: "justice-league",
+    });
+
+    saveRosterTheme.mockResolvedValueOnce(serverState({ theme: "transformers" }));
+    await act(async () => {
+      resolveFirst(serverState({ theme: "justice-league" }));
+    });
+
+    // The queued latest switch now goes out, in order, exactly once.
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    expect(saveRosterTheme).toHaveBeenNthCalledWith(2, "http://127.0.0.1:7010", {
+      theme: "transformers",
+    });
+    await waitFor(() => {
+      expect(result.current.saveError).toBeNull();
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+  });
+
+  // A superseded save that fails must stay quiet: the newer save owns the
+  // reported outcome, so a stale rejection cannot raise a false error.
+  it("keeps a superseded save failure from clobbering the latest success", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+
+    let rejectFirst: (reason?: unknown) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectFirst = reject;
+      }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+
+    // The newest save (queued) will succeed once it goes out.
+    saveRosterTheme.mockResolvedValueOnce(serverState({ theme: "transformers" }));
+
+    // The first, now superseded, save fails. Its rejection must not surface.
+    await act(async () => {
+      rejectFirst(new Error("alfred serve returned 403"));
+    });
+
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.saveError).toBeNull();
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+  });
 });

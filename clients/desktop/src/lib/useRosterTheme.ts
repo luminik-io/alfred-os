@@ -87,6 +87,17 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // server interaction (a successful read OR a successful write) marks the hook
   // hydrated; an offline-only change must NOT block a later server read.
   const hydratedRef = useRef(false);
+  // Serialize saves so a fast A -> B switch cannot land out of order. Each call
+  // bumps `saveSeqRef`; only the latest seq decides the agreed state. While a
+  // POST is in flight, the newest pending choice is coalesced and sent next, so
+  // the server's final state always matches the operator's last action.
+  const saveSeqRef = useRef(0);
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef<{
+    theme: RosterThemeId;
+    custom: CustomRosterNames;
+    seq: number;
+  } | null>(null);
 
   // On connect, read the server's persisted choice so the picker reflects the
   // cast the runtime (and Slack) already use. A failed read keeps the
@@ -129,6 +140,53 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
 
   // Persist a theme switch to the server when connected. localStorage is always
   // written via the effect above, so a failed POST still keeps the local choice.
+  const runSave = useCallback(
+    (url: string, theme: RosterThemeId, custom: CustomRosterNames, seq: number) => {
+      // Only a custom save carries the cast. A preset switch must omit both
+      // maps so the server retains the authored custom cast (it replaces the
+      // retained maps only when an explicit payload is present); sending empty
+      // objects here would wipe the cast and lose it when switching back.
+      const body =
+        theme === "custom"
+          ? { theme, custom_names: custom.names, custom_roles: custom.roles }
+          : { theme };
+      inFlightRef.current = true;
+      void saveRosterTheme(url, body)
+        .then(() => {
+          // The server is now the agreed source of truth; clear any prior
+          // failure and treat the hook as hydrated so a racing GET cannot
+          // clobber the choice we just persisted. Skip if a newer save has
+          // since been issued: that save owns the agreed state, not this one.
+          if (seq !== saveSeqRef.current) return;
+          hydratedRef.current = true;
+          setSaveError(null);
+        })
+        .catch((err: unknown) => {
+          // The local value still reflects the choice, but Slack and a fresh
+          // reload keep the old server state. Surface that so the change does
+          // not silently look successful. A superseded save stays quiet; the
+          // newer one reports its own outcome.
+          if (seq !== saveSeqRef.current) return;
+          setSaveError(
+            err instanceof Error && err.message
+              ? `Could not save to Alfred: ${err.message}`
+              : "Could not save to Alfred. The cast is local-only until a save succeeds.",
+          );
+        })
+        .finally(() => {
+          inFlightRef.current = false;
+          // Drain to the latest queued choice so the final server write always
+          // reflects the operator's last action, in order.
+          const next = pendingRef.current;
+          if (next) {
+            pendingRef.current = null;
+            runSave(url, next.theme, next.custom, next.seq);
+          }
+        });
+    },
+    [],
+  );
+
   const persist = useCallback(
     (theme: RosterThemeId, custom: CustomRosterNames) => {
       if (!baseUrl) {
@@ -138,34 +196,16 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
         return;
       }
-      // Only a custom save carries the cast. A preset switch must omit both
-      // maps so the server retains the authored custom cast (it replaces the
-      // retained maps only when an explicit payload is present); sending empty
-      // objects here would wipe the cast and lose it when switching back.
-      const body =
-        theme === "custom"
-          ? { theme, custom_names: custom.names, custom_roles: custom.roles }
-          : { theme };
-      void saveRosterTheme(baseUrl, body)
-        .then(() => {
-          // The server is now the agreed source of truth; clear any prior
-          // failure and treat the hook as hydrated so a racing GET cannot
-          // clobber the choice we just persisted.
-          hydratedRef.current = true;
-          setSaveError(null);
-        })
-        .catch((err: unknown) => {
-          // The local value still reflects the choice, but Slack and a fresh
-          // reload keep the old server state. Surface that so the change does
-          // not silently look successful.
-          setSaveError(
-            err instanceof Error && err.message
-              ? `Could not save to Alfred: ${err.message}`
-              : "Could not save to Alfred. The cast is local-only until a save succeeds.",
-          );
-        });
+      const seq = ++saveSeqRef.current;
+      if (inFlightRef.current) {
+        // A save is already running. Coalesce to this newest choice; the
+        // in-flight save's finally() will send it once the socket is free.
+        pendingRef.current = { theme, custom, seq };
+        return;
+      }
+      runSave(baseUrl, theme, custom, seq);
     },
-    [baseUrl],
+    [baseUrl, runSave],
   );
 
   const setRosterTheme = useCallback(
