@@ -3307,9 +3307,7 @@ def test_roster_theme_set_custom_names_and_roles_persist(tmp_path: Path) -> None
     assert body["custom_roles"] == {"batman": "Lead detective"}
 
     # The file under the state root is the single source of truth across surfaces.
-    stored = json.loads(
-        (state / "roster-theme" / "roster-theme.json").read_text(encoding="utf-8")
-    )
+    stored = json.loads((state / "roster-theme" / "roster-theme.json").read_text(encoding="utf-8"))
     assert stored["theme"] == "custom"
     assert stored["custom_names"]["batman"] == "Sherlock"
 

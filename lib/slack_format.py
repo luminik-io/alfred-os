@@ -65,7 +65,7 @@ def _themed_codename_label(codename: str) -> str:
         from roster_theme_store import RosterThemeStore
 
         state = RosterThemeStore.from_state_root(STATE_ROOT).load()
-    except Exception:  # noqa: BLE001 - rendering must never fail on store reads
+    except Exception:  # rendering must never fail on store reads
         return codename_with_role(codename)
 
     # Under a custom theme the desktop builds names on the Batman base, so an
@@ -79,6 +79,7 @@ def _themed_codename_label(codename: str) -> str:
         return codename_with_role(codename)
     role = state.role_label_for(codename) or agent_role(codename)
     return f"{name} ({role})" if role else name
+
 
 SLACK_API = "https://slack.com/api"
 

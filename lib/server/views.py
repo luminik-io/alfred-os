@@ -790,9 +790,7 @@ def register_routes(app: FastAPI) -> None:
         except (json.JSONDecodeError, UnicodeDecodeError):
             return JSONResponse({"error": "request body must be JSON"}, status_code=400)
         if not isinstance(body, dict):
-            return JSONResponse(
-                {"error": "request body must be a JSON object"}, status_code=400
-            )
+            return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
         store = RosterThemeStore.from_state_root(_state_root(request))
         try:
             state = store.save(
@@ -805,9 +803,7 @@ def register_routes(app: FastAPI) -> None:
             # fragments (the offending codename/label), so we never surface the
             # exception text. Log the detail server-side and return a generic 400.
             logger.warning("api_set_roster_theme: rejected invalid payload", exc_info=True)
-            return JSONResponse(
-                {"error": "invalid roster theme payload"}, status_code=400
-            )
+            return JSONResponse({"error": "invalid roster theme payload"}, status_code=400)
         return JSONResponse(state.to_dict())
 
     @app.post("/api/conversation/control", response_class=JSONResponse)

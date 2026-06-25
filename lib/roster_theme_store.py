@@ -251,9 +251,7 @@ class RosterThemeStore:
             "custom_roles": dict(sorted(custom_roles.items())),
         }
         tmp = self.path.with_name(f"{self.path.name}.tmp")
-        tmp.write_text(
-            json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         tmp.replace(self.path)
 
 

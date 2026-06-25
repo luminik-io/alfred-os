@@ -237,8 +237,8 @@ def test_github_links_render_as_slack_mrkdwn():
 
 def _persist_theme(tmp_path, **payload):
     """Write a roster-theme state file under the isolated ALFRED_HOME."""
-    from roster_theme_store import RosterThemeStore
     from agent_runner.paths import STATE_ROOT
+    from roster_theme_store import RosterThemeStore
 
     RosterThemeStore.from_state_root(STATE_ROOT).save(**payload)
 

@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from roster_theme_store import (  # noqa: E402
+from roster_theme_store import (
     DEFAULT_THEME_ID,
     RosterThemeError,
     RosterThemeStore,
@@ -198,7 +198,5 @@ def test_load_drops_malformed_entries_without_raising(tmp_path: Path) -> None:
 def test_load_unknown_theme_falls_back_to_default(tmp_path: Path) -> None:
     root = tmp_path / "state" / "roster-theme"
     root.mkdir(parents=True)
-    (root / "roster-theme.json").write_text(
-        json.dumps({"theme": "garbage"}), encoding="utf-8"
-    )
+    (root / "roster-theme.json").write_text(json.dumps({"theme": "garbage"}), encoding="utf-8")
     assert RosterThemeStore.from_state_root(tmp_path / "state").load().theme == "batman"
