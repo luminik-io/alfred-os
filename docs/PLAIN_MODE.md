@@ -52,9 +52,10 @@ The variable only affects two things:
    > OK to go ahead?
 
 Everything else (the structured `IssueDraft`, readiness scoring, the
-GitHub-ready issue body, the development spec, and the whole downstream
-bridge and the agents) is identical in both modes. Plain mode is a thin strategy
-seam (`lib/intake_profiles.py`), not a separate code path.
+GitHub-ready issue body, the development spec, and the same structured work
+Lucius implements and Ra's al Ghul reviews) is identical in both modes. Plain
+mode is a thin strategy seam (`lib/intake_profiles.py`), not a separate code
+path.
 
 ## Where it fits
 
@@ -66,8 +67,9 @@ Plain mode is the friendly entrance; the existing pieces do the rest.
   scores.
 - **Alfred Desktop.** The Compose box becomes a plain-language intake. The
   person types a request, answers a question or two, and approves the plan.
-- **Your agents.** They receive the exact same structured work they always have, and
-  keep every gate (claim-lock, spend caps, review, approval) intact.
+- **Lucius, Ra's al Ghul, and the rest.** They receive the exact same structured
+  work they always have, and keep every gate (claim-lock, spend caps, review,
+  approval) intact.
 
 The non-technical user approves an *outcome* and later reviews a *preview*.
 They never touch code, specs, or GitHub.

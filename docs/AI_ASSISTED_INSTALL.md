@@ -70,16 +70,9 @@ Rules:
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
 - Use the starter fleet only: Drake, Lucius, Ra's al Ghul, and agent-cleanup.
-- Batman handling for first install:
-  - If I set `ADD_BATMAN=true`, add Batman.
-  - Otherwise, if the parsed `REPOS` list has 2 or more entries under the same
-    `GH_ORG` (the common case where cross-repo coordination is likely), do not
-    add Batman silently. Instead pause and ask me: "I see N repos under your
-    org. Batman architects `agent:large-feature` issues across repos. One
-    approved plan fans out into scoped child issues that Lucius can pick up.
-    Add Batman now? [y/N]". Add Batman only if I answer yes. Default no
-    preserves the previous behaviour for single-repo fleets.
-  - For a single-repo fleet, do not bring Batman up; it adds no value when there is nothing to coordinate.
+- Batman handling: add Batman if I set `ADD_BATMAN=true`; if `REPOS` has 2 or more
+  repos under the same `GH_ORG`, pause and ask before adding him; for a single-repo
+  fleet, leave him out (he plans multi-repo work, so there is nothing for him to do).
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.
