@@ -214,6 +214,13 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
         return;
       }
+      // The operator's change now owns this runtime's state locally. Record the
+      // runtime as synced immediately, before the (possibly queued) save even
+      // goes out: otherwise a still-in-flight hydration GET for this runtime can
+      // resolve and revert the change, because hydration is only recorded on
+      // save success. Marking it here closes that window; the save still
+      // reconciles with the server and surfaces any failure.
+      hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
       if (inFlightRef.current) {
         // A save is already running. Coalesce to this newest choice; the

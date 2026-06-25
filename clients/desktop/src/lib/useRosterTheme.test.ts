@@ -301,6 +301,49 @@ describe("useRosterTheme", () => {
     });
   });
 
+  // Thread: "Stale Hydration Overwrites Edit". A change made on a runtime
+  // whose hydration GET is still in flight must not be reverted when that GET
+  // resolves: the operator's edit owns the runtime state immediately.
+  it("does not let an in-flight hydration GET revert a change made on that runtime", async () => {
+    // Runtime B's hydration GET is held open so it can resolve AFTER the edit.
+    let resolveLoadB: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme.mockImplementation((baseUrl: string) => {
+      if (baseUrl.endsWith("7020")) {
+        return new Promise<RosterThemeResponse>((resolve) => {
+          resolveLoadB = resolve;
+        });
+      }
+      return new Promise<RosterThemeResponse>(() => {});
+    });
+    // Runtime A's save is held open so inFlight is true when the edit lands.
+    saveRosterTheme.mockReturnValueOnce(new Promise<RosterThemeResponse>(() => {}));
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    // Edit on runtime A: its save is now in flight.
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+
+    // Switch to runtime B (starts B's hydration GET), then edit on B while A's
+    // save is still in flight (so the B edit is queued, not yet saved).
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+
+    // B's hydration GET now resolves with the old server snapshot. It must be
+    // ignored: the operator's edit owns runtime B's state.
+    await act(async () => {
+      resolveLoadB(serverState({ theme: "batman" }));
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+  });
+
   // A superseded save that fails must stay quiet: the newer save owns the
   // reported outcome, so a stale rejection cannot raise a false error.
   it("keeps a superseded save failure from clobbering the latest success", async () => {
