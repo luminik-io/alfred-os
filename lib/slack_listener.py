@@ -47,6 +47,7 @@ from slack_approval import (
 from slack_control import SlackControlHandler, is_control_message, parse_control_command
 from slack_converse import (
     SlackConverseConfig,
+    gather_thread_context,
     run_slack_converse,
 )
 from slack_format import github_issue_link, github_url_link
@@ -554,6 +555,18 @@ class SlackPlanningListener:
         if clarified is not None:
             return clarified
 
+        # A converse "build" turn offers `ship it` to file the discussion. A
+        # conversation thread has no saved draft, so that reply cannot reach the
+        # bridge directly; without this it would silently fire another model turn
+        # and nothing would be filed. Honour the offer by materializing the
+        # discussion into a real planning draft (a ``kind="draft"`` thread) so the
+        # existing approval bridge has something concrete to graduate. The bare
+        # ``ship it`` reply carries no scope, so seed the draft from the latest
+        # substantive request earlier in the thread, falling back to the reply.
+        if self.bridge.is_approval(text=event.text):
+            source_text = self._ship_it_source_text(event)
+            return self._open_planning_draft(event, source_text=source_text)
+
         # A free-form reply in an Alfred-started thread is a conversation turn:
         # answer it (streamed, with the prior thread messages as context) rather
         # than dropping it. Off by default; only engages when converse is armed.
@@ -562,6 +575,44 @@ class SlackPlanningListener:
             return converse
 
         return ListenerResult(False, "ignored", "conversation reply is not actionable")
+
+    def _ship_it_source_text(self, event: SlackInputEvent) -> str:
+        """Pick the build request a ``ship it`` reply is approving.
+
+        A bare ``ship it`` carries no scope of its own; the actual request is an
+        earlier human turn in the same thread. Read the bounded thread context
+        (best-effort, the same reader converse uses) and return the most recent
+        human turn that is not itself an approval token. Falls back to the reply
+        text when no prior human turn is recoverable, so the draft path always has
+        something to refine.
+        """
+        reply_text = (event.text or "").strip()
+        if self.poster is None:
+            return reply_text
+        try:
+            context = gather_thread_context(
+                self.poster,
+                channel=event.channel,
+                root_ts=event.root_ts,
+                bot_user_id=self.bot_user_id,
+                limit=self._converse_config.thread_context,
+                exclude_ts=event.ts,
+            )
+        except Exception as exc:  # never let a Slack read block filing
+            print(
+                f"[SLACK-LISTENER-WARN] ship-it context read failed for "
+                f"{event.channel}/{event.root_ts}: {exc}",
+                file=sys.stderr,
+            )
+            return reply_text
+        for message in reversed(context):
+            if message.role != "user":
+                continue
+            candidate = (message.content or "").strip()
+            if not candidate or self.bridge.is_approval(text=candidate):
+                continue
+            return candidate
+        return reply_text
 
     def _maybe_complete_thread_clarification(
         self,
@@ -895,7 +946,23 @@ class SlackPlanningListener:
         if converse is not None:
             return converse
 
-        draft = draft_from_slack_text(event.text)
+        return self._open_planning_draft(event, source_text=event.text)
+
+    def _open_planning_draft(
+        self,
+        event: SlackInputEvent,
+        *,
+        source_text: str,
+    ) -> ListenerResult:
+        """Refine ``source_text`` into a saved planning draft and register it.
+
+        This is the working intake path: it saves a ``planning-drafts/*.json``
+        payload and registers a ``kind="draft"`` thread so the existing approval
+        bridge can later graduate it into a GitHub issue. Both the top-level
+        intake and a ``ship it`` reply in a conversation thread funnel here so the
+        bridge always has a saved draft to act on.
+        """
+        draft = draft_from_slack_text(source_text)
         refined = refine_issue_draft(
             draft,
             [],

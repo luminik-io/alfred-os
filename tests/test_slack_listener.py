@@ -1599,6 +1599,77 @@ def test_conversation_thread_fallback_allows_only_read_only_controls(tmp_path: P
     assert control.calls == ["runs"]
 
 
+class ConversationReplyPoster(CardPoster):
+    """CardPoster that also serves a fixed thread transcript for context reads."""
+
+    def __init__(self, messages: list[dict]) -> None:
+        super().__init__()
+        self._thread_messages = messages
+
+    def conversations_replies(self, **kwargs):
+        return {"ok": True, "messages": self._thread_messages}
+
+
+def test_conversation_thread_ship_it_opens_a_planning_draft(tmp_path: Path) -> None:
+    """`ship it` in a conversation thread must file, not fire another model turn.
+
+    A converse build turn offers `ship it`, but a conversation thread carries no
+    saved draft, so without routing the reply lands on the converse path again
+    and nothing is filed. The approval must instead materialize the discussed
+    request into a real ``kind="draft"`` thread the bridge can graduate.
+    """
+    registry = SlackThreadRegistry(tmp_path / "threads")
+    registry.register(
+        SlackThreadRecord(
+            kind="conversation",
+            channel="C1",
+            thread_ts="1716480000.000000",
+            title="Dark mode",
+            status="open",
+        )
+    )
+    poster = ConversationReplyPoster(
+        [
+            {"user": "U1", "text": "Add a dark mode toggle to settings", "ts": "1716480000.000000"},
+            {
+                "user": "UALFRED",
+                "text": "I can turn this into a tracked issue.",
+                "ts": "1716480000.500000",
+            },
+            {"user": "U1", "text": "ship it", "ts": "1716480001.000001"},
+        ]
+    )
+    converse_calls: list[dict] = []
+
+    def converse_runner(**kwargs):
+        converse_calls.append(kwargs)
+        return SimpleNamespace(handled=True, intent="build", offered_issue=True, streamed=False)
+
+    listener = SlackPlanningListener(
+        registry=registry,
+        state_root=tmp_path,
+        poster=poster,
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=converse_runner,
+    )
+
+    result = listener.handle_payload(
+        _thread_reply("ship it", event_id="EvConversationShipIt", user="U1")
+    )
+
+    # Filed a real draft instead of routing back into another converse turn.
+    assert result.handled is True
+    assert result.action == "draft_created"
+    assert result.thread_kind == "draft"
+    assert converse_calls == []
+    # The draft is seeded from the discussed request, not the bare "ship it".
+    record = registry.lookup("C1", "1716480001.000001")
+    assert record is not None
+    assert record.kind == "draft"
+    assert "dark mode" in (record.title or "").lower()
+
+
 def test_conversation_thread_read_only_control_skips_pending_clarification(
     tmp_path: Path,
 ) -> None:
