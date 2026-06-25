@@ -402,7 +402,6 @@ export type RosterThemeResponse = {
   custom_names: Record<string, string>;
   custom_roles: Record<string, string>;
   updated_at: string | null;
-  state_path: string | null;
 };
 
 export type RosterThemeWrite = {

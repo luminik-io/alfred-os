@@ -21,7 +21,6 @@ function serverState(overrides: Partial<RosterThemeResponse> = {}): RosterThemeR
     custom_names: {},
     custom_roles: {},
     updated_at: null,
-    state_path: null,
     ...overrides,
   };
 }

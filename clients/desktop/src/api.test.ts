@@ -809,7 +809,6 @@ describe("roster theme persistence", () => {
           custom_names: { batman: "Sherlock" },
           custom_roles: { batman: "Lead detective" },
           updated_at: "2026-06-25T00:00:00Z",
-          state_path: "/tmp/state/roster-theme/roster-theme.json",
         }),
         { status: 200 },
       );
@@ -840,7 +839,6 @@ describe("roster theme persistence", () => {
           custom_names: { batman: "Sherlock" },
           custom_roles: {},
           updated_at: "2026-06-25T00:00:00Z",
-          state_path: "/tmp/state/roster-theme/roster-theme.json",
         }),
         { status: 200 },
       );

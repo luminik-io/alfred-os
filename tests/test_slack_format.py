@@ -307,3 +307,21 @@ def test_themed_label_custom_unknown_codename_keeps_shipped_behavior(tmp_path, m
     # the env role still applies, since the desktop has no base label for it.
     _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
     assert sf._themed_codename_label("mystery-bot") == codename_with_role("mystery-bot")
+
+
+def test_themed_label_escapes_slack_markup(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    # The label lands in a mrkdwn message body, so an operator-authored name like
+    # ``<!channel>`` or ``<@U123>`` must not render as a broadcast or a mention.
+    # The visible text is preserved through HTML entities Slack decodes on display.
+    _persist_theme(
+        tmp_path,
+        theme="custom",
+        custom_names={"batman": "<!channel> & <@U123>"},
+        custom_roles={"batman": "<lead>"},
+    )
+    label = sf._themed_codename_label("batman")
+    assert "<!channel>" not in label
+    assert "<@U123>" not in label
+    assert label == "&lt;!channel&gt; &amp; &lt;@U123&gt; (&lt;lead&gt;)"

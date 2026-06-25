@@ -124,7 +124,7 @@ export function CustomThemeEditor({
                         htmlFor={`ct-name-${agent.codename}`}
                         className="text-xs text-muted-foreground"
                       >
-                        {agent.defaultName} — name
+                        {agent.defaultName} name
                       </Label>
                       <Input
                         id={`ct-name-${agent.codename}`}
@@ -170,7 +170,7 @@ export function CustomThemeEditor({
               Cancel
             </Button>
             <Button type="button" size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving…" : "Save cast"}
+              {saving ? "Saving..." : "Save cast"}
             </Button>
           </div>
         </DialogFooter>

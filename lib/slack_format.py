@@ -49,6 +49,17 @@ from agent_runner.metadata import agent_role, codename_with_role
 from slack_approval import resolve_bot_token as _resolve_bot_token
 
 
+def _escape_slack_text(text: str) -> str:
+    """Neutralize Slack markup in operator-authored labels.
+
+    Custom names and roles flow into mrkdwn message bodies, where a value like
+    ``<!channel>`` or ``<@U123>`` would render as a broadcast or a mention. Slack
+    decodes ``&amp;``, ``&lt;`` and ``&gt;`` back to the literal characters, so the
+    label keeps its visible text without triggering a mention or a link.
+    """
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _themed_codename_label(codename: str) -> str:
     """Format ``"<name> (<role>)"`` honoring the persisted roster theme.
 
@@ -83,7 +94,9 @@ def _themed_codename_label(codename: str) -> str:
     # renders identically on both surfaces. Only a codename outside the Batman
     # base falls through to the env role, preserving the shipped behavior there.
     role = state.custom_role_label_for(codename) or agent_role(codename)
-    return f"{name} ({role})" if role else name
+    safe_name = _escape_slack_text(name)
+    safe_role = _escape_slack_text(role) if role else role
+    return f"{safe_name} ({safe_role})" if safe_role else safe_name
 
 
 SLACK_API = "https://slack.com/api"

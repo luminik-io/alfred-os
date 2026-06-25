@@ -125,7 +125,6 @@ class RosterThemeState:
     custom_names: Mapping[str, str]
     custom_roles: Mapping[str, str]
     updated_at: str | None = None
-    state_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -133,7 +132,6 @@ class RosterThemeState:
             "custom_names": dict(self.custom_names),
             "custom_roles": dict(self.custom_roles),
             "updated_at": self.updated_at,
-            "state_path": self.state_path,
         }
 
     def display_name_for(self, codename: str) -> str | None:
@@ -221,7 +219,6 @@ class RosterThemeStore:
             custom_names=custom_names,
             custom_roles=custom_roles,
             updated_at=_coerce_str(payload.get("updated_at")),
-            state_path=str(self.path),
         )
 
     def save(
@@ -260,7 +257,6 @@ class RosterThemeStore:
             custom_names=names,
             custom_roles=roles,
             updated_at=_utc_now(),
-            state_path=str(self.path),
         )
 
     @contextmanager
