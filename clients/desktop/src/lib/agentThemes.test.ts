@@ -112,6 +112,22 @@ describe("custom roster theme", () => {
     expect(id.roleLabel).toBe("Lead detective");
   });
 
+  it("keeps a custom role label scoped to the named codename only", () => {
+    // lucius, bane, and nightwing all share the canonical `implement` role.
+    // Renaming lucius's role must NOT relabel bane (which would happen if the
+    // override were folded into the role-wide labels), matching the Slack path
+    // where role_label_for is keyed by codename.
+    const custom = {
+      names: {},
+      roles: { lucius: "Quartermaster" },
+    };
+    const lucius = resolveThemedIdentity({ codename: "lucius" }, "custom", custom);
+    const bane = resolveThemedIdentity({ codename: "bane" }, "custom", custom);
+    expect(lucius.roleLabel).toBe("Quartermaster");
+    // bane keeps the canonical implement label, not lucius's custom one.
+    expect(bane.roleLabel).toBe("Senior developer");
+  });
+
   it("falls back to the Batman name when an agent is not customized", () => {
     const id = resolveThemedIdentity({ codename: "lucius" }, "custom", {
       names: { batman: "Sherlock" },

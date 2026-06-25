@@ -39,6 +39,12 @@ export type RosterTheme = {
   // map) fall back to their own runtime name or a titleized codename, never to
   // another agent's persona, so two agents can never collide on one name.
   nameByCodename: Record<string, string>;
+  // Per-codename role label override (only the `custom` theme uses this). The
+  // operator authors a role label PER AGENT, so it must not bleed onto every
+  // other agent that happens to share the same canonical role. Resolution
+  // prefers this over the canonical `roleLabels[role]`, matching the Slack path
+  // (RosterThemeState.role_label_for, which is also keyed by codename).
+  roleLabelByCodename?: Record<string, string>;
 };
 
 // The canonical fleet codenames the presets re-skin. Kept in one place so every
@@ -177,19 +183,23 @@ function buildCustomTheme(custom: CustomRosterNames): RosterTheme {
     const clean = name.trim();
     if (clean) nameByCodename[normalizeCodename(codename)] = clean;
   }
-  const roleLabels: Record<WorkflowRole, string> = { ...ROLE_LABELS_DEFAULT };
+  // A custom role label is authored PER AGENT, so it is stored against that one
+  // codename and never folded into the role-wide labels. The canonical
+  // roleLabels stay at the Batman defaults; resolution overlays the per-codename
+  // override on top so naming Batman "Lead detective" relabels only Batman, not
+  // every other architect-role agent (which is exactly what Slack does).
+  const roleLabelByCodename: Record<string, string> = {};
   for (const [codename, label] of Object.entries(custom.roles)) {
     const clean = label.trim();
-    if (!clean) continue;
-    const role = BATMAN_ROLE_BY_CODENAME[normalizeCodename(codename)];
-    if (role) roleLabels[role] = clean;
+    if (clean) roleLabelByCodename[normalizeCodename(codename)] = clean;
   }
   return {
     id: "custom",
     label: CUSTOM_THEME_META.label,
     blurb: CUSTOM_THEME_META.blurb,
-    roleLabels,
+    roleLabels: { ...ROLE_LABELS_DEFAULT },
     nameByCodename,
+    roleLabelByCodename,
   };
 }
 
@@ -263,7 +273,10 @@ export function resolveThemedIdentity(
   const role = deriveAgentRole(source);
   const short = normalizeCodename(source.codename);
   const name = theme.nameByCodename[short] || titleizeCodename(source.codename);
-  return { role, name, roleLabel: theme.roleLabels[role] };
+  // A per-codename custom role label wins over the role-wide label, so an
+  // operator's "Batman = Lead detective" does not relabel every architect.
+  const roleLabel = theme.roleLabelByCodename?.[short] ?? theme.roleLabels[role];
+  return { role, name, roleLabel };
 }
 
 // The known fleet codenames the custom-theme editor lets the operator rename,
