@@ -656,6 +656,33 @@ export type UsageResponse = {
   errors?: { block?: string; codex?: string; limits?: string };
 };
 
+// One plan's subscription-quota cost framing from GET /api/metrics. Cost is a
+// SHARE OF QUOTA (percent of a plan's daily turn budget per PR), never dollars.
+export type QuotaCostRow = {
+  plan: string;
+  daily_turn_budget: number;
+  turns_per_pr: number | null;
+  pct_quota_per_pr: number | null;
+};
+
+// Self-benchmark report from GET /api/metrics. The four metric families are
+// loose maps (the server projects benchmark.py's to_dict() verbatim) so the
+// view renders whatever rows the report emits without coupling to exact keys.
+export type MetricFamily = Record<string, number | string | null>;
+
+export type MetricsResponse = {
+  available: boolean;
+  unavailable_reason?: string | null;
+  label?: string | null;
+  generated_at?: string | null;
+  throughput: MetricFamily | null;
+  quality: MetricFamily | null;
+  reliability: MetricFamily | null;
+  efficiency: MetricFamily | null;
+  spend?: MetricFamily | null;
+  quota_cost: QuotaCostRow[];
+};
+
 export type NativeAction =
   | "dry_run"
   | "run"

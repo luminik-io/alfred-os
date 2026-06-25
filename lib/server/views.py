@@ -527,6 +527,29 @@ def register_routes(app: FastAPI) -> None:
             }
         return JSONResponse(_jsonable(payload))
 
+    @app.get("/api/metrics", response_class=JSONResponse)
+    async def api_metrics(request: Request) -> JSONResponse:
+        """Self-benchmark metrics: four families + subscription-quota cost.
+
+        Projects ``alfred benchmark report --json`` (lib/benchmark.py) over
+        the local state tree: throughput / quality / reliability / efficiency
+        plus a ``quota_cost`` array framing per-PR turn cost as a share of each
+        plan's Claude Max / Codex Pro daily budget (percent, not dollars).
+
+        Reads run in a worker thread so filesystem work never stalls the event
+        loop, and any failure degrades to an honest ``available: false`` shape.
+        """
+        from starlette.concurrency import run_in_threadpool
+
+        from server.metrics import build_metrics, unavailable_metrics_payload
+
+        try:
+            payload = await run_in_threadpool(build_metrics)
+        except Exception:  # never break the client on a metrics failure
+            logger.exception("api_metrics: failed to build metrics payload")
+            return JSONResponse(unavailable_metrics_payload(_GENERIC_ERROR))
+        return JSONResponse(_jsonable(payload))
+
     @app.post("/api/queue", response_class=JSONResponse)
     async def api_queue(request: Request) -> JSONResponse:
         """Operator queue control: assign, arm, hold, or close an issue.

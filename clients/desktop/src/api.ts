@@ -286,6 +286,17 @@ export async function loadUsage(baseUrl: string): Promise<UsageResponse> {
   );
 }
 
+// Self-benchmark metrics from GET /api/metrics: the four metric families
+// (throughput / quality / reliability / efficiency) plus the subscription-quota
+// cost framing. Fetched separately so it never gates the core snapshot.
+export async function loadMetrics(baseUrl: string): Promise<MetricsResponse> {
+  return withTimeout(
+    readAlfredJson<MetricsResponse>(baseUrl, "/api/metrics"),
+    12000,
+    "/api/metrics",
+  );
+}
+
 // Fetch one agent's own firing history. The Logs live tail uses this when a
 // quieter agent has been pushed out of the limited global /api/firings feed, so
 // "View logs" still surfaces real runs instead of an empty state.
