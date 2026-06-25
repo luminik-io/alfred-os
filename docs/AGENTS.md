@@ -61,7 +61,7 @@ per-agent in `agents.conf`.
 The recommended engineering hierarchy starts with Batman, Lucius, and Drake:
 Batman is the architect for cross-repo features, Lucius ships repo-local
 implementation PRs, and Drake scopes smaller single-repo requests. For a first
-single-repo install, start with Lucius, Drake, Ras al Ghul, and agent-cleanup;
+single-repo install, start with Lucius, Drake, Ra's al Ghul, and agent-cleanup;
 enable Batman when multi-repo or multi-package work becomes recurring.
 
 | Codename | Role | Default schedule | Default repos | What it does |

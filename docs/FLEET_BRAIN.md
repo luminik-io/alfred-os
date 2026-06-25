@@ -8,9 +8,8 @@ those lessons trustworthy.
 FleetBrain is a single SQLite file in your `$ALFRED_HOME`. Raw prompts, paths,
 candidate text, and firing history stay on your machine. The normal outbound
 surface is the prompt context Alfred prepends to a firing, which goes to Claude
-Code or Codex on your existing CLI auth. If you configure Alfred's usage
-counter, it sends anonymous aggregate counts only and can be disabled with
-`alfred telemetry off`.
+Code or Codex on your existing CLI auth. Anonymous aggregate usage counts are on
+by default; opt out with `alfred telemetry off`.
 
 ## Why it exists
 

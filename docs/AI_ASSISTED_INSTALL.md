@@ -69,7 +69,7 @@ Rules:
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
-- Use the starter fleet only: Drake, Lucius, Ras al Ghul, and agent-cleanup.
+- Use the starter fleet only: Drake, Lucius, Ra's al Ghul, and agent-cleanup.
 - Batman handling for first install:
   - If I set `ADD_BATMAN=true`, add Batman.
   - Otherwise, if the parsed `REPOS` list has 2 or more entries under the same
@@ -315,7 +315,7 @@ bash bin/doctor.sh
 
 Expected:
 
-- `alfred agents` lists Drake, Lucius, Ras al Ghul, and agent-cleanup.
+- `alfred agents` lists Drake, Lucius, Ra's al Ghul, and agent-cleanup.
 - `alfred auth status` shows Claude Code account routing and Codex status if
   Codex is installed.
 - `doctor.sh` reports the configured agents as pass, or names the exact missing

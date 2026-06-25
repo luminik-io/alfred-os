@@ -58,7 +58,7 @@ alfred-init
 ```
 
 `--agents` accepts `starter`, `all`, or comma-separated codenames. `starter`
-enables Drake, Lucius, Ras al Ghul, and agent-cleanup. `--repos` scopes every
+enables Drake, Lucius, Ra's al Ghul, and agent-cleanup. `--repos` scopes every
 enabled repo-operating agent to explicit repos and is required for safe
 non-interactive setup when more than one repo is visible. The repo owner must
 match `GH_ORG`; shipped agents store bare repo names and build `GH_ORG/repo`

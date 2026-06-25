@@ -8,8 +8,8 @@ semantic lessons Alfred recalls, while FleetBrain keeps the local operational
 ledger and review queue.
 
 The bundled Redis server binds to loopback by default. Nothing is sent to a
-hosted memory service. If you configure Alfred's usage counter, it sends
-anonymous aggregate counts only and can be disabled with `alfred telemetry off`.
+hosted memory service. Anonymous aggregate usage counts are on by default; opt
+out with `alfred telemetry off`.
 
 For the **code-structure** layer (where a symbol lives, who calls it, what a
 change breaks, who owns a file) see [CODE_MEMORY.md](CODE_MEMORY.md). It is a

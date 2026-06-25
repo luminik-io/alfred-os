@@ -1,8 +1,8 @@
 # Integrations
 
 Alfred core should stay boring: local Python runners, host-scheduler units,
-git worktrees, GitHub CLI, model CLIs, local Redis Agent Memory, FleetBrain,
-and optional Slack delivery.
+git worktrees, GitHub CLI, model CLIs, local Redis Agent Memory, the local
+FleetBrain review and reliability ledger, and optional Slack delivery.
 
 Everything else is an integration. Useful integrations are welcome, but they
 should not become required for a clean open-source install.

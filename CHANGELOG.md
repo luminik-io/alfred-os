@@ -291,7 +291,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 
 ### Changed
 
-- `alfred-init.py` now defaults to the recommended starter fleet (Drake, Lucius, Ras al Ghul, agent-cleanup) instead of enabling every discovered agent on Enter or in non-interactive mode.
+- `alfred-init.py` now defaults to the recommended starter fleet (Drake, Lucius, Ra's al Ghul, agent-cleanup) instead of enabling every discovered agent on Enter or in non-interactive mode.
 - `alfred-init.py` seeds prompt templates into `~/.alfred/prompts/<codename>.md`, creates standard GitHub labels on selected repos, and refuses multi-repo non-interactive setup unless `--repos` is explicit.
 - Robin is correctly described and wired as bug triage in the installer catalog.
 - `alfred-status` and `bin/doctor.sh` now read the `systemd --user` timer roster on Linux, falling back to the same agent-discovery logic the launchd path uses.

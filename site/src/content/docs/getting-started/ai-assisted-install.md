@@ -44,7 +44,7 @@ Rules:
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
-- Use the starter fleet only: Drake, Lucius, Ras al Ghul, and agent-cleanup.
+- Use the starter fleet only: Drake, Lucius, Ra's al Ghul, and agent-cleanup.
 - Do not add Batman during first install unless I explicitly set ADD_BATMAN=true.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
