@@ -354,9 +354,9 @@ alfred telemetry status   # see local state
 The public counter only moves for a trusted reporter token, so a random install
 cannot inflate it. Self-host the collector (Cloudflare Worker under
 [`telemetry/worker/`](telemetry/worker/)): deploy it with `wrangler deploy`,
-point Alfred at it with `alfred telemetry on --url ... --token ...`, then run
-`bash deploy.sh` from your Alfred source checkout to render and load the
-reporter into the host scheduler. Full contract:
+point Alfred at it with `alfred telemetry on --url ... --token ...`, then load
+the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
+`bash deploy.sh` (source checkout). Full contract:
 [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## What's in here

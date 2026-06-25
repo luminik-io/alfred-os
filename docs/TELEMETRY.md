@@ -21,10 +21,10 @@ install's previous record, then writes `ALFRED_TELEMETRY_ENABLED=0`. The
 scheduler row can stay installed; with telemetry off, the reporter exits
 cleanly and sends nothing.
 
-After changing the telemetry config, run `bash deploy.sh` from your Alfred
-source checkout to render and load the reporter into the host scheduler
-(`launchd` on macOS, `systemd --user` on Linux). Until then the row is recorded
-but no unit is loaded, so nothing is sent.
+After changing the telemetry config, load the reporter into the host scheduler
+(`launchd` on macOS, `systemd --user` on Linux). A Homebrew install exposes the
+wrapper as `alfred-deploy`; from a source checkout run `bash deploy.sh`. Until
+then the row is recorded but no unit is loaded, so nothing is sent.
 
 Self-hosted collector:
 
@@ -32,7 +32,7 @@ Self-hosted collector:
 alfred telemetry on \
   --url https://your-worker.example.com/ingest \
   --token the-same-value-as-the-collector
-bash deploy.sh   # render + load the reporter into the host scheduler
+alfred-deploy        # Homebrew install; or `bash deploy.sh` from a source checkout
 ```
 
 ## Payload
