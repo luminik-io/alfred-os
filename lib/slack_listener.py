@@ -45,6 +45,11 @@ from slack_approval import (
     trusted_feedback_user_ids_from_env,
 )
 from slack_control import SlackControlHandler, is_control_message, parse_control_command
+from slack_converse import (
+    SlackConverseConfig,
+    gather_thread_context,
+    run_slack_converse,
+)
 from slack_format import github_issue_link, github_url_link
 from slack_intent import (
     ACTION_ASSIGN,
@@ -290,6 +295,8 @@ class SlackPlanningListener:
         conversation_context: ConversationContext | None = None,
         ambient_channels: Iterable[str] | None = None,
         plan_answerer: PlanAnswerer | None = None,
+        converse_config: SlackConverseConfig | None = None,
+        converse_runner: Callable[..., Any] | None = None,
     ) -> None:
         self.state_root = state_root or _default_state_root()
         self.registry = registry or SlackThreadRegistry(self.state_root / "slack-threads")
@@ -351,6 +358,16 @@ class SlackPlanningListener:
             set(ambient_channels) if ambient_channels is not None else _ambient_channels_from_env()
         )
         self._now = now or (lambda: datetime.now(UTC))
+        # Conversational, streamed Slack answers (off by default). When armed,
+        # a trusted @mention / thread reply is classified through the SAME
+        # compose_converse intent path the desktop Ask uses: a conversation gets
+        # a streamed answer, a build request gets a prose reply that OFFERS the
+        # existing issue bridge. The runner is injected in tests so no model or
+        # network is touched; in production it defaults to the real path.
+        self._converse_config = (
+            converse_config if converse_config is not None else SlackConverseConfig.from_env()
+        )
+        self._converse_runner = converse_runner or run_slack_converse
 
     def handle_payload(self, payload: dict[str, Any]) -> ListenerResult:
         event = parse_slack_payload(payload)
@@ -538,7 +555,64 @@ class SlackPlanningListener:
         if clarified is not None:
             return clarified
 
+        # A converse "build" turn offers `ship it` to file the discussion. A
+        # conversation thread has no saved draft, so that reply cannot reach the
+        # bridge directly; without this it would silently fire another model turn
+        # and nothing would be filed. Honour the offer by materializing the
+        # discussion into a real planning draft (a ``kind="draft"`` thread) so the
+        # existing approval bridge has something concrete to graduate. The bare
+        # ``ship it`` reply carries no scope, so seed the draft from the latest
+        # substantive request earlier in the thread, falling back to the reply.
+        if self.bridge.is_approval(text=event.text):
+            source_text = self._ship_it_source_text(event)
+            return self._open_planning_draft(event, source_text=source_text)
+
+        # A free-form reply in an Alfred-started thread is a conversation turn:
+        # answer it (streamed, with the prior thread messages as context) rather
+        # than dropping it. Off by default; only engages when converse is armed.
+        converse = self._maybe_converse(event)
+        if converse is not None:
+            return converse
+
         return ListenerResult(False, "ignored", "conversation reply is not actionable")
+
+    def _ship_it_source_text(self, event: SlackInputEvent) -> str:
+        """Pick the build request a ``ship it`` reply is approving.
+
+        A bare ``ship it`` carries no scope of its own; the actual request is an
+        earlier human turn in the same thread. Read the bounded thread context
+        (best-effort, the same reader converse uses) and return the most recent
+        human turn that is not itself an approval token. Falls back to the reply
+        text when no prior human turn is recoverable, so the draft path always has
+        something to refine.
+        """
+        reply_text = (event.text or "").strip()
+        if self.poster is None:
+            return reply_text
+        try:
+            context = gather_thread_context(
+                self.poster,
+                channel=event.channel,
+                root_ts=event.root_ts,
+                bot_user_id=self.bot_user_id,
+                limit=self._converse_config.thread_context,
+                exclude_ts=event.ts,
+            )
+        except Exception as exc:  # never let a Slack read block filing
+            print(
+                f"[SLACK-LISTENER-WARN] ship-it context read failed for "
+                f"{event.channel}/{event.root_ts}: {exc}",
+                file=sys.stderr,
+            )
+            return reply_text
+        for message in reversed(context):
+            if message.role != "user":
+                continue
+            candidate = (message.content or "").strip()
+            if not candidate or self.bridge.is_approval(text=candidate):
+                continue
+            return candidate
+        return reply_text
 
     def _maybe_complete_thread_clarification(
         self,
@@ -852,7 +926,8 @@ class SlackPlanningListener:
 
         # A greeting, "who are you", "what can you do", or "thanks" is a
         # conversation, not a task. Answer warmly as Alfred instead of building a
-        # planning draft out of it.
+        # planning draft out of it. This deterministic path stays first so the
+        # common social turns never cost an engine call.
         reply = conversational_reply(event.text)
         if reply is not None:
             self._post_thread_ack(event.channel, event.root_ts, reply)
@@ -862,7 +937,32 @@ class SlackPlanningListener:
                 detail="greeting or capability question",
             )
 
-        draft = draft_from_slack_text(event.text)
+        # Conversational, streamed answer (off by default). When armed, free-form
+        # prose is classified through the same compose_converse intent path the
+        # desktop Ask uses and streamed back; a build request gets a prose offer
+        # to file an issue rather than a silent planning draft. Only when this is
+        # disabled or yields no answer do we fall through to planning intake.
+        converse = self._maybe_converse(event)
+        if converse is not None:
+            return converse
+
+        return self._open_planning_draft(event, source_text=event.text)
+
+    def _open_planning_draft(
+        self,
+        event: SlackInputEvent,
+        *,
+        source_text: str,
+    ) -> ListenerResult:
+        """Refine ``source_text`` into a saved planning draft and register it.
+
+        This is the working intake path: it saves a ``planning-drafts/*.json``
+        payload and registers a ``kind="draft"`` thread so the existing approval
+        bridge can later graduate it into a GitHub issue. Both the top-level
+        intake and a ``ship it`` reply in a conversation thread funnel here so the
+        bridge always has a saved draft to act on.
+        """
+        draft = draft_from_slack_text(source_text)
         refined = refine_issue_draft(
             draft,
             [],
@@ -928,6 +1028,56 @@ class SlackPlanningListener:
             thread_kind=record.kind,
             readiness_ok=refined.readiness.ok,
             readiness_score=refined.readiness.score,
+        )
+
+    def _maybe_converse(self, event: SlackInputEvent) -> ListenerResult | None:
+        """Stream a conversational answer for a trusted mention / thread reply.
+
+        Returns a :class:`ListenerResult` when the converse path posted an
+        answer (a plain reply for a ``conversation`` turn, or a prose answer plus
+        an offer to file an issue for a ``build`` turn), or ``None`` to fall
+        through to the caller's prior behavior. Inert unless converse is enabled
+        and the channel is allowed; the model and Slack client are reached only
+        through the injected runner.
+
+        SAFETY: this never files an issue or runs anything. A ``build`` turn only
+        ever OFFERS the existing approval bridge in prose; the issue itself is
+        created solely by the operator-approval path the listener already owns.
+        """
+        if self.poster is None:
+            return None
+        if not self._converse_config.engages(event.channel):
+            return None
+        text = (event.text or "").strip()
+        if not text:
+            return None
+        try:
+            outcome = self._converse_runner(
+                client=self.poster,
+                config=self._converse_config,
+                channel=event.channel,
+                thread_ts=event.root_ts,
+                user_message=event.text,
+                bot_user_id=self.bot_user_id,
+                exclude_ts=event.ts,
+                bridge_enabled=self.bridge.config.enabled,
+                workdir=Path.cwd(),
+            )
+        except Exception as exc:
+            print(
+                f"[SLACK-LISTENER-WARN] converse failed for {event.channel}/{event.root_ts}: {exc}",
+                file=sys.stderr,
+            )
+            return None
+        if outcome is None or not getattr(outcome, "handled", False):
+            return None
+        from compose_converse import INTENT_BUILD
+
+        action = "converse_build" if getattr(outcome, "intent", "") == INTENT_BUILD else "converse"
+        return ListenerResult(
+            True,
+            action,
+            detail=getattr(outcome, "detail", "") or "streamed conversational answer",
         )
 
     # ------------------------------------------------------------------
