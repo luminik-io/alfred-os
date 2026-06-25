@@ -225,6 +225,83 @@ describe("useRosterTheme", () => {
     expect(result.current.rosterTheme).toBe("transformers");
   });
 
+  // Thread: "Hydration Ignores Runtime". Hydration is tied to the connected
+  // url, not a global flag. Connecting to a second runtime must re-read it
+  // rather than keep showing the first runtime's roster.
+  it("re-hydrates when the desktop connects to a different runtime", async () => {
+    loadRosterTheme.mockImplementation((baseUrl: string) =>
+      Promise.resolve(
+        serverState({
+          theme: baseUrl.endsWith("7010") ? "transformers" : "justice-league",
+        }),
+      ),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("transformers");
+    });
+
+    // Point at a second runtime: its roster must be read, not skipped.
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledWith("http://127.0.0.1:7020");
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("justice-league");
+    });
+  });
+
+  // Thread: "Queued Save Uses Old Runtime". A change made after switching
+  // runtimes must post to the runtime it was made against, not the one a
+  // still-in-flight earlier save targeted.
+  it("posts a queued change to the runtime it was made against", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+
+    // Save against runtime A is held open.
+    let resolveA: (value: RosterThemeResponse) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveA = resolve;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    expect(saveRosterTheme).toHaveBeenNthCalledWith(1, "http://127.0.0.1:7010", {
+      theme: "justice-league",
+    });
+
+    // Switch to runtime B, then make another change while A's save is in flight.
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+
+    saveRosterTheme.mockResolvedValueOnce(serverState({ theme: "transformers" }));
+    await act(async () => {
+      resolveA(serverState({ theme: "justice-league" }));
+    });
+
+    // The queued change must reach runtime B, not A.
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    expect(saveRosterTheme).toHaveBeenNthCalledWith(2, "http://127.0.0.1:7020", {
+      theme: "transformers",
+    });
+  });
+
   // A superseded save that fails must stay quiet: the newer save owns the
   // reported outcome, so a stale rejection cannot raise a false error.
   it("keeps a superseded save failure from clobbering the latest success", async () => {

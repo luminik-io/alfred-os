@@ -83,17 +83,28 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const [rosterTheme, setRosterThemeState] = useState<RosterThemeId>(readStoredTheme);
   const [customNames, setCustomNamesState] = useState<CustomRosterNames>(readStoredCustom);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // Avoid clobbering a freshly persisted choice with a slow initial GET. Only a
-  // server interaction (a successful read OR a successful write) marks the hook
-  // hydrated; an offline-only change must NOT block a later server read.
-  const hydratedRef = useRef(false);
+  // Avoid clobbering a freshly persisted choice with a slow initial GET. We
+  // track WHICH runtime we have synced with, not just whether we have synced:
+  // a successful read or write records its `baseUrl` here. If the desktop later
+  // connects to a different runtime, this no longer matches and the new
+  // runtime is read fresh instead of being skipped. An offline-only change
+  // never records a url, so a later server read still runs.
+  const hydratedUrlRef = useRef<string | null>(null);
+  // The runtime the hook is currently pointed at. Kept in a ref so an
+  // out-of-band save resolution can tell whether it still speaks for the
+  // connected runtime before it records hydration.
+  const baseUrlRef = useRef<string | undefined>(baseUrl);
+  baseUrlRef.current = baseUrl;
   // Serialize saves so a fast A -> B switch cannot land out of order. Each call
   // bumps `saveSeqRef`; only the latest seq decides the agreed state. While a
   // POST is in flight, the newest pending choice is coalesced and sent next, so
-  // the server's final state always matches the operator's last action.
+  // the server's final state always matches the operator's last action. Each
+  // queued save carries the `url` it was made against, so a change made on one
+  // runtime is never posted to a different one the desktop later connected to.
   const saveSeqRef = useRef(0);
   const inFlightRef = useRef(false);
   const pendingRef = useRef<{
+    url: string;
     theme: RosterThemeId;
     custom: CustomRosterNames;
     seq: number;
@@ -103,24 +114,24 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // cast the runtime (and Slack) already use. A failed read keeps the
   // localStorage value, so an offline desktop still works.
   useEffect(() => {
-    if (!baseUrl || hydratedRef.current) {
+    if (!baseUrl || hydratedUrlRef.current === baseUrl) {
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
         const remote = await loadRosterTheme(baseUrl);
-        // A save can win the race and mark the hook hydrated while this GET is
-        // still in flight; honoring only `cancelled` would let the older server
-        // snapshot overwrite the freshly persisted choice. Bail once any server
-        // interaction has hydrated the hook so the newer save stands.
-        if (cancelled || hydratedRef.current) return;
+        // A save can win the race and record this runtime as synced while the
+        // GET is still in flight; honoring only `cancelled` would let the older
+        // server snapshot overwrite the freshly persisted choice. Bail once this
+        // runtime is already synced so the newer save stands.
+        if (cancelled || hydratedUrlRef.current === baseUrl) return;
         const theme = isRosterThemeId(remote.theme) ? remote.theme : DEFAULT_ROSTER_THEME;
         const custom: CustomRosterNames = {
           names: remote.custom_names ?? {},
           roles: remote.custom_roles ?? {},
         };
-        hydratedRef.current = true;
+        hydratedUrlRef.current = baseUrl;
         setRosterThemeState(theme);
         setCustomNamesState(custom);
         writeStored(theme, custom);
@@ -154,11 +165,16 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       void saveRosterTheme(url, body)
         .then(() => {
           // The server is now the agreed source of truth; clear any prior
-          // failure and treat the hook as hydrated so a racing GET cannot
+          // failure and record this runtime as synced so a racing GET cannot
           // clobber the choice we just persisted. Skip if a newer save has
           // since been issued: that save owns the agreed state, not this one.
           if (seq !== saveSeqRef.current) return;
-          hydratedRef.current = true;
+          // Only record hydration when this save targeted the runtime the
+          // desktop is still connected to; a save that completed against a
+          // runtime we have since left must not mark the current one synced.
+          if (url === baseUrlRef.current) {
+            hydratedUrlRef.current = url;
+          }
           setSaveError(null);
         })
         .catch((err: unknown) => {
@@ -176,11 +192,13 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         .finally(() => {
           inFlightRef.current = false;
           // Drain to the latest queued choice so the final server write always
-          // reflects the operator's last action, in order.
+          // reflects the operator's last action, in order. The queued change
+          // carries its own target url, so it posts to the runtime it was made
+          // against rather than reusing this completed save's url.
           const next = pendingRef.current;
           if (next) {
             pendingRef.current = null;
-            runSave(url, next.theme, next.custom, next.seq);
+            runSave(next.url, next.theme, next.custom, next.seq);
           }
         });
     },
@@ -199,8 +217,9 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       const seq = ++saveSeqRef.current;
       if (inFlightRef.current) {
         // A save is already running. Coalesce to this newest choice; the
-        // in-flight save's finally() will send it once the socket is free.
-        pendingRef.current = { theme, custom, seq };
+        // in-flight save's finally() will send it once the socket is free,
+        // posting to the runtime this change was made against.
+        pendingRef.current = { url: baseUrl, theme, custom, seq };
         return;
       }
       runSave(baseUrl, theme, custom, seq);
