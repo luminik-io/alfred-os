@@ -3345,6 +3345,9 @@ def test_roster_theme_rejects_unknown_theme(tmp_path: Path) -> None:
         json={"theme": "not-a-real-theme"},
     )
     assert resp.status_code == 400
+    # The error is generic: the rejected (attacker-controlled) value must never
+    # be echoed back in the response body (CodeQL information-exposure guard).
+    assert "not-a-real-theme" not in resp.text
     # The persisted default is untouched by a rejected write.
     assert client.get("/api/roster-theme").json()["theme"] == "batman"
 

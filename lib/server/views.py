@@ -800,8 +800,14 @@ def register_routes(app: FastAPI) -> None:
                 custom_names=body.get("custom_names"),
                 custom_roles=body.get("custom_roles"),
             )
-        except RosterThemeError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+        except RosterThemeError:
+            # The validation message can echo back attacker-controlled payload
+            # fragments (the offending codename/label), so we never surface the
+            # exception text. Log the detail server-side and return a generic 400.
+            logger.warning("api_set_roster_theme: rejected invalid payload", exc_info=True)
+            return JSONResponse(
+                {"error": "invalid roster theme payload"}, status_code=400
+            )
         return JSONResponse(state.to_dict())
 
     @app.post("/api/conversation/control", response_class=JSONResponse)
