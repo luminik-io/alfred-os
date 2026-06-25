@@ -85,9 +85,13 @@ export function AgentDetailDrawer({
         // focus on open and we do not trap pointer events outside the panel.
         onOpenAutoFocus={(event) => event.preventDefault()}
         onInteractOutside={(event) => {
-          // Clicking a different node should reselect, not close mid-gesture.
+          // Selecting a different agent should reselect and swap the drawer
+          // body, not close it mid-gesture. Roster selections live in the
+          // workflow graph (node clicks) or the list rail (row clicks), so a
+          // click on either keeps the open drawer alive while the content
+          // updates to the newly selected agent.
           const target = event.target as HTMLElement | null;
-          if (target?.closest(".workflow-graph")) {
+          if (target?.closest(".workflow-graph, .agents-deck__rail")) {
             event.preventDefault();
           }
         }}
