@@ -155,11 +155,19 @@ class RosterThemeStore:
         normalized_theme = _coerce_theme(theme, strict=True)
         names = _validate_label_map(custom_names, field="custom_names")
         roles = _validate_label_map(custom_roles, field="custom_roles")
-        if normalized_theme != CUSTOM_THEME_ID:
-            # Presets carry no operator names; persist them empty so switching to
-            # a preset and back never resurrects a stale custom name set.
-            names, roles = {}, {}
+        # A theme switch that carries no custom payload (the desktop sends only a
+        # ``theme`` when it flips presets) must NOT delete the authored custom
+        # cast: retain whatever the operator last saved. Under a preset the names
+        # are kept on disk but never exposed (display_name_for/role_label_for
+        # return None for any non-custom theme); switching back to ``custom`` (or
+        # a restart) then restores them. Only an explicit custom payload on this
+        # write replaces the retained cast, so the operator can still clear it.
+        retain_existing = custom_names is None and custom_roles is None
         with self._locked():
+            if retain_existing:
+                existing = self.load()
+                names = dict(existing.custom_names)
+                roles = dict(existing.custom_roles)
             self._write(theme=normalized_theme, custom_names=names, custom_roles=roles)
         return RosterThemeState(
             theme=normalized_theme,

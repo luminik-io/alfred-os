@@ -74,12 +74,49 @@ def test_dotted_codename_normalizes_to_bare_slug(tmp_path: Path) -> None:
 
 def test_preset_theme_does_not_expose_custom_names(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    # Saving a preset wipes any name map, so display_name_for is always None.
+    # Under a preset, the authored cast is never exposed (display_name_for is
+    # None), even though the names are retained on disk for a later switch back.
     store.save(theme="custom", custom_names={"batman": "Sherlock"})
     store.save(theme="batman")
     loaded = _store(tmp_path).load()
     assert loaded.theme == "batman"
     assert loaded.display_name_for("batman") is None
+
+
+def test_preset_switch_retains_custom_cast_for_later_restore(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    # Author a custom cast, then temporarily switch to a preset with no payload.
+    store.save(
+        theme="custom",
+        custom_names={"batman": "Sherlock"},
+        custom_roles={"batman": "Lead detective"},
+    )
+    store.save(theme="justice-league")
+
+    # The preset is active and exposes nothing, but the authored cast survives on
+    # disk so a restart (fresh load) does not lose it.
+    reloaded = _store(tmp_path).load()
+    assert reloaded.theme == "justice-league"
+    assert reloaded.display_name_for("batman") is None
+    assert dict(reloaded.custom_names) == {"batman": "Sherlock"}
+    assert dict(reloaded.custom_roles) == {"batman": "Lead detective"}
+
+    # Switching back to custom (no payload) restores the authored cast intact.
+    store.save(theme="custom")
+    restored = _store(tmp_path).load()
+    assert restored.theme == "custom"
+    assert restored.display_name_for("batman") == "Sherlock"
+    assert restored.role_label_for("batman") == "Lead detective"
+
+
+def test_explicit_custom_payload_replaces_retained_cast(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.save(theme="custom", custom_names={"batman": "Sherlock"})
+    # An explicit (even empty) custom payload on a preset write clears the cast,
+    # so the operator can deliberately discard it rather than have it linger.
+    store.save(theme="batman", custom_names={}, custom_roles={})
+    loaded = _store(tmp_path).load()
+    assert loaded.theme == "batman"
     assert dict(loaded.custom_names) == {}
 
 
