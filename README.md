@@ -157,9 +157,9 @@ safe PRs you allow -> Slack reports what changed.
 
 ## Quick start
 
-The signed desktop app is the recommended way to install. It bundles the CLI it
-talks to and opens straight into a guided setup wizard. Prefer the command line?
-The CLI install is right below it.
+The signed desktop app is the recommended way to install. The Homebrew cask
+pulls in the CLI it talks to and opens straight into a guided setup wizard.
+Prefer the command line? The CLI install is right below it.
 
 Budget about 30 minutes on a dev machine that already has GitHub auth, Claude
 Code, a package manager, and Python ready. A fresh laptop, Mac mini, old Mac, or
@@ -168,17 +168,20 @@ take real time.
 
 ### Install Alfred Desktop (recommended)
 
-The desktop app is the front door. It installs the CLI alongside it, then on
-first launch with no runtime running it opens the guided setup wizard, which can
-start `alfred serve` for you.
+The desktop app is the front door. The Homebrew cask installs the CLI alongside
+it, then on first launch with no runtime running it opens the guided setup
+wizard, which can start `alfred serve` for you.
 
 ```sh
-brew install --cask alfred-os    # signed, notarized macOS app + the CLI
+brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
+brew install --cask alfred-os    # signed, notarized macOS app, pulls in the CLI
 ```
 
 - macOS 11+ on Apple silicon: or download the signed, notarized DMG from
   [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
 - Linux: download the AppImage or `.deb` from the same page.
+- Direct downloads ship the app only. Pair them with the CLI
+  (`brew install alfred-os`) or let the setup wizard guide you.
 - Local development: `cd clients/desktop && npm install && npm run tauri dev`.
 
 The app connects to the local runtime over `alfred serve`; it does not run
@@ -349,9 +352,9 @@ alfred telemetry status   # see local state
 
 The public counter only moves for a trusted reporter token, so a random install
 cannot inflate it. Self-host the collector (Cloudflare Worker under
-[`telemetry/worker/`](telemetry/worker/)) with
-`alfred telemetry on --url ... --token ...`. Full contract:
-[`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+[`telemetry/worker/`](telemetry/worker/)): deploy it with `wrangler deploy`,
+then point Alfred at it with `alfred telemetry on --url ... --token ...`. Full
+contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## What's in here
 
