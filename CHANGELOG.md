@@ -2,17 +2,11 @@
 
 Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Next]
+## [Unreleased]
 
 ### Added
 
 - Long Ask conversations no longer run out of room. When a chat grows past a configurable length, Alfred keeps the opening task and the most recent turns intact and replaces the middle with one compact, model-written summary, so the original goal and the live working state both survive. If a turn still overflows the model's context, Alfred condenses and retries once instead of failing. Every condensation is written down as an auditable record, short chats are left untouched, and every threshold is environment-overridable.
-
-### Changed
-
-### Removed
-
-### Fixed
 
 ## [0.5.3] - 2026-06-24
 
@@ -321,7 +315,6 @@ Public launch hardening release.
 ### Added
 
 - Checked-in CodeQL workflow for GitHub Actions, Python, Ruby, and JavaScript/TypeScript, with PR, push, scheduled, and manual dispatch triggers.
-- Optional Hermes integration guide in `docs/HERMES.md` and the docs site.
 
 ### Fixed
 
@@ -446,7 +439,8 @@ Initial public framework extraction.
 - `tests/test_agent_runner.py`: 22 cases covering preflight, doctor_mode, load_prompt, commit_trailer, HandoffTable, EventLog, _full_repo.
 - Top-level docs: `README.md`, `ARCHITECTURE.md`, `BOOTSTRAP.md`, `CONTRIBUTING.md`, `LICENSE` (MIT), `docs/INDEX.md`.
 
-[Next]: https://github.com/luminik-io/alfred-os/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/luminik-io/alfred-os/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/luminik-io/alfred-os/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/luminik-io/alfred-os/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/luminik-io/alfred-os/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/luminik-io/alfred-os/compare/v0.4.0...v0.5.0
