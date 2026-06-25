@@ -3,14 +3,12 @@ import {
   ArrowRight,
   ArrowUp,
   CheckCircle2,
-  Copy,
   ExternalLink,
+  RotateCcw,
   Sparkles,
+  Square,
 } from "lucide-react";
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import {
   composeConverse,
@@ -22,7 +20,13 @@ import {
   supportsNativeActions,
 } from "../api";
 import { repoShortName } from "../lib/chips";
-import { isSafeExternalUrl, openExternal } from "../lib/links";
+import {
+  clearConversation,
+  loadConversation,
+  saveConversation,
+  type PersistedTurn,
+} from "../lib/chatHistory";
+import { openExternal } from "../lib/links";
 import type { TabKey } from "../lib/uiTypes";
 import type {
   ComposeDraftFields,
@@ -32,6 +36,7 @@ import type {
   ConverseResponse,
   FilePlanIssueResponse,
 } from "../types";
+import { ChatMessage } from "./ChatMessage";
 import { LifecycleCard, type RepoChip } from "./LifecycleCard";
 
 // Plain-language prompt for a non-developer. Compose always speaks plain: a
@@ -209,15 +214,24 @@ export function ComposeView({
   // stop attempting the streaming path.
   const [hasEngine, setHasEngine] = useState(supportsNativeActions());
 
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  // Rehydrate the most recent conversation so a closed window picks back up
+  // where it left off. Best-effort: a missing or malformed store reads empty.
+  const restored = useMemo(() => restoreFromStorage(), []);
+
+  const [turns, setTurns] = useState<ChatTurn[]>(restored.turns);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The most recent saved draft, carried across turns so the same request is
   // refined (draft_id) and the inline card can file it.
-  const [result, setResult] = useState<ConverseResponse | ComposeDraftResponse | null>(null);
+  const [result, setResult] = useState<ConverseResponse | ComposeDraftResponse | null>(
+    restored.result,
+  );
   const [fileBusy, setFileBusy] = useState(false);
   const [fileNotice, setFileNotice] = useState<{ tone: "ok" | "error"; message: string; url?: string } | null>(null);
+  // The last user message, kept so retry/regenerate can replay the turn after a
+  // stop or a dropped stream without the person retyping.
+  const lastUserTextRef = useRef<string>(lastUserTextOf(restored.turns));
 
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -236,6 +250,22 @@ export function ComposeView({
     const el = transcriptRef.current;
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [turns]);
+
+  // Persist the conversation whenever a turn settles, so it survives a reload or
+  // restart. We never persist an in-flight (pending/streaming) turn: while busy
+  // the transcript is mid-stream and a half-written reply is not worth keeping.
+  useEffect(() => {
+    if (busy) return;
+    if (turns.length === 0) {
+      clearConversation();
+      return;
+    }
+    saveConversation({
+      draftId: result?.draft_id,
+      draft: result?.draft,
+      turns: turns.map(toPersistedTurn),
+    });
+  }, [turns, busy, result]);
 
   // Cancel any in-flight stream when the view unmounts.
   useEffect(() => {
@@ -291,28 +321,31 @@ export function ComposeView({
     [],
   );
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || busy) return;
-    setBusy(true);
-    setError(null);
-    // The file notice is cleared per-turn inside commitTurn, but only for a real
-    // build turn: a conversational follow-up after filing keeps the "Filed"
-    // confirmation visible until the person actually plans something new.
+  // Run one conversational turn for `text`, appended after `baseTurns`. Factored
+  // out of send() so retry/regenerate can replay the same turn against a trimmed
+  // transcript without the person retyping.
+  const runTurn = useCallback(
+    async (text: string, baseTurns: ChatTurn[]) => {
+      if (!text || busy) return;
+      setBusy(true);
+      setError(null);
+      lastUserTextRef.current = text;
+      // The file notice is cleared per-turn inside commitTurn, but only for a real
+      // build turn: a conversational follow-up after filing keeps the "Filed"
+      // confirmation visible until the person actually plans something new.
 
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const isCurrent = () => abortRef.current === controller && !controller.signal.aborted;
-    const finishIfCurrent = () => {
-      if (abortRef.current === controller) setBusy(false);
-    };
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const isCurrent = () => abortRef.current === controller && !controller.signal.aborted;
+      const finishIfCurrent = () => {
+        if (abortRef.current === controller) setBusy(false);
+      };
 
-    // Only message turns go on the wire; draft cards are UI-only.
-    const priorMessages: ChatTurn[] = turns;
-    const nextTurns: ChatTurn[] = [...turns, { role: "user", content: text, kind: "message" }];
-    setTurns([...nextTurns, { role: "assistant", content: "", pending: true, kind: "message" }]);
-    setInput("");
+      // Only message turns go on the wire; draft cards are UI-only.
+      const priorMessages: ChatTurn[] = baseTurns;
+      const nextTurns: ChatTurn[] = [...baseTurns, { role: "user", content: text, kind: "message" }];
+      setTurns([...nextTurns, { role: "assistant", content: "", pending: true, kind: "message" }]);
 
     const wire: ConverseMessage[] = nextTurns
       .filter((turn): turn is ConverseMessage & { kind?: "message" } => turn.kind !== "draft")
@@ -412,13 +445,56 @@ export function ComposeView({
         await runDraftFallback();
         return;
       }
-      setTurns(priorMessages);
-      setInput(text);
-      setError(err instanceof Error ? err.message : String(err));
+      // A dropped stream or transport error: keep the person's message and the
+      // turn intact, surface a plain, recoverable notice, and offer Retry. The
+      // retry control replays this exact turn against the unchanged transcript.
+      setTurns(nextTurns);
+      lastUserTextRef.current = text;
+      setError(reconnectMessage(err));
     } finally {
       finishIfCurrent();
     }
-  }, [baseUrl, busy, commitTurn, hasEngine, input, result, selectedRepos, turns]);
+    },
+    [baseUrl, busy, commitTurn, hasEngine, result, selectedRepos],
+  );
+
+  const send = useCallback(() => {
+    const text = input.trim();
+    if (!text || busy) return;
+    setInput("");
+    void runTurn(text, turns);
+  }, [busy, input, runTurn, turns]);
+
+  // Stop the in-flight generation. The partial assistant reply stays on screen
+  // (finalized, no longer pending) so the person keeps whatever streamed in.
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setBusy(false);
+    setTurns((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last && last.kind !== "draft" && last.role === "assistant" && last.pending) {
+        if (last.content.trim()) {
+          next[next.length - 1] = { ...last, pending: false };
+        } else {
+          // Nothing streamed yet: drop the empty placeholder turn entirely.
+          next.pop();
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  // Retry / regenerate the most recent assistant turn. Drops the trailing
+  // assistant turn(s) for the last user message and replays that message, so a
+  // dropped stream or an unsatisfying answer can be re-run with one click.
+  const retry = useCallback(() => {
+    if (busy) return;
+    const { text, baseTurns } = trimToLastUser(turns, lastUserTextRef.current);
+    if (!text) return;
+    void runTurn(text, baseTurns);
+  }, [busy, runTurn, turns]);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -430,6 +506,8 @@ export function ComposeView({
     setBusy(false);
     setFileNotice(null);
     setFileBusy(false);
+    lastUserTextRef.current = "";
+    clearConversation();
   }, []);
 
   // One-gate: file the issue straight from the inline card. The server still
@@ -471,14 +549,33 @@ export function ComposeView({
     return -1;
   }, [turns]);
 
+  // The index of the most recent settled assistant message turn. Only that turn
+  // shows the regenerate control, keeping every earlier reply's bar to copy.
+  const lastAssistantIndex = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      const turn = turns[i];
+      if (turn.kind !== "draft" && turn.role === "assistant" && !turn.pending) return i;
+    }
+    return -1;
+  }, [turns]);
+
   // One composer, two layouts. Empty: a single centered hero (one headline, the
   // composer as the focal point, starter chips below) so the screen is not three
   // copies of the same prompt. Started: a compact header, a full-height thread,
   // the composer pinned at the bottom.
+  // A failed turn keeps the person's message on screen and offers Retry, so a
+  // dropped stream is one click from recovery rather than a retype.
+  const canRetry = !busy && lastUserTextRef.current.length > 0 && turns.length > 0;
   const errorNotice = error ? (
     <div className="ask__error inline-notice inline-notice--error" role="alert">
       <AlertTriangle size={18} aria-hidden="true" />
       <span>{error}</span>
+      {canRetry ? (
+        <button type="button" className="ask__retry" onClick={retry}>
+          <RotateCcw size={13} aria-hidden="true" />
+          <span>Retry</span>
+        </button>
+      ) : null}
     </div>
   ) : null;
 
@@ -502,25 +599,38 @@ export function ComposeView({
           placeholder={started ? "Reply to Alfred, or add detail." : PLACEHOLDER}
           rows={1}
           spellCheck
-          disabled={busy}
           onChange={(event) => setInput(event.currentTarget.value)}
           onKeyDown={(event) => {
             // ChatGPT-style: Enter sends, Shift+Enter inserts a newline.
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              if (!busy && input.trim()) void send();
+              if (!busy && input.trim()) send();
             }
           }}
         />
-        <button
-          className="ask__send"
-          type="submit"
-          disabled={busy || !input.trim()}
-          aria-label={busy ? "Alfred is thinking" : "Send message"}
-          title={busy ? "Alfred is thinking" : "Send"}
-        >
-          <ArrowUp size={18} aria-hidden="true" />
-        </button>
+        {busy ? (
+          // While a turn streams, the primary control stops generation. The
+          // partial reply is kept on screen when stopped.
+          <button
+            className="ask__send ask__send--stop"
+            type="button"
+            onClick={stop}
+            aria-label="Stop generating"
+            title="Stop generating"
+          >
+            <Square size={16} aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            className="ask__send"
+            type="submit"
+            disabled={!input.trim()}
+            aria-label="Send message"
+            title="Send"
+          >
+            <ArrowUp size={18} aria-hidden="true" />
+          </button>
+        )}
       </form>
       <small className="ask__hint">
         Enter to send, Shift + Enter for a new line. When you are planning work, Alfred shapes a plan as the chat gets clearer.
@@ -568,6 +678,11 @@ export function ComposeView({
           ref={transcriptRef}
           role="log"
           aria-label="Conversation with Alfred"
+          // Politely announce the assistant's reply to assistive tech as it
+          // streams in, without interrupting the person mid-sentence.
+          aria-live="polite"
+          aria-relevant="additions text"
+          aria-busy={busy}
           onScroll={(event) => {
             const el = event.currentTarget;
             pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -588,7 +703,14 @@ export function ComposeView({
                   onOpenWork={() => onSwitch("pipeline")}
                 />
               ) : (
-                <ChatBubble key={`${index}-${turn.role}`} turn={turn} />
+                <ChatMessage
+                  key={`${index}-${turn.role}`}
+                  role={turn.role}
+                  content={turn.content}
+                  streaming={Boolean(turn.pending)}
+                  canRetry={!busy && index === lastAssistantIndex}
+                  onRetry={retry}
+                />
               ),
             )}
           </div>
@@ -698,78 +820,78 @@ function DraftCard({
   );
 }
 
-function ChatBubble({ turn }: { turn: MessageTurn }) {
-  const who = turn.role === "user" ? "You" : "Alfred";
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    void navigator.clipboard?.writeText(turn.content).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    });
-  };
-  return (
-    <div className={`ask-bubble ask-bubble--${turn.role}`}>
-      <div className="ask-bubble__head">
-        <span className="ask-bubble__who">{who}</span>
-        {!turn.pending && turn.content ? (
-          <button
-            type="button"
-            className="ask-bubble__copy"
-            onClick={copy}
-            aria-label={copied ? "Copied" : "Copy message"}
-            title={copied ? "Copied" : "Copy"}
-          >
-            {copied ? <CheckCircle2 size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-          </button>
-        ) : null}
-      </div>
-      {turn.pending ? (
-        <span className="ask-bubble__pending" aria-label="Alfred is thinking">
-          <span className="ask-bubble__dot" />
-          <span className="ask-bubble__dot" />
-          <span className="ask-bubble__dot" />
-        </span>
-      ) : turn.role === "assistant" ? (
-        // Render Alfred's replies as markdown so headings, lists, tables and
-        // fenced code render like a real chat surface. User turns stay plain
-        // text (people type prose, and it avoids rendering injected markup).
-        <div className="ask-bubble__md">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a: ({ href, children }) => (
-                <SafeMarkdownLink href={href}>{children}</SafeMarkdownLink>
-              ),
-            }}
-          >
-            {turn.content}
-          </ReactMarkdown>
-        </div>
-      ) : (
-        <p className="ask-bubble__text">{turn.content}</p>
-      )}
-    </div>
-  );
+// --------------------------------------------------------------------------- //
+// Persistence + retry helpers. Pure functions so they are easy to reason about
+// and unit-test: they translate between the in-view ChatTurn shape and the
+// plain persisted form, and locate the last user turn for retry/regenerate.
+// --------------------------------------------------------------------------- //
+
+function toPersistedTurn(turn: ChatTurn): PersistedTurn {
+  if (turn.kind === "draft") {
+    return { kind: "draft", role: "assistant", draft: turn.draft };
+  }
+  return { kind: "message", role: turn.role, content: turn.content };
 }
 
-function SafeMarkdownLink({
-  href,
-  children,
-}: {
-  href?: string;
-  children: ReactNode;
-}) {
-  if (!href || !isSafeExternalUrl(href)) {
-    return <span className="ask-bubble__unsafe-link">{children}</span>;
+function fromPersistedTurn(turn: PersistedTurn): ChatTurn {
+  if (turn.kind === "draft") {
+    return { role: "assistant", kind: "draft", draft: turn.draft };
   }
-  return (
-    <button
-      className="ask-bubble__link"
-      type="button"
-      onClick={() => void openExternal(href)}
-    >
-      <span>{children}</span>
-      <ExternalLink size={13} aria-hidden="true" />
-    </button>
-  );
+  return { role: turn.role, content: turn.content, kind: "message" };
+}
+
+// Read the persisted conversation into view state. A pending/streaming turn is
+// never persisted, so nothing here is in flight.
+function restoreFromStorage(): {
+  turns: ChatTurn[];
+  result: ConverseResponse | ComposeDraftResponse | null;
+} {
+  const saved = loadConversation();
+  if (!saved) return { turns: [], result: null };
+  const turns = saved.turns.map(fromPersistedTurn);
+  // Rebuild just enough of the live result to keep refining the same draft
+  // (the composer reads result.draft_id and result.draft).
+  const result =
+    saved.draftId && saved.draft
+      ? ({
+          draft_id: saved.draftId,
+          draft: saved.draft,
+        } as unknown as ConverseResponse)
+      : null;
+  return { turns, result };
+}
+
+function lastUserTextOf(turns: ChatTurn[]): string {
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const turn = turns[i];
+    if (turn.kind !== "draft" && turn.role === "user") return turn.content;
+  }
+  return "";
+}
+
+// Trim the transcript back to (but not including) the most recent user turn,
+// returning that user's text plus the turns that preceded it. Replaying that
+// text reruns the turn, so retry/regenerate drops the stale assistant reply (and
+// any draft card it produced) and asks again.
+function trimToLastUser(
+  turns: ChatTurn[],
+  fallback: string,
+): { text: string; baseTurns: ChatTurn[] } {
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const turn = turns[i];
+    if (turn.kind !== "draft" && turn.role === "user") {
+      return { text: turn.content, baseTurns: turns.slice(0, i) };
+    }
+  }
+  return { text: fallback, baseTurns: [] };
+}
+
+// A plain, recoverable message for a dropped or failed stream. Keeps the cause
+// out of the person's way while making clear the turn can be retried.
+function reconnectMessage(err: unknown): string {
+  const detail = err instanceof Error ? err.message : "";
+  if (/abort/i.test(detail)) {
+    return "That reply was interrupted. Retry to ask again.";
+  }
+  return "The connection to Alfred dropped before the reply finished. Retry to ask again.";
 }

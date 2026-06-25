@@ -2825,7 +2825,14 @@ body {
   text-transform: uppercase;
 }
 
-.ask-bubble__copy {
+.ask-bubble__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.ask-bubble__copy,
+.ask-bubble__action {
   display: inline-grid;
   place-items: center;
   min-height: 1.6rem;
@@ -2838,10 +2845,18 @@ body {
   transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
 }
 
-.ask-bubble__copy:hover {
+.ask-bubble__copy:hover,
+.ask-bubble__action:hover {
   opacity: 1;
   color: var(--foreground);
   background: color-mix(in oklch, var(--primary), var(--card) 90%);
+}
+
+.ask-bubble__copy:focus-visible,
+.ask-bubble__action:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
 }
 
 .ask-bubble__text,
@@ -2867,21 +2882,157 @@ body {
   margin: 0.4rem 0;
 }
 
-.ask-bubble__md pre,
 .ask-bubble__md code {
-  border-radius: 0.5rem;
-  background: color-mix(in oklch, var(--black), var(--background) 10%);
   font-family: var(--font-mono);
   font-size: 0.8rem;
 }
 
-.ask-bubble__md pre {
-  overflow: auto;
-  padding: 0.65rem;
+.ask-bubble__md :not(pre) > code {
+  border-radius: 0.4rem;
+  padding: 0.1rem 0.3rem;
+  background: color-mix(in oklch, var(--black), var(--background) 10%);
 }
 
-.ask-bubble__md :not(pre) > code {
-  padding: 0.1rem 0.3rem;
+/* Fenced code block with a header bar (language label + copy-code). */
+.ask-code {
+  margin: 0.55rem 0;
+  border: 1px solid var(--hairline);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--black), var(--background) 10%);
+}
+
+.ask-code__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.3rem 0.25rem 0.65rem;
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in oklch, var(--card), var(--background) 14%);
+}
+
+.ask-code__lang {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ask-code__copy {
+  display: inline-grid;
+  place-items: center;
+  min-height: 1.6rem;
+  width: 1.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  opacity: 0.75;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.ask-code__copy:hover {
+  opacity: 1;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+}
+
+.ask-code__copy:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ask-code pre {
+  margin: 0;
+  overflow: auto;
+  padding: 0.7rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.ask-code pre code {
+  background: none;
+  padding: 0;
+}
+
+/* A live caret on the streaming assistant turn, so tokens visibly land. */
+.ask-bubble__md--streaming > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 1rem;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--primary);
+  animation: alfred-caret 1s steps(2, start) infinite;
+}
+
+@keyframes alfred-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Syntax-highlight theme, mapped to design tokens (no raw hex). highlight.js
+   emits .hljs-* token classes; we colour them from the palette so light and
+   dark themes both read cleanly. */
+.ask-code .hljs {
+  color: var(--foreground);
+  background: transparent;
+}
+
+.ask-code .hljs-comment,
+.ask-code .hljs-quote {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.ask-code .hljs-keyword,
+.ask-code .hljs-selector-tag,
+.ask-code .hljs-built_in,
+.ask-code .hljs-name,
+.ask-code .hljs-tag {
+  color: var(--primary);
+}
+
+.ask-code .hljs-string,
+.ask-code .hljs-title,
+.ask-code .hljs-section,
+.ask-code .hljs-attribute,
+.ask-code .hljs-literal,
+.ask-code .hljs-template-tag,
+.ask-code .hljs-template-variable,
+.ask-code .hljs-type,
+.ask-code .hljs-addition {
+  color: var(--accent);
+}
+
+.ask-code .hljs-number,
+.ask-code .hljs-symbol,
+.ask-code .hljs-bullet,
+.ask-code .hljs-link,
+.ask-code .hljs-meta,
+.ask-code .hljs-selector-id,
+.ask-code .hljs-selector-class {
+  color: color-mix(in oklch, var(--accent), var(--foreground) 35%);
+}
+
+.ask-code .hljs-emphasis {
+  font-style: italic;
+}
+
+.ask-code .hljs-strong {
+  font-weight: 700;
+}
+
+.ask-code .hljs-deletion {
+  color: var(--destructive);
 }
 
 .ask-bubble__link {

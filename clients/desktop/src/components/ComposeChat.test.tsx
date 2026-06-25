@@ -311,16 +311,28 @@ describe("ComposeView (conversational)", () => {
     expect(screen.getByText(/^Draft plan$/)).toBeInTheDocument();
   });
 
-  it("keeps a real error visible and lets the person retry the same message", async () => {
-    converseMock.mockRejectedValue(new Error("the engine timed out"));
+  it("keeps the message on a dropped stream and offers a one-click retry", async () => {
+    // Stream and buffered converse both fail with a transport (not
+    // live-unavailable) error: the turn stays on screen with a recoverable
+    // notice and a Retry that replays the same message.
+    converseMock.mockRejectedValueOnce(new Error("the engine timed out"));
     const user = userEvent.setup();
     const { container } = renderChat();
 
     await send(user, "Add a CSV export");
 
-    expect(await screen.findByText(/the engine timed out/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue(/add a csv export/i)).toBeInTheDocument();
-    expect(container.querySelector(".ask-bubble--user")).not.toBeInTheDocument();
+    // A plain, recoverable reconnect notice (not the raw error string).
+    expect(await screen.findByText(/connection to alfred dropped/i)).toBeInTheDocument();
+    // The person's message is kept on screen, not rolled back.
+    expect(container.querySelector(".ask-bubble--user")).toBeInTheDocument();
+    expect(screen.getByText(/add a csv export/i)).toBeInTheDocument();
+
+    // Retry replays the same message; this time converse succeeds.
+    converseMock.mockResolvedValueOnce(converseResponse());
+    await user.click(screen.getByRole("button", { name: /^retry$/i }));
+
+    await waitFor(() => expect(converseMock).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/connection to alfred dropped/i)).not.toBeInTheDocument();
   });
 
   it("handles Alfred control commands without starting a planning turn", async () => {
