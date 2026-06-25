@@ -21,6 +21,38 @@ listener for Slack-native planning intake and registered thread feedback.
 
 Both commands also accept `--state-dir PATH` to override at the call site.
 
+## `alfred status`
+
+`alfred status` is the one-screen fleet health view. It prints a `global:` block
+of sentinels (rate-limit block, Slack webhook cache, AWS profiles, engine auth)
+followed by one row per agent: last fired, today's fires/ok/fail, current fail
+streak, turns, spend, and state (`ok`, `paused`, in-flight, locked, or held for
+approval).
+
+```text
+alfred-status @ 2026-06-25 18:35:01
+alfred_home=~/.alfred
+
+global:
+  ✅ no global rate-limit block
+  ✅ slack webhook cache: fresh
+  ✅ AWS dedicated profiles: 3/3 usable
+  ✅ engine auth: claude ok, codex ok
+
+agent       load  eng     fired  fires  ok  fail  streak  turns  cost    state
+------------------------------------------------------------------------------
+drake       ✅    hybrid  12m    8      7   1     0       52     $0.96   ok
+lucius      ✅    hybrid  3m     12     9   3     0       78     $1.42   ok
+rasalghul   ✅    hybrid  never  9      9   0     0       123    $2.30   ok
+bane        ✅    hybrid  never  1      1   0     0       49     $0.80   ok
+batman      ✅    hybrid  never  10     0   0     0       0      $0.00   ok
+nightwing   ✅    hybrid  never  20     0   0     0       0      $0.00   ok
+huntress    ⏸     -       never  0      0   0     0       0      $0.00   ⏸️ paused
+```
+
+The numbers above are illustrative. Your own output shows your configured
+agents, real per-day spend, and the live sentinel states for your machine.
+
 ## `alfred slack-listener`
 
 Run the optional Slack-native planning listener. It listens over Socket Mode for
