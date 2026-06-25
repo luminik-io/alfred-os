@@ -333,10 +333,17 @@ def condense_on_overflow(
     that just hit an overflow can retry with a smaller prompt instead of failing.
     Honors ``keep_first`` / ``keep_last`` so the original task and the live tail
     survive the forced pass. Returns the original list untouched only when there
-    is no summarizable middle (the prompt is already minimal) or the summarizer
-    declines, in which case the caller should surface the overflow honestly.
+    is no summarizable middle (the prompt is already minimal), the summarizer
+    declines, or the feature is disabled, in which case the caller should surface
+    the overflow honestly.
+
+    Respects the ``enabled`` off switch: when an operator has disabled the
+    condenser, the reactive path is a no-op too, so no conversation content is
+    ever sent to the condenser model after the feature was turned off.
     """
     config = config or CondenserConfig.from_env()
+    if not config.enabled:
+        return CondensationResult(messages=list(messages))
     return _do_condense(messages, summarize=summarize, config=config, reason="reactive_overflow")
 
 
@@ -350,10 +357,15 @@ def condense_on_overflow(
 _OVERFLOW_RE = re.compile(
     r"\bcontext[_ ]?(?:length|window)[^\n]{0,60}?(?:exceed|too\s+long|too\s+large|maximum|limit)"
     r"|\b(?:exceed|exceeded)[^\n]{0,40}?context[_ ]?(?:length|window)"
+    r"|\bcontext[_ ]?length[_ ]?exceeded\b"
     r"|\bprompt\s+is\s+too\s+long\b"
     r"|\binput\s+(?:is\s+)?too\s+long\b"
     r"|\bmaximum\s+context\s+length\b"
     r"|\btoo\s+many\s+(?:input\s+)?tokens\b"
+    r"|\b(?:reduce|shorten|decrease)\s+the\s+(?:length\s+of\s+the\s+)?"
+    r"(?:messages?|prompt|input|conversation|tokens)"
+    r"|\brequest\s+(?:is\s+)?too\s+large\b"
+    r"|\btoken[_ ]?limit[^\n]{0,40}?(?:exceed|reached)"
     r'|"type"\s*:\s*"invalid_request_error"[^\n]{0,200}?(?:context|tokens|too\s+long)',
     re.IGNORECASE,
 )

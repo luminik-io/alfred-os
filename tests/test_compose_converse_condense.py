@@ -174,6 +174,30 @@ def test_overflow_after_proactive_condense_does_not_double_retry() -> None:
     assert len(spy.condenser_calls) == 1
 
 
+def test_successful_turn_mentioning_overflow_prose_is_not_retried() -> None:
+    # A successful turn whose reply text merely mentions overflow-like prose must
+    # be returned as-is, not discarded and condense-retried.
+    chatty_json = (
+        '{"reply": "Here is how to fix the maximum context length exceeded error '
+        'in your code.", "draft": {}, "readiness": {"score": 0, "ready": false}, '
+        '"done": false}'
+    )
+    spy = _EngineSpy(interrogator_results=[_Result(success=True, result_text=chatty_json)])
+    # trigger_turns huge so the proactive gate does NOT fire; only a (wrong)
+    # reactive retry could fire here, which this guard must prevent.
+    config = condenser.CondenserConfig(keep_first=1, keep_last=3, trigger_turns=100_000)
+    records: list[condenser.CondensationRecord] = []
+
+    turn = _run(spy, _messages(20), condenser_config=config, on_condense=records.append)
+
+    assert turn is not None
+    assert "maximum context length exceeded" in turn.reply
+    # No retry, no condensation: the successful result stands.
+    assert len(spy.interrogator_calls) == 1
+    assert spy.condenser_calls == []
+    assert records == []
+
+
 def test_intent_reads_real_last_user_turn_not_summary() -> None:
     # Even after condensation, the intent heuristic must read the genuine last
     # user turn. Build a turn JSON with no explicit intent so the heuristic runs.

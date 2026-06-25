@@ -801,9 +801,16 @@ def run_turn(
     )
 
     # REACTIVE: if the engine reported a context-overflow, condense-and-retry once
-    # instead of failing the turn. Skip the retry when we already condensed
-    # proactively on this exact message set (a second pass cannot shrink it more).
-    if _is_overflow(result) and proactive.record is None:
+    # instead of failing the turn. Only failed results can be overflows; a
+    # successful turn whose reply text merely mentions overflow-like prose must
+    # not be discarded. Skip the retry when we already condensed proactively on
+    # this exact message set (a second pass cannot shrink it more).
+    if (
+        result is not None
+        and not getattr(result, "success", False)
+        and _is_overflow(result)
+        and proactive.record is None
+    ):
         reactive = condenser.condense_on_overflow(message_list, summarize=summarize, config=config)
         if reactive.record is not None:
             if on_condense is not None:

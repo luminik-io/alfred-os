@@ -156,6 +156,22 @@ def test_reactive_on_minimal_prompt_cannot_shrink() -> None:
     assert result.condensed is False
 
 
+def test_reactive_disabled_config_never_condenses() -> None:
+    # The off switch must hold on the reactive path too: a disabled condenser
+    # must not summarize (and so must not send conversation content to the
+    # condenser model) even when a caller hits an overflow and retries.
+    config = cc.CondenserConfig(enabled=False, keep_first=1, keep_last=2, trigger_turns=2)
+    summarize, seen = _counting_summarizer()
+    convo = _convo(12)
+
+    result = cc.condense_on_overflow(convo, summarize=summarize, config=config)
+
+    assert result.condensed is False
+    assert result.record is None
+    assert list(result.messages) == convo
+    assert seen == []  # summarizer never invoked
+
+
 # --- overflow classifier ----------------------------------------------------
 
 
@@ -164,6 +180,19 @@ def test_overflow_classifier_matches_common_shapes() -> None:
     assert cc.looks_like_context_overflow("maximum context length exceeded")
     assert cc.looks_like_context_overflow("This model's context window is too large")
     assert cc.looks_like_context_overflow("too many input tokens for this request")
+
+
+def test_overflow_classifier_matches_more_provider_shapes() -> None:
+    # Providers report a recoverable overflow in shapes outside the original
+    # narrow set; the reactive condense-and-retry must still fire for these.
+    assert cc.looks_like_context_overflow(
+        'error code "context_length_exceeded" returned by the provider'
+    )
+    assert cc.looks_like_context_overflow(
+        "Please reduce the length of the messages and try again."
+    )
+    assert cc.looks_like_context_overflow("Request too large for this model")
+    assert cc.looks_like_context_overflow("token limit exceeded for the request")
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
