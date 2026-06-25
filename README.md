@@ -11,18 +11,16 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**An autonomous coding team on your Mac that opens and reviews real pull requests and reports to Slack. You stay in control.**
+**An autonomous engineering team that ships while you are away.**
 
-Alfred is a local, private fleet of coding agents. It turns Slack requests,
-rough plans, specs, and labeled GitHub issues into scoped tasks, isolated
-worktrees, pull requests, code review, tests, and Slack updates, and it keeps
-that work moving when you are not at the keyboard. The agents play narrow roles
-with clear handoffs: an architect for work that spans repos, a senior developer
-who implements, a planner who scopes smaller work, a reviewer who reads every
-PR, a test-coverage agent, and a fixer for review comments. You give the goal,
-the repos, and the approval rules. Alfred keeps the loop moving until it has a
-pull request, a review finding, or a decision to bring back to Slack. It never
-merges its own work unless you let it.
+Alfred is a local, private fleet of coding agents. Drake turns your plans into
+tasks. Lucius writes the code and opens pull requests. Ra's al Ghul reviews them.
+Bane adds the tests and Nightwing clears the review comments. Batman is the
+architect for work that spans many repos: he plans large multi-repo features,
+files the child issues, and drives them through to merged PRs. You give the
+goal, the repos, and the approval rules. Alfred keeps the loop moving until it
+has a pull request, a review finding, or a decision to bring back to Slack. It
+never merges its own work unless you let it.
 
 **It runs on the Claude Max or Codex Pro subscription you already pay for. No
 API keys, no separate token bill.** Alfred shells out to your local `claude` and
@@ -41,13 +39,6 @@ provider key setup.
 - **A team you supervise, not autonomy you hope for.** Each run is contained in
   an isolated worktree, bounded by a hard spend cap, and held at an approval
   gate you control. Slack is the planning surface; you keep merge authority.
-
-### See it work
-
-> **Hero demo (video to be added).** A 60-second continuous real run: type a
-> task, watch an agent work in an isolated worktree, a real PR opens on GitHub,
-> Alfred reviews its own PR, a Slack ping lands, and you approve and merge from
-> the app, with the live cost and usage meter on screen the whole time.
 
 Docs site: https://alfred.luminik.io
 
@@ -124,9 +115,9 @@ isolated copy of the repo, sends the right work to the right agent, hands
 finished code to a reviewer, caps how much it can spend, and keeps several
 agents from stepping on each other.
 
-- Narrow roles with clear handoffs: Batman is the architect for cross-repo
-  work, Lucius is the senior developer, Drake scopes smaller work, Ra's al Ghul
-  is the reviewer, Bane is QA, and Nightwing is the fixer.
+- Narrow roles, not a chatty multi-agent crowd: Drake plans, Lucius implements,
+  Ra's al Ghul reviews, Bane adds tests, Nightwing picks up unresolved review
+  comments, and Batman plans and ships multi-repo rollouts.
 - Coordinate through ordinary repo primitives: GitHub issues and pull
   requests, labels, specs, isolated git worktrees, commit trailers, and Slack
   summaries. The local dashboard and desktop app read the same local state and
