@@ -180,9 +180,9 @@ brew install --cask alfred-os    # signed, notarized macOS app, pulls in the CLI
 - macOS 11+ on Apple silicon: or download the signed, notarized DMG from
   [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
 - Linux: download the AppImage or `.deb` from the same page.
-- Direct downloads ship the app only, with no runtime to talk to. Pair them
-  with the CLI (see "Install the CLI only" below: `brew` on macOS, `install.sh`
-  on Linux) so the app and its setup wizard have an `alfred serve` to drive.
+- Direct downloads ship the app only, with no runtime to talk to. Install the
+  full CLI first (see "Install the CLI only" below) so an `alfred` runtime is on
+  PATH for the app and its setup wizard to drive.
 - Local development: `cd clients/desktop && npm install && npm run tauri dev`.
 
 The app connects to the local runtime over `alfred serve`; it does not run
