@@ -54,6 +54,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -410,7 +411,11 @@ def persist_record(record: CondensationRecord, *, record_dir: Path, slug: str = 
     record_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
     safe_slug = _slugify(slug)
-    name = f"condense-{stamp}{('-' + safe_slug) if safe_slug else ''}.json"
+    # The microsecond stamp alone collides when two converse requests for the
+    # same draft condense in the same microsecond, dropping one audit record.
+    # A per-writer pid + uuid suffix keeps every record on its own path.
+    unique = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    name = f"condense-{stamp}-{unique}{('-' + safe_slug) if safe_slug else ''}.json"
     path = record_dir / name
     path.write_text(
         json.dumps(record.to_dict(), ensure_ascii=False, indent=2),

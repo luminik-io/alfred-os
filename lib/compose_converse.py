@@ -823,11 +823,15 @@ def run_turn(
                 intake_guidance=intake_guidance,
                 current_draft=base_draft,
             )
+            # Reuse the original firing_id: the SSE stream tails THIS firing_id,
+            # so writing the retry under a "-retry" suffix would strand the
+            # retry's tokens on a transcript the client is not watching. The
+            # retry must continue on the stream the client is already reading.
             result = _invoke_converse(
                 engine_invoke,
                 prompt=retry_prompt,
                 engine=engine,
-                firing_id=f"{firing_id}-retry",
+                firing_id=firing_id,
                 workdir=workdir,
                 timeout=timeout,
             )

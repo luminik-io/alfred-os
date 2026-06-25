@@ -262,6 +262,22 @@ def test_record_is_auditable_and_persists(tmp_path: Path) -> None:
     assert on_disk["summarized_indices"] == list(range(1, 13))
 
 
+def test_persist_record_does_not_overwrite_same_slug(tmp_path: Path) -> None:
+    # Two condensations for the same draft must each get their own audit file;
+    # the pid+uuid suffix prevents a same-microsecond path collision that would
+    # silently drop one record.
+    config = cc.CondenserConfig(keep_first=1, keep_last=2, trigger_turns=5)
+    summarize, _ = _counting_summarizer()
+    r1 = cc.condense(_convo(15), summarize=summarize, config=config).record
+    r2 = cc.condense(_convo(15), summarize=summarize, config=config).record
+    assert r1 is not None and r2 is not None
+    p1 = cc.persist_record(r1, record_dir=tmp_path, slug="draft-1")
+    p2 = cc.persist_record(r2, record_dir=tmp_path, slug="draft-1")
+    assert p1 != p2
+    assert p1.exists() and p2.exists()
+    assert len(list(tmp_path.glob("condense-*.json"))) == 2
+
+
 # --- config from env --------------------------------------------------------
 
 
