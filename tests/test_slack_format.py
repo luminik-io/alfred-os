@@ -228,3 +228,68 @@ def test_github_links_render_as_slack_mrkdwn():
         sf.github_url_link("https://github.com/luminik-io/alfred-os/pull/139")
         == "<https://github.com/luminik-io/alfred-os/pull/139|luminik-io/alfred-os#139>"
     )
+
+
+# --------------------------------------------------------------------------
+# Persisted roster theme honored in the Slack header label
+# --------------------------------------------------------------------------
+
+
+def _persist_theme(tmp_path, **payload):
+    """Write a roster-theme state file under the isolated ALFRED_HOME."""
+    from roster_theme_store import RosterThemeStore
+    from agent_runner.paths import STATE_ROOT
+
+    RosterThemeStore.from_state_root(STATE_ROOT).save(**payload)
+
+
+def test_themed_label_default_matches_codename_with_role(monkeypatch):
+    import slack_format as sf
+    from agent_runner.metadata import codename_with_role
+
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Single-repo feature engineer")
+    # No theme persisted: behavior is identical to the shipped helper.
+    assert sf._themed_codename_label("lucius") == codename_with_role("lucius")
+    assert sf._themed_codename_label("lucius") == "lucius (Single-repo feature engineer)"
+
+
+def test_themed_label_preset_is_unchanged(tmp_path, monkeypatch):
+    import slack_format as sf
+    from agent_runner.metadata import codename_with_role
+
+    monkeypatch.setenv("ALFRED_BATMAN_ROLE", "Fleet lead")
+    _persist_theme(tmp_path, theme="justice-league")
+    # A preset carries no custom names, so the Slack path renders as shipped.
+    assert sf._themed_codename_label("batman") == codename_with_role("batman")
+
+
+def test_themed_label_custom_name_and_role_applied(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    monkeypatch.setenv("ALFRED_BATMAN_ROLE", "Fleet lead")
+    _persist_theme(
+        tmp_path,
+        theme="custom",
+        custom_names={"batman": "Sherlock"},
+        custom_roles={"batman": "Lead detective"},
+    )
+    assert sf._themed_codename_label("batman") == "Sherlock (Lead detective)"
+
+
+def test_themed_label_custom_name_falls_back_to_env_role(tmp_path, monkeypatch):
+    import slack_format as sf
+
+    monkeypatch.setenv("ALFRED_BATMAN_ROLE", "Fleet lead")
+    # Custom name set, but no custom role: the env role still shows.
+    _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
+    assert sf._themed_codename_label("batman") == "Sherlock (Fleet lead)"
+
+
+def test_themed_label_custom_without_name_keeps_shipped_behavior(tmp_path, monkeypatch):
+    import slack_format as sf
+    from agent_runner.metadata import codename_with_role
+
+    monkeypatch.setenv("ALFRED_LUCIUS_ROLE", "Engineer")
+    # A custom theme that did not name THIS agent renders the shipped codename.
+    _persist_theme(tmp_path, theme="custom", custom_names={"batman": "Sherlock"})
+    assert sf._themed_codename_label("lucius") == codename_with_role("lucius")

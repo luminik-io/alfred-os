@@ -3251,3 +3251,150 @@ def test_plain_compose_title_scan_subject_unchanged() -> None:
     assert (
         server_views._scan_title_subject("the queue is hard to scan at small window sizesxyz") == ""
     )
+
+
+# --------------------------------------------------------------------------
+# Roster theme persistence (GET/POST /api/roster-theme)
+# --------------------------------------------------------------------------
+
+
+def test_roster_theme_defaults_to_batman(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.get("/api/roster-theme")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["theme"] == "batman"
+    assert body["custom_names"] == {}
+    assert body["custom_roles"] == {}
+
+
+def test_roster_theme_set_preset_round_trips(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        json={"theme": "justice-league"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["theme"] == "justice-league"
+
+    # A fresh GET sees the persisted choice, proving it hit the state dir.
+    again = client.get("/api/roster-theme")
+    assert again.json()["theme"] == "justice-league"
+
+
+def test_roster_theme_set_custom_names_and_roles_persist(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        json={
+            "theme": "custom",
+            "custom_names": {"batman": "Sherlock", "fleet-doctor": "Watson"},
+            "custom_roles": {"batman": "Lead detective"},
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["theme"] == "custom"
+    assert body["custom_names"] == {"batman": "Sherlock", "fleet-doctor": "Watson"}
+    assert body["custom_roles"] == {"batman": "Lead detective"}
+
+    # The file under the state root is the single source of truth across surfaces.
+    stored = json.loads(
+        (state / "roster-theme" / "roster-theme.json").read_text(encoding="utf-8")
+    )
+    assert stored["theme"] == "custom"
+    assert stored["custom_names"]["batman"] == "Sherlock"
+
+
+def test_roster_theme_switch_to_preset_clears_custom_names(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        json={"theme": "custom", "custom_names": {"batman": "Sherlock"}},
+    )
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        json={"theme": "transformers"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["theme"] == "transformers"
+    # A preset never resurrects a stale custom name set.
+    assert body["custom_names"] == {}
+
+
+def test_roster_theme_rejects_unknown_theme(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        json={"theme": "not-a-real-theme"},
+    )
+    assert resp.status_code == 400
+    # The persisted default is untouched by a rejected write.
+    assert client.get("/api/roster-theme").json()["theme"] == "batman"
+
+
+def test_roster_theme_rejects_bad_custom_name_payload(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    # A key that is not a fleet codename is rejected.
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        json={"theme": "custom", "custom_names": {"Not A Codename!": "X"}},
+    )
+    assert resp.status_code == 400
+
+    # An empty label is rejected.
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        json={"theme": "custom", "custom_names": {"batman": "   "}},
+    )
+    assert resp.status_code == 400
+
+
+def test_roster_theme_post_requires_token_and_same_origin(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    # No token, no same-origin header.
+    resp = client.post("/api/roster-theme", json={"theme": "justice-league"})
+    assert resp.status_code == 403
+
+    # Cross-origin even with a valid token is refused.
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state, origin="http://evil.example"),
+        json={"theme": "justice-league"},
+    )
+    assert resp.status_code == 403
+    assert client.get("/api/roster-theme").json()["theme"] == "batman"
+
+
+def test_roster_theme_rejects_non_object_body(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    resp = client.post(
+        "/api/roster-theme",
+        headers=_auth_headers(state),
+        content="[1, 2, 3]",
+    )
+    assert resp.status_code == 400
