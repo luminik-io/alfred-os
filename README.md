@@ -180,9 +180,9 @@ brew install --cask alfred-os    # signed, notarized macOS app, pulls in the CLI
 - macOS 11+ on Apple silicon: or download the signed, notarized DMG from
   [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
 - Linux: download the AppImage or `.deb` from the same page.
-- Direct downloads ship the app only, with no runtime to talk to. Install the
-  CLI too (`brew install alfred-os`); the app and its setup wizard both drive an
-  `alfred serve` that the CLI provides.
+- Direct downloads ship the app only, with no runtime to talk to. Pair them
+  with the CLI (see "Install the CLI only" below: `brew` on macOS, `install.sh`
+  on Linux) so the app and its setup wizard have an `alfred serve` to drive.
 - Local development: `cd clients/desktop && npm install && npm run tauri dev`.
 
 The app connects to the local runtime over `alfred serve`; it does not run
@@ -355,8 +355,9 @@ The public counter only moves for a trusted reporter token, so a random install
 cannot inflate it. Self-host the collector (Cloudflare Worker under
 [`telemetry/worker/`](telemetry/worker/)): deploy it with `wrangler deploy`,
 point Alfred at it with `alfred telemetry on --url ... --token ...`, then run
-`alfred deploy` to render and load the reporter into the host scheduler. Full
-contract: [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
+`bash deploy.sh` from your Alfred source checkout to render and load the
+reporter into the host scheduler. Full contract:
+[`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## What's in here
 
