@@ -2774,9 +2774,106 @@ body {
   min-height: 2.25rem;
 }
 
+/* Recent-threads switcher: a quiet ghost trigger plus a popover list of the
+ * last few local Ask conversations. Resuming one makes it the active thread. */
+.ask__recent-trigger {
+  min-height: 2.25rem;
+}
+
+.ask__recent-menu {
+  z-index: 60;
+  display: grid;
+  gap: 0.35rem;
+  width: min(20rem, 90vw);
+  max-height: 60svh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.75rem);
+  padding: 0.5rem;
+  background: var(--popover, var(--card));
+  color: var(--popover-foreground, var(--foreground));
+  box-shadow: 0 14px 40px var(--glass-shadow);
+}
+
+.ask__recent-title {
+  margin: 0;
+  padding: 0.15rem 0.4rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ask__recent-list {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask__recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  color: var(--foreground);
+  background: transparent;
+  text-align: left;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.ask__recent-item:hover {
+  background: color-mix(in oklch, var(--primary), var(--card) 90%);
+}
+
+.ask__recent-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ask__recent-item--active {
+  border-color: color-mix(in oklch, var(--primary), transparent 62%);
+  background: color-mix(in oklch, var(--primary), var(--card) 86%);
+}
+
+.ask__recent-item-text {
+  overflow: hidden;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask__recent-item-meta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--muted-foreground);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+/* assistant-ui wraps the scrolling viewport in a ThreadPrimitive.Root. It is
+ * the grid row that fills the available height; the viewport scrolls within it
+ * and carries the floating-glass styling. */
+.ask__thread-root {
+  display: flex;
+  min-height: 0;
+}
+
 /* The thread is a floating glass plane with quiet native depth. */
 .ask__thread {
   position: relative;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
