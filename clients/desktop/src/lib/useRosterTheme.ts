@@ -72,12 +72,20 @@ export type UseRosterTheme = {
   customNames: CustomRosterNames;
   setRosterTheme: (next: RosterThemeId) => void;
   setCustomNames: (next: CustomRosterNames) => void;
+  // Non-null when the most recent save did not reach the server (no token, 403,
+  // offline). The local picker still reflects the choice, but Slack and a fresh
+  // reload keep the old persisted cast until a save succeeds, so the UI must be
+  // able to tell the operator the change is local-only.
+  saveError: string | null;
 };
 
 export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const [rosterTheme, setRosterThemeState] = useState<RosterThemeId>(readStoredTheme);
   const [customNames, setCustomNamesState] = useState<CustomRosterNames>(readStoredCustom);
-  // Avoid clobbering a freshly persisted choice with a slow initial GET.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Avoid clobbering a freshly persisted choice with a slow initial GET. Only a
+  // server interaction (a successful read OR a successful write) marks the hook
+  // hydrated; an offline-only change must NOT block a later server read.
   const hydratedRef = useRef(false);
 
   // On connect, read the server's persisted choice so the picker reflects the
@@ -119,15 +127,35 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // written via the effect above, so a failed POST still keeps the local choice.
   const persist = useCallback(
     (theme: RosterThemeId, custom: CustomRosterNames) => {
-      hydratedRef.current = true;
-      if (!baseUrl) return;
+      if (!baseUrl) {
+        // Offline change: keep it in memory/localStorage but do NOT mark the
+        // hook hydrated. When the runtime later connects, the hydration effect
+        // must still read the server's persisted cast rather than skip it.
+        setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
+        return;
+      }
       void saveRosterTheme(baseUrl, {
         theme,
         custom_names: custom.names,
         custom_roles: custom.roles,
-      }).catch(() => {
-        // Best-effort: the local value remains correct; a later edit retries.
-      });
+      })
+        .then(() => {
+          // The server is now the agreed source of truth; clear any prior
+          // failure and treat the hook as hydrated so a racing GET cannot
+          // clobber the choice we just persisted.
+          hydratedRef.current = true;
+          setSaveError(null);
+        })
+        .catch((err: unknown) => {
+          // The local value still reflects the choice, but Slack and a fresh
+          // reload keep the old server state. Surface that so the change does
+          // not silently look successful.
+          setSaveError(
+            err instanceof Error && err.message
+              ? `Could not save to Alfred: ${err.message}`
+              : "Could not save to Alfred. The cast is local-only until a save succeeds.",
+          );
+        });
     },
     [baseUrl],
   );
@@ -150,5 +178,5 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
     [persist],
   );
 
-  return { rosterTheme, customNames, setRosterTheme, setCustomNames };
+  return { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError };
 }

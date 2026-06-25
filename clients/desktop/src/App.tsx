@@ -106,7 +106,7 @@ function App() {
 
   const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
     useTheme();
-  const { rosterTheme, customNames, setRosterTheme, setCustomNames } =
+  const { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError: rosterSaveError } =
     useRosterTheme(baseUrl);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -368,6 +368,7 @@ function App() {
                 value={rosterTheme}
                 onChange={setRosterTheme}
                 onEditCustom={() => setCustomThemeEditorOpen(true)}
+                saveError={rosterSaveError}
               />
             ) : null}
           </div>
