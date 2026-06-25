@@ -13,19 +13,33 @@
 
 **An autonomous engineering team that ships while you are away.**
 
-Alfred is a local, private fleet of coding agents. Drake turns your plans into
-tasks. Lucius writes the code and opens pull requests. Ra's al Ghul reviews them.
-Bane adds the tests and Nightwing clears the review comments. Batman is the
-architect for work that spans many repos: he plans large multi-repo features,
-files the child issues, and drives them through to merged PRs. You give the
-goal, the repos, and the approval rules. Alfred keeps the loop moving until it
-has a pull request, a review finding, or a decision to bring back to Slack. It
-never merges its own work unless you let it.
+Alfred is a local, private fleet of coding agents. You give the goal, the repos,
+and the approval rules. Alfred keeps the loop moving until it has a pull request,
+a review finding, or a decision to bring back to Slack. It never merges its own
+work unless you let it.
 
-**It runs on the Claude Max or Codex Pro subscription you already pay for. No
-API keys, no separate token bill.** Alfred shells out to your local `claude` and
-optional `codex` CLI auth, so there is no hosted inference service and no
-provider key setup.
+- **Drake** turns your plans into scoped tasks.
+- **Lucius** writes the code and opens pull requests.
+- **Ra's al Ghul** reviews them.
+- **Bane** adds the tests.
+- **Nightwing** clears the review comments.
+- **Batman** is the architect for multi-repo work: he plans large features, files
+  the child issues, and drives them through to merged PRs.
+
+**It runs on the Claude Max or Codex Pro subscription you already pay for. No API
+keys, no separate token bill.** Alfred shells out to your local `claude` and
+optional `codex` CLI auth. There is no hosted inference service and no provider
+key setup.
+
+```mermaid
+flowchart LR
+    intake["Slack message<br/>GitHub issue<br/>rough plan"] --> drake["Drake<br/>scopes the work"]
+    drake --> lucius["Lucius<br/>writes code, opens PR"]
+    lucius --> ras["Ra's al Ghul<br/>reviews the PR"]
+    ras --> bane["Bane<br/>adds tests"]
+    bane --> nightwing["Nightwing<br/>clears review comments"]
+    nightwing --> you["You<br/>approve and merge"]
+```
 
 ### Why Alfred
 
