@@ -6,6 +6,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Added
 
+- Long Ask conversations no longer run out of room. When a chat grows past a configurable length, Alfred keeps the opening task and the most recent turns intact and replaces the middle with one compact, model-written summary, so the original goal and the live working state both survive. If a turn still overflows the model's context, Alfred condenses and retries once instead of failing. Every condensation is written down as an auditable record, short chats are left untouched, and every threshold is environment-overridable.
+
 ### Changed
 
 ### Removed
