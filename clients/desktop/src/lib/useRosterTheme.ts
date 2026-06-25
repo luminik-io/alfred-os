@@ -97,18 +97,16 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   baseUrlRef.current = baseUrl;
   // Serialize saves so a fast A -> B switch cannot land out of order. Each call
   // bumps `saveSeqRef`; only the latest seq decides the agreed state. While a
-  // POST is in flight, the newest pending choice is coalesced and sent next, so
-  // the server's final state always matches the operator's last action. Each
-  // queued save carries the `url` it was made against, so a change made on one
-  // runtime is never posted to a different one the desktop later connected to.
+  // POST is in flight, later choices are queued and sent next, so the server's
+  // final state always matches the operator's last action. The queue is keyed
+  // by runtime url: a change made on one runtime is never posted to a different
+  // one, and a queued edit for runtime A is not dropped when an edit for runtime
+  // B is queued behind it. Re-editing the same runtime coalesces to the latest.
   const saveSeqRef = useRef(0);
   const inFlightRef = useRef(false);
-  const pendingRef = useRef<{
-    url: string;
-    theme: RosterThemeId;
-    custom: CustomRosterNames;
-    seq: number;
-  } | null>(null);
+  const pendingRef = useRef<
+    Map<string, { theme: RosterThemeId; custom: CustomRosterNames; seq: number }>
+  >(new Map());
 
   // On connect, read the server's persisted choice so the picker reflects the
   // cast the runtime (and Slack) already use. A failed read keeps the
@@ -183,6 +181,14 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // not silently look successful. A superseded save stays quiet; the
           // newer one reports its own outcome.
           if (seq !== saveSeqRef.current) return;
+          // The optimistic hydration recorded in persist() assumed this save
+          // would land. It did not, so the server still holds the old cast.
+          // Clear the marker for this runtime (if it is still ours) so an
+          // in-flight or later GET re-reads the server instead of trusting the
+          // unsaved local value forever, including across a reconnect.
+          if (hydratedUrlRef.current === url) {
+            hydratedUrlRef.current = null;
+          }
           setSaveError(
             err instanceof Error && err.message
               ? `Could not save to Alfred: ${err.message}`
@@ -191,14 +197,15 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         })
         .finally(() => {
           inFlightRef.current = false;
-          // Drain to the latest queued choice so the final server write always
-          // reflects the operator's last action, in order. The queued change
+          // Drain the next queued runtime in insertion order. Each queued change
           // carries its own target url, so it posts to the runtime it was made
-          // against rather than reusing this completed save's url.
-          const next = pendingRef.current;
-          if (next) {
-            pendingRef.current = null;
-            runSave(next.url, next.theme, next.custom, next.seq);
+          // against; runtimes other than this one keep their queued edits rather
+          // than being overwritten by a single shared pending slot.
+          const nextUrl = pendingRef.current.keys().next().value;
+          if (nextUrl !== undefined) {
+            const next = pendingRef.current.get(nextUrl)!;
+            pendingRef.current.delete(nextUrl);
+            runSave(nextUrl, next.theme, next.custom, next.seq);
           }
         });
     },
@@ -219,14 +226,16 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       // goes out: otherwise a still-in-flight hydration GET for this runtime can
       // resolve and revert the change, because hydration is only recorded on
       // save success. Marking it here closes that window; the save still
-      // reconciles with the server and surfaces any failure.
+      // reconciles with the server, and a failed save clears the marker again
+      // so the server value is re-read rather than trusted indefinitely.
       hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
       if (inFlightRef.current) {
-        // A save is already running. Coalesce to this newest choice; the
-        // in-flight save's finally() will send it once the socket is free,
-        // posting to the runtime this change was made against.
-        pendingRef.current = { url: baseUrl, theme, custom, seq };
+        // A save is already running. Queue this choice under its runtime url;
+        // the in-flight save's finally() drains it once the socket is free.
+        // Same-runtime re-edits coalesce to the latest; other runtimes keep
+        // their own queued edits.
+        pendingRef.current.set(baseUrl, { theme, custom, seq });
         return;
       }
       runSave(baseUrl, theme, custom, seq);

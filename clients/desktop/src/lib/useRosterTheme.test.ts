@@ -344,6 +344,90 @@ describe("useRosterTheme", () => {
     expect(result.current.rosterTheme).toBe("transformers");
   });
 
+  // Thread: "Failed Saves Stay Hydrated". The optimistic hydration marker set
+  // on edit must be cleared when the save fails, so an in-flight GET for that
+  // runtime reconciles to the server instead of trusting the unsaved value.
+  it("reconciles to the server when a save fails and a hydration GET is pending", async () => {
+    // The hydration GET is held open so it can resolve AFTER the save fails.
+    let resolveLoad: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme.mockReturnValue(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveLoad = resolve;
+      }),
+    );
+    let rejectSave: (reason?: unknown) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+
+    // The save fails: the optimistic hydration marker must be cleared.
+    await act(async () => {
+      rejectSave(new Error("alfred serve returned 503"));
+    });
+
+    // The still-pending GET now resolves with the server's real value. Because
+    // the failed save cleared hydration, it reconciles rather than being bailed.
+    await act(async () => {
+      resolveLoad(serverState({ theme: "justice-league" }));
+    });
+    expect(result.current.rosterTheme).toBe("justice-league");
+  });
+
+  // Thread: "Queued Runtime Edit Drops". A queued edit for one runtime must not
+  // be discarded when an edit for a second runtime is queued behind it: the
+  // pending queue is keyed per runtime, so both saves eventually go out.
+  it("keeps queued edits for distinct runtimes from overwriting each other", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+
+    // Runtime A's save is held open so B's and C's edits queue behind it.
+    let resolveA: (value: RosterThemeResponse) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveA = resolve;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    // Edit A (in flight), then queue an edit on B and an edit on C.
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    rerender({ baseUrl: "http://127.0.0.1:7030" });
+    act(() => {
+      result.current.setRosterTheme("batman");
+    });
+
+    // Drain: A resolves, then B and C each go out to their own runtime.
+    saveRosterTheme.mockResolvedValue(serverState());
+    await act(async () => {
+      resolveA(serverState({ theme: "justice-league" }));
+    });
+
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalledTimes(3);
+    });
+    const targets = saveRosterTheme.mock.calls.map((call) => call[0]);
+    expect(targets).toContain("http://127.0.0.1:7020");
+    expect(targets).toContain("http://127.0.0.1:7030");
+  });
+
   // A superseded save that fails must stay quiet: the newer save owns the
   // reported outcome, so a stale rejection cannot raise a false error.
   it("keeps a superseded save failure from clobbering the latest success", async () => {
