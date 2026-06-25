@@ -134,7 +134,7 @@ def test_reactive_condense_forces_pass_below_threshold() -> None:
     # trigger_turns is huge so the proactive gate would NOT fire, but the
     # reactive path condenses anyway.
     config = cc.CondenserConfig(keep_first=1, keep_last=2, trigger_turns=10_000)
-    summarize, seen = _counting_summarizer()
+    summarize, _seen = _counting_summarizer()
     convo = _convo(12)
 
     proactive = cc.condense(convo, summarize=summarize, config=config)
@@ -240,5 +240,9 @@ def test_max_summary_chars_truncates_summary_block() -> None:
 
     result = cc.condense(_convo(10), summarize=big, config=config)
     assert result.summary_turn is not None
-    # Summary body is the framing prefix plus at most max_summary_chars of text.
-    assert result.summary_turn.content.count("y") == 20
+    # Summary body is a framing prefix plus at most max_summary_chars of payload.
+    # The payload is appended last, so the block ends with exactly 20 "y"s and no
+    # more (the prefix is fixed text and is not counted as payload).
+    body = result.summary_turn.content
+    assert body.endswith("y" * 20)
+    assert not body.endswith("y" * 21)

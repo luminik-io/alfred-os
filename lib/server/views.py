@@ -3064,10 +3064,8 @@ def _converse_condense_recorder(request: Request, *, draft_id: str | None) -> An
     record_dir = _state_root(request) / "condensations"
 
     def _record(record: Any) -> None:
-        try:
+        with suppress(OSError):
             condenser.persist_record(record, record_dir=record_dir, slug=draft_id or "")
-        except OSError:
-            pass
 
     return _record
 

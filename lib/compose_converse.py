@@ -690,8 +690,8 @@ def _build_summarizer(
     """
     model = condenser_model_from_env()
 
-    def summarize(turns: Sequence[ConverseMessage]) -> str:
-        transcript = format_untrusted_transcript(turns)
+    def summarize(turns: Sequence[condenser.Turn]) -> str:
+        transcript = format_untrusted_transcript(_as_converse_message(turn) for turn in turns)
         prompt = (
             "You compress part of a longer product-planning conversation so it "
             "fits the model's context budget. Summarize the turns below into a "
@@ -804,9 +804,7 @@ def run_turn(
     # instead of failing the turn. Skip the retry when we already condensed
     # proactively on this exact message set (a second pass cannot shrink it more).
     if _is_overflow(result) and proactive.record is None:
-        reactive = condenser.condense_on_overflow(
-            message_list, summarize=summarize, config=config
-        )
+        reactive = condenser.condense_on_overflow(message_list, summarize=summarize, config=config)
         if reactive.record is not None:
             if on_condense is not None:
                 on_condense(reactive.record)
@@ -899,8 +897,7 @@ def _is_overflow(result: Any) -> bool:
     if result is None:
         return False
     haystack = " ".join(
-        str(getattr(result, attr, "") or "")
-        for attr in ("error_message", "result_text", "subtype")
+        str(getattr(result, attr, "") or "") for attr in ("error_message", "result_text", "subtype")
     )
     return condenser.looks_like_context_overflow(haystack)
 

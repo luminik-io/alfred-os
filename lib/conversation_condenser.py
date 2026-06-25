@@ -61,10 +61,10 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 __all__ = [
+    "SUMMARY_ROLE",
     "CondensationRecord",
     "CondensationResult",
     "CondenserConfig",
-    "SUMMARY_ROLE",
     "Turn",
     "condense",
     "condense_on_overflow",
@@ -183,7 +183,9 @@ class CondensationRecord:
     original_turn_count: int
     condensed_turn_count: int
     reason: str  # "proactive" | "reactive_overflow"
-    created_at: str = field(default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    created_at: str = field(
+        default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
 
     def to_dict(self) -> dict[str, object]:
         """Render as plain JSON-serializable data for persistence / audit."""

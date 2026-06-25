@@ -178,8 +178,7 @@ def test_intent_reads_real_last_user_turn_not_summary() -> None:
     # Even after condensation, the intent heuristic must read the genuine last
     # user turn. Build a turn JSON with no explicit intent so the heuristic runs.
     no_intent_json = (
-        '{"reply": "Hello!", "draft": {}, '
-        '"readiness": {"score": 0, "ready": false}, "done": false}'
+        '{"reply": "Hello!", "draft": {}, "readiness": {"score": 0, "ready": false}, "done": false}'
     )
     spy = _EngineSpy(interrogator_results=[_Result(success=True, result_text=no_intent_json)])
     config = condenser.CondenserConfig(keep_first=1, keep_last=2, trigger_turns=5)
