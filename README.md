@@ -58,10 +58,9 @@ Docs site: https://alfred.luminik.io
 
 ## Privacy: what Alfred touches, and what it does not
 
-Alfred touches your repos, your git history, and optionally Slack, so it should
-be obvious what it can reach. The posture is simple: Alfred runs as you, on your
-machine, against the local CLIs you already authenticated. It is meant to be
-inspectable, not taken on faith.
+Alfred touches your repos, your git history, and optionally Slack, so what it can
+reach should be obvious. It runs as you, on your machine, against the local CLIs
+you already authenticated. It is meant to be inspectable, not taken on faith.
 
 **What Alfred touches:**
 
@@ -94,11 +93,10 @@ inspectable, not taken on faith.
 - It does **not** merge its own work by default. A human merges; see the
   [threat model](docs/THREAT_MODEL.md).
 
-Want to verify it yourself? Run a network monitor during a firing and confirm
-the only outbound destinations are the four above (the telemetry beacon fires on
-a stock install until you run `alfred telemetry off`). If you find a call we did
-not document, that is exactly what the [open audit issue](#open-audit-issue) is
-for.
+Want to verify it yourself? Run a network monitor during a firing and confirm the
+only outbound destinations are the four above (the telemetry beacon fires on a
+stock install until you run `alfred telemetry off`). Find an undocumented call?
+That is what the [open audit issue](#open-audit-issue) is for.
 
 - [macOS permissions explainer](docs/MACOS_PERMISSIONS.md): every prompt you may
   see, why it appears, and the long list of permissions Alfred never requests.
@@ -109,10 +107,10 @@ for.
 
 ### Open audit issue
 
-Trust scaffolding is the feature for a tool that touches repos, git, and Slack,
-so the privacy claim is meant to be tested in the open. If you spot an
-undocumented network call, a privacy claim that does not match the code, or a
-containment boundary that can be bypassed, open a
+For a tool that touches repos, git, and Slack, the privacy claim is meant to be
+tested in the open. If you spot an undocumented network call, a privacy claim
+that does not match the code, or a containment boundary that can be bypassed,
+open a
 [Security or privacy audit finding](https://github.com/luminik-io/alfred-os/issues/new?template=audit.yml).
 Exploitable vulnerabilities go through a private
 [security advisory](https://github.com/luminik-io/alfred-os/security/advisories/new)
@@ -121,53 +119,41 @@ instead; see [`SECURITY.md`](SECURITY.md).
 ## Why use it
 
 Interactive coding agents finish one prompt while you sit at the keyboard.
-Alfred is for engineering work that should keep moving after you step away:
+Alfred is for the engineering work that should keep moving after you step away:
 planned features, reviewer comments, follow-up tests, dependency bumps, docs
-gaps, and multi-repo rollouts. It starts from Slack intake, rough plans, specs,
-or GitHub issues, helps structure that work into tasks, gives each run its own
-isolated copy of the repo, sends the right work to the right agent, hands
-finished code to a reviewer, caps how much it can spend, and keeps several
-agents from stepping on each other.
+gaps, and multi-repo rollouts.
 
-- Narrow roles, not a chatty multi-agent crowd: Drake plans, Lucius implements,
-  Ra's al Ghul reviews, Bane adds tests, Nightwing picks up unresolved review
-  comments, and Batman plans and ships multi-repo rollouts.
-- Coordinate through ordinary repo primitives: GitHub issues and pull
-  requests, labels, specs, isolated git worktrees, commit trailers, and Slack
-  summaries. The local dashboard and desktop app read the same local state and
-  GitHub records.
-- Treat Slack as the planning surface: teammates can reply in a Batman plan
-  thread with scope changes, questions, and acceptance criteria while you keep
-  approval authority. Registered plan-thread replies persist
-  local revision artifacts and echo the current repo scope before approval.
-  Follow-up replies after PR links are captured as context for the next pass,
-  not as implicit merge approval.
-- Run the fleet conversationally from Slack: trusted control commands
-  (`status`, `runs`, `plans`, `plan <id>`, `draft <id>`, `handled <id>`,
-  `memory` / `memories`, `memory remember ...`, `memory harvest`, `remember ...`,
-  `memory promote <id>`, `memory reject <id>`, `memory redis`, `memory sync`,
-  `pause`, `resume`) inspect and steer local state from chat with no shell. Scoped Slack
-  drafts and scheduled failure harvests can queue reviewable memory candidates
-  without promoting them. When the issue bridge is enabled, an approved draft can become a labeled GitHub issue, and in-thread
-  progress posts (claimed, PR opened, CI, merged) report back as the fleet
-  works it. A plain-language intake profile lets a non-technical user approve
-  outcomes instead of code.
-- Route engines by role. Run implementation on Claude Code and review on
+- **Narrow roles, not a chatty crowd.** Drake plans, Lucius implements, Ra's al
+  Ghul reviews, Bane adds tests, Nightwing clears review comments, and Batman
+  ships multi-repo rollouts.
+- **Coordinate through ordinary repo primitives.** Issues, pull requests, labels,
+  specs, isolated worktrees, commit trailers, and Slack summaries. The dashboard
+  and desktop app read the same local state and GitHub records.
+- **Treat Slack as the planning surface.** Teammates reply in a plan thread with
+  scope changes, questions, and acceptance criteria while you keep approval
+  authority. Replies after a PR link are captured as context, never as merge
+  approval.
+- **Run the fleet conversationally from Slack.** Trusted control commands
+  (`status`, `runs`, `plans`, `pause`, `resume`, `memory ...`, and more) inspect
+  and steer local state with no shell. When the issue bridge is enabled, an
+  approved draft becomes a labeled GitHub issue and in-thread posts report
+  progress as the fleet works it. A plain-language intake profile lets a
+  non-technical user approve outcomes instead of code.
+- **Route engines by role.** Run implementation on Claude Code and review on
   Codex, or keep Claude as primary with Codex fallback for selected agents.
-- Bring your own subscription. Alfred shells out to your local `claude` and
-  optional `codex` CLI auth. It does not bill LLM calls separately and does
-  not require provider API keys.
-- Keep autonomy bounded: one firing, one worktree, one IAM scope, one Slack
-  report, hard spend caps, and an explicit GitHub state machine. A locally drafted
-  single-repo issue lands behind an approval gate
-  (`agent:plan-pending-approval`) and is held from autonomous pickup until you
-  approve it.
+- **Bring your own subscription.** Alfred shells out to your local `claude` and
+  optional `codex` CLI auth. It does not bill LLM calls separately or require
+  provider API keys.
+- **Keep autonomy bounded.** One firing, one worktree, one IAM scope, one Slack
+  report, hard spend caps, and an explicit GitHub state machine. A drafted
+  single-repo issue waits behind an approval gate (`agent:plan-pending-approval`)
+  until you approve it.
 
 Default flow: request, plan, spec, or issue -> Drake files scoped
-`agent:implement` issues -> Lucius claims one issue and opens a worktree ->
-Claude Code or Codex implements -> a PR opens with `agent:authored` -> Ra's al
-Ghul reviews -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge
-lands the small safe PRs you allow -> Slack reports what changed.
+`agent:implement` issues -> Lucius claims one and opens a worktree -> Claude Code
+or Codex implements -> a PR opens with `agent:authored` -> Ra's al Ghul reviews
+-> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge lands the small
+safe PRs you allow -> Slack reports what changed.
 
 ## Quick start
 
@@ -247,15 +233,13 @@ prompts or labels, pass one repo or an explicit comma-separated repo list:
   --slack-webhook skip
 ```
 
-The starter fleet is Drake, Lucius, Ra's al Ghul, and agent-cleanup: plan
-issues, implement labelled issues, review PRs, and clean stale state. Slack is
-optional. The `--repos` owner must match `GH_ORG`; the runtime agents store the
-bare repo name in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
-`alfred-init.py` now seeds prompt templates into
-`~/.alfred/prompts/`, creates the standard GitHub labels on selected repos,
-writes `launchd/agents.conf` (the shared scheduler manifest), updates
-`~/.alfredrc`, runs deploy, and runs
-doctor.
+The starter fleet is Drake, Lucius, Ra's al Ghul, and agent-cleanup: plan issues,
+implement labelled issues, review PRs, and clean stale state. Slack is optional.
+The `--repos` owner must match `GH_ORG`; the runtime agents store the bare repo
+name in `~/.alfredrc` and build `GH_ORG/repo` at firing time. `alfred-init.py`
+seeds prompt templates, creates the standard GitHub labels on selected repos,
+writes the scheduler manifest (`launchd/agents.conf`), updates `~/.alfredrc`, then
+runs deploy and doctor.
 
 For a framework-only install with no agents configured, use `bash deploy.sh &&
 bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See
@@ -315,7 +299,20 @@ human at a prompt. That is the wrong shape for unattended engineering work:
 - In-memory state can't survive an OS reboot. A long-lived host restarts every few weeks.
 - Chat-first interfaces keep you on the critical path.
 
-Alfred inverts that. The host scheduler fires `bin/<role>.py` every N minutes, the `agent_runner` module wraps each firing in a lock, preflight, spend cap, and isolated worktree, and `claude -p` (or `codex exec`) does the bounded LLM work in a fresh subprocess. Spend is tracked per agent per day. When a Claude-backed agent hits a Claude provider limit, every other agent skips for an hour. The framework code never touches the LLM directly: the runner is plain Python, the model writes the code. The [System shape](#system-shape) diagram above traces one firing end to end; [`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
+Alfred inverts that:
+
+- The host scheduler fires `bin/<role>.py` every N minutes. Each firing is a
+  fresh, short-lived process.
+- The `agent_runner` module wraps each firing in a lock, preflight, spend cap,
+  and isolated worktree, then `claude -p` (or `codex exec`) does the bounded LLM
+  work in a subprocess.
+- Spend is tracked per agent per day. When a Claude-backed agent hits a provider
+  limit, every other agent skips for an hour.
+- The framework code never touches the LLM directly. The runner is plain Python;
+  the model writes the code.
+
+The [System shape](#system-shape) diagram traces one firing end to end;
+[`ARCHITECTURE.md`](ARCHITECTURE.md) has the full rationale.
 
 ## Runtime boundary
 
@@ -427,9 +424,24 @@ Rendered version: https://alfred.luminik.io/.
 
 ## Codename pattern
 
-The framework expects one agent script per narrow specialist, named after a coherent fictional cast, coordinating via labels and gh state rather than in-process calls. The shipped examples use Batman side-characters: **Batman** (architect), **Lucius** (feature dev), **Drake** (planner), **Bane** (test coverage), **Ra's al Ghul** (PR review), **Robin** (bug triage), **Nightwing** (review-fix), **Huntress** (post-deploy smoke), **Gordon** (deploy health). Pick whatever cast fits.
+The framework expects one agent script per narrow specialist, named after a
+coherent fictional cast, coordinating via labels and gh state rather than
+in-process calls. The shipped examples use Batman side-characters:
 
-The cast matters for two reasons. Codenames appear in PR titles, Slack messages, and commit-trailer metadata; a coherent cast makes the fleet's channel scannable. And narrow scopes per codename are a forcing function for design quality. "What does Bane do?" is a sharper question than "what does the test agent do?".
+- **Batman** (architect)
+- **Lucius** (feature dev)
+- **Drake** (planner)
+- **Bane** (test coverage)
+- **Ra's al Ghul** (PR review)
+- **Robin** (bug triage)
+- **Nightwing** (review-fix)
+- **Huntress** (post-deploy smoke)
+- **Gordon** (deploy health)
+
+Pick whatever cast fits. The cast matters for two reasons. Codenames appear in PR
+titles, Slack messages, and commit-trailer metadata, so a coherent cast makes the
+fleet's channel scannable. And narrow scopes per codename force design quality:
+"what does Bane do?" is a sharper question than "what does the test agent do?".
 
 See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/) for more.
 
@@ -451,30 +463,35 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 ## Status
 
 **Latest release: v0.5.3.** Alfred ships a local coding-agent fleet for solo
-builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted
-workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling,
-Claude/Codex engine routing, Slack reporting, and isolated worktree execution.
-Alfred carries a signed macOS desktop app and Linux desktop packages (built with Tauri),
-live Claude and Codex subscription usage in that app, a single-repo
-approval gate, a disk guardian that pauses your agents cleanly when the
-disk is nearly full, a Slack planning path that turns an approved draft into a
-labeled GitHub issue, Redis-backed memory, FleetBrain reliability tooling, one-command
-setup-token bootstrap, a public download page, and SEO plus consent-gated
-analytics on the site. See
-[CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
+builders. What is in the box today:
 
-The native app has Inbox, Ask, Work, Agents, and Setup surfaces
-for local trust and repair. Its Inbox view carries a Claude and Codex usage rail
-(real subscription usage, read from the engines' own local CLI state with no
-billing API, backed by the live `GET /api/usage` endpoint, with the same data
-also available from the `alfred usage` CLI). Its Agents view has a cinematic
-roster with a list toggle. Runs emit step-level events so the timeline shows
-real progress, and any
-issue carrying the approval gate label (`agent:plan-pending-approval`)
-is held from autonomous pickup until you approve it and the label
-clears. Slack remains the primary collaboration surface.
+- Install, starter setup, prompt seeding, GitHub label setup, specs-assisted
+  workspace patterns, doctor, and dry-run.
+- macOS launchd or Linux systemd scheduling, Claude/Codex engine routing, Slack
+  reporting, and isolated worktree execution.
+- A signed macOS desktop app and Linux desktop packages (Tauri), with live Claude
+  and Codex subscription usage.
+- A single-repo approval gate, a disk guardian that pauses agents cleanly when the
+  disk is nearly full, Redis-backed memory, and FleetBrain reliability tooling.
+- A Slack planning path that turns an approved draft into a labeled GitHub issue,
+  one-command setup-token bootstrap, a public download page, and SEO plus
+  consent-gated analytics on the site.
 
-The design boundary is stable: one person, one local Mac or Linux box, local CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when they strengthen that shape: reliability, setup, docs, tests, new codenames with clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a new department or runtime change, should start as a discussion.
+See [CHANGELOG.md](CHANGELOG.md) and [ROADMAP.md](ROADMAP.md) for the full ledger.
+
+The native app has Inbox, Ask, Work, Agents, and Setup surfaces for local trust
+and repair. Inbox carries a Claude and Codex usage rail (real subscription usage
+from the engines' own local CLI state, no billing API, also available from
+`alfred usage`). Agents shows a cinematic roster with a list toggle. Runs emit
+step-level events so the timeline shows real progress. Any issue with the approval
+gate label (`agent:plan-pending-approval`) is held from autonomous pickup until
+you approve it. Slack remains the primary collaboration surface.
+
+The design boundary is stable: one person, one local Mac or Linux box, local
+CLIs, isolated worktrees, GitHub as the coordination layer. PRs are welcome when
+they strengthen that shape: reliability, setup, docs, tests, new codenames with
+clear scope, or optional integrations that fail cleanly. Bigger shifts, such as a
+new department or runtime change, should start as a discussion.
 
 ## License
 
