@@ -17,6 +17,8 @@ import type { ComposeDraftFields, ConverseIntent } from "../types";
 // v2 store. The legacy v1 key is read once (for migration) then superseded.
 const STORAGE_KEY = "alfred.ask.history.v2";
 const LEGACY_STORAGE_KEY = "alfred.ask.history.v1";
+// Stable id for the migrated legacy v1 thread so it dedupes across loads.
+const LEGACY_CONVERSATION_ID = "legacy-v1";
 
 // The most conversations we keep on disk. Older ones fall off the end.
 export const MAX_PERSISTED_CONVERSATIONS = 5;
@@ -172,7 +174,9 @@ function readLegacyConversation(): PersistedConversation | null {
   const data = parsed as Record<string, unknown>;
   if (data.version !== 1 || !Array.isArray(data.turns)) return null;
   return coerceConversation({
-    id: newConversationId(),
+    // A stable id (not a fresh random one) so the legacy thread dedupes against
+    // its own migrated v2 copy across loads instead of being re-folded each time.
+    id: LEGACY_CONVERSATION_ID,
     draftId: data.draftId,
     draft: data.draft,
     turns: data.turns,
@@ -209,11 +213,14 @@ export function loadConversations(): PersistedConversation[] {
     }
   }
 
-  // First-run migration: fold the legacy v1 blob in if it is not already
-  // represented (a fresh v2 store has no entries yet).
-  if (!conversations.length) {
-    const legacy = readLegacyConversation();
-    if (legacy) conversations = [legacy];
+  // Fold the legacy v1 blob in whenever it is not already represented in v2 by
+  // id, not only when v2 is empty. A v1 thread that still exists alongside v2
+  // entries (for example after a downgrade rewrites the old key) would
+  // otherwise never appear in Recent. The sort and cap below order and bound
+  // it; deleteConversation clears the v1 key so a removed thread cannot return.
+  const legacy = readLegacyConversation();
+  if (legacy && !conversations.some((c) => c.id === legacy.id)) {
+    conversations = [...conversations, legacy];
   }
 
   return conversations
@@ -265,6 +272,16 @@ export function saveConversation(conversation: ConversationDraft): void {
 // clears the active thread (New chat) so it does not linger in the switcher.
 export function deleteConversation(id: string): void {
   const next = loadConversations().filter((c) => c.id !== id);
+  // If the deleted thread is the migrated legacy v1 blob, drop the read-only v1
+  // key too, otherwise loadConversations would re-fold it on the next load.
+  const legacy = readLegacyConversation();
+  if (legacy && legacy.id === id) {
+    try {
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // best-effort
+    }
+  }
   const payload: PersistedHistoryV2 = { version: 2, conversations: next };
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));

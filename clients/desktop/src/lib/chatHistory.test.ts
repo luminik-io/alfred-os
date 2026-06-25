@@ -123,6 +123,50 @@ describe("chatHistory last-5 persistence", () => {
     );
   });
 
+  it("folds the legacy v1 thread into Recent even when v2 already has chats", () => {
+    // A v2 store already has a conversation...
+    saveConversation({ id: "v2-a", turns: [messageTurn("user", "v2 request")] });
+    // ...and a valid legacy v1 blob still exists alongside it.
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        draftId: "legacy-draft",
+        turns: [messageTurn("user", "legacy request")],
+        updatedAt: 500,
+      }),
+    );
+
+    const titles = loadConversations().map((c) => c.title);
+    expect(titles).toContain("v2 request");
+    expect(titles).toContain("legacy request");
+  });
+
+  it("does not duplicate the legacy thread across repeated loads", () => {
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
+    );
+    // Loading twice (stable legacy id) must not accumulate copies.
+    loadConversations();
+    const second = loadConversations();
+    expect(second.filter((c) => c.title === "legacy request")).toHaveLength(1);
+  });
+
+  it("clears the v1 key when the migrated legacy thread is deleted so it cannot return", () => {
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
+    );
+    const legacy = loadConversations().find((c) => c.title === "legacy request");
+    expect(legacy).toBeDefined();
+
+    deleteConversation(legacy!.id);
+
+    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
+    expect(loadConversations().some((c) => c.title === "legacy request")).toBe(false);
+  });
+
   it("ignores a torn or malformed v2 blob and degrades to empty", () => {
     window.localStorage.setItem(STORAGE_KEY, "{ not json");
     expect(loadConversations()).toEqual([]);

@@ -115,15 +115,20 @@ export function AskAssistantMessage({ context }: { context: AskMessageContext })
           <div className="ask-bubble__actions">
             <CopyMessageButton />
             {context.canRetry ? (
-              <button
-                type="button"
-                className="ask-bubble__action"
-                onClick={context.onRetry}
-                aria-label="Regenerate this reply"
-                title="Regenerate"
-              >
-                <RotateCcw size={13} aria-hidden="true" />
-              </button>
+              // Regenerate replays the last user turn, so only offer it on the
+              // last assistant bubble. Showing it on an earlier reply would
+              // silently regenerate a different (later) turn.
+              <MessagePrimitive.If last>
+                <button
+                  type="button"
+                  className="ask-bubble__action"
+                  onClick={context.onRetry}
+                  aria-label="Regenerate this reply"
+                  title="Regenerate"
+                >
+                  <RotateCcw size={13} aria-hidden="true" />
+                </button>
+              </MessagePrimitive.If>
             ) : null}
           </div>
         ) : null}
