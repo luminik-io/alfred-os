@@ -402,7 +402,8 @@ _PER_MESSAGE_CAP_RE = re.compile(r"\bmessage\s+length\b", re.IGNORECASE)
 # exceeds...". Plural "messages" deliberately does not match (the trailing "s"
 # breaks the \s+), because a plural is an aggregate the condenser CAN shrink.
 _SINGLE_MESSAGE_OVERSIZE_RE = re.compile(
-    r"\bmessage\s+(?:is\s+)?(?:too\s+(?:long|large)|exceeds?\b)", re.IGNORECASE
+    r"\bmessage\s+(?:(?:is|has|was)\s+)?(?:too\s+(?:long|large)|exceed(?:s|ed)?\b)",
+    re.IGNORECASE,
 )
 
 

@@ -283,6 +283,11 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     )
     # And a plural "messages are too large" aggregate stays recoverable.
     assert cc.looks_like_context_overflow("The messages are too large; reduce them.")
+    # Past-tense / auxiliary phrasings of the singular cap are still excluded.
+    assert not cc.looks_like_context_overflow(
+        "Your message has exceeded the context window. "
+        "The maximum message length is 4096 characters."
+    )
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
