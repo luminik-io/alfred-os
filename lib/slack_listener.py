@@ -1074,11 +1074,19 @@ class SlackPlanningListener:
         from compose_converse import INTENT_BUILD
 
         action = "converse_build" if getattr(outcome, "intent", "") == INTENT_BUILD else "converse"
-        return ListenerResult(
-            True,
-            action,
-            detail=getattr(outcome, "detail", "") or "streamed conversational answer",
-        )
+        detail = getattr(outcome, "detail", "") or "streamed conversational answer"
+        if not getattr(outcome, "finalized", True):
+            # The turn ran, but the reconciled answer never landed on Slack (a
+            # persistent 429 past the backoff budget, or a transport error on the
+            # final update). Consume that signal: log it and mark the result so a
+            # degraded delivery is visible rather than reported as a clean answer.
+            print(
+                "[SLACK-LISTENER-WARN] converse delivery degraded for "
+                f"{event.channel}/{event.root_ts}: final update did not land",
+                file=sys.stderr,
+            )
+            detail = f"{detail} (final delivery did not land)"
+        return ListenerResult(True, action, detail=detail)
 
     # ------------------------------------------------------------------
     # Conversational intent router (additive fallback)

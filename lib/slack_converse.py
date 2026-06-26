@@ -99,23 +99,14 @@ DEFAULT_RETRY_AFTER_SECONDS = 1.0
 # Upper bound on any single honored ``Retry-After`` wait, so a hostile or buggy
 # header (``Retry-After: 99999``) cannot wedge the poster for minutes.
 MAX_RETRY_AFTER_SECONDS = 30.0
-# Upper bound on the CUMULATIVE backoff one poster call may sleep. The poster
-# runs on a Socket Mode handler thread, so a long retry loop would hold that
-# thread (and, on a busy pool, stall other Slack events) for minutes. Capping
-# the total honored wait bounds how long any single call can block, even across
-# several 429s. Env-overridable per the config-driven-tunables rule.
-
-
-def _env_float(name: str, default: float) -> float:
-    """Read a float from env, falling back to ``default`` on absence/garbage."""
-    try:
-        raw = os.environ.get(name)
-        return float(raw) if raw is not None and raw.strip() else default
-    except (TypeError, ValueError):
-        return default
-
-
-MAX_TOTAL_BACKOFF_SECONDS = max(0.0, _env_float("ALFRED_SLACK_MAX_TOTAL_BACKOFF_SECONDS", 30.0))
+# Default upper bound on the CUMULATIVE backoff one poster call may sleep. The
+# poster runs on a Socket Mode handler thread, so a long retry loop would hold
+# that thread (and, on a busy pool, stall other Slack events) for minutes.
+# Capping the total honored wait bounds how long any single call can block, even
+# across several 429s. The per-poster value is read from
+# ``ALFRED_SLACK_MAX_TOTAL_BACKOFF_SECONDS`` in ``SlackStreamPoster.__init__``
+# (config-driven-tunables rule), defaulting to this.
+MAX_TOTAL_BACKOFF_SECONDS = 30.0
 
 # The placeholder shown the instant a mention lands, before the first token.
 PLACEHOLDER = "_Alfred is thinking…_"
@@ -375,6 +366,9 @@ class SlackStreamPoster:
         self._throttle = max(0.0, throttle)
         self._now = now or time.monotonic
         self._sleep = sleep or time.sleep
+        self._max_total_backoff = max(
+            0.0, _env_float("ALFRED_SLACK_MAX_TOTAL_BACKOFF_SECONDS", MAX_TOTAL_BACKOFF_SECONDS)
+        )
         self._message_ts: str = ""
         self._last_update_at: float = 0.0
         self._last_text: str = ""
@@ -408,7 +402,7 @@ class SlackStreamPoster:
                 if (
                     wait is not None
                     and attempt < MAX_FINALIZE_RATE_LIMIT_RETRIES
-                    and slept + wait <= MAX_TOTAL_BACKOFF_SECONDS
+                    and slept + wait <= self._max_total_backoff
                 ):
                     self._sleep(wait)
                     slept += wait
@@ -473,7 +467,7 @@ class SlackStreamPoster:
                 if (
                     wait is not None
                     and attempt < retries
-                    and slept + wait <= MAX_TOTAL_BACKOFF_SECONDS
+                    and slept + wait <= self._max_total_backoff
                 ):
                     self._sleep(wait)
                     slept += wait

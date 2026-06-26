@@ -3275,3 +3275,68 @@ def test_low_confidence_mutating_intent_falls_through_to_planning(
     # Sub-threshold confidence is unknown -> safe planning default.
     assert result.handled is True
     assert result.action == "draft_created"
+
+
+def test_converse_degraded_finalization_is_surfaced(tmp_path: Path) -> None:
+    # When the converse outcome reports finalized=False (the reconciled answer
+    # never landed on Slack), the listener must consume that signal rather than
+    # report a clean answer: it logs and marks the result detail as degraded.
+    from slack_converse import SlackConverseConfig
+
+    def runner(**_kwargs: object) -> object:
+        return SimpleNamespace(
+            handled=True,
+            intent="conversation",
+            offered_issue=False,
+            streamed=True,
+            detail="streamed conversational answer",
+            finalized=False,
+        )
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=SimpleNamespace(),
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=runner,
+    )
+    listener._converse_config = SlackConverseConfig(
+        enabled=True, engine="claude", channels=frozenset()
+    )
+    event = SimpleNamespace(
+        channel="C1", root_ts="1.0", ts="1.1", text="<@UALFRED> hello", user="U1"
+    )
+    result = listener._maybe_converse(event)
+    assert result is not None and result.handled is True
+    assert "did not land" in result.detail
+
+
+def test_converse_clean_finalization_has_no_degraded_marker(tmp_path: Path) -> None:
+    from slack_converse import SlackConverseConfig
+
+    def runner(**_kwargs: object) -> object:
+        return SimpleNamespace(
+            handled=True,
+            intent="conversation",
+            offered_issue=False,
+            streamed=True,
+            detail="streamed conversational answer",
+            finalized=True,
+        )
+
+    listener = SlackPlanningListener(
+        state_root=tmp_path,
+        poster=SimpleNamespace(),
+        trusted_user_ids=("U1",),
+        bot_user_id="UALFRED",
+        converse_runner=runner,
+    )
+    listener._converse_config = SlackConverseConfig(
+        enabled=True, engine="claude", channels=frozenset()
+    )
+    event = SimpleNamespace(
+        channel="C1", root_ts="1.0", ts="1.1", text="<@UALFRED> hello", user="U1"
+    )
+    result = listener._maybe_converse(event)
+    assert result is not None and result.handled is True
+    assert "did not land" not in result.detail
