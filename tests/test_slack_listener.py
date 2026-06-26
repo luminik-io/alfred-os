@@ -3395,3 +3395,59 @@ def test_reconnect_socket_mode_doubles_backoff_on_failure_capped() -> None:
         client, 20.0, base_backoff=1.0, max_backoff=30.0, sleep=lambda _s: None
     )
     assert capped == 30.0
+
+
+def test_env_float_listener_rejects_non_finite(monkeypatch) -> None:
+    from slack_listener import _env_float_listener
+
+    for bad in ("nan", "inf", "-inf", "Infinity"):
+        monkeypatch.setenv("ALFRED_TEST_BACKOFF", bad)
+        assert _env_float_listener("ALFRED_TEST_BACKOFF", 5.0, minimum=0.1) == 5.0
+    monkeypatch.setenv("ALFRED_TEST_BACKOFF", "3.5")
+    assert _env_float_listener("ALFRED_TEST_BACKOFF", 5.0, minimum=0.1) == 3.5
+
+
+def test_reconnect_base_backoff_floored_positive(monkeypatch) -> None:
+    from slack_listener import _reconnect_base_backoff_s
+
+    monkeypatch.setenv("ALFRED_SLACK_RECONNECT_BASE_BACKOFF_S", "0")
+    # A zero base would never grow when doubled; it is floored to a small positive.
+    assert _reconnect_base_backoff_s() >= 0.1
+
+
+def test_reconnect_clamps_base_to_max_and_grows_from_tiny() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    # base larger than max must not reset above the ceiling.
+    ok_client = SimpleNamespace(connect=lambda: None)
+    assert (
+        _reconnect_socket_mode(
+            ok_client, 1.0, base_backoff=99.0, max_backoff=30.0, sleep=lambda _s: None
+        )
+        == 30.0
+    )
+
+    # From a tiny current backoff a failed reconnect still grows toward the cap.
+    def boom() -> None:
+        raise RuntimeError("down")
+
+    bad_client = SimpleNamespace(connect=boom)
+    nxt = _reconnect_socket_mode(
+        bad_client, 0.1, base_backoff=1.0, max_backoff=30.0, sleep=lambda _s: None
+    )
+    assert nxt > 0.1
+
+
+def test_reconnect_prefers_fresh_endpoint() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    calls: list[str] = []
+    client = SimpleNamespace(
+        close=lambda: calls.append("close"),
+        connect_to_new_endpoint=lambda: calls.append("fresh"),
+        connect=lambda: calls.append("connect"),
+    )
+    _reconnect_socket_mode(client, 1.0, base_backoff=1.0, max_backoff=30.0, sleep=lambda _s: None)
+    # It tore down the stale connection and reconnected on a FRESH endpoint, not
+    # the cached one.
+    assert calls == ["close", "fresh"]

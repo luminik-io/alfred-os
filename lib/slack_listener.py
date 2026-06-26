@@ -15,6 +15,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import math
 import re
 import sys
 import threading
@@ -2859,11 +2860,20 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
         flush=True,
     )
     interval = _thread_sync_interval_s()
-    base_backoff = _reconnect_base_backoff_s()
     max_backoff = _reconnect_max_backoff_s()
+    # Clamp the base to the ceiling so a misconfigured base larger than the max
+    # cannot reset the backoff above it.
+    base_backoff = min(_reconnect_base_backoff_s(), max_backoff)
     backoff = base_backoff
+    # Tick on the (short) connection-check cadence, never slower than that, so a
+    # dropped socket is noticed promptly instead of after a full sync interval.
+    # The thread-status sync still runs on its own slower cadence, tracked by
+    # elapsed time so a reconnect cycle never permanently skips it.
+    check_interval = _reconnect_check_interval_s()
+    tick = check_interval if interval <= 0 else min(check_interval, float(interval))
+    last_sync = time.monotonic()
     while True:
-        time.sleep(interval if interval > 0 else 60)
+        time.sleep(tick if tick > 0 else 60)
         # Supervise the websocket. slack_sdk reconnects internally, but if it
         # gives up the listener would sit in this loop forever receiving nothing.
         # Detect a dropped connection and re-establish it with bounded backoff.
@@ -2881,7 +2891,8 @@ def run_socket_mode(listener: SlackPlanningListener | None = None) -> None:
             )
             continue
         backoff = base_backoff
-        if interval > 0:
+        if interval > 0 and (time.monotonic() - last_sync) >= interval:
+            last_sync = time.monotonic()
             try:
                 active.sync_thread_status()
             except Exception as exc:
@@ -3320,8 +3331,12 @@ def _thread_sync_interval_s() -> int:
 
 
 def _reconnect_base_backoff_s() -> float:
-    """First wait before re-establishing a dropped Socket Mode connection."""
-    return _env_float_listener("ALFRED_SLACK_RECONNECT_BASE_BACKOFF_S", 1.0, minimum=0.0)
+    """First wait before re-establishing a dropped Socket Mode connection.
+
+    Floored at a small positive value: a zero base could never grow when
+    doubled, so a flapping endpoint would be hammered in a tight loop.
+    """
+    return _env_float_listener("ALFRED_SLACK_RECONNECT_BASE_BACKOFF_S", 1.0, minimum=0.1)
 
 
 def _reconnect_max_backoff_s() -> float:
@@ -3329,14 +3344,29 @@ def _reconnect_max_backoff_s() -> float:
     return _env_float_listener("ALFRED_SLACK_RECONNECT_MAX_BACKOFF_S", 30.0, minimum=1.0)
 
 
+def _reconnect_check_interval_s() -> float:
+    """How often the idle loop checks the Socket Mode connection for a drop.
+
+    Kept short (default 15s) and independent of the much slower thread-status
+    sync cadence so a dropped socket is noticed and reconnected promptly rather
+    than after a full sync interval.
+    """
+    return _env_float_listener("ALFRED_SLACK_RECONNECT_CHECK_INTERVAL_S", 15.0, minimum=1.0)
+
+
 def _env_float_listener(name: str, default: float, *, minimum: float) -> float:
     raw = (os.environ.get(name) or "").strip()
     if not raw:
         return default
     try:
-        return max(float(raw), minimum)
+        value = float(raw)
     except ValueError:
         return default
+    # Reject NaN / inf: they would flow into time.sleep() and either hang the
+    # listener forever (inf) or behave undefined (nan). Fall back to the default.
+    if not math.isfinite(value):
+        return default
+    return max(value, minimum)
 
 
 def _client_is_connected(client: Any) -> bool:
@@ -3368,22 +3398,40 @@ def _reconnect_socket_mode(
 
     Called only when the client is already detected as disconnected. Waits the
     current backoff (so a flapping endpoint is not hammered), then reconnects.
-    On success the backoff resets to ``base_backoff``; on failure it doubles up
-    to ``max_backoff``. slack_sdk auto-reconnects internally, so this is the
-    app-level safety net for when its own retries give up and the listener would
-    otherwise go silently deaf.
+    On success the backoff resets to ``base_backoff``; on failure it doubles
+    toward ``max_backoff``. ``base_backoff`` is clamped to ``max_backoff`` so a
+    misconfigured base larger than the ceiling cannot reset above it. The drop
+    is torn down and a fresh endpoint is requested (``connect_to_new_endpoint``
+    when the client exposes it) so a stale, no-longer-valid websocket URL is not
+    reused. slack_sdk auto-reconnects internally, so this is the app-level safety
+    net for when its own retries give up and the listener would go silently deaf.
     """
+    base = min(base_backoff, max_backoff)
     sleep(current_backoff)
+    # Tear down the dropped connection first so we do not leak it.
+    closer = getattr(client, "close", None) or getattr(client, "disconnect", None)
+    if callable(closer):
+        try:
+            closer()
+        except Exception:
+            pass
+    # Prefer a fresh websocket URL: a dropped Socket Mode URL is often no longer
+    # usable, so reconnecting on the same cached URL can fail repeatedly.
+    fresh = getattr(client, "connect_to_new_endpoint", None)
     try:
-        client.connect()
+        if callable(fresh):
+            fresh()
+        else:
+            client.connect()
     except Exception as exc:
         print(
             f"[SLACK-LISTENER-WARN] Socket Mode reconnect failed: {exc}",
             file=sys.stderr,
         )
-        return min(current_backoff * 2.0, max_backoff)
+        # Always grow toward the ceiling, even from a tiny base.
+        return min(max(current_backoff * 2.0, base), max_backoff)
     print("[SLACK-LISTENER] reconnected after a dropped Socket Mode connection", flush=True)
-    return base_backoff
+    return base
 
 
 def _draft_from_payload(payload: dict[str, Any] | None) -> IssueDraft | None:
