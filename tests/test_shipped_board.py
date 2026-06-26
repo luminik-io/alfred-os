@@ -481,9 +481,10 @@ def test_in_progress_excludes_generic_human_prs_by_default(monkeypatch):
     assert sb.build_board(["acme/api"], now=NOW)["columns"]["in_progress"] == []
 
 
-def test_in_progress_counts_agent_evidence(monkeypatch):
+def test_in_progress_requires_an_agent_label(monkeypatch):
     prs = [
         {
+            # An agent label qualifies the PR even on a human-named branch.
             "number": 1,
             "title": "agent pr",
             "url": "u1",
@@ -496,8 +497,10 @@ def test_in_progress_counts_agent_evidence(monkeypatch):
             "headRefName": "human-named-branch",
         },
         {
+            # A codename-style branch with no agent label must NOT count: it is
+            # the over-matching that miscounted human PRs as agent-shipped.
             "number": 2,
-            "title": "agent branch",
+            "title": "lookalike branch, no label",
             "url": "u2",
             "state": "OPEN",
             "author": {"login": "prasadus92"},
@@ -510,9 +513,8 @@ def test_in_progress_counts_agent_evidence(monkeypatch):
     ]
     monkeypatch.setattr(sb, "_gh_json", _fake_gh(prs, []))
     in_progress = sb.build_board(["acme/api"], now=NOW)["columns"]["in_progress"]
-    assert [c["number"] for c in in_progress] == [1, 2]
+    assert [c["number"] for c in in_progress] == [1]
     assert in_progress[0]["agent_evidence"] == ["label:agent:authored"]
-    assert in_progress[1]["agent_evidence"] == ["branch:batman/plan-approval-fix"]
 
 
 def test_in_progress_can_include_every_pr_when_evidence_gate_disabled(monkeypatch):
@@ -577,11 +579,14 @@ def test_shipped_counts_agent_label_evidence(monkeypatch):
     assert shipped[0]["agent_evidence"] == ["label:agent:authored"]
 
 
-def test_shipped_counts_agent_branch_evidence(monkeypatch):
+def test_shipped_excludes_branch_evidence_without_a_label(monkeypatch):
+    # A merged PR on a codename-style branch but carrying no agent label must
+    # NOT count as shipped: the agent label is the authoritative signal, and a
+    # branch prefix alone is exactly the lookalike that was being miscounted.
     prs = [
         {
             "number": 1,
-            "title": "branch merge",
+            "title": "branch merge, no label",
             "url": "u1",
             "state": "MERGED",
             "author": {"login": "prasadus92"},
@@ -594,8 +599,7 @@ def test_shipped_counts_agent_branch_evidence(monkeypatch):
     ]
     monkeypatch.setattr(sb, "_gh_json", _fake_gh(prs, []))
     shipped = sb.build_board(["acme/api"], now=NOW)["columns"]["shipped"]
-    assert [c["number"] for c in shipped] == [1]
-    assert shipped[0]["agent_evidence"] == ["branch:batman/plan-approval-fix"]
+    assert [c["number"] for c in shipped] == []
 
 
 def test_shipped_ignores_disabled_evidence_gate(monkeypatch):

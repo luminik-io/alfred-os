@@ -206,7 +206,20 @@ def _agent_shipped_evidence(pr: dict) -> list[str]:
 
 
 def _pr_is_agent_shipped(pr: dict) -> bool:
-    return bool(_agent_shipped_evidence(pr))
+    """True only when the PR carries an agent label.
+
+    The agent label (``agent:authored``, applied by ``gh_pr_create`` when the
+    fleet opens the PR, plus ``agent:done`` / ``agent:shipped`` set on merge) is
+    the authoritative signal, the same one issue pickup and
+    ``find_open_authored_pr_for_issue`` already scope agent work by. A matching
+    branch prefix or author is still recorded by ``_agent_shipped_evidence`` for
+    display, but no longer qualifies a PR on its own, so a human PR pushed to a
+    codename-style branch (or a stale ``automerge/`` branch) is not miscounted as
+    agent-shipped.
+    """
+    labels = _labels(pr)
+    label_hints = _shipped_label_hints()
+    return any(any(hint in label for hint in label_hints) for label in labels)
 
 
 def _now() -> datetime:
