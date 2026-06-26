@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   MAX_PERSISTED_CONVERSATIONS,
@@ -271,6 +271,33 @@ describe("chatHistory last-5 persistence", () => {
     // The continuation (the new assistant turn) is preserved, not the stale blob.
     expect(continued?.turns).toHaveLength(2);
     expect(all.some((c) => c.id === "other")).toBe(true);
+  });
+
+  it("keeps the v1 blob when the v2 write fails on a legacy save", () => {
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
+    );
+    const legacy = loadConversations().find((c) => c.title === "legacy request");
+    // Force the v2 write to fail (quota / private mode).
+    const original = window.localStorage.setItem.bind(window.localStorage);
+    const spy = vi
+      .spyOn(window.localStorage, "setItem")
+      .mockImplementation((key: string, value: string) => {
+        if (key === STORAGE_KEY) throw new DOMException("QuotaExceededError");
+        original(key, value);
+      });
+    try {
+      saveConversation({
+        id: legacy!.id,
+        turns: [messageTurn("user", "legacy request"), messageTurn("assistant", "reply")],
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    // The v2 write failed, so the v1 blob is still the only copy and must remain.
+    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).not.toBeNull();
+    expect(loadConversations().some((c) => c.title === "legacy request")).toBe(true);
   });
 
   it("clears the v1 key when the migrated legacy thread is deleted so it cannot return", () => {

@@ -294,8 +294,10 @@ export function saveConversation(conversation: ConversationDraft): void {
   const next = [...reals, ...demotable].slice(0, MAX_PERSISTED_CONVERSATIONS);
 
   const payload: PersistedHistoryV2 = { version: 2, conversations: next };
+  let saved = false;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    saved = true;
   } catch {
     // best-effort: storage blocked or full
   }
@@ -304,7 +306,10 @@ export function saveConversation(conversation: ConversationDraft): void {
   // is now redundant: clear it. Without this, a continued legacy thread that
   // later ages off the cap (as any old chat can) would leave the stale one-turn
   // v1 blob behind, and the read-time fold would resurrect that stale version.
-  if (entry.id === LEGACY_CONVERSATION_ID) {
+  // Only clear it once the v2 write actually SUCCEEDED: if setItem threw (quota
+  // or private mode) the v1 blob is still the only copy, so removing it would
+  // lose the conversation entirely.
+  if (saved && entry.id === LEGACY_CONVERSATION_ID) {
     try {
       window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     } catch {

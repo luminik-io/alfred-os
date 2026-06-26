@@ -173,6 +173,11 @@ export function useAskThread({
   const [turns, setTurns] = useState<ChatTurn[]>(
     () => initial?.turns.map(fromPersistedTurn) ?? [],
   );
+  // Always-current turns for event handlers (onNew) that may fire from an older
+  // render closure: reading the ref avoids rebuilding the transcript from a
+  // stale base. Kept in sync each render, like conversationIdRef.
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The most recent saved draft, carried across turns so the same request is
@@ -660,7 +665,10 @@ export function useAskThread({
         .join("")
         .trim();
       if (!text) return;
-      await runTurn(text, turns);
+      // Read the live turns, not this closure's captured snapshot: an older
+      // onNew firing after the thread advanced would otherwise commit over a
+      // stale base and drop the settled conversation from view.
+      await runTurn(text, turnsRef.current);
     },
     onCancel: async () => {
       stop();
