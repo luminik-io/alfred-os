@@ -3340,3 +3340,58 @@ def test_converse_clean_finalization_has_no_degraded_marker(tmp_path: Path) -> N
     result = listener._maybe_converse(event)
     assert result is not None and result.handled is True
     assert "did not land" not in result.detail
+
+
+def test_client_is_connected_probes_defensively() -> None:
+    from slack_listener import _client_is_connected
+
+    assert _client_is_connected(SimpleNamespace(is_connected=lambda: True)) is True
+    assert _client_is_connected(SimpleNamespace(is_connected=lambda: False)) is False
+
+    # A raising probe is treated as disconnected, not a crash.
+    def boom() -> bool:
+        raise RuntimeError("socket state unknown")
+
+    assert _client_is_connected(SimpleNamespace(is_connected=boom)) is False
+    # A client variant with no is_connected is assumed connected (no reconnect spam).
+    assert _client_is_connected(SimpleNamespace()) is True
+
+
+def test_reconnect_socket_mode_resets_backoff_on_success() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    waits: list[float] = []
+    connects = {"n": 0}
+
+    def connect() -> None:
+        connects["n"] += 1
+
+    client = SimpleNamespace(connect=connect)
+    nxt = _reconnect_socket_mode(
+        client, 4.0, base_backoff=1.0, max_backoff=30.0, sleep=waits.append
+    )
+    # It waited the current backoff, reconnected once, and reset to base.
+    assert waits == [4.0]
+    assert connects["n"] == 1
+    assert nxt == 1.0
+
+
+def test_reconnect_socket_mode_doubles_backoff_on_failure_capped() -> None:
+    from slack_listener import _reconnect_socket_mode
+
+    def connect() -> None:
+        raise RuntimeError("still unreachable")
+
+    client = SimpleNamespace(connect=connect)
+    waits: list[float] = []
+    # Doubles 4 -> 8...
+    nxt = _reconnect_socket_mode(
+        client, 4.0, base_backoff=1.0, max_backoff=30.0, sleep=waits.append
+    )
+    assert waits == [4.0]
+    assert nxt == 8.0
+    # ...and is capped at max_backoff.
+    capped = _reconnect_socket_mode(
+        client, 20.0, base_backoff=1.0, max_backoff=30.0, sleep=lambda _s: None
+    )
+    assert capped == 30.0
