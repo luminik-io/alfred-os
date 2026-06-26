@@ -148,6 +148,18 @@ candidate_files() {
   )
 }
 
+# Filter a NUL-separated path stream to those whose name matches a regex,
+# preserving NUL separation. Pure bash on purpose: `grep -z` is GNU-only, so on
+# macOS/BSD it errors out and (behind a `|| true`) the caller's scan would fail
+# open, reporting clean even when a match exists. This loop runs everywhere.
+filter_paths_by_ext() {
+  local ext_re="$1"
+  local path
+  while IFS= read -r -d "" path; do
+    [[ "$path" =~ $ext_re ]] && printf "%s\0" "$path"
+  done
+}
+
 scan_patterns() {
   local label="$1"
   local allowlist_re="$2"
@@ -200,7 +212,7 @@ scan_patterns "secret" "$SECRET_ALLOWLIST_RE" "" "${secret_patterns[@]}" || fail
 # gate's job. Use a plain hyphen or rephrase instead.
 dash_matches=$(
   candidate_files "$PATH_ALLOWLIST_RE" \
-    | { grep -zE '\.(py|ts|tsx|js|mjs|sh|rb|astro|css)$' || true; } \
+    | filter_paths_by_ext '\.(py|ts|tsx|js|mjs|sh|rb|astro|css)$' \
     | xargs -0 grep -InE '—|–' -- 2>/dev/null || true
 )
 if [ -n "$dash_matches" ]; then
