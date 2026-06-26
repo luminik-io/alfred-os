@@ -269,26 +269,47 @@ export function saveConversation(conversation: ConversationDraft): void {
 
   // Build the write list from the RAW v2 store, never the legacy-folded read:
   // the read-time legacy fold must never be persisted into v2 where it could
-  // push a real chat off the end of the cap. We DEMOTE rather than drop a
-  // persisted legacy-v1 entry, because the user may have continued the migrated
-  // thread (it then legitimately lives in v2 under that id). Real chats fill the
-  // capped slots first, so the legacy entry can never evict one; it keeps a slot
-  // only when there is room. When `entry` itself is the legacy thread being
-  // saved (a continuation), it is treated as a real-priority entry below.
+  // push a real chat off the end of the cap.
+  //
+  // A persisted legacy-v1 entry is only DEMOTABLE while it is still the pristine
+  // migrated fold: the v1 blob still exists AND the entry has gained no turns
+  // beyond it. Such a duplicate may be demoted behind real chats (it re-folds
+  // from the v1 key at read time, so nothing is lost). But once the user has
+  // CONTINUED the thread (more turns than the blob), or the v1 blob is gone, the
+  // entry is the only copy of real conversation data, so it is treated as a
+  // first-class chat the cap never silently drops. `entry` itself (a save of the
+  // legacy thread, e.g. a continuation) is always real-priority.
+  const legacyBlob = readLegacyConversation();
+  const isPristineFold = (c: PersistedConversation): boolean =>
+    c.id === LEGACY_CONVERSATION_ID &&
+    legacyBlob != null &&
+    c.turns.length <= legacyBlob.turns.length;
   const existing = readRawV2Conversations().filter((c) => c.id !== entry.id);
-  const reals = [entry, ...existing.filter((c) => c.id !== LEGACY_CONVERSATION_ID)].sort(
+  const reals = [entry, ...existing.filter((c) => !isPristineFold(c))].sort(
     (a, b) => b.updatedAt - a.updatedAt,
   );
-  const legacyEntries = existing.filter((c) => c.id === LEGACY_CONVERSATION_ID);
-  // Reals first (newest wins the cap), then any persisted legacy fills leftover
-  // slots only. A legacy entry therefore never displaces a real conversation.
-  const next = [...reals, ...legacyEntries].slice(0, MAX_PERSISTED_CONVERSATIONS);
+  const demotable = existing.filter(isPristineFold);
+  // Reals first (newest wins the cap), then any pristine legacy fold fills
+  // leftover slots only, so a redundant fold never displaces a real chat.
+  const next = [...reals, ...demotable].slice(0, MAX_PERSISTED_CONVERSATIONS);
 
   const payload: PersistedHistoryV2 = { version: 2, conversations: next };
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // best-effort: storage blocked or full
+  }
+
+  // Saving the legacy thread itself migrates it forward into v2, so the v1 blob
+  // is now redundant: clear it. Without this, a continued legacy thread that
+  // later ages off the cap (as any old chat can) would leave the stale one-turn
+  // v1 blob behind, and the read-time fold would resurrect that stale version.
+  if (entry.id === LEGACY_CONVERSATION_ID) {
+    try {
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // best-effort
+    }
   }
 }
 
