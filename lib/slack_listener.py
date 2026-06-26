@@ -12,6 +12,7 @@ Execution remains gated by the existing reaction approval flow.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import math
@@ -3411,10 +3412,8 @@ def _reconnect_socket_mode(
     # Tear down the dropped connection first so we do not leak it.
     closer = getattr(client, "close", None) or getattr(client, "disconnect", None)
     if callable(closer):
-        try:
+        with contextlib.suppress(Exception):
             closer()
-        except Exception:
-            pass
     # Prefer a fresh websocket URL: a dropped Socket Mode URL is often no longer
     # usable, so reconnecting on the same cached URL can fail repeatedly.
     fresh = getattr(client, "connect_to_new_endpoint", None)
