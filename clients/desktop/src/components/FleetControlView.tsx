@@ -10,9 +10,11 @@ import {
   type FleetControlRow,
   type FleetServiceState,
 } from "../lib/fleetControl";
+import { agentProfile, type AgentProfile } from "../lib/agentProfile";
 import {
+  type CustomRosterNames,
   DEFAULT_ROSTER_THEME,
-  resolveThemedIdentity,
+  EMPTY_CUSTOM_NAMES,
   type RosterThemeId,
 } from "../lib/agentThemes";
 import type { NativeActionRequest } from "../lib/uiTypes";
@@ -65,6 +67,7 @@ export function FleetControlView({
   service,
   nativeBusy,
   rosterTheme = DEFAULT_ROSTER_THEME,
+  customNames = EMPTY_CUSTOM_NAMES,
   onRunLocalAction,
   onViewLogs,
 }: {
@@ -75,6 +78,8 @@ export function FleetControlView({
   // The active roster theme (name + role-label cast). Defaults to the shipped
   // Batman roster so an omitted prop renders exactly as before.
   rosterTheme?: RosterThemeId;
+  // Operator-authored names/roles for the `custom` theme; ignored by presets.
+  customNames?: CustomRosterNames;
   onRunLocalAction: (request: NativeActionRequest) => void;
   onViewLogs: (codename: string) => void;
 }) {
@@ -85,8 +90,9 @@ export function FleetControlView({
   // themed name + plain role label as the canvas, with the two-arg call shape
   // those call sites already use.
   const themedProfile = useCallback(
-    (row: FleetControlRow, sched?: ScheduledRun) => agentProfile(row, sched, rosterTheme),
-    [rosterTheme],
+    (row: FleetControlRow, sched?: ScheduledRun) =>
+      agentProfile(row, sched, rosterTheme, customNames),
+    [rosterTheme, customNames],
   );
   const health = deriveFleetHealth(rows);
   const stats = agentStats(rows);
@@ -410,48 +416,6 @@ function fleetHealthLabel(level: "ok" | "warn" | "error" | "unknown"): string {
   return "Unknown";
 }
 
-// Resolve an agent's display profile under the active roster theme. The themed
-// name + role label come from the theme mapping (keyed off the agent's derived
-// role, never a literal name list); the runtime's own reported display name /
-// role title still take precedence when present so a server that labels its
-// agents is honored. `label` keeps the legacy "Name · Role" form for the aria
-// title; `name` and `roleLabel` render separately so the role is always plain.
-type AgentProfile = {
-  name: string;
-  role: WorkflowNodeInput["role"];
-  roleLabel: string;
-  label: string;
-  purpose: string;
-  themeAccent: string;
-};
-
-function agentProfile(
-  row: FleetControlRow,
-  schedule?: ScheduledRun,
-  themeId: RosterThemeId = DEFAULT_ROSTER_THEME,
-): AgentProfile {
-  const identity = resolveThemedIdentity(
-    {
-      codename: row.codename,
-      roleTitle: row.summary?.role_title || schedule?.role_title || schedule?.role,
-      purpose: row.summary?.purpose || schedule?.purpose,
-    },
-    themeId,
-  );
-  // The runtime's own labels win when set, so existing server-side naming is
-  // preserved; otherwise the theme persona supplies the name and role label.
-  const name = row.summary?.display_name || schedule?.display_name || identity.name;
-  const roleLabel = row.summary?.role_title || schedule?.role_title || identity.roleLabel;
-  const purpose = row.summary?.purpose || schedule?.purpose || "";
-  return {
-    name,
-    role: identity.role,
-    roleLabel,
-    label: roleLabel ? `${name} · ${roleLabel}` : name,
-    purpose,
-    themeAccent: row.summary?.theme_accent || schedule?.theme_accent || "var(--primary)",
-  };
-}
 
 function confirmCopy(action: NativeAction): string {
   if (action === "pause") return "Pause scheduled runs for";

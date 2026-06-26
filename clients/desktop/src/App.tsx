@@ -20,6 +20,7 @@ import { OnboardingView } from "./components/OnboardingView";
 import { PipelineView } from "./components/PipelineView";
 import { RequestThread } from "./components/RequestThread";
 import { ReviewView } from "./components/ReviewView";
+import { CustomThemeEditor } from "./components/CustomThemeEditor";
 import { RosterThemePicker } from "./components/RosterThemePicker";
 import { SetupView } from "./components/SetupView";
 import { Tabs, type TabItem } from "./components/Tabs";
@@ -105,7 +106,9 @@ function App() {
 
   const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
     useTheme();
-  const { rosterTheme, setRosterTheme } = useRosterTheme();
+  const { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError: rosterSaveError } =
+    useRosterTheme(baseUrl);
+  const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
   // and preferences), so theme selection no longer crowds the onboarding flow.
@@ -361,7 +364,12 @@ function App() {
               </p>
             </div>
             {fleetTab === "fleet" ? (
-              <RosterThemePicker value={rosterTheme} onChange={setRosterTheme} />
+              <RosterThemePicker
+                value={rosterTheme}
+                onChange={setRosterTheme}
+                onEditCustom={() => setCustomThemeEditorOpen(true)}
+                saveError={rosterSaveError}
+              />
             ) : null}
           </div>
           <Tabs
@@ -383,6 +391,7 @@ function App() {
                 service={fleetService}
                 nativeBusy={nativeBusy}
                 rosterTheme={rosterTheme}
+                customNames={customNames}
                 onRunLocalAction={runLocalAction}
                 onViewLogs={viewAgentLogs}
               />
@@ -427,6 +436,13 @@ function App() {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         commands={commands}
+      />
+
+      <CustomThemeEditor
+        open={customThemeEditorOpen}
+        value={customNames}
+        onOpenChange={setCustomThemeEditorOpen}
+        onSave={setCustomNames}
       />
     </AppShell>
   );

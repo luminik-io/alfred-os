@@ -18,9 +18,11 @@ import {
   errorDetail,
   hasStoredBaseUrl,
   initialBaseUrl,
+  loadRosterTheme,
   loadShipped,
   loadSnapshot,
   promoteMemoryCandidate,
+  saveRosterTheme,
   streamComposeConverse,
   streamFiringTail,
 } from "./api";
@@ -794,5 +796,73 @@ describe("streamFiringTail", () => {
     expect(errored).toBe(true);
     // The disposer is always safe to call even when nothing was opened.
     expect(() => dispose()).not.toThrow();
+  });
+});
+
+describe("roster theme persistence", () => {
+  it("reads the persisted theme over a plain GET", async () => {
+    const fetch = vi.fn(async (input: string) => {
+      expect(String(input)).toContain("/api/roster-theme");
+      return new Response(
+        JSON.stringify({
+          theme: "custom",
+          custom_names: { batman: "Sherlock" },
+          custom_roles: { batman: "Lead detective" },
+          updated_at: "2026-06-25T00:00:00Z",
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await loadRosterTheme("http://127.0.0.1:7000");
+
+    expect(result.theme).toBe("custom");
+    expect(result.custom_names.batman).toBe("Sherlock");
+    expect(result.custom_roles.batman).toBe("Lead detective");
+  });
+
+  it("posts the chosen theme and custom maps to persist them", async () => {
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      expect(String(input)).toContain("/api/roster-theme");
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          theme: "custom",
+          custom_names: { batman: "Sherlock" },
+          custom_roles: {},
+        }),
+      );
+      return new Response(
+        JSON.stringify({
+          theme: "custom",
+          custom_names: { batman: "Sherlock" },
+          custom_roles: {},
+          updated_at: "2026-06-25T00:00:00Z",
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await saveRosterTheme("http://127.0.0.1:7000", {
+      theme: "custom",
+      custom_names: { batman: "Sherlock" },
+      custom_roles: {},
+    });
+
+    expect(result.theme).toBe("custom");
+    expect(result.custom_names.batman).toBe("Sherlock");
+  });
+
+  it("surfaces a server validation 400 as an ApiError", async () => {
+    const fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ error: "unknown roster theme" }), { status: 400 }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      saveRosterTheme("http://127.0.0.1:7000", { theme: "not-real" }),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 });
