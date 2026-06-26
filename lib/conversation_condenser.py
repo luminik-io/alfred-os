@@ -370,7 +370,16 @@ _OVERFLOW_RE = re.compile(
     r"|\b(?:exceed|exceeded)[^\n]{0,40}?context[_ ]?(?:length|window)"
     r"|\bcontext[_ ]?length[_ ]?exceeded\b"
     r"|\bprompt\s+is\s+too\s+long\b"
-    r"|\b(?:message|messages)\s+(?:is\s+|are\s+)?too\s+long\b(?![\s\S]*\bmessage\s+length\b)"
+    # Plural "messages are too long" is an AGGREGATE overflow: the combined
+    # prompt is over budget, which condensing the middle directly fixes, so it
+    # always classifies (even when the error goes on to quote a per-message
+    # length cap). Singular "message is too long" followed anywhere by a
+    # "message length" cap is a single-message field cap that condensing prior
+    # context cannot shrink, so that one shape is excluded. Asymmetry matters: a
+    # false negative fails a recoverable turn, a false positive only wastes one
+    # condense pass, so we lean toward classifying.
+    r"|\bmessages\s+(?:are\s+)?too\s+long\b"
+    r"|\bmessage\s+(?:is\s+)?too\s+long\b(?![\s\S]*\bmessage\s+length\b)"
     r"|\binput\s+(?:is\s+)?too\s+long\b"
     r"|\bmaximum\s+context\s+length\b"
     r"|\btoo\s+many\s+(?:input\s+)?tokens\b"

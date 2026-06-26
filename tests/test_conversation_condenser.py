@@ -239,14 +239,23 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     assert not cc.looks_like_context_overflow(
         "Your message is too long.\nThe maximum message length is 4096 characters."
     )
-    # A verbose phrasing pushes "message length" well past any fixed lookahead
-    # window; the exclusion must still hold no matter how far the cap clause sits
-    # from "too long" (this regressed when the lookahead was distance-bounded).
+    # The SINGULAR per-message cap stays excluded no matter how far the cap
+    # clause sits from "too long" (this regressed when the lookahead was
+    # distance-bounded; the exclusion is unbounded but scoped to the singular).
     assert not cc.looks_like_context_overflow(
+        "Your message is too long. It exceeds the limit by a wide margin. "
+        "The maximum allowed message length for this model is 4096 characters."
+    )
+    # PLURAL "messages are too long" is an AGGREGATE overflow: the combined
+    # prompt is over budget, which condensing fixes, so it MUST classify even
+    # when the error goes on to quote a per-message length cap. Excluding it
+    # (an over-broad suppression) would fail a recoverable turn.
+    assert cc.looks_like_context_overflow(
         "Your input messages are too long. Please reduce the number or content of "
         "your messages. The maximum allowed message length for this model is "
         "200000 tokens."
     )
+    assert cc.looks_like_context_overflow("The messages are too long; reduce them.")
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
