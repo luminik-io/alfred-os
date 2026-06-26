@@ -227,6 +227,73 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     assert cc.looks_like_context_overflow("Please reduce the length of the messages and try again.")
     assert cc.looks_like_context_overflow("Request too large for this model")
     assert cc.looks_like_context_overflow("token limit exceeded for the request")
+    # "message(s) too long" is a common recoverable shape the original set missed.
+    assert cc.looks_like_context_overflow("Your message is too long for the model context window")
+    assert cc.looks_like_context_overflow("The messages are too long")
+    # A per-message-length cap is NOT a recoverable context overflow:
+    # condensing prior context would not shrink the single oversized message.
+    assert not cc.looks_like_context_overflow(
+        "Your message is too long. The maximum message length is 4096 characters."
+    )
+    # The same cap split across a newline must also not classify as overflow.
+    assert not cc.looks_like_context_overflow(
+        "Your message is too long.\nThe maximum message length is 4096 characters."
+    )
+    # The SINGULAR per-message cap stays excluded no matter how far the cap
+    # clause sits from "too long" (this regressed when the lookahead was
+    # distance-bounded; the exclusion is unbounded but scoped to the singular).
+    assert not cc.looks_like_context_overflow(
+        "Your message is too long. It exceeds the limit by a wide margin. "
+        "The maximum allowed message length for this model is 4096 characters."
+    )
+    # PLURAL "messages are too long" is an AGGREGATE overflow: the combined
+    # prompt is over budget, which condensing fixes, so it MUST classify even
+    # when the error goes on to quote a per-message length cap. Excluding it
+    # (an over-broad suppression) would fail a recoverable turn.
+    assert cc.looks_like_context_overflow(
+        "Your input messages are too long. Please reduce the number or content of "
+        "your messages. The maximum allowed message length for this model is "
+        "200000 tokens."
+    )
+    assert cc.looks_like_context_overflow("The messages are too long; reduce them.")
+    # The per-message cap exclusion is order-independent: the cap clause may sit
+    # BEFORE the "too long" clause and must still be excluded.
+    assert not cc.looks_like_context_overflow(
+        "The maximum message length is 4096 characters. Your message is too long."
+    )
+    # A SINGLE-message cap takes precedence over generic overflow wording: even
+    # though this mentions the context window, it is one oversized message hitting
+    # a length cap, which condensing prior context cannot shrink.
+    assert not cc.looks_like_context_overflow(
+        "Your message exceeds this model's context window. "
+        "The maximum message length is 4096 characters."
+    )
+    # But a bare "message length" cap mentioned inside a genuine AGGREGATE error
+    # (no singular "message is too long / exceeds" framing) stays recoverable:
+    # condensing the middle does shrink the combined prompt.
+    assert cc.looks_like_context_overflow(
+        "Context length exceeded. Reduce your input. The maximum message length "
+        "for this model is 200000 tokens."
+    )
+    # "too large" is the same single-message cap shape as "too long" and must be
+    # excluded too, even with context-window wording present.
+    assert not cc.looks_like_context_overflow(
+        "Your message is too large for this model's context window. "
+        "The maximum message length is 4096 characters."
+    )
+    # And a plural "messages are too large" aggregate stays recoverable.
+    assert cc.looks_like_context_overflow("The messages are too large; reduce them.")
+    # Past-tense / auxiliary phrasings of the singular cap are still excluded.
+    assert not cc.looks_like_context_overflow(
+        "Your message has exceeded the context window. "
+        "The maximum message length is 4096 characters."
+    )
+    # Past-tense PLURAL aggregate ("messages were too long") stays recoverable,
+    # even with a cap clause and no other context-window wording.
+    assert cc.looks_like_context_overflow(
+        "The messages were too long. The maximum message length is 200000 tokens."
+    )
+    assert cc.looks_like_context_overflow("The messages have been too large.")
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:

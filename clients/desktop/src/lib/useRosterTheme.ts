@@ -107,6 +107,16 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const pendingRef = useRef<
     Map<string, { theme: RosterThemeId; custom: CustomRosterNames; seq: number }>
   >(new Map());
+  // The latest seq issued per runtime url. Staleness is per runtime: a save's
+  // outcome is suppressed only when a NEWER save for the SAME runtime supersedes
+  // it. Gating on the global `saveSeqRef` instead would let a save to runtime B
+  // silence a real failure on runtime A (a cross-runtime failure vanishing).
+  const latestSeqByUrlRef = useRef<Map<string, number>>(new Map());
+  // Which runtime the currently surfaced `saveError` belongs to (null when there
+  // is no error, or it is a connection-level one). A success for runtime B must
+  // not clear a still-unresolved failure on runtime A, so the success path only
+  // clears an error that belongs to the same runtime.
+  const saveErrorUrlRef = useRef<string | null>(null);
 
   // On connect, read the server's persisted choice so the picker reflects the
   // cast the runtime (and Slack) already use. A failed read keeps the
@@ -166,21 +176,27 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // failure and record this runtime as synced so a racing GET cannot
           // clobber the choice we just persisted. Skip if a newer save has
           // since been issued: that save owns the agreed state, not this one.
-          if (seq !== saveSeqRef.current) return;
+          if (seq !== latestSeqByUrlRef.current.get(url)) return;
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
           if (url === baseUrlRef.current) {
             hydratedUrlRef.current = url;
           }
-          setSaveError(null);
+          // Clear the surfaced error only if it belongs to THIS runtime (or is a
+          // connection-level error, tracked as null): a success for one runtime
+          // must not erase a still-unresolved failure on another.
+          if (saveErrorUrlRef.current === null || saveErrorUrlRef.current === url) {
+            saveErrorUrlRef.current = null;
+            setSaveError(null);
+          }
         })
         .catch((err: unknown) => {
           // The local value still reflects the choice, but Slack and a fresh
           // reload keep the old server state. Surface that so the change does
           // not silently look successful. A superseded save stays quiet; the
           // newer one reports its own outcome.
-          if (seq !== saveSeqRef.current) return;
+          if (seq !== latestSeqByUrlRef.current.get(url)) return;
           // The optimistic hydration recorded in persist() assumed this save
           // would land. It did not, so the server still holds the old cast.
           // Clear the marker for this runtime (if it is still ours) so an
@@ -189,6 +205,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (hydratedUrlRef.current === url) {
             hydratedUrlRef.current = null;
           }
+          saveErrorUrlRef.current = url;
           setSaveError(
             err instanceof Error && err.message
               ? `Could not save to Alfred: ${err.message}`
@@ -218,6 +235,8 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         // Offline change: keep it in memory/localStorage but do NOT mark the
         // hook hydrated. When the runtime later connects, the hydration effect
         // must still read the server's persisted cast rather than skip it.
+        // A connection-level error is not tied to a specific synced runtime.
+        saveErrorUrlRef.current = null;
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
         return;
       }
@@ -230,6 +249,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       // so the server value is re-read rather than trusted indefinitely.
       hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
+      latestSeqByUrlRef.current.set(baseUrl, seq);
       if (inFlightRef.current) {
         // A save is already running. Queue this choice under its runtime url;
         // the in-flight save's finally() drains it once the socket is free.

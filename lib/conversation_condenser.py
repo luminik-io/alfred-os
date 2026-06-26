@@ -365,6 +365,9 @@ def condense_on_overflow(
 # Providers phrase a context-window overflow several ways. We match the common
 # shapes tight enough to avoid false positives on ordinary engineering prose
 # (a PR that merely mentions "context window" must not trip this).
+# Unambiguous overflow signals. The "message(s) too long" family is handled
+# separately (see below) because a per-message-length field cap needs an
+# order-independent exclusion a single regex alternative cannot express.
 _OVERFLOW_RE = re.compile(
     r"\bcontext[_ ]?(?:length|window)[^\n]{0,60}?(?:exceed|too\s+long|too\s+large|maximum|limit)"
     r"|\b(?:exceed|exceeded)[^\n]{0,40}?context[_ ]?(?:length|window)"
@@ -381,6 +384,30 @@ _OVERFLOW_RE = re.compile(
     re.IGNORECASE,
 )
 
+# An optional run of auxiliary/linking verbs between "message(s)" and the size
+# clause, so tense and voice variants ("is", "are", "was", "were", "has/have
+# been") all match without a separate pattern per phrasing.
+_AUX = r"(?:(?:is|are|was|were|has|have|had|been)\s+)*"
+# Providers phrase "over the size limit" as both "too long" and "too large"; the
+# whole message family treats them the same. Plural "messages ... too long/large"
+# is always an AGGREGATE overflow (the combined prompt is over budget), which
+# condensing the middle directly fixes.
+_PLURAL_TOO_LONG_RE = re.compile(rf"\bmessages\s+{_AUX}too\s+(?:long|large)\b", re.IGNORECASE)
+# A bare/singular "message too long/large" shape.
+_MESSAGE_TOO_LONG_RE = re.compile(rf"\bmessages?\s+{_AUX}too\s+(?:long|large)\b", re.IGNORECASE)
+# A per-message LENGTH cap marker. Its presence alongside a singular oversized
+# message means one message hit a field cap, which condensing prior context
+# cannot shrink. Matched anywhere so the exclusion is order-independent (the cap
+# clause may sit before or after the "too long/large" clause).
+_PER_MESSAGE_CAP_RE = re.compile(r"\bmessage\s+length\b", re.IGNORECASE)
+# A SINGULAR message over the limit: "message is too long/large" or "message
+# exceeds/exceeded...". Plural "messages" deliberately does not match (the
+# trailing "s" breaks the \s+), because a plural is an aggregate the condenser
+# CAN shrink.
+_SINGLE_MESSAGE_OVERSIZE_RE = re.compile(
+    rf"\bmessage\s+{_AUX}(?:too\s+(?:long|large)|exceed(?:s|ed)?\b)", re.IGNORECASE
+)
+
 
 def looks_like_context_overflow(text: str | None) -> bool:
     """True when ``text`` looks like a provider context-window overflow error.
@@ -388,10 +415,33 @@ def looks_like_context_overflow(text: str | None) -> bool:
     Used by callers to decide whether to take the reactive condense-and-retry
     path. Deliberately strict so ordinary prose mentioning "context window" does
     not trigger a needless condensation.
+
+    The "message(s) too long" family is classified with a cost asymmetry in mind:
+    a false negative fails a recoverable turn, while a false positive only wastes
+    one condense pass, so the bias is toward classifying. The single shape we DO
+    exclude is one oversized SINGLE message hitting a length cap (a singular
+    "message is too long" / "message exceeds ..." together with a "message
+    length" cap): condensing prior context cannot shrink that one message. That
+    exclusion takes precedence over the generic signals so a provider error that
+    pairs the cap with context-window wording is still excluded, but it never
+    fires for a plural aggregate ("messages are too long"), which condensing does
+    fix.
     """
     if not text:
         return False
-    return bool(_OVERFLOW_RE.search(text))
+    if (
+        _PER_MESSAGE_CAP_RE.search(text)
+        and _SINGLE_MESSAGE_OVERSIZE_RE.search(text)
+        and not _PLURAL_TOO_LONG_RE.search(text)
+    ):
+        return False
+    if _OVERFLOW_RE.search(text):
+        return True
+    if _PLURAL_TOO_LONG_RE.search(text):
+        return True
+    if _MESSAGE_TOO_LONG_RE.search(text):
+        return not _PER_MESSAGE_CAP_RE.search(text)
+    return False
 
 
 # --------------------------------------------------------------------------
