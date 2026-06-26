@@ -348,6 +348,130 @@ def test_finalize_always_writes_ignoring_throttle() -> None:
     assert client.updates[0]["text"] == "the reconciled answer"
 
 
+# ---------------------------------------------------------------------------
+# Reactive 429 / Retry-After backoff
+# ---------------------------------------------------------------------------
+
+
+class _RateLimitResponse:
+    """Mimics the slack_sdk response attached to a 429 SlackApiError."""
+
+    def __init__(self, retry_after: object, status: int = 429) -> None:
+        self.status_code = status
+        self.headers = {"Retry-After": retry_after}
+
+
+class _RateLimited(Exception):
+    def __init__(self, retry_after: object = "1", status: int = 429) -> None:
+        super().__init__("ratelimited")
+        self.response = _RateLimitResponse(retry_after, status)
+
+
+class FakeSleep:
+    """Records each honored Retry-After wait instead of sleeping."""
+
+    def __init__(self) -> None:
+        self.waits: list[float] = []
+
+    def __call__(self, seconds: float) -> None:
+        self.waits.append(seconds)
+
+
+class RateLimitedUpdates(FakeSlackClient):
+    """chat_update raises a 429 the first ``fails`` times, then succeeds."""
+
+    def __init__(self, fails: int, retry_after: object = "1") -> None:
+        super().__init__()
+        self._fails = fails
+        self._retry_after = retry_after
+
+    def chat_update(self, **kwargs: object) -> dict:
+        if self._fails > 0:
+            self._fails -= 1
+            raise _RateLimited(self._retry_after)
+        return super().chat_update(**kwargs)
+
+
+def test_finalize_retries_on_rate_limit_then_lands() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+    client = RateLimitedUpdates(fails=2, retry_after="2")
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.finalize("the reconciled answer")
+    # It honored Retry-After twice, then the final write landed in full.
+    assert sleep.waits == [2.0, 2.0]
+    assert client.updates and client.updates[-1]["text"] == "the reconciled answer"
+
+
+def test_update_drops_on_rate_limit_without_retrying() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+    client = RateLimitedUpdates(fails=5)
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.update("a streaming partial")
+    # A streaming partial that 429s is simply dropped; no wait, no write.
+    assert sleep.waits == []
+    assert client.updates == []
+
+
+def test_retry_after_is_clamped_to_a_ceiling() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+    client = RateLimitedUpdates(fails=1, retry_after="99999")
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.finalize("answer")
+    # A hostile Retry-After cannot wedge the poster for minutes.
+    assert sleep.waits == [sc.MAX_RETRY_AFTER_SECONDS]
+
+
+def test_non_rate_limit_error_is_not_retried() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+
+    class Boom(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("network blip")
+
+    poster = sc.SlackStreamPoster(
+        Boom(), channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.finalize("answer")
+    # A non-429 transport error is swallowed, never retried.
+    assert sleep.waits == []
+
+
+def test_start_retries_placeholder_on_rate_limit() -> None:
+    sleep = FakeSleep()
+
+    class RateLimitedPost(FakeSlackClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self._fails = 2
+
+        def chat_postMessage(self, **kwargs: object) -> dict:
+            if self._fails > 0:
+                self._fails -= 1
+                raise _RateLimited("1")
+            return super().chat_postMessage(**kwargs)
+
+    poster = sc.SlackStreamPoster(
+        RateLimitedPost(), channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock(), sleep=sleep
+    )
+    # The placeholder must survive a transient 429 so the turn is not silent.
+    assert poster.start() is True
+    assert sleep.waits == [1.0, 1.0]
+
+
 def test_update_skips_identical_text() -> None:
     clock = FakeClock()
     client = FakeSlackClient()

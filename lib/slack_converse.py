@@ -370,14 +370,25 @@ class SlackStreamPoster:
         post = getattr(self._client, "chat_postMessage", None)
         if post is None:
             return False
-        try:
-            resp = post(
-                channel=self._channel,
-                thread_ts=self._thread_ts,
-                text=placeholder,
-            )
-        except Exception:
-            return False
+        attempt = 0
+        while True:
+            try:
+                resp = post(
+                    channel=self._channel,
+                    thread_ts=self._thread_ts,
+                    text=placeholder,
+                )
+                break
+            except Exception as exc:
+                # Without the placeholder there is no ts to stream into, so the
+                # whole turn would be silent. Honor a 429 Retry-After and retry
+                # a bounded number of times before giving up.
+                wait = _retry_after_seconds(exc)
+                if wait is not None and attempt < MAX_FINALIZE_RATE_LIMIT_RETRIES:
+                    self._sleep(wait)
+                    attempt += 1
+                    continue
+                return False
         data = _as_mapping(resp)
         self._message_ts = str(data.get("ts") or "")
         self._last_text = placeholder
@@ -403,18 +414,33 @@ class SlackStreamPoster:
         text = _cap_message(text)
         if not self._message_ts or not text or text == self._last_text:
             return
-        self._write(text)
+        self._write(text, retries=MAX_FINALIZE_RATE_LIMIT_RETRIES)
 
-    def _write(self, text: str) -> None:
+    def _write(self, text: str, *, retries: int = 0) -> bool:
+        """Send one ``chat.update``. On a Slack 429 this honors ``Retry-After``
+        and retries up to ``retries`` more times: a streaming partial passes 0
+        (it is dropped, since the next update supersedes it) while the final
+        write passes a few so the reconciled answer always lands. Any non-429
+        transport error is swallowed (one update skipped). Returns True iff the
+        write landed.
+        """
         update = getattr(self._client, "chat_update", None)
         if update is None:
-            return
-        try:
-            update(channel=self._channel, ts=self._message_ts, text=text)
-        except Exception:
-            return
-        self._last_text = text
-        self._last_update_at = self._now()
+            return False
+        attempt = 0
+        while True:
+            try:
+                update(channel=self._channel, ts=self._message_ts, text=text)
+            except Exception as exc:
+                wait = _retry_after_seconds(exc)
+                if wait is not None and attempt < retries:
+                    self._sleep(wait)
+                    attempt += 1
+                    continue
+                return False
+            self._last_text = text
+            self._last_update_at = self._now()
+            return True
 
 
 # ---------------------------------------------------------------------------
