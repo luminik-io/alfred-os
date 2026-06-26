@@ -270,7 +270,13 @@ export function saveConversation(conversation: ConversationDraft): void {
   // Build the write list from the RAW v2 store, never the legacy-folded read:
   // the legacy thread is a read-time convenience only and must never be
   // persisted into v2, where it could push a real chat off the end of the cap.
-  const existing = readRawV2Conversations().filter((c) => c.id !== entry.id);
+  // Also drop any legacy-v1 entry an earlier buggy build may have already
+  // written into v2, so a stale legacy timestamp cannot evict a real chat on
+  // this save; the legacy still folds back in at read time (from the v1 key)
+  // when there is room under the cap.
+  const existing = readRawV2Conversations().filter(
+    (c) => c.id !== entry.id && c.id !== LEGACY_CONVERSATION_ID,
+  );
   const next = [entry, ...existing]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_PERSISTED_CONVERSATIONS);

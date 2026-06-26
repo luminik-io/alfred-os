@@ -192,6 +192,31 @@ describe("chatHistory last-5 persistence", () => {
     expect(all.map((c) => c.id).sort()).toEqual(["v2-0", "v2-1", "v2-2", "v2-3", "v2-4"]);
   });
 
+  it("a legacy-v1 entry persisted by an older build cannot evict a real chat on save", () => {
+    // Simulate the buggy historical state: an earlier build folded the legacy
+    // thread and persisted it INTO the v2 store with a recent timestamp...
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        conversations: [
+          { id: "legacy-v1", turns: [messageTurn("user", "legacy")], updatedAt: 9_999_999_999_999, title: "legacy" },
+          { id: "v2-0", turns: [messageTurn("user", "v2 0")], updatedAt: 4, title: "v2 0" },
+          { id: "v2-1", turns: [messageTurn("user", "v2 1")], updatedAt: 3, title: "v2 1" },
+          { id: "v2-2", turns: [messageTurn("user", "v2 2")], updatedAt: 2, title: "v2 2" },
+          { id: "v2-3", turns: [messageTurn("user", "v2 3")], updatedAt: 1, title: "v2 3" },
+        ],
+      }),
+    );
+    // ...now save a fifth real chat. The stale legacy must be dropped, not allowed
+    // to keep a slot and evict a real chat.
+    saveConversation({ id: "v2-4", turns: [messageTurn("user", "v2 4")] });
+    const ids = loadConversations().map((c) => c.id);
+    expect(ids).toHaveLength(MAX_PERSISTED_CONVERSATIONS);
+    expect(ids).not.toContain("legacy-v1");
+    expect(ids.slice().sort()).toEqual(["v2-0", "v2-1", "v2-2", "v2-3", "v2-4"]);
+  });
+
   it("clears the v1 key when the migrated legacy thread is deleted so it cannot return", () => {
     window.localStorage.setItem(
       LEGACY_STORAGE_KEY,

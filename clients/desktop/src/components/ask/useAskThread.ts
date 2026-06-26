@@ -495,6 +495,13 @@ export function useAskThread({
   const resumeConversation = useCallback(
     (id: string) => {
       if (id === conversationId) return;
+      // Capture the target BEFORE persisting the outgoing chat. Saving the
+      // in-flight chat inserts it into the capped last-5 list, which can push
+      // the very entry being opened off the end; loading the target first means
+      // the switch still succeeds even when the save would have evicted it (it
+      // is re-persisted on its own next save).
+      const target = loadConversations().find((c) => c.id === id);
+      if (!target) return;
       // Persist the conversation being left BEFORE swapping. The settle effect
       // skips saving while busy, and the swap below replaces `turns`, so without
       // this a switch mid-stream drops the active turn. A trailing in-flight
@@ -516,8 +523,6 @@ export function useAskThread({
       }
       abortRef.current?.abort();
       abortRef.current = null;
-      const target = loadConversations().find((c) => c.id === id);
-      if (!target) return;
       setConversationId(target.id);
       setTurns(target.turns.map(fromPersistedTurn));
       setResult(
@@ -596,11 +601,16 @@ export function useAskThread({
           },
         }));
       } finally {
-        // The request finished, so the synchronous guard always clears; the
-        // state clears only for the conversation that started the file (a switch
-        // already reset it for the new chat).
-        fileBusyIdRef.current = null;
-        if (conversationIdRef.current === startedIn) setFileBusyId(null);
+        // Clear the guard and the visible state ONLY if this request still owns
+        // them. If the operator switched chats and started filing another draft,
+        // a stale file from the previous chat completing here must not clear the
+        // new chat's guard (which would reopen its File button mid-flight). The
+        // switch already reset the guard for the new chat, so a stale completion
+        // is a no-op.
+        if (conversationIdRef.current === startedIn && fileBusyIdRef.current === draftId) {
+          fileBusyIdRef.current = null;
+          setFileBusyId(null);
+        }
       }
     },
     [baseUrl],

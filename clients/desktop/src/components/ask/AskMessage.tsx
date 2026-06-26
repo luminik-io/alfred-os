@@ -171,7 +171,10 @@ function CopyButton({
 }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    void navigator.clipboard?.writeText(value).then(() => {
+    // `navigator.clipboard` is undefined in insecure contexts and some webviews,
+    // and `?.writeText(...)` then evaluates to undefined, so guard the chain
+    // before calling `.then` or the click throws instead of doing nothing.
+    void navigator.clipboard?.writeText(value)?.then(() => {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     });
