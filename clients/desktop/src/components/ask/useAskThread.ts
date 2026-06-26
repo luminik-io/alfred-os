@@ -448,7 +448,27 @@ export function useAskThread({
   // assistant turn(s) for the last user message and replays that message.
   const retry = useCallback(() => {
     if (busy) return;
-    const { text, baseTurns } = trimToLastUser(turns, lastUserTextRef.current);
+    const ref = lastUserTextRef.current;
+    // The last message the person sent is authoritative. When a turn fails on
+    // its first hop (a control/draft error), `setTurns(priorMessages)` removes
+    // the failed user turn from the transcript but the text survives in
+    // lastUserTextRef (and the composer). In that state the transcript's last
+    // user turn is an OLDER message, so a plain transcript scan would replay the
+    // wrong turn. If the ref differs from the transcript's last user turn (or
+    // the transcript has none), replay the ref on top of the full transcript.
+    let lastUserIdx = -1;
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      const turn = turns[i];
+      if (turn.kind === "message" && turn.role === "user") {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (ref && (lastUserIdx === -1 || (turns[lastUserIdx] as { content: string }).content !== ref)) {
+      void runTurn(ref, turns);
+      return;
+    }
+    const { text, baseTurns } = trimToLastUser(turns, ref);
     if (!text) return;
     void runTurn(text, baseTurns);
   }, [busy, runTurn, turns]);

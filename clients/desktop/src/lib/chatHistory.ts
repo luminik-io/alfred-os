@@ -186,34 +186,40 @@ function readLegacyConversation(): PersistedConversation | null {
   });
 }
 
+// Read and validate the raw v2 store ONLY (no legacy fold). This is the true
+// persisted set of real conversations; saves and deletes write from this so the
+// read-time legacy fold can never be persisted into v2 (and so evict a real
+// chat). Never throws; a torn blob degrades to an empty list.
+function readRawV2Conversations(): PersistedConversation[] {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return [];
+  }
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const data = parsed as Record<string, unknown>;
+      if (data.version === 2 && Array.isArray(data.conversations)) {
+        return data.conversations
+          .map(coerceConversation)
+          .filter((c): c is PersistedConversation => c !== null);
+      }
+    }
+  } catch {
+    return [];
+  }
+  return [];
+}
+
 // Load the full v2 history (newest first). Never throws. On first run after the
 // v1 -> v2 change, a legacy single-conversation blob is migrated in as the
 // most-recent entry and the legacy key is left in place (read-only) so a
 // downgrade is non-destructive; the next save writes only the v2 key.
 export function loadConversations(): PersistedConversation[] {
-  let raw: string | null = null;
-  try {
-    raw = window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    raw = null;
-  }
-
-  let conversations: PersistedConversation[] = [];
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (parsed && typeof parsed === "object") {
-        const data = parsed as Record<string, unknown>;
-        if (data.version === 2 && Array.isArray(data.conversations)) {
-          conversations = data.conversations
-            .map(coerceConversation)
-            .filter((c): c is PersistedConversation => c !== null);
-        }
-      }
-    } catch {
-      conversations = [];
-    }
-  }
+  let conversations = readRawV2Conversations();
 
   // Fold the legacy v1 blob in only when there is ROOM under the cap, so the
   // legacy thread can never evict a real v2 chat (a downgrade could stamp it
@@ -261,7 +267,10 @@ export function saveConversation(conversation: ConversationDraft): void {
     title: conversationTitle(turns),
   };
 
-  const existing = loadConversations().filter((c) => c.id !== entry.id);
+  // Build the write list from the RAW v2 store, never the legacy-folded read:
+  // the legacy thread is a read-time convenience only and must never be
+  // persisted into v2, where it could push a real chat off the end of the cap.
+  const existing = readRawV2Conversations().filter((c) => c.id !== entry.id);
   const next = [entry, ...existing]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_PERSISTED_CONVERSATIONS);
@@ -277,7 +286,8 @@ export function saveConversation(conversation: ConversationDraft): void {
 // Drop one conversation by id from the persisted list. Used when a person
 // clears the active thread (New chat) so it does not linger in the switcher.
 export function deleteConversation(id: string): void {
-  const next = loadConversations().filter((c) => c.id !== id);
+  // Operate on the RAW v2 store so a delete never persists the legacy fold.
+  const next = readRawV2Conversations().filter((c) => c.id !== id);
   // If the deleted thread is the migrated legacy v1 blob, drop the read-only v1
   // key too, otherwise loadConversations would re-fold it on the next load.
   const legacy = readLegacyConversation();

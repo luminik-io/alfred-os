@@ -164,6 +164,34 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     ).toBeInTheDocument();
   });
 
+  it("retry after a first-hop failure replays the failed message, not an earlier turn", async () => {
+    // First turn succeeds and lands in the transcript.
+    streamMock.mockImplementation(async () => converseResponse({ reply: "First reply" }));
+    const user = userEvent.setup();
+    renderChat();
+    await send(user, "first message");
+    expect(await screen.findByText(/first reply/i)).toBeInTheDocument();
+
+    // The second send fails on its FIRST hop (a control error). That path removes
+    // the failed user turn from the transcript and restores the text to the
+    // composer, so the transcript's last user turn is now the OLDER message.
+    controlMock.mockRejectedValueOnce(new Error("control endpoint down"));
+    await send(user, "second message");
+    await waitFor(() => expect(chatInput()).toHaveValue("second message"));
+
+    // Capture what the next replay actually sends.
+    let replayed: string | undefined;
+    streamMock.mockImplementation(async (_baseUrl, request) => {
+      const msgs = (request as { messages: { role: string; content: string }[] }).messages;
+      replayed = [...msgs].reverse().find((m) => m.role === "user")?.content;
+      return converseResponse({ reply: "Second reply" });
+    });
+
+    // Regenerate must replay the failed "second message", not the earlier turn.
+    await user.click(await screen.findByRole("button", { name: /regenerate this reply/i }));
+    await waitFor(() => expect(replayed).toBe("second message"));
+  });
+
   it("files a ready plan straight from the inline card", async () => {
     streamMock.mockImplementation(async () =>
       converseResponse({ readiness: { score: 92, ready: true, missing: [] } }),

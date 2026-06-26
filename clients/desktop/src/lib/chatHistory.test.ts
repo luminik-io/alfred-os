@@ -168,6 +168,30 @@ describe("chatHistory last-5 persistence", () => {
     expect(all.every((c) => c.title.startsWith("v2 "))).toBe(true);
   });
 
+  it("a timestamped legacy thread cannot evict a real v2 chat on save", () => {
+    // Four real v2 chats...
+    for (let i = 0; i < 4; i += 1) {
+      saveConversation({ id: `v2-${i}`, turns: [messageTurn("user", `v2 ${i}`)] });
+    }
+    // ...and a legacy v1 blob with a RECENT stamp (the eviction case: a fold
+    // that would sort ahead of a real chat under the cap).
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        turns: [messageTurn("user", "legacy request")],
+        updatedAt: 9_999_999_999_999,
+      }),
+    );
+    // Saving a fifth real chat must keep all five real chats; the legacy fold
+    // is read-only and must never be persisted into v2 to push one off.
+    saveConversation({ id: "v2-4", turns: [messageTurn("user", "v2 4")] });
+    const all = loadConversations();
+    expect(all).toHaveLength(MAX_PERSISTED_CONVERSATIONS);
+    expect(all.every((c) => c.title.startsWith("v2 "))).toBe(true);
+    expect(all.map((c) => c.id).sort()).toEqual(["v2-0", "v2-1", "v2-2", "v2-3", "v2-4"]);
+  });
+
   it("clears the v1 key when the migrated legacy thread is deleted so it cannot return", () => {
     window.localStorage.setItem(
       LEGACY_STORAGE_KEY,
