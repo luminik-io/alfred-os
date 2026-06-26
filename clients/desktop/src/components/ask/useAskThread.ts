@@ -162,6 +162,10 @@ export function useAskThread({
   const [conversationId, setConversationId] = useState<string>(
     () => initial?.id ?? newConversationId(),
   );
+  // Always-current conversation id, so an async file resolution can tell
+  // whether the operator switched chats and should no longer apply its result.
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
   const [turns, setTurns] = useState<ChatTurn[]>(
     () => initial?.turns.map(fromPersistedTurn) ?? [],
   );
@@ -248,8 +252,9 @@ export function useAskThread({
         setTurns(next);
         return;
       }
-      // A real build turn supersedes any prior file result, so clear notices.
-      setFileNotices({});
+      // Per-draft notices: a new build turn adds its own draft with an empty
+      // notice, and earlier filed drafts keep their Filed chip, so there is
+      // nothing to clear here (clearing all would drop a prior draft's result).
       setResult(reply);
       if (draftHasSubstance(reply.draft)) {
         next.push({ kind: "draft", role: "assistant", draft: draftCardFrom(reply) });
@@ -514,6 +519,7 @@ export function useAskThread({
   const fileIssue = useCallback(
     async (draftId: string) => {
       if (fileBusyId) return;
+      const startedIn = conversationIdRef.current;
       setFileBusyId(draftId);
       // Drop only this draft's prior notice; other cards keep theirs.
       setFileNotices((prev) => {
@@ -524,6 +530,9 @@ export function useAskThread({
       });
       try {
         const res: FilePlanIssueResponse = await filePlanIssue(baseUrl, draftId);
+        // Ignore if the operator switched chats while this was in flight: the
+        // result belongs to the conversation that started it, not the current one.
+        if (conversationIdRef.current !== startedIn) return;
         setFileNotices((prev) => ({
           ...prev,
           [draftId]: {
@@ -536,6 +545,7 @@ export function useAskThread({
           },
         }));
       } catch (err) {
+        if (conversationIdRef.current !== startedIn) return;
         setFileNotices((prev) => ({
           ...prev,
           [draftId]: {
@@ -544,7 +554,9 @@ export function useAskThread({
           },
         }));
       } finally {
-        setFileBusyId(null);
+        // Only clear the busy flag for the conversation that started the file;
+        // a switch already reset it for the new chat.
+        if (conversationIdRef.current === startedIn) setFileBusyId(null);
       }
     },
     [baseUrl, fileBusyId],
