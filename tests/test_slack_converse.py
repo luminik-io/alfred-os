@@ -472,6 +472,57 @@ def test_start_retries_placeholder_on_rate_limit() -> None:
     assert sleep.waits == [1.0, 1.0]
 
 
+def test_total_backoff_budget_caps_cumulative_wait() -> None:
+    sleep = FakeSleep()
+    # Every update 429s with a 20s Retry-After. A single 20s wait fits the 30s
+    # cumulative budget, but a second (40s total) would exceed it, so the loop
+    # gives up rather than holding the Slack handler thread for minutes.
+    client = RateLimitedUpdates(fails=10, retry_after="20")
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock(), sleep=sleep
+    )
+    poster.start()
+    landed = poster.finalize("answer")
+    assert sleep.waits == [20.0]
+    assert sum(sleep.waits) <= sc.MAX_TOTAL_BACKOFF_SECONDS
+    assert landed is False
+
+
+def test_finalize_reports_success_and_failure() -> None:
+    # Success: the final write lands -> True.
+    ok_poster = sc.SlackStreamPoster(
+        FakeSlackClient(), channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock()
+    )
+    ok_poster.start()
+    assert ok_poster.finalize("the answer") is True
+
+    # Failure: the final write never lands (persistent non-429 error) -> False,
+    # so the caller can surface that the reconciled answer did not reach Slack.
+    class Boom(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent failure")
+
+    bad_poster = sc.SlackStreamPoster(
+        Boom(), channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock(), sleep=FakeSleep()
+    )
+    bad_poster.start()
+    assert bad_poster.finalize("the answer") is False
+
+
+def test_finalize_true_when_answer_already_streamed() -> None:
+    # If the last streamed update already carried the final text, finalize has
+    # nothing new to write but the answer IS on Slack: report True, not a false
+    # failure.
+    client = FakeSlackClient()
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock()
+    )
+    poster.start()
+    poster.update("the final answer")
+    assert client.updates and client.updates[-1]["text"] == "the final answer"
+    assert poster.finalize("the final answer") is True
+
+
 def test_update_skips_identical_text() -> None:
     clock = FakeClock()
     client = FakeSlackClient()

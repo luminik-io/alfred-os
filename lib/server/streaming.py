@@ -46,6 +46,7 @@ def _env_float(name: str, default: float) -> float:
     except (TypeError, ValueError):
         return default
 
+
 # How long the SSE tail waits between file-size checks while a firing is still
 # running. Small enough to feel live, large enough that an idle stream is cheap.
 TAIL_POLL_SECONDS = 1.0
@@ -204,8 +205,11 @@ def _sse(event: str, data: Any) -> bytes:
 # Default keep-alive cadence. A silent SSE connection (the model is thinking, or
 # a firing is running with no new transcript lines) can be reaped by an idle
 # proxy/load-balancer mid-turn; an SSE comment every HEARTBEAT_SECONDS keeps the
-# socket warm. Env-overridable per the config-driven-tunables rule.
-HEARTBEAT_SECONDS = max(1.0, _env_float("ALFRED_SSE_HEARTBEAT_SECONDS", 15.0))
+# socket warm. Env-overridable per the config-driven-tunables rule. A value of 0
+# (or negative) DISABLES heartbeats: the stream loops gate on
+# ``heartbeat_seconds > 0``, so the env knob must not be floored here or an
+# operator could never turn keep-alives off.
+HEARTBEAT_SECONDS = _env_float("ALFRED_SSE_HEARTBEAT_SECONDS", 15.0)
 
 
 def _sse_comment() -> bytes:
