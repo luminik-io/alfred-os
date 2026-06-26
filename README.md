@@ -72,7 +72,8 @@ you already authenticated. It is meant to be inspectable, so you can read exactl
   (Anthropic for Claude Code, OpenAI for Codex), GitHub through `gh`, your
   Slack webhook if you configured one, and the anonymous usage beacon at
   `alfred-proof-telemetry.luminik.workers.dev/ingest`. The beacon is on by
-  default, sends aggregate counts only (never code, names, paths, or prompts),
+  default, sends aggregate counts (lifetime plus a rolling 30-day window) and
+  a little reporter-status metadata, never code, names, paths, or prompts,
   and you can turn it off any time with `alfred telemetry off`. See
   [Anonymous usage totals](#anonymous-usage-totals).
 
@@ -343,8 +344,10 @@ adapter code.
 
 Alfred reports anonymous aggregate counts (PRs opened, merged, reviewed, file
 deltas) to a public [Impact](https://alfred.luminik.io/impact/) counter. It is on
-by default and sends counts only, never repo names, paths, code, prompts,
-branches, people, or hostnames. A reporting failure never breaks a firing.
+by default. Alongside the lifetime totals it sends a rolling 30-day window of
+the same counts and a little reporter-status metadata (which counts are stale).
+It never sends repo names, paths, code, prompts, branches, people, or hostnames.
+A reporting failure never breaks a firing.
 
 ```sh
 alfred telemetry off      # opt out (or set ALFRED_TELEMETRY_ENABLED=0)
