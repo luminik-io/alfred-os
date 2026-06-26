@@ -275,6 +275,14 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
         "Context length exceeded. Reduce your input. The maximum message length "
         "for this model is 200000 tokens."
     )
+    # "too large" is the same single-message cap shape as "too long" and must be
+    # excluded too, even with context-window wording present.
+    assert not cc.looks_like_context_overflow(
+        "Your message is too large for this model's context window. "
+        "The maximum message length is 4096 characters."
+    )
+    # And a plural "messages are too large" aggregate stays recoverable.
+    assert cc.looks_like_context_overflow("The messages are too large; reduce them.")
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:

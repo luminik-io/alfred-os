@@ -384,21 +384,25 @@ _OVERFLOW_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Plural "messages are too long" is always an AGGREGATE overflow (the combined
-# prompt is over budget), which condensing the middle directly fixes.
-_PLURAL_TOO_LONG_RE = re.compile(r"\bmessages\s+(?:are\s+)?too\s+long\b", re.IGNORECASE)
-# A bare/singular "message too long" shape.
-_MESSAGE_TOO_LONG_RE = re.compile(r"\bmessages?\s+(?:is\s+|are\s+)?too\s+long\b", re.IGNORECASE)
-# A per-message LENGTH cap marker. Its presence alongside a singular
-# "message too long" means a single oversized message hit a field cap, which
-# condensing prior context cannot shrink. Matched anywhere so the exclusion is
-# order-independent (the cap clause may sit before or after "too long").
+# Providers phrase "over the size limit" as both "too long" and "too large"; the
+# whole message family treats them the same. Plural "messages are too long/large"
+# is always an AGGREGATE overflow (the combined prompt is over budget), which
+# condensing the middle directly fixes.
+_PLURAL_TOO_LONG_RE = re.compile(r"\bmessages\s+(?:are\s+)?too\s+(?:long|large)\b", re.IGNORECASE)
+# A bare/singular "message too long/large" shape.
+_MESSAGE_TOO_LONG_RE = re.compile(
+    r"\bmessages?\s+(?:is\s+|are\s+)?too\s+(?:long|large)\b", re.IGNORECASE
+)
+# A per-message LENGTH cap marker. Its presence alongside a singular oversized
+# message means one message hit a field cap, which condensing prior context
+# cannot shrink. Matched anywhere so the exclusion is order-independent (the cap
+# clause may sit before or after the "too long/large" clause).
 _PER_MESSAGE_CAP_RE = re.compile(r"\bmessage\s+length\b", re.IGNORECASE)
-# A SINGULAR message over the limit: "message is too long" / "message exceeds...".
-# Plural "messages" deliberately does not match (the trailing "s" breaks the
-# \s+), because a plural is an aggregate the condenser CAN shrink.
+# A SINGULAR message over the limit: "message is too long/large" or "message
+# exceeds...". Plural "messages" deliberately does not match (the trailing "s"
+# breaks the \s+), because a plural is an aggregate the condenser CAN shrink.
 _SINGLE_MESSAGE_OVERSIZE_RE = re.compile(
-    r"\bmessage\s+(?:is\s+)?(?:too\s+long|exceeds?\b)", re.IGNORECASE
+    r"\bmessage\s+(?:is\s+)?(?:too\s+(?:long|large)|exceeds?\b)", re.IGNORECASE
 )
 
 
