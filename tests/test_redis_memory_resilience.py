@@ -225,6 +225,68 @@ def test_breaker_half_open_failure_reopens() -> None:
     assert prov._breaker.opened_at > first_open
 
 
+def test_breaker_counts_one_failure_per_logical_request() -> None:
+    """A failing call with retries trips the breaker ONCE, not once per attempt.
+
+    Otherwise a single flaky call could open the breaker by itself via its retry
+    budget (3 attempts -> 3 failures with the default threshold of 5).
+    """
+
+    def transport(method, url, payload, headers, timeout):
+        raise _AmsHttpError(503, "down")
+
+    prov = _provider(transport, max_retries=2, breaker_threshold=2)
+    # One logical request makes 3 transport attempts but records ONE failure.
+    with pytest.raises(_AmsHttpError):
+        prov._request("GET", "/v1/health", None)
+    assert prov._breaker.consecutive == 1
+    assert prov._breaker.opened_at is None  # threshold of 2 not reached by one call
+    # A second logical request reaches the threshold and opens the breaker.
+    with pytest.raises(_AmsHttpError):
+        prov._request("GET", "/v1/health", None)
+    assert prov._breaker.consecutive == 2
+    assert prov._breaker.opened_at is not None
+
+
+def test_half_open_trial_makes_a_single_attempt() -> None:
+    """A half-open probe gets exactly one attempt, even with retries configured,
+    so a failed probe does not keep hammering AMS during the fresh cooldown."""
+    calls = {"n": 0}
+
+    def transport(method, url, payload, headers, timeout):
+        calls["n"] += 1
+        raise _AmsHttpError(503, "down")
+
+    clock = _FakeClock()
+    prov = _provider(
+        transport, max_retries=3, breaker_threshold=1, breaker_cooldown_s=10.0, clock=clock
+    )
+    with pytest.raises(_AmsHttpError):
+        prov._request("GET", "/v1/health", None)
+    assert prov._breaker.opened_at is not None
+    before = calls["n"]
+    # Cooldown elapsed -> half-open. The single trial must not retry.
+    clock.advance(11.0)
+    with pytest.raises(_AmsHttpError):
+        prov._request("GET", "/v1/health", None)
+    assert calls["n"] - before == 1
+
+
+def test_list_lessons_does_not_scope_to_user() -> None:
+    """ams-reset enumerates the whole namespace: the user_id filter must not be
+    sent, so a reset clears every user's lessons, not just the configured one."""
+    seen: dict[str, Any] = {}
+
+    def transport(method, url, payload, headers, timeout):
+        seen["payload"] = payload
+        return {"memories": []}
+
+    prov = RedisAgentMemoryProvider(transport=transport, user_id="someone", namespace="alfred")
+    prov.list_lessons(limit=50)
+    assert "user_id" not in seen["payload"]
+    assert seen["payload"]["namespace"] == {"eq": "alfred"}
+
+
 # ---------------------------------------------------------------------------
 # Preserved method-level semantics
 # ---------------------------------------------------------------------------

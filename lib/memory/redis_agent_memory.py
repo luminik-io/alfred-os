@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -118,33 +119,57 @@ class _BreakerState:
     clock: Callable[[], float] = time.monotonic
     consecutive: int = 0
     opened_at: float | None = None
+    # True once a half-open trial has been handed out, so only ONE caller
+    # probes the recovering endpoint until that trial resolves.
+    _trial_in_flight: bool = False
+    # A provider instance can be shared across request handlers / threads, so
+    # all breaker state transitions take this lock to avoid lost updates.
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def _half_open(self) -> bool:
+        return self.opened_at is not None and (self.clock() - self.opened_at) >= self.cooldown_s
 
     def allow(self) -> bool:
-        """Return ``True`` if a call may proceed (closed or half-open)."""
-        if self.opened_at is None:
+        """Return ``True`` if a call may proceed.
+
+        Closed -> always. Open and still cooling down -> fail fast. Half-open
+        (cooldown elapsed) -> let exactly ONE trial through and block the rest
+        until that trial records success or failure.
+        """
+        with self._lock:
+            if self.opened_at is None:
+                return True
+            if (self.clock() - self.opened_at) < self.cooldown_s:
+                return False
+            if self._trial_in_flight:
+                return False
+            self._trial_in_flight = True
             return True
-        # Cooldown elapsed -> half-open: let a single trial through.
-        return (self.clock() - self.opened_at) >= self.cooldown_s
+
+    def is_half_open(self) -> bool:
+        """Whether the breaker is in its single-trial recovery window."""
+        with self._lock:
+            return self._half_open()
 
     def record_success(self) -> None:
         """A clean call closes the breaker and resets the streak."""
-        self.consecutive = 0
-        self.opened_at = None
+        with self._lock:
+            self.consecutive = 0
+            self.opened_at = None
+            self._trial_in_flight = False
 
     def record_failure(self) -> None:
-        """Count one transient failure; (re)open at the threshold.
-
-        While half-open (cooldown elapsed but still flagged open), a fresh
-        failure re-opens the breaker by stamping a new ``opened_at`` so a
-        fresh cooldown begins.
-        """
-        if self.opened_at is not None and (self.clock() - self.opened_at) >= self.cooldown_s:
-            # Half-open trial failed: re-open with a fresh cooldown.
-            self.opened_at = self.clock()
-            return
-        self.consecutive += 1
-        if self.consecutive >= self.threshold and self.opened_at is None:
-            self.opened_at = self.clock()
+        """Count one transient failure (per logical request); (re)open at the
+        threshold. A failed half-open trial re-opens with a fresh cooldown."""
+        with self._lock:
+            self._trial_in_flight = False
+            if self._half_open():
+                # Half-open trial failed: re-open with a fresh cooldown.
+                self.opened_at = self.clock()
+                return
+            self.consecutive += 1
+            if self.consecutive >= self.threshold and self.opened_at is None:
+                self.opened_at = self.clock()
 
 
 @dataclass
@@ -397,12 +422,14 @@ class RedisAgentMemoryProvider:
         return True
 
     def list_lessons(self, *, limit: int = 1000) -> list[Lesson]:
-        """Enumerate lessons stored in this provider's namespace.
+        """Enumerate lessons stored in this provider's namespace (one page).
 
         Used by the ``ams-reset`` operator path: AMS has no namespace-wide
-        bulk-delete, so we list with a high limit (an empty ``text`` plus a
-        ``namespace`` filter matches the whole namespace) and delete each.
-        Later rebase commits tighten this path to drain the whole namespace.
+        bulk-delete, so we list a page (a ``namespace`` filter scopes the whole
+        namespace) and delete each, repeating until empty. The user_id filter is
+        deliberately NOT applied: a reset clears the entire namespace, not just
+        one user's lessons. A single call returns at most ``limit`` lessons, so
+        the caller must loop until this returns empty to drain a large namespace.
         """
         payload: dict[str, Any] = {
             "text": "",
@@ -410,15 +437,15 @@ class RedisAgentMemoryProvider:
             "search_mode": "semantic",
             "namespace": {"eq": self.namespace},
         }
-        if self.user_id:
-            payload["user_id"] = {"eq": self.user_id}
         response = self._request("POST", "/v1/long-term-memory/search", payload)
+        # user_id=None so post-parse filtering does not narrow the page back to
+        # one user: a reset enumerates the whole namespace.
         return _parse_search_response(
             response,
             codename=None,
             repo=None,
             namespace=self.namespace,
-            user_id=self.user_id,
+            user_id=None,
             required_topics=None,
         )
 
@@ -461,6 +488,10 @@ class RedisAgentMemoryProvider:
                 "failing fast until cooldown elapses.",
             )
 
+        # A half-open trial gets exactly ONE attempt: a failed probe must not
+        # keep hammering a recovering endpoint through the retry loop during the
+        # fresh cooldown. A closed breaker uses the full retry budget.
+        retries = 0 if self._breaker.is_half_open() else self.max_retries
         attempt = 0
         while True:
             try:
@@ -470,8 +501,11 @@ class RedisAgentMemoryProvider:
                     # FATAL (auth / bad request): surface immediately. A fatal
                     # fault does not feed the transient breaker streak.
                     raise
-                self._breaker.record_failure()
-                if attempt >= self.max_retries:
+                if attempt >= retries:
+                    # Count ONE breaker failure per logical request, only once
+                    # the retry budget is spent, so a single flaky call cannot
+                    # trip the breaker by itself across its retries.
+                    self._breaker.record_failure()
                     raise
                 delay = compute_backoff_delay(attempt + 1)
                 _LOG.debug(

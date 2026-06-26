@@ -738,38 +738,53 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    try:
-        lessons = provider.list_lessons(limit=args.limit)
-    except Exception as exc:
-        print(
-            f"alfred-brain ams-reset: could not list lessons in namespace "
-            f"{provider.namespace}: {exc}",
-            file=sys.stderr,
-        )
-        return 1
+    # list_lessons returns at most one page (limit), so loop until the namespace
+    # is drained rather than clearing only the first page and reporting success.
     deleted = 0
-    failed: list[str] = []
-    for lesson in lessons:
-        if provider.forget_lesson(lesson.id):
-            deleted += 1
-        else:
-            failed.append(lesson.id)
+    failed: set[str] = set()
+    passes = 0
+    # Safety ceiling far above any real namespace, so an AMS that keeps
+    # returning the same undeletable page can never spin forever.
+    max_passes = 100_000
+    while passes < max_passes:
+        passes += 1
+        try:
+            lessons = provider.list_lessons(limit=args.limit)
+        except Exception as exc:
+            print(
+                f"alfred-brain ams-reset: could not list lessons in namespace "
+                f"{provider.namespace}: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        # Only act on lessons we have not already failed to delete; when a page
+        # has nothing new, the namespace is empty or only undeletable lessons
+        # remain, so stop.
+        pending = [lesson for lesson in lessons if lesson.id not in failed]
+        if not pending:
+            break
+        for lesson in pending:
+            if provider.forget_lesson(lesson.id):
+                deleted += 1
+            else:
+                failed.add(lesson.id)
+    failed_ids = sorted(failed)
     payload = {
         "namespace": provider.namespace,
         "base_url": provider.base_url,
-        "matched": len(lessons),
         "deleted": deleted,
-        "failed": failed,
+        "failed": failed_ids,
+        "passes": passes,
     }
     if args.json:
         print(json.dumps(payload, indent=2))
     else:
         print(
-            f"alfred-brain ams-reset: deleted {deleted}/{len(lessons)} lesson(s) "
-            f"from namespace {provider.namespace}"
+            f"alfred-brain ams-reset: deleted {deleted} lesson(s) "
+            f"from namespace {provider.namespace} over {passes} pass(es)"
         )
-        if failed:
-            print(f"  failed: {', '.join(failed)}", file=sys.stderr)
+        if failed_ids:
+            print(f"  failed to delete: {', '.join(failed_ids)}", file=sys.stderr)
     return 1 if failed else 0
 
 
