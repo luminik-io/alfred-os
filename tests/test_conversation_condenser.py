@@ -235,6 +235,10 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     assert not cc.looks_like_context_overflow(
         "Your message is too long. The maximum message length is 4096 characters."
     )
+    # The same cap split across a newline must also not classify as overflow.
+    assert not cc.looks_like_context_overflow(
+        "Your message is too long.\nThe maximum message length is 4096 characters."
+    )
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
