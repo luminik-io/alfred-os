@@ -288,6 +288,12 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
         "Your message has exceeded the context window. "
         "The maximum message length is 4096 characters."
     )
+    # Past-tense PLURAL aggregate ("messages were too long") stays recoverable,
+    # even with a cap clause and no other context-window wording.
+    assert cc.looks_like_context_overflow(
+        "The messages were too long. The maximum message length is 200000 tokens."
+    )
+    assert cc.looks_like_context_overflow("The messages have been too large.")
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:

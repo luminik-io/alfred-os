@@ -384,26 +384,28 @@ _OVERFLOW_RE = re.compile(
     re.IGNORECASE,
 )
 
+# An optional run of auxiliary/linking verbs between "message(s)" and the size
+# clause, so tense and voice variants ("is", "are", "was", "were", "has/have
+# been") all match without a separate pattern per phrasing.
+_AUX = r"(?:(?:is|are|was|were|has|have|had|been)\s+)*"
 # Providers phrase "over the size limit" as both "too long" and "too large"; the
-# whole message family treats them the same. Plural "messages are too long/large"
+# whole message family treats them the same. Plural "messages ... too long/large"
 # is always an AGGREGATE overflow (the combined prompt is over budget), which
 # condensing the middle directly fixes.
-_PLURAL_TOO_LONG_RE = re.compile(r"\bmessages\s+(?:are\s+)?too\s+(?:long|large)\b", re.IGNORECASE)
+_PLURAL_TOO_LONG_RE = re.compile(rf"\bmessages\s+{_AUX}too\s+(?:long|large)\b", re.IGNORECASE)
 # A bare/singular "message too long/large" shape.
-_MESSAGE_TOO_LONG_RE = re.compile(
-    r"\bmessages?\s+(?:is\s+|are\s+)?too\s+(?:long|large)\b", re.IGNORECASE
-)
+_MESSAGE_TOO_LONG_RE = re.compile(rf"\bmessages?\s+{_AUX}too\s+(?:long|large)\b", re.IGNORECASE)
 # A per-message LENGTH cap marker. Its presence alongside a singular oversized
 # message means one message hit a field cap, which condensing prior context
 # cannot shrink. Matched anywhere so the exclusion is order-independent (the cap
 # clause may sit before or after the "too long/large" clause).
 _PER_MESSAGE_CAP_RE = re.compile(r"\bmessage\s+length\b", re.IGNORECASE)
 # A SINGULAR message over the limit: "message is too long/large" or "message
-# exceeds...". Plural "messages" deliberately does not match (the trailing "s"
-# breaks the \s+), because a plural is an aggregate the condenser CAN shrink.
+# exceeds/exceeded...". Plural "messages" deliberately does not match (the
+# trailing "s" breaks the \s+), because a plural is an aggregate the condenser
+# CAN shrink.
 _SINGLE_MESSAGE_OVERSIZE_RE = re.compile(
-    r"\bmessage\s+(?:(?:is|has|was)\s+)?(?:too\s+(?:long|large)|exceed(?:s|ed)?\b)",
-    re.IGNORECASE,
+    rf"\bmessage\s+{_AUX}(?:too\s+(?:long|large)|exceed(?:s|ed)?\b)", re.IGNORECASE
 )
 
 
