@@ -107,6 +107,11 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const pendingRef = useRef<
     Map<string, { theme: RosterThemeId; custom: CustomRosterNames; seq: number }>
   >(new Map());
+  // The latest seq issued per runtime url. Staleness is per runtime: a save's
+  // outcome is suppressed only when a NEWER save for the SAME runtime supersedes
+  // it. Gating on the global `saveSeqRef` instead would let a save to runtime B
+  // silence a real failure on runtime A (a cross-runtime failure vanishing).
+  const latestSeqByUrlRef = useRef<Map<string, number>>(new Map());
 
   // On connect, read the server's persisted choice so the picker reflects the
   // cast the runtime (and Slack) already use. A failed read keeps the
@@ -166,7 +171,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // failure and record this runtime as synced so a racing GET cannot
           // clobber the choice we just persisted. Skip if a newer save has
           // since been issued: that save owns the agreed state, not this one.
-          if (seq !== saveSeqRef.current) return;
+          if (seq !== latestSeqByUrlRef.current.get(url)) return;
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
@@ -180,7 +185,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // reload keep the old server state. Surface that so the change does
           // not silently look successful. A superseded save stays quiet; the
           // newer one reports its own outcome.
-          if (seq !== saveSeqRef.current) return;
+          if (seq !== latestSeqByUrlRef.current.get(url)) return;
           // The optimistic hydration recorded in persist() assumed this save
           // would land. It did not, so the server still holds the old cast.
           // Clear the marker for this runtime (if it is still ours) so an
@@ -230,6 +235,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       // so the server value is re-read rather than trusted indefinitely.
       hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
+      latestSeqByUrlRef.current.set(baseUrl, seq);
       if (inFlightRef.current) {
         // A save is already running. Queue this choice under its runtime url;
         // the in-flight save's finally() drains it once the socket is free.

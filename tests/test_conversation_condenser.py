@@ -227,6 +227,9 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     assert cc.looks_like_context_overflow("Please reduce the length of the messages and try again.")
     assert cc.looks_like_context_overflow("Request too large for this model")
     assert cc.looks_like_context_overflow("token limit exceeded for the request")
+    # "message(s) too long" is a common recoverable shape the original set missed.
+    assert cc.looks_like_context_overflow("Your message is too long for the model context window")
+    assert cc.looks_like_context_overflow("The messages are too long")
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
