@@ -346,6 +346,7 @@ class Store(Protocol):
         repo: str | None = None,
         codename: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[MemoryCandidate]: ...
 
     def insert_failure_event(self, event: FailureEvent) -> FailureEvent: ...
@@ -945,6 +946,7 @@ class SQLiteStore:
         repo: str | None = None,
         codename: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[MemoryCandidate]:
         wheres: list[str] = []
         params: list[object] = []
@@ -963,9 +965,10 @@ class SQLiteStore:
             "source_firing_id, evidence, confidence, status, created_at, "
             "reviewed_at, reviewed_by, review_note, promoted_lesson_id "
             f"FROM memory_candidates {where_clause} "
-            "ORDER BY created_at DESC LIMIT ?"
+            "ORDER BY created_at DESC LIMIT ? OFFSET ?"
         )
         params.append(int(limit))
+        params.append(max(0, int(offset)))
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
             return [_row_to_memory_candidate(r) for r in rows]

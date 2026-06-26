@@ -120,8 +120,19 @@ def test_cli_lessons_json(
 
 
 def test_cli_candidate_promote_and_reject(
-    cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
+    cli_mod: ModuleType,
+    brain_db: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Promotion writes the lesson to AMS first (no local fallback), so stub the
+    # AMS transport: a CLI test must not require a live Redis AMS on :8088. The
+    # provider builds the Lesson from its inputs, so any non-error response is a
+    # successful write.
+    monkeypatch.setattr(
+        "memory.redis_agent_memory._default_transport",
+        lambda method, url, payload, headers, timeout: {},
+    )
     rc = cli_mod.main(
         [
             "propose",

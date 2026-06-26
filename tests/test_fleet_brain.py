@@ -545,6 +545,23 @@ def test_revert_leaves_candidate_validated_when_forget_fails(brain: FleetBrain) 
     assert still.promoted_lesson_id is not None
 
 
+def test_list_memory_candidates_paginates_by_offset(brain: FleetBrain) -> None:
+    # Offset paging lets revert_auto_promotions enumerate ALL validated rows, not
+    # just the newest page, so older auto-promotions are never hidden behind a
+    # page full of human-reviewed or undeletable rows.
+    made = {
+        brain.propose_memory(
+            codename="lucius", repo="org/api", body=f"lesson {i}", confidence=0.7
+        ).id
+        for i in range(5)
+    }
+    p1 = brain.list_memory_candidates(status="candidate", limit=2, offset=0)
+    p2 = brain.list_memory_candidates(status="candidate", limit=2, offset=2)
+    p3 = brain.list_memory_candidates(status="candidate", limit=2, offset=4)
+    assert {c.id for c in p1}.isdisjoint({c.id for c in p2})  # no overlap across pages
+    assert {c.id for c in p1 + p2 + p3} == made  # every candidate surfaced exactly once
+
+
 def test_revert_skips_human_promotions(brain: FleetBrain) -> None:
     candidate = brain.propose_memory(
         codename="lucius",

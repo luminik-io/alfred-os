@@ -1020,57 +1020,55 @@ class FleetBrain:
         were actually reverted.
         """
         reverted: list[str] = []
-        # Candidates whose AMS lesson could not be forgotten: we do NOT reopen
-        # them (that would claim a revert while the lesson is still live in AMS
-        # recall), so skip them on later passes to avoid an endless loop.
         forget_failed: set[str] = set()
         if lesson_forgetter is None:
             lesson_forgetter = self._lesson_provider()
-        # list_memory_candidates is capped (no offset), but reverting a candidate
-        # flips it out of the "validated" set, so loop until a page has no fresh
-        # auto-promotions left. A safety ceiling guards against a stuck page.
-        max_passes = 100_000
-        passes = 0
-        while passes < max_passes:
-            passes += 1
-            rows = [
+        # Phase 1: enumerate EVERY validated auto-promotion via offset paging.
+        # Reading is non-mutating, so offsets stay stable and a newest page full
+        # of human-reviewed or undeletable rows cannot hide older auto-promotions
+        # (the bug a "loop until the set shrinks" approach had).
+        targets: list[MemoryCandidate] = []
+        page = 500
+        offset = 0
+        while True:
+            batch = self.list_memory_candidates(status="validated", limit=page, offset=offset)
+            targets.extend(
                 cand
-                for cand in self.list_memory_candidates(status="validated", limit=500)
-                if cand.reviewed_by == "auto"
-                and cand.promoted_lesson_id is not None
-                and cand.id not in forget_failed
-            ]
-            if not rows:
+                for cand in batch
+                if cand.reviewed_by == "auto" and cand.promoted_lesson_id is not None
+            )
+            if len(batch) < page:
                 break
-            for candidate in rows:
-                cid = candidate.id
-                # Forget the lesson from Redis AMS, then reopen the candidate
-                # ONLY if the lesson is actually gone, so the local ledger never
-                # records a revert while the lesson is still live in AMS recall.
-                forgotten = True
-                if lesson_forgetter is not None:
-                    try:
-                        forgotten = bool(lesson_forgetter.forget_lesson(_lesson_memory_id(cid)))
-                    except Exception:
-                        _LOG.exception(
-                            "revert_auto_promotions: AMS forget failed for candidate %s",
-                            cid,
-                        )
-                        forgotten = False
-                if not forgotten:
-                    forget_failed.add(cid)
-                    continue
-                self.store.update_memory_candidate(
-                    replace(
-                        candidate,
-                        status="candidate",
-                        reviewed_at=datetime.now(UTC),
-                        reviewed_by=reviewer.strip() or "auto-revert",
-                        review_note=note.strip() or None,
-                        promoted_lesson_id=None,
+            offset += page
+        # Phase 2: forget then reopen each, reopening ONLY when the lesson is
+        # actually gone so the ledger never records a revert while the lesson is
+        # still live in AMS recall.
+        for candidate in targets:
+            cid = candidate.id
+            forgotten = True
+            if lesson_forgetter is not None:
+                try:
+                    forgotten = bool(lesson_forgetter.forget_lesson(_lesson_memory_id(cid)))
+                except Exception:
+                    _LOG.exception(
+                        "revert_auto_promotions: AMS forget failed for candidate %s",
+                        cid,
                     )
+                    forgotten = False
+            if not forgotten:
+                forget_failed.add(cid)
+                continue
+            self.store.update_memory_candidate(
+                replace(
+                    candidate,
+                    status="candidate",
+                    reviewed_at=datetime.now(UTC),
+                    reviewed_by=reviewer.strip() or "auto-revert",
+                    review_note=note.strip() or None,
+                    promoted_lesson_id=None,
                 )
-                reverted.append(cid)
+            )
+            reverted.append(cid)
         if forget_failed:
             _LOG.warning(
                 "revert_auto_promotions: left %d candidate(s) validated because the "
@@ -1333,6 +1331,7 @@ class FleetBrain:
         repo: str | None = None,
         codename: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> list[MemoryCandidate]:
         clamped = max(1, min(int(limit), 500))
         return self.store.list_memory_candidates(
@@ -1340,6 +1339,7 @@ class FleetBrain:
             repo=repo,
             codename=codename,
             limit=clamped,
+            offset=max(0, int(offset)),
         )
 
     def list_failures(
