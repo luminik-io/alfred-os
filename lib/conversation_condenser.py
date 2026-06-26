@@ -370,7 +370,7 @@ _OVERFLOW_RE = re.compile(
     r"|\b(?:exceed|exceeded)[^\n]{0,40}?context[_ ]?(?:length|window)"
     r"|\bcontext[_ ]?length[_ ]?exceeded\b"
     r"|\bprompt\s+is\s+too\s+long\b"
-    r"|\b(?:message|messages)\s+(?:is\s+|are\s+)?too\s+long\b(?![\s\S]{0,60}\bmessage\s+length\b)"
+    r"|\b(?:message|messages)\s+(?:is\s+|are\s+)?too\s+long\b(?![\s\S]*\bmessage\s+length\b)"
     r"|\binput\s+(?:is\s+)?too\s+long\b"
     r"|\bmaximum\s+context\s+length\b"
     r"|\btoo\s+many\s+(?:input\s+)?tokens\b"

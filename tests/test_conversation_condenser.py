@@ -239,6 +239,14 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     assert not cc.looks_like_context_overflow(
         "Your message is too long.\nThe maximum message length is 4096 characters."
     )
+    # A verbose phrasing pushes "message length" well past any fixed lookahead
+    # window; the exclusion must still hold no matter how far the cap clause sits
+    # from "too long" (this regressed when the lookahead was distance-bounded).
+    assert not cc.looks_like_context_overflow(
+        "Your input messages are too long. Please reduce the number or content of "
+        "your messages. The maximum allowed message length for this model is "
+        "200000 tokens."
+    )
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
