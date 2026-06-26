@@ -23,6 +23,7 @@ sys.path.insert(0, str(_REPO / "lib"))
 from memory.redis_agent_memory import (  # noqa: E402
     RedisAgentMemoryProvider,
     _AmsHttpError,
+    _BreakerState,
 )
 
 
@@ -270,6 +271,23 @@ def test_half_open_trial_makes_a_single_attempt() -> None:
     with pytest.raises(_AmsHttpError):
         prov._request("GET", "/v1/health", None)
     assert calls["n"] - before == 1
+
+
+def test_breaker_allow_grants_a_single_half_open_trial_atomically() -> None:
+    """allow() returns the decision (closed/half_open/open) in one locked step,
+    and hands out exactly one half-open trial so the retry budget cannot widen
+    via a concurrent state change between two separate checks."""
+    clock = _FakeClock()
+    b = _BreakerState(threshold=1, cooldown_s=10.0, clock=clock)
+    assert b.allow() == "closed"
+    b.record_failure()  # threshold of 1 -> opens
+    assert b.allow() == "open"  # still cooling down
+    clock.advance(11.0)
+    assert b.allow() == "half_open"  # the single trial is granted here...
+    assert b.allow() == "open"  # ...and a concurrent caller is blocked
+    # A successful trial closes the breaker; calls flow again.
+    b.record_success()
+    assert b.allow() == "closed"
 
 
 def test_list_lessons_does_not_scope_to_user() -> None:

@@ -129,22 +129,29 @@ class _BreakerState:
     def _half_open(self) -> bool:
         return self.opened_at is not None and (self.clock() - self.opened_at) >= self.cooldown_s
 
-    def allow(self) -> bool:
-        """Return ``True`` if a call may proceed.
+    def allow(self) -> str:
+        """Decide, atomically, what one call may do. Returns one of:
 
-        Closed -> always. Open and still cooling down -> fail fast. Half-open
-        (cooldown elapsed) -> let exactly ONE trial through and block the rest
-        until that trial records success or failure.
+        * ``"closed"``: proceed with the full retry budget.
+        * ``"half_open"``: a single recovery trial was granted to THIS caller
+          (no retries); concurrent callers are blocked until it resolves.
+        * ``"open"``: fail fast (still cooling down, or another half-open trial
+          is already in flight).
+
+        Returning the half-open grant here, rather than re-deriving it with a
+        separate check, closes a race: a concurrent ``record_success`` between
+        two checks could otherwise clear the open state and hand the trial the
+        full retry budget instead of a single attempt.
         """
         with self._lock:
             if self.opened_at is None:
-                return True
+                return "closed"
             if (self.clock() - self.opened_at) < self.cooldown_s:
-                return False
+                return "open"
             if self._trial_in_flight:
-                return False
+                return "open"
             self._trial_in_flight = True
-            return True
+            return "half_open"
 
     def is_half_open(self) -> bool:
         """Whether the breaker is in its single-trial recovery window."""
@@ -480,7 +487,11 @@ class RedisAgentMemoryProvider:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        if not self._breaker.allow():
+        # One atomic breaker decision drives both the fail-fast check and the
+        # retry budget, so a concurrent success cannot turn a half-open trial
+        # (one attempt) into a full-retry call.
+        decision = self._breaker.allow()
+        if decision == "open":
             raise _AmsHttpError(
                 None,
                 f"AMS circuit breaker open for {self.base_url} "
@@ -491,7 +502,7 @@ class RedisAgentMemoryProvider:
         # A half-open trial gets exactly ONE attempt: a failed probe must not
         # keep hammering a recovering endpoint through the retry loop during the
         # fresh cooldown. A closed breaker uses the full retry budget.
-        retries = 0 if self._breaker.is_half_open() else self.max_retries
+        retries = 0 if decision == "half_open" else self.max_retries
         attempt = 0
         while True:
             try:
