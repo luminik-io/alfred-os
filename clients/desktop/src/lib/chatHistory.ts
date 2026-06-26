@@ -215,13 +215,17 @@ export function loadConversations(): PersistedConversation[] {
     }
   }
 
-  // Fold the legacy v1 blob in whenever it is not already represented in v2 by
-  // id, not only when v2 is empty. A v1 thread that still exists alongside v2
-  // entries (for example after a downgrade rewrites the old key) would
-  // otherwise never appear in Recent. The sort and cap below order and bound
-  // it; deleteConversation clears the v1 key so a removed thread cannot return.
+  // Fold the legacy v1 blob in only when there is ROOM under the cap, so the
+  // legacy thread can never evict a real v2 chat (a downgrade could stamp it
+  // recent). It shows when fewer than the cap of v2 chats exist; once v2 is
+  // full, real chats take precedence. Dedupes by id; deleteConversation clears
+  // the v1 key so a removed thread cannot return.
   const legacy = readLegacyConversation();
-  if (legacy && !conversations.some((c) => c.id === legacy.id)) {
+  if (
+    legacy &&
+    !conversations.some((c) => c.id === legacy.id) &&
+    conversations.length < MAX_PERSISTED_CONVERSATIONS
+  ) {
     conversations = [...conversations, legacy];
   }
 

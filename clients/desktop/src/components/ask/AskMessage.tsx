@@ -70,6 +70,13 @@ function AskTextPart(role: "user" | "assistant"): TextMessagePartComponent {
 const UserTextPart = AskTextPart("user");
 const AssistantTextPart = AskTextPart("assistant");
 
+// Stable across renders: recreating this map every render remounts the part
+// renderers on every streamed token.
+const ASSISTANT_MESSAGE_PARTS = {
+  Text: AssistantTextPart,
+  tools: { by_name: { [DRAFT_TOOL_NAME]: AskDraftPart } },
+};
+
 export function AskUserMessage() {
   return (
     <MessagePrimitive.Root className="ask-bubble ask-bubble--user">
@@ -135,12 +142,7 @@ export function AskAssistantMessage({ context }: { context: AskMessageContext })
           </div>
         ) : null}
       </div>
-      <MessagePrimitive.Parts
-        components={{
-          Text: AssistantTextPart,
-          tools: { by_name: { [DRAFT_TOOL_NAME]: AskDraftPart } },
-        }}
-      />
+      <MessagePrimitive.Parts components={ASSISTANT_MESSAGE_PARTS} />
     </MessagePrimitive.Root>
   );
 }

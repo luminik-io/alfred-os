@@ -197,6 +197,10 @@ export function useAskThread({
   // Tracks the in-flight run so reset() and unmount can cancel it; a late
   // resolve must never resurrect a cleared transcript.
   const abortRef = useRef<AbortController | null>(null);
+  // Synchronous in-flight guard: `busy` state lags a render, so two submits
+  // landing in one batch could both pass the busy check. This ref flips
+  // immediately so only the first run proceeds.
+  const busyRef = useRef(false);
   // The assistant-ui composer clears its input on submit. When a turn fails
   // before it produces anything (a control or draft error on the first hop), we
   // restore the person's text into the composer so they do not lose it; the view
@@ -269,7 +273,8 @@ export function useAskThread({
   // without the person retyping.
   const runTurn = useCallback(
     async (text: string, baseTurns: ChatTurn[]) => {
-      if (!text || busy) return;
+      if (!text || busyRef.current) return;
+      busyRef.current = true;
       setBusy(true);
       setError(null);
       lastUserTextRef.current = text;
@@ -279,7 +284,12 @@ export function useAskThread({
       abortRef.current = controller;
       const isCurrent = () => abortRef.current === controller && !controller.signal.aborted;
       const finishIfCurrent = () => {
-        if (abortRef.current === controller) setBusy(false);
+        if (abortRef.current === controller) {
+          busyRef.current = false;
+          busyRef.current = false;
+      busyRef.current = false;
+    setBusy(false);
+        }
       };
 
       const priorMessages: ChatTurn[] = baseTurns;
@@ -405,7 +415,7 @@ export function useAskThread({
         finishIfCurrent();
       }
     },
-    [baseUrl, busy, commitTurn, hasEngine, result, selectedRepos],
+    [baseUrl, commitTurn, hasEngine, result, selectedRepos],
   );
 
   // Stop the in-flight generation. The partial assistant reply stays on screen
@@ -413,6 +423,7 @@ export function useAskThread({
   const stop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    busyRef.current = false;
     setBusy(false);
     setTurns((prev) => {
       const next = [...prev];
@@ -447,6 +458,7 @@ export function useAskThread({
     setTurns([]);
     setResult(null);
     setError(null);
+    busyRef.current = false;
     setBusy(false);
     setFileNotices({});
     setFileBusyId(null);
@@ -489,7 +501,8 @@ export function useAskThread({
           : null,
       );
       setError(null);
-      setBusy(false);
+      busyRef.current = false;
+    setBusy(false);
       setFileNotices({});
       setFileBusyId(null);
       lastUserTextRef.current = lastUserTextOf(target.turns.map(fromPersistedTurn));
@@ -507,6 +520,7 @@ export function useAskThread({
     setTurns([]);
     setResult(null);
     setError(null);
+    busyRef.current = false;
     setBusy(false);
     setFileNotices({});
     setFileBusyId(null);
