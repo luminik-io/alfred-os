@@ -236,6 +236,40 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     expect(screen.queryByText(/second conversation reply\./i)).not.toBeInTheDocument();
   });
 
+  it("preserves the active conversation when switching threads mid-stream", async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    // Two settled conversations so the Recent switcher is available.
+    streamMock.mockImplementationOnce(async () => converseResponse({ reply: "B reply." }));
+    await send(user, "Question B");
+    await screen.findByText(/b reply\./i);
+    await user.click(screen.getByRole("button", { name: /new chat/i }));
+    streamMock.mockImplementationOnce(async () => converseResponse({ reply: "C reply." }));
+    await send(user, "Question C");
+    await screen.findByText(/c reply\./i);
+    await user.click(screen.getByRole("button", { name: /new chat/i }));
+
+    // Start conversation A with a stream that never settles, so it stays busy
+    // and the settle effect does not persist it.
+    streamMock.mockImplementationOnce(() => new Promise<ConverseResponse>(() => {}));
+    await send(user, "Question A unfinished");
+    expect(await screen.findByText(/question a unfinished/i)).toBeInTheDocument();
+
+    // Switch to B mid-stream. Without the persist-before-switch fix, A's turn is
+    // dropped because the swap replaces it while busy.
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    let menu = await screen.findByLabelText(/recent ask conversations/i);
+    await user.click(within(menu).getByText(/question b/i));
+    await screen.findByText(/b reply\./i);
+
+    // A must still be recoverable from Recent: its message was persisted.
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    menu = await screen.findByLabelText(/recent ask conversations/i);
+    await user.click(within(menu).getByText(/question a unfinished/i));
+    expect(await screen.findByText(/question a unfinished/i)).toBeInTheDocument();
+  });
+
   it("rehydrates the most recent conversation on mount (and survives across mounts)", async () => {
     streamMock.mockImplementation(async () =>
       converseResponse({ reply: "Persisted reply." }),

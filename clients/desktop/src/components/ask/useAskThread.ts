@@ -453,6 +453,25 @@ export function useAskThread({
   const resumeConversation = useCallback(
     (id: string) => {
       if (id === conversationId) return;
+      // Persist the conversation being left BEFORE swapping. The settle effect
+      // skips saving while busy, and the swap below replaces `turns`, so without
+      // this a switch mid-stream drops the active turn. A trailing in-flight
+      // reply is dropped (a half-written reply is not worth keeping), but the
+      // operator's message and any settled turns are preserved and stay in
+      // Recent.
+      const lastIdx = turns.length - 1;
+      const settled = turns.filter(
+        (t, i) =>
+          !(i === lastIdx && t.kind === "message" && t.role === "assistant" && t.pending),
+      );
+      if (settled.length) {
+        saveConversation({
+          id: conversationId,
+          draftId: result?.draft_id,
+          draft: result?.draft,
+          turns: settled.map(toPersistedTurn),
+        });
+      }
       abortRef.current?.abort();
       abortRef.current = null;
       const target = loadConversations().find((c) => c.id === id);
@@ -471,7 +490,7 @@ export function useAskThread({
       lastUserTextRef.current = lastUserTextOf(target.turns.map(fromPersistedTurn));
       setRecent(loadConversations());
     },
-    [conversationId],
+    [conversationId, turns, result],
   );
 
   // Drop every stored conversation and start clean.
