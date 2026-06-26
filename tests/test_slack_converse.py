@@ -509,6 +509,19 @@ def test_finalize_reports_success_and_failure() -> None:
     assert bad_poster.finalize("the answer") is False
 
 
+def test_finalize_empty_answer_reports_failure() -> None:
+    # An empty reconciled answer never replaces the placeholder, so finalize must
+    # report False (delivery did not produce a real answer), not a false success.
+    client = FakeSlackClient()
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock()
+    )
+    poster.start()
+    assert poster.finalize("") is False
+    # Only the placeholder post happened; no chat.update with a real answer.
+    assert client.updates == []
+
+
 def test_finalize_true_when_answer_already_streamed() -> None:
     # If the last streamed update already carried the final text, finalize has
     # nothing new to write but the answer IS on Slack: report True, not a false

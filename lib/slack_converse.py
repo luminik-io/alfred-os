@@ -431,16 +431,22 @@ class SlackStreamPoster:
         message-body limit (:data:`MAX_MESSAGE_CHARS`) so a long answer is not
         clipped to the much smaller streaming cap.
 
-        Returns True iff the final answer is on Slack: either it was written, or
-        the last streamed update already carried it (text unchanged). Returns
-        False when there is no message to update, or the final write never
-        landed (a persistent 429 past the budget, or a non-429 error) so the
-        caller can surface that the reconciled answer did not reach Slack.
+        Returns True iff the reconciled answer is on Slack: either it was
+        written, or the last streamed update already carried it (text unchanged).
+        Returns False when there is no message to update, the final answer is
+        empty (so only the placeholder/partial is showing -- nothing reconciled
+        landed), or the final write never landed (a persistent 429 past the
+        budget, or a non-429 error), so the caller can surface that the
+        reconciled answer did not reach Slack.
         """
         text = _cap_message(text)
         if not self._message_ts:
             return False
-        if not text or text == self._last_text:
+        if not text:
+            # An empty reconciled answer never replaces the placeholder/partial,
+            # so delivery did NOT produce a real answer: report failure.
+            return False
+        if text == self._last_text:
             # Nothing new to write; the current message already holds the answer.
             return True
         return self._write(text, retries=MAX_FINALIZE_RATE_LIMIT_RETRIES)
