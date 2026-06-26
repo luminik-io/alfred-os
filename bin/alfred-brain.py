@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``alfred brain`` — operator CLI for the fleet-brain memory layer.
+"""``alfred brain`` - operator CLI for the fleet-brain memory layer.
 
 Subcommands:
 

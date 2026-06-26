@@ -214,7 +214,7 @@ def dirty_worktree_reason(wt: Path) -> str | None:
 
 # Sweep abandoned clean worktrees (>2h old, or >15min in emergency mode).
 # Dirty or unknown directories are kept so cleanup never destroys
-# in-progress agent work — the dirty-skip + recovery-ref path is identical
+# in-progress agent work - the dirty-skip + recovery-ref path is identical
 # in both modes; emergency only lowers the *age* gate.
 FLEET_WT_MIN_AGE_SECONDS = 900 if EMERGENCY else 7200  # 15min vs 2h
 wt_root = WORKTREE_ROOT
@@ -524,7 +524,7 @@ EVENTS_RETENTION_DAYS = int(os.environ.get("ALFRED_EVENTS_RETENTION_DAYS", "30")
 
 # Emergency retention floors: shorten transcript/event retention so a
 # disk-pressure pass reclaims their bulk. Spend ledgers are deliberately
-# NOT shortened — metrics needs the 90-day history and they are tiny. The
+# NOT shortened - metrics needs the 90-day history and they are tiny. The
 # floors clamp the configured retention DOWN, never up, so an operator who
 # already runs tighter retention keeps it.
 if EMERGENCY:

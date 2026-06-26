@@ -1,4 +1,4 @@
-"""Tests for ``bin/scrub-check.sh`` — specifically the extra-patterns loader.
+"""Tests for ``bin/scrub-check.sh`` - specifically the extra-patterns loader.
 
 The scrub script loads operator-specific exact patterns from a gitignored
 file (``bin/.scrub-extra-patterns``, overridable via
@@ -120,7 +120,7 @@ def test_true_comment_lines_are_skipped(scrub_repo, tmp_path):
     comment text must therefore leave the scan clean (exit 0).
     """
     extra = tmp_path / "extra-patterns"
-    # A bare hash, a hash+space comment, and a blank line — all skipped.
+    # A bare hash, a hash+space comment, and a blank line - all skipped.
     extra.write_text("#\n# a comment\n\n")
 
     # Plant a file that contains the comment text. If '# a comment' were
@@ -185,7 +185,7 @@ def test_internal_profile_literal_is_caught_in_a_test_named_file(scrub_repo, tmp
 
     The bare internal AWS profile names are first-class scrub patterns
     with no per-line exemption, so a forbidden literal
-    must trip the scan no matter which file it lands in — including one
+    must trip the scan no matter which file it lands in - including one
     under a ``tests/`` path that used to be exempt.
     """
     extra = tmp_path / "extra-patterns"

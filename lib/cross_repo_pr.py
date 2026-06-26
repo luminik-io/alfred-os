@@ -114,7 +114,7 @@ class Result:
         return not self.failed
 
 
-# Persisted-state file shape — kept separate from Plan because the file
+# Persisted-state file shape - kept separate from Plan because the file
 # survives between executions (resume after partial chain failure).
 @dataclass
 class ChainState:

@@ -403,9 +403,9 @@ def render_status_update(
     if state == STATE_MERGED:
         pr = progress.pr_url or record.pr_url
         pr_part = f"\n\n*Merged PR:* {pr}" if pr else ""
-        return f"*Merged* — {issue_ref} shipped.{pr_part}"
+        return f"*Merged* - {issue_ref} shipped.{pr_part}"
     if state == STATE_CLOSED:
-        return f"*Closed* — {issue_ref} was closed without a merged PR."
+        return f"*Closed* - {issue_ref} was closed without a merged PR."
     return ""
 
 

@@ -133,7 +133,7 @@ def check_disk_pressure() -> Finding:
     """Free space on the filesystem holding ALFRED_HOME.
 
     Green when healthy, yellow on a ``low`` early-warning reading, red
-    (alert) when ``critical`` — the same thresholds the preflight gate
+    (alert) when ``critical`` - the same thresholds the preflight gate
     uses to skip firings, so ``alfred doctor`` shows the operator exactly
     why agents are backing off before the channel fills with skip
     warnings.
@@ -324,7 +324,7 @@ def check_engine_auth_streak(
     Walks per-firing event JSONL files in the last ``window_seconds``
     and counts distinct agents emitting ``subtype: error_authentication``
     with ``engine: claude``. Red when ``min_agents`` or more concurrent
-    agents hit the same failure mode within the window — the root cause
+    agents hit the same failure mode within the window - the root cause
     is the operator's Anthropic session or Keychain ACL, not any
     individual agent's prompt.
     """

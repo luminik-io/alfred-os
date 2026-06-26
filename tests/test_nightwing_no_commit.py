@@ -141,7 +141,7 @@ def test_no_commit_streaks_roundtrip_persists_to_alfred_state(nightwing):
 
 
 def test_no_commit_streaks_load_returns_empty_on_garbage(nightwing, tmp_path):
-    """A corrupted streaks file must not crash the firing — the streak
+    """A corrupted streaks file must not crash the firing - the streak
     counter loses one cycle of memory, the firing continues."""
     nightwing.NO_COMMIT_STREAKS_FILE.parent.mkdir(parents=True, exist_ok=True)
     nightwing.NO_COMMIT_STREAKS_FILE.write_text("not-json{")

@@ -17,7 +17,7 @@ Design:
 - No hardcoded repo names. The caller provides ``WorktreeRequest``
   records that fully describe each repo (local checkout path, branch
   name, target worktree directory). Resolution from logical repo names
-  to filesystem paths is the caller's responsibility — typically a
+  to filesystem paths is the caller's responsibility - typically a
   lookup against an env-configured map.
 - 12-factor: configuration via env vars (``ALFRED_HOME``,
   ``WORKSPACE_ROOT``); the module reads defaults but every value is
@@ -95,7 +95,7 @@ class GitRunner(Protocol):
 
     def __call__(
         self, args: Sequence[str], *, cwd: Path, timeout: int = 60
-    ) -> GitResult:  # pragma: no cover — Protocol body
+    ) -> GitResult:  # pragma: no cover - Protocol body
         ...
 
 

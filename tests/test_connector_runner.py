@@ -68,7 +68,7 @@ class _FakeConnector:
         default_labels=None,
         crash_on_poll: bool = False,
     ):
-        from connectors import IssueDraft  # noqa: F401 — module presence check
+        from connectors import IssueDraft  # noqa: F401 - module presence check
 
         self.name = name
         self.default_repo = default_repo

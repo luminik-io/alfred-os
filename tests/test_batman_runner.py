@@ -495,7 +495,7 @@ def test_pending_envelope_roundtrip(monkeypatch, tmp_path):
 
 def test_pending_envelope_aged_out(monkeypatch, tmp_path):
     """An envelope older than ALFRED_BATMAN_APPROVAL_MAX_AGE_HOURS must
-    re-draft, not resume — so an abandoned plan post doesn't hold a
+    re-draft, not resume - so an abandoned plan post doesn't hold a
     parent issue hostage forever."""
     runner = _load_runner()
     import json
@@ -539,7 +539,7 @@ def test_pending_envelope_clear_is_idempotent(monkeypatch, tmp_path):
 
 
 def test_label_set_and_unset_are_best_effort(monkeypatch):
-    """``gh_issue_edit`` failures must not crash the firing — label
+    """``gh_issue_edit`` failures must not crash the firing - label
     management is operator-visible but secondary to the firing's
     primary path (post + poll + execute)."""
     runner = _load_runner()

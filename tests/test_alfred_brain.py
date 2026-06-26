@@ -635,7 +635,7 @@ def test_ingest_drains_outbox(
 def test_ingest_handles_missing_outbox(
     ingest_mod: ModuleType, brain_db: Path, tmp_path: Path
 ) -> None:
-    # No outbox dir created — should exit 0 cleanly.
+    # No outbox dir created - should exit 0 cleanly.
     rc = ingest_mod.main([])
     assert rc == 0
 

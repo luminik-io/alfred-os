@@ -543,7 +543,7 @@ __all__ = [
 # (``notify.slack_post``, ``process.subprocess``, ...). A bare
 # ``setattr`` on the package only rebinds the symbol in the
 # ``__init__`` namespace, not in the submodule the consumer call site
-# imported from — so the monkeypatch silently has no effect.
+# imported from - so the monkeypatch silently has no effect.
 #
 # To preserve drop-in compatibility we subclass ``ModuleType``: any
 # ``setattr`` on this package fans out to every submodule that already

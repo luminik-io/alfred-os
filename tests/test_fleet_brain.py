@@ -1284,7 +1284,7 @@ def test_disk_store_enables_wal_journal_mode(tmp_path: Path) -> None:
     # journal mode we want to assert.
     conn = sqlite3.connect(tmp_path / "brain.sqlite")
     try:
-        # ``journal_mode`` is sticky on disk for WAL — once set it persists
+        # ``journal_mode`` is sticky on disk for WAL - once set it persists
         # across opens. Verify the on-disk mode is wal (not delete/memory).
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
         assert mode == "wal", f"expected wal, got {mode!r}"

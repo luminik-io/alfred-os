@@ -923,7 +923,7 @@ class SlackControlHandler:
             for user in snapshot.users:
                 source = ", ".join(user.sources)
                 removable = " · local" if user.can_remove else ""
-                lines.append(f"- `<@{user.user_id}>` — {source}{removable}")
+                lines.append(f"- `<@{user.user_id}>` - {source}{removable}")
         lines.extend(
             [
                 "",
@@ -1216,7 +1216,7 @@ def render_fleet_status(data: dict[str, Any]) -> str:
             name = str(agent.get("codename") or agent.get("name") or "?")
             state = _agent_state_label(agent)
             fired = _last_fired_label(agent)
-            lines.append(f"- `{name}` — {state}{fired}")
+            lines.append(f"- `{name}` - {state}{fired}")
         if len(agents) > 20:
             lines.append(f"- ...and {len(agents) - 20} more.")
 
@@ -1246,7 +1246,7 @@ def render_recent_runs(data: dict[str, Any]) -> str:
         ok = agent.get("today_successes")
         fail = agent.get("today_failures")
         counts = _run_counts_label(today, ok, fail)
-        lines.append(f"- `{name}` — last fired {last}{counts}")
+        lines.append(f"- `{name}` - last fired {last}{counts}")
     return "\n".join(lines)
 
 
@@ -1563,7 +1563,7 @@ def render_memory_harvest(payload: dict[str, Any]) -> str:
             candidate = item.get("candidate_id")
             candidate_text = f" `{candidate}`" if candidate else ""
             lines.append(
-                f"- `{status}`{candidate_text} — `{item.get('codename') or item.get('agent')}/{item.get('repo')}`: "
+                f"- `{status}`{candidate_text} - `{item.get('codename') or item.get('agent')}/{item.get('repo')}`: "
                 f"{_short(str(item.get('body') or ''), 180)}"
             )
         if len(proposals) > 8:
@@ -1627,7 +1627,7 @@ def _render_memory_row(item: dict[str, Any]) -> str:
     elif isinstance(score, (int, float)):
         metric = f" score={score:.2f}"
     body = _short(str(item.get("body") or item.get("summary") or item.get("topic") or ""), 180)
-    return f"- `{candidate_id}` — `{actor}/{repo}`{metric}: {body}"
+    return f"- `{candidate_id}` - `{actor}/{repo}`{metric}: {body}"
 
 
 def _memory_row_id(item: dict[str, Any]) -> str:

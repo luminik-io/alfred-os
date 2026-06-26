@@ -197,7 +197,7 @@ def test_doctor_smoke_runs_in_doctor_mode(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# check_engine_auth_streak — concurrent Anthropic auth failures
+# check_engine_auth_streak - concurrent Anthropic auth failures
 # ---------------------------------------------------------------------------
 def _write_event(events_dir: Path, firing_id: str, *records: dict) -> Path:
     events_dir.mkdir(parents=True, exist_ok=True)

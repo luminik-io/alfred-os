@@ -26,7 +26,7 @@ from . import schema as schema_mod
 
 # ---------------------------------------------------------------------------
 # Entity dataclasses. Kept here (not in a separate ``models.py``) so the
-# Store contract and the entity types stay in one file — the entities
+# Store contract and the entity types stay in one file - the entities
 # are an implementation concern of the store, not a separate domain
 # layer. ``FleetBrain`` re-exports them as part of its public surface.
 # ---------------------------------------------------------------------------
@@ -255,7 +255,7 @@ def default_db_path() -> Path:
 
     Order of precedence:
 
-    1. ``ALFRED_FLEET_BRAIN_DB`` — explicit override.
+    1. ``ALFRED_FLEET_BRAIN_DB`` - explicit override.
     2. ``$ALFRED_HOME/fleet-brain.db``.
     3. ``~/.alfred/fleet-brain.db``.
     """
@@ -277,7 +277,7 @@ def default_db_path() -> Path:
 class Store(Protocol):
     """The persistence contract the public :class:`FleetBrain` depends on.
 
-    Implementations must be re-entrant — every method takes care of
+    Implementations must be re-entrant - every method takes care of
     its own connection management. Methods raise no custom exceptions
     today; SQLite errors surface unmodified so callers can attach
     their own retry policy.
@@ -490,7 +490,7 @@ def _to_iso(dt: datetime) -> str:
 
     SQLite has no native timezone-aware datetime type, so we store
     everything as ISO-8601 strings. Naive datetimes are assumed to be
-    UTC — the brain is local-only single-process so this is safe.
+    UTC - the brain is local-only single-process so this is safe.
     """
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
@@ -511,7 +511,7 @@ class SQLiteStore:
     Pass ``db_path=":memory:"`` for an in-process throwaway brain
     (tests). For shared in-memory across connections we'd need a
     URI like ``file::memory:?cache=shared``; the default per-call
-    connection pattern intentionally doesn't support that — tests
+    connection pattern intentionally doesn't support that - tests
     pin a single :class:`SQLiteStore` instance, not the path.
     """
 

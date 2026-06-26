@@ -2,7 +2,7 @@
 
 The helper replaces ``file.stat().st_mtime``-based freshness for any
 caller that caches auth or identity probes. The embedded timestamp
-survives ``touch``, restore-from-backup, copy-across-hosts — mtime
+survives ``touch``, restore-from-backup, copy-across-hosts - mtime
 does not.
 """
 

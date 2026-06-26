@@ -7,7 +7,7 @@ is left on the filesystem that holds ``ALFRED_HOME``, and whether that is
 Why it exists: scheduled agents write worktrees, transcripts, spend
 ledgers, and /tmp debug dirs every firing. When the disk fills, the next
 ``claude`` / ``codex`` invocation hits ``ENOSPC`` and the launchd job
-crash-loops — every tick burns a turn, fails, and reschedules. Nothing in
+crash-loops - every tick burns a turn, fails, and reschedules. Nothing in
 the old code path made an agent *notice* the disk was full and skip the
 run. :func:`disk_pressure_status` is the primitive that lets
 :func:`agent_runner.preflight` refuse cleanly instead.
@@ -15,8 +15,8 @@ run. :func:`disk_pressure_status` is the primitive that lets
 Thresholds are read from the environment so an operator can tune them
 without editing code:
 
-* ``ALFRED_MIN_FREE_DISK_GB``  — absolute floor in GB (default ``3.0``).
-* ``ALFRED_MIN_FREE_DISK_PCT`` — relative floor in percent (default ``5.0``).
+* ``ALFRED_MIN_FREE_DISK_GB`` - absolute floor in GB (default ``3.0``).
+* ``ALFRED_MIN_FREE_DISK_PCT`` - relative floor in percent (default ``5.0``).
 
 The absolute GB floor is the hard guard: ``critical`` is True only when free
 space drops below ``ALFRED_MIN_FREE_DISK_GB``. The percent floor is advisory
@@ -107,8 +107,8 @@ def disk_pressure_status(path: str | os.PathLike[str] | None = None) -> DiskPres
     :func:`_min_free_gb` / :func:`_min_free_pct`.
 
     Returns a :class:`DiskPressure` mapping. On any OS error reading the
-    filesystem the call fails *open* — it reports a healthy, non-critical
-    status — so a transient stat failure can never wedge the fleet into a
+    filesystem the call fails *open* - it reports a healthy, non-critical
+    status - so a transient stat failure can never wedge the fleet into a
     permanent skip. The real ENOSPC guard is the firing itself; this
     probe only adds an early, graceful back-off.
     """

@@ -3,12 +3,12 @@
 This module owns everything that survives across firings on disk under
 ``${ALFRED_HOME}/state/``:
 
-* :class:`AgentLock` and :func:`with_lock` — mkdir-atomic per-agent mutex
+* :class:`AgentLock` and :func:`with_lock` - mkdir-atomic per-agent mutex
   with PID identity verification.
-* :class:`SpendState` — per-agent per-day firings / turns / cost /
+* :class:`SpendState` - per-agent per-day firings / turns / cost /
   failure ledger.
-* :class:`EventLog` — append-only JSONL per-firing event stream.
-* :func:`is_globally_blocked` / :func:`set_global_block` — fleet-wide
+* :class:`EventLog` - append-only JSONL per-firing event stream.
+* :func:`is_globally_blocked` / :func:`set_global_block` - fleet-wide
   rate-limit block recorded under ``${STATE_ROOT}/global-blocked-until.json``.
 * Fleet enable/disable: :func:`enable_agent`, :func:`disable_agent`,
   :func:`is_agent_enabled`, :func:`list_enabled_agents`.
@@ -358,9 +358,9 @@ def lock_pid_identity_status(
     """Compare the lock's recorded identity against the live process.
 
     Returns:
-        * ``True``  — lock metadata matches the live PID + agent + start key.
-        * ``False`` — metadata exists but disagrees with the live process.
-        * ``None``  — metadata is missing or unparseable (we can't decide).
+        * ``True`` - lock metadata matches the live PID + agent + start key.
+        * ``False`` - metadata exists but disagrees with the live process.
+        * ``None`` - metadata is missing or unparseable (we can't decide).
     """
     metadata_file = lock_dir / "metadata.json"
     if not metadata_file.exists():

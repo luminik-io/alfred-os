@@ -140,7 +140,7 @@ def test_transcript_summary_skips_invalid_json(state_dir: Path) -> None:
         encoding="utf-8",
     )
     s = transcripts.transcript_summary(path)
-    # The valid lines still parse — torn tail doesn't sink the whole file.
+    # The valid lines still parse - torn tail doesn't sink the whole file.
     assert s.tool_calls_total == 1
     assert s.result is not None
 
