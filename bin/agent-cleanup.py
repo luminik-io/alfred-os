@@ -81,14 +81,15 @@ Options:
                 clears Alfred's own /tmp debug dirs regardless of the
                 1-day age gate. Still 100% Alfred-owned with the same
                 dirty-skip + recovery-ref safety as a normal sweep.
-  --scheduled   Opt-in proactive reclaim of regenerable developer caches
-                (Xcode DerivedData, npm cache) and Docker build cache,
-                dangling images, and orphaned volumes, on the normal daily
-                pass instead of only when a firing already hit the disk
-                floor. Keeps the normal age gates and retention floors:
-                only the dev-cache and Docker reclaim run, so the daily
-                cleanup recovers regenerable host build output before disk
-                pressure ever forces an --emergency pass. Also enabled by
+  --scheduled   Opt-in proactive reclaim of REGENERABLE build output on the
+                normal daily pass instead of only when a firing already hit
+                the disk floor: Xcode DerivedData, npm cache, Docker build
+                cache, dangling images, and ANONYMOUS orphaned volumes. It
+                does not change the age gates or retention floors of the
+                other sweep categories, and unlike --emergency it never
+                prunes NAMED Docker volumes (which may hold dev data). Disable
+                per category with ALFRED_EMERGENCY_SKIP_DOCKER=1 or
+                ALFRED_EMERGENCY_SKIP_DEV_CACHES=1. Also enabled by
                 ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 so a launchd entry that
                 cannot pass flags can still opt in via config.
 
@@ -107,11 +108,16 @@ if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
 EMERGENCY = "--emergency" in sys.argv[1:]
 # --scheduled (or ALFRED_CLEANUP_SCHEDULED_RECLAIM=1) opts the daily pass
 # into the dev-cache + Docker reclaim that otherwise runs only reactively
-# under --emergency. It does NOT lower any age gate or retention floor: the
-# rest of the sweep stays a normal pass. An --emergency run already does
-# this reclaim, so the flag is redundant there but harmless. The env var
-# lets a launchd/agents.conf entry (which passes no flags to the script)
-# turn the scheduled reclaim on through config.
+# under --emergency. The reclaim targets REGENERABLE build output only (Xcode
+# DerivedData, npm cache, Docker build cache, dangling images, ANONYMOUS
+# volumes); the next build or run recreates whatever it needs. It does NOT
+# lower the age gates or retention floors of the OTHER sweep categories (temp
+# files, worktrees), and unlike --emergency it never prunes NAMED Docker
+# volumes (which may hold dev data). Disable per category with
+# ALFRED_EMERGENCY_SKIP_DOCKER=1 / ALFRED_EMERGENCY_SKIP_DEV_CACHES=1. An
+# --emergency run already does this reclaim (plus the named-volume prune), so
+# the flag is redundant there but harmless. The env var lets a launchd entry
+# (which passes no flags to the script) turn the scheduled reclaim on.
 _SCHEDULED_RECLAIM_ENV = os.environ.get("ALFRED_CLEANUP_SCHEDULED_RECLAIM", "").strip().lower() in {
     "1",
     "true",
@@ -469,18 +475,22 @@ def reclaim_emergency_docker() -> tuple[float, int]:
 
     * ``docker builder prune -f``        -> build cache only
     * ``docker image prune -f``          -> dangling images only (NOT ``-a``)
-    * ``docker volume prune --all -f``   -> all volumes referenced by no
-      container, named or anonymous
+    * ``docker volume prune -f``         -> ANONYMOUS orphaned volumes only
+    * ``docker volume prune --all -f``   -> ALSO named orphaned volumes,
+      EMERGENCY ONLY (see below)
 
     Since Docker 23.0 a bare ``docker volume prune -f`` removes only anonymous
-    volumes, leaving named orphaned volumes (the usual source of large bloat)
-    on disk. ``--all`` restores the pre-23.0 behavior and reclaims both. On
-    Docker <23 the unknown flag exits non-zero with empty stdout, so the parser
-    reads 0.0 MB and the run is a no-op rather than a regression.
+    volumes. ``--all`` also removes NAMED orphaned volumes, which can hold local
+    dev data (a database, a cache) merely detached from a stopped container.
+    Routinely deleting those on a scheduled daily pass could destroy data, so
+    ``--all`` is gated to ``--emergency`` (the disk is already full and recovery
+    outranks the risk). The scheduled pass prunes only anonymous volumes. On
+    Docker <23 the flag exits non-zero with empty stdout, so the parser reads
+    0.0 MB and the run is a no-op rather than a regression.
 
     We never run ``docker container prune`` and never pass ``-a`` to the image
     prune, so running containers and their data are always preserved. Opt out
-    with ALFRED_EMERGENCY_SKIP_DOCKER=1.
+    entirely with ALFRED_EMERGENCY_SKIP_DOCKER=1 (applies to scheduled too).
 
     Returns ``(freed_mb, prunes_reclaimed)`` where ``prunes_reclaimed`` counts
     the prune commands that freed more than 0 bytes.
@@ -490,10 +500,16 @@ def reclaim_emergency_docker() -> tuple[float, int]:
     docker = shutil.which("docker")
     if docker is None:
         return 0.0, 0
+    # Named orphaned volumes (``--all``) may hold dev data; only an emergency
+    # (disk already full) justifies removing them. A scheduled pass prunes only
+    # anonymous volumes.
+    volume_prune = [docker, "volume", "prune", "-f"]
+    if EMERGENCY:
+        volume_prune.insert(3, "--all")
     commands = [
         [docker, "builder", "prune", "-f"],
         [docker, "image", "prune", "-f"],
-        [docker, "volume", "prune", "--all", "-f"],
+        volume_prune,
     ]
     freed_mb = 0.0
     reclaimed = 0

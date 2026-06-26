@@ -116,13 +116,20 @@ WORKSPACE_ROOT=
 # ALFRED_CLEANUP_AUTODISCOVER=1
 
 # Run the regenerable dev-cache + Docker reclaim (Xcode DerivedData, npm
-# cache, Docker build cache, dangling images, orphaned volumes) on the
-# normal daily cleanup pass instead of only reactively when a firing already
-# hit the disk floor. Reclaims regenerable host build output before disk
-# pressure forces an --emergency pass. Same effect as passing --scheduled to
-# agent-cleanup.py; set here so the launchd cleanup entry (which passes no
-# flags) can opt in. Normal age gates and retention floors are unchanged.
+# cache, Docker build cache, dangling images, ANONYMOUS orphaned volumes) on
+# the normal daily cleanup pass instead of only reactively when a firing
+# already hit the disk floor. Reclaims regenerable host build output before
+# disk pressure forces an --emergency pass. Same effect as passing --scheduled
+# to agent-cleanup.py; set here so the launchd cleanup entry (which passes no
+# flags) can opt in. It does not change the age gates of the other sweep
+# categories, and unlike --emergency it never prunes NAMED Docker volumes
+# (which may hold dev data). Disable per category below.
 # ALFRED_CLEANUP_SCHEDULED_RECLAIM=0
+# Disable just the Docker prune (build cache, dangling images, volumes), or
+# just the dev-cache reclaim (DerivedData, npm), in both scheduled and
+# emergency passes:
+# ALFRED_EMERGENCY_SKIP_DOCKER=1
+# ALFRED_EMERGENCY_SKIP_DEV_CACHES=1
 
 # ----------------------------------------------------------------------
 # Operator-side overrides (no sensible defaults)

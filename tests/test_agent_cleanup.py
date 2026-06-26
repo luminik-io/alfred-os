@@ -287,7 +287,11 @@ def test_scheduled_env_reclaims_dev_caches_without_flag(tmp_path, monkeypatch):
 
 
 def test_scheduled_flag_reclaims_docker_without_emergency(tmp_path, monkeypatch):
-    """--scheduled runs the same 3 safe docker prunes the emergency pass does."""
+    """--scheduled runs the safe docker prunes, but ANONYMOUS volumes only.
+
+    Unlike --emergency it must not pass --all to the volume prune, since that
+    also removes NAMED orphaned volumes which can hold local dev data.
+    """
     monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
     home = tmp_path / "home"
     calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
@@ -296,8 +300,11 @@ def test_scheduled_flag_reclaims_docker_without_emergency(tmp_path, monkeypatch)
     assert [c[1:] for c in calls] == [
         ["builder", "prune", "-f"],
         ["image", "prune", "-f"],
-        ["volume", "prune", "--all", "-f"],
+        ["volume", "prune", "-f"],
     ]
+    for cmd in calls:
+        assert "--all" not in cmd
+        assert "container" not in cmd
 
 
 def test_scheduled_respects_skip_envs(tmp_path, monkeypatch):
