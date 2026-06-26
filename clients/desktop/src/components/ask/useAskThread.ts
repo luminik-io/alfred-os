@@ -166,6 +166,10 @@ export function useAskThread({
   // whether the operator switched chats and should no longer apply its result.
   const conversationIdRef = useRef(conversationId);
   conversationIdRef.current = conversationId;
+  // Synchronous file-in-flight guard: `fileBusyId` state lags a render, so
+  // two File clicks in one batch could both pass the busy check and start two
+  // requests. This ref flips immediately so only the first proceeds.
+  const fileBusyIdRef = useRef<string | null>(null);
   const [turns, setTurns] = useState<ChatTurn[]>(
     () => initial?.turns.map(fromPersistedTurn) ?? [],
   );
@@ -461,6 +465,7 @@ export function useAskThread({
     busyRef.current = false;
     setBusy(false);
     setFileNotices({});
+    fileBusyIdRef.current = null;
     setFileBusyId(null);
     lastUserTextRef.current = "";
     setRecent(loadConversations());
@@ -504,7 +509,8 @@ export function useAskThread({
       busyRef.current = false;
     setBusy(false);
       setFileNotices({});
-      setFileBusyId(null);
+      fileBusyIdRef.current = null;
+    setFileBusyId(null);
       lastUserTextRef.current = lastUserTextOf(target.turns.map(fromPersistedTurn));
       setRecent(loadConversations());
     },
@@ -523,6 +529,7 @@ export function useAskThread({
     busyRef.current = false;
     setBusy(false);
     setFileNotices({});
+    fileBusyIdRef.current = null;
     setFileBusyId(null);
     lastUserTextRef.current = "";
     setRecent([]);
@@ -532,7 +539,8 @@ export function useAskThread({
   // enforces readiness and repo allowlisting; there is no client approval step.
   const fileIssue = useCallback(
     async (draftId: string) => {
-      if (fileBusyId) return;
+      if (fileBusyIdRef.current) return;
+      fileBusyIdRef.current = draftId;
       const startedIn = conversationIdRef.current;
       setFileBusyId(draftId);
       // Drop only this draft's prior notice; other cards keep theirs.
@@ -568,12 +576,14 @@ export function useAskThread({
           },
         }));
       } finally {
-        // Only clear the busy flag for the conversation that started the file;
-        // a switch already reset it for the new chat.
+        // The request finished, so the synchronous guard always clears; the
+        // state clears only for the conversation that started the file (a switch
+        // already reset it for the new chat).
+        fileBusyIdRef.current = null;
         if (conversationIdRef.current === startedIn) setFileBusyId(null);
       }
     },
-    [baseUrl, fileBusyId],
+    [baseUrl],
   );
 
   // The id of the last assistant TEXT reply (convertTurn ids text turns as
