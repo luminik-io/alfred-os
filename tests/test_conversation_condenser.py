@@ -230,6 +230,11 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     # "message(s) too long" is a common recoverable shape the original set missed.
     assert cc.looks_like_context_overflow("Your message is too long for the model context window")
     assert cc.looks_like_context_overflow("The messages are too long")
+    # A per-message-length cap is NOT a recoverable context overflow:
+    # condensing prior context would not shrink the single oversized message.
+    assert not cc.looks_like_context_overflow(
+        "Your message is too long. The maximum message length is 4096 characters."
+    )
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
