@@ -340,6 +340,57 @@ describe("useRosterTheme", () => {
     });
   });
 
+  // Thread: "Runtime error clears". When runtime A's save fails and runtime B's
+  // queued save later DRAINS AND SUCCEEDS, B's success must not clear A's still
+  // unresolved failure. saveError is cleared only for the runtime it belongs to.
+  it("a drained successful save on one runtime keeps another runtime's failure", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+    let rejectA: (reason?: unknown) => void = () => {};
+    let resolveB: (value: RosterThemeResponse) => void = () => {};
+    saveRosterTheme
+      .mockReturnValueOnce(
+        new Promise<RosterThemeResponse>((_resolve, reject) => {
+          rejectA = reject;
+        }),
+      )
+      // Runtime B's drained save SUCCEEDS this time (the real drained-success path).
+      .mockReturnValueOnce(
+        new Promise<RosterThemeResponse>((resolve) => {
+          resolveB = resolve;
+        }),
+      );
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+
+    // A fails: its error surfaces, and its finally drains B's queued save.
+    await act(async () => {
+      rejectA(new Error("alfred serve returned 500"));
+    });
+    await waitFor(() => {
+      expect(result.current.saveError).toContain("500");
+    });
+
+    // B's drained save now succeeds. A's failure must still be surfaced.
+    await act(async () => {
+      resolveB(serverState({ theme: "transformers" }));
+    });
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    expect(result.current.saveError).toContain("500");
+  });
+
   // Thread: "Stale Hydration Overwrites Edit". A change made on a runtime
   // whose hydration GET is still in flight must not be reverted when that GET
   // resolves: the operator's edit owns the runtime state immediately.

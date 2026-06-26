@@ -112,6 +112,11 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // it. Gating on the global `saveSeqRef` instead would let a save to runtime B
   // silence a real failure on runtime A (a cross-runtime failure vanishing).
   const latestSeqByUrlRef = useRef<Map<string, number>>(new Map());
+  // Which runtime the currently surfaced `saveError` belongs to (null when there
+  // is no error, or it is a connection-level one). A success for runtime B must
+  // not clear a still-unresolved failure on runtime A, so the success path only
+  // clears an error that belongs to the same runtime.
+  const saveErrorUrlRef = useRef<string | null>(null);
 
   // On connect, read the server's persisted choice so the picker reflects the
   // cast the runtime (and Slack) already use. A failed read keeps the
@@ -178,7 +183,13 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (url === baseUrlRef.current) {
             hydratedUrlRef.current = url;
           }
-          setSaveError(null);
+          // Clear the surfaced error only if it belongs to THIS runtime (or is a
+          // connection-level error, tracked as null): a success for one runtime
+          // must not erase a still-unresolved failure on another.
+          if (saveErrorUrlRef.current === null || saveErrorUrlRef.current === url) {
+            saveErrorUrlRef.current = null;
+            setSaveError(null);
+          }
         })
         .catch((err: unknown) => {
           // The local value still reflects the choice, but Slack and a fresh
@@ -194,6 +205,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (hydratedUrlRef.current === url) {
             hydratedUrlRef.current = null;
           }
+          saveErrorUrlRef.current = url;
           setSaveError(
             err instanceof Error && err.message
               ? `Could not save to Alfred: ${err.message}`
@@ -223,6 +235,8 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         // Offline change: keep it in memory/localStorage but do NOT mark the
         // hook hydrated. When the runtime later connects, the hydration effect
         // must still read the server's persisted cast rather than skip it.
+        // A connection-level error is not tied to a specific synced runtime.
+        saveErrorUrlRef.current = null;
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
         return;
       }
