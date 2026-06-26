@@ -394,6 +394,12 @@ _MESSAGE_TOO_LONG_RE = re.compile(r"\bmessages?\s+(?:is\s+|are\s+)?too\s+long\b"
 # condensing prior context cannot shrink. Matched anywhere so the exclusion is
 # order-independent (the cap clause may sit before or after "too long").
 _PER_MESSAGE_CAP_RE = re.compile(r"\bmessage\s+length\b", re.IGNORECASE)
+# A SINGULAR message over the limit: "message is too long" / "message exceeds...".
+# Plural "messages" deliberately does not match (the trailing "s" breaks the
+# \s+), because a plural is an aggregate the condenser CAN shrink.
+_SINGLE_MESSAGE_OVERSIZE_RE = re.compile(
+    r"\bmessage\s+(?:is\s+)?(?:too\s+long|exceeds?\b)", re.IGNORECASE
+)
 
 
 def looks_like_context_overflow(text: str | None) -> bool:
@@ -403,14 +409,24 @@ def looks_like_context_overflow(text: str | None) -> bool:
     path. Deliberately strict so ordinary prose mentioning "context window" does
     not trigger a needless condensation.
 
-    The "message(s) too long" family is classified with an asymmetry in mind: a
-    false negative fails a recoverable turn, while a false positive only wastes
-    one condense pass. So a plural aggregate always classifies, and a singular
-    "message too long" classifies UNLESS the text also carries a per-message
-    length cap (a single oversized message condensing cannot help), regardless of
-    which side of "too long" that cap clause appears on.
+    The "message(s) too long" family is classified with a cost asymmetry in mind:
+    a false negative fails a recoverable turn, while a false positive only wastes
+    one condense pass, so the bias is toward classifying. The single shape we DO
+    exclude is one oversized SINGLE message hitting a length cap (a singular
+    "message is too long" / "message exceeds ..." together with a "message
+    length" cap): condensing prior context cannot shrink that one message. That
+    exclusion takes precedence over the generic signals so a provider error that
+    pairs the cap with context-window wording is still excluded, but it never
+    fires for a plural aggregate ("messages are too long"), which condensing does
+    fix.
     """
     if not text:
+        return False
+    if (
+        _PER_MESSAGE_CAP_RE.search(text)
+        and _SINGLE_MESSAGE_OVERSIZE_RE.search(text)
+        and not _PLURAL_TOO_LONG_RE.search(text)
+    ):
         return False
     if _OVERFLOW_RE.search(text):
         return True

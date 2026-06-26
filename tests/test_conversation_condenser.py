@@ -261,6 +261,20 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
     assert not cc.looks_like_context_overflow(
         "The maximum message length is 4096 characters. Your message is too long."
     )
+    # A SINGLE-message cap takes precedence over generic overflow wording: even
+    # though this mentions the context window, it is one oversized message hitting
+    # a length cap, which condensing prior context cannot shrink.
+    assert not cc.looks_like_context_overflow(
+        "Your message exceeds this model's context window. "
+        "The maximum message length is 4096 characters."
+    )
+    # But a bare "message length" cap mentioned inside a genuine AGGREGATE error
+    # (no singular "message is too long / exceeds" framing) stays recoverable:
+    # condensing the middle does shrink the combined prompt.
+    assert cc.looks_like_context_overflow(
+        "Context length exceeded. Reduce your input. The maximum message length "
+        "for this model is 200000 tokens."
+    )
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
