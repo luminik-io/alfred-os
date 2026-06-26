@@ -27,6 +27,9 @@ export type AskMessageContext = {
   busy: boolean;
   canRetry: boolean;
   onRetry: () => void;
+  // The id of the last assistant text reply, so only that bubble shows the
+  // regenerate control even when a draft card trails it as a separate message.
+  lastReplyId: string | null;
 };
 
 // The text part renderer: rich markdown for assistant prose, plain text for the
@@ -114,21 +117,20 @@ export function AskAssistantMessage({ context }: { context: AskMessageContext })
         {showActions ? (
           <div className="ask-bubble__actions">
             <CopyMessageButton />
-            {context.canRetry ? (
+            {context.canRetry && message.id === context.lastReplyId ? (
               // Regenerate replays the last user turn, so only offer it on the
-              // last assistant bubble. Showing it on an earlier reply would
-              // silently regenerate a different (later) turn.
-              <MessagePrimitive.If last>
-                <button
-                  type="button"
-                  className="ask-bubble__action"
-                  onClick={context.onRetry}
-                  aria-label="Regenerate this reply"
-                  title="Regenerate"
-                >
-                  <RotateCcw size={13} aria-hidden="true" />
-                </button>
-              </MessagePrimitive.If>
+              // last assistant TEXT reply. `If last` would hide it whenever a
+              // draft card (a separate trailing message) follows the reply, so
+              // the view passes the id of the last reply to gate on instead.
+              <button
+                type="button"
+                className="ask-bubble__action"
+                onClick={context.onRetry}
+                aria-label="Regenerate this reply"
+                title="Regenerate"
+              >
+                <RotateCcw size={13} aria-hidden="true" />
+              </button>
             ) : null}
           </div>
         ) : null}

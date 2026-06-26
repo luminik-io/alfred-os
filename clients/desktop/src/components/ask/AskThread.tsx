@@ -60,6 +60,7 @@ export function ComposeView({
     busy: ask.busy,
     canRetry: ask.canRetry,
     onRetry: ask.retry,
+    lastReplyId: ask.lastReplyId,
   };
 
   // A failed turn keeps the person's message on screen and offers Retry, so a

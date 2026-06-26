@@ -146,6 +146,24 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     expect(screen.getByText(/^Ready to file$/)).toBeInTheDocument();
   });
 
+  it("keeps the regenerate control on the reply when a draft card trails it", async () => {
+    // A build turn emits the text reply AND a separate trailing draft message,
+    // so a strict "last message" gate would hide regenerate. It must stay on
+    // the reply.
+    streamMock.mockImplementation(async () =>
+      converseResponse({ readiness: { score: 92, ready: true, missing: [] } }),
+    );
+    const user = userEvent.setup();
+    renderChat();
+
+    await send(user, "Build it");
+
+    expect(await screen.findByLabelText(/plan alfred is shaping/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /regenerate this reply/i }),
+    ).toBeInTheDocument();
+  });
+
   it("files a ready plan straight from the inline card", async () => {
     streamMock.mockImplementation(async () =>
       converseResponse({ readiness: { score: 92, ready: true, missing: [] } }),

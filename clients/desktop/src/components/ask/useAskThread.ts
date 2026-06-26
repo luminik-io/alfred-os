@@ -531,6 +531,17 @@ export function useAskThread({
     [baseUrl, fileBusyId],
   );
 
+  // The id of the last assistant TEXT reply (convertTurn ids text turns as
+  // `${index}-assistant`). The regenerate control gates on this so it still
+  // shows on the reply when a draft card trails it as a separate message.
+  const lastReplyId = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      const turn = turns[i];
+      if (turn.kind === "message" && turn.role === "assistant") return `${i}-assistant`;
+    }
+    return null;
+  }, [turns]);
+
   // The assistant-ui ExternalStore runtime. We own the state (turns); assistant-
   // ui renders it. `onNew` routes a composer submission through the same turn
   // machine; `onCancel` stops the in-flight stream. `isRunning` keeps the thread
@@ -573,6 +584,7 @@ export function useAskThread({
     error,
     fileBusyId,
     fileNotices,
+    lastReplyId,
     recentThreads,
     // Actions.
     retry,
