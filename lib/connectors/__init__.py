@@ -8,11 +8,11 @@ them up through its normal claim/run/release lifecycle.
 
 Public surface
 --------------
-- ``Connector`` Protocol — what every source adapter must implement.
-- ``IssueDraft`` dataclass — the normalized record a connector emits.
-- ``HttpClient`` Protocol — injection seam for tests; default impl uses
+- ``Connector`` Protocol - what every source adapter must implement.
+- ``IssueDraft`` dataclass - the normalized record a connector emits.
+- ``HttpClient`` Protocol - injection seam for tests; default impl uses
   ``urllib.request`` from the stdlib so connectors stay dep-free.
-- ``UrllibHttpClient`` — the default stdlib HTTP client.
+- ``UrllibHttpClient`` - the default stdlib HTTP client.
 
 Design rules
 ------------

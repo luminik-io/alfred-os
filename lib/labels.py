@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 # --------------------------------------------------------------------------
-# Lifecycle labels (mutually exclusive — at most one set on an issue).
+# Lifecycle labels (mutually exclusive - at most one set on an issue).
 # --------------------------------------------------------------------------
 
 IMPLEMENT: Final[str] = "agent:implement"
@@ -47,7 +47,7 @@ LIFECYCLE_LABEL_SET: Final[frozenset[str]] = frozenset({IMPLEMENT, IN_FLIGHT, PR
 
 
 # --------------------------------------------------------------------------
-# Sticky modifiers (orthogonal — may coexist with any lifecycle label).
+# Sticky modifiers (orthogonal - may coexist with any lifecycle label).
 # --------------------------------------------------------------------------
 
 DO_NOT_PICKUP: Final[str] = "do-not-pickup"
@@ -366,7 +366,7 @@ def all_transitions() -> tuple[Transition, ...]:
 
 
 # --------------------------------------------------------------------------
-# Inspection helpers — pure predicates on label sets.
+# Inspection helpers - pure predicates on label sets.
 # --------------------------------------------------------------------------
 
 
@@ -416,7 +416,7 @@ class LabelStateConfig:
         """Build a config from an env mapping (defaults to ``os.environ``).
 
         ``LABEL_STATE_SWEEP_REPOS`` is comma-separated; whitespace is
-        stripped. Missing or empty yields an empty tuple — the caller
+        stripped. Missing or empty yields an empty tuple - the caller
         decides whether that's an error (typically ``sweep --repo`` is
         then required).
         """

@@ -193,6 +193,22 @@ fail=0
 scan_patterns "private path or identifier" "$PATH_ALLOWLIST_RE" "$PER_LINE_ALLOW_RE" "${patterns[@]}" || fail=1
 scan_patterns "secret" "$SECRET_ALLOWLIST_RE" "" "${secret_patterns[@]}" || fail=1
 
+# Em-dash / en-dash scan in source. The no-em-dash rule applies everywhere, but
+# the markdown slop gate only covers prose (*.md/*.mdx/*.html), so em/en-dashes
+# slipped into .py comments/docstrings and .ts/.tsx UI strings shipped
+# unreviewed. This closes that gap for source files; markdown stays the slop
+# gate's job. Use a plain hyphen or rephrase instead.
+dash_matches=$(
+  candidate_files "$PATH_ALLOWLIST_RE" \
+    | { grep -zE '\.(py|ts|tsx|js|mjs|sh|rb|astro|css)$' || true; } \
+    | xargs -0 grep -InE '—|–' -- 2>/dev/null || true
+)
+if [ -n "$dash_matches" ]; then
+  printf '%s\n' "$dash_matches"
+  echo "::error::Found em-dash or en-dash in source (use a hyphen or rephrase)" >&2
+  fail=1
+fi
+
 # Optional full git-history scan (slow). The working-tree scrub above only sees
 # the current checkout; this catches secrets/paths committed in the PAST. Run
 # before a public push or on a schedule:  bin/scrub-check.sh --history

@@ -1,5 +1,5 @@
 """
-Linear connector — reference implementation.
+Linear connector - reference implementation.
 
 Polls the Linear GraphQL API for issues matching the configured filter
 (typically: "Ready for Engineering" state in a given team) and emits
@@ -18,9 +18,9 @@ The operator-provided ``filter`` dict is a subset of Linear's filter
 shape, scoped to the cases this reference impl supports:
 
     {
-      "team_key": "ENG",         # required — Linear team key
-      "state": "Ready",          # optional — state name to match
-      "label": "agent-ready"     # optional — Linear label name
+      "team_key": "ENG",         # required - Linear team key
+      "state": "Ready",          # optional - state name to match
+      "label": "agent-ready"     # optional - Linear label name
     }
 
 A polled ticket becomes an ``IssueDraft`` with:
@@ -32,7 +32,7 @@ A polled ticket becomes an ``IssueDraft`` with:
                                             else -> info)
     source_url = ticket.url
 
-Roughly ~150 lines on purpose — anything more belongs in a richer
+Roughly ~150 lines on purpose - anything more belongs in a richer
 ``linear_advanced.py`` written by an operator who needs cycles, parents,
 or per-project routing.
 """
@@ -87,7 +87,7 @@ class LinearConnector:
         Env var to read the Linear API key from. Defaults to
         ``LINEAR_API_KEY``. Never accepts an inline value.
     filter:
-        Operator filter — see module docstring.
+        Operator filter - see module docstring.
     default_labels:
         GitHub labels added to every issue this connector files (on top
         of the runner's ``agent:implement`` + ``connector`` defaults).

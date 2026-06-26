@@ -29,7 +29,7 @@ Design notes:
   constants in ``lib.batman`` so the module is usable today.
 
 The planner does not call gh, claude, or codex itself. It produces a
-``Plan`` — a list of ``SpecBundle`` candidates — that ``bin/damian.py``
+``Plan`` - a list of ``SpecBundle`` candidates - that ``bin/damian.py``
 formats into the LLM prompt context. The LLM does the final filing via
 ``gh issue create``; this layer keeps the candidate-list logic pure.
 """
@@ -159,7 +159,7 @@ class Plan:
 
     ``bundles`` are the candidates that survived the multi-repo gate and
     the daily cap. ``rejected_single_repo`` is the count of specs that
-    parsed cleanly but only touched one in-scope repo — those belong to
+    parsed cleanly but only touched one in-scope repo - those belong to
     drake, not damian, and the runner logs the count so the operator
     can see whether the planner saw any spec material at all.
     """
@@ -195,7 +195,7 @@ class SpecParser(Protocol):
         """Return a ``SpecBundle`` candidate, or ``None`` if unparseable.
 
         ``None`` is the contract for "I saw this file but it does not
-        match the spec shape" — the runner counts those without failing
+        match the spec shape" - the runner counts those without failing
         the firing.
         """
 
@@ -454,7 +454,7 @@ class SpecBundlePlanner:
 
         Uses the injected ``gh_client``. Returns an empty set on any
         error path so a transient gh failure does not block the planner
-        from proposing fresh candidates — the runner has a separate
+        from proposing fresh candidates - the runner has a separate
         retry / escalation gate for gh outages.
         """
         if not self.gh_org or not self.scan_repos:
@@ -505,7 +505,7 @@ def render_plan_for_prompt(plan: Plan) -> str:
     ``## Candidate bundles (pre-computed)`` in the prompt.
     """
     if plan.is_empty:
-        return "## Candidate bundles (pre-computed)\n\n(none — empty plan)\n"
+        return "## Candidate bundles (pre-computed)\n\n(none - empty plan)\n"
     lines = ["## Candidate bundles (pre-computed)", ""]
     for bundle in plan.bundles:
         lines.append(f"### {bundle.slug} ({bundle.severity})")

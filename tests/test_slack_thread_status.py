@@ -287,7 +287,7 @@ def test_default_fetcher_token_isolation_avoids_substring_match(tmp_path: Path) 
         if cmd[1] == "issue":
             return {"state": "OPEN", "number": 12, "comments": []}
         if cmd[1] == "pr":
-            # Only a PR that closes #1234 — must NOT match issue #12.
+            # Only a PR that closes #1234 - must NOT match issue #12.
             return [
                 {
                     "number": 99,

@@ -10,7 +10,7 @@ Wiring:
 
   - Reads ``GH_ORG`` for repo-qualified ``gh`` calls.
   - Reads ``DAMIAN_SCAN_REPOS`` (comma-separated repo slugs) to scope
-    bundle filing. Empty means damian exits as a no-op — a fresh install
+    bundle filing. Empty means damian exits as a no-op - a fresh install
     is not assumed to know which repos are bundle-eligible.
   - Reads ``DAMIAN_SPEC_DIR`` (absolute path or path relative to
     ``WORKSPACE_ROOT``) for the spec markdown the default parser walks.
@@ -207,7 +207,7 @@ def main() -> int:
     # The OSS package ships the planner as plan-only and prints the
     # composed prompt so operators can wire it to ``claude -p`` (or a
     # codex equivalent) without prescribing one engine. The deterministic
-    # part — what to file, which repos, which slugs — is what matters
+    # part - what to file, which repos, which slugs - is what matters
     # for the OSS surface; the LLM call itself is fleet-specific.
     print(f"[DAMIAN-PLAN-DRAFTED] {summary} engine={DAMIAN_ENGINE}")
     print(composed)

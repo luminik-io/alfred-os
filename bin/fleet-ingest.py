@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``fleet-ingest`` — drain per-agent JSONL outboxes into the fleet-brain.
+"""``fleet-ingest`` - drain per-agent JSONL outboxes into the fleet-brain.
 
 Each codename agent writes one JSON object per line to
 ``$ALFRED_HOME/state/memory-outbox/<codename>.jsonl`` when it learns
@@ -14,7 +14,7 @@ operator who wants this on the fleet adds a line to
     my.fleet.fleet-ingest    fleet-ingest.py    interval:900    no    my.fleet.fleet-ingest    Memory outbox drainer
 
 The drainer is bounded-work: it reads up to ``--max-records`` per
-invocation and exits. Crashing mid-file is safe — the cursor only
+invocation and exits. Crashing mid-file is safe - the cursor only
 advances after a record is persisted.
 
 Outbox record shape (JSON per line)::

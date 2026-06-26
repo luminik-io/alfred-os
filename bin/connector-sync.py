@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-connector-sync — poll registered input connectors, file ``agent:implement`` issues.
+connector-sync - poll registered input connectors, file ``agent:implement`` issues.
 
 Usage::
 
@@ -13,9 +13,9 @@ Usage::
 
 Exit codes
 ----------
-0  — sync ran; ``--json`` will reveal per-connector outcomes.
-2  — config file missing or unparseable.
-3  — at least one connector raised during ``poll`` or ``gh issue create``.
+0 - sync ran; ``--json`` will reveal per-connector outcomes.
+2 - config file missing or unparseable.
+3 - at least one connector raised during ``poll`` or ``gh issue create``.
 
 This script is intentionally thin: it parses args, loads the YAML
 config, builds connector instances, and hands them to ``ConnectorRunner``.
@@ -138,7 +138,7 @@ def _parse_connector_list(raw: str) -> set[str] | None:
 
 
 # ---------------------------------------------------------------------------
-# Config loader — small YAML subset, stdlib-only.
+# Config loader - small YAML subset, stdlib-only.
 # ---------------------------------------------------------------------------
 
 
@@ -147,7 +147,7 @@ def _load_config(path: Path) -> dict[str, Any]:
 
     Tries ``PyYAML`` if it's already installed; falls back to a tiny
     handwritten parser so the runtime stays zero-dep. The supported
-    shape is intentionally narrow — see ``examples/connectors.yaml``.
+    shape is intentionally narrow - see ``examples/connectors.yaml``.
     """
     if not path.exists():
         raise FileNotFoundError(path)
@@ -218,7 +218,7 @@ def _minimal_yaml_load(text: str) -> dict[str, Any]:
         if isinstance(parent, list):
             raise ValueError(f"mapping under a list without dash: {line!r}")
         if value == "":
-            # Block scalar follows on next indent — could be mapping or list.
+            # Block scalar follows on next indent - could be mapping or list.
             container: Any = {}
             parent[key] = container
             stack.append((indent + 2, container))

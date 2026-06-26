@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""``alfred label-state`` — operator-facing CLI for the issue claim state machine.
+"""``alfred label-state`` - operator-facing CLI for the issue claim state machine.
 
 A thin argparse layer on top of the state-machine primitives in
 ``lib/agent_runner.py`` and the label constants in ``lib/labels.py``.

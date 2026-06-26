@@ -209,7 +209,7 @@ def preflight(spec: PreflightSpec) -> None:
     # 0. Disk-pressure gate (the ENOSPC crash-loop fix).
     #
     # Runs before the env/bin/AWS/gh checks: if the disk is critically
-    # full there is no point validating auth — the firing would only
+    # full there is no point validating auth - the firing would only
     # crash on ENOSPC. On a critical reading we fire emergency cleanup
     # once, re-probe, and if still critical raise PreflightFailed so the
     # agent exits 0 cleanly (every runner already catches PreflightFailed
@@ -353,8 +353,7 @@ def preflight(spec: PreflightSpec) -> None:
         # Throttle the Slack post to once per N minutes per
         # (agent, error_signature). When an agent's preflight fails
         # identically on every tick (AWS profile rotation, gh auth
-        # expiry), the previous code path posted on every firing —
-        # 48+ identical posts per day. The operator stops reading
+        # expiry), the previous code path posted on every firing -         # 48+ identical posts per day. The operator stops reading
         # the channel and the actual signal is lost. With a throttle,
         # the operator sees one ping per error per hour (configurable
         # via ALFRED_PREFLIGHT_SLACK_MIN_MINUTES).
@@ -457,7 +456,7 @@ def _record_preflight_slack_post(agent: str, signature: str) -> None:
 # --------------------------------------------------------------------------
 
 # Set while emergency cleanup runs so a nested preflight (the cleanup
-# agent's own) cannot trigger a second emergency pass — guards the loop.
+# agent's own) cannot trigger a second emergency pass - guards the loop.
 _DISK_EMERGENCY_GUARD_ENV = "ALFRED_DISK_EMERGENCY_IN_PROGRESS"
 
 _DISK_SLACK_STATE_NAME = "last-slack-disk-warning.json"
@@ -519,13 +518,13 @@ def _run_emergency_cleanup(agent: str) -> None:
     """Invoke ``bin/agent-cleanup.py --emergency`` once to reclaim space.
 
     Best-effort and bounded: a missing script, a crash, or a timeout must
-    never turn a disk-pressure skip into a hard failure — the firing is
+    never turn a disk-pressure skip into a hard failure - the firing is
     going to skip cleanly regardless. The ``_DISK_EMERGENCY_GUARD_ENV``
     flag is set in the child env so the cleanup agent's own preflight
     cannot trigger a second emergency pass. We deliberately do not set it
     in our own ``os.environ``: the caller's post-cleanup re-probe is a
     plain ``disk_pressure_status()`` read, not a nested preflight, so it
-    can't recurse — and leaving our process env untouched avoids leaking
+    can't recurse - and leaving our process env untouched avoids leaking
     the guard into the rest of this firing.
     """
     from .paths import ALFRED_HOME
@@ -575,7 +574,7 @@ def _disk_preflight_gate(spec: PreflightSpec) -> None:
     floors leave the env defaults in place and the disk is fine.
     """
     # Loop guard: if we are already inside an emergency cleanup pass, do
-    # not probe again — the cleanup agent must be allowed to run.
+    # not probe again - the cleanup agent must be allowed to run.
     if _env_value_enabled(_DISK_EMERGENCY_GUARD_ENV):
         return
 
@@ -637,7 +636,7 @@ def _disk_preflight_gate(spec: PreflightSpec) -> None:
     if not suppress_slack and _should_post_disk_slack(spec.agent):
         slack_post(
             f"💾 {spec.agent} skipped: {headline}. Emergency cleanup ran but "
-            "could not free enough space — free disk on the host.",
+            "could not free enough space - free disk on the host.",
             severity="warn",
         )
         _record_disk_slack_post(spec.agent)

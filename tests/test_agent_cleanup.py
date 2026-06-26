@@ -2,7 +2,7 @@
 
 The OSS cleanup script is procedural (top-level execution); we load it
 as a module and target the testable functions inside. ``sweep_extra_paths``
-is the new helper from the cleanup-scope-hole fix — it sweeps operator-
+is the new helper from the cleanup-scope-hole fix - it sweeps operator-
 managed worktree pools outside ``$ALFRED_HOME/worktrees`` that the
 fleet sweep would never touch.
 """
@@ -463,7 +463,7 @@ def test_discover_worktree_pools_missing_root_is_empty(cleanup, tmp_path):
 def test_discover_does_not_descend_into_node_modules(cleanup, tmp_path):
     workspace = tmp_path / "ws"
     # A .worktrees that only exists *inside* a node_modules tree must not
-    # be discovered — we never walk into node_modules.
+    # be discovered - we never walk into node_modules.
     buried = workspace / "repo" / "node_modules" / "pkg" / ".worktrees"
     buried.mkdir(parents=True)
     found = cleanup.discover_worktree_pools(root=workspace)
@@ -565,7 +565,7 @@ def test_emergency_run_uses_aggressive_thresholds(tmp_path, monkeypatch):
     # A fresh Alfred-owned /tmp debug dir (mtime = now). A normal run would
     # skip it (under the 1-day gate); emergency must clear it. The prefix
     # must match a real bin/*.py stem so configured_tmp_prefixes() sweeps
-    # it — ``lucius`` (bin/lucius.py) is one such Alfred-owned agent.
+    # it - ``lucius`` (bin/lucius.py) is one such Alfred-owned agent.
     fresh_debug = Path("/tmp") / "lucius-debug-emergencytest-xyz"
     fresh_debug.mkdir(exist_ok=True)
     (fresh_debug / "scratch").write_text("x")

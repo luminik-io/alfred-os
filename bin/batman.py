@@ -582,8 +582,7 @@ def _pending_approval_path(parent_repo: str, parent_issue_number: int) -> Path:
 def _has_pending_approval_label(parent_issue: dict) -> bool:
     """Check the parent-issue JSON (from gh search) for the pending label.
 
-    Robust to either flat string entries or ``{"name": "..."}`` dicts —
-    gh's two issue-list endpoints return different shapes.
+    Robust to either flat string entries or ``{"name": "..."}`` dicts -     gh's two issue-list endpoints return different shapes.
     """
     for raw in parent_issue.get("labels") or []:
         name = raw.get("name") if isinstance(raw, dict) else raw

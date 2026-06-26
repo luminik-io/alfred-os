@@ -122,8 +122,7 @@ def get_or_refresh(
     ``refresh_fn`` and persist the new result.
 
     ``refresh_fn`` is invoked with no arguments and must return a
-    ``dict``. Errors raised by ``refresh_fn`` propagate to the caller —
-    the cache is a freshness primitive, not an exception swallow.
+    ``dict``. Errors raised by ``refresh_fn`` propagate to the caller -     the cache is a freshness primitive, not an exception swallow.
     """
     cached = read_cache(path, ttl_seconds=ttl_seconds)
     if cached is not None:

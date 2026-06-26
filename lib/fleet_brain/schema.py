@@ -15,22 +15,22 @@ Never edit an existing column in-place; ship a new column via
 The schema deliberately mirrors the entity model documented in
 ``docs/FLEET_BRAIN.md``:
 
-* ``lessons`` — one row per recall-able fact a firing learned about
+* ``lessons`` - one row per recall-able fact a firing learned about
   a repo/codename.
-* ``repo_notes`` — one row per repo: a free-text running summary
+* ``repo_notes`` - one row per repo: a free-text running summary
   that lessons roll up into. Upserted, not appended.
-* ``firing_logs`` — one row per agent firing: status, summary,
+* ``firing_logs`` - one row per agent firing: status, summary,
   cost, sentinel for crash-debug. Audit trail.
-* ``file_touches`` — one row per repo file an agent touched, optionally
+* ``file_touches`` - one row per repo file an agent touched, optionally
   linked to a firing and PR.
-* ``memory_candidates`` — reviewable lessons proposed by an agent or
+* ``memory_candidates`` - reviewable lessons proposed by an agent or
   operator before they become prompt context.
-* ``failure_events`` — normalized non-success outcomes, so repeated
+* ``failure_events`` - normalized non-success outcomes, so repeated
   runner failures become searchable instead of Slack-only noise.
-* ``github_items`` — cached GitHub issue/PR state from the poller.
-* ``bundle_items`` — issue/PR membership keyed by ``agent:bundle:<slug>``.
-* ``worker_heartbeats`` — last-seen worker liveness for stale-run detection.
-* ``lesson_tags`` — many-to-many over ``lessons`` so a lesson can
+* ``github_items`` - cached GitHub issue/PR state from the poller.
+* ``bundle_items`` - issue/PR membership keyed by ``agent:bundle:<slug>``.
+* ``worker_heartbeats`` - last-seen worker liveness for stale-run detection.
+* ``lesson_tags`` - many-to-many over ``lessons`` so a lesson can
   be filed under several taxonomy buckets without splitting rows.
 * ``code_owners``: one row per CODEOWNERS rule a fleet firing observed
   in a repo: a path glob mapped to one owner. Upserted per (repo, pattern,
@@ -39,7 +39,7 @@ The schema deliberately mirrors the entity model documented in
   over the ledger: ``PR -[changed]-> file``, ``file -[owned_by]-> owner``,
   and ``file -[in]-> repo``. One row per (kind, src, dst) so re-projecting
   the same touch never duplicates an edge.
-* ``schema_version`` — single-row record of the applied schema
+* ``schema_version`` - single-row record of the applied schema
   version, for forward migrations.
 """
 
@@ -237,7 +237,7 @@ _CREATE_STATEMENTS: Final[tuple[str, ...]] = (
         CHECK (kind IN ('changed', 'owned_by', 'in'))
     )
     """,
-    # Indexes — recall is read-heavy on (codename, repo) and recent-first,
+    # Indexes - recall is read-heavy on (codename, repo) and recent-first,
     # so we cover that path explicitly.
     """
     CREATE INDEX IF NOT EXISTS lessons_codename_repo_created_idx

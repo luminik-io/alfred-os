@@ -1,6 +1,6 @@
 """Transcript reader for stream-JSON firing logs.
 
-Standalone module — no dependency on ``agent_runner`` so it can be imported
+Standalone module - no dependency on ``agent_runner`` so it can be imported
 on hosts that haven't deployed the full runtime.
 
 Path layout (under ``$ALFRED_HOME/state``, default ``~/.alfred/state``):
@@ -176,7 +176,7 @@ def transcript_summary(path: Path) -> TranscriptSummary:
     """Summarise a stream-JSON transcript file.
 
     Returns an empty summary if the file is missing or unreadable. JSON
-    decode errors on individual lines are skipped silently — the
+    decode errors on individual lines are skipped silently - the
     stream-JSON format guarantees well-formed lines but interrupted
     writes can produce torn tails.
     """
@@ -307,7 +307,7 @@ def render_firing_jsonl(path: Path) -> list[str]:
     """Decode a stream-JSON transcript into a list of human-readable lines.
 
     Returns the raw lines a caller would print one-per-line. The
-    rendering is intentionally compact — full payloads are clipped so
+    rendering is intentionally compact - full payloads are clipped so
     operators can scan a firing without scrolling pages of tool output.
     """
     lines: list[str] = []

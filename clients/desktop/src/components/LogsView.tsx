@@ -408,7 +408,7 @@ function RunCard({
             <p className="run-card__alert">
               <AlertTriangle size={14} aria-hidden="true" />
               <span>
-                This run failed{cause ? ` — ${ERROR_CAUSE_LABEL[cause] ?? cause}` : ""}.
+                This run failed{cause ? `: ${ERROR_CAUSE_LABEL[cause] ?? cause}` : ""}.
                 {firing.timeline?.outcome ? (
                   <code className="run-card__outcome">{firing.timeline.outcome}</code>
                 ) : null}

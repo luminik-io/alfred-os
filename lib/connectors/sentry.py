@@ -1,5 +1,5 @@
 """
-Sentry connector — reference implementation.
+Sentry connector - reference implementation.
 
 Polls the Sentry REST API for unresolved issues at or above a configured
 severity threshold and emits one ``IssueDraft`` per Sentry issue.
@@ -13,7 +13,7 @@ API surface used
 * Pagination: cursor-based. This reference impl pulls a single page
   (``per_page=50``). High-volume orgs that need to drain a backlog
   should run the connector more frequently rather than crank up
-  per-poll cost — Alfred is pull-mode.
+  per-poll cost - Alfred is pull-mode.
 
 Severity mapping
 ----------------

@@ -1,7 +1,7 @@
 """Tests for ``lib/cross_repo_pr.py``.
 
 GitHub interaction is injected via the ``GitHubClient`` Protocol, so
-these tests run against an in-memory fake — no ``gh`` subprocess, no
+these tests run against an in-memory fake - no ``gh`` subprocess, no
 network.
 """
 

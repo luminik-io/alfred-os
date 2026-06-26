@@ -10,8 +10,7 @@ operator interacts with directly:
 * ``--check-only`` exit-code contract,
 * upstream-output parsing.
 
-Spawning real ``claude setup-token`` is intentionally not covered —
-that requires a browser flow and a live Anthropic account.
+Spawning real ``claude setup-token`` is intentionally not covered - that requires a browser flow and a live Anthropic account.
 """
 
 from __future__ import annotations

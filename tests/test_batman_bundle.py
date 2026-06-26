@@ -555,7 +555,7 @@ We want a billing-v2 rollout.
     # _resolve_child_repo prefers GH_REPO_TO_LOCAL when present; with no
     # mapping the fallback uses the parent org so the slugs become
     # `myorg/backend` / `myorg/frontend` / `myorg/mobile`. Either form
-    # is acceptable because tests don't pin the inflection — they pin
+    # is acceptable because tests don't pin the inflection - they pin
     # the count and the local-name presence.
     for local in ("backend", "frontend", "mobile"):
         assert any(local in r for r in child_repos), child_repos
@@ -647,7 +647,7 @@ def test_parse_repo_lines_qualifies_bare_names_with_gh_org(monkeypatch, capsys):
 
 def test_parse_repo_lines_warns_when_bare_and_no_gh_org(monkeypatch, capsys):
     """Without GH_ORG and without an `owner/` prefix the parser can't
-    construct a usable slug — warn loudly so the operator sees the
+    construct a usable slug - warn loudly so the operator sees the
     cause on the first firing instead of after a wasted approval cycle."""
     monkeypatch.delenv("GH_ORG", raising=False)
     import batman as bm
@@ -695,8 +695,7 @@ def test_create_issue_pre_creates_bundle_label(monkeypatch):
 
     def fake_run(cmd, **_kw):
         calls.append(list(cmd))
-        # `gh label create` returns 0 (created) or non-zero (exists) —
-        # either is fine. `gh issue create` returns 0 + the URL.
+        # `gh label create` returns 0 (created) or non-zero (exists) -         # either is fine. `gh issue create` returns 0 + the URL.
         if cmd[1] == "issue" and cmd[2] == "create":
             return FakeProc(stdout="https://github.com/acme/backend/issues/42")
         return FakeProc()
@@ -730,7 +729,7 @@ def test_create_issue_pre_creates_bundle_label(monkeypatch):
 def test_create_issue_continues_when_label_create_fails(monkeypatch):
     """Label creation is best-effort: if `gh label create` blows up
     (rate limit, transient network), the issue creation must still try
-    and likely succeed — gh will accept --label for existing labels."""
+    and likely succeed - gh will accept --label for existing labels."""
     import batman as bm
 
     def fake_run(cmd, **_kw):

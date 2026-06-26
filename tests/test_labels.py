@@ -1,4 +1,4 @@
-"""Tests for ``lib/labels.py`` — label constants and the transition table."""
+"""Tests for ``lib/labels.py`` - label constants and the transition table."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import labels  # noqa: E402
 
 
 def test_lifecycle_label_strings_are_stable():
-    """Locking in the wire-level strings — these are GitHub-side labels."""
+    """Locking in the wire-level strings - these are GitHub-side labels."""
     assert labels.IMPLEMENT == "agent:implement"
     assert labels.IN_FLIGHT == "agent:in-flight"
     assert labels.PR_OPEN == "agent:pr-open"
@@ -207,7 +207,7 @@ def test_legal_transitions_for_in_flight_covers_all_exits():
 def test_all_transitions_returned_as_tuple():
     all_t = labels.all_transitions()
     assert isinstance(all_t, tuple)
-    assert len(all_t) >= 8  # rough lower bound — we documented ~9
+    assert len(all_t) >= 8  # rough lower bound - we documented ~9
 
 
 def test_lifecycle_label_defs_have_all_required_names():

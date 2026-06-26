@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for lib/alfred_hooks.py — the PreToolUse guardrail handler.
+"""Tests for lib/alfred_hooks.py - the PreToolUse guardrail handler.
 
 Each rule is covered by an allow case (normal fleet flow must not break) and a
 deny case (the action the locked guardrails forbid). The handler's CLI path is

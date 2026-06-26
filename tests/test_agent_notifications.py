@@ -3,7 +3,7 @@
 ``claude_invoke`` adds ``--settings '{"agentPushNotifEnabled":false,
 "preferredNotifChannel":"none"}'`` to every non-interactive firing so the
 launchd-driven fleet does not spray macOS notification banners. The
-``--settings`` flag ADDS a settings source — it does not replace auth
+``--settings`` flag ADDS a settings source - it does not replace auth
 (auth comes from the config-dir credentials), so this is purely a
 notification toggle. The operator opts back in with
 ``ALFRED_AGENT_NOTIFICATIONS=1``.
@@ -39,7 +39,7 @@ def _capture_claude_argv(monkeypatch) -> list[str]:
         return SimpleNamespace(returncode=0, stdout=_OK_STDOUT, stderr="")
 
     # Patch ``run`` directly in the namespace ``claude_invoke`` resolves it from
-    # — its own module globals. Robust to test-ordering / double-import quirks in
+    # - its own module globals. Robust to test-ordering / double-import quirks in
     # the full suite (patching the package or submodule by string name can miss
     # when another test imported agent_runner under a different sys.path entry).
     with mock.patch.dict(agent_runner.claude_invoke.__globals__, {"run": fake_run}):

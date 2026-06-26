@@ -21,7 +21,7 @@ Design choices
 --------------
 * The runner is the single side-effect boundary: every ``gh issue create``
   call lives here, not in connectors. New connectors stay simple.
-* Dedup runs twice — once against the runner-owned seen-cache, once via
+* Dedup runs twice - once against the runner-owned seen-cache, once via
   the connector's own ``mark_seen``. Belt-and-suspenders so a buggy
   connector cannot double-file.
 * ``--dry-run`` mode short-circuits ``gh`` and prints what *would* be
@@ -188,7 +188,7 @@ class ConnectorRunner:
             row = self._file_one(connector, draft)
             if row.error:
                 report.failed.append(row)
-                # Don't mark seen on a failure — try again next poll.
+                # Don't mark seen on a failure - try again next poll.
                 continue
 
             report.filed.append(row)

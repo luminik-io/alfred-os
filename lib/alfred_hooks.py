@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic guardrails for the autonomous fleet, as Claude Code hooks.
 
-Every fleet firing runs ``claude -p --permission-mode bypassPermissions`` —
-full trust, no interactive approval. The model is therefore the *only* thing
+Every fleet firing runs ``claude -p --permission-mode bypassPermissions`` - full trust, no interactive approval. The model is therefore the *only* thing
 standing between a drifting prompt and a destructive action. This module adds a
 deterministic backstop that survives prompt drift: a ``PreToolUse`` hook that
 inspects each tool call and blocks the handful of actions the repo's locked
@@ -13,7 +12,7 @@ Blocked (deny + exit 2 so Claude Code refuses the call):
     ``--no-verify`` / ``--no-gpg-sign`` (the locked "never push to main / never
     skip hooks" rules).
   - ``rm -rf`` (and variants) targeting ``/``, ``~``, ``$HOME`` or any absolute
-    path outside the firing's worktree — relative cleanups (node_modules, dist)
+    path outside the firing's worktree - relative cleanups (node_modules, dist)
     stay allowed.
   - Reading credential material (``.env`` / ``.pem`` / ``id_rsa`` /
     ``~/.aws/credentials`` / ...) via Bash readers or the Read tool, so secrets
@@ -154,7 +153,7 @@ def _tokens(command: str) -> list[str]:
     try:
         return shlex.split(command, posix=True)
     except ValueError:
-        # Unbalanced quotes etc. — fall back to a cheap split so we still scan.
+        # Unbalanced quotes etc. - fall back to a cheap split so we still scan.
         return command.split()
 
 
@@ -441,7 +440,7 @@ def evaluate_pretooluse(
             )
         return ALLOW
 
-    # Write / Edit / MultiEdit / NotebookEdit — scan the content being written.
+    # Write / Edit / MultiEdit / NotebookEdit - scan the content being written.
     # Load the scrub list once for the whole event (it is read per call below).
     scrub_names = _load_scrub_names()
     if not scrub_names:

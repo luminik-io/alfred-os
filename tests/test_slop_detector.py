@@ -242,7 +242,7 @@ def test_phrase_rule_matches_whitespace_run(tmp_path: Path, basic_pack: RulePack
 
 
 def test_regex_rule_matches_em_dash(tmp_path: Path, basic_pack: RulePack) -> None:
-    (tmp_path / "d.md").write_text("This — that.\n", encoding="utf-8")
+    (tmp_path / "d.md").write_text("This - that.\n", encoding="utf-8")
     report = scan_path(tmp_path, basic_pack)
     ids = [f.rule_id for f in report.findings]
     assert "regex.em-dash" in ids

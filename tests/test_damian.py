@@ -328,7 +328,7 @@ def test_render_plan_returns_none_marker_when_empty():
     import damian_planner as dp
 
     rendered = dp.render_plan_for_prompt(dp.Plan())
-    assert "(none — empty plan)" in rendered
+    assert "(none - empty plan)" in rendered
 
 
 def test_render_plan_shows_bundles_and_counters(tmp_path):

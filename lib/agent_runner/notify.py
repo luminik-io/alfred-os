@@ -10,9 +10,9 @@ This module owns the outbound-notification path:
 
 What this module does NOT own:
 
-* Block Kit threaded replies — those need a bot token (``xoxb-``) and
+* Block Kit threaded replies - those need a bot token (``xoxb-``) and
   live in ``lib/slack_format.py`` instead.
-* Routing decisions about *what* to post — callers compose the
+* Routing decisions about *what* to post - callers compose the
   message and pick severity; this module only delivers.
 """
 
@@ -55,9 +55,9 @@ def slack_post(text: str, *, severity: str = SLACK_SEVERITY_INFO) -> bool:
 
     Severity routing (``severity=`` keyword, default ``info``):
 
-    * ``info``  — posted as-is.
-    * ``warn``  — prefixed with a warning glyph if not already present.
-    * ``alert`` — prefixed with an alert glyph and appends ``<!here>``
+    * ``info`` - posted as-is.
+    * ``warn`` - prefixed with a warning glyph if not already present.
+    * ``alert`` - prefixed with an alert glyph and appends ``<!here>``
       so channel members get pinged.
 
     Unknown severity values coerce to ``info``. Existing callers that

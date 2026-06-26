@@ -75,9 +75,9 @@ def save_state(name: str, *, last_poll_at: datetime | None, seen_ids: list[str])
         "seen_ids": trimmed,
     }
     p = state_path(name)
-    # NamedTemporaryFile with delete=False — we close + rename ourselves so
+    # NamedTemporaryFile with delete=False - we close + rename ourselves so
     # the write is atomic on the same filesystem.
-    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115 — manual close + atomic rename
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115 - manual close + atomic rename
         mode="w",
         dir=p.parent,
         prefix=f".{p.name}.",

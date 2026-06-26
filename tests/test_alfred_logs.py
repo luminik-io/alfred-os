@@ -86,7 +86,7 @@ def test_logs_summary_no_transcripts(tmp_path: Path, capsys):
     # Put a different codename so list_codenames is non-empty and the
     # validation gate doesn't trip.
     _write_firing(tmp_path, "drake", "D1", _events_with_tools())
-    # Drake exists, lucius doesn't — but we want the "no transcripts" path,
+    # Drake exists, lucius doesn't - but we want the "no transcripts" path,
     # so create the directory empty under transcripts/.
     (tmp_path / "transcripts" / "lucius").mkdir(parents=True, exist_ok=True)
     cli = _load_alfred_logs()
