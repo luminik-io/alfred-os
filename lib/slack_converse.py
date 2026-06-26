@@ -85,6 +85,19 @@ MAX_STREAM_CHARS = 3500
 # reconciled write to a touch under that so a long answer lands in full yet an
 # update can never fail for length.
 MAX_MESSAGE_CHARS = 39000
+# How many times the FINAL write (``finalize``) retries after a Slack 429 rate
+# limit before giving up. The reconciled answer is the one write that must land,
+# so it is allowed a few honored ``Retry-After`` waits. A streaming partial gets
+# no extra attempts: the next update supersedes it, so a partial that 429s is
+# simply dropped rather than blocking the stream.
+MAX_FINALIZE_RATE_LIMIT_RETRIES = 5
+# Fallback wait (seconds) when Slack signals a 429 but supplies no parseable
+# ``Retry-After`` header. Slack's docs say the header is always present on a 429;
+# this is only a defensive floor so a malformed response still backs off.
+DEFAULT_RETRY_AFTER_SECONDS = 1.0
+# Upper bound on any single honored ``Retry-After`` wait, so a hostile or buggy
+# header (``Retry-After: 99999``) cannot wedge the poster for minutes.
+MAX_RETRY_AFTER_SECONDS = 30.0
 
 # The placeholder shown the instant a mention lands, before the first token.
 PLACEHOLDER = "_Alfred is thinking…_"
@@ -240,6 +253,67 @@ def _next_cursor(data: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Reactive rate-limit (HTTP 429 / Retry-After) handling
+# ---------------------------------------------------------------------------
+
+
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Return the ``Retry-After`` wait for a Slack 429, or ``None`` otherwise.
+
+    ``slack_sdk`` raises ``SlackApiError`` with a ``response`` whose
+    ``status_code`` is 429 and whose ``headers`` carry ``Retry-After`` (seconds)
+    when a Web API method is rate limited. We read both off the attached response
+    without importing ``slack_sdk`` (so the module stays import-light and the
+    tests can pass a plain fake), returning the clamped wait when this is a 429
+    and ``None`` for any other error so the caller can re-raise / give up.
+
+    The wait is floored at ``DEFAULT_RETRY_AFTER_SECONDS`` when the header is
+    missing or unparseable, and capped at ``MAX_RETRY_AFTER_SECONDS`` so a buggy
+    or hostile header can never wedge the poster.
+    """
+    response = getattr(exc, "response", None)
+    if response is None:
+        return None
+    status = _response_status_code(response)
+    if status != 429:
+        return None
+    headers = _response_headers(response)
+    raw = headers.get("Retry-After") or headers.get("retry-after")
+    try:
+        wait = float(raw) if raw is not None else DEFAULT_RETRY_AFTER_SECONDS
+    except (TypeError, ValueError):
+        wait = DEFAULT_RETRY_AFTER_SECONDS
+    if wait <= 0:
+        wait = DEFAULT_RETRY_AFTER_SECONDS
+    return min(wait, MAX_RETRY_AFTER_SECONDS)
+
+
+def _response_status_code(response: Any) -> int | None:
+    status = getattr(response, "status_code", None)
+    if status is None and isinstance(response, dict):
+        status = response.get("status_code")
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _response_headers(response: Any) -> dict[str, str]:
+    headers = getattr(response, "headers", None)
+    if headers is None and isinstance(response, dict):
+        headers = response.get("headers")
+    if isinstance(headers, dict):
+        return headers
+    # Some slack_sdk responses expose a mapping-like headers object; coerce it.
+    if headers is not None:
+        try:
+            return dict(headers)
+        except (TypeError, ValueError):
+            return {}
+    return {}
+
+
+# ---------------------------------------------------------------------------
 # Streaming poster: placeholder -> throttled chat.update
 # ---------------------------------------------------------------------------
 
@@ -254,9 +328,17 @@ class SlackStreamPoster:
     ``chat.update`` rate limit). :meth:`finalize` always writes the final text,
     ignoring the throttle, so the reconciled answer is never dropped.
 
-    Every Slack call is wrapped: a transport error never propagates, it just
-    means that one update is skipped. ``now`` is injectable so tests drive the
-    throttle deterministically without sleeping.
+    PROACTIVE throttling (``throttle``) keeps us under the per-method limit in
+    the common case; REACTIVE backoff handles the case where Slack still returns
+    a 429. On a 429 the poster honors the ``Retry-After`` header and retries: the
+    final write (:meth:`finalize`) retries up to
+    :data:`MAX_FINALIZE_RATE_LIMIT_RETRIES` times so the reconciled answer always
+    lands, while a streaming partial (:meth:`update`) is dropped on a 429 because
+    the next update supersedes it. Any other transport error never propagates, it
+    just means that one update is skipped.
+
+    ``now`` and ``sleep`` are both injectable so tests drive the throttle and the
+    ``Retry-After`` backoff deterministically without touching the wall clock.
     """
 
     def __init__(
@@ -267,12 +349,14 @@ class SlackStreamPoster:
         thread_ts: str,
         throttle: float = DEFAULT_THROTTLE,
         now: Callable[[], float] | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._client = client
         self._channel = channel
         self._thread_ts = thread_ts
         self._throttle = max(0.0, throttle)
         self._now = now or time.monotonic
+        self._sleep = sleep or time.sleep
         self._message_ts: str = ""
         self._last_update_at: float = 0.0
         self._last_text: str = ""
