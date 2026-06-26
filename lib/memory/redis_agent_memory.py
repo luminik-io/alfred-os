@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from fleet_brain import Lesson, Severity, new_id
@@ -273,6 +274,24 @@ class RedisAgentMemoryProvider:
                 memory_id=lesson.id,
             )
         except NotImplementedError:
+            return False
+        return True
+
+    def forget_lesson(self, lesson_id: str) -> bool:
+        """Remove one lesson from Redis AMS by its deterministic memory id.
+
+        Best-effort: a transient AMS outage returns ``False`` rather than
+        raising so callers (e.g. the auto-promotion revert lever) can still
+        reopen the candidate. A later re-promote upserts the same id.
+        """
+        clean_id = str(lesson_id).strip()
+        if not clean_id:
+            return True
+        path = "/v1/long-term-memory?" + urlencode({"memory_ids": clean_id})
+        try:
+            self._request("DELETE", path, None)
+        except Exception as exc:
+            _LOG.debug("memory.redis: forget failed for %s: %s", clean_id, exc)
             return False
         return True
 

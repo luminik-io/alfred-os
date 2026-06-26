@@ -104,6 +104,7 @@ __all__ = [
     "Lesson",
     "MemoryCandidate",
     "MemoryCandidateStatus",
+    "MemoryPromotionError",
     "RepoNote",
     "SQLiteStore",
     "Severity",
@@ -172,6 +173,25 @@ AUTO_PROMOTE_NO_JUDGE_THRESHOLD = 0.9
 # never re-judge the row, so a held candidate cannot starve the per-run judge
 # budget or re-post the same alert every run.
 _AUTO_HELD_MARKER = "[held-for-review]"
+
+# Promoted lessons are written to Redis AMS under a deterministic id derived
+# from the candidate. This makes the write idempotent (a re-promote upserts the
+# same record) and lets the revert lever forget exactly the lesson it wrote.
+_LESSON_MEMORY_ID_PREFIX = "lesson:memory_candidate:"
+
+
+def _lesson_memory_id(candidate_id: str) -> str:
+    """Deterministic AMS memory id for a promoted candidate."""
+    return f"{_LESSON_MEMORY_ID_PREFIX}{candidate_id}"
+
+
+class MemoryPromotionError(RuntimeError):
+    """Raised when a candidate could not be written to Redis AMS.
+
+    The candidate is left untouched (still ``candidate``/pending) so it can be
+    re-promoted on a later run. There is no silent local fallback: a promoted
+    lesson lives in AMS or nowhere.
+    """
 
 
 def _env_flag_on(name: str, env: Mapping[str, str] | None = None) -> bool:
@@ -587,6 +607,16 @@ class FleetBrain:
         )
         return self.store.insert_memory_candidate(candidate)
 
+    def _lesson_provider(self) -> Any:
+        """Build the Redis AMS provider, the promoted-lesson backend.
+
+        Imported lazily to avoid an import cycle: the provider imports
+        ``Lesson`` from this package.
+        """
+        from memory.redis_agent_memory import RedisAgentMemoryProvider
+
+        return RedisAgentMemoryProvider.from_env()
+
     def promote_memory_candidate(
         self,
         candidate_id: str,
@@ -594,8 +624,23 @@ class FleetBrain:
         reviewer: str = "operator",
         review_note: str = "",
         reviewed_at: datetime | None = None,
+        lesson_writer: Any | None = None,
     ) -> Lesson:
-        """Promote a candidate into a trusted lesson and mark it validated."""
+        """Promote a candidate into a trusted lesson, written to Redis AMS.
+
+        The candidate review queue, dedup index, and operational state stay in
+        the local FleetBrain ledger; only the promoted LESSON moves, and it is
+        written to Redis AMS, the semantic-recall backend.
+
+        The AMS write happens FIRST and there is no local fallback: the
+        candidate is flipped to ``validated`` only after the lesson is durably
+        in AMS, so an unreachable AMS leaves the candidate ``candidate``
+        (pending) and re-promotable rather than silently losing it. On an AMS
+        write failure this raises :class:`MemoryPromotionError`.
+
+        ``lesson_writer`` is the AMS provider (``reflect``-shaped, accepting a
+        ``memory_id``); tests inject a stub. When omitted it is built from env.
+        """
         candidate = self.store.get_memory_candidate(candidate_id)
         if candidate is None:
             raise ValueError(f"promote_memory_candidate: unknown candidate {candidate_id!r}")
@@ -603,14 +648,33 @@ class FleetBrain:
             raise ValueError(
                 f"promote_memory_candidate: candidate {candidate_id!r} is {candidate.status}"
             )
-        lesson = self.reflect(
-            codename=candidate.codename,
-            repo=candidate.repo,
-            body=candidate.body,
-            tags=candidate.tags,
-            firing_id=candidate.source_firing_id,
-            severity=candidate.severity,
-        )
+
+        if lesson_writer is None:
+            lesson_writer = self._lesson_provider()
+
+        # AMS write FIRST. No local fallback: if this fails the candidate stays
+        # pending (no store update) and is re-promotable on a later run.
+        try:
+            lesson = lesson_writer.reflect(
+                codename=candidate.codename,
+                repo=candidate.repo,
+                body=candidate.body,
+                tags=candidate.tags,
+                firing_id=candidate.source_firing_id,
+                severity=candidate.severity,
+                memory_id=_lesson_memory_id(candidate.id),
+            )
+        except Exception as exc:
+            _LOG.exception(
+                "promote_memory_candidate: AMS lesson write failed for "
+                "candidate %s; leaving it pending",
+                candidate_id,
+            )
+            raise MemoryPromotionError(
+                f"promote_memory_candidate: AMS write failed for {candidate_id!r}"
+            ) from exc
+
+        # Lesson is durable in AMS -> flip the candidate to validated.
         self.store.update_memory_candidate(
             replace(
                 candidate,
@@ -752,6 +816,7 @@ class FleetBrain:
             "judge_errors": 0,
             "judge_calls": 0,
             "judge_budget_exhausted": False,
+            "ams_write_errors": 0,
         }
         if not summary["enabled"]:
             # No-op when disarmed: do not even read the queue.
@@ -917,11 +982,70 @@ class FleetBrain:
                 # The candidate changed under us (already promoted/rejected by a
                 # concurrent reviewer). Skip without counting it.
                 continue
+            except MemoryPromotionError:
+                # The AMS write failed: the candidate is left pending (no local
+                # fallback, no silent loss) and will be retried on a later run.
+                summary["ams_write_errors"] = summary.get("ams_write_errors", 0) + 1
+                continue
             promoted += 1
             summary["promoted"].append(candidate.id)
 
         summary["judge_calls"] = judge_calls
         return summary
+
+    def revert_auto_promotions(
+        self,
+        *,
+        reviewer: str = "auto-revert",
+        note: str = "",
+        lesson_forgetter: Any | None = None,
+    ) -> list[str]:
+        """Forget every auto-promoted lesson from Redis AMS and reopen it.
+
+        The reversal lever the auto-promotion guardrails promise: forgets each
+        auto-promoted lesson from Redis AMS (the promoted-lesson backend) and
+        flips its candidate back to ``candidate`` so the operator can
+        re-review. Auto-promotions are the validated candidates the auto-promoter
+        wrote (``reviewed_by == "auto"`` with a recorded ``promoted_lesson_id``).
+
+        AMS forget is best-effort: a transient outage must not block reopening
+        the candidate, and a later re-promote upserts the same deterministic
+        memory id. ``lesson_forgetter`` is the AMS provider; tests inject a
+        stub. Returns the reverted candidate ids.
+        """
+        rows = [
+            cand
+            for cand in self.list_memory_candidates(status="validated", limit=500)
+            if cand.reviewed_by == "auto" and cand.promoted_lesson_id is not None
+        ]
+        reverted: list[str] = []
+        if lesson_forgetter is None and rows:
+            lesson_forgetter = self._lesson_provider()
+        for candidate in rows:
+            cid = candidate.id
+            # Forget the lesson from Redis AMS. Best-effort: a transient AMS
+            # outage must not block reopening the candidate, and a later
+            # re-promote upserts the same deterministic memory id.
+            if lesson_forgetter is not None:
+                try:
+                    lesson_forgetter.forget_lesson(_lesson_memory_id(cid))
+                except Exception:
+                    _LOG.exception(
+                        "revert_auto_promotions: AMS forget failed for candidate %s",
+                        cid,
+                    )
+            self.store.update_memory_candidate(
+                replace(
+                    candidate,
+                    status="candidate",
+                    reviewed_at=datetime.now(UTC),
+                    reviewed_by=reviewer.strip() or "auto-revert",
+                    review_note=note.strip() or None,
+                    promoted_lesson_id=None,
+                )
+            )
+            reverted.append(cid)
+        return reverted
 
     def record_failure(
         self,

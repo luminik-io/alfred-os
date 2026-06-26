@@ -1483,6 +1483,8 @@ async def _api_memory_candidate_action(
     brain, error = _memory_brain(request, require_existing=True)
     if brain is None:
         return JSONResponse({"error": error or "fleet brain unavailable"}, status_code=500)
+    from fleet_brain import MemoryPromotionError
+
     try:
         if action == "promote":
             lesson = brain.promote_memory_candidate(
@@ -1511,6 +1513,12 @@ async def _api_memory_candidate_action(
             if candidate is None:
                 return JSONResponse({"error": "memory candidate not found"}, status_code=404)
             return JSONResponse(_candidate_to_api(candidate))
+    except MemoryPromotionError:
+        # The promoted lesson is written to Redis AMS first; an unreachable AMS
+        # leaves the candidate pending (no silent loss). Surface a retryable 503
+        # with the generic body so no detail leaks.
+        logger.exception("memory candidate %s promote: AMS write failed", candidate_id)
+        return JSONResponse({"error": _GENERIC_ERROR}, status_code=503)
     except ValueError as exc:
         # FleetBrain.promote_memory_candidate / reject_memory_candidate raise
         # ValueError both for an unknown candidate id (a missing resource) and

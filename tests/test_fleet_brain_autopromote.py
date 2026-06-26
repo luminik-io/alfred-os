@@ -18,10 +18,55 @@ import pytest
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "lib"))
 
-from fleet_brain import FleetBrain  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
+
+from fleet_brain import FleetBrain, Lesson, new_id  # noqa: E402
 
 ARM = {"ALFRED_AUTO_PROMOTE": "1"}
 ARM_NO_JUDGE = {"ALFRED_AUTO_PROMOTE": "1", "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0"}
+
+
+class _FakeAMS:
+    """Stub Redis AMS provider; the promoted lesson is written here, not to the
+    local SQLite store. Records reflects/forgets so tests can assert the write
+    target and the deterministic memory id."""
+
+    name = "redis"
+
+    def __init__(self) -> None:
+        self.reflected: list[dict] = []
+        self.forgotten: list[str] = []
+        self.fail = False
+
+    def reflect(
+        self,
+        *,
+        codename: str,
+        repo: str,
+        body: str,
+        tags=None,  # type: ignore[no-untyped-def]
+        severity="info",  # type: ignore[no-untyped-def]
+        firing_id=None,  # type: ignore[no-untyped-def]
+        created_at=None,  # type: ignore[no-untyped-def]
+        memory_id=None,  # type: ignore[no-untyped-def]
+    ) -> Lesson:
+        if self.fail:
+            raise RuntimeError("AMS unreachable")
+        self.reflected.append({"memory_id": memory_id, "body": body})
+        return Lesson(
+            id=memory_id or new_id(),
+            codename=codename,
+            repo=repo,
+            body=body.strip(),
+            tags=sorted({t.strip() for t in (tags or []) if t.strip()}),
+            created_at=created_at or datetime.now(UTC),
+            firing_id=firing_id,
+            severity=severity,
+        )
+
+    def forget_lesson(self, lesson_id: str) -> bool:
+        self.forgotten.append(lesson_id)
+        return True
 
 
 def _verdict(
@@ -43,7 +88,14 @@ def _verdict(
 
 @pytest.fixture
 def brain(tmp_path: Path) -> FleetBrain:
-    return FleetBrain(db_path=tmp_path / "brain.db")
+    fb = FleetBrain(db_path=tmp_path / "brain.db")
+    # The auto-promoter writes promoted lessons to Redis AMS via
+    # ``_lesson_provider``. Swap in an in-memory stub so the pipeline runs end
+    # to end (capture -> judge -> auto-promote -> AMS write) without a server.
+    ams = _FakeAMS()
+    fb.ams = ams  # type: ignore[attr-defined]
+    fb._lesson_provider = lambda: ams  # type: ignore[method-assign]
+    return fb
 
 
 def _candidate(
@@ -102,6 +154,10 @@ def test_heuristic_promotes_high_confidence_with_evidence(brain: FleetBrain) -> 
     assert row.status == "validated"
     assert row.reviewed_by == "auto"
     assert row.promoted_lesson_id is not None
+    # The promoted lesson was written to Redis AMS (not the local store) under
+    # the deterministic candidate-derived memory id.
+    assert brain.ams.reflected[0]["memory_id"] == f"lesson:memory_candidate:{c.id}"  # type: ignore[attr-defined]
+    assert brain.recall(codename="lucius", repo="acme/api") == []
 
 
 def test_low_confidence_and_missing_evidence_stay_pending(brain: FleetBrain) -> None:
@@ -265,3 +321,48 @@ def test_judge_budget_bounds_calls_per_run(brain: FleetBrain) -> None:
     assert summary["judge_calls"] == 2
     assert summary["judge_budget_exhausted"] is True
     assert summary["promoted"] == []
+
+
+# --- AMS write target (the #411 cutover) -----------------------------------
+
+
+def test_judge_gate_runs_before_the_ams_write(brain: FleetBrain) -> None:
+    # The judge gate stays IN FRONT of promotion: a rejected (duplicate) verdict
+    # must mean NO AMS write at all. Proves capture -> judge -> (no) promote.
+    c = _candidate(brain, "a near-duplicate lesson", confidence=0.95)
+    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(is_duplicate=True))
+    assert summary["judge_calls"] == 1
+    assert summary["skipped_duplicate"] == 1
+    assert summary["promoted"] == []
+    # Judge held it -> nothing was written to AMS.
+    assert brain.ams.reflected == []  # type: ignore[attr-defined]
+    assert _status(brain, c.id) == "candidate"
+
+
+def test_safe_verdict_then_writes_to_ams(brain: FleetBrain) -> None:
+    # A safe verdict that clears the bar promotes AND writes to AMS. This is the
+    # full capture -> judge -> auto-promote -> AMS-write pipeline, end to end.
+    c = _candidate(brain, "tests live next to the code they cover", confidence=0.95)
+    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.97))
+    assert c.id in summary["promoted"]
+    assert len(brain.ams.reflected) == 1  # type: ignore[attr-defined]
+    assert brain.ams.reflected[0]["memory_id"] == f"lesson:memory_candidate:{c.id}"  # type: ignore[attr-defined]
+
+
+def test_ams_write_failure_leaves_candidate_pending(brain: FleetBrain) -> None:
+    # No silent loss, no local fallback: an unreachable AMS leaves the judged,
+    # promotable candidate PENDING and re-promotable, and counts the failure.
+    c = _candidate(brain, "a strong durable lesson", confidence=0.95)
+    brain.ams.fail = True  # type: ignore[attr-defined]
+    summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.97))
+    assert summary["promoted"] == []
+    assert summary["ams_write_errors"] == 1
+    assert _status(brain, c.id) == "candidate"
+    assert brain.store.get_memory_candidate(c.id).promoted_lesson_id is None  # type: ignore[union-attr]
+
+    # AMS recovers -> the same candidate promotes on the next run with the same
+    # deterministic memory id (idempotent upsert).
+    brain.ams.fail = False  # type: ignore[attr-defined]
+    again = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.97))
+    assert c.id in again["promoted"]
+    assert brain.ams.reflected[-1]["memory_id"] == f"lesson:memory_candidate:{c.id}"  # type: ignore[attr-defined]
