@@ -705,6 +705,34 @@ def test_run_slack_converse_handles_unavailable_engine(tmp_path: Path) -> None:
     assert "could not reach" in client.updates[-1]["text"].lower()
 
 
+def test_run_slack_converse_surfaces_failed_finalization(tmp_path: Path) -> None:
+    # The turn runs, but every chat.update fails, so the reconciled answer never
+    # lands on Slack. The outcome must carry finalized=False (degraded delivery)
+    # rather than reporting a clean success; handled stays True (the turn ran).
+    class FailingUpdates(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent transport failure")
+
+    client = FailingUpdates(replies={"ok": True, "messages": []})
+    turn = _turn("The answer.", INTENT_CONVERSATION)
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="anything",
+        build_turn=_fake_build_turn(turn, ""),
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+    )
+    assert outcome.handled is True
+    assert outcome.finalized is False
+
+
 def test_run_slack_converse_empty_message_is_not_handled(tmp_path: Path) -> None:
     client = FakeSlackClient(replies={"ok": True, "messages": []})
 

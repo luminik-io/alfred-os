@@ -632,6 +632,11 @@ class SlackConverseOutcome:
     offered_issue: bool = False
     streamed: bool = False
     detail: str = ""
+    # False when the final reconciled answer never reached Slack (a persistent
+    # 429 past the backoff budget, or a non-429 error on the final chat.update).
+    # The turn still ran, but the listener should treat delivery as degraded
+    # rather than a clean success when this is False.
+    finalized: bool = True
 
 
 def run_slack_converse(
@@ -726,7 +731,7 @@ def run_slack_converse(
     )
 
     if not result.ok:
-        poster.finalize(
+        fallback_landed = poster.finalize(
             "I could not reach the conversational engine just now. "
             "Try again in a moment, or send the request as a plan."
         )
@@ -734,6 +739,7 @@ def run_slack_converse(
             handled=True,
             streamed=result.streamed,
             detail=result.error or "live_session_unavailable",
+            finalized=fallback_landed,
         )
 
     reply = reply_box.get("reply")
@@ -742,6 +748,10 @@ def run_slack_converse(
         intent=reply.intent if reply else "",
         offered_issue=bool(reply and reply.offered_issue),
         streamed=result.streamed,
+        # Carry the delivery signal forward: result.finalized is False when the
+        # reconciled answer did not land on Slack despite the turn running, so
+        # the listener can tell a clean success from a degraded delivery.
+        finalized=result.finalized,
     )
 
 
