@@ -163,7 +163,7 @@ Claude Code can run against your **subscription usage** rather than direct API t
 | Pro | One operator, occasional agent runs, manual code work in parallel |
 | Max 5x / 20x | Continuous fleet, multiple codename agents on frequent cadences |
 
-A "turn" is roughly one model response. A typical Lucius firing on a small backend issue burns 30-80 turns. A multi-file refactor can hit 150+. Empirically, Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. Add Bane (test coverage), Drake (planner), Ra's (review), Nightwing (review-fix), and you exceed Pro quota in a day.
+A "turn" is roughly one model response. A typical Lucius firing on a small backend issue burns 30-80 turns. A multi-file refactor can hit 150+. Empirically, Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. Add Bane (test coverage), Drake (planner), Ra's al Ghul (review), Nightwing (review-fix), and you exceed Pro quota in a day.
 
 Recommendation: start on Pro to validate the framework, upgrade to Max once you've got more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you separate work across two accounts when you operate that way.
 

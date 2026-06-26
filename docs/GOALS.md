@@ -75,11 +75,12 @@ stateDiagram-v2
 
 - **Slack listener:** maps thread replies, mentions, and reactions into goal
   events. It should preserve natural conversation, not force command syntax.
-- **Planner:** turns vague work into a spec, asks blocking questions, and refuses
-  implementation while readiness is low.
-- **Executor:** runs the chosen engine and records attempts, evidence, and state.
-- **Evaluator:** checks the goal contract against surfaced evidence after each
-  attempt. The worker should not be the only judge of completion.
+- **Planner (Drake):** turns vague work into a spec, asks blocking questions, and
+  refuses implementation while readiness is low.
+- **Executor (Lucius):** runs the chosen engine and records attempts, evidence,
+  and state.
+- **Evaluator (Ra's al Ghul):** checks the goal contract against surfaced evidence
+  after each attempt. The worker should not be the only judge of completion.
 - **Memory layer:** recalls relevant lessons at goal start and proposes new
   memories when a goal exposes repeatable lessons.
 - **Client and CLI:** expose the same state and safe actions. The client can be

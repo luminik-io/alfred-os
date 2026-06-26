@@ -76,7 +76,7 @@ This is the zero-guess path for a solo builder or an AI coding tool setting up
 one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has completed, and
 `claude` has completed first-run auth. The repo owner must match `GH_ORG`; the
 runtime agents store the bare repo name in `~/.alfredrc` and build
-`GH_ORG/repo` at firing time. The command enables Drake, Lucius, Ras al Ghul,
+`GH_ORG/repo` at firing time. The command enables Drake, Lucius, Ra's al Ghul,
 and agent-cleanup; assigns the selected repo to each repo-operating agent;
 skips Slack safely; seeds prompt templates into `~/.alfred/prompts/`; creates
 standard GitHub labels on the selected repos; writes `launchd/agents.conf`, the
@@ -141,7 +141,7 @@ ALFRED_NONINTERACTIVE=1 \
 
 Per-stage skips: `--skip-brew`, `--skip-npm`.
 
-For `alfred-init.py`, `--agents starter` means Drake, Lucius, Ras al Ghul, and
+For `alfred-init.py`, `--agents starter` means Drake, Lucius, Ra's al Ghul, and
 agent-cleanup. Use `--agents all` only when you want every scheduled agent.
 Use `--repos owner/repo` for one repo, or
 `--repos owner/api,owner/web,owner/mobile` for multi-repo. `owner` must match

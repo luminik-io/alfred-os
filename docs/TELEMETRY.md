@@ -15,10 +15,19 @@ alfred telemetry on
 alfred telemetry off
 ```
 
-`alfred telemetry on` writes the hosted endpoint and schedules the reporter.
-`alfred telemetry off` asks the collector to remove this install's previous
-record, then writes `ALFRED_TELEMETRY_ENABLED=0`. The scheduler row can stay
-installed; with telemetry off, the reporter exits cleanly and sends nothing.
+`alfred telemetry on` writes the hosted endpoint and adds the reporter's
+scheduler row. `alfred telemetry off` asks the collector to remove this
+install's previous record, then writes `ALFRED_TELEMETRY_ENABLED=0`. The
+scheduler row can stay installed; with telemetry off, the reporter exits
+cleanly and sends nothing.
+
+This assumes Alfred is already installed and deployed once (the install places
+the reporter alongside your fleet's scheduler). After changing the telemetry
+config, re-run the same deploy step to re-render the reporter into the host
+scheduler (`launchd` on macOS, `systemd --user` on Linux): a Homebrew install
+exposes the wrapper as `alfred-deploy`; from a source checkout run
+`bash deploy.sh`. Until that reload runs, the row is recorded but the loaded
+unit still carries the old config, so nothing new is sent.
 
 Self-hosted collector:
 
@@ -26,6 +35,7 @@ Self-hosted collector:
 alfred telemetry on \
   --url https://your-worker.example.com/ingest \
   --token the-same-value-as-the-collector
+alfred-deploy        # Homebrew install; or `bash deploy.sh` from a source checkout
 ```
 
 ## Payload
@@ -85,37 +95,21 @@ collector, but they do not move public PR, issue, file, line, or machine totals.
 
 ## Integrity and trust
 
-The public Impact number on the site is meant to be trustworthy, not merely
-optimistic. Five layers protect it:
+Untrusted reports cannot move the public number; only the trusted collector
+token can, and it isn't distributed. The protections:
 
-1. **Per-install write tokens.** `POST /register` mints a random token, returns
-   it once, and stores only its SHA-256 hash. `POST /ingest` verifies the token
-   on every report, so one install can replace only its own record and cannot
-   edit another install's counts.
-2. **Trusted-counts gate.** The hosted collector runs with
-   `TRUSTED_COUNTS_ONLY=1` (the default in `wrangler.toml`). Public totals move
-   only for reports that carry the trusted collector token, which lives in the
-   Worker secret store and never ships in the client. An anonymous or
-   self-registered report can refresh an active-install marker, but it cannot
-   add a single PR, issue, file, line, or active-install count to the public
-   number.
-3. **Anomaly clamps.** Each count field is coerced to a non-negative integer and
-   clamped to a sane ceiling (`MAX_PER_FIELD`, `MAX_LINES_CHANGED`) as defense in
-   depth, so a single report cannot spike a counter even from a trusted reporter.
-4. **Rate limiting.** A coarse per-source limit (`RATE_LIMIT_MAX_PER_WINDOW`,
-   keyed on a one-way hash of the client IP) caps how fast any one source can
-   report, so a flood of writes cannot grind the collector or churn the counts.
-5. **Derive on read.** `GET /stats` recomputes the public total as the sum of
-   the current trusted install records, so a replayed or duplicated report never
-   double-counts and a tombstone cleanly removes an install.
+- **Per-install write tokens.** `POST /register` mints a random token and stores
+  only its SHA-256 hash, so one install can replace only its own record.
+- **Trusted-counts gate.** The hosted collector runs with
+  `TRUSTED_COUNTS_ONLY=1`, so public totals move only for reports carrying the
+  trusted collector token, which never ships in the client.
+- **Derive on read.** `GET /stats` recomputes the public total from the current
+  trusted install records, so a replayed report never double-counts and a
+  tombstone cleanly removes an install. Anomaly clamps and per-source rate
+  limiting bound any single source as defense in depth.
 
-Be honest about the limit: an open-source client cannot be made unforgeable,
-because anyone can read the code and craft a request. The public number is
-trustworthy not because the client is unbreakable, but because untrusted
-reports never move it. To shift the public counter you would need the trusted
-collector token, which is not distributed. Forks that do not set
-`TRUSTED_COUNTS_ONLY` accept open reports by design and should treat their own
-totals accordingly.
+Forks that do not set `TRUSTED_COUNTS_ONLY` accept open reports by design and
+should treat their own totals accordingly.
 
 ## Local Preview
 

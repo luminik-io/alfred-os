@@ -4,11 +4,10 @@
 > vocabulary, phrases, and rhythms most often produced by an LLM-authored
 > first draft. Read-only, stdlib-only, exits non-zero in CI.
 
-Alfred ships a fleet of autonomous agents. Most of them ship marketing
-copy that an LLM helped draft. The slop detector is the quality gate
-that catches "seamlessly transform your workflow" before it lands on the
-site. No peer agent runtime scans its own output for the vocabulary
-that gives LLM-authored text away. Alfred does.
+Alfred ships a fleet of autonomous agents, and a lot of the prose around
+them starts as an LLM draft. The slop detector is the quality gate that
+catches "seamlessly transform your workflow" before it lands on the site.
+Alfred scans its own marketing copy for LLM tells before it ships.
 
 ## What it does
 

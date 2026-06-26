@@ -176,7 +176,7 @@ Run the wizard to choose agents, repos, codenames, Slack settings, and schedules
 ```
 
 Pressing Enter at the agent-selection step chooses the recommended starter
-fleet: Drake, Lucius, Ras al Ghul, and agent-cleanup. Use `all` only when you
+fleet: Drake, Lucius, Ra's al Ghul, and agent-cleanup. Use `all` only when you
 want the full engineering roster. If multiple repos are visible, pick the repo
 numbers explicitly; the wizard no longer silently assigns every repo to every
 agent.
@@ -201,7 +201,7 @@ files them immediately for teams that want that level of automation.
 
 | Your fleet has | Do you need Batman? |
 | --- | --- |
-| 1 repo | No. Drake + Lucius + Ras al Ghul handle single-repo work fine on their own. |
+| 1 repo | No. Drake + Lucius + Ra's al Ghul handle single-repo work fine on their own. |
 | 2 to 3 related repos (frontend + backend, or app + web + mobile) | Yes, highly recommended. The single-issue fans-out-to-N-PRs pattern is the daily payoff. |
 | 5+ repos with mostly-independent work | Yes for cross-repo features. Batman no-ops on firings that find nothing cross-cutting, so the cost is the firing itself. |
 | Strict approval gates required before any cross-repo work lands | Yes. Batman's `BATMAN_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |

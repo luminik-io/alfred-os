@@ -135,7 +135,7 @@ interactive choices:
   --slack-webhook skip
 ```
 
-This configures Drake, Lucius, Ras al Ghul, and agent-cleanup; seeds starter
+This configures Drake, Lucius, Ra's al Ghul, and agent-cleanup; seeds starter
 prompts into `~/.alfred/prompts/`; and creates the GitHub labels the runners
 expect. Add Slack later by re-running the wizard or setting
 `SLACK_WEBHOOK_URL` in `~/.alfredrc`.

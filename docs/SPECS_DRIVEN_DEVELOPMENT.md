@@ -98,7 +98,7 @@ How to revert or disable the change if it breaks.
 4. **Lucius implements one repo at a time.** It claims a single
    `agent:implement` issue, opens an isolated worktree, invokes Claude Code or
    Codex, pushes a branch, and opens a PR.
-5. **Ras al Ghul, Bane, and Nightwing close the review path.** Review, tests,
+5. **Ra's al Ghul, Bane, and Nightwing close the review path.** Review, tests,
    and P0/P1 comment fixes happen as separate bounded jobs.
 6. **Slack and shipped summaries show the outcome.** The operator sees what was
    planned, claimed, opened, merged, or blocked.

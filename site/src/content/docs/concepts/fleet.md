@@ -74,7 +74,7 @@ Schedules are sensible defaults; override per-agent in `agents.conf`.
 The engineering hierarchy starts with Batman, Lucius, and Drake: Batman is the
 architect for cross-repo features, Lucius ships repo-local implementation PRs,
 and Drake scopes smaller single-repo requests. The first-install preset stays
-smaller: Lucius, Drake, Ras al Ghul, and agent-cleanup. Pick `all` only when
+smaller: Lucius, Drake, Ra's al Ghul, and agent-cleanup. Pick `all` only when
 you want the full roster.
 
 ### Specialist agents

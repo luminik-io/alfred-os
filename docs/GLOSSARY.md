@@ -102,7 +102,7 @@ in depth.
 - **preflight**: Cheap pre-firing check that the required CLIs, gh auth,
   and workspace checkouts exist before any LLM turn is spent.
   See also: [How it works](../site/src/content/docs/concepts/how-it-works.md).
-- **Ras al Ghul**: Code-review agent that posts a multi-axis review
+- **Ra's al Ghul**: Code-review agent that posts a multi-axis review
   (correctness, security, performance, maintainability) on every fresh
   `agent:authored` PR. See also: [Agents](AGENTS.md).
 - **role runner**: A Python script under `bin/` that implements one agent
