@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -85,6 +86,27 @@ MAX_STREAM_CHARS = 3500
 # reconciled write to a touch under that so a long answer lands in full yet an
 # update can never fail for length.
 MAX_MESSAGE_CHARS = 39000
+# How many times the FINAL write (``finalize``) retries after a Slack 429 rate
+# limit before giving up. The reconciled answer is the one write that must land,
+# so it is allowed a few honored ``Retry-After`` waits. A streaming partial gets
+# no extra attempts: the next update supersedes it, so a partial that 429s is
+# simply dropped rather than blocking the stream.
+MAX_FINALIZE_RATE_LIMIT_RETRIES = 5
+# Fallback wait (seconds) when Slack signals a 429 but supplies no parseable
+# ``Retry-After`` header. Slack's docs say the header is always present on a 429;
+# this is only a defensive floor so a malformed response still backs off.
+DEFAULT_RETRY_AFTER_SECONDS = 1.0
+# Upper bound on any single honored ``Retry-After`` wait, so a hostile or buggy
+# header (``Retry-After: 99999``) cannot wedge the poster for minutes.
+MAX_RETRY_AFTER_SECONDS = 30.0
+# Default upper bound on the CUMULATIVE backoff one poster call may sleep. The
+# poster runs on a Socket Mode handler thread, so a long retry loop would hold
+# that thread (and, on a busy pool, stall other Slack events) for minutes.
+# Capping the total honored wait bounds how long any single call can block, even
+# across several 429s. The per-poster value is read from
+# ``ALFRED_SLACK_MAX_TOTAL_BACKOFF_SECONDS`` in ``SlackStreamPoster.__init__``
+# (config-driven-tunables rule), defaulting to this.
+MAX_TOTAL_BACKOFF_SECONDS = 30.0
 
 # The placeholder shown the instant a mention lands, before the first token.
 PLACEHOLDER = "_Alfred is thinking…_"
@@ -240,6 +262,67 @@ def _next_cursor(data: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Reactive rate-limit (HTTP 429 / Retry-After) handling
+# ---------------------------------------------------------------------------
+
+
+def _retry_after_seconds(exc: BaseException) -> float | None:
+    """Return the ``Retry-After`` wait for a Slack 429, or ``None`` otherwise.
+
+    ``slack_sdk`` raises ``SlackApiError`` with a ``response`` whose
+    ``status_code`` is 429 and whose ``headers`` carry ``Retry-After`` (seconds)
+    when a Web API method is rate limited. We read both off the attached response
+    without importing ``slack_sdk`` (so the module stays import-light and the
+    tests can pass a plain fake), returning the clamped wait when this is a 429
+    and ``None`` for any other error so the caller can re-raise / give up.
+
+    The wait is floored at ``DEFAULT_RETRY_AFTER_SECONDS`` when the header is
+    missing or unparseable, and capped at ``MAX_RETRY_AFTER_SECONDS`` so a buggy
+    or hostile header can never wedge the poster.
+    """
+    response = getattr(exc, "response", None)
+    if response is None:
+        return None
+    status = _response_status_code(response)
+    if status != 429:
+        return None
+    headers = _response_headers(response)
+    raw = headers.get("Retry-After") or headers.get("retry-after")
+    try:
+        wait = float(raw) if raw is not None else DEFAULT_RETRY_AFTER_SECONDS
+    except (TypeError, ValueError):
+        wait = DEFAULT_RETRY_AFTER_SECONDS
+    if wait <= 0:
+        wait = DEFAULT_RETRY_AFTER_SECONDS
+    return min(wait, MAX_RETRY_AFTER_SECONDS)
+
+
+def _response_status_code(response: Any) -> int | None:
+    status = getattr(response, "status_code", None)
+    if status is None and isinstance(response, dict):
+        status = response.get("status_code")
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _response_headers(response: Any) -> dict[str, str]:
+    headers = getattr(response, "headers", None)
+    if headers is None and isinstance(response, dict):
+        headers = response.get("headers")
+    if isinstance(headers, dict):
+        return headers
+    # Some slack_sdk responses expose a mapping-like headers object; coerce it.
+    if headers is not None:
+        try:
+            return dict(headers)
+        except (TypeError, ValueError):
+            return {}
+    return {}
+
+
+# ---------------------------------------------------------------------------
 # Streaming poster: placeholder -> throttled chat.update
 # ---------------------------------------------------------------------------
 
@@ -254,9 +337,17 @@ class SlackStreamPoster:
     ``chat.update`` rate limit). :meth:`finalize` always writes the final text,
     ignoring the throttle, so the reconciled answer is never dropped.
 
-    Every Slack call is wrapped: a transport error never propagates, it just
-    means that one update is skipped. ``now`` is injectable so tests drive the
-    throttle deterministically without sleeping.
+    PROACTIVE throttling (``throttle``) keeps us under the per-method limit in
+    the common case; REACTIVE backoff handles the case where Slack still returns
+    a 429. On a 429 the poster honors the ``Retry-After`` header and retries: the
+    final write (:meth:`finalize`) retries up to
+    :data:`MAX_FINALIZE_RATE_LIMIT_RETRIES` times so the reconciled answer always
+    lands, while a streaming partial (:meth:`update`) is dropped on a 429 because
+    the next update supersedes it. Any other transport error never propagates, it
+    just means that one update is skipped.
+
+    ``now`` and ``sleep`` are both injectable so tests drive the throttle and the
+    ``Retry-After`` backoff deterministically without touching the wall clock.
     """
 
     def __init__(
@@ -267,12 +358,17 @@ class SlackStreamPoster:
         thread_ts: str,
         throttle: float = DEFAULT_THROTTLE,
         now: Callable[[], float] | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._client = client
         self._channel = channel
         self._thread_ts = thread_ts
         self._throttle = max(0.0, throttle)
         self._now = now or time.monotonic
+        self._sleep = sleep or time.sleep
+        self._max_total_backoff = max(
+            0.0, _env_float("ALFRED_SLACK_MAX_TOTAL_BACKOFF_SECONDS", MAX_TOTAL_BACKOFF_SECONDS)
+        )
         self._message_ts: str = ""
         self._last_update_at: float = 0.0
         self._last_text: str = ""
@@ -286,14 +382,33 @@ class SlackStreamPoster:
         post = getattr(self._client, "chat_postMessage", None)
         if post is None:
             return False
-        try:
-            resp = post(
-                channel=self._channel,
-                thread_ts=self._thread_ts,
-                text=placeholder,
-            )
-        except Exception:
-            return False
+        attempt = 0
+        slept = 0.0
+        while True:
+            try:
+                resp = post(
+                    channel=self._channel,
+                    thread_ts=self._thread_ts,
+                    text=placeholder,
+                )
+                break
+            except Exception as exc:
+                # Without the placeholder there is no ts to stream into, so the
+                # whole turn would be silent. Honor a 429 Retry-After and retry
+                # a bounded number of times before giving up, but never sleep
+                # past the cumulative backoff budget: this runs on a Slack
+                # handler thread, so a long retry must not stall other events.
+                wait = _retry_after_seconds(exc)
+                if (
+                    wait is not None
+                    and attempt < MAX_FINALIZE_RATE_LIMIT_RETRIES
+                    and slept + wait <= self._max_total_backoff
+                ):
+                    self._sleep(wait)
+                    slept += wait
+                    attempt += 1
+                    continue
+                return False
         data = _as_mapping(resp)
         self._message_ts = str(data.get("ts") or "")
         self._last_text = placeholder
@@ -309,28 +424,65 @@ class SlackStreamPoster:
             return
         self._write(text)
 
-    def finalize(self, text: str) -> None:
+    def finalize(self, text: str) -> bool:
         """Final update, never throttled and never stream-trimmed.
 
         The reconciled answer lands in full, bounded only by Slack's own
         message-body limit (:data:`MAX_MESSAGE_CHARS`) so a long answer is not
         clipped to the much smaller streaming cap.
+
+        Returns True iff the reconciled answer is on Slack: either it was
+        written, or the last streamed update already carried it (text unchanged).
+        Returns False when there is no message to update, the final answer is
+        empty (so only the placeholder/partial is showing -- nothing reconciled
+        landed), or the final write never landed (a persistent 429 past the
+        budget, or a non-429 error), so the caller can surface that the
+        reconciled answer did not reach Slack.
         """
         text = _cap_message(text)
-        if not self._message_ts or not text or text == self._last_text:
-            return
-        self._write(text)
+        if not self._message_ts:
+            return False
+        if not text:
+            # An empty reconciled answer never replaces the placeholder/partial,
+            # so delivery did NOT produce a real answer: report failure.
+            return False
+        if text == self._last_text:
+            # Nothing new to write; the current message already holds the answer.
+            return True
+        return self._write(text, retries=MAX_FINALIZE_RATE_LIMIT_RETRIES)
 
-    def _write(self, text: str) -> None:
+    def _write(self, text: str, *, retries: int = 0) -> bool:
+        """Send one ``chat.update``. On a Slack 429 this honors ``Retry-After``
+        and retries up to ``retries`` more times: a streaming partial passes 0
+        (it is dropped, since the next update supersedes it) while the final
+        write passes a few so the reconciled answer always lands. Retries stop
+        once the cumulative backoff budget is spent so a handler thread is never
+        held for minutes. Any non-429 transport error is swallowed (one update
+        skipped). Returns True iff the write landed.
+        """
         update = getattr(self._client, "chat_update", None)
         if update is None:
-            return
-        try:
-            update(channel=self._channel, ts=self._message_ts, text=text)
-        except Exception:
-            return
-        self._last_text = text
-        self._last_update_at = self._now()
+            return False
+        attempt = 0
+        slept = 0.0
+        while True:
+            try:
+                update(channel=self._channel, ts=self._message_ts, text=text)
+            except Exception as exc:
+                wait = _retry_after_seconds(exc)
+                if (
+                    wait is not None
+                    and attempt < retries
+                    and slept + wait <= self._max_total_backoff
+                ):
+                    self._sleep(wait)
+                    slept += wait
+                    attempt += 1
+                    continue
+                return False
+            self._last_text = text
+            self._last_update_at = self._now()
+            return True
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +497,10 @@ class ConverseStreamResult:
     turn: ConverseTurn | None
     streamed: bool = False
     error: str = ""
+    # False when the final reconciled answer never reached Slack (a persistent
+    # 429 past the backoff budget, or a non-429 error on the final chat.update).
+    # The turn still ran server-side, but Slack may show only a partial.
+    finalized: bool = True
 
     @property
     def ok(self) -> bool:
@@ -401,8 +557,16 @@ def stream_converse_to_slack(
     if turn is None:
         return ConverseStreamResult(turn=None, streamed=streamed)
     final_text = render(turn) if render is not None else turn.reply
-    poster.finalize(final_text)
-    return ConverseStreamResult(turn=turn, streamed=streamed)
+    finalized = poster.finalize(final_text)
+    if not finalized:
+        # The turn ran, but the final chat.update did not land (Slack may still
+        # show only a partial). Surface it instead of reporting a clean success.
+        print(
+            "[SLACK-CONVERSE-WARN] final chat.update did not land; "
+            "Slack may show only a partial answer",
+            file=sys.stderr,
+        )
+    return ConverseStreamResult(turn=turn, streamed=streamed, finalized=finalized)
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +632,11 @@ class SlackConverseOutcome:
     offered_issue: bool = False
     streamed: bool = False
     detail: str = ""
+    # False when the final reconciled answer never reached Slack (a persistent
+    # 429 past the backoff budget, or a non-429 error on the final chat.update).
+    # The turn still ran, but the listener should treat delivery as degraded
+    # rather than a clean success when this is False.
+    finalized: bool = True
 
 
 def run_slack_converse(
@@ -562,7 +731,7 @@ def run_slack_converse(
     )
 
     if not result.ok:
-        poster.finalize(
+        fallback_landed = poster.finalize(
             "I could not reach the conversational engine just now. "
             "Try again in a moment, or send the request as a plan."
         )
@@ -570,6 +739,7 @@ def run_slack_converse(
             handled=True,
             streamed=result.streamed,
             detail=result.error or "live_session_unavailable",
+            finalized=fallback_landed,
         )
 
     reply = reply_box.get("reply")
@@ -578,6 +748,10 @@ def run_slack_converse(
         intent=reply.intent if reply else "",
         offered_issue=bool(reply and reply.offered_issue),
         streamed=result.streamed,
+        # Carry the delivery signal forward: result.finalized is False when the
+        # reconciled answer did not land on Slack despite the turn running, so
+        # the listener can tell a clean success from a degraded delivery.
+        finalized=result.finalized,
     )
 
 

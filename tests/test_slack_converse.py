@@ -348,6 +348,194 @@ def test_finalize_always_writes_ignoring_throttle() -> None:
     assert client.updates[0]["text"] == "the reconciled answer"
 
 
+# ---------------------------------------------------------------------------
+# Reactive 429 / Retry-After backoff
+# ---------------------------------------------------------------------------
+
+
+class _RateLimitResponse:
+    """Mimics the slack_sdk response attached to a 429 SlackApiError."""
+
+    def __init__(self, retry_after: object, status: int = 429) -> None:
+        self.status_code = status
+        self.headers = {"Retry-After": retry_after}
+
+
+class _RateLimited(Exception):
+    def __init__(self, retry_after: object = "1", status: int = 429) -> None:
+        super().__init__("ratelimited")
+        self.response = _RateLimitResponse(retry_after, status)
+
+
+class FakeSleep:
+    """Records each honored Retry-After wait instead of sleeping."""
+
+    def __init__(self) -> None:
+        self.waits: list[float] = []
+
+    def __call__(self, seconds: float) -> None:
+        self.waits.append(seconds)
+
+
+class RateLimitedUpdates(FakeSlackClient):
+    """chat_update raises a 429 the first ``fails`` times, then succeeds."""
+
+    def __init__(self, fails: int, retry_after: object = "1") -> None:
+        super().__init__()
+        self._fails = fails
+        self._retry_after = retry_after
+
+    def chat_update(self, **kwargs: object) -> dict:
+        if self._fails > 0:
+            self._fails -= 1
+            raise _RateLimited(self._retry_after)
+        return super().chat_update(**kwargs)
+
+
+def test_finalize_retries_on_rate_limit_then_lands() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+    client = RateLimitedUpdates(fails=2, retry_after="2")
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.finalize("the reconciled answer")
+    # It honored Retry-After twice, then the final write landed in full.
+    assert sleep.waits == [2.0, 2.0]
+    assert client.updates and client.updates[-1]["text"] == "the reconciled answer"
+
+
+def test_update_drops_on_rate_limit_without_retrying() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+    client = RateLimitedUpdates(fails=5)
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.update("a streaming partial")
+    # A streaming partial that 429s is simply dropped; no wait, no write.
+    assert sleep.waits == []
+    assert client.updates == []
+
+
+def test_retry_after_is_clamped_to_a_ceiling() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+    client = RateLimitedUpdates(fails=1, retry_after="99999")
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.finalize("answer")
+    # A hostile Retry-After cannot wedge the poster for minutes.
+    assert sleep.waits == [sc.MAX_RETRY_AFTER_SECONDS]
+
+
+def test_non_rate_limit_error_is_not_retried() -> None:
+    clock = FakeClock()
+    sleep = FakeSleep()
+
+    class Boom(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("network blip")
+
+    poster = sc.SlackStreamPoster(
+        Boom(), channel="C1", thread_ts="1.0", throttle=0.0, now=clock, sleep=sleep
+    )
+    poster.start()
+    poster.finalize("answer")
+    # A non-429 transport error is swallowed, never retried.
+    assert sleep.waits == []
+
+
+def test_start_retries_placeholder_on_rate_limit() -> None:
+    sleep = FakeSleep()
+
+    class RateLimitedPost(FakeSlackClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self._fails = 2
+
+        def chat_postMessage(self, **kwargs: object) -> dict:
+            if self._fails > 0:
+                self._fails -= 1
+                raise _RateLimited("1")
+            return super().chat_postMessage(**kwargs)
+
+    poster = sc.SlackStreamPoster(
+        RateLimitedPost(), channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock(), sleep=sleep
+    )
+    # The placeholder must survive a transient 429 so the turn is not silent.
+    assert poster.start() is True
+    assert sleep.waits == [1.0, 1.0]
+
+
+def test_total_backoff_budget_caps_cumulative_wait() -> None:
+    sleep = FakeSleep()
+    # Every update 429s with a 20s Retry-After. A single 20s wait fits the 30s
+    # cumulative budget, but a second (40s total) would exceed it, so the loop
+    # gives up rather than holding the Slack handler thread for minutes.
+    client = RateLimitedUpdates(fails=10, retry_after="20")
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock(), sleep=sleep
+    )
+    poster.start()
+    landed = poster.finalize("answer")
+    assert sleep.waits == [20.0]
+    assert sum(sleep.waits) <= sc.MAX_TOTAL_BACKOFF_SECONDS
+    assert landed is False
+
+
+def test_finalize_reports_success_and_failure() -> None:
+    # Success: the final write lands -> True.
+    ok_poster = sc.SlackStreamPoster(
+        FakeSlackClient(), channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock()
+    )
+    ok_poster.start()
+    assert ok_poster.finalize("the answer") is True
+
+    # Failure: the final write never lands (persistent non-429 error) -> False,
+    # so the caller can surface that the reconciled answer did not reach Slack.
+    class Boom(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent failure")
+
+    bad_poster = sc.SlackStreamPoster(
+        Boom(), channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock(), sleep=FakeSleep()
+    )
+    bad_poster.start()
+    assert bad_poster.finalize("the answer") is False
+
+
+def test_finalize_empty_answer_reports_failure() -> None:
+    # An empty reconciled answer never replaces the placeholder, so finalize must
+    # report False (delivery did not produce a real answer), not a false success.
+    client = FakeSlackClient()
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock()
+    )
+    poster.start()
+    assert poster.finalize("") is False
+    # Only the placeholder post happened; no chat.update with a real answer.
+    assert client.updates == []
+
+
+def test_finalize_true_when_answer_already_streamed() -> None:
+    # If the last streamed update already carried the final text, finalize has
+    # nothing new to write but the answer IS on Slack: report True, not a false
+    # failure.
+    client = FakeSlackClient()
+    poster = sc.SlackStreamPoster(
+        client, channel="C1", thread_ts="1.0", throttle=0.0, now=FakeClock()
+    )
+    poster.start()
+    poster.update("the final answer")
+    assert client.updates and client.updates[-1]["text"] == "the final answer"
+    assert poster.finalize("the final answer") is True
+
+
 def test_update_skips_identical_text() -> None:
     clock = FakeClock()
     client = FakeSlackClient()
@@ -528,6 +716,34 @@ def test_run_slack_converse_handles_unavailable_engine(tmp_path: Path) -> None:
     assert outcome.handled is True
     assert outcome.intent == ""
     assert "could not reach" in client.updates[-1]["text"].lower()
+
+
+def test_run_slack_converse_surfaces_failed_finalization(tmp_path: Path) -> None:
+    # The turn runs, but every chat.update fails, so the reconciled answer never
+    # lands on Slack. The outcome must carry finalized=False (degraded delivery)
+    # rather than reporting a clean success; handled stays True (the turn ran).
+    class FailingUpdates(FakeSlackClient):
+        def chat_update(self, **kwargs: object) -> dict:
+            raise RuntimeError("permanent transport failure")
+
+    client = FailingUpdates(replies={"ok": True, "messages": []})
+    turn = _turn("The answer.", INTENT_CONVERSATION)
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    outcome = sc.run_slack_converse(
+        client=client,
+        config=_enabled_config(),
+        channel="C1",
+        thread_ts="1.0",
+        user_message="anything",
+        build_turn=_fake_build_turn(turn, ""),
+        transcript_for=lambda fid: transcript,
+        extract_tokens=lambda p: [],
+        now=FakeClock(),
+    )
+    assert outcome.handled is True
+    assert outcome.finalized is False
 
 
 def test_run_slack_converse_empty_message_is_not_handled(tmp_path: Path) -> None:

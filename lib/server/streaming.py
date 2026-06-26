@@ -29,12 +29,23 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 from collections.abc import AsyncIterator, Callable, Iterable
 from pathlib import Path
 from typing import Any
 
 from starlette.concurrency import run_in_threadpool
+
+
+def _env_float(name: str, default: float) -> float:
+    """Read a float from env, falling back to ``default`` on absence/garbage."""
+    try:
+        raw = os.environ.get(name)
+        return float(raw) if raw is not None and raw.strip() else default
+    except (TypeError, ValueError):
+        return default
+
 
 # How long the SSE tail waits between file-size checks while a firing is still
 # running. Small enough to feel live, large enough that an idle stream is cheap.
@@ -191,6 +202,27 @@ def _sse(event: str, data: Any) -> bytes:
     return f"event: {event}\ndata: {payload}\n\n".encode()
 
 
+# Default keep-alive cadence. A silent SSE connection (the model is thinking, or
+# a firing is running with no new transcript lines) can be reaped by an idle
+# proxy/load-balancer mid-turn; an SSE comment every HEARTBEAT_SECONDS keeps the
+# socket warm. Env-overridable per the config-driven-tunables rule. A value of 0
+# (or negative) DISABLES heartbeats: the stream loops gate on
+# ``heartbeat_seconds > 0``, so the env knob must not be floored here or an
+# operator could never turn keep-alives off.
+HEARTBEAT_SECONDS = _env_float("ALFRED_SSE_HEARTBEAT_SECONDS", 15.0)
+
+
+def _sse_comment() -> bytes:
+    """A Server-Sent-Events comment line (keep-alive).
+
+    Comment lines start with ``:`` and carry no ``data:`` field, so a spec
+    compliant client (including the desktop ``readSseStream`` parser, which only
+    acts on ``event``/``data`` lines) ignores them. They exist solely to push
+    bytes through idle proxies so the connection is not reaped mid-turn.
+    """
+    return b": keep-alive\n\n"
+
+
 async def tail_transcript_sse(
     state_root: Path,
     firing_id: str,
@@ -198,6 +230,7 @@ async def tail_transcript_sse(
     start_offset: int = 0,
     poll_seconds: float = TAIL_POLL_SECONDS,
     max_seconds: float = TAIL_MAX_SECONDS,
+    heartbeat_seconds: float = HEARTBEAT_SECONDS,
 ) -> AsyncIterator[bytes]:
     """Yield SSE frames tailing a firing transcript until it completes.
 
@@ -215,12 +248,18 @@ async def tail_transcript_sse(
 
     found = await run_in_threadpool(lambda: find_transcript(state_root, firing_id) is not None)
     yield _sse("open", {"firing_id": firing_id, "found": found})
+    last_frame = loop.time()
 
     while True:
         chunk = await run_in_threadpool(tail_transcript_chunk, state_root, firing_id, offset=offset)
         offset = int(chunk["offset"])
         if chunk["lines"]:
             yield _sse("append", {"lines": chunk["lines"], "offset": offset})
+            last_frame = loop.time()
+        elif heartbeat_seconds > 0 and loop.time() - last_frame >= heartbeat_seconds:
+            # A running firing with no new transcript lines: keep the socket warm.
+            yield _sse_comment()
+            last_frame = loop.time()
         if chunk["done"]:
             final = await run_in_threadpool(
                 tail_transcript_chunk, state_root, firing_id, offset=offset
@@ -243,6 +282,7 @@ async def stream_converse_turn(
     transcript_path: Path,
     reconcile: Callable[[Any], dict[str, Any]],
     poll_seconds: float = 0.15,
+    heartbeat_seconds: float = HEARTBEAT_SECONDS,
 ) -> AsyncIterator[bytes]:
     """Stream a Compose converse turn token by token, then reconcile.
 
@@ -272,12 +312,19 @@ async def stream_converse_turn(
     yield _sse("open", {})
 
     emitted = 0
+    last_frame = loop.time()
     while not done_event.is_set():
         tokens = await run_in_threadpool(_safe_extract, extract_tokens, transcript_path)
         if len(tokens) > emitted:
             for fragment in tokens[emitted:]:
                 yield _sse("token", {"text": fragment})
             emitted = len(tokens)
+            last_frame = loop.time()
+        elif heartbeat_seconds > 0 and loop.time() - last_frame >= heartbeat_seconds:
+            # The model is thinking with no new tokens: emit a keep-alive comment
+            # so an idle proxy does not reap the connection before the result.
+            yield _sse_comment()
+            last_frame = loop.time()
         await asyncio.sleep(poll_seconds)
 
     tokens = await run_in_threadpool(_safe_extract, extract_tokens, transcript_path)

@@ -237,3 +237,63 @@ def test_stream_converse_turn_primitive_orders_tokens_before_result(tmp_path: Pa
     assert names[-1] == "result"
     tokens = [data["text"] for name, data in events if name == "token"]
     assert "".join(tokens) == "hello world"
+
+
+def test_stream_converse_turn_emits_heartbeat_while_idle(tmp_path: Path) -> None:
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    def run_turn() -> dict[str, str]:
+        # The model is "thinking": block with NO tokens written, long enough for
+        # at least one heartbeat to fire.
+        time.sleep(0.25)
+        return {"reply": ""}
+
+    async def _collect() -> str:
+        frames = []
+        async for frame in streaming.stream_converse_turn(
+            run_turn=run_turn,
+            extract_tokens=streaming.assistant_text_fragments,
+            transcript_path=transcript,
+            reconcile=lambda turn: {"reply": turn["reply"]},
+            poll_seconds=0.02,
+            heartbeat_seconds=0.05,
+        ):
+            frames.append(frame.decode("utf-8"))
+        return "".join(frames)
+
+    raw = asyncio.run(_collect())
+    # An idle stream emitted at least one keep-alive comment to hold the socket...
+    assert ": keep-alive" in raw
+    # ...and the comment is invisible to the SSE event parser (no phantom event).
+    events = _parse_sse(raw)
+    names = [name for name, _ in events]
+    assert names[0] == "open"
+    assert names[-1] == "result"
+    assert "keep-alive" not in names
+
+
+def test_stream_converse_turn_heartbeat_disabled_with_zero(tmp_path: Path) -> None:
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("", encoding="utf-8")
+
+    def run_turn() -> dict[str, str]:
+        time.sleep(0.25)
+        return {"reply": ""}
+
+    async def _collect() -> str:
+        frames = []
+        async for frame in streaming.stream_converse_turn(
+            run_turn=run_turn,
+            extract_tokens=streaming.assistant_text_fragments,
+            transcript_path=transcript,
+            reconcile=lambda turn: {"reply": turn["reply"]},
+            poll_seconds=0.02,
+            heartbeat_seconds=0,
+        ):
+            frames.append(frame.decode("utf-8"))
+        return "".join(frames)
+
+    # heartbeat_seconds=0 disables keep-alives entirely (the env knob must be
+    # able to turn the feature off, not be floored to a 1s spam).
+    assert ": keep-alive" not in asyncio.run(_collect())
