@@ -42,6 +42,10 @@ Subcommands:
     alfred-brain.py redis-sync
         Mirror reviewed fleet-brain lessons into Redis AMS.
 
+    alfred-brain.py ams-reset --yes
+        Clear EVERY lesson in the configured AMS namespace. Destructive:
+        requires --yes. Prints how many lessons were deleted.
+
     alfred-brain.py firings [--codename C] [--status S] [--limit N]
         List firing audit rows.
 
@@ -725,6 +729,50 @@ def cmd_redis_sync(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def cmd_ams_reset(args: argparse.Namespace) -> int:
+    provider = _build_redis_provider()
+    if not args.yes:
+        print(
+            "alfred-brain ams-reset: refusing to clear lessons without --yes "
+            f"(namespace={provider.namespace}, base={provider.base_url})",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        lessons = provider.list_lessons(limit=args.limit)
+    except Exception as exc:
+        print(
+            f"alfred-brain ams-reset: could not list lessons in namespace "
+            f"{provider.namespace}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    deleted = 0
+    failed: list[str] = []
+    for lesson in lessons:
+        if provider.forget_lesson(lesson.id):
+            deleted += 1
+        else:
+            failed.append(lesson.id)
+    payload = {
+        "namespace": provider.namespace,
+        "base_url": provider.base_url,
+        "matched": len(lessons),
+        "deleted": deleted,
+        "failed": failed,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(
+            f"alfred-brain ams-reset: deleted {deleted}/{len(lessons)} lesson(s) "
+            f"from namespace {provider.namespace}"
+        )
+        if failed:
+            print(f"  failed: {', '.join(failed)}", file=sys.stderr)
+    return 1 if failed else 0
+
+
 def cmd_forget(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     if args.before:
@@ -1240,6 +1288,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_redis_sync.add_argument("--dry-run", action="store_true")
     p_redis_sync.add_argument("--json", action="store_true")
     p_redis_sync.set_defaults(func=cmd_redis_sync)
+
+    p_ams_reset = sub.add_parser(
+        "ams-reset", help="clear ALL lessons in the configured AMS namespace (destructive)"
+    )
+    p_ams_reset.add_argument(
+        "--yes", action="store_true", help="confirm the destructive namespace wipe"
+    )
+    p_ams_reset.add_argument(
+        "--limit", type=int, default=10_000, help="max lessons to enumerate for deletion"
+    )
+    p_ams_reset.add_argument("--json", action="store_true")
+    p_ams_reset.set_defaults(func=cmd_ams_reset)
 
     p_forget = sub.add_parser("forget", help="delete a lesson or GC old ones")
     p_forget.add_argument("id", nargs="?", help="lesson id to delete")

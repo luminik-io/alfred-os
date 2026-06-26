@@ -7,6 +7,16 @@ can point it at a different endpoint.
 The provider is deliberately tolerant: recall failures return ``[]``;
 reflect failures raise :class:`NotImplementedError` so a chained writer
 can fall through to ``fleet``.
+
+Every call funnels through one choke point (``_request``), which adds
+retry-with-backoff plus a lightweight in-process circuit breaker so an
+AMS hiccup is absorbed instead of either hammering a dead endpoint or
+silently degrading on the first transient blip. Tunables are
+env-driven: ``ALFRED_REDIS_MEMORY_MAX_RETRIES`` (default 2),
+``ALFRED_REDIS_MEMORY_BREAKER_THRESHOLD`` (default 5), and
+``ALFRED_REDIS_MEMORY_BREAKER_COOLDOWN_S`` (default 30). Transient
+faults (connection refused, timeouts, 5xx, 429, 408) retry; fatal 4xx
+(401/403/400/422) surface immediately.
 """
 
 from __future__ import annotations
@@ -14,14 +24,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from agent_runner.reliability import compute_backoff_delay
 from fleet_brain import Lesson, Severity, new_id
 
 from .ams_server import DEFAULT_HOST, DEFAULT_PORT
@@ -35,7 +47,41 @@ _DEFAULT_TIMEOUT_S = 2.0
 _AMS_DEFAULT_HOST = DEFAULT_HOST
 _AMS_DEFAULT_PORT = DEFAULT_PORT
 
+# Resilience tunables (env-overridable, read at construction via from_env).
+_DEFAULT_MAX_RETRIES = 2
+_DEFAULT_BREAKER_THRESHOLD = 5
+_DEFAULT_BREAKER_COOLDOWN_S = 30.0
+
 Transport = Callable[[str, str, dict[str, Any] | None, dict[str, str], float], Any]
+
+
+class _AmsHttpError(RuntimeError):
+    """Transport error from the AMS endpoint that preserves the HTTP status.
+
+    ``status`` is the HTTP response code for an :class:`HTTPError`, and
+    ``None`` for transport faults that never reached a response
+    (connection refused, ``URLError``, ``TimeoutError``). Carrying the
+    status lets the retry loop classify a failure as TRANSIENT (retry) or
+    FATAL (raise immediately) instead of collapsing every fault into an
+    opaque ``RuntimeError``.
+    """
+
+    def __init__(self, status: int | None, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def _is_transient_status(status: int | None) -> bool:
+    """Decide whether an AMS failure status is worth retrying.
+
+    TRANSIENT (retry): no status at all (connection refused / URLError /
+    TimeoutError / an injected exception), any 5xx, plus 429 (rate limit)
+    and 408 (request timeout). FATAL (no retry): every other 4xx, which
+    means auth or a bad request that a retry cannot fix (401/403/400/422).
+    """
+    if status is None or status >= 500:
+        return True
+    return status in (408, 429)
 
 
 def _ams_default_url(envmap: Mapping[str, str]) -> str:
@@ -46,6 +92,59 @@ def _ams_default_url(envmap: Mapping[str, str]) -> str:
     except ValueError:
         port = _AMS_DEFAULT_PORT
     return f"http://{host}:{port}"
+
+
+@dataclass
+class _BreakerState:
+    """In-process circuit-breaker counters for one provider instance.
+
+    Deliberately NOT the on-disk per-engine ``CircuitBreaker`` from
+    ``agent_runner.reliability``: that one is engine-keyed and shared
+    across firings. The AMS endpoint is a single loopback service, so a
+    lightweight in-process breaker on the provider instance is the right
+    granularity. A ``monotonic`` clock is injectable for tests.
+
+    The breaker has three logical states:
+
+    * closed: calls pass through, ``consecutive`` counts failures.
+    * open: ``consecutive >= threshold`` opened it and the cooldown has
+      not elapsed; calls fail fast without touching the transport.
+    * half-open: cooldown has elapsed; the next call is allowed through as
+      a single trial. Success closes the breaker; failure re-opens it.
+    """
+
+    threshold: int = _DEFAULT_BREAKER_THRESHOLD
+    cooldown_s: float = _DEFAULT_BREAKER_COOLDOWN_S
+    clock: Callable[[], float] = time.monotonic
+    consecutive: int = 0
+    opened_at: float | None = None
+
+    def allow(self) -> bool:
+        """Return ``True`` if a call may proceed (closed or half-open)."""
+        if self.opened_at is None:
+            return True
+        # Cooldown elapsed -> half-open: let a single trial through.
+        return (self.clock() - self.opened_at) >= self.cooldown_s
+
+    def record_success(self) -> None:
+        """A clean call closes the breaker and resets the streak."""
+        self.consecutive = 0
+        self.opened_at = None
+
+    def record_failure(self) -> None:
+        """Count one transient failure; (re)open at the threshold.
+
+        While half-open (cooldown elapsed but still flagged open), a fresh
+        failure re-opens the breaker by stamping a new ``opened_at`` so a
+        fresh cooldown begins.
+        """
+        if self.opened_at is not None and (self.clock() - self.opened_at) >= self.cooldown_s:
+            # Half-open trial failed: re-open with a fresh cooldown.
+            self.opened_at = self.clock()
+            return
+        self.consecutive += 1
+        if self.consecutive >= self.threshold and self.opened_at is None:
+            self.opened_at = self.clock()
 
 
 @dataclass
@@ -60,6 +159,19 @@ class RedisAgentMemoryProvider:
     search_mode: str = "semantic"
     transport: Transport | None = None
     name: str = "redis"
+    max_retries: int = _DEFAULT_MAX_RETRIES
+    breaker_threshold: int = _DEFAULT_BREAKER_THRESHOLD
+    breaker_cooldown_s: float = _DEFAULT_BREAKER_COOLDOWN_S
+    sleep: Callable[[float], None] = time.sleep
+    clock: Callable[[], float] = time.monotonic
+    _breaker: _BreakerState = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._breaker = _BreakerState(
+            threshold=max(1, int(self.breaker_threshold)),
+            cooldown_s=max(0.0, float(self.breaker_cooldown_s)),
+            clock=self.clock,
+        )
 
     @classmethod
     def from_env(
@@ -86,6 +198,13 @@ class RedisAgentMemoryProvider:
             timeout_s=timeout,
             search_mode=(envmap.get("ALFRED_REDIS_MEMORY_SEARCH_MODE") or "semantic").strip()
             or "semantic",
+            max_retries=_env_int(envmap, "ALFRED_REDIS_MEMORY_MAX_RETRIES", _DEFAULT_MAX_RETRIES),
+            breaker_threshold=_env_int(
+                envmap, "ALFRED_REDIS_MEMORY_BREAKER_THRESHOLD", _DEFAULT_BREAKER_THRESHOLD
+            ),
+            breaker_cooldown_s=_env_float(
+                envmap, "ALFRED_REDIS_MEMORY_BREAKER_COOLDOWN_S", _DEFAULT_BREAKER_COOLDOWN_S
+            ),
         )
 
     def recall(
@@ -277,6 +396,32 @@ class RedisAgentMemoryProvider:
             return False
         return True
 
+    def list_lessons(self, *, limit: int = 1000) -> list[Lesson]:
+        """Enumerate lessons stored in this provider's namespace.
+
+        Used by the ``ams-reset`` operator path: AMS has no namespace-wide
+        bulk-delete, so we list with a high limit (an empty ``text`` plus a
+        ``namespace`` filter matches the whole namespace) and delete each.
+        Later rebase commits tighten this path to drain the whole namespace.
+        """
+        payload: dict[str, Any] = {
+            "text": "",
+            "limit": max(1, int(limit)),
+            "search_mode": "semantic",
+            "namespace": {"eq": self.namespace},
+        }
+        if self.user_id:
+            payload["user_id"] = {"eq": self.user_id}
+        response = self._request("POST", "/v1/long-term-memory/search", payload)
+        return _parse_search_response(
+            response,
+            codename=None,
+            repo=None,
+            namespace=self.namespace,
+            user_id=self.user_id,
+            required_topics=None,
+        )
+
     def forget_lesson(self, lesson_id: str) -> bool:
         """Remove one lesson from Redis AMS by its deterministic memory id.
 
@@ -307,9 +452,63 @@ class RedisAgentMemoryProvider:
             headers["Content-Type"] = _JSON
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
-        if self.transport is not None:
-            return self.transport(method, url, payload, headers, self.timeout_s)
-        return _default_transport(method, url, payload, headers, self.timeout_s)
+
+        if not self._breaker.allow():
+            raise _AmsHttpError(
+                None,
+                f"AMS circuit breaker open for {self.base_url} "
+                f"(>= {self._breaker.threshold} consecutive failures); "
+                "failing fast until cooldown elapses.",
+            )
+
+        attempt = 0
+        while True:
+            try:
+                result = self._call_transport(method, url, payload, headers)
+            except _AmsHttpError as exc:
+                if not _is_transient_status(exc.status):
+                    # FATAL (auth / bad request): surface immediately. A fatal
+                    # fault does not feed the transient breaker streak.
+                    raise
+                self._breaker.record_failure()
+                if attempt >= self.max_retries:
+                    raise
+                delay = compute_backoff_delay(attempt + 1)
+                _LOG.debug(
+                    "memory.redis: transient %s on %s %s, retry %d/%d in %.2fs",
+                    exc.status,
+                    method,
+                    path,
+                    attempt + 1,
+                    self.max_retries,
+                    delay,
+                )
+                self.sleep(delay)
+                attempt += 1
+                continue
+            self._breaker.record_success()
+            return result
+
+    def _call_transport(
+        self,
+        method: str,
+        url: str,
+        payload: dict[str, Any] | None,
+        headers: dict[str, str],
+    ) -> Any:
+        try:
+            if self.transport is not None:
+                return self.transport(method, url, payload, headers, self.timeout_s)
+            return _default_transport(method, url, payload, headers, self.timeout_s)
+        except _AmsHttpError:
+            # Already carries an HTTP status (or explicit None): preserve it.
+            raise
+        except Exception as exc:
+            # An unknown / injected exception with no status is treated as
+            # transient and bounded by max_retries. Preserve the original
+            # message so downstream surfaces (health(), recall debug logs)
+            # read the same string the transport raised.
+            raise _AmsHttpError(None, str(exc)) from exc
 
 
 def _default_transport(
@@ -329,11 +528,37 @@ def _default_transport(
     try:
         with urlopen(request, timeout=timeout_s) as response:
             raw = response.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise RuntimeError(str(exc)) from exc
+    except HTTPError as exc:
+        # Preserve the HTTP status so the retry loop can tell a retryable
+        # 5xx / 429 / 408 from a fatal 4xx auth / bad-request.
+        raise _AmsHttpError(exc.code, str(exc)) from exc
+    except (URLError, TimeoutError) as exc:
+        # Never reached a response (connection refused, DNS, timeout):
+        # no status, treated as transient.
+        raise _AmsHttpError(None, str(exc)) from exc
     if not raw.strip():
         return {}
     return json.loads(raw)
+
+
+def _env_int(envmap: Mapping[str, str], key: str, default: int) -> int:
+    raw = (envmap.get(key) or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default
+
+
+def _env_float(envmap: Mapping[str, str], key: str, default: float) -> float:
+    raw = (envmap.get(key) or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return default
 
 
 def _parse_search_response(
