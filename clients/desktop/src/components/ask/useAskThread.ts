@@ -116,7 +116,7 @@ function convertTurn(turn: ChatTurn, index: number): ThreadMessageLike {
           toolCallId: `draft-${index}-${turn.draft.draftId}`,
           toolName: DRAFT_TOOL_NAME,
           args: { draft: turn.draft },
-          argsText: turn.draft.title,
+          argsText: JSON.stringify({ draft: turn.draft }),
         },
       ],
     };

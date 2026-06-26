@@ -145,7 +145,9 @@ function coerceConversation(value: unknown): PersistedConversation | null {
     draftId: typeof data.draftId === "string" ? data.draftId : undefined,
     draft: (data.draft as ComposeDraftFields | undefined) ?? undefined,
     turns: trimmed,
-    updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : Date.now(),
+    // A pre-v2 thread is always older than any v2 chat; default a missing
+    // stamp to 0 (oldest) so the legacy fold can never evict a real v2 chat.
+    updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
     title:
       typeof data.title === "string" && data.title.trim()
         ? data.title
@@ -180,7 +182,7 @@ function readLegacyConversation(): PersistedConversation | null {
     draftId: data.draftId,
     draft: data.draft,
     turns: data.turns,
-    updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : Date.now(),
+    updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
   });
 }
 

@@ -153,6 +153,21 @@ describe("chatHistory last-5 persistence", () => {
     expect(second.filter((c) => c.title === "legacy request")).toHaveLength(1);
   });
 
+  it("a stampless legacy thread does not evict a full set of v2 chats", () => {
+    for (let i = 0; i < 5; i += 1) {
+      saveConversation({ id: `v2-${i}`, turns: [messageTurn("user", `v2 ${i}`)] });
+    }
+    // A legacy v1 blob with NO updatedAt (the eviction case).
+    window.localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy")] }),
+    );
+    const all = loadConversations();
+    // Still capped at 5, and every real v2 chat survives (legacy did not evict).
+    expect(all).toHaveLength(MAX_PERSISTED_CONVERSATIONS);
+    expect(all.every((c) => c.title.startsWith("v2 "))).toBe(true);
+  });
+
   it("clears the v1 key when the migrated legacy thread is deleted so it cannot return", () => {
     window.localStorage.setItem(
       LEGACY_STORAGE_KEY,

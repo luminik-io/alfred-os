@@ -67,7 +67,7 @@ export function AskDraftPart({ args }: ToolCallMessagePartProps<DraftToolArgs>) 
                 draft.ready ? "icon-button ask-draft__file" : "secondary-button ask-draft__file"
               }
               type="button"
-              disabled={busy}
+              disabled={surface.fileBusyId !== null}
               onClick={() => surface.onFile(draft.draftId)}
               title={
                 draft.ready
