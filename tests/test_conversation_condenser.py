@@ -256,6 +256,11 @@ def test_overflow_classifier_matches_more_provider_shapes() -> None:
         "200000 tokens."
     )
     assert cc.looks_like_context_overflow("The messages are too long; reduce them.")
+    # The per-message cap exclusion is order-independent: the cap clause may sit
+    # BEFORE the "too long" clause and must still be excluded.
+    assert not cc.looks_like_context_overflow(
+        "The maximum message length is 4096 characters. Your message is too long."
+    )
 
 
 def test_overflow_classifier_ignores_ordinary_prose() -> None:
