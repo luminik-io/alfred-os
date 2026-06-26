@@ -54,6 +54,12 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => undefined;
 }
 
+// assistant-ui's message viewport auto-scrolls via Element.scrollTo, which
+// jsdom does not implement. Stub it so the Ask thread renders in tests.
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => undefined;
+}
+
 // React Flow (the workflow graph) observes its container size; jsdom has no
 // ResizeObserver, so stub it. The graph renders no measurable nodes in jsdom,
 // so component tests that need to select a specific agent use the List view.
