@@ -134,13 +134,20 @@ def normalize_repo_slugs(values: Any) -> list[str]:
     return out
 
 
-def selected_repos() -> list[str]:
+def selected_repos(env: dict[str, str] | None = None) -> list[str]:
     """The repos currently scoped to Alfred, from the config the fleet reads.
 
     Reads the queue allowlist (``allowed_queue_repos``) so the Set up surface
     shows the same scope queue/hold/close actually enforce. Sorted for a stable
     render.
     """
+    if env is not None:
+        return sorted(_repos_from_env(env))
+
+    launcher_env = _code_memory_launcher_env()
+    repos = _repos_from_env(launcher_env)
+    if repos or any(_has_config_value(launcher_env, key) for key in _REPO_ENV_KEYS):
+        return sorted(repos)
     return sorted(allowed_queue_repos())
 
 
@@ -160,6 +167,14 @@ def _alfred_home(env: dict[str, str] | None = None) -> Path:
 
 def _format_repo_value(repos: list[str]) -> str:
     return ",".join(repos)
+
+
+def _repos_from_env(env: dict[str, str]) -> set[str]:
+    repos: set[str] = set()
+    for key in _REPO_ENV_KEYS:
+        raw = _code_memory_config(env, key)
+        repos.update(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
+    return repos
 
 
 def write_env_values(values: dict[str, str]) -> Path:
