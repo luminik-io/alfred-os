@@ -291,10 +291,12 @@ ALFREDRC_BANNER = "# alfred-init, generated below this line. Safe to re-run."
 # existing managed block in place instead of appending a duplicate.
 ALFREDRC_BANNER_RE = re.compile(r"# alfred-init.{1,4}generated below this line\. Safe to re-run\.")
 ALFREDRC_MEMORY_STOP_BANNER = (
-    "# alfred-init memory stop controls, generated below this line. Safe to re-run."
+    "# alfred-init scheduler rc pointer and memory stop controls, generated below this line. "
+    "Safe to re-run."
 )
 ALFREDRC_MEMORY_STOP_BANNER_RE = re.compile(
-    r"# alfred-init memory stop controls, generated below this line\. Safe to re-run\."
+    r"# alfred-init (?:scheduler rc pointer and memory stop controls|memory stop controls), "
+    r"generated below this line\. Safe to re-run\."
 )
 
 
@@ -588,7 +590,7 @@ def upsert_alfredrc_block(
 
 
 def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[str, str]) -> int:
-    """Mirror emergency memory stop controls into the rc scheduled jobs source."""
+    """Mirror custom rc path and emergency memory controls into scheduled jobs source."""
     launch_rc = Path.home() / ".alfredrc"
     if launch_rc == state.alfredrc:
         return 0
@@ -597,11 +599,10 @@ def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[s
         for key, value in env_kvs.items()
         if key in MEMORY_AUTO_PROMOTE_CONTROL_ENVS and value.strip()
     }
-    if not controls:
-        return 0
+    values = {"ALFREDRC": str(state.alfredrc), **controls}
     upsert_alfredrc_block(
         launch_rc,
-        controls,
+        values,
         ALFREDRC_MEMORY_STOP_BANNER,
         ALFREDRC_MEMORY_STOP_BANNER_RE,
     )

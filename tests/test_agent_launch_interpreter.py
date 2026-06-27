@@ -31,6 +31,7 @@ def _run(
     env = os.environ.copy()
     env["ALFRED_HOME"] = str(alfred_home)
     env.pop("ALFRED_PYTHON", None)
+    env.pop("ALFREDRC", None)
     if alfred_python is not None:
         env["ALFRED_PYTHON"] = alfred_python
     # Empty HOME so load_env_file does not pick up a real ~/.alfredrc.
@@ -127,6 +128,7 @@ def _run_env(
     env = os.environ.copy()
     env["ALFRED_HOME"] = str(alfred_home)
     env.pop("ALFRED_PYTHON", None)
+    env.pop("ALFREDRC", None)
     env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
     env["HOME"] = str(alfred_home.parent)
     if extra_env:
@@ -212,6 +214,26 @@ def test_agent_launch_honors_custom_alfredrc_path(tmp_path: Path, alfred_home: P
         alfred_home=alfred_home,
         extra_env={"ALFREDRC": str(custom_rc)},
     )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "AUTO=0" in proc.stdout
+
+
+def test_agent_launch_follows_persisted_alfredrc_pointer(tmp_path: Path, alfred_home: Path) -> None:
+    custom_rc = tmp_path / "custom.alfredrc"
+    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    (alfred_home.parent / ".alfredrc").write_text(
+        f"ALFREDRC={custom_rc}\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-auto-promote.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
 
     assert proc.returncode == 0, proc.stderr
     assert "AUTO=0" in proc.stdout

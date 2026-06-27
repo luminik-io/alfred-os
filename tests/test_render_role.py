@@ -29,7 +29,9 @@ def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -
     shutil.copy(TEMPLATE, work / "_template.plist")
     (work / "agents.conf").write_text(conf_text)
     out_dir = tmp_path / "out"
-    full_env = {**os.environ, **(env or {})}
+    full_env = os.environ.copy()
+    full_env.pop("ALFREDRC", None)
+    full_env.update(env or {})
     res = subprocess.run(
         ["bash", str(work / "render.sh"), str(out_dir)],
         capture_output=True,
@@ -97,3 +99,25 @@ def test_render_passes_custom_alfredrc_to_launchd_environment(tmp_path):
     plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
     env = plist_data["EnvironmentVariables"]
     assert env["ALFREDRC"] == str(custom_rc)
+
+
+def test_render_follows_persisted_alfredrc_pointer(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    custom_rc = tmp_path / "custom.alfredrc"
+    custom_home = tmp_path / "runtime"
+    workspace = tmp_path / "workspace"
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
+        encoding="utf-8",
+    )
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
+
+    plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
+    env = plist_data["EnvironmentVariables"]
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(custom_home)
+    assert env["WORKSPACE_ROOT"] == str(workspace)

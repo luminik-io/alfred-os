@@ -964,6 +964,7 @@ def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
     assert parsed["MANUAL"] == "value"
     assert parsed["GH_ORG"] == "acme"
     assert parsed["SLACK_WEBHOOK_URL"] == "https://hooks.slack.com/services/A/B/C"
+    assert parsed["ALFREDRC"] == str(state.alfredrc)
     assert parsed["ALFRED_AUTO_PROMOTE"] == "0"
     assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
     text = launch_rc.read_text()
@@ -981,11 +982,31 @@ def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
     assert mirrored == 2
     parsed = init_mod.read_alfredrc(launch_rc)
     assert parsed["GH_ORG"] == "acme"
+    assert parsed["ALFREDRC"] == str(state.alfredrc)
     assert parsed["ALFRED_AUTO_PROMOTE"] == "off"
     assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
     text = launch_rc.read_text()
     assert text.count(init_mod.ALFREDRC_BANNER) == 1
     assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
+
+
+def test_custom_alfredrc_pointer_is_persisted_without_memory_stop_controls(
+    monkeypatch, tmp_path, init_mod
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("lucius",))
+    state.alfredrc = tmp_path / "custom.alfredrc"
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {"GH_ORG": "acme"},
+    )
+
+    assert mirrored == 0
+    parsed = init_mod.read_alfredrc(home / ".alfredrc")
+    assert parsed["ALFREDRC"] == str(state.alfredrc)
 
 
 def test_mirror_memory_stop_controls_skips_default_alfredrc(monkeypatch, tmp_path, init_mod):

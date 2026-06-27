@@ -83,8 +83,20 @@ load_env_file() {
   done < "$file"
 }
 
-: "${ALFREDRC:=$HOME/.alfredrc}"
-load_env_file "$ALFREDRC"
+load_selected_alfredrc() {
+  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}"
+  ALFREDRC="$selected_alfredrc"
+  export ALFREDRC
+  load_env_file "$ALFREDRC"
+  if [[ -n "${ALFREDRC:-}" && "$ALFREDRC" != "$selected_alfredrc" ]]; then
+    selected_alfredrc="$ALFREDRC"
+    load_env_file "$ALFREDRC"
+    ALFREDRC="$selected_alfredrc"
+    export ALFREDRC
+  fi
+}
+
+load_selected_alfredrc
 
 : "${ALFRED_HOME:=$HOME/.alfred}"
 : "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/code}}"

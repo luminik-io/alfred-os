@@ -46,7 +46,9 @@ def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -
     out_dir = tmp_path / "out"
     # A throwaway HOME keeps the %h substitution deterministic and stops
     # render.sh from picking up the developer's real ~/.alfredrc.
-    full_env = {**os.environ, "HOME": str(tmp_path / "fakehome"), **(env or {})}
+    full_env = os.environ.copy()
+    full_env.pop("ALFREDRC", None)
+    full_env.update({"HOME": str(tmp_path / "fakehome"), **(env or {})})
     res = subprocess.run(
         ["bash", str(systemd_dir / "render.sh"), str(out_dir)],
         capture_output=True,
@@ -130,6 +132,27 @@ def test_render_passes_custom_alfredrc_to_systemd_environment(tmp_path):
 
     service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
     assert f"Environment=ALFREDRC={custom_rc}" in service
+
+
+def test_render_follows_persisted_alfredrc_pointer(tmp_path):
+    home = tmp_path / "fakehome"
+    home.mkdir()
+    custom_rc = tmp_path / "custom.alfredrc"
+    custom_home = tmp_path / "runtime"
+    workspace = tmp_path / "workspace"
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
+        encoding="utf-8",
+    )
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
+
+    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
+    assert f"Environment=ALFREDRC={custom_rc}" in service
+    assert f"Environment=ALFRED_HOME={custom_home}" in service
+    assert f"Environment=WORKSPACE_ROOT={workspace}" in service
 
 
 def test_render_omits_java_home_when_needs_java_no(tmp_path):
