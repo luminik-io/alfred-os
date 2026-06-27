@@ -212,7 +212,7 @@ def launcher_env() -> dict[str, str]:
     load_env_file(home / ".alfredrc", env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    load_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env, no_clobber=True)
+    load_env_file(Path(env["ALFRED_HOME"]) / ".env", env, no_clobber=True)
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
     return env
