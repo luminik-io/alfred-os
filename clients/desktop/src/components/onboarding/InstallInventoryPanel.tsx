@@ -8,7 +8,7 @@ import type { SetupInstallInventory, SetupInstallItem } from "../../types";
 import { Badge, Card, CardContent } from "../ui";
 import { cn } from "@/lib/utils";
 
-const PRIMARY_ITEMS = ["home", "agents", "repos", "slack", "memory", "token"];
+const PRIMARY_ITEMS = ["home", "env", "agents", "repos", "slack", "memory", "token"];
 
 export function InstallInventoryPanel({
   inventory,
