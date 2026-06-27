@@ -85,11 +85,12 @@ Options:
                 normal daily pass instead of only when a firing already hit
                 the disk floor: Xcode DerivedData, npm cache, Docker build
                 cache, dangling images, and anonymous orphaned volumes when
-                Docker can be verified as anonymous-only for bare volume
-                prune. It does not change the age gates or retention floors of
-                the other sweep categories, and unlike --emergency it never
-                prunes named Docker volumes (which may hold dev data). Disable
-                per category with ALFRED_EMERGENCY_SKIP_DOCKER=1 or
+                Docker server version and effective API can be verified as
+                anonymous-only for bare volume prune. It does not change the
+                age gates or retention floors of the other sweep categories,
+                and unlike --emergency it never prunes named Docker volumes
+                (which may hold dev data). Disable per category with
+                ALFRED_EMERGENCY_SKIP_DOCKER=1 or
                 ALFRED_EMERGENCY_SKIP_DEV_CACHES=1. Also enabled by
                 ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 so a launchd entry that
                 cannot pass flags can still opt in via config.
@@ -111,11 +112,11 @@ EMERGENCY = "--emergency" in sys.argv[1:]
 # into the dev-cache + Docker reclaim that otherwise runs only reactively
 # under --emergency. The reclaim targets REGENERABLE build output only (Xcode
 # DerivedData, npm cache, Docker build cache, dangling images, ANONYMOUS
-# volumes when Docker can be verified as anonymous-only for bare volume prune);
-# the next build or run recreates whatever it needs. It does NOT lower the age
-# gates or retention floors of the OTHER sweep categories (temp files,
-# worktrees), and unlike --emergency it never prunes named Docker volumes (which
-# may hold dev data). Disable per category with
+# volumes when Docker server version and effective API can be verified as
+# anonymous-only for bare volume prune); the next build or run recreates whatever
+# it needs. It does NOT lower the age gates or retention floors of the OTHER
+# sweep categories (temp files, worktrees), and unlike --emergency it never
+# prunes named Docker volumes (which may hold dev data). Disable per category with
 # ALFRED_EMERGENCY_SKIP_DOCKER=1 / ALFRED_EMERGENCY_SKIP_DEV_CACHES=1. An
 # --emergency run already does this reclaim (plus the named-volume prune), so
 # the flag is redundant there but harmless. The env var lets a launchd entry
@@ -465,11 +466,18 @@ def _parse_docker_reclaimed_mb(stdout: str) -> float:
     return value * factors[unit]
 
 
-def _docker_server_version(docker: str) -> tuple[int, int] | None:
-    """Return the Docker server major/minor version, or ``None`` if unknown."""
+def _parse_major_minor(text: str) -> tuple[int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)", text)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _docker_version_field(docker: str, template: str) -> tuple[int, int] | None:
+    """Return one Docker version field as major/minor, or ``None`` if unknown."""
     try:
         proc = subprocess.run(
-            [docker, "version", "--format", "{{.Server.Version}}"],
+            [docker, "version", "--format", template],
             capture_output=True,
             text=True,
             timeout=10,
@@ -478,23 +486,38 @@ def _docker_server_version(docker: str) -> tuple[int, int] | None:
         return None
     if proc.returncode != 0:
         return None
-    match = re.search(r"(\d+)\.(\d+)", proc.stdout or "")
-    if not match:
-        return None
-    return int(match.group(1)), int(match.group(2))
+    return _parse_major_minor(proc.stdout or "")
+
+
+def _docker_server_version(docker: str) -> tuple[int, int] | None:
+    """Return the Docker server major/minor version, or ``None`` if unknown."""
+    return _docker_version_field(docker, "{{.Server.Version}}")
+
+
+def _docker_client_api_version(docker: str) -> tuple[int, int] | None:
+    """Return the Docker API version the CLI will use, or ``None`` if unknown."""
+    return _docker_version_field(docker, "{{.Client.APIVersion}}")
 
 
 def _docker_volume_prune_is_anonymous_only(docker: str) -> bool:
     """True when bare ``docker volume prune -f`` is safe for scheduled cleanup.
 
-    Docker 23.0 changed the default bare volume prune behavior to anonymous-only
-    and introduced ``--all`` for named volumes. Older Docker releases prune every
-    unused volume with the bare command, including named dev-data volumes. A
-    scheduled daily pass must therefore skip volume pruning unless it can prove
-    the server is 23.0 or newer.
+    Docker 23.0 / Engine API 1.42 changed the default bare volume prune behavior
+    to anonymous-only and introduced ``--all`` for named volumes. Older Docker
+    releases, or a client forced down to an older negotiated API via
+    DOCKER_API_VERSION, prune every unused volume with the bare command,
+    including named dev-data volumes. A scheduled daily pass must therefore skip
+    volume pruning unless it can prove both the server and effective client API
+    are new enough.
     """
-    version = _docker_server_version(docker)
-    return version is not None and version >= (23, 0)
+    server_version = _docker_server_version(docker)
+    api_version = _docker_client_api_version(docker)
+    return (
+        server_version is not None
+        and server_version >= (23, 0)
+        and api_version is not None
+        and api_version >= (1, 42)
+    )
 
 
 def reclaim_emergency_docker() -> tuple[float, int]:
@@ -510,21 +533,22 @@ def reclaim_emergency_docker() -> tuple[float, int]:
     * ``docker builder prune -f``        -> build cache only
     * ``docker image prune -f``          -> dangling images only (NOT ``-a``)
     * ``docker volume prune -f``         -> anonymous orphaned volumes only,
-      scheduled only when Docker >= 23.0 verifies that behavior
+      scheduled only when Docker >= 23.0 and API >= 1.42 verify that behavior
     * ``docker volume prune --all -f``   -> ALSO named orphaned volumes,
       EMERGENCY ONLY (see below)
 
-    Since Docker 23.0 a bare ``docker volume prune -f`` removes only anonymous
-    volumes. ``--all`` also removes NAMED orphaned volumes, which can hold local
-    dev data (a database, a cache) merely detached from a stopped container.
-    Routinely deleting those on a scheduled daily pass could destroy data, so
-    ``--all`` is gated to ``--emergency`` (the disk is already full and recovery
-    outranks the risk). The scheduled pass prunes only anonymous volumes. On
-    Docker <23 treats the bare volume prune as named-volume-capable, so the
-    scheduled path skips volume pruning there rather than risking detached named
-    dev volumes. The emergency path still uses explicit ``--all``; on older
-    Docker that flag exits non-zero with empty stdout, so the parser reads 0.0 MB
-    and the run is a no-op rather than a regression.
+    Since Docker 23.0 / Engine API 1.42, a bare ``docker volume prune -f``
+    removes only anonymous volumes. ``--all`` also removes NAMED orphaned
+    volumes, which can hold local dev data (a database, a cache) merely detached
+    from a stopped container. Routinely deleting those on a scheduled daily pass
+    could destroy data, so ``--all`` is gated to ``--emergency`` (the disk is
+    already full and recovery outranks the risk). The scheduled pass prunes only
+    anonymous volumes. Docker <23 or API <1.42 treats the bare volume prune as
+    named-volume-capable, so the scheduled path skips volume pruning there rather
+    than risking detached named dev volumes. The emergency path still uses
+    explicit ``--all``; on older Docker that flag exits non-zero with empty
+    stdout, so the parser reads 0.0 MB and the run is a no-op rather than a
+    regression.
 
     We never run ``docker container prune`` and never pass ``-a`` to the image
     prune, so running containers and their data are always preserved. Opt out

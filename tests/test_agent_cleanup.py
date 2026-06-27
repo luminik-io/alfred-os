@@ -199,7 +199,9 @@ def _patch_docker(
     present,
     stdout,
     version_stdout="24.0.0\n",
+    api_stdout="1.42\n",
     version_returncode=0,
+    api_returncode=0,
 ):
     """Route docker prune calls to a fake while leaving real subprocess intact.
 
@@ -220,6 +222,13 @@ def _patch_docker(
         if isinstance(cmd, (list, tuple)) and cmd and str(cmd[0]).endswith("docker"):
             calls.append(list(cmd))
             if len(cmd) > 1 and cmd[1] == "version":
+                if cmd[-1] == "{{.Client.APIVersion}}":
+                    return subprocess.CompletedProcess(
+                        cmd,
+                        api_returncode,
+                        stdout=api_stdout,
+                        stderr="",
+                    )
                 return subprocess.CompletedProcess(
                     cmd,
                     version_returncode,
@@ -334,7 +343,8 @@ def test_scheduled_flag_reclaims_docker_without_emergency(tmp_path, monkeypatch)
         ["volume", "prune", "-f"],
     ]
     assert [c[1:] for c in calls if len(c) > 1 and c[1] == "version"] == [
-        ["version", "--format", "{{.Server.Version}}"]
+        ["version", "--format", "{{.Server.Version}}"],
+        ["version", "--format", "{{.Client.APIVersion}}"],
     ]
     for cmd in calls:
         assert "--all" not in cmd
@@ -359,6 +369,25 @@ def test_scheduled_old_docker_skips_volume_prune(tmp_path, monkeypatch):
     ]
 
 
+def test_scheduled_old_docker_api_skips_volume_prune(tmp_path, monkeypatch):
+    """Older negotiated APIs keep bare volume prune named-volume-capable."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        version_stdout="24.0.0\n",
+        api_stdout="1.41\n",
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
+
+
 def test_scheduled_unknown_docker_version_skips_volume_prune(tmp_path, monkeypatch):
     """If the server version cannot be proven safe, scheduled skips volume prune."""
     monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
@@ -369,6 +398,25 @@ def test_scheduled_unknown_docker_version_skips_volume_prune(tmp_path, monkeypat
         stdout="Total reclaimed space: 1.5GB\n",
         version_stdout="",
         version_returncode=1,
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
+
+
+def test_scheduled_unknown_docker_api_skips_volume_prune(tmp_path, monkeypatch):
+    """If the effective API cannot be proven safe, scheduled skips volume prune."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        api_stdout="",
+        api_returncode=1,
     )
     mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
     assert mod.dock_n == 2
