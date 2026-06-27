@@ -738,18 +738,20 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    # list_lessons returns at most one page (limit), so loop until the namespace
-    # is drained rather than clearing only the first page and reporting success.
+    # list_lessons returns at most one AMS page, so loop until the namespace is
+    # drained rather than clearing only the first page and reporting success.
+    total_limit = max(0, int(args.limit))
     deleted = 0
+    attempted = 0
     failed: set[str] = set()
     passes = 0
     # Safety ceiling far above any real namespace, so an AMS that keeps
     # returning the same undeletable page can never spin forever.
     max_passes = 100_000
-    while passes < max_passes:
+    while passes < max_passes and attempted < total_limit:
         passes += 1
         try:
-            lessons = provider.list_lessons(limit=args.limit)
+            lessons = provider.list_lessons(limit=total_limit - attempted)
         except Exception as exc:
             print(
                 f"alfred-brain ams-reset: could not list lessons in namespace "
@@ -760,10 +762,12 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
         # Only act on lessons we have not already failed to delete; when a page
         # has nothing new, the namespace is empty or only undeletable lessons
         # remain, so stop.
-        pending = [lesson for lesson in lessons if lesson.id not in failed]
+        remaining = total_limit - attempted
+        pending = [lesson for lesson in lessons if lesson.id not in failed][:remaining]
         if not pending:
             break
         for lesson in pending:
+            attempted += 1
             if provider.forget_lesson(lesson.id):
                 deleted += 1
             else:
@@ -773,6 +777,8 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
         "namespace": provider.namespace,
         "base_url": provider.base_url,
         "deleted": deleted,
+        "attempted": attempted,
+        "limit": total_limit,
         "failed": failed_ids,
         "passes": passes,
     }
@@ -780,8 +786,8 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
     else:
         print(
-            f"alfred-brain ams-reset: deleted {deleted} lesson(s) "
-            f"from namespace {provider.namespace} over {passes} pass(es)"
+            f"alfred-brain ams-reset: deleted {deleted}/{attempted} attempted "
+            f"lesson(s) from namespace {provider.namespace} over {passes} pass(es)"
         )
         if failed_ids:
             print(f"  failed to delete: {', '.join(failed_ids)}", file=sys.stderr)
@@ -1310,9 +1316,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ams_reset.add_argument(
         "--yes", action="store_true", help="confirm the destructive namespace wipe"
     )
-    p_ams_reset.add_argument(
-        "--limit", type=int, default=10_000, help="max lessons to enumerate for deletion"
-    )
+    p_ams_reset.add_argument("--limit", type=int, default=10_000, help="max lessons to delete")
     p_ams_reset.add_argument("--json", action="store_true")
     p_ams_reset.set_defaults(func=cmd_ams_reset)
 

@@ -52,6 +52,7 @@ _AMS_DEFAULT_PORT = DEFAULT_PORT
 _DEFAULT_MAX_RETRIES = 2
 _DEFAULT_BREAKER_THRESHOLD = 5
 _DEFAULT_BREAKER_COOLDOWN_S = 30.0
+_AMS_SEARCH_PAGE_LIMIT = 100
 
 Transport = Callable[[str, str, dict[str, Any] | None, dict[str, str], float], Any]
 
@@ -433,19 +434,20 @@ class RedisAgentMemoryProvider:
             return False
         return True
 
-    def list_lessons(self, *, limit: int = 1000) -> list[Lesson]:
+    def list_lessons(self, *, limit: int = _AMS_SEARCH_PAGE_LIMIT) -> list[Lesson]:
         """Enumerate lessons stored in this provider's namespace (one page).
 
         Used by the ``ams-reset`` operator path: AMS has no namespace-wide
         bulk-delete, so we list a page (a ``namespace`` filter scopes the whole
         namespace) and delete each, repeating until empty. The user_id filter is
         deliberately NOT applied: a reset clears the entire namespace, not just
-        one user's lessons. A single call returns at most ``limit`` lessons, so
-        the caller must loop until this returns empty to drain a large namespace.
+        one user's lessons. A single call returns at most the smaller of
+        ``limit`` and the AMS search API page cap, so the caller must loop until
+        this returns empty to drain a large namespace.
         """
         payload: dict[str, Any] = {
             "text": "",
-            "limit": max(1, int(limit)),
+            "limit": min(max(1, int(limit)), _AMS_SEARCH_PAGE_LIMIT),
             "search_mode": "semantic",
             "namespace": {"eq": self.namespace},
         }

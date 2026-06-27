@@ -11,8 +11,12 @@ The transport is injected as a deterministic stub and ``sleep`` /
 
 from __future__ import annotations
 
+import argparse
+import importlib.util
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -60,6 +64,17 @@ def _provider(
     # Stash the recorder so tests can assert on the number of sleeps.
     prov._test_sleeps = sleeps  # type: ignore[attr-defined]
     return prov
+
+
+def _load_alfred_brain() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "alfred_brain_resilience_tests",
+        _REPO / "bin" / "alfred-brain.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 # ---------------------------------------------------------------------------
@@ -405,9 +420,11 @@ def test_reflect_raises_when_breaker_open() -> None:
 def test_list_lessons_and_forget_lesson() -> None:
     """list_lessons enumerates the namespace; forget_lesson issues a DELETE."""
     deleted: list[str] = []
+    seen_payloads: list[dict[str, Any]] = []
 
     def transport(method, url, payload, headers, timeout):
         if method == "POST" and url.endswith("/v1/long-term-memory/search"):
+            seen_payloads.append(payload)
             return {
                 "memories": [
                     {"id": "m1", "text": "lesson one", "topics": ["alfred"]},
@@ -421,6 +438,7 @@ def test_list_lessons_and_forget_lesson() -> None:
 
     prov = _provider(transport)
     lessons = prov.list_lessons(limit=500)
+    assert seen_payloads[0]["limit"] == 100
     assert {lesson.id for lesson in lessons} == {"m1", "m2"}
     for lesson in lessons:
         assert prov.forget_lesson(lesson.id) is True
@@ -444,3 +462,37 @@ def test_empty_memory_id_is_noop_success() -> None:
 
     prov = _provider(transport)
     assert prov.forget_lesson("  ") is True
+
+
+def test_ams_reset_limit_caps_total_attempts(monkeypatch, capsys) -> None:
+    """The destructive --limit flag is a total cap, not a page-size hint."""
+    mod = _load_alfred_brain()
+
+    class FakeRedisProvider:
+        namespace = "alfred"
+        base_url = "http://memory.local"
+
+        def __init__(self) -> None:
+            self.list_limits: list[int] = []
+            self.deleted: list[str] = []
+
+        def list_lessons(self, *, limit: int):
+            self.list_limits.append(limit)
+            return [SimpleNamespace(id=f"m{i}") for i in range(5)]
+
+        def forget_lesson(self, lesson_id: str) -> bool:
+            self.deleted.append(lesson_id)
+            return True
+
+    provider = FakeRedisProvider()
+    monkeypatch.setattr(mod, "_build_redis_provider", lambda: provider)
+
+    rc = mod.cmd_ams_reset(argparse.Namespace(yes=True, limit=2, json=True))
+
+    assert rc == 0
+    assert provider.list_limits == [2]
+    assert provider.deleted == ["m0", "m1"]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["deleted"] == 2
+    assert payload["attempted"] == 2
+    assert payload["limit"] == 2
