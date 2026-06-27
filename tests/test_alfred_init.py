@@ -920,6 +920,19 @@ def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
     monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
     state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
     state.alfredrc = tmp_path / "custom.alfredrc"
+    launch_rc = home / ".alfredrc"
+    launch_rc.write_text(
+        "\n".join(
+            [
+                "MANUAL=value",
+                "",
+                init_mod.ALFREDRC_BANNER,
+                "GH_ORG=acme",
+                "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/A/B/C",
+                "",
+            ]
+        )
+    )
 
     mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
         state,
@@ -930,12 +943,33 @@ def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
         },
     )
 
-    launch_rc = home / ".alfredrc"
     assert mirrored == 2
     parsed = init_mod.read_alfredrc(launch_rc)
+    assert parsed["MANUAL"] == "value"
+    assert parsed["GH_ORG"] == "acme"
+    assert parsed["SLACK_WEBHOOK_URL"] == "https://hooks.slack.com/services/A/B/C"
     assert parsed["ALFRED_AUTO_PROMOTE"] == "0"
     assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
-    assert "GH_ORG" not in parsed
+    text = launch_rc.read_text()
+    assert text.count(init_mod.ALFREDRC_BANNER) == 1
+    assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {
+            "ALFRED_AUTO_PROMOTE": "off",
+            "ALFRED_AUTO_PROMOTE_KILL": "1",
+        },
+    )
+
+    assert mirrored == 2
+    parsed = init_mod.read_alfredrc(launch_rc)
+    assert parsed["GH_ORG"] == "acme"
+    assert parsed["ALFRED_AUTO_PROMOTE"] == "off"
+    assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    text = launch_rc.read_text()
+    assert text.count(init_mod.ALFREDRC_BANNER) == 1
+    assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
 
 
 def test_mirror_memory_stop_controls_skips_default_alfredrc(monkeypatch, tmp_path, init_mod):

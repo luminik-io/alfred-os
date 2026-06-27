@@ -290,6 +290,12 @@ ALFREDRC_BANNER = "# alfred-init, generated below this line. Safe to re-run."
 # uses a comma). upsert_alfredrc relies on this so an upgrade rewrites the
 # existing managed block in place instead of appending a duplicate.
 ALFREDRC_BANNER_RE = re.compile(r"# alfred-init.{1,4}generated below this line\. Safe to re-run\.")
+ALFREDRC_MEMORY_STOP_BANNER = (
+    "# alfred-init memory stop controls, generated below this line. Safe to re-run."
+)
+ALFREDRC_MEMORY_STOP_BANNER_RE = re.compile(
+    r"# alfred-init memory stop controls, generated below this line\. Safe to re-run\."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -554,15 +560,25 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
     Idempotent: rewrites the marker block on every call so re-running
     the wizard doesn't accumulate dupes.
     """
+    upsert_alfredrc_block(path, kvs, ALFREDRC_BANNER, ALFREDRC_BANNER_RE)
+
+
+def upsert_alfredrc_block(
+    path: Path,
+    kvs: dict[str, str],
+    banner: str,
+    banner_re: re.Pattern[str],
+) -> None:
+    """Add or update keys in an idempotent generated rc block."""
     if not kvs:
         return
     existing = path.read_text() if path.exists() else ""
-    # Strip any prior alfred-init block (current or older-release banner) so
-    # we re-emit fresh values instead of accumulating a duplicate section.
-    prior = ALFREDRC_BANNER_RE.search(existing)
+    # Strip any prior generated block for this marker so we re-emit fresh
+    # values instead of accumulating a duplicate section.
+    prior = banner_re.search(existing)
     if prior:
         existing = existing[: prior.start()].rstrip() + "\n"
-    block = [ALFREDRC_BANNER]
+    block = [banner]
     for k, v in kvs.items():
         block.append(f"{k}={quote_alfredrc_value(v)}")
     new = existing.rstrip() + "\n\n" + "\n".join(block) + "\n"
@@ -583,7 +599,12 @@ def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[s
     }
     if not controls:
         return 0
-    upsert_alfredrc(launch_rc, controls)
+    upsert_alfredrc_block(
+        launch_rc,
+        controls,
+        ALFREDRC_MEMORY_STOP_BANNER,
+        ALFREDRC_MEMORY_STOP_BANNER_RE,
+    )
     return len(controls)
 
 
