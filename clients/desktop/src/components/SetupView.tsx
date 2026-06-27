@@ -10,7 +10,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
@@ -54,6 +54,7 @@ export function SetupView({
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
+  const setupRequestSeq = useRef(0);
   const trustedUsers = trustedSlack?.users || [];
   const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
 
@@ -61,43 +62,36 @@ export function SetupView({
     setServerUrl(baseUrl);
   }, [baseUrl]);
 
-  const refreshSetupStatus = () => {
+  const refreshSetupStatus = useCallback(() => {
+    const requestId = setupRequestSeq.current + 1;
+    setupRequestSeq.current = requestId;
     setSetupLoading(true);
     setSetupError(null);
     void loadSetupStatus(baseUrl)
       .then((next) => {
-        setSetupStatus(next);
+        if (setupRequestSeq.current === requestId) {
+          setSetupStatus(next);
+        }
       })
       .catch((err) => {
-        setSetupStatus(null);
-        setSetupError(errorDetail(err) || "Could not read setup status.");
-      })
-      .finally(() => {
-        setSetupLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    setSetupLoading(true);
-    setSetupError(null);
-    void loadSetupStatus(baseUrl)
-      .then((next) => {
-        if (!cancelled) setSetupStatus(next);
-      })
-      .catch((err) => {
-        if (!cancelled) {
+        if (setupRequestSeq.current === requestId) {
           setSetupStatus(null);
           setSetupError(errorDetail(err) || "Could not read setup status.");
         }
       })
       .finally(() => {
-        if (!cancelled) setSetupLoading(false);
+        if (setupRequestSeq.current === requestId) {
+          setSetupLoading(false);
+        }
       });
-    return () => {
-      cancelled = true;
-    };
   }, [baseUrl]);
+
+  useEffect(() => {
+    refreshSetupStatus();
+    return () => {
+      setupRequestSeq.current += 1;
+    };
+  }, [refreshSetupStatus]);
 
   const tabs: TabItem<SetupSubtab>[] = [
     { key: "connection", label: "Connection" },
