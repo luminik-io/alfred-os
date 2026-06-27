@@ -236,6 +236,50 @@ def test_render_agents_conf_honors_runtime_env_file_for_config_gates(
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
+def test_render_agents_conf_ignores_stale_managed_alfredrc_for_config_gates(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                "# operator settings stay above",
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
+                "",
+            ]
+        )
+    )
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
+    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.huntress\t" not in text
+
+
+def test_render_agents_conf_honors_unmanaged_alfredrc_for_config_gates(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                "ALFRED_HUNTRESS_TARGET_URL=https://handwritten.example.com",
+                init_mod.ALFREDRC_BANNER,
+                "",
+            ]
+        )
+    )
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "#alfred.huntress" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+
+
 def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)

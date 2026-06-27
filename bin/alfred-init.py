@@ -442,12 +442,10 @@ def have(binary: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def read_alfredrc(path: Path) -> dict[str, str]:
-    """Parse KEY=VALUE pairs from ~/.alfredrc. Quotes/exports are tolerated."""
+def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
+    """Parse KEY=VALUE pairs from alfredrc text. Quotes/exports are tolerated."""
     out: dict[str, str] = {}
-    if not path.exists():
-        return out
-    for raw in path.read_text().splitlines():
+    for raw in raw_text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -469,6 +467,24 @@ def read_alfredrc(path: Path) -> dict[str, str]:
         if k:
             out[k] = v
     return out
+
+
+def read_alfredrc(path: Path) -> dict[str, str]:
+    """Parse KEY=VALUE pairs from ~/.alfredrc. Quotes/exports are tolerated."""
+    if not path.exists():
+        return {}
+    return _parse_alfredrc_text(path.read_text())
+
+
+def read_unmanaged_alfredrc(path: Path) -> dict[str, str]:
+    """Parse only operator-authored ~/.alfredrc values above the managed block."""
+    if not path.exists():
+        return {}
+    raw = path.read_text()
+    managed = ALFREDRC_BANNER_RE.search(raw)
+    if managed:
+        raw = raw[: managed.start()]
+    return _parse_alfredrc_text(raw)
 
 
 def quote_alfredrc_value(value: str) -> str:
@@ -694,7 +710,7 @@ def _configured_env_values(state: WizardState) -> dict[str, str]:
     """
     values: dict[str, str] = {}
     with contextlib.suppress(OSError):
-        values.update(read_alfredrc(state.alfredrc))
+        values.update(read_unmanaged_alfredrc(state.alfredrc))
     with contextlib.suppress(OSError):
         values.update(read_alfredrc(state.alfred_home / ".env"))
     values.update(env_assignments_for(state))
