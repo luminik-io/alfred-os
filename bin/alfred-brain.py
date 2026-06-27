@@ -42,6 +42,10 @@ Subcommands:
     alfred-brain.py redis-sync
         Mirror reviewed fleet-brain lessons into Redis AMS.
 
+    alfred-brain.py ams-reset --yes
+        Clear EVERY lesson in the configured AMS namespace. Destructive:
+        requires --yes. Prints how many lessons were deleted.
+
     alfred-brain.py firings [--codename C] [--status S] [--limit N]
         List firing audit rows.
 
@@ -725,6 +729,83 @@ def cmd_redis_sync(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def cmd_ams_reset(args: argparse.Namespace) -> int:
+    provider = _build_redis_provider()
+    if not args.yes:
+        print(
+            "alfred-brain ams-reset: refusing to clear lessons without --yes "
+            f"(namespace={provider.namespace}, base={provider.base_url})",
+            file=sys.stderr,
+        )
+        return 2
+    # list_lessons returns at most one AMS page, so loop until the namespace is
+    # drained rather than clearing only the first page and reporting success.
+    total_limit = max(0, int(args.limit))
+    deleted = 0
+    attempted = 0
+    seen: set[str] = set()
+    failed: set[str] = set()
+    stalled = False
+    passes = 0
+    # Safety ceiling far above any real namespace, so an AMS that keeps
+    # returning the same undeletable page can never spin forever.
+    max_passes = 100_000
+    while passes < max_passes and attempted < total_limit:
+        passes += 1
+        try:
+            lessons = provider.list_lessons(limit=total_limit - attempted)
+        except Exception as exc:
+            print(
+                f"alfred-brain ams-reset: could not list lessons in namespace "
+                f"{provider.namespace}: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        # Only act on lessons we have not already failed to delete; when a page
+        # has nothing new, the namespace is empty or AMS returned only IDs this
+        # run already attempted. The latter is a stale-page stall, not success.
+        remaining = total_limit - attempted
+        pending = [
+            lesson for lesson in lessons if lesson.id not in failed and lesson.id not in seen
+        ][:remaining]
+        if not pending:
+            stalled = bool(lessons)
+            break
+        for lesson in pending:
+            seen.add(lesson.id)
+            attempted += 1
+            if provider.forget_lesson(lesson.id):
+                deleted += 1
+            else:
+                failed.add(lesson.id)
+    failed_ids = sorted(failed)
+    payload = {
+        "namespace": provider.namespace,
+        "base_url": provider.base_url,
+        "deleted": deleted,
+        "attempted": attempted,
+        "limit": total_limit,
+        "failed": failed_ids,
+        "passes": passes,
+        "stalled": stalled,
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(
+            f"alfred-brain ams-reset: deleted {deleted}/{attempted} attempted "
+            f"lesson(s) from namespace {provider.namespace} over {passes} pass(es)"
+        )
+        if failed_ids:
+            print(f"  failed to delete: {', '.join(failed_ids)}", file=sys.stderr)
+        if stalled:
+            print(
+                "  stopped: AMS returned only lessons this reset already attempted",
+                file=sys.stderr,
+            )
+    return 1 if failed or stalled else 0
+
+
 def cmd_forget(args: argparse.Namespace) -> int:
     brain = _build_brain(args)
     if args.before:
@@ -1240,6 +1321,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_redis_sync.add_argument("--dry-run", action="store_true")
     p_redis_sync.add_argument("--json", action="store_true")
     p_redis_sync.set_defaults(func=cmd_redis_sync)
+
+    p_ams_reset = sub.add_parser(
+        "ams-reset", help="clear ALL lessons in the configured AMS namespace (destructive)"
+    )
+    p_ams_reset.add_argument(
+        "--yes", action="store_true", help="confirm the destructive namespace wipe"
+    )
+    p_ams_reset.add_argument("--limit", type=int, default=10_000, help="max lessons to delete")
+    p_ams_reset.add_argument("--json", action="store_true")
+    p_ams_reset.set_defaults(func=cmd_ams_reset)
 
     p_forget = sub.add_parser("forget", help="delete a lesson or GC old ones")
     p_forget.add_argument("id", nargs="?", help="lesson id to delete")
