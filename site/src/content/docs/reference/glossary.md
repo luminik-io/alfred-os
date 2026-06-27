@@ -117,9 +117,9 @@ in depth.
 - **Slack post**: One outbound message Alfred sends to a configured Slack
   channel via webhook or bot token, at info, warn, or alert severity.
   See also: [Slack](/guides/slack/).
-- **starter fleet**: An explicit small lab roster (Drake, Lucius, Ra's al Ghul,
-  agent-cleanup) you can request with `--agents starter`. The default install
-  uses the full engineering fleet.
+- **full fleet**: The default local engineering team Alfred installs: planning,
+  implementation, review, test, review-fix, reporting, memory, code-map, cleanup,
+  and reliability jobs. `--agents starter` remains an explicit lab shortcut.
   See also: [Install](/getting-started/install/).
 - **state machine**: The label transitions on an issue
   (`agent:implement` → `agent:in-flight` → `agent:pr-open` → `agent:done`)
