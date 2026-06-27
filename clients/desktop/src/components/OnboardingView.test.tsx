@@ -43,6 +43,68 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   };
 }
 
+function makeInstall(overrides: Partial<NonNullable<SetupStatus["install"]>> = {}): NonNullable<SetupStatus["install"]> {
+  const base: NonNullable<SetupStatus["install"]> = {
+    alfred_home: "/tmp/alfred-home",
+    env_path: "/tmp/alfred-home/.env",
+    env_present: true,
+    server_token_present: true,
+    agents_conf_path: "/tmp/alfred-home/launchd/agents.conf",
+    agents_conf_present: true,
+    scheduled_runs: 3,
+    selected_repos_env_present: true,
+    slack_configured: false,
+    memory_configured: false,
+    initialized: true,
+    items: [
+      {
+        key: "home",
+        label: "Runtime home",
+        ok: true,
+        detail: "Found /tmp/alfred-home",
+        path: "/tmp/alfred-home",
+      },
+      {
+        key: "agents",
+        label: "Scheduled fleet",
+        ok: true,
+        detail: "3 enabled scheduled runs in agents.conf",
+        path: "/tmp/alfred-home/launchd/agents.conf",
+      },
+      {
+        key: "repos",
+        label: "Repository scope",
+        ok: true,
+        detail: "1 selected repos in ALFRED_QUEUE_REPOS, ALFRED_SHIPPED_REPOS",
+        path: "/tmp/alfred-home/.env",
+      },
+      {
+        key: "slack",
+        label: "Slack approvals",
+        ok: false,
+        detail: "Optional. Not configured yet.",
+        path: null,
+        optional: true,
+      },
+      {
+        key: "memory",
+        label: "Memory layer",
+        ok: true,
+        detail: "Using bundled local Redis Agent Memory defaults.",
+        path: null,
+      },
+      {
+        key: "token",
+        label: "Desktop mutation token",
+        ok: true,
+        detail: "Runtime token is present for desktop actions.",
+        path: "/tmp/alfred-home/state",
+      },
+    ],
+  };
+  return { ...base, ...overrides };
+}
+
 const REPOS: SetupReposResponse = {
   repos: [
     {
@@ -136,6 +198,22 @@ describe("OnboardingView six-step takeover", () => {
     expect(screen.getByRole("button", { name: /^repositories$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^slack$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^first request$/i })).toBeInTheDocument();
+  });
+
+  it("shows detected existing install inventory on the welcome step", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        install: makeInstall(),
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    renderOnboarding();
+
+    expect(await screen.findByText(/found an alfred setup on this mac/i)).toBeInTheDocument();
+    expect(screen.getAllByText("/tmp/alfred-home").length).toBeGreaterThan(0);
+    expect(screen.getByText(/3 enabled scheduled runs in agents\.conf/i)).toBeInTheDocument();
+    expect(screen.getByText(/optional\. not configured yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/ready to use/i)).toBeInTheDocument();
   });
 
   it("welcome 'Get started' moves to the tools step", async () => {

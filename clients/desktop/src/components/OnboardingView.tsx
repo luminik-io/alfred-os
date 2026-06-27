@@ -508,6 +508,7 @@ export function OnboardingView({
             // StepFrame icon/title/blurb so the value line is said once here, not
             // echoed by a step header above it.
             <WelcomeStep
+              install={status?.install ?? null}
               onGetStarted={() => goToStep("engine")}
               onDevShortcut={() => goToStep("github")}
             />

@@ -128,6 +128,24 @@ def _runtime_config_env() -> dict[str, str]:
     return env
 
 
+_SLACK_CONFIG_KEYS = (
+    "SLACK_WEBHOOK_URL",
+    "SLACK_WEBHOOK_SECRET_ID",
+    "SLACK_BOT_TOKEN",
+    "ALFRED_SLACK_BOT_TOKEN_SECRET_ID",
+    "SLACK_APP_TOKEN",
+    "ALFRED_SLACK_APP_TOKEN",
+)
+
+_MEMORY_CONFIG_KEYS = (
+    "ALFRED_REDIS_MEMORY_URL",
+    "ALFRED_REDIS_MEMORY_NAMESPACE",
+    "ALFRED_AMS_HOST",
+    "ALFRED_AMS_PORT",
+    "ALFRED_AMS_REDIS_URL",
+)
+
+
 def _runtime_config_value(key: str, default: str = "") -> str:
     return _runtime_config_env().get(key, "").strip() or default
 
@@ -200,6 +218,10 @@ def selected_repos() -> list[str]:
 # --------------------------------------------------------------------------- #
 def _env_path() -> Path:
     return _alfred_home(dict(os.environ)) / ".env"
+
+
+def _alfred_home() -> Path:
+    return Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 
 
 def _format_repo_value(repos: list[str]) -> str:
@@ -1033,8 +1055,152 @@ def bootstrap_status() -> dict[str, Any]:
             "keys": list(_REPO_ENV_KEYS),
         },
         "demo": {"present": any(load_demo_cards().values())},
+        "install": install_inventory(repos=repos),
         "ready": bool(gh["ok"] and any_engine and repos),
     }
+
+
+def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
+    """Read-only inventory of an existing Alfred install.
+
+    The desktop onboarding uses this to show what Alfred already found on the
+    machine. It deliberately exposes only paths, booleans, counts, and
+    plain-language detail, never secret values from ``.env`` or the server token.
+    """
+
+    from . import schedule as setup_schedule
+
+    home = _alfred_home()
+    env_path = home / ".env"
+    token_path = home / "state" / "server-token"
+    conf_path = setup_schedule.agents_conf_path()
+    scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
+    selected = repos if repos is not None else selected_repos()
+    selected_env_present = any(_has_config_value(key) for key in _REPO_ENV_KEYS)
+    slack_configured = any(_has_config_value(key) for key in _SLACK_CONFIG_KEYS)
+    memory_overridden = any(_has_config_value(key) for key in _MEMORY_CONFIG_KEYS)
+    memory_detail = (
+        "Custom Redis Agent Memory settings found."
+        if memory_overridden
+        else "Using bundled local Redis Agent Memory defaults."
+    )
+
+    items = [
+        _inventory_item(
+            "home",
+            "Runtime home",
+            home.exists(),
+            f"{'Found' if home.exists() else 'Will create'} {home}",
+            home,
+        ),
+        _inventory_item(
+            "env",
+            "Configuration file",
+            env_path.is_file(),
+            f"{'Found' if env_path.is_file() else 'Not created yet'} {env_path}",
+            env_path,
+        ),
+        _inventory_item(
+            "agents",
+            "Scheduled fleet",
+            bool(conf_path and conf_path.is_file()),
+            (
+                f"{len(scheduled_runs)} enabled scheduled run"
+                f"{'' if len(scheduled_runs) == 1 else 's'} in agents.conf"
+                if conf_path and conf_path.is_file()
+                else "No deployed agents.conf found yet"
+            ),
+            conf_path,
+        ),
+        _inventory_item(
+            "repos",
+            "Repository scope",
+            bool(selected),
+            (
+                f"{len(selected)} selected repos in {', '.join(_REPO_ENV_KEYS)}"
+                if selected
+                else "No repositories selected yet"
+            ),
+            env_path if selected_env_present else None,
+        ),
+        _inventory_item(
+            "slack",
+            "Slack approvals",
+            slack_configured,
+            (
+                "Slack webhook or app tokens are configured."
+                if slack_configured
+                else "Optional. Not configured yet."
+            ),
+            env_path if slack_configured else None,
+            optional=True,
+        ),
+        _inventory_item(
+            "memory",
+            "Memory layer",
+            True,
+            memory_detail,
+            env_path if memory_overridden else None,
+        ),
+        _inventory_item(
+            "token",
+            "Desktop mutation token",
+            token_path.is_file(),
+            (
+                "Runtime token is present for desktop actions."
+                if token_path.is_file()
+                else "Start the runtime to create the desktop action token."
+            ),
+            token_path.parent,
+        ),
+    ]
+
+    initialized = any(
+        (
+            home.exists(),
+            env_path.is_file(),
+            bool(conf_path and conf_path.is_file()),
+            bool(selected),
+            token_path.is_file(),
+        )
+    )
+    return {
+        "alfred_home": str(home),
+        "env_path": str(env_path),
+        "env_present": env_path.is_file(),
+        "server_token_present": token_path.is_file(),
+        "agents_conf_path": str(conf_path) if conf_path else None,
+        "agents_conf_present": bool(conf_path and conf_path.is_file()),
+        "scheduled_runs": len(scheduled_runs),
+        "selected_repos_env_present": selected_env_present,
+        "slack_configured": slack_configured,
+        "memory_configured": memory_overridden,
+        "initialized": initialized,
+        "items": items,
+    }
+
+
+def _inventory_item(
+    key: str,
+    label: str,
+    ok: bool,
+    detail: str,
+    path: Path | None = None,
+    *,
+    optional: bool = False,
+) -> dict[str, Any]:
+    return {
+        "key": key,
+        "label": label,
+        "ok": bool(ok),
+        "detail": detail,
+        "path": str(path) if path else None,
+        "optional": optional,
+    }
+
+
+def _has_config_value(key: str) -> bool:
+    return bool(config_value(key).strip())
 
 
 def list_owner_repos(limit: int = 100) -> dict[str, Any]:
